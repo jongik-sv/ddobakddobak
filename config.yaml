@@ -1,0 +1,109 @@
+# ──────────────────────────────────────────────────
+# 또박또박 프로젝트 설정
+# ──────────────────────────────────────────────────
+
+# ── API / WebSocket ──────────────────────────────
+# 환경변수(VITE_API_BASE_URL, VITE_WS_URL)로 오버라이드 가능
+api:
+  base_url: "http://localhost:3000/api/v1"
+  ws_url: "ws://localhost:3000/cable"
+
+# ── Sidecar 서비스 ────────────────────────────────
+# 환경변수(SIDECAR_HOST, SIDECAR_PORT)로 오버라이드 가능
+sidecar:
+  host: "localhost"
+  port: 8000
+  timeout_sec: 30
+
+# ── STT 엔진 ─────────────────────────────────────
+stt_engines:
+  mock:
+    label: "Mock (테스트용)"
+    short: "Mock"
+  whisper_cpp:
+    label: "Whisper Large v3 Turbo"
+    short: "Whisper v3 Turbo"
+  qwen3_asr_4bit:
+    label: "Qwen3-ASR 1.7B (4bit)"
+    short: "Qwen3 1.7B 4bit"
+  qwen3_asr_6bit:
+    label: "Qwen3-ASR 1.7B (6bit)"
+    short: "Qwen3 1.7B 6bit"
+  qwen3_asr_8bit:
+    label: "Qwen3-ASR 1.7B (8bit)"
+    short: "Qwen3 1.7B 8bit"
+  faster_whisper:
+    label: "Faster Whisper"
+    short: "Faster Whisper"
+
+# ── 오디오 청킹 (VAD) ─────────────────────────────
+audio:
+  sample_rate: 16000
+  silence_threshold: 0.03      # RMS — SPEECH → TRAILING_SILENCE 진입
+  speech_threshold: 0.06       # RMS — TRAILING_SILENCE → SPEECH 복귀 (히스테리시스)
+  silence_duration_ms: 800     # 무음 지속 시간 → 청크 전송
+  max_chunk_sec: 15            # 최대 청크 길이 (연속 발화 강제 전송)
+  min_chunk_sec: 3             # 최소 청크 길이 (미만이면 무시)
+  preroll_ms: 300              # 문장 시작 포착용 프리롤
+  overlap_ms: 200              # 청크 경계 음절 손실 방지용 오버랩
+
+# ── 화자 분리 (Diarization) ─────────────────────────
+diarization:
+  similarity_threshold: 0.10   # 이 이상이면 기존 화자로 매칭
+  merge_threshold: 0.35        # 이 이상이면 두 화자를 사후 병합
+  max_embeddings_per_speaker: 10
+
+# ── 회의 언어 ──────────────────────────────────────
+languages:
+  - code: "ko"
+    label: "한국어"
+  - code: "en"
+    label: "English"
+  - code: "ja"
+    label: "日本語"
+  - code: "zh"
+    label: "中文"
+  - code: "es"
+    label: "Español"
+  - code: "fr"
+    label: "Français"
+  - code: "de"
+    label: "Deutsch"
+  - code: "th"
+    label: "ไทย"
+  - code: "vi"
+    label: "Tiếng Việt"
+
+# ── 회의 유형 ──────────────────────────────────────
+meeting_types:
+  - value: "general"
+    label: "일반 회의"
+  - value: "team"
+    label: "팀 회의"
+  - value: "standup"
+    label: "스탠드업"
+  - value: "brainstorm"
+    label: "브레인스토밍"
+  - value: "review"
+    label: "리뷰/회고"
+  - value: "interview"
+    label: "인터뷰"
+  - value: "workshop"
+    label: "워크숍"
+  - value: "one_on_one"
+    label: "1:1 미팅"
+
+# ── AI 회의록 ──────────────────────────────────────
+summary:
+  default_interval_sec: 60
+  interval_options:
+    - value: 15
+      label: "15초"
+    - value: 30
+      label: "30초"
+    - value: 60
+      label: "1분"
+    - value: 120
+      label: "2분"
+    - value: 300
+      label: "5분"

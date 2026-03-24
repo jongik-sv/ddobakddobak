@@ -1,0 +1,329 @@
+"""LLM 요약 클라이언트.
+
+ZAI GLM / Ollama (Anthropic 호환 API)를 사용하여 회의 트랜스크립트를 요약한다.
+"""
+import json
+import re
+from typing import Any
+
+import anthropic
+
+from app.config import settings
+
+
+_SUMMARIZE_SYSTEM_PROMPT = """당신은 회의 내용을 분석하여 구조화된 요약을 제공하는 전문가입니다.
+트랜스크립트를 분석하여 반드시 아래 JSON 형식으로만 응답하세요.
+
+응답 형식:
+{
+  "key_points": ["핵심 포인트 1", "핵심 포인트 2"],
+  "decisions": ["결정사항 1", "결정사항 2"],
+  "discussion_details": ["논의 내용 1", "논의 내용 2"],
+  "action_items": [
+    {"content": "할 일 내용", "assignee_hint": "담당자 힌트 또는 null", "due_date_hint": "마감일 힌트 또는 null"}
+  ]
+}
+
+JSON 외에 다른 텍스트를 포함하지 마세요."""
+
+_ACTION_ITEMS_SYSTEM_PROMPT = """당신은 회의 내용에서 Action Item을 추출하는 전문가입니다.
+트랜스크립트를 분석하여 반드시 아래 JSON 형식으로만 응답하세요.
+
+응답 형식:
+{
+  "action_items": [
+    {"content": "할 일 내용", "assignee_hint": "담당자 힌트 또는 null", "due_date_hint": "마감일 힌트 또는 null"}
+  ]
+}
+
+JSON 외에 다른 텍스트를 포함하지 마세요."""
+
+
+_REFINE_NOTES_SYSTEM_PROMPT = """당신은 실시간 회의록 작성 전문가입니다.
+현재까지 작성된 회의록(Markdown)과 새로운 음성 인식 자막(transcript)을 받아,
+통합된 회의록을 작성합니다.
+
+## 핵심 규칙
+
+1. **오타 교정**: 음성 인식(STT) 자막에는 오타가 많습니다. 문맥을 파악하여 반드시 오타를 교정하세요.
+   - 예: "개발 환영" → "개발 환경", "테스크" → "태스크", "디플로이" → "배포"
+   - 한국어와 영어가 섞인 기술 용어에 특히 주의하세요.
+
+2. **구조화**: 회의록을 다음과 같이 체계적으로 구성하세요:
+   - ## 핵심 요약 (3~5줄 이내로 회의 전체 흐름 요약)
+   - ## 논의 사항 (각 주제별로 소제목 사용)
+   - ## 결정사항 (결정된 내용을 표로 정리)
+   - ## Action Items (담당자, 기한이 있으면 표로 정리)
+
+3. **표 적극 활용**: 비교, 목록, 현황 등은 Markdown 표로 정리하세요.
+   예시:
+   | 항목 | 담당자 | 기한 | 상태 |
+   |------|--------|------|------|
+   | API 설계 | 김개발 | 3/28 | 진행중 |
+
+4. **점진적 업데이트**: 기존 회의록 내용을 유지하면서 새로운 내용을 자연스럽게 통합하세요.
+   - 기존 섹션에 해당하는 내용이면 해당 섹션에 추가
+   - 새로운 주제면 새 소제목 생성
+   - 이전 내용과 중복되면 합치기
+
+5. **Markdown만 반환**: 코드 블록(```)으로 감싸지 말고 순수 Markdown 텍스트만 반환하세요.
+
+## 출력 형식
+
+순수 Markdown 텍스트만 반환하세요. JSON이 아닙니다.
+```markdown 블록으로 감싸지 마세요."""
+
+
+_FEEDBACK_NOTES_SYSTEM_PROMPT = """당신은 회의록 편집 전문가입니다.
+현재 회의록(Markdown)과 사용자의 피드백(지시사항)을 받아 회의록을 수정합니다.
+
+## 규칙
+1. 사용자의 피드백을 정확하게 반영하여 회의록을 수정하세요.
+2. 피드백에서 언급하지 않은 부분은 가능한 그대로 유지하세요.
+3. 전체 구조와 형식은 유지하면서 필요한 부분만 변경하세요.
+4. Markdown만 반환: 코드 블록(```)으로 감싸지 말고 순수 Markdown 텍스트만 반환하세요.
+
+## 출력 형식
+순수 Markdown 텍스트만 반환하세요. JSON이 아닙니다.
+```markdown 블록으로 감싸지 마세요."""
+
+
+_MEETING_TYPE_INSTRUCTIONS: dict[str, str] = {
+    "standup": """2. **구조화**: 스탠드업 회의에 맞게 간결하게 구성하세요:
+   - ## 진행 현황 (팀원별 어제/오늘 한 일을 표로 정리)
+   - ## 오늘 계획 (팀원별 오늘 할 일)
+   - ## 이슈/블로커 (진행을 막는 문제와 필요한 도움)""",
+
+    "brainstorm": """2. **구조화**: 브레인스토밍에 맞게 아이디어 중심으로 구성하세요:
+   - ## 아이디어 목록 (제안된 모든 아이디어를 번호 매겨 나열)
+   - ## 카테고리 분류 (유사 아이디어를 그룹화)
+   - ## 우선순위 (논의된 우선순위나 투표 결과 정리)
+   - ## 다음 단계 (선정된 아이디어의 후속 조치)""",
+
+    "review": """2. **구조화**: 리뷰/회고에 맞게 구성하세요:
+   - ## 잘된 점 (긍정적 피드백, 성과)
+   - ## 개선점 (아쉬운 점, 문제점)
+   - ## 다음 액션 (개선을 위한 구체적 행동 계획, 표로 정리)""",
+
+    "interview": """2. **구조화**: 인터뷰에 맞게 Q&A 중심으로 구성하세요:
+   - ## 질문-답변 정리 (주요 질문과 답변을 순서대로)
+   - ## 평가 포인트 (인터뷰 중 주목할 만한 점)
+   - ## 종합 의견""",
+
+    "workshop": """2. **구조화**: 워크숍에 맞게 세션별로 구성하세요:
+   - ## 학습 내용 (세션별 핵심 내용 정리)
+   - ## 실습 결과 (실습/활동의 결과물)
+   - ## 핵심 Takeaway (참가자가 가져갈 핵심 교훈)""",
+
+    "one_on_one": """2. **구조화**: 1:1 미팅에 맞게 구성하세요:
+   - ## 논의 주제 (주요 대화 주제 나열)
+   - ## 피드백 (주고받은 피드백 정리)
+   - ## 합의 사항 (합의된 내용, 약속)
+   - ## Follow-up (다음 1:1까지 할 일, 표로 정리)""",
+}
+
+
+def _build_refine_prompt(meeting_type: str) -> str:
+    """회의 유형에 맞는 시스템 프롬프트를 생성한다."""
+    type_instructions = _MEETING_TYPE_INSTRUCTIONS.get(meeting_type)
+    if not type_instructions:
+        return _REFINE_NOTES_SYSTEM_PROMPT
+
+    default_structure = """2. **구조화**: 회의록을 다음과 같이 체계적으로 구성하세요:
+   - ## 핵심 요약 (3~5줄 이내로 회의 전체 흐름 요약)
+   - ## 논의 사항 (각 주제별로 소제목 사용)
+   - ## 결정사항 (결정된 내용을 표로 정리)
+   - ## Action Items (담당자, 기한이 있으면 표로 정리)"""
+
+    return _REFINE_NOTES_SYSTEM_PROMPT.replace(default_structure, type_instructions)
+
+
+def _extract_json(text: str) -> str:
+    """```json ... ``` 마크다운 블록 또는 순수 JSON 문자열을 추출한다."""
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if match:
+        return match.group(1).strip()
+    return text.strip()
+
+
+class LLMSummarizer:
+    """LLM 기반 회의 요약 클라이언트.
+
+    Args:
+        client: anthropic.AsyncAnthropic 인스턴스. None이면 환경 변수로 생성한다.
+    """
+
+    def __init__(self, client: anthropic.AsyncAnthropic | None = None) -> None:
+        self._client = client if client is not None else self._build_client()
+
+    @staticmethod
+    def _build_client() -> anthropic.AsyncAnthropic:
+        """환경 변수로 anthropic 비동기 클라이언트를 생성한다."""
+        kwargs: dict[str, Any] = {"api_key": settings.ANTHROPIC_AUTH_TOKEN}
+        if settings.ANTHROPIC_BASE_URL:
+            kwargs["base_url"] = settings.ANTHROPIC_BASE_URL
+        return anthropic.AsyncAnthropic(**kwargs)
+
+    def _format_transcripts(self, transcripts: list[dict]) -> str:
+        """트랜스크립트 목록을 프롬프트용 텍스트로 포맷한다."""
+        if not transcripts:
+            return ""
+        lines = []
+        for item in transcripts:
+            speaker = item.get("speaker", "알 수 없음")
+            text = item.get("text", "")
+            lines.append(f"{speaker}: {text}")
+        return "\n".join(lines)
+
+    async def _call_llm(self, system: str, user_content: str, max_tokens: int) -> dict | None:
+        """LLM을 비동기로 호출하여 JSON 응답을 파싱한다. 실패 시 None 반환."""
+        try:
+            response = await self._client.messages.create(
+                model=settings.LLM_MODEL,
+                max_tokens=max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": user_content}],
+            )
+            return json.loads(_extract_json(response.content[0].text))
+        except (json.JSONDecodeError, KeyError, IndexError):
+            return None
+
+    async def summarize(
+        self,
+        transcripts: list[dict],
+        summary_type: str,
+        context: str | None = None,
+    ) -> dict:
+        """트랜스크립트를 요약한다.
+
+        Args:
+            transcripts: 트랜스크립트 목록 [{"speaker", "text", "started_at_ms"}, ...]
+            summary_type: "realtime" | "final"
+            context: 이전 실시간 요약 내용 (선택)
+
+        Returns:
+            {"key_points", "decisions", "discussion_details", "action_items"}
+        """
+        transcript_text = self._format_transcripts(transcripts)
+        user_content = f"요약 유형: {summary_type}\n\n회의 트랜스크립트:\n{transcript_text}"
+        if context:
+            user_content += f"\n\n이전 요약 컨텍스트:\n{context}"
+
+        data = await self._call_llm(_SUMMARIZE_SYSTEM_PROMPT, user_content, max_tokens=2048)
+        if data is None:
+            return {"key_points": [], "decisions": [], "discussion_details": [], "action_items": []}
+        return {
+            "key_points": data.get("key_points", []),
+            "decisions": data.get("decisions", []),
+            "discussion_details": data.get("discussion_details", []),
+            "action_items": data.get("action_items", []),
+        }
+
+    async def extract_action_items(self, transcripts: list[dict]) -> list[dict]:
+        """트랜스크립트에서 Action Item을 추출한다.
+
+        Args:
+            transcripts: 트랜스크립트 목록
+
+        Returns:
+            [{"content", "assignee_hint", "due_date_hint"}, ...]
+        """
+        transcript_text = self._format_transcripts(transcripts)
+        user_content = f"회의 트랜스크립트:\n{transcript_text}"
+
+        data = await self._call_llm(_ACTION_ITEMS_SYSTEM_PROMPT, user_content, max_tokens=1024)
+        if data is None:
+            return []
+        return data.get("action_items", [])
+
+    async def refine_notes(
+        self,
+        current_notes: str,
+        transcripts: list[dict],
+        meeting_title: str = "",
+        meeting_type: str = "general",
+    ) -> str:
+        """현재 회의록 + 새 자막을 통합하여 정제된 회의록을 반환한다.
+
+        오타 교정, 표/구조화 포맷 적용, 점진적 업데이트를 수행한다.
+
+        Args:
+            current_notes: 현재까지의 회의록 (Markdown)
+            transcripts: 새로 추가된 자막 목록
+            meeting_title: 회의 제목
+
+        Returns:
+            정제된 회의록 Markdown 문자열
+        """
+        transcript_text = self._format_transcripts(transcripts)
+        if not transcript_text:
+            return current_notes
+
+        parts = []
+        if meeting_title:
+            parts.append(f"회의 제목: {meeting_title}")
+        if current_notes.strip():
+            parts.append(f"현재 회의록:\n{current_notes}")
+        else:
+            parts.append("현재 회의록: (아직 없음 — 새로 작성해주세요)")
+        parts.append(f"새로운 자막:\n{transcript_text}")
+
+        user_content = "\n\n".join(parts)
+
+        try:
+            response = await self._client.messages.create(
+                model=settings.LLM_MODEL,
+                max_tokens=4096,
+                system=_build_refine_prompt(meeting_type),
+                messages=[{"role": "user", "content": user_content}],
+            )
+            result = response.content[0].text.strip()
+            # Remove markdown code block wrapper if present
+            if result.startswith("```"):
+                result = re.sub(r"^```(?:markdown)?\s*\n?", "", result)
+                result = re.sub(r"\n?```\s*$", "", result)
+            return result
+        except Exception:
+            return current_notes
+
+    async def apply_feedback(
+        self,
+        current_notes: str,
+        feedback: str,
+        meeting_title: str = "",
+    ) -> str:
+        """사용자 피드백을 반영하여 회의록을 수정한다.
+
+        Args:
+            current_notes: 현재 회의록 (Markdown)
+            feedback: 사용자가 입력한 피드백/지시사항
+            meeting_title: 회의 제목
+
+        Returns:
+            수정된 회의록 Markdown 문자열
+        """
+        parts = []
+        if meeting_title:
+            parts.append(f"회의 제목: {meeting_title}")
+        if current_notes.strip():
+            parts.append(f"현재 회의록:\n{current_notes}")
+        else:
+            parts.append("현재 회의록: (아직 없음 — 피드백 내용을 바탕으로 새로 작성해주세요)")
+        parts.append(f"사용자 피드백:\n{feedback}")
+
+        user_content = "\n\n".join(parts)
+
+        try:
+            response = await self._client.messages.create(
+                model=settings.LLM_MODEL,
+                max_tokens=4096,
+                system=_FEEDBACK_NOTES_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_content}],
+            )
+            result = response.content[0].text.strip()
+            if result.startswith("```"):
+                result = re.sub(r"^```(?:markdown)?\s*\n?", "", result)
+                result = re.sub(r"\n?```\s*$", "", result)
+            return result
+        except Exception:
+            return current_notes

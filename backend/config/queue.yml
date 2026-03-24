@@ -1,0 +1,29 @@
+default: &default
+  dispatchers:
+    - polling_interval: 0.1
+      batch_size: 500
+  workers:
+    # 실시간 STT: 높은 우선순위, 빠른 처리
+    - queues: real_time
+      threads: 5
+      processes: <%= ENV.fetch("JOB_CONCURRENCY", 1) %>
+      polling_interval: 0.1
+    # 요약 Job: 별도 worker로 STT 처리와 경합 방지
+    - queues: summarization
+      threads: 3
+      processes: <%= ENV.fetch("JOB_CONCURRENCY", 1) %>
+      polling_interval: 1
+    # 기타 백그라운드 작업
+    - queues: default
+      threads: 3
+      processes: <%= ENV.fetch("JOB_CONCURRENCY", 1) %>
+      polling_interval: 0.5
+
+development:
+  <<: *default
+
+test:
+  <<: *default
+
+production:
+  <<: *default
