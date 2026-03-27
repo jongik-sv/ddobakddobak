@@ -21,7 +21,6 @@ vi.mock('wavesurfer.js', () => ({
 
 // fetch mock for audio blob URL
 const mockBlobUrl = 'blob:mock-url'
-const mockBlob = new Blob(['fake audio'], { type: 'audio/webm' })
 
 // apiClient mock
 vi.mock('../api/client', () => ({

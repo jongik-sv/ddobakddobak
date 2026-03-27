@@ -10,7 +10,7 @@ describe('transcriptStore', () => {
     const state = useTranscriptStore.getState()
     expect(state.partial).toBeNull()
     expect(state.finals).toEqual([])
-    expect(state.summary).toBeNull()
+    expect(state.meetingNotes).toBeNull()
     expect(state.currentSpeaker).toBeNull()
   })
 
@@ -32,6 +32,7 @@ describe('transcriptStore', () => {
       started_at_ms: 0,
       ended_at_ms: 3000,
       sequence_number: 1,
+      applied: false,
     }
     useTranscriptStore.getState().addFinal(finalData)
     expect(useTranscriptStore.getState().finals).toHaveLength(1)
@@ -51,6 +52,7 @@ describe('transcriptStore', () => {
       started_at_ms: 0,
       ended_at_ms: 3000,
       sequence_number: 1,
+      applied: false,
     })
     expect(useTranscriptStore.getState().partial).toBeNull()
   })
@@ -63,15 +65,9 @@ describe('transcriptStore', () => {
     expect(useTranscriptStore.getState().currentSpeaker).toBe('SPEAKER_01')
   })
 
-  it('setSummary: summary 업데이트', () => {
-    const summaryData = {
-      type: 'summary_update' as const,
-      key_points: ['핵심 포인트'],
-      decisions: ['결정사항'],
-      updated_at: '2026-03-24T00:00:00Z',
-    }
-    useTranscriptStore.getState().setSummary(summaryData)
-    expect(useTranscriptStore.getState().summary).toEqual(summaryData)
+  it('setMeetingNotes: meetingNotes 업데이트', () => {
+    useTranscriptStore.getState().setMeetingNotes('# 회의 노트')
+    expect(useTranscriptStore.getState().meetingNotes).toBe('# 회의 노트')
   })
 
   it('reset: 전체 상태 초기화', () => {
@@ -80,17 +76,12 @@ describe('transcriptStore', () => {
       speaker_label: 'SPEAKER_00',
       started_at_ms: 0,
     })
-    useTranscriptStore.getState().setSummary({
-      type: 'summary_update',
-      key_points: ['요약'],
-      decisions: [],
-      updated_at: '2026-03-24T00:00:00Z',
-    })
+    useTranscriptStore.getState().setMeetingNotes('# 노트')
     useTranscriptStore.getState().reset()
     const state = useTranscriptStore.getState()
     expect(state.partial).toBeNull()
     expect(state.finals).toEqual([])
-    expect(state.summary).toBeNull()
+    expect(state.meetingNotes).toBeNull()
     expect(state.currentSpeaker).toBeNull()
   })
 
@@ -103,6 +94,7 @@ describe('transcriptStore', () => {
         started_at_ms: i * 1000,
         ended_at_ms: i * 1000 + 3000,
         sequence_number: i,
+        applied: false,
       })
     }
     const finals = useTranscriptStore.getState().finals

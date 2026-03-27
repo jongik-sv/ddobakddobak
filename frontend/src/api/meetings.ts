@@ -66,6 +66,7 @@ export interface GetMeetingsParams {
   page?: number
   per?: number
   q?: string
+  team_id?: number
   date_from?: string
   date_to?: string
 }
@@ -75,6 +76,7 @@ export async function getMeetings(params: GetMeetingsParams): Promise<MeetingLis
   if (params.page) searchParams.page = params.page
   if (params.per) searchParams.per = params.per
   if (params.q) searchParams.q = params.q
+  if (params.team_id) searchParams.team_id = params.team_id
   if (params.date_from) searchParams.date_from = params.date_from
   if (params.date_to) searchParams.date_to = params.date_to
   return apiClient.get('meetings', { searchParams }).json()

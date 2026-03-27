@@ -208,9 +208,10 @@
 
 | 엔진 | 모델 | 플랫폼 | 특징 |
 |------|------|--------|------|
-| `qwen3_asr_8bit` | Qwen3-ASR 1.7B (8bit) | macOS ARM64 | **기본값.** Apple Silicon MLX 가속. CJK 언어 최고 성능 |
+| `qwen3_asr_8bit` | Qwen3-ASR 1.7B (8bit) | macOS ARM64 | **macOS 기본값.** Apple Silicon MLX 가속. CJK 언어 최고 성능 |
 | `qwen3_asr_6bit` | Qwen3-ASR 1.7B (6bit) | macOS ARM64 | 메모리/정확도 균형 |
 | `qwen3_asr_4bit` | Qwen3-ASR 1.7B (4bit) | macOS ARM64 | 최소 메모리 사용 |
+| `qwen3_asr_transformers` | Qwen3-ASR 1.7B | Windows / Linux (NVIDIA CUDA) | **Windows/Linux 기본값(CUDA).** HuggingFace transformers 기반. NVIDIA GPU 필수 |
 | `whisper_cpp` | Whisper Large v3 Turbo | macOS / Linux / Windows | whisper.cpp, Metal/ANE 가속 |
 | `faster_whisper` | Whisper Large v3 | NVIDIA GPU (CUDA) | Linux/Windows CUDA 가속 |
 | `mock` | 테스트용 더미 | 모든 플랫폼 | 개발/테스트 시 사용 |
@@ -220,7 +221,7 @@
 `STT_ENGINE`을 지정하지 않으면 플랫폼에 따라 최적 엔진을 자동 선택합니다:
 
 - **macOS ARM64** → `qwen3_asr_8bit` (MLX Metal GPU 가속)
-- **NVIDIA CUDA 사용 가능** → `faster_whisper` (CUDA 가속)
+- **NVIDIA CUDA 사용 가능** → `qwen3_asr_transformers` (transformers + CUDA 가속, CJK 최적)
 - **그 외** → `whisper_cpp` (CPU 범용)
 
 ---

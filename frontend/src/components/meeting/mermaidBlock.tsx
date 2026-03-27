@@ -243,7 +243,7 @@ export function mermaidToCodeBlocks(blocks: AnyBlock[]): AnyBlock[] {
         id: block.id,
         type: 'codeBlock',
         props: { language: 'mermaid' },
-        content: [{ type: 'text', text: (block.props as { code: string }).code, styles: {} }],
+        content: [{ type: 'text', text: (block.props as unknown as { code: string }).code, styles: {} }],
         children: block.children,
       } as unknown as AnyBlock
     }

@@ -56,7 +56,7 @@ export function useMeeting(meetingId: number): UseMeetingReturn {
     navigate('/dashboard')
   }
 
-  const teamMembers = meeting?.team ? [meeting.team] : []
+  const teamMembers: { id: number; name: string }[] = []
 
   return {
     meeting,

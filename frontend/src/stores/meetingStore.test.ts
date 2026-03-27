@@ -13,8 +13,11 @@ const mockMeeting = {
   id: 1,
   title: '회의1',
   status: 'pending' as const,
-  team: { id: 1, name: '팀A' },
   created_by: { id: 1, name: '사용자1' },
+  meeting_type: 'general',
+  brief_summary: null,
+  audio_duration_ms: 0,
+  last_sequence_number: 0,
   started_at: null,
   ended_at: null,
   created_at: '2024-01-01T00:00:00Z',
@@ -30,21 +33,9 @@ describe('meetingStore', () => {
     const state = useMeetingStore.getState()
     expect(state.meetings).toEqual([])
     expect(state.meta).toBeNull()
-    expect(state.selectedTeamId).toBeNull()
     expect(state.searchQuery).toBe('')
     expect(state.isLoading).toBe(false)
     expect(state.error).toBeNull()
-  })
-
-  it('setSelectedTeam으로 팀 ID 설정', () => {
-    useMeetingStore.getState().setSelectedTeam(3)
-    expect(useMeetingStore.getState().selectedTeamId).toBe(3)
-  })
-
-  it('setSelectedTeam(null)으로 팀 선택 해제', () => {
-    useMeetingStore.getState().setSelectedTeam(3)
-    useMeetingStore.getState().setSelectedTeam(null)
-    expect(useMeetingStore.getState().selectedTeamId).toBeNull()
   })
 
   it('setSearchQuery로 검색어 설정', () => {
@@ -67,20 +58,18 @@ describe('meetingStore', () => {
     expect(state.error).toBeNull()
   })
 
-  it('fetchMeetings 시 selectedTeamId와 searchQuery를 파라미터로 사용', async () => {
+  it('fetchMeetings 시 searchQuery를 파라미터로 사용', async () => {
     mockGetMeetings.mockResolvedValue({
       meetings: [],
       meta: { total: 0, page: 1, per: 20 },
     })
 
-    useMeetingStore.getState().setSelectedTeam(2)
     useMeetingStore.getState().setSearchQuery('검색어')
     await useMeetingStore.getState().fetchMeetings(1)
 
     expect(mockGetMeetings).toHaveBeenCalledWith({
       page: 1,
       per: 20,
-      team_id: 2,
       q: '검색어',
     })
   })
@@ -106,13 +95,11 @@ describe('meetingStore', () => {
   it('reset으로 초기 상태로 복귀', () => {
     useMeetingStore.setState({
       meetings: [mockMeeting],
-      selectedTeamId: 1,
       searchQuery: '검색어',
     })
     useMeetingStore.getState().reset()
     const state = useMeetingStore.getState()
     expect(state.meetings).toEqual([])
-    expect(state.selectedTeamId).toBeNull()
     expect(state.searchQuery).toBe('')
   })
 })

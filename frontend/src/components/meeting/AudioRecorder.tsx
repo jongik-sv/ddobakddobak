@@ -8,7 +8,7 @@ export function AudioRecorder({ onChunk, onStop }: AudioRecorderCallbacks) {
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       <button
-        onClick={isRecording ? stop : start}
+        onClick={isRecording ? stop : () => start()}
         className={
           isRecording
             ? 'px-4 py-2 rounded-md font-medium bg-red-500 text-white hover:bg-red-600 transition-colors'

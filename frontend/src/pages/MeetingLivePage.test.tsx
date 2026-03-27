@@ -8,17 +8,28 @@ import MeetingLivePage from './MeetingLivePage'
 // ──────────────────────────────────────────────
 
 vi.mock('../api/meetings', () => ({
-  startMeeting: vi.fn().mockResolvedValue({ id: 1, status: 'recording' }),
-  stopMeeting: vi.fn().mockResolvedValue({ id: 1, status: 'stopped' }),
+  startMeeting: vi.fn().mockResolvedValue({ id: 1, status: 'recording', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' }),
+  stopMeeting: vi.fn().mockResolvedValue({ id: 1, status: 'completed', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' }),
+  getMeeting: vi.fn().mockResolvedValue({ id: 1, status: 'pending', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' }),
   uploadAudio: vi.fn().mockResolvedValue(undefined),
+  getTranscripts: vi.fn().mockResolvedValue([]),
+  getSummary: vi.fn().mockResolvedValue(null),
+  reopenMeeting: vi.fn().mockResolvedValue({ id: 1, status: 'recording', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' }),
+  triggerRealtimeSummary: vi.fn().mockResolvedValue(undefined),
+  resetMeetingContent: vi.fn().mockResolvedValue({ id: 1, status: 'pending', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' }),
+  feedbackNotes: vi.fn().mockResolvedValue(''),
+  updateNotes: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('../hooks/useAudioRecorder', () => ({
   useAudioRecorder: vi.fn().mockReturnValue({
     isRecording: false,
+    isPaused: false,
     error: null,
     start: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn(),
+    pause: vi.fn(),
+    resume: vi.fn(),
   }),
 }))
 
@@ -28,17 +39,25 @@ vi.mock('../hooks/useTranscription', () => ({
   }),
 }))
 
-vi.mock('../components/meeting/LiveRecord', () => ({
-  LiveRecord: () => <div data-testid="live-transcript">기록 영역</div>,
+vi.mock('../components/meeting/RecordTabPanel', () => ({
+  RecordTabPanel: () => <div data-testid="live-transcript">기록 영역</div>,
+}))
+
+vi.mock('../components/meeting/AiSummaryPanel', () => ({
+  AiSummaryPanel: () => <div data-testid="ai-summary">AI 요약 영역</div>,
+}))
+
+vi.mock('../components/meeting/SpeakerPanel', () => ({
+  SpeakerPanel: () => <div data-testid="speaker-panel">화자 영역</div>,
 }))
 
 vi.mock('../components/editor/MeetingEditor', () => ({
   MeetingEditor: () => <div data-testid="meeting-editor">에디터 영역</div>,
-  customSchema: { blockSpecs: {} },
+  customSchema: { blockSpecs: {}, blockSchema: {} },
 }))
 
-vi.mock('../hooks/useSttBlockInserter', () => ({
-  useSttBlockInserter: vi.fn(),
+vi.mock('../api/settings', () => ({
+  getSttSettings: vi.fn().mockResolvedValue({ stt_engine: 'whisper' }),
 }))
 
 // ──────────────────────────────────────────────
@@ -61,12 +80,15 @@ describe('MeetingLivePage', () => {
     vi.clearAllMocks()
     vi.mocked(useAudioRecorderModule.useAudioRecorder).mockReturnValue({
       isRecording: false,
+      isPaused: false,
       error: null,
       start: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
     })
-    vi.mocked(meetingsApi.startMeeting).mockResolvedValue({ id: 1, status: 'recording', title: '테스트 회의', created_at: '' })
-    vi.mocked(meetingsApi.stopMeeting).mockResolvedValue({ id: 1, status: 'stopped', title: '테스트 회의', created_at: '' })
+    vi.mocked(meetingsApi.startMeeting).mockResolvedValue({ id: 1, status: 'recording', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' })
+    vi.mocked(meetingsApi.stopMeeting).mockResolvedValue({ id: 1, status: 'completed', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' })
     vi.mocked(meetingsApi.uploadAudio).mockResolvedValue(undefined)
   })
 
@@ -98,9 +120,12 @@ describe('MeetingLivePage', () => {
   it('회의 시작 후 녹음 표시등 표시', async () => {
     vi.mocked(useAudioRecorderModule.useAudioRecorder).mockReturnValue({
       isRecording: true,
+      isPaused: false,
       error: null,
       start: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
     })
     renderPage()
     await act(async () => {

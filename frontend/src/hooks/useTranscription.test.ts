@@ -13,7 +13,7 @@ const mockSubscription = {
 }
 
 const mockSubscriptions = {
-  create: vi.fn(() => mockSubscription),
+  create: vi.fn<(channel: unknown, callbacks: { connected?(): void; disconnected?(): void; rejected?(): void; received?(data: unknown): void }) => typeof mockSubscription>().mockReturnValue(mockSubscription),
 }
 
 const mockConsumer = {
@@ -66,7 +66,7 @@ describe('useTranscription', () => {
 
   it('partial 이벤트 수신 시 스토어 업데이트', () => {
     renderHook(() => useTranscription(1))
-    const received = mockSubscriptions.create.mock.calls[0][1].received
+    const received = mockSubscriptions.create.mock.calls[0]![1].received!
     act(() => {
       received({
         type: 'partial',
@@ -78,7 +78,7 @@ describe('useTranscription', () => {
 
   it('final 이벤트 수신 시 스토어 업데이트', () => {
     renderHook(() => useTranscription(1))
-    const received = mockSubscriptions.create.mock.calls[0][1].received
+    const received = mockSubscriptions.create.mock.calls[0]![1].received!
     act(() => {
       received({
         type: 'final',
@@ -98,7 +98,7 @@ describe('useTranscription', () => {
 
   it('speaker_change 이벤트 수신 시 currentSpeaker 업데이트', () => {
     renderHook(() => useTranscription(1))
-    const received = mockSubscriptions.create.mock.calls[0][1].received
+    const received = mockSubscriptions.create.mock.calls[0]![1].received!
     act(() => {
       received({
         type: 'speaker_change',
@@ -108,22 +108,16 @@ describe('useTranscription', () => {
     expect(useTranscriptStore.getState().currentSpeaker).toBe('SPEAKER_01')
   })
 
-  it('summary_update 이벤트 수신 시 summary 업데이트', () => {
+  it('meeting_notes_update 이벤트 수신 시 meetingNotes 업데이트', () => {
     renderHook(() => useTranscription(1))
-    const received = mockSubscriptions.create.mock.calls[0][1].received
-    const summaryData = {
-      type: 'summary_update' as const,
-      key_points: ['AI 요약 내용'],
-      decisions: [],
-      updated_at: '2026-03-24T00:00:00Z',
-    }
+    const received = mockSubscriptions.create.mock.calls[0]![1].received
     act(() => {
-      received({
-        type: 'summary_update',
-        data: summaryData,
+      received!({
+        type: 'meeting_notes_update',
+        notes_markdown: '# 회의록\n- 핵심 내용',
       })
     })
-    expect(useTranscriptStore.getState().summary).toEqual(summaryData)
+    expect(useTranscriptStore.getState().meetingNotes).toBe('# 회의록\n- 핵심 내용')
   })
 
   it('meetingId 변경 시 재구독', () => {

@@ -17,13 +17,13 @@ export const customSchema = BlockNoteSchema.create({
   },
 })
 
-export type CustomBlock = Block<typeof customSchema.blockSpecs>
+export type CustomBlock = Block<typeof customSchema.blockSchema>
 
 interface MeetingEditorProps {
   initialContent?: CustomBlock[] | PartialBlock[]
   onChange?: (blocks: CustomBlock[]) => void
   editable?: boolean
-  editorRef?: RefObject<BlockNoteEditor<typeof customSchema.blockSpecs> | null>
+  editorRef?: RefObject<BlockNoteEditor<typeof customSchema.blockSchema> | null>
 }
 
 export function MeetingEditor({

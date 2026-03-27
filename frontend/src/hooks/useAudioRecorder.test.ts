@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { useAudioRecorder } from './useAudioRecorder'
+import { useAudioRecorder, type AudioRecorderCallbacks } from './useAudioRecorder'
 
 // ──────────────────────────────────────────────
 // Mock objects (shared across tests)
@@ -55,7 +55,7 @@ Object.defineProperty(MockMediaRecorderCtor, 'isTypeSupported', {
 // ──────────────────────────────────────────────
 
 describe('useAudioRecorder', () => {
-  let callbacks: { onChunk: ReturnType<typeof vi.fn>; onStop: ReturnType<typeof vi.fn> }
+  let callbacks: AudioRecorderCallbacks
 
   beforeEach(() => {
     // 상태 리셋
@@ -78,7 +78,10 @@ describe('useAudioRecorder', () => {
       mockMediaRecorder.onstop?.()
     })
 
-    callbacks = { onChunk: vi.fn(), onStop: vi.fn() }
+    callbacks = {
+      onChunk: vi.fn<(pcm: Int16Array, meta: { sequence: number; offsetMs: number }) => void>(),
+      onStop: vi.fn<(blob: Blob) => void>(),
+    }
 
     const AudioContextSpy = vi.fn().mockImplementation(MockAudioContextCtor)
     const AudioWorkletNodeSpy = vi.fn().mockImplementation(MockAudioWorkletNodeCtor)

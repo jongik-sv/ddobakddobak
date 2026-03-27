@@ -9,6 +9,7 @@ const makeFinal = (overrides: Partial<TranscriptFinalData> = {}): TranscriptFina
   started_at_ms: 0,
   ended_at_ms: 1000,
   sequence_number: 1,
+  applied: false,
   ...overrides,
 })
 

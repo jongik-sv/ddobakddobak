@@ -38,7 +38,7 @@ interface BlockDiff {
 
 interface UseBlockSyncOptions {
   meetingId: number
-  editorRef: RefObject<BlockNoteEditor<typeof customSchema.blockSpecs> | null>
+  editorRef: RefObject<BlockNoteEditor<typeof customSchema.blockSchema> | null>
   debounceMs?: number
 }
 

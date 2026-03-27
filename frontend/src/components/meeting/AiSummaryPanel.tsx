@@ -13,13 +13,13 @@ interface AiSummaryPanelProps {
   onNotesChange?: (markdown: string) => void
 }
 
-export function AiSummaryPanel({ meetingId, isRecording = false, editable = true, onNotesChange }: AiSummaryPanelProps) {
+export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, editable = true, onNotesChange }: AiSummaryPanelProps) {
   const meetingNotes = useTranscriptStore((s) => s.meetingNotes)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const prevMarkdownRef = useRef<string>('')
   const isUserEditingRef = useRef(false)
   const isProgrammaticRef = useRef(false)
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 

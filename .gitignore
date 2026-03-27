@@ -27,6 +27,7 @@ sidecar/.venv/
 sidecar/speaker_dbs/
 *.pyc
 *.pyo
+*.stackdump
 
 # Node / Frontend
 frontend/node_modules/

@@ -21,6 +21,7 @@ describe('LiveRecord', () => {
       started_at_ms: 0,
       ended_at_ms: 3000,
       sequence_number: 1,
+      applied: false,
     })
     render(<LiveRecord />)
     expect(screen.getByText('안녕하세요')).toBeInTheDocument()
@@ -34,6 +35,7 @@ describe('LiveRecord', () => {
       started_at_ms: 0,
       ended_at_ms: 3000,
       sequence_number: 1,
+      applied: false,
     })
     useTranscriptStore.getState().addFinal({
       id: 2,
@@ -42,6 +44,7 @@ describe('LiveRecord', () => {
       started_at_ms: 3000,
       ended_at_ms: 6000,
       sequence_number: 2,
+      applied: false,
     })
     render(<LiveRecord />)
     expect(screen.getByText('첫 번째 발화')).toBeInTheDocument()
@@ -72,6 +75,7 @@ describe('LiveRecord', () => {
       started_at_ms: 0,
       ended_at_ms: 3000,
       sequence_number: 1,
+      applied: false,
     })
     render(<LiveRecord />)
     const finalEl = screen.getByText('확정 발화')
@@ -87,6 +91,7 @@ describe('LiveRecord', () => {
       started_at_ms: 0,
       ended_at_ms: 3000,
       sequence_number: 1,
+      applied: false,
     })
     render(<LiveRecord />)
     expect(screen.getByText('SPEAKER_00')).toBeInTheDocument()
