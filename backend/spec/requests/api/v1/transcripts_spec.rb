@@ -77,11 +77,11 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
     end
 
     context "비멤버" do
-      it "403 Forbidden 반환" do
+      it "404 Not Found 반환 (팀 스코프 밖)" do
         get "/api/v1/meetings/#{meeting.id}/transcripts",
             headers: auth_headers(other_user)
 
-        expect(response).to have_http_status(:forbidden)
+        expect(response).to have_http_status(:not_found)
       end
     end
 

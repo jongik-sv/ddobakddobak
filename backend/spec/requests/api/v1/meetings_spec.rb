@@ -212,7 +212,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(json["meeting"]["id"]).to eq(meeting.id)
         expect(json["meeting"]["title"]).to eq(meeting.title)
         expect(json["meeting"]["status"]).to eq(meeting.status)
-        expect(json["meeting"]["team_id"]).to eq(meeting.team_id)
         expect(json["meeting"]["created_by_id"]).to eq(meeting.created_by_id)
       end
 
@@ -222,7 +221,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(json["meeting"].keys).to include(
           "id", "title", "status",
           "started_at", "ended_at",
-          "team_id", "created_by_id",
+          "created_by_id",
           "created_at", "updated_at"
         )
       end
@@ -236,10 +235,9 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     end
 
     context "다른 팀 소속 사용자 (비팀원)" do
-      it "403 Forbidden 반환" do
+      it "404 Not Found 반환 (팀 스코프 밖)" do
         get "/api/v1/meetings/#{meeting.id}", headers: auth_headers(other_user)
-        expect(response).to have_http_status(:forbidden)
-        expect(response.parsed_body["error"]).to eq("Forbidden")
+        expect(response).to have_http_status(:not_found)
       end
     end
 

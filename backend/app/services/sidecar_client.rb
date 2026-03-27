@@ -146,7 +146,7 @@ class SidecarClient
     else
       body = JSON.parse(response.body) rescue {}
       detail = body["detail"] || body["error"] || response.body
-      raise SidecarError, detail.to_s
+      raise SidecarError, "#{response.code} #{detail}"
     end
   end
 end

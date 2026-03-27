@@ -72,8 +72,8 @@ module Api
           started_at: Time.current
         )
 
-        # 오디오 파일 저장
-        storage_dir = Rails.root.join("storage", "audio")
+        # 오디오 파일 저장 (AUDIO_DIR 환경변수로 외부 경로 지정 가능)
+        storage_dir = Pathname.new(ENV.fetch("AUDIO_DIR") { Rails.root.join("storage", "audio").to_s })
         FileUtils.mkdir_p(storage_dir)
         audio_path = storage_dir.join("#{meeting.id}#{ext}").to_s
 
@@ -161,12 +161,13 @@ module Api
       end
 
       def summarize
-        if @meeting.completed?
-          render json: { error: "Meeting is already completed" }, status: :unprocessable_entity
+        if @meeting.pending?
+          render json: { error: "Meeting has not started yet" }, status: :unprocessable_entity
           return
         end
 
-        MeetingSummarizationJob.perform_later(@meeting.id, type: "realtime")
+        summary_type = @meeting.completed? ? "final" : "realtime"
+        MeetingSummarizationJob.perform_later(@meeting.id, type: summary_type)
         render json: { ok: true }
       end
 

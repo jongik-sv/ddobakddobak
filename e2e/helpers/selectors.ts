@@ -50,9 +50,9 @@ export const Selectors = {
     emptyMessage: 'text=회의가 시작되면 AI가 요약을 생성합니다.',
   },
 
-  /** 실시간 자막 영역 (LiveTranscript) */
+  /** 라이브 기록 영역 (LiveRecord) */
   transcript: {
-    header: 'h2:has-text("실시간 자막")',
+    header: 'h2:has-text("라이브 기록")',
   },
 
   /** 메모 에디터 (MeetingEditor) */

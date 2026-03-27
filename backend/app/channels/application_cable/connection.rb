@@ -9,6 +9,15 @@ module ApplicationCable
     private
 
     def find_verified_user
+      # 데스크톱 모드: 기본 사용자로 자동 인증
+      if ENV["DESKTOP_MODE"].present?
+        return User.find_or_create_by!(email: "desktop@local") { |u|
+          u.name = "사용자"
+          u.password = SecureRandom.hex(32)
+          u.jti = SecureRandom.uuid
+        }
+      end
+
       token = extract_token
       return reject_unauthorized_connection if token.blank?
 

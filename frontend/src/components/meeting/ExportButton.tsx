@@ -40,7 +40,7 @@ export function ExportButton({ meetingId, meetingDate }: ExportButtonProps) {
         include_transcript: includeTranscript,
       })
       const filename = buildMarkdownFilename(meetingId, meetingDate ?? undefined)
-      downloadMarkdown(content, filename)
+      await downloadMarkdown(content, filename)
       setIsOpen(false)
     } catch {
       setError('내보내기에 실패했습니다. 다시 시도해 주세요.')

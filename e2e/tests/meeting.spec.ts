@@ -81,7 +81,7 @@ test.describe('회의 생성 및 상세 확인', () => {
     await expect(stopBtn).toBeDisabled();
   });
 
-  test('회의 라이브 페이지에 3영역(자막/AI요약/메모)이 표시된다', async ({
+  test('회의 라이브 페이지에 3영역(기록/AI요약/메모)이 표시된다', async ({
     authenticatedPage,
     testUser,
     testTeam,
@@ -95,7 +95,7 @@ test.describe('회의 생성 및 상세 확인', () => {
 
     await authenticatedPage.goto(`/meetings/${meeting.id}/live`);
 
-    // 실시간 자막 섹션
+    // 라이브 기록 섹션
     await expect(authenticatedPage.locator(Selectors.transcript.header)).toBeVisible();
 
     // AI 요약 섹션

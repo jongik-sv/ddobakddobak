@@ -26,24 +26,37 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
   const editor = useCreateBlockNote({ schema: editorSchema })
 
   useEffect(() => {
-    if (!meetingNotes || meetingNotes === prevMarkdownRef.current) return
+    let cancelled = false
+
+    // meetingNotes가 null이면 에디터 초기화 (새 회의 진입 시)
+    if (meetingNotes === null) {
+      prevMarkdownRef.current = ''
+      isProgrammaticRef.current = true
+      editor.replaceBlocks(editor.document, [])
+      requestAnimationFrame(() => { isProgrammaticRef.current = false })
+      return () => { cancelled = true }
+    }
+    if (meetingNotes === prevMarkdownRef.current) return () => { cancelled = true }
     if (isUserEditingRef.current) {
       prevMarkdownRef.current = meetingNotes
-      return
+      return () => { cancelled = true }
     }
     prevMarkdownRef.current = meetingNotes
     async function updateBlocks() {
       try {
         isProgrammaticRef.current = true
         const blocks = await editor.tryParseMarkdownToBlocks(meetingNotes!)
+        if (cancelled) return
         const converted = codeBlocksToMermaid(blocks as any[])
         editor.replaceBlocks(editor.document, converted as any)
       } catch { /* ignore */ } finally {
-        // 다음 틱에서 해제 — replaceBlocks 이벤트가 먼저 처리되도록
-        requestAnimationFrame(() => { isProgrammaticRef.current = false })
+        if (!cancelled) {
+          requestAnimationFrame(() => { isProgrammaticRef.current = false })
+        }
       }
     }
     updateBlocks()
+    return () => { cancelled = true }
   }, [meetingNotes, editor])
 
   const saveNow = useCallback(async () => {

@@ -47,7 +47,7 @@
 #### MeetingLivePage
 - [x] "회의 시작" 버튼 렌더
 - [x] "회의 종료" 버튼은 회의 시작 전 비활성화
-- [x] 3영역 레이아웃 표시 (자막, 요약, 메모)
+- [x] 3영역 레이아웃 표시 (기록, 요약, 메모)
 - [x] "회의 시작" 클릭 시 startMeeting API 호출
 - [x] 회의 시작 후 녹음 표시등 표시
 - [x] "회의 종료" 클릭 시 stopMeeting API 호출
@@ -110,7 +110,7 @@
 - [x] 미인증 시 /login으로 리다이렉트
 - [x] 인증 시 protected content 렌더링
 
-#### LiveTranscript
+#### LiveRecord
 - [x] 빈 상태에서 빈 컨테이너 렌더
 - [x] final 발화 텍스트 표시
 - [x] 여러 final 발화 모두 표시

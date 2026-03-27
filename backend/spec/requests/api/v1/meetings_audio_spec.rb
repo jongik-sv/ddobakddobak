@@ -32,15 +32,14 @@ RSpec.describe "Api::V1::MeetingsAudio", type: :request do
   # ─────────────────────────────────────────────────────────
   describe "POST /api/v1/meetings/:id/audio" do
     context "정상 케이스" do
-      it "201 Created, audio_file_path 반환" do
+      it "201 Created, audio_available 반환" do
         post "/api/v1/meetings/#{meeting.id}/audio",
              params: { audio: webm_fixture },
              headers: auth_headers
 
         expect(response).to have_http_status(:created)
         json = response.parsed_body
-        expect(json["audio_file_path"]).to be_present
-        expect(json["audio_file_path"]).to include("#{meeting.id}.webm")
+        expect(json["audio_available"]).to be true
       end
 
       it "meetings.audio_file_path가 DB에 저장됨" do

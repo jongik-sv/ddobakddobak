@@ -7,12 +7,27 @@ requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.40.0",
     "fastapi>=0.135.2",
+    "numpy>=1.26.0",
+    "pydantic-settings>=2.13.1",
+    "uvicorn>=0.42.0",
+]
+
+[project.optional-dependencies]
+# macOS Apple Silicon: MLX 기반 Qwen3-ASR + whisper.cpp + 화자 분리
+macos = [
     "mlx-audio>=0.4.1",
     "mlx-lm>=0.31.1",
-    "pyannote-audio>=4.0.4",
-    "pydantic-settings>=2.13.1",
     "pywhispercpp>=1.4.1",
-    "uvicorn>=0.42.0",
+    "pyannote-audio>=4.0.4",
+]
+# Windows/Linux NVIDIA GPU: faster-whisper (CUDA) + 화자 분리
+cuda = [
+    "faster-whisper>=1.1.0",
+    "pyannote-audio>=4.0.4",
+]
+# Windows/Linux CPU 전용: whisper.cpp만 (화자 분리 비활성화)
+cpu = [
+    "pywhispercpp>=1.4.1",
 ]
 
 [dependency-groups]

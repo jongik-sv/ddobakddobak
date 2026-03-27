@@ -44,9 +44,11 @@ RSpec.describe TranscriptionChannel, type: :channel do
       expect {
         perform(:audio_chunk, { "data" => "base64audio==", "sequence" => 3 })
       }.to have_enqueued_job(TranscriptionJob).with(
-        meeting_id: meeting.id,
-        audio_data: "base64audio==",
-        sequence: 3
+        hash_including(
+          meeting_id: meeting.id,
+          audio_data: "base64audio==",
+          sequence: 3
+        )
       )
     end
 
@@ -54,9 +56,11 @@ RSpec.describe TranscriptionChannel, type: :channel do
       expect {
         perform(:audio_chunk, { "data" => "base64audio==" })
       }.to have_enqueued_job(TranscriptionJob).with(
-        meeting_id: meeting.id,
-        audio_data: "base64audio==",
-        sequence: 0
+        hash_including(
+          meeting_id: meeting.id,
+          audio_data: "base64audio==",
+          sequence: 0
+        )
       )
     end
   end

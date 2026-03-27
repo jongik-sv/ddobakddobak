@@ -1,0 +1,35 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "enables the default permissions",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "shell:allow-spawn",
+    "shell:allow-execute",
+    "shell:allow-kill",
+    "shell:allow-stdin-write",
+    "shell:allow-open",
+    "fs:allow-app-read",
+    "fs:allow-app-write",
+    "fs:allow-appcache-read",
+    "fs:allow-appcache-write",
+    "fs:allow-appconfig-read",
+    "fs:allow-appconfig-write",
+    "fs:allow-appdata-read",
+    "fs:allow-appdata-write",
+    "fs:allow-applocaldata-read",
+    "fs:allow-applocaldata-write",
+    "fs:allow-applog-read",
+    "fs:allow-applog-write",
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-read-dir",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "dialog:allow-save",
+    "dialog:allow-open"
+  ]
+}

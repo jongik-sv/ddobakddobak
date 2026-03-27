@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getTeams } from '../api/teams'
 import { createMeeting, stopMeeting, uploadAudioFile } from '../api/meetings'
 import { useMeetingStore } from '../stores/meetingStore'
-import { MEETING_TYPES } from '../config'
+import { MEETING_TYPES, IS_TAURI } from '../config'
 import type { Meeting } from '../api/meetings'
 
 const MEETING_TYPE_MAP: Record<string, string> = Object.fromEntries(
@@ -186,6 +186,36 @@ function UploadAudioModal({ defaultTeamId, onClose, onCreated }: UploadAudioModa
     }
   }
 
+  const handleTauriFileSelect = async () => {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'webm', 'ogg', 'flac', 'aac', 'mp4'] }],
+    })
+    if (!selected || typeof selected !== 'string') return
+    const filePath = selected
+    const { readFile } = await import('@tauri-apps/plugin-fs')
+    const bytes = await readFile(filePath)
+    const name = filePath.split('/').pop() ?? 'audio'
+    const ext = name.split('.').pop()?.toLowerCase() ?? 'webm'
+    const mimeMap: Record<string, string> = {
+      mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4',
+      webm: 'audio/webm', ogg: 'audio/ogg', flac: 'audio/flac',
+      aac: 'audio/aac', mp4: 'audio/mp4',
+    }
+    const blob = new Blob([bytes], { type: mimeMap[ext] ?? 'audio/webm' })
+    const file = new File([blob], name, { type: blob.type })
+    handleFile(file)
+  }
+
+  const handleDropZoneClick = () => {
+    if (IS_TAURI) {
+      handleTauriFileSelect()
+    } else {
+      document.getElementById('audio-file-input')?.click()
+    }
+  }
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setDragOver(false)
@@ -243,7 +273,7 @@ function UploadAudioModal({ defaultTeamId, onClose, onCreated }: UploadAudioModa
             className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
               dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
             }`}
-            onClick={() => document.getElementById('audio-file-input')?.click()}
+            onClick={handleDropZoneClick}
           >
             <input
               id="audio-file-input"

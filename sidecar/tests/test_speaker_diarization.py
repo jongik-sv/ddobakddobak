@@ -119,7 +119,7 @@ def test_merge_with_segments_returns_segments():
     from app.stt.base import TranscriptSegment
     diarizer = _make_diarizer_with_mock_pipeline()
     segments = _make_segments([(0, 3000, "안녕하세요")])
-    diarization = {(0, 3000): "SPEAKER_00"}
+    diarization = {(0, 3000): "화자 1"}
     result = diarizer.merge_with_segments(segments, diarization)
     assert isinstance(result, list)
     assert all(isinstance(s, TranscriptSegment) for s in result)
@@ -128,7 +128,7 @@ def test_merge_with_segments_returns_segments():
 def test_merge_assigns_speaker_label():
     diarizer = _make_diarizer_with_mock_pipeline()
     segments = _make_segments([(0, 3000, "안녕하세요")])
-    diarization = {(0, 3000): "SPEAKER_00"}
+    diarization = {(0, 3000): "화자 1"}
     result = diarizer.merge_with_segments(segments, diarization)
     assert result[0].speaker_label == "화자 1"
 
@@ -140,8 +140,8 @@ def test_merge_two_speakers():
         (3000, 6000, "두 번째 화자"),
     ])
     diarization = {
-        (0, 3000): "SPEAKER_00",
-        (3000, 6000): "SPEAKER_01",
+        (0, 3000): "화자 1",
+        (3000, 6000): "화자 2",
     }
     result = diarizer.merge_with_segments(segments, diarization)
     assert result[0].speaker_label == "화자 1"
@@ -152,7 +152,7 @@ def test_merge_no_matching_speaker_label_is_none():
     """diarization 결과와 겹치지 않는 세그먼트는 speaker_label=None."""
     diarizer = _make_diarizer_with_mock_pipeline()
     segments = _make_segments([(10000, 13000, "겹치지 않는 세그먼트")])
-    diarization = {(0, 3000): "SPEAKER_00"}
+    diarization = {(0, 3000): "화자 1"}
     result = diarizer.merge_with_segments(segments, diarization)
     assert result[0].speaker_label is None
 
@@ -160,7 +160,7 @@ def test_merge_no_matching_speaker_label_is_none():
 def test_merge_preserves_segment_text():
     diarizer = _make_diarizer_with_mock_pipeline()
     segments = _make_segments([(0, 3000, "원본 텍스트")])
-    diarization = {(0, 3000): "SPEAKER_00"}
+    diarization = {(0, 3000): "화자 1"}
     result = diarizer.merge_with_segments(segments, diarization)
     assert result[0].text == "원본 텍스트"
 
@@ -172,7 +172,7 @@ def test_merge_same_speaker_multiple_segments():
         (0, 1500, "첫 문장"),
         (1500, 3000, "두 번째 문장"),
     ])
-    diarization = {(0, 3000): "SPEAKER_00"}
+    diarization = {(0, 3000): "화자 1"}
     result = diarizer.merge_with_segments(segments, diarization)
     assert result[0].speaker_label == "화자 1"
     assert result[1].speaker_label == "화자 1"

@@ -9,13 +9,17 @@ import MeetingPage from './pages/MeetingPage'
 import SettingsPage from './pages/SettingsPage'
 import PrivateRoute from './components/PrivateRoute'
 import AppLayout from './components/layout/AppLayout'
+import SetupGate from './components/SetupGate'
+import { IS_TAURI } from './config'
 
 function App() {
   return (
+    <SetupGate>
     <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/signup" element={<SignupPage />} />
+      {/* Tauri: 홈/로그인/가입 → 바로 회의 목록으로 */}
+      <Route path="/" element={IS_TAURI ? <Navigate to="/meetings" replace /> : <HomePage />} />
+      <Route path="/login" element={IS_TAURI ? <Navigate to="/meetings" replace /> : <LoginPage />} />
+      <Route path="/signup" element={IS_TAURI ? <Navigate to="/meetings" replace /> : <SignupPage />} />
       <Route element={<PrivateRoute />}>
         <Route
           path="/dashboard"
@@ -54,6 +58,7 @@ function App() {
       <Route path="/teams" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </SetupGate>
   )
 }
 

@@ -632,7 +632,7 @@
 
 ---
 
-### TSK-03-03: 실시간 자막 UI 컴포넌트
+### TSK-03-03: 라이브 기록 UI 컴포넌트
 - category: development
 - domain: frontend
 - status: [xx]
@@ -645,7 +645,7 @@
 #### PRD 요구사항
 - prd-ref: PRD 3.1 실시간 음성→텍스트 변환
 - requirements:
-  - 실시간 텍스트 스트림 표시 (자막 형태)
+  - 실시간 텍스트 스트림 표시 (기록 형태)
   - partial 텍스트: 회색, 변동 표시
   - final 텍스트: 검정, 고정 표시
   - 화자별 다른 색상/라벨 구분
@@ -657,7 +657,7 @@
 
 #### 기술 스펙 (TRD)
 - ui-spec:
-  - components/meeting/LiveTranscript.tsx
+  - components/meeting/LiveRecord.tsx
   - components/meeting/SpeakerLabel.tsx
 
 ---
@@ -676,18 +676,18 @@
 - prd-ref: PRD 3.1, 3.3 블록 기반 에디터 (레이아웃)
 - requirements:
   - "회의 시작" / "회의 종료" 버튼
-  - 실시간 자막 영역 + AI 실시간 요약 영역 + 메모 영역 레이아웃
+  - 라이브 기록 영역 + AI 실시간 요약 영역 + 메모 영역 레이아웃
   - 녹음 상태 표시 (🔴 녹음 중)
   - 회의 종료 시 원본 오디오 업로드 트리거
 - acceptance:
-  - 회의 시작 → 녹음 + 실시간 자막 동작
+  - 회의 시작 → 녹음 + 라이브 기록 동작
   - 회의 종료 → 녹음 중지 + 오디오 업로드 + 최종 요약 트리거
   - 3영역 레이아웃 정상 표시
 
 #### 기술 스펙 (TRD)
 - ui-spec:
   - pages/MeetingLivePage.tsx
-  - 레이아웃: [실시간 자막] | [AI 요약] | [메모 에디터]
+  - 레이아웃: [라이브 기록] | [AI 요약] | [메모 에디터]
 - api-spec:
   - POST /api/v1/meetings/:id/start
   - POST /api/v1/meetings/:id/stop

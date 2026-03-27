@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { LiveTranscript } from './LiveTranscript'
+import { LiveRecord } from './LiveRecord'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 
-describe('LiveTranscript', () => {
+describe('LiveRecord', () => {
   beforeEach(() => {
     useTranscriptStore.getState().reset()
   })
 
   it('빈 상태에서 빈 컨테이너 렌더', () => {
-    const { container } = render(<LiveTranscript />)
+    const { container } = render(<LiveRecord />)
     expect(container.firstChild).toBeInTheDocument()
   })
 
@@ -22,7 +22,7 @@ describe('LiveTranscript', () => {
       ended_at_ms: 3000,
       sequence_number: 1,
     })
-    render(<LiveTranscript />)
+    render(<LiveRecord />)
     expect(screen.getByText('안녕하세요')).toBeInTheDocument()
   })
 
@@ -43,7 +43,7 @@ describe('LiveTranscript', () => {
       ended_at_ms: 6000,
       sequence_number: 2,
     })
-    render(<LiveTranscript />)
+    render(<LiveRecord />)
     expect(screen.getByText('첫 번째 발화')).toBeInTheDocument()
     expect(screen.getByText('두 번째 발화')).toBeInTheDocument()
   })
@@ -52,7 +52,7 @@ describe('LiveTranscript', () => {
     useTranscriptStore.setState({
       partial: { content: '현재 발화 중...', speaker_label: 'SPEAKER_00', started_at_ms: 6000 },
     })
-    render(<LiveTranscript />)
+    render(<LiveRecord />)
     expect(screen.getByText('현재 발화 중...')).toBeInTheDocument()
   })
 
@@ -60,7 +60,7 @@ describe('LiveTranscript', () => {
     useTranscriptStore.setState({
       partial: { content: '현재 발화 중...', speaker_label: 'SPEAKER_00', started_at_ms: 0 },
     })
-    render(<LiveTranscript />)
+    render(<LiveRecord />)
     expect(screen.getByTestId('partial-text')).toBeInTheDocument()
   })
 
@@ -73,7 +73,7 @@ describe('LiveTranscript', () => {
       ended_at_ms: 3000,
       sequence_number: 1,
     })
-    render(<LiveTranscript />)
+    render(<LiveRecord />)
     const finalEl = screen.getByText('확정 발화')
     // partial은 italic 스타일이 있어야 하지만 final은 없어야 함
     expect(finalEl.className).not.toContain('italic')
@@ -88,7 +88,7 @@ describe('LiveTranscript', () => {
       ended_at_ms: 3000,
       sequence_number: 1,
     })
-    render(<LiveTranscript />)
+    render(<LiveRecord />)
     expect(screen.getByText('SPEAKER_00')).toBeInTheDocument()
   })
 })

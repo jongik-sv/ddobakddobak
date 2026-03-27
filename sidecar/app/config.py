@@ -14,8 +14,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # STT 엔진 선택 (mock | qwen3_asr_4bit | qwen3_asr_6bit | qwen3_asr_8bit | whisper_cpp | faster_whisper | sensevoice)
-    STT_ENGINE: str = "qwen3_asr_8bit"
+    # STT 엔진 선택 (mock | qwen3_asr_4bit | qwen3_asr_6bit | qwen3_asr_8bit | whisper_cpp | faster_whisper | sensevoice | auto)
+    STT_ENGINE: str = "auto"
 
     # Hugging Face 토큰 (pyannote.audio 화자 분리 모델 접근용)
     HF_TOKEN: str = ""
@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # 서버 설정
     HOST: str = "0.0.0.0"
     PORT: int = 8000
+
+    # 외부 경로 (Tauri 앱에서 환경변수로 설정)
+    MODELS_DIR: str = ""           # ML 모델 저장 디렉토리 (빈 문자열이면 기본 캐시 사용)
+    SPEAKER_DBS_DIR: str = ""      # 화자 DB 디렉토리 (빈 문자열이면 sidecar/speaker_dbs/)
 
 
 settings = Settings()

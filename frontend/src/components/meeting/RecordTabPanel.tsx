@@ -1,16 +1,17 @@
 import { useState } from 'react'
-import { LiveTranscript } from './LiveTranscript'
-import { FullTranscript } from './FullTranscript'
+import { LiveRecord } from './LiveRecord'
+import { FullRecord } from './FullRecord'
 
 type Tab = 'live' | 'all'
 
-interface TranscriptTabPanelProps {
+interface RecordTabPanelProps {
   meetingId: number
   currentTimeMs?: number
   onSeek?: (ms: number) => void
+  onApply?: () => Promise<void>
 }
 
-export function TranscriptTabPanel({ meetingId, currentTimeMs = 0, onSeek }: TranscriptTabPanelProps) {
+export function RecordTabPanel({ meetingId, currentTimeMs = 0, onSeek, onApply }: RecordTabPanelProps) {
   const [tab, setTab] = useState<Tab>('live')
 
   return (
@@ -25,7 +26,7 @@ export function TranscriptTabPanel({ meetingId, currentTimeMs = 0, onSeek }: Tra
               : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          실시간 자막
+          라이브 기록
         </button>
         <button
           onClick={() => setTab('all')}
@@ -35,16 +36,16 @@ export function TranscriptTabPanel({ meetingId, currentTimeMs = 0, onSeek }: Tra
               : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          전체 자막
+          전체 기록
         </button>
       </div>
 
       {/* 탭 콘텐츠 */}
       <div className="flex-1 overflow-hidden">
         {tab === 'live' ? (
-          <LiveTranscript currentTimeMs={currentTimeMs} onSeek={onSeek} />
+          <LiveRecord currentTimeMs={currentTimeMs} onSeek={onSeek} onApply={onApply} />
         ) : (
-          <FullTranscript meetingId={meetingId} currentTimeMs={currentTimeMs} onSeek={onSeek} />
+          <FullRecord meetingId={meetingId} currentTimeMs={currentTimeMs} onSeek={onSeek} />
         )}
       </div>
     </div>

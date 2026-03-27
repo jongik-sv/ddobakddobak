@@ -364,7 +364,7 @@ export default function SettingsPage() {
         <div className="rounded-lg border bg-card p-6">
           <h2 className="text-lg font-semibold mb-1">AI 회의록 적용 주기</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            실시간 자막을 AI 회의록에 반영하는 간격을 설정합니다.
+            라이브 기록을 AI 회의록에 반영하는 간격을 설정합니다.
           </p>
 
           <div className="flex flex-wrap gap-2">

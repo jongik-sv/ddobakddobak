@@ -90,7 +90,7 @@ Rails SummarizationJob
 ## 선행 조건
 
 - TSK-05-02: Rails SummarizationJob 구현 완료 (실제 `summary_update` 이벤트 발송)
-- TSK-03-02: 실시간 자막 WebSocket 연결 (`useTranscription` 훅, TranscriptionChannel) 완료
+- TSK-03-02: 라이브 기록 WebSocket 연결 (`useTranscription` 훅, TranscriptionChannel) 완료
 - 현재 `transcription.ts` 채널에서 이미 `summary_update` 이벤트 핸들링 분기가 구현되어 있으므로, 타입 변경만으로 연동 가능
 
 ## 테스트 전략

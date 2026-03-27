@@ -9,7 +9,7 @@ import { Selectors } from '../helpers/selectors';
  * 실시간 파이프라인 E2E 테스트 (mocking 전략)
  *
  * 실제 STT 모델 없이 ActionCable WebSocket mock + page.evaluate 주입으로
- * 실시간 자막 표시 흐름을 검증한다.
+ * 라이브 기록 표시 흐름을 검증한다.
  *
  * Mock 전략:
  * 1. setupCableMock: window.__mockCableMessage__ 함수를 노출하여 fake 이벤트 주입
@@ -81,7 +81,7 @@ test.describe('실시간 파이프라인 (mocked)', () => {
     ).toBeVisible({ timeout: 5000 });
   });
 
-  test('Zustand store에 직접 transcript를 주입하면 LiveTranscript에 표시된다', async ({
+  test('Zustand store에 직접 transcript를 주입하면 LiveRecord에 표시된다', async ({
     authenticatedPage,
     testUser,
     testTeam,
@@ -89,7 +89,7 @@ test.describe('실시간 파이프라인 (mocked)', () => {
     await allowCableConnection(authenticatedPage);
 
     const meeting = await createMeetingViaApi(testUser.token, {
-      title: '자막 주입 테스트',
+      title: '기록 주입 테스트',
       team_id: testTeam.id,
     });
 
@@ -118,9 +118,9 @@ test.describe('실시간 파이프라인 (mocked)', () => {
       );
     });
 
-    // LiveTranscript는 transcriptStore.finals를 렌더링하므로
+    // LiveRecord는 transcriptStore.finals를 렌더링하므로
     // store가 이벤트를 수신하지 않으면 빈 상태 유지 → 현재는 빈 상태를 검증
-    // (실제 ActionCable 연동 시 자막이 표시됨)
+    // (실제 ActionCable 연동 시 기록이 표시됨)
     await expect(authenticatedPage.locator(Selectors.transcript.header)).toBeVisible();
   });
 

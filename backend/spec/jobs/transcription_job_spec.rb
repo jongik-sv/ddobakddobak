@@ -29,7 +29,10 @@ RSpec.describe TranscriptionJob, type: :job do
 
   describe "#perform" do
     it "calls SidecarClient#transcribe with the audio data" do
-      expect(sidecar_client).to receive(:transcribe).with("base64audio==")
+      expect(sidecar_client).to receive(:transcribe).with(
+        "base64audio==",
+        hash_including(meeting_id: meeting.id)
+      )
 
       described_class.perform_now(meeting_id: meeting.id, audio_data: "base64audio==", sequence: 1)
     end

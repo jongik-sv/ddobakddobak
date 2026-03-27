@@ -69,9 +69,12 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
 
       source.connect(workletNode)
 
+      // WKWebView(macOS Tauri)는 webm 미지원 → mp4 폴백
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
-        : 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+          ? 'audio/mp4'
+          : 'audio/webm'
       const mediaRecorder = new MediaRecorder(stream, { mimeType })
       mediaRecorderRef.current = mediaRecorder
       chunksRef.current = []
@@ -127,14 +130,15 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
     }, 200)
 
     const mediaRecorder = mediaRecorderRef.current
+    const effectiveMime = mediaRecorder?.mimeType || 'audio/webm;codecs=opus'
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' })
+        const blob = new Blob(chunksRef.current, { type: effectiveMime })
         callbacksRef.current.onStop(blob)
       }
       mediaRecorder.stop()
     } else {
-      const blob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' })
+      const blob = new Blob(chunksRef.current, { type: effectiveMime })
       callbacksRef.current.onStop(blob)
     }
 

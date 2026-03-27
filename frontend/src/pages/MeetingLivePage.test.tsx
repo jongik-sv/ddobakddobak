@@ -28,8 +28,8 @@ vi.mock('../hooks/useTranscription', () => ({
   }),
 }))
 
-vi.mock('../components/meeting/LiveTranscript', () => ({
-  LiveTranscript: () => <div data-testid="live-transcript">자막 영역</div>,
+vi.mock('../components/meeting/LiveRecord', () => ({
+  LiveRecord: () => <div data-testid="live-transcript">기록 영역</div>,
 }))
 
 vi.mock('../components/editor/MeetingEditor', () => ({
@@ -80,7 +80,7 @@ describe('MeetingLivePage', () => {
     expect(screen.getByRole('button', { name: /회의 종료/i })).toBeDisabled()
   })
 
-  it('3영역 레이아웃 표시 (자막, 요약, 메모)', () => {
+  it('3영역 레이아웃 표시 (기록, 요약, 메모)', () => {
     renderPage()
     expect(screen.getByTestId('live-transcript')).toBeInTheDocument()
     expect(screen.getByTestId('ai-summary')).toBeInTheDocument()

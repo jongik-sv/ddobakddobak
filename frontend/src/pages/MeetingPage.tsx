@@ -41,6 +41,10 @@ export default function MeetingPage() {
 
   // 기존 AI 회의록을 transcriptStore에 로드 (AiSummaryPanel이 읽음)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
+  const resetTranscriptStore = useTranscriptStore((s) => s.reset)
+  useEffect(() => {
+    resetTranscriptStore()
+  }, [meetingId, resetTranscriptStore])
   useEffect(() => {
     if (summary?.notes_markdown) {
       setMeetingNotes(summary.notes_markdown)
@@ -168,7 +172,12 @@ export default function MeetingPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* 페이지 제목 */}
+      <div className="px-6 py-4 bg-white border-b shrink-0">
+        <h1 className="text-xl font-bold text-gray-900">회의 미리보기</h1>
+      </div>
+
       {/* 오디오 플레이어 */}
       <AudioPlayer
         meetingId={meetingId}
@@ -180,7 +189,6 @@ export default function MeetingPage() {
       {/* 헤더 */}
       <div className="flex items-center justify-between px-6 py-3 border-b bg-white shrink-0">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium shrink-0">회의록 보기</span>
           {isEditingTitle ? (
             <input
               type="text"
@@ -239,8 +247,8 @@ export default function MeetingPage() {
         </div>
       </div>
 
-      {/* 2컬럼 본문: 자막 30% / 요약 70% */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* 2컬럼 본문: 기록 30% / 요약 70% */}
+      <div className="flex flex-1 overflow-hidden min-h-0">
         {/* 좌측: 트랜스크립트 패널 (30%) */}
         <div className="w-[30%] border-r overflow-y-auto shrink-0">
           <TranscriptPanel
@@ -251,10 +259,8 @@ export default function MeetingPage() {
         </div>
 
         {/* 우측: AI 회의록 (70%) */}
-        <div className="w-[70%] bg-gray-50 overflow-hidden flex flex-col">
-          <div className="flex-1 overflow-hidden flex flex-col">
-            <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={false} />
-          </div>
+        <div className="w-[70%] bg-gray-50 overflow-hidden flex flex-col min-h-0">
+          <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={false} />
         </div>
       </div>
     </div>

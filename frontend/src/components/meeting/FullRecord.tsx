@@ -11,13 +11,13 @@ function formatElapsed(ms: number): string {
   return `${m}:${s}`
 }
 
-interface FullTranscriptProps {
+interface FullRecordProps {
   meetingId: number
   currentTimeMs?: number
   onSeek?: (ms: number) => void
 }
 
-export function FullTranscript({ meetingId, currentTimeMs = 0, onSeek }: FullTranscriptProps) {
+export function FullRecord({ meetingId, currentTimeMs = 0, onSeek }: FullRecordProps) {
   const finals = useTranscriptStore((s) => s.finals)
   const removeFinals = useTranscriptStore((s) => s.removeFinals)
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -68,10 +68,10 @@ export function FullTranscript({ meetingId, currentTimeMs = 0, onSeek }: FullTra
 
   return (
     <div className="flex flex-col h-full">
-      {/* 전체 자막 리스트 */}
+      {/* 전체 기록 리스트 */}
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
         {finals.length === 0 && (
-          <p className="text-sm text-gray-400">자막이 없습니다.</p>
+          <p className="text-sm text-gray-400">기록이 없습니다.</p>
         )}
 
         {finals.map((item, idx) => {

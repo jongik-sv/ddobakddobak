@@ -9,7 +9,7 @@ import { Selectors, RoutePatterns } from '../helpers/selectors';
  *
  * MeetingLivePage (/meetings/:id/live) 기반으로 검증:
  *   - AI 요약 패널 (data-testid="ai-summary") 표시
- *   - 실시간 자막 영역
+ *   - 라이브 기록 영역
  *   - 메모 에디터 (MeetingEditor)
  */
 
@@ -31,7 +31,7 @@ test.describe('회의록 확인', () => {
     await expect(authenticatedPage.locator(Selectors.aiSummary.header)).toBeVisible();
   });
 
-  test('실시간 자막 영역이 표시된다', async ({ authenticatedPage, completedMeeting }) => {
+  test('라이브 기록 영역이 표시된다', async ({ authenticatedPage, completedMeeting }) => {
     await allowCableConnection(authenticatedPage);
 
     await authenticatedPage.goto(`/meetings/${completedMeeting.id}/live`);

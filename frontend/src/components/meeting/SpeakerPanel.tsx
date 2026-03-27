@@ -13,14 +13,14 @@ export function SpeakerPanel({ meetingId, isRecording }: SpeakerPanelProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
 
-  // 실제 자막에 등장한 화자 ID 집합
+  // 실제 기록에 등장한 화자 ID 집합
   const finals = useTranscriptStore((s) => s.finals)
   const usedSpeakerIds = useMemo(
     () => new Set(finals.map((f) => f.speaker_label).filter(Boolean)),
     [finals]
   )
 
-  // 자막에 실제 등장한 화자만 표시 (DB에 있지만 자막에 없는 화자 제외)
+  // 기록에 실제 등장한 화자만 표시 (DB에 있지만 기록에 없는 화자 제외)
   const visibleSpeakers = useMemo(
     () => speakers.filter((s) => usedSpeakerIds.has(s.id)),
     [speakers, usedSpeakerIds]

@@ -25,19 +25,20 @@ test:
 
 # Store production database in the storage/ directory, which by default
 # is mounted as a persistent Docker volume in config/deploy.yml.
+# Tauri 앱에서는 DB_PATH 환경변수로 외부 디렉토리 지정 가능.
 production:
   primary:
     <<: *default
-    database: storage/production.sqlite3
+    database: <%= ENV.fetch('DB_PATH') { 'storage/production.sqlite3' } %>
   cache:
     <<: *default
-    database: storage/production_cache.sqlite3
+    database: <%= ENV['DB_PATH'] ? File.join(File.dirname(ENV['DB_PATH']), 'production_cache.sqlite3') : 'storage/production_cache.sqlite3' %>
     migrations_paths: db/cache_migrate
   queue:
     <<: *default
-    database: storage/production_queue.sqlite3
+    database: <%= ENV['DB_PATH'] ? File.join(File.dirname(ENV['DB_PATH']), 'production_queue.sqlite3') : 'storage/production_queue.sqlite3' %>
     migrations_paths: db/queue_migrate
   cable:
     <<: *default
-    database: storage/production_cable.sqlite3
+    database: <%= ENV['DB_PATH'] ? File.join(File.dirname(ENV['DB_PATH']), 'production_cable.sqlite3') : 'storage/production_cable.sqlite3' %>
     migrations_paths: db/cable_migrate

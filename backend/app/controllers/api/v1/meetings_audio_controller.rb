@@ -1,7 +1,7 @@
 module Api
   module V1
     class MeetingsAudioController < ApplicationController
-      ALLOWED_AUDIO_CONTENT_TYPES = %w[audio/webm audio/ogg video/webm].freeze
+      ALLOWED_AUDIO_CONTENT_TYPES = %w[audio/webm audio/ogg video/webm audio/mp4].freeze
 
       before_action :authenticate_user!
       before_action :set_meeting
@@ -56,7 +56,7 @@ module Api
       end
 
       def audio_dir
-        Rails.root.join("storage", "audio").to_s
+        ENV.fetch("AUDIO_DIR") { Rails.root.join("storage", "audio").to_s }
       end
 
       def audio_dest_path(meeting_id)

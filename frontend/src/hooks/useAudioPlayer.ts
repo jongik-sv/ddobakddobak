@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { RefObject } from 'react'
 import { apiClient } from '../api/client'
+import { downloadBlob } from '../lib/download'
 
 export interface AudioPlayerResult {
   isReady: boolean
@@ -11,7 +12,7 @@ export interface AudioPlayerResult {
   play: () => void
   pause: () => void
   seekTo: (ms: number) => void
-  download: (filename?: string) => void
+  download: (filename?: string) => Promise<void>
 }
 
 export function useAudioPlayer(
@@ -126,12 +127,12 @@ export function useAudioPlayer(
     }
   }, [])
 
-  const download = useCallback((filename?: string) => {
-    if (!blobUrlRef.current) return
-    const a = document.createElement('a')
-    a.href = blobUrlRef.current
-    a.download = filename ?? `meeting-${meetingId}.webm`
-    a.click()
+  const download = useCallback(async (filename?: string) => {
+    const url = blobUrlRef.current
+    if (!url) return
+    const res = await fetch(url)
+    const blob = await res.blob()
+    await downloadBlob(blob, filename ?? `meeting-${meetingId}.webm`)
   }, [meetingId])
 
   return { isReady, isPlaying, hasAudio, currentTimeMs, durationMs, play, pause, seekTo, download }

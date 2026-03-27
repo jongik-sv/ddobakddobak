@@ -14,7 +14,7 @@
 | 파일 | 테스트 수 | 결과 |
 |------|-----------|------|
 | `src/components/editor/MeetingEditor.test.tsx` | 5 | PASS |
-| `src/components/meeting/LiveTranscript.test.tsx` | 7 | PASS |
+| `src/components/meeting/LiveRecord.test.tsx` | 7 | PASS |
 | `src/components/meeting/AudioRecorder.test.tsx` | 7 | PASS |
 | `src/components/meeting/SpeakerLabel.test.tsx` | 6 | PASS |
 | `src/components/layout/AppLayout.test.tsx` | 4 | PASS |

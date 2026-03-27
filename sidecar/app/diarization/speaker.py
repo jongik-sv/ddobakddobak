@@ -30,8 +30,12 @@ _MERGE_THRESHOLD = 0.35        # 이 이상이면 두 화자를 같은 사람으
 _MAX_EMBEDDINGS_PER_SPEAKER = 10  # 화자당 보관할 최대 embedding 수
 _MAX_SPEAKERS = 10                # 최대 화자 수
 
-# 회의별 DB 저장 디렉터리: sidecar/speaker_dbs/
-_DEFAULT_DB_DIR = Path(__file__).parent.parent.parent / "speaker_dbs"
+# 회의별 DB 저장 디렉터리: SPEAKER_DBS_DIR 환경변수 또는 sidecar/speaker_dbs/
+def _get_db_dir() -> Path:
+    from app.config import settings
+    if settings.SPEAKER_DBS_DIR:
+        return Path(settings.SPEAKER_DBS_DIR)
+    return Path(__file__).parent.parent.parent / "speaker_dbs"
 
 
 class SpeakerDiarizer:
@@ -377,7 +381,7 @@ class SpeakerDiarizer:
 
 
 def make_meeting_diarizer(meeting_id: int, pipeline: Any, **kwargs) -> SpeakerDiarizer:
-    db_path = _DEFAULT_DB_DIR / f"meeting_{meeting_id}.json"
+    db_path = _get_db_dir() / f"meeting_{meeting_id}.json"
     return SpeakerDiarizer(db_path=db_path, pipeline=pipeline, **kwargs)
 
 

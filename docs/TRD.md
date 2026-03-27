@@ -18,7 +18,7 @@
 │                                                          │
 │  Web Audio API ──→ AudioWorklet ──→ WebSocket 전송       │
 │                                                          │
-│  블록 에디터 (BlockNote)    실시간 자막 뷰    AI 요약 패널  │
+│  블록 에디터 (BlockNote)    라이브 기록 뷰    AI 요약 패널  │
 │                                                          │
 └────────────┬──────────────────┬───────────────────────────┘
              │ REST API         │ WebSocket (ActionCable)
@@ -112,7 +112,7 @@ frontend/
 │   │   │   ├── MeetingEditor.tsx
 │   │   │   └── blocks/         # 커스텀 블록 타입
 │   │   ├── meeting/            # 회의 관련
-│   │   │   ├── LiveTranscript.tsx
+│   │   │   ├── LiveRecord.tsx
 │   │   │   ├── AiSummaryPanel.tsx
 │   │   │   ├── AudioRecorder.tsx
 │   │   │   ├── AudioPlayer.tsx
@@ -128,7 +128,7 @@ frontend/
 │   │   ├── LoginPage.tsx
 │   │   ├── SignupPage.tsx
 │   │   ├── MeetingsPage.tsx    # 회의 목록
-│   │   ├── MeetingPage.tsx     # 회의 상세 (에디터 + 자막)
+│   │   ├── MeetingPage.tsx     # 회의 상세 (에디터 + 기록)
 │   │   ├── MeetingLivePage.tsx # 회의 진행 중 (녹음 + 실시간)
 │   │   └── TeamPage.tsx        # 팀 관리
 │   ├── stores/                 # Zustand 스토어
@@ -176,7 +176,7 @@ frontend/
 - 포맷: WebM/Opus (브라우저 네이티브)
 - 회의 종료 시 서버 업로드
 
-### 2.4 실시간 자막 UI
+### 2.4 라이브 기록 UI
 
 ```
 TranscriptionChannel (ActionCable)

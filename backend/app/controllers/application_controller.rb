@@ -15,6 +15,12 @@ class ApplicationController < ActionController::API
   end
 
   def authenticate_user!
+    # 데스크톱 모드: 기본 사용자로 자동 인증
+    if ENV["DESKTOP_MODE"].present?
+      @current_user = desktop_default_user
+      return true
+    end
+
     token = bearer_token
     payload = token && decode_jwt(token)
     unless payload
@@ -31,9 +37,27 @@ class ApplicationController < ActionController::API
 
   def current_user
     @current_user ||= begin
-      token = bearer_token
-      payload = token && decode_jwt(token)
-      User.find_by(id: payload["sub"], jti: payload["jti"]) if payload
+      if ENV["DESKTOP_MODE"].present?
+        desktop_default_user
+      else
+        token = bearer_token
+        payload = token && decode_jwt(token)
+        User.find_by(id: payload["sub"], jti: payload["jti"]) if payload
+      end
+    end
+  end
+
+  def desktop_default_user
+    User.find_or_create_by!(email: "desktop@local") do |u|
+      u.name = "사용자"
+      u.password = SecureRandom.hex(32)
+      u.jti = SecureRandom.uuid
+    end.tap do |user|
+      # 기본 팀 자동 생성
+      unless user.team_memberships.exists?
+        team = Team.find_or_create_by!(name: "내 팀") { |t| t.creator = user }
+        TeamMembership.find_or_create_by!(user: user, team: team) { |m| m.role = "admin" }
+      end
     end
   end
 

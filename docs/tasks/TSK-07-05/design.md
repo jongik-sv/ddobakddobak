@@ -110,7 +110,7 @@ WAL 모드와 busy_timeout이 이미 설정되어 있어 기본적인 보호는 
 
 **버그 5: TranscriptStore 이벤트 수신 불가 (E2E 테스트 한계)**
 
-`e2e/tests/pipeline.spec.ts:101~118`에서 `__e2e_inject_transcript__` 커스텀 이벤트로 transcript를 주입하지만, `transcriptStore`가 이 이벤트를 수신하는 코드가 없다. 실제 ActionCable 없이는 E2E에서 자막 표시를 직접 검증할 수 없다. 테스트 자체는 "빈 상태를 검증"으로 우회 처리됨.
+`e2e/tests/pipeline.spec.ts:101~118`에서 `__e2e_inject_transcript__` 커스텀 이벤트로 transcript를 주입하지만, `transcriptStore`가 이 이벤트를 수신하는 코드가 없다. 실제 ActionCable 없이는 E2E에서 기록 표시를 직접 검증할 수 없다. 테스트 자체는 "빈 상태를 검증"으로 우회 처리됨.
 
 ---
 

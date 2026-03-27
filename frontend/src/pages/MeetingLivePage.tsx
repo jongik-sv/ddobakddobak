@@ -1,9 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useTranscription } from '../hooks/useTranscription'
-import { TranscriptTabPanel } from '../components/meeting/TranscriptTabPanel'
+import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
@@ -21,6 +21,7 @@ type MeetingStatus = 'idle' | 'recording' | 'stopped'
 export default function MeetingLivePage() {
   const { id } = useParams<{ id: string }>()
   const meetingId = Number(id)
+  const navigate = useNavigate()
 
   const [status, setStatus] = useState<MeetingStatus>('idle')
   const [meetingApiStatus, setMeetingApiStatus] = useState<'pending' | 'recording' | 'completed' | null>(null)
@@ -37,16 +38,32 @@ export default function MeetingLivePage() {
   const [feedbackText, setFeedbackText] = useState('')
   const [isSendingFeedback, setIsSendingFeedback] = useState(false)
 
+  // 초기화 확인 다이얼로그
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
+  const [isStopping, setIsStopping] = useState(false)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout>>()
+
+  // 녹음 중 뒤로가기 차단
+  const [showLeaveBlock, setShowLeaveBlock] = useState(false)
+
+  const showStatus = useCallback((msg: string, durationMs = 3000) => {
+    setStatusMessage(msg)
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current)
+    statusTimerRef.current = setTimeout(() => setStatusMessage(null), durationMs)
+  }, [])
+
   const reset = useTranscriptStore((s) => s.reset)
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const summaryIntervalSec = useAppSettingsStore((s) => s.summaryIntervalSec)
 
-  // 페이지 진입 시 기존 자막 + AI 회의록 로드
+  // 페이지 진입 시 기존 기록 + AI 회의록 로드
   useEffect(() => {
     reset()
 
-    // 기존 자막 로드
+    // 기존 기록 로드
     getTranscripts(meetingId).then((transcripts) => {
       const finals: TranscriptFinalData[] = transcripts.map((t) => ({
         id: t.id,
@@ -98,35 +115,72 @@ export default function MeetingLivePage() {
     } catch {
       // 이미 recording 상태인 경우 무시
     }
-    // 기존 오디오 파일 길이를 기준 오프셋으로 사용 (회의 재개 시 타임스탬프가 병합 오디오와 동기화)
-    // sequence_number도 이전 최대값 다음부터 이어서 사용
-    await start(audioDurationMs, lastSeqNum + 1)
+    // 재개 시 최신 오디오 길이 + 시퀀스 번호를 서버에서 가져옴
+    const latest = await getMeeting(meetingId)
+    const offsetMs = latest.audio_duration_ms ?? 0
+    const seqNum = latest.last_sequence_number ?? 0
+    setAudioDurationMs(offsetMs)
+    setLastSeqNum(seqNum)
+
+    await start(offsetMs, seqNum + 1)
     setMeetingApiStatus('recording')
     setStatus('recording')
   }
 
   const handlePause = () => {
     pause()
-    // 일시정지 시 아직 적용되지 않은 자막을 AI 회의록에 반영
+    // 일시정지 시 아직 적용되지 않은 기록을 AI 회의록에 반영
     triggerRealtimeSummary(meetingId).catch(() => {})
   }
 
   const handleStop = async () => {
+    setIsStopping(true)
+    showStatus('회의 종료 중... 기록을 회의록에 적용하고 있습니다', 10000)
     stop()
-    await stopMeeting(meetingId)
-    setStatus('stopped')
-    setMeetingApiStatus('completed')
+    try {
+      // 종료 전 미적용 기록을 AI 회의록에 반영
+      await triggerRealtimeSummary(meetingId).catch(() => {})
+      // 요약 반영 시간 확보
+      await new Promise((r) => setTimeout(r, 2000))
+      await stopMeeting(meetingId)
+      // 최종 회의록 다시 로드
+      const summary = await getSummary(meetingId).catch(() => null)
+      if (summary?.notes_markdown) {
+        setMeetingNotes(summary.notes_markdown)
+      }
+      showStatus('회의가 종료되었습니다')
+    } finally {
+      setStatus('stopped')
+      setMeetingApiStatus('completed')
+      setIsStopping(false)
+    }
   }
 
-  const handleReset = async () => {
-    if (!window.confirm('모든 회의 내용(자막, 요약, 액션아이템, 오디오)이 삭제됩니다. 초기화하시겠습니까?')) return
+  const handleResetClick = () => {
+    setShowResetConfirm(true)
+  }
+
+  const handleResetConfirm = async () => {
+    setShowResetConfirm(false)
+    setIsResetting(true)
     try {
       await resetMeetingContent(meetingId)
+      // 기록 + 회의록 스토어 초기화
       reset()
+      // 메모 에디터 초기화
+      memoEditorRef.current?.replaceBlocks(memoEditorRef.current.document, [])
+      // 피드백 텍스트 초기화
+      setFeedbackText('')
+      // 로컬 상태 초기화
       setStatus('idle')
       setMeetingApiStatus('pending')
-    } catch {
-      alert('초기화에 실패했습니다.')
+      setAudioDurationMs(0)
+      setLastSeqNum(0)
+      setSummaryCountdown(0)
+    } catch (err) {
+      console.error('회의 초기화 실패:', err)
+    } finally {
+      setIsResetting(false)
     }
   }
 
@@ -136,11 +190,13 @@ export default function MeetingLivePage() {
     if (!text || isSendingFeedback) return
 
     setIsSendingFeedback(true)
+    showStatus('AI 피드백 반영 중...', 10000)
     try {
       await feedbackNotes(meetingId, text)
       setFeedbackText('')
+      showStatus('피드백이 회의록에 반영되었습니다')
     } catch {
-      alert('피드백 반영에 실패했습니다.')
+      showStatus('피드백 반영에 실패했습니다')
     } finally {
       setIsSendingFeedback(false)
     }
@@ -172,13 +228,15 @@ export default function MeetingLivePage() {
     }
 
     setIsSendingMemo(true)
+    showStatus('메모를 회의록에 반영 중...', 10000)
     try {
       await feedbackNotes(meetingId, `다음 메모 내용을 회의록에 자연스럽게 반영해주세요:\n\n${markdown}`)
       // 메모 비우기
       editor.replaceBlocks(editor.document, [])
+      showStatus('메모가 회의록에 반영되었습니다')
     } catch (err) {
       console.error('메모 반영 실패:', err)
-      alert('메모 반영에 실패했습니다. 다시 시도해주세요.')
+      showStatus('메모 반영에 실패했습니다')
     } finally {
       setIsSendingMemo(false)
     }
@@ -193,6 +251,24 @@ export default function MeetingLivePage() {
   )
 
   const isActive = status === 'recording'
+
+  // 녹음 중 브라우저 뒤로가기/새로고침 차단
+  useEffect(() => {
+    if (!isActive) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [isActive])
+
+  const handleNavigateBack = () => {
+    if (isActive) {
+      setShowLeaveBlock(true)
+      return
+    }
+    navigate('/meetings')
+  }
 
   useEffect(() => {
     getMeeting(meetingId)
@@ -234,7 +310,10 @@ export default function MeetingLivePage() {
     const interval = setInterval(() => {
       setSummaryCountdown((prev) => {
         if (prev <= 1) {
-          triggerRealtimeSummary(meetingId).catch(() => {})
+          showStatus('기록을 회의록에 적용 중...', 5000)
+          triggerRealtimeSummary(meetingId)
+            .then(() => showStatus('회의록 적용 완료'))
+            .catch(() => {})
           return summaryIntervalSec
         }
         return prev - 1
@@ -248,61 +327,35 @@ export default function MeetingLivePage() {
     <div className="flex flex-col h-screen">
 
       {/* 헤더 컨트롤 바 */}
-      <div className="flex items-center justify-between px-6 py-3 border-b bg-white shadow-sm">
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-white shadow-sm shrink-0">
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleNavigateBack}
+            className="px-2 py-1 rounded-md text-sm text-gray-500 hover:bg-gray-100 transition-colors"
+            title="회의 목록으로"
+          >
+            ← 목록
+          </button>
           <h1 className="text-lg font-semibold text-gray-900">회의실</h1>
-          {sttEngine && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-mono">
-              STT: {ENGINE_LABELS_SHORT[sttEngine] ?? sttEngine}
-            </span>
-          )}
         </div>
 
-        <div className="flex items-center gap-3">
-          {summaryCountdown > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500 font-mono tabular-nums whitespace-nowrap">
-                {summaryCountdown}s
-              </span>
-              <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-blue-500 rounded-full transition-all duration-1000 ease-linear"
-                  style={{ width: `${((summaryIntervalSec - summaryCountdown) / summaryIntervalSec) * 100}%` }}
-                />
-              </div>
-            </div>
-          )}
-          {isRecording && !isPaused && (
-            <span
-              data-testid="recording-indicator"
-              className="flex items-center gap-1.5 text-red-500 text-sm font-medium"
-            >
-              <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-              녹음 중
-            </span>
-          )}
-          {isPaused && (
-            <span className="flex items-center gap-1.5 text-yellow-600 text-sm font-medium">
-              <span className="inline-block w-2 h-2 bg-yellow-500 rounded-full" />
-              일시정지
-            </span>
-          )}
-
+        <div className="flex items-center gap-2">
           {error && <span className="text-sm text-red-500">{error}</span>}
 
           {!isActive && (
             <button
-              onClick={handleReset}
-              className="px-4 py-2 rounded-md text-sm font-medium bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors"
+              onClick={handleResetClick}
+              disabled={isResetting}
+              className="px-3 py-1.5 rounded-md text-sm font-medium bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors disabled:opacity-50"
             >
-              회의 초기화
+              {isResetting ? '초기화 중...' : '회의 초기화'}
             </button>
           )}
 
           {!isActive ? (
             <button
               onClick={handleStart}
-              className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              className="px-3 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
             >
               회의 시작
             </button>
@@ -310,7 +363,7 @@ export default function MeetingLivePage() {
             <>
               <button
                 onClick={isPaused ? resume : handlePause}
-                className={`px-4 py-2 rounded-md text-sm font-medium text-white transition-colors ${
+                className={`px-3 py-1.5 rounded-md text-sm font-medium text-white transition-colors ${
                   isPaused
                     ? 'bg-green-500 hover:bg-green-600'
                     : 'bg-yellow-500 hover:bg-yellow-600'
@@ -320,9 +373,10 @@ export default function MeetingLivePage() {
               </button>
               <button
                 onClick={handleStop}
-                className="px-4 py-2 rounded-md text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
+                disabled={isStopping}
+                className="px-3 py-1.5 rounded-md text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
               >
-                회의 종료
+                {isStopping ? '종료 중...' : '회의 종료'}
               </button>
             </>
           )}
@@ -331,13 +385,14 @@ export default function MeetingLivePage() {
 
       {/* 3영역 리사이즈 레이아웃 */}
       <PanelGroup direction="horizontal" className="flex-1 overflow-hidden">
-        {/* 자막 + 화자 영역 — 기본 20% */}
+        {/* 기록 + 화자 영역 — 기본 20% */}
         <Panel defaultSize={20} minSize={15}>
           <section className="h-full border-r overflow-hidden flex flex-col">
             <div className="flex-1 overflow-hidden">
-              <TranscriptTabPanel
+              <RecordTabPanel
                 meetingId={meetingId}
                 currentTimeMs={0}
+                onApply={() => triggerRealtimeSummary(meetingId)}
               />
             </div>
             <div className="border-t shrink-0">
@@ -410,6 +465,107 @@ export default function MeetingLivePage() {
           </section>
         </Panel>
       </PanelGroup>
+
+      {/* 하단 상태바 */}
+      <div className="flex items-center justify-between px-4 h-7 border-t bg-gray-50 text-[11px] text-gray-500 shrink-0 select-none">
+        <div className="flex items-center gap-3">
+          {/* 녹음 상태 */}
+          {isRecording && !isPaused && (
+            <span data-testid="recording-indicator" className="flex items-center gap-1 text-red-500 font-medium">
+              <span className="inline-block w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+              녹음 중
+            </span>
+          )}
+          {isPaused && (
+            <span className="flex items-center gap-1 text-yellow-600 font-medium">
+              <span className="inline-block w-1.5 h-1.5 bg-yellow-500 rounded-full" />
+              일시정지
+            </span>
+          )}
+          {!isActive && meetingApiStatus === 'completed' && (
+            <span className="text-gray-400">종료됨</span>
+          )}
+          {!isActive && meetingApiStatus === 'pending' && (
+            <span className="text-gray-400">대기 중</span>
+          )}
+
+          {/* 타이머 */}
+          {summaryCountdown > 0 && (
+            <span className="flex items-center gap-1.5 font-mono tabular-nums">
+              다음 적용
+              <span className="inline-flex items-center gap-1">
+                <span className="text-blue-600 font-semibold">{summaryCountdown}s</span>
+                <span className="w-12 h-1 bg-gray-200 rounded-full overflow-hidden inline-block align-middle">
+                  <span
+                    className="block h-full bg-blue-500 rounded-full transition-all duration-1000 ease-linear"
+                    style={{ width: `${((summaryIntervalSec - summaryCountdown) / summaryIntervalSec) * 100}%` }}
+                  />
+                </span>
+              </span>
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* 상태 메시지 */}
+          {statusMessage && (
+            <span className="text-blue-600 font-medium truncate max-w-xs">{statusMessage}</span>
+          )}
+
+          {/* STT 모델 */}
+          {sttEngine && (
+            <span className="font-mono text-gray-400">
+              STT: {ENGINE_LABELS_SHORT[sttEngine] ?? sttEngine}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* 녹음 중 뒤로가기 차단 다이얼로그 */}
+      {showLeaveBlock && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">녹음 진행 중</h3>
+            <p className="text-sm text-gray-600 mb-5">
+              녹음 중에는 페이지를 떠날 수 없습니다. 먼저 회의를 종료해주세요.
+            </p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowLeaveBlock(false)}
+                className="px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 초기화 확인 다이얼로그 */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">회의 초기화</h3>
+            <p className="text-sm text-gray-600 mb-5">
+              모든 회의 내용(기록, 회의록, 액션아이템, 오디오)이 삭제됩니다. 초기화하시겠습니까?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="px-4 py-2 rounded-md text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleResetConfirm}
+                className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors"
+              >
+                초기화
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -21,7 +21,7 @@ export async function allowCableConnection(page: Page): Promise<void> {
 export async function setupCableMock(page: Page): Promise<void> {
   await page.addInitScript(() => {
     // TranscriptStore에 직접 상태를 주입하는 mock 함수
-    // 실제 ActionCable 없이도 UI가 자막/요약을 표시할 수 있게 한다.
+    // 실제 ActionCable 없이도 UI가 기록/요약을 표시할 수 있게 한다.
     (window as unknown as Record<string, unknown>).__E2E_MOCK_CABLE__ = true;
 
     // mock 메시지를 수신했을 때 CustomEvent로 전파

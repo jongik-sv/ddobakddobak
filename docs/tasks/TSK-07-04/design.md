@@ -210,7 +210,7 @@ test('Markdown 내보내기', async ({ page, completedMeeting }) => {
 
 ### 6. 실시간 파이프라인 (mocking 전략) (`pipeline.spec.ts`)
 
-**목적:** 실제 STT 모델 없이 WebSocket 이벤트를 mock하여 실시간 자막 표시 흐름을 검증
+**목적:** 실제 STT 모델 없이 WebSocket 이벤트를 mock하여 라이브 기록 표시 흐름을 검증
 
 **Mock 전략:**
 
@@ -221,7 +221,7 @@ test('Markdown 내보내기', async ({ page, completedMeeting }) => {
 
 ```typescript
 // WebSocket 이벤트 mock 주입
-test('실시간 자막 표시', async ({ page }) => {
+test('라이브 기록 표시', async ({ page }) => {
   // ActionCable WebSocket mock
   await page.addInitScript(() => {
     window.__E2E_MOCK_CABLE__ = true;
