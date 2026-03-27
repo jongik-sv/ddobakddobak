@@ -92,6 +92,8 @@ meeting_types:
     label: "워크숍"
   - value: "one_on_one"
     label: "1:1 미팅"
+  - value: "lecture"
+    label: "강연"
 
 # ── AI 회의록 ──────────────────────────────────────
 summary:
