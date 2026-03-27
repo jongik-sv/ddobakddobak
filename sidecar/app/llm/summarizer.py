@@ -1,14 +1,18 @@
 """LLM 요약 클라이언트.
 
-ZAI GLM / Ollama (Anthropic 호환 API)를 사용하여 회의 트랜스크립트를 요약한다.
+Anthropic 호환 API 또는 OpenAI 호환 API를 사용하여 회의 트랜스크립트를 요약한다.
+LLM_PROVIDER 설정으로 백엔드를 선택한다.
 """
 import json
+import logging
 import re
 from typing import Any
 
 import anthropic
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 _SUMMARIZE_SYSTEM_PROMPT = """당신은 회의 내용을 분석하여 구조화된 요약을 제공하는 전문가입니다.
@@ -161,20 +165,43 @@ def _extract_json(text: str) -> str:
 class LLMSummarizer:
     """LLM 기반 회의 요약 클라이언트.
 
-    Args:
-        client: anthropic.AsyncAnthropic 인스턴스. None이면 환경 변수로 생성한다.
+    LLM_PROVIDER에 따라 Anthropic 또는 OpenAI 호환 API를 사용한다.
     """
 
-    def __init__(self, client: anthropic.AsyncAnthropic | None = None) -> None:
+    def __init__(self, client: Any | None = None) -> None:
+        self._provider = settings.LLM_PROVIDER
         self._client = client if client is not None else self._build_client()
 
+    def _build_client(self) -> Any:
+        """설정에 따라 적절한 LLM 클라이언트를 생성한다."""
+        if self._provider == "openai":
+            return self._build_openai_client()
+        return self._build_anthropic_client()
+
     @staticmethod
-    def _build_client() -> anthropic.AsyncAnthropic:
-        """환경 변수로 anthropic 비동기 클라이언트를 생성한다."""
+    def _build_anthropic_client() -> anthropic.AsyncAnthropic:
+        """Anthropic 호환 비동기 클라이언트를 생성한다."""
         kwargs: dict[str, Any] = {"api_key": settings.ANTHROPIC_AUTH_TOKEN}
         if settings.ANTHROPIC_BASE_URL:
             kwargs["base_url"] = settings.ANTHROPIC_BASE_URL
         return anthropic.AsyncAnthropic(**kwargs)
+
+    @staticmethod
+    def _build_openai_client() -> Any:
+        """OpenAI 호환 비동기 클라이언트를 생성한다."""
+        try:
+            from openai import AsyncOpenAI
+        except ImportError:
+            raise ImportError(
+                "openai 패키지가 설치되어 있지 않습니다. "
+                "'pip install openai'로 설치 후 재시작하세요."
+            )
+        kwargs: dict[str, Any] = {
+            "api_key": settings.OPENAI_API_KEY or "dummy",
+        }
+        if settings.OPENAI_BASE_URL:
+            kwargs["base_url"] = settings.OPENAI_BASE_URL
+        return AsyncOpenAI(**kwargs)
 
     def _format_transcripts(self, transcripts: list[dict]) -> str:
         """트랜스크립트 목록을 프롬프트용 텍스트로 포맷한다."""
@@ -187,16 +214,32 @@ class LLMSummarizer:
             lines.append(f"{speaker}: {text}")
         return "\n".join(lines)
 
-    async def _call_llm(self, system: str, user_content: str, max_tokens: int) -> dict | None:
-        """LLM을 비동기로 호출하여 JSON 응답을 파싱한다. 실패 시 None 반환."""
-        try:
+    async def _call_llm_raw(self, system: str, user_content: str, max_tokens: int) -> str:
+        """LLM을 비동기로 호출하여 텍스트 응답을 반환한다."""
+        if self._provider == "openai":
+            response = await self._client.chat.completions.create(
+                model=settings.LLM_MODEL,
+                max_tokens=max_tokens,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_content},
+                ],
+            )
+            return response.choices[0].message.content or ""
+        else:
             response = await self._client.messages.create(
                 model=settings.LLM_MODEL,
                 max_tokens=max_tokens,
                 system=system,
                 messages=[{"role": "user", "content": user_content}],
             )
-            return json.loads(_extract_json(response.content[0].text))
+            return response.content[0].text
+
+    async def _call_llm(self, system: str, user_content: str, max_tokens: int) -> dict | None:
+        """LLM을 비동기로 호출하여 JSON 응답을 파싱한다. 실패 시 None 반환."""
+        try:
+            text = await self._call_llm_raw(system, user_content, max_tokens)
+            return json.loads(_extract_json(text))
         except (json.JSONDecodeError, KeyError, IndexError):
             return None
 
@@ -283,19 +326,16 @@ class LLMSummarizer:
         user_content = "\n\n".join(parts)
 
         try:
-            response = await self._client.messages.create(
-                model=settings.LLM_MODEL,
-                max_tokens=4096,
-                system=_build_refine_prompt(meeting_type),
-                messages=[{"role": "user", "content": user_content}],
-            )
-            result = response.content[0].text.strip()
+            result = (await self._call_llm_raw(
+                _build_refine_prompt(meeting_type), user_content, 4096
+            )).strip()
             # Remove markdown code block wrapper if present
             if result.startswith("```"):
                 result = re.sub(r"^```(?:markdown)?\s*\n?", "", result)
                 result = re.sub(r"\n?```\s*$", "", result)
             return result
-        except Exception:
+        except Exception as e:
+            logger.error("refine_notes failed: %s", e)
             return current_notes
 
     async def apply_feedback(
@@ -326,16 +366,13 @@ class LLMSummarizer:
         user_content = "\n\n".join(parts)
 
         try:
-            response = await self._client.messages.create(
-                model=settings.LLM_MODEL,
-                max_tokens=4096,
-                system=_FEEDBACK_NOTES_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_content}],
-            )
-            result = response.content[0].text.strip()
+            result = (await self._call_llm_raw(
+                _FEEDBACK_NOTES_SYSTEM_PROMPT, user_content, 4096
+            )).strip()
             if result.startswith("```"):
                 result = re.sub(r"^```(?:markdown)?\s*\n?", "", result)
                 result = re.sub(r"\n?```\s*$", "", result)
             return result
-        except Exception:
+        except Exception as e:
+            logger.error("apply_feedback failed: %s", e)
             return current_notes

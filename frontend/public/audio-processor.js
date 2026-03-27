@@ -28,8 +28,22 @@ class AudioProcessor extends AudioWorkletProcessor {
     this._tail = new Float32Array(OVERLAP_SAMPLES)
     this._tailLen = 0
 
+    this._paused = false
+
     this.port.onmessage = (event) => {
-      if (event.data?.type === 'init') {
+      if (event.data?.type === 'pause') {
+        // 일시정지: 진행 중인 음성이 있으면 전송 후 리셋
+        if (
+          (this._state === 'SPEECH' || this._state === 'TRAILING_SILENCE') &&
+          this._speechLen >= MIN_CHUNK_SAMPLES
+        ) {
+          this._sendChunk()
+        }
+        this._resetToSilence()
+        this._paused = true
+      } else if (event.data?.type === 'resume') {
+        this._paused = false
+      } else if (event.data?.type === 'init') {
         const c = event.data.config
         if (c) {
           SAMPLE_RATE = c.sample_rate ?? SAMPLE_RATE
@@ -60,6 +74,7 @@ class AudioProcessor extends AudioWorkletProcessor {
   process(inputs) {
     const input = inputs[0]
     if (!input || !input[0]) return true
+    if (this._paused) return true
 
     const channel = input[0]
 

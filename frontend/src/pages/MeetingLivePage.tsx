@@ -27,11 +27,11 @@ export default function MeetingLivePage() {
   const [meetingApiStatus, setMeetingApiStatus] = useState<'pending' | 'recording' | 'completed' | null>(null)
   const [sttEngine, setSttEngine] = useState<string | null>(null)
   const [summaryCountdown, setSummaryCountdown] = useState<number>(0)
-  const [audioDurationMs, setAudioDurationMs] = useState(0)
-  const [lastSeqNum, setLastSeqNum] = useState(0)
+  const [, setAudioDurationMs] = useState(0)
+  const [, setLastSeqNum] = useState(0)
 
   // 메모 에디터 ref + 반영 상태
-  const memoEditorRef = useRef<BlockNoteEditor<typeof customSchema.blockSpecs> | null>(null)
+  const memoEditorRef = useRef<BlockNoteEditor<typeof customSchema.blockSchema> | null>(null)
   const [isSendingMemo, setIsSendingMemo] = useState(false)
 
   // 피드백 상태
@@ -43,7 +43,7 @@ export default function MeetingLivePage() {
   const [isResetting, setIsResetting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const statusTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // 녹음 중 뒤로가기 차단
   const [showLeaveBlock, setShowLeaveBlock] = useState(false)
@@ -307,14 +307,21 @@ export default function MeetingLivePage() {
     // 재개 시 기존 카운트다운 유지, 새로 시작할 때만 초기화
     setSummaryCountdown((prev) => prev > 0 ? prev : summaryIntervalSec)
 
+    let summarizing = false
     const interval = setInterval(() => {
       setSummaryCountdown((prev) => {
+        if (summarizing) return prev  // 요약 진행 중이면 카운트다운 정지
         if (prev <= 1) {
-          showStatus('기록을 회의록에 적용 중...', 5000)
+          summarizing = true
+          showStatus('기록을 회의록에 적용 중...', 10000)
           triggerRealtimeSummary(meetingId)
             .then(() => showStatus('회의록 적용 완료'))
             .catch(() => {})
-          return summaryIntervalSec
+            .finally(() => {
+              summarizing = false
+              setSummaryCountdown(summaryIntervalSec)
+            })
+          return 0  // 요약 중에는 0 유지
         }
         return prev - 1
       })
@@ -384,7 +391,7 @@ export default function MeetingLivePage() {
       </div>
 
       {/* 3영역 리사이즈 레이아웃 */}
-      <PanelGroup direction="horizontal" className="flex-1 overflow-hidden">
+      <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden">
         {/* 기록 + 화자 영역 — 기본 20% */}
         <Panel defaultSize={20} minSize={15}>
           <section className="h-full border-r overflow-hidden flex flex-col">

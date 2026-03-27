@@ -70,7 +70,7 @@ export default function SettingsPage() {
       else setError('설정을 불러오지 못했습니다.')
       if (llm) {
         setLlmSettings(llm)
-        setLlmForm({ auth_token: '', base_url: llm.base_url, model: llm.model })
+        setLlmForm({ provider: llm.provider || 'anthropic', auth_token: '', base_url: llm.base_url, model: llm.model })
       }
       if (hf) setHfSettings(hf)
     }).finally(() => setLoading(false))
@@ -99,7 +99,7 @@ export default function SettingsPage() {
 
   // LLM 설정
   const [llmSettings, setLlmSettings] = useState<LlmSettings | null>(null)
-  const [llmForm, setLlmForm] = useState({ auth_token: '', base_url: '', model: '' })
+  const [llmForm, setLlmForm] = useState({ provider: 'anthropic', auth_token: '', base_url: '', model: '' })
   const [llmSaving, setLlmSaving] = useState(false)
   const [llmSuccess, setLlmSuccess] = useState<string | null>(null)
   const [llmError, setLlmError] = useState<string | null>(null)
@@ -110,6 +110,7 @@ export default function SettingsPage() {
     setLlmSuccess(null)
     try {
       const params: Record<string, string> = {}
+      if (llmForm.provider !== llmSettings?.provider) params.provider = llmForm.provider
       if (llmForm.auth_token) params.auth_token = llmForm.auth_token
       if (llmForm.base_url !== llmSettings?.base_url) params.base_url = llmForm.base_url
       if (llmForm.model !== llmSettings?.model) params.model = llmForm.model
@@ -269,10 +270,33 @@ export default function SettingsPage() {
         <div className="rounded-lg border bg-card p-6">
           <h2 className="text-lg font-semibold mb-1">AI 요약 모델</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            회의록 요약에 사용할 AI API 설정입니다. (Anthropic API 호환)
+            회의록 요약에 사용할 AI API 설정입니다.
           </p>
 
           <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">API 유형</label>
+              <div className="flex gap-3">
+                {([['anthropic', 'Anthropic 호환'], ['openai', 'OpenAI 호환']] as const).map(([value, label]) => (
+                  <label key={value} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="llm_provider"
+                      value={value}
+                      checked={llmForm.provider === value}
+                      onChange={() => setLlmForm((f) => ({ ...f, provider: value }))}
+                      className="accent-primary"
+                    />
+                    <span className="text-sm">{label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {llmForm.provider === 'anthropic'
+                  ? 'Anthropic, ZAI(智谱), Amazon Bedrock 등 Anthropic API 호환 서비스'
+                  : 'OpenAI, Ollama, vLLM, LiteLLM 등 OpenAI API 호환 서비스'}
+              </p>
+            </div>
             <div>
               <label className="block text-sm font-medium mb-1">API Base URL</label>
               <input

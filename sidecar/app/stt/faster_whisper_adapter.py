@@ -39,9 +39,10 @@ class FasterWhisperAdapter(SttAdapter):
     - CPU 폴백 지원
     """
 
-    def __init__(self, model_size: str = _MODEL_SIZE):
+    def __init__(self, model_size: str = _MODEL_SIZE, device: str = "auto"):
         super().__init__()
         self._model_size = model_size
+        self._device = device
         self._model = None
 
     async def load_model(self) -> None:
@@ -60,8 +61,8 @@ class FasterWhisperAdapter(SttAdapter):
             from faster_whisper import WhisperModel
             return WhisperModel(
                 self._model_size,
-                device="auto",
-                compute_type="auto",
+                device=self._device,
+                compute_type="auto" if self._device != "cpu" else "int8",
             )
 
         self._model = await loop.run_in_executor(None, _load)

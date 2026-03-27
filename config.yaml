@@ -23,18 +23,21 @@ stt_engines:
   whisper_cpp:
     label: "Whisper Large v3 Turbo"
     short: "Whisper v3 Turbo"
-  qwen3_asr_4bit:
-    label: "Qwen3-ASR 1.7B (4bit)"
-    short: "Qwen3 1.7B 4bit"
-  qwen3_asr_6bit:
-    label: "Qwen3-ASR 1.7B (6bit)"
-    short: "Qwen3 1.7B 6bit"
   qwen3_asr_8bit:
-    label: "Qwen3-ASR 1.7B (8bit)"
-    short: "Qwen3 1.7B 8bit"
+    label: "Qwen3-ASR 1.7B (8bit 양자화)"
+    short: "Qwen3 8bit"
+  qwen3_asr_6bit:
+    label: "Qwen3-ASR 1.7B (6bit 양자화)"
+    short: "Qwen3 6bit"
+  qwen3_asr_transformers:
+    label: "Qwen3-ASR 1.7B (CUDA)"
+    short: "Qwen3 1.7B CUDA"
   faster_whisper:
-    label: "Faster Whisper"
+    label: "Faster Whisper (자동)"
     short: "Faster Whisper"
+  faster_whisper_cpu:
+    label: "Faster Whisper (CPU)"
+    short: "Whisper CPU"
 
 # ── 오디오 청킹 (VAD) ─────────────────────────────
 audio:

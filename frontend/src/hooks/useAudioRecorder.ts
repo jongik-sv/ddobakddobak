@@ -16,7 +16,7 @@ export interface AudioRecorderResult {
   isRecording: boolean
   isPaused: boolean
   error: string | null
-  start: () => Promise<void>
+  start: (baseOffsetMs?: number, baseSeq?: number) => Promise<void>
   stop: () => void
   pause: () => void
   resume: () => void
@@ -103,6 +103,8 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
     if (mediaRecorder && mediaRecorder.state === 'recording') {
       mediaRecorder.pause()
     }
+    // Worklet VAD도 일시정지 — 마이크 입력을 무시하고 진행 중인 청크 전송
+    workletNodeRef.current?.port.postMessage({ type: 'pause' })
     pausedRef.current = true
     setIsPaused(true)
   }, [])
@@ -112,6 +114,7 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
     if (mediaRecorder && mediaRecorder.state === 'paused') {
       mediaRecorder.resume()
     }
+    workletNodeRef.current?.port.postMessage({ type: 'resume' })
     pausedRef.current = false
     setIsPaused(false)
   }, [])

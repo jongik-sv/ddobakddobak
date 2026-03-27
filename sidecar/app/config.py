@@ -20,9 +20,13 @@ class Settings(BaseSettings):
     # Hugging Face 토큰 (pyannote.audio 화자 분리 모델 접근용)
     HF_TOKEN: str = ""
 
-    # LLM 설정 (ZAI GLM / Ollama)
+    # LLM 설정
+    # LLM_PROVIDER: "anthropic" (기본) 또는 "openai" (OpenAI 호환 API: Ollama, vLLM 등)
+    LLM_PROVIDER: str = "anthropic"
     ANTHROPIC_AUTH_TOKEN: str = "dummy"
     ANTHROPIC_BASE_URL: str = ""
+    OPENAI_API_KEY: str = ""
+    OPENAI_BASE_URL: str = ""
     LLM_MODEL: str = "glm-4-flash"
 
     # 서버 설정

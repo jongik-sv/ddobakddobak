@@ -77,6 +77,28 @@ def _detect_available_engines() -> list[str]:
                 available.append(engine_id)
     except ImportError:
         pass
+    # faster-whisper (CUDA GPU 또는 CPU 폴백)
+    try:
+        import faster_whisper  # noqa: F401
+        available.append("faster_whisper")
+        available.append("faster_whisper_cpu")
+    except ImportError:
+        pass
+    # Qwen3-ASR (qwen-asr 패키지 + NVIDIA CUDA GPU 필수)
+    try:
+        import torch  # noqa: F401
+        import qwen_asr  # noqa: F401
+        if torch.cuda.is_available():
+            available.append("qwen3_asr_transformers")
+            # bitsandbytes 양자화 지원 확인
+            try:
+                import bitsandbytes  # noqa: F401
+                available.append("qwen3_asr_8bit")
+                available.append("qwen3_asr_6bit")
+            except ImportError:
+                pass
+    except ImportError:
+        pass
     return available
 
 
@@ -565,6 +587,7 @@ class ActionItemsResponse(BaseModel):
 
 class UpdateLlmSettingsRequest(BaseModel):
     """PUT /settings/llm 요청 스키마."""
+    provider: str | None = None  # "anthropic" 또는 "openai"
     auth_token: str | None = None
     base_url: str | None = None
     model: str | None = None
@@ -585,9 +608,17 @@ def _mask_token(token: str) -> str:
 @app.get("/settings/llm")
 async def get_llm_settings() -> dict:
     """현재 LLM 설정을 반환한다."""
+    provider = settings.LLM_PROVIDER
+    if provider == "openai":
+        token_masked = _mask_token(settings.OPENAI_API_KEY)
+        base_url = settings.OPENAI_BASE_URL
+    else:
+        token_masked = _mask_token(settings.ANTHROPIC_AUTH_TOKEN)
+        base_url = settings.ANTHROPIC_BASE_URL
     return {
-        "auth_token_masked": _mask_token(settings.ANTHROPIC_AUTH_TOKEN),
-        "base_url": settings.ANTHROPIC_BASE_URL,
+        "provider": provider,
+        "auth_token_masked": token_masked,
+        "base_url": base_url,
         "model": settings.LLM_MODEL,
     }
 
@@ -595,19 +626,35 @@ async def get_llm_settings() -> dict:
 @app.put("/settings/llm")
 async def update_llm_settings(request: UpdateLlmSettingsRequest) -> dict:
     """LLM 설정을 런타임에 변경하고 클라이언트를 재생성한다."""
+    if request.provider is not None:
+        settings.LLM_PROVIDER = request.provider
     if request.auth_token is not None:
-        settings.ANTHROPIC_AUTH_TOKEN = request.auth_token
+        if settings.LLM_PROVIDER == "openai":
+            settings.OPENAI_API_KEY = request.auth_token
+        else:
+            settings.ANTHROPIC_AUTH_TOKEN = request.auth_token
     if request.base_url is not None:
-        settings.ANTHROPIC_BASE_URL = request.base_url
+        if settings.LLM_PROVIDER == "openai":
+            settings.OPENAI_BASE_URL = request.base_url
+        else:
+            settings.ANTHROPIC_BASE_URL = request.base_url
     if request.model is not None:
         settings.LLM_MODEL = request.model
 
     # LLM 클라이언트 재생성
     app.state.summarizer = LLMSummarizer()
 
+    provider = settings.LLM_PROVIDER
+    if provider == "openai":
+        token_masked = _mask_token(settings.OPENAI_API_KEY)
+        base_url = settings.OPENAI_BASE_URL
+    else:
+        token_masked = _mask_token(settings.ANTHROPIC_AUTH_TOKEN)
+        base_url = settings.ANTHROPIC_BASE_URL
     return {
-        "auth_token_masked": _mask_token(settings.ANTHROPIC_AUTH_TOKEN),
-        "base_url": settings.ANTHROPIC_BASE_URL,
+        "provider": provider,
+        "auth_token_masked": token_masked,
+        "base_url": base_url,
         "model": settings.LLM_MODEL,
     }
 

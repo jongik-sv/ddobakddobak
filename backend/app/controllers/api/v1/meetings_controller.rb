@@ -125,7 +125,8 @@ module Api
         return if performed?
 
         @meeting.update!(status: :completed, ended_at: Time.current)
-        MeetingFinalizerService.new(@meeting).call
+        # Sidecar 호출은 비동기 Job으로 — 실패해도 회의 종료에 영향 없음
+        MeetingFinalizerJob.perform_later(@meeting.id)
         MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
         render json: { meeting: meeting_json(@meeting) }
       end
@@ -225,7 +226,7 @@ module Api
         per_page = [ (params[:per_page] || 50).to_i, 5000 ].min
 
         transcripts = @meeting.transcripts
-                              .order(:started_at_ms)
+                              .reorder(:started_at_ms)
                               .offset((page - 1) * per_page)
                               .limit(per_page)
 

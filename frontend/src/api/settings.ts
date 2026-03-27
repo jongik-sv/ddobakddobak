@@ -16,6 +16,7 @@ export async function updateSttEngine(engine: string): Promise<{ stt_engine: str
 
 // LLM 설정
 export interface LlmSettings {
+  provider: string
   auth_token_masked: string
   base_url: string
   model: string
@@ -27,6 +28,7 @@ export async function getLlmSettings(): Promise<LlmSettings> {
 }
 
 export async function updateLlmSettings(params: {
+  provider?: string
   auth_token?: string
   base_url?: string
   model?: string

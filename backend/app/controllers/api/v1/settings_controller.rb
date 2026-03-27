@@ -110,7 +110,7 @@ module Api
       # .env 파일의 키=값을 업데이트한다 (없으면 추가)
       def update_env_file(updates)
         env_path = Rails.root.join("..", ".env")
-        return unless File.exist?(env_path)
+        FileUtils.touch(env_path) unless File.exist?(env_path)
 
         lines = File.readlines(env_path)
         updates.each do |key, value|
