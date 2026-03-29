@@ -70,7 +70,6 @@ function debouncedSave() {
         (payload as Record<string, unknown>)[envKey] = AUDIO_DEFAULTS[key]
       }
     }
-    // 화자분리: 동일
     const diarKeys = ['similarity_threshold', 'merge_threshold', 'max_embeddings_per_speaker'] as const
     for (const key of diarKeys) {
       const val = s.diarizationOverrides[key]

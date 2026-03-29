@@ -45,3 +45,5 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+CLI_LLM_PROVIDERS = frozenset({"claude_cli", "gemini_cli", "codex_cli"})

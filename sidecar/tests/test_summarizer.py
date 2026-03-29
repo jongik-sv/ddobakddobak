@@ -4,7 +4,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config import Settings
 from app.llm.summarizer import LLMSummarizer
+
+
+def _test_settings(**overrides) -> Settings:
+    """테스트용 Settings (기본: anthropic provider)."""
+    defaults = {"LLM_PROVIDER": "anthropic", "ANTHROPIC_AUTH_TOKEN": "test", "ANTHROPIC_BASE_URL": "", "LLM_MODEL": "test-model"}
+    defaults.update(overrides)
+    return Settings(**defaults)
 
 
 @pytest.fixture
@@ -18,7 +26,7 @@ def mock_client():
 @pytest.fixture
 def summarizer(mock_client):
     """mock 클라이언트를 주입한 LLMSummarizer."""
-    return LLMSummarizer(client=mock_client)
+    return LLMSummarizer(client=mock_client, settings_override=_test_settings())
 
 
 def _make_message_response(content_text: str):
@@ -61,7 +69,11 @@ class TestLLMSummarizerInit:
         assert s._client is mock_client
 
     def test_init_without_client_uses_env(self):
-        with patch("app.llm.summarizer.anthropic.AsyncAnthropic") as mock_cls:
+        with patch("app.llm.summarizer.anthropic.AsyncAnthropic") as mock_cls, \
+             patch("app.llm.summarizer.settings") as mock_settings:
+            mock_settings.LLM_PROVIDER = "anthropic"
+            mock_settings.ANTHROPIC_AUTH_TOKEN = "test-token"
+            mock_settings.ANTHROPIC_BASE_URL = ""
             mock_cls.return_value = MagicMock()
             s = LLMSummarizer()
             mock_cls.assert_called_once()

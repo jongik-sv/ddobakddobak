@@ -12,7 +12,7 @@ from typing import Any
 
 import anthropic
 
-from app.config import settings
+from app.config import CLI_LLM_PROVIDERS, settings
 
 logger = logging.getLogger(__name__)
 
@@ -164,36 +164,41 @@ def _extract_json(text: str) -> str:
     return text.strip()
 
 
+def _strip_markdown_fence(text: str) -> str:
+    """```markdown ... ``` 코드 블록 래퍼를 제거한다."""
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:markdown)?\s*\n?", "", text)
+        text = re.sub(r"\n?```\s*$", "", text)
+    return text
+
+
 class LLMSummarizer:
     """LLM 기반 회의 요약 클라이언트.
 
     LLM_PROVIDER에 따라 Anthropic 또는 OpenAI 호환 API를 사용한다.
     """
 
-    def __init__(self, client: Any | None = None) -> None:
-        self._provider = settings.LLM_PROVIDER
+    def __init__(self, client: Any | None = None, settings_override: Any | None = None) -> None:
+        self._settings = settings_override or settings
+        self._provider = self._settings.LLM_PROVIDER
         self._client = client if client is not None else self._build_client()
-
-    _CLI_PROVIDERS = frozenset({"claude_cli", "gemini_cli", "codex_cli"})
 
     def _build_client(self) -> Any:
         """설정에 따라 적절한 LLM 클라이언트를 생성한다."""
-        if self._provider in self._CLI_PROVIDERS:
+        if self._provider in CLI_LLM_PROVIDERS:
             return None  # CLI 모드는 클라이언트 객체 불필요
         if self._provider == "openai":
             return self._build_openai_client()
         return self._build_anthropic_client()
 
-    @staticmethod
-    def _build_anthropic_client() -> anthropic.AsyncAnthropic:
+    def _build_anthropic_client(self) -> anthropic.AsyncAnthropic:
         """Anthropic 호환 비동기 클라이언트를 생성한다."""
-        kwargs: dict[str, Any] = {"api_key": settings.ANTHROPIC_AUTH_TOKEN}
-        if settings.ANTHROPIC_BASE_URL:
-            kwargs["base_url"] = settings.ANTHROPIC_BASE_URL
+        kwargs: dict[str, Any] = {"api_key": self._settings.ANTHROPIC_AUTH_TOKEN}
+        if self._settings.ANTHROPIC_BASE_URL:
+            kwargs["base_url"] = self._settings.ANTHROPIC_BASE_URL
         return anthropic.AsyncAnthropic(**kwargs)
 
-    @staticmethod
-    def _build_openai_client() -> Any:
+    def _build_openai_client(self) -> Any:
         """OpenAI 호환 비동기 클라이언트를 생성한다."""
         try:
             from openai import AsyncOpenAI
@@ -203,10 +208,10 @@ class LLMSummarizer:
                 "'pip install openai'로 설치 후 재시작하세요."
             )
         kwargs: dict[str, Any] = {
-            "api_key": settings.OPENAI_API_KEY or "dummy",
+            "api_key": self._settings.OPENAI_API_KEY or "dummy",
         }
-        if settings.OPENAI_BASE_URL:
-            kwargs["base_url"] = settings.OPENAI_BASE_URL
+        if self._settings.OPENAI_BASE_URL:
+            kwargs["base_url"] = self._settings.OPENAI_BASE_URL
         return AsyncOpenAI(**kwargs)
 
     def _format_transcripts(self, transcripts: list[dict]) -> str:
@@ -249,7 +254,7 @@ class LLMSummarizer:
 
     async def _call_claude_cli(self, system: str, user_content: str) -> str:
         """Claude Code CLI (-p) 를 사용하여 LLM을 호출한다."""
-        cli = settings.CLAUDE_CLI_PATH
+        cli = self._settings.CLAUDE_CLI_PATH
         if not shutil.which(cli):
             raise FileNotFoundError(
                 f"Claude CLI를 찾을 수 없습니다: '{cli}'. "
@@ -260,37 +265,35 @@ class LLMSummarizer:
             "--output-format", "text",
             "--system-prompt", system,
         ]
-        if settings.LLM_MODEL:
-            cmd.extend(["--model", settings.LLM_MODEL])
+        if self._settings.LLM_MODEL:
+            cmd.extend(["--model", self._settings.LLM_MODEL])
         return await self._run_cli(cmd, user_content)
 
     async def _call_gemini_cli(self, system: str, user_content: str) -> str:
         """Gemini CLI (-p) 를 사용하여 LLM을 호출한다."""
-        cli = settings.GEMINI_CLI_PATH
+        cli = self._settings.GEMINI_CLI_PATH
         if not shutil.which(cli):
             raise FileNotFoundError(
                 f"Gemini CLI를 찾을 수 없습니다: '{cli}'. "
                 "npm install -g @google/gemini-cli 로 설치하세요."
             )
         cmd = [cli, "-p", "--output-format", "text"]
-        if settings.LLM_MODEL:
-            cmd.extend(["--model", settings.LLM_MODEL])
-        # Gemini는 --system-prompt 플래그가 없으므로 stdin에 병합
+        if self._settings.LLM_MODEL:
+            cmd.extend(["--model", self._settings.LLM_MODEL])
         merged = f"[시스템 지시]\n{system}\n\n[사용자 입력]\n{user_content}"
         return await self._run_cli(cmd, merged)
 
     async def _call_codex_cli(self, system: str, user_content: str) -> str:
         """OpenAI Codex CLI (exec) 를 사용하여 LLM을 호출한다."""
-        cli = settings.CODEX_CLI_PATH
+        cli = self._settings.CODEX_CLI_PATH
         if not shutil.which(cli):
             raise FileNotFoundError(
                 f"Codex CLI를 찾을 수 없습니다: '{cli}'. "
                 "npm install -g @openai/codex 로 설치하세요."
             )
         cmd = [cli, "exec", "-"]
-        if settings.LLM_MODEL:
-            cmd.extend(["--model", settings.LLM_MODEL])
-        # Codex는 --system-prompt 플래그가 없으므로 stdin에 병합
+        if self._settings.LLM_MODEL:
+            cmd.extend(["--model", self._settings.LLM_MODEL])
         merged = f"[시스템 지시]\n{system}\n\n[사용자 입력]\n{user_content}"
         return await self._run_cli(cmd, merged)
 
@@ -306,7 +309,7 @@ class LLMSummarizer:
             return await self._call_codex_cli(system, user_content)
         if self._provider == "openai":
             response = await self._client.chat.completions.create(
-                model=settings.LLM_MODEL,
+                model=self._settings.LLM_MODEL,
                 max_tokens=max_tokens,
                 messages=[
                     {"role": "system", "content": system},
@@ -316,7 +319,7 @@ class LLMSummarizer:
             return response.choices[0].message.content or ""
         else:
             response = await self._client.messages.create(
-                model=settings.LLM_MODEL,
+                model=self._settings.LLM_MODEL,
                 max_tokens=max_tokens,
                 system=system,
                 messages=[{"role": "user", "content": user_content}],
@@ -417,11 +420,7 @@ class LLMSummarizer:
             result = (await self._call_llm_raw(
                 _build_refine_prompt(meeting_type), user_content, 4096
             )).strip()
-            # Remove markdown code block wrapper if present
-            if result.startswith("```"):
-                result = re.sub(r"^```(?:markdown)?\s*\n?", "", result)
-                result = re.sub(r"\n?```\s*$", "", result)
-            return result
+            return _strip_markdown_fence(result)
         except Exception as e:
             logger.error("refine_notes failed: %s", e)
             return current_notes
@@ -457,10 +456,7 @@ class LLMSummarizer:
             result = (await self._call_llm_raw(
                 _FEEDBACK_NOTES_SYSTEM_PROMPT, user_content, 4096
             )).strip()
-            if result.startswith("```"):
-                result = re.sub(r"^```(?:markdown)?\s*\n?", "", result)
-                result = re.sub(r"\n?```\s*$", "", result)
-            return result
+            return _strip_markdown_fence(result)
         except Exception as e:
             logger.error("apply_feedback failed: %s", e)
             return current_notes

@@ -5,6 +5,19 @@ import type { SttSettings, LlmSettings, HfSettings } from '../api/settings'
 import { useAppSettingsStore, AUDIO_DEFAULTS, DIARIZATION_DEFAULTS } from '../stores/appSettingsStore'
 import { ENGINE_LABELS, SUMMARY_INTERVAL_OPTIONS, AUDIO, DIARIZATION, LANGUAGES } from '../config'
 
+const SERVICE_PRESETS = [
+  { id: 'claude_cli', name: 'Claude Code', provider: 'claude_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['sonnet', 'opus', 'haiku'], description: 'Claude Code CLI (키 불필요)' },
+  { id: 'gemini_cli', name: 'Gemini CLI', provider: 'gemini_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['gemini-2.5-flash', 'gemini-2.5-pro'], description: 'Gemini CLI (키 불필요)' },
+  { id: 'codex_cli', name: 'Codex CLI', provider: 'codex_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['o4-mini', 'o3', 'gpt-4.1'], description: 'Codex CLI (키 불필요)' },
+  { id: 'anthropic', name: 'Anthropic', provider: 'anthropic' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: ['claude-sonnet-4-6', 'claude-haiku-4-5'], description: 'Claude API (키 필요)' },
+  { id: 'zai', name: 'Z.AI', provider: 'anthropic' as const, defaultBaseUrl: 'https://api.z.ai/api/anthropic', requiresApiKey: true, suggestedModels: ['glm-4.7', 'glm-4.5', 'glm-5', 'glm-5-turbo', 'glm-4.5-air'], description: 'GLM 모델 (Anthropic 호환)' },
+  { id: 'openai', name: 'OpenAI', provider: 'openai' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: ['gpt-4o', 'gpt-4o-mini'], description: 'GPT 모델 (키 필요)' },
+  { id: 'ollama', name: 'Ollama', provider: 'openai' as const, defaultBaseUrl: 'http://localhost:11434/v1', requiresApiKey: false, suggestedModels: [], description: '로컬 실행 (키 불필요)' },
+  { id: 'custom', name: '직접 입력', provider: 'openai' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: [], description: '호환 API 직접 설정' },
+] as const
+
+const CLI_PRESET_IDS = new Set(SERVICE_PRESETS.filter((p) => !p.requiresApiKey && !p.defaultBaseUrl).map((p) => p.id))
+
 function SettingSlider({
   label,
   description,
@@ -98,17 +111,6 @@ export default function SettingsPage() {
   }
 
   // LLM 설정
-  const SERVICE_PRESETS = [
-    { id: 'claude_cli', name: 'Claude Code', provider: 'claude_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['sonnet', 'opus', 'haiku'], description: 'Claude Code CLI (키 불필요)' },
-    { id: 'gemini_cli', name: 'Gemini CLI', provider: 'gemini_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['gemini-2.5-flash', 'gemini-2.5-pro'], description: 'Gemini CLI (키 불필요)' },
-    { id: 'codex_cli', name: 'Codex CLI', provider: 'codex_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['o4-mini', 'o3', 'gpt-4.1'], description: 'Codex CLI (키 불필요)' },
-    { id: 'anthropic', name: 'Anthropic', provider: 'anthropic' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: ['claude-sonnet-4-6', 'claude-haiku-4-5'], description: 'Claude API (키 필요)' },
-    { id: 'zai', name: 'Z.AI', provider: 'anthropic' as const, defaultBaseUrl: 'https://api.z.ai/api/anthropic', requiresApiKey: true, suggestedModels: ['glm-4.7', 'glm-4.5', 'glm-5', 'glm-5-turbo', 'glm-4.5-air'], description: 'GLM 모델 (Anthropic 호환)' },
-    { id: 'openai', name: 'OpenAI', provider: 'openai' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: ['gpt-4o', 'gpt-4o-mini'], description: 'GPT 모델 (키 필요)' },
-    { id: 'ollama', name: 'Ollama', provider: 'openai' as const, defaultBaseUrl: 'http://localhost:11434/v1', requiresApiKey: false, suggestedModels: [], description: '로컬 실행 (키 불필요)' },
-    { id: 'custom', name: '직접 입력', provider: 'openai' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: [], description: '호환 API 직접 설정' },
-  ]
-
   const [llmSettings, setLlmSettings] = useState<LlmSettings | null>(null)
   const [llmForm, setLlmForm] = useState({ provider: 'anthropic', auth_token: '', base_url: '', model: '' })
   const [selectedPreset, setSelectedPreset] = useState('anthropic')
@@ -387,7 +389,7 @@ export default function SettingsPage() {
             </div>
 
             {/* CLI 프로바이더 안내 */}
-            {['claude_cli', 'gemini_cli', 'codex_cli'].includes(selectedPreset) && (
+            {CLI_PRESET_IDS.has(selectedPreset) && (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 <p className="font-medium mb-1">CLI 모드 안내</p>
                 <p className="text-xs leading-relaxed">
@@ -399,7 +401,7 @@ export default function SettingsPage() {
             )}
 
             {/* API Base URL (CLI 프로바이더에서는 불필요) */}
-            {!['claude_cli', 'gemini_cli', 'codex_cli'].includes(selectedPreset) && (
+            {!CLI_PRESET_IDS.has(selectedPreset) && (
               <div>
                 <label className="block text-sm font-medium mb-1">API Base URL</label>
                 <input

@@ -26,7 +26,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
-from app.config import settings
+from app.config import CLI_LLM_PROVIDERS, settings
 from app.llm.summarizer import LLMSummarizer
 from app.stt.factory import create_stt_adapter
 
@@ -585,7 +585,7 @@ class ActionItemsResponse(BaseModel):
 
 # ── 화자 관리 엔드포인트 ──────────────────────────────────────────────────────
 
-_CLI_LLM_PROVIDERS = frozenset({"claude_cli", "gemini_cli", "codex_cli"})
+_CLI_LLM_PROVIDERS = CLI_LLM_PROVIDERS
 
 
 class UpdateLlmSettingsRequest(BaseModel):
@@ -671,43 +671,29 @@ class TestLlmRequest(BaseModel):
 
 @app.post("/settings/llm/test")
 async def test_llm_connection(request: TestLlmRequest) -> dict:
-    """LLM 연결을 테스트한다. 현재 설정을 변경하지 않는다."""
-    original = {
-        "LLM_PROVIDER": settings.LLM_PROVIDER,
-        "ANTHROPIC_AUTH_TOKEN": settings.ANTHROPIC_AUTH_TOKEN,
-        "ANTHROPIC_BASE_URL": settings.ANTHROPIC_BASE_URL,
-        "OPENAI_API_KEY": settings.OPENAI_API_KEY,
-        "OPENAI_BASE_URL": settings.OPENAI_BASE_URL,
-        "LLM_MODEL": settings.LLM_MODEL,
-    }
-    try:
-        settings.LLM_PROVIDER = request.provider
-        settings.LLM_MODEL = request.model
-        if request.provider in _CLI_LLM_PROVIDERS:
-            pass  # CLI 모드는 인증 설정 불필요
-        elif request.provider == "openai":
+    """LLM 연결을 테스트한다. 격리된 설정 복사본을 사용하여 글로벌 상태를 변경하지 않는다."""
+    from app.config import Settings
+    test_settings = settings.model_copy()
+    test_settings.LLM_PROVIDER = request.provider
+    test_settings.LLM_MODEL = request.model
+    if request.provider not in _CLI_LLM_PROVIDERS:
+        if request.provider == "openai":
             if request.auth_token:
-                settings.OPENAI_API_KEY = request.auth_token
+                test_settings.OPENAI_API_KEY = request.auth_token
             if request.base_url is not None:
-                settings.OPENAI_BASE_URL = request.base_url
+                test_settings.OPENAI_BASE_URL = request.base_url
         else:
             if request.auth_token:
-                settings.ANTHROPIC_AUTH_TOKEN = request.auth_token
+                test_settings.ANTHROPIC_AUTH_TOKEN = request.auth_token
             if request.base_url is not None:
-                settings.ANTHROPIC_BASE_URL = request.base_url
+                test_settings.ANTHROPIC_BASE_URL = request.base_url
 
-        test_summarizer = LLMSummarizer()
+    try:
+        test_summarizer = LLMSummarizer(settings_override=test_settings)
         await test_summarizer._call_llm_raw("You are a test.", "Hi", max_tokens=5)
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
-    finally:
-        settings.LLM_PROVIDER = original["LLM_PROVIDER"]
-        settings.ANTHROPIC_AUTH_TOKEN = original["ANTHROPIC_AUTH_TOKEN"]
-        settings.ANTHROPIC_BASE_URL = original["ANTHROPIC_BASE_URL"]
-        settings.OPENAI_API_KEY = original["OPENAI_API_KEY"]
-        settings.OPENAI_BASE_URL = original["OPENAI_BASE_URL"]
-        settings.LLM_MODEL = original["LLM_MODEL"]
 
 
 @app.get("/settings/hf")

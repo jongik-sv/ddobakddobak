@@ -40,17 +40,10 @@ module Api
         render json: result
       rescue SidecarClient::SidecarError, SidecarClient::ConnectionError, SidecarClient::TimeoutError
         provider = ENV.fetch("LLM_PROVIDER", "anthropic")
-        if provider == "openai"
-          token = ENV.fetch("OPENAI_API_KEY", "")
-          base_url = ENV.fetch("OPENAI_BASE_URL", "")
-        else
-          token = ENV.fetch("ANTHROPIC_AUTH_TOKEN", "")
-          base_url = ENV.fetch("ANTHROPIC_BASE_URL", "")
-        end
-        masked = token.length > 8 ? "#{token[0..3]}#{"*" * (token.length - 8)}#{token[-4..]}" : "****"
+        token, base_url = llm_credentials_for(provider)
         render json: {
           provider: provider,
-          auth_token_masked: masked,
+          auth_token_masked: mask_token(token),
           base_url: base_url,
           model: ENV.fetch("LLM_MODEL", ""),
           offline: true
@@ -66,23 +59,16 @@ module Api
         llm_params[:base_url] = params[:base_url] if params.key?(:base_url)
         llm_params[:model] = params[:model] if params[:model].present?
 
-        # .env 파일에도 저장 (provider에 따라 올바른 키 사용)
         effective_provider = provider.presence || ENV.fetch("LLM_PROVIDER", "anthropic")
         env_updates = {}
         env_updates["LLM_PROVIDER"] = effective_provider if provider.present?
         if llm_params[:auth_token]
-          if effective_provider == "openai"
-            env_updates["OPENAI_API_KEY"] = llm_params[:auth_token]
-          else
-            env_updates["ANTHROPIC_AUTH_TOKEN"] = llm_params[:auth_token]
-          end
+          token_key, = llm_env_keys_for(effective_provider)
+          env_updates[token_key] = llm_params[:auth_token]
         end
         if llm_params.key?(:base_url)
-          if effective_provider == "openai"
-            env_updates["OPENAI_BASE_URL"] = llm_params[:base_url]
-          else
-            env_updates["ANTHROPIC_BASE_URL"] = llm_params[:base_url]
-          end
+          _, url_key = llm_env_keys_for(effective_provider)
+          env_updates[url_key] = llm_params[:base_url]
         end
         env_updates["LLM_MODEL"] = llm_params[:model] if llm_params[:model]
         update_env_file(env_updates) if env_updates.any?
@@ -91,18 +77,11 @@ module Api
           result = SidecarClient.new.update_llm_settings(llm_params)
           render json: result
         rescue SidecarClient::SidecarError, SidecarClient::ConnectionError, SidecarClient::TimeoutError
-          if effective_provider == "openai"
-            token = ENV.fetch("OPENAI_API_KEY", "")
-            base_url_fallback = ENV.fetch("OPENAI_BASE_URL", "")
-          else
-            token = ENV.fetch("ANTHROPIC_AUTH_TOKEN", "")
-            base_url_fallback = ENV.fetch("ANTHROPIC_BASE_URL", "")
-          end
+          token, base_url_fallback = llm_credentials_for(effective_provider)
           token = llm_params[:auth_token] if llm_params[:auth_token]
-          masked = token.length > 8 ? "#{token[0..3]}#{"*" * (token.length - 8)}#{token[-4..]}" : "****"
           render json: {
             provider: effective_provider,
-            auth_token_masked: masked,
+            auth_token_masked: mask_token(token),
             base_url: llm_params.fetch(:base_url, base_url_fallback),
             model: llm_params.fetch(:model, ENV.fetch("LLM_MODEL", ""))
           }
@@ -128,9 +107,8 @@ module Api
         render json: result
       rescue SidecarClient::SidecarError, SidecarClient::ConnectionError, SidecarClient::TimeoutError
         token = ENV.fetch("HF_TOKEN", "")
-        masked = token.length > 8 ? "#{token[0..3]}#{"*" * (token.length - 8)}#{token[-4..]}" : "****"
         render json: {
-          hf_token_masked: masked,
+          hf_token_masked: mask_token(token),
           has_token: token.present?,
           offline: true
         }
@@ -139,16 +117,14 @@ module Api
       def update_hf
         hf_token = params.require(:hf_token)
 
-        # .env 파일에도 저장
         update_env_file("HF_TOKEN" => hf_token)
 
         begin
           result = SidecarClient.new.update_hf_settings(hf_token)
           render json: result
         rescue SidecarClient::SidecarError, SidecarClient::ConnectionError, SidecarClient::TimeoutError
-          masked = hf_token.length > 8 ? "#{hf_token[0..3]}#{"*" * (hf_token.length - 8)}#{hf_token[-4..]}" : "****"
           render json: {
-            hf_token_masked: masked,
+            hf_token_masked: mask_token(hf_token),
             has_token: true
           }
         end
@@ -211,7 +187,27 @@ module Api
 
       private
 
-      # .env 파일의 키=값을 업데이트한다 (없으면 추가)
+      def mask_token(token)
+        return "****" if token.blank? || token.length <= 8
+        "#{token[0..3]}#{"*" * (token.length - 8)}#{token[-4..]}"
+      end
+
+      def llm_credentials_for(provider)
+        if provider == "openai"
+          [ENV.fetch("OPENAI_API_KEY", ""), ENV.fetch("OPENAI_BASE_URL", "")]
+        else
+          [ENV.fetch("ANTHROPIC_AUTH_TOKEN", ""), ENV.fetch("ANTHROPIC_BASE_URL", "")]
+        end
+      end
+
+      def llm_env_keys_for(provider)
+        if provider == "openai"
+          %w[OPENAI_API_KEY OPENAI_BASE_URL]
+        else
+          %w[ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL]
+        end
+      end
+
       def update_env_file(updates)
         env_path = Rails.root.join("..", ".env")
         FileUtils.touch(env_path) unless File.exist?(env_path)
