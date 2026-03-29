@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { getMeetings } from '../api/meetings'
 import type { Meeting, MeetingListMeta, GetMeetingsParams } from '../api/meetings'
+import type { SelectedFolder } from './folderStore'
 
 interface MeetingState {
   meetings: Meeting[]
@@ -9,6 +10,7 @@ interface MeetingState {
   statusFilter: string
   dateFrom: string
   dateTo: string
+  folderId: SelectedFolder
   isLoading: boolean
   error: string | null
 
@@ -16,6 +18,7 @@ interface MeetingState {
   setStatusFilter: (status: string) => void
   setDateFrom: (date: string) => void
   setDateTo: (date: string) => void
+  setFolderId: (id: SelectedFolder) => void
   fetchMeetings: (page?: number) => Promise<void>
   addMeeting: (meeting: Meeting) => void
   reset: () => void
@@ -28,6 +31,7 @@ const initialState = {
   statusFilter: '',
   dateFrom: '',
   dateTo: '',
+  folderId: 'all' as SelectedFolder,
   isLoading: false,
   error: null as string | null,
 }
@@ -39,16 +43,20 @@ export const useMeetingStore = create<MeetingState>()((set, get) => ({
   setStatusFilter: (status) => set({ statusFilter: status }),
   setDateFrom: (date) => set({ dateFrom: date }),
   setDateTo: (date) => set({ dateTo: date }),
+  setFolderId: (id) => set({ folderId: id }),
 
   fetchMeetings: async (page = 1) => {
     set({ isLoading: true, error: null })
     try {
-      const { searchQuery, statusFilter, dateFrom, dateTo } = get()
+      const { searchQuery, statusFilter, dateFrom, dateTo, folderId } = get()
       const params: GetMeetingsParams = { page, per: 20 }
       if (searchQuery) params.q = searchQuery
       if (statusFilter) params.status = statusFilter
       if (dateFrom) params.date_from = dateFrom
       if (dateTo) params.date_to = dateTo
+      if (folderId !== 'all') {
+        params.folder_id = folderId
+      }
       const data = await getMeetings(params)
       set({ meetings: data.meetings, meta: data.meta, isLoading: false })
     } catch {

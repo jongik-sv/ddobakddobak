@@ -43,6 +43,7 @@ export interface Meeting {
   brief_summary: string | null
   source?: 'live' | 'upload'
   has_audio_file?: boolean
+  folder_id: number | null
   transcription_progress?: number
   audio_duration_ms: number
   last_transcript_end_ms: number
@@ -71,6 +72,7 @@ export interface GetMeetingsParams {
   status?: string
   date_from?: string
   date_to?: string
+  folder_id?: number | null
 }
 
 export async function getMeetings(params: GetMeetingsParams): Promise<MeetingListResponse> {
@@ -82,10 +84,13 @@ export async function getMeetings(params: GetMeetingsParams): Promise<MeetingLis
   if (params.status) searchParams.status = params.status
   if (params.date_from) searchParams.date_from = params.date_from
   if (params.date_to) searchParams.date_to = params.date_to
+  if (params.folder_id !== undefined) {
+    searchParams.folder_id = params.folder_id === null ? 'null' : params.folder_id
+  }
   return apiClient.get('meetings', { searchParams }).json()
 }
 
-export async function createMeeting(data: { title: string; team_id: number; meeting_type?: string }): Promise<Meeting> {
+export async function createMeeting(data: { title: string; team_id: number; meeting_type?: string; folder_id?: number | null }): Promise<Meeting> {
   const res: { meeting: Meeting } = await apiClient.post('meetings', { json: data }).json()
   return res.meeting
 }
@@ -189,6 +194,7 @@ export async function getSummary(meetingId: number): Promise<SummaryResponse | n
 
 export interface UpdateMeetingParams {
   title?: string
+  folder_id?: number | null
 }
 
 export async function updateMeeting(id: number, params: UpdateMeetingParams): Promise<Meeting> {

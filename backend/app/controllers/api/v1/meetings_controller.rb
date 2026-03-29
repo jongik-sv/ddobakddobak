@@ -11,6 +11,14 @@ module Api
                           .created_after(params[:date_from])
                           .created_before(params[:date_to])
 
+        if params.key?(:folder_id)
+          if params[:folder_id] == "null"
+            meetings = meetings.where(folder_id: nil)
+          else
+            meetings = meetings.where(folder_id: params[:folder_id])
+          end
+        end
+
         total    = meetings.count
         meetings = meetings.order(created_at: :desc)
                            .limit(pagination_per)
@@ -30,7 +38,8 @@ module Api
           title: params[:title],
           team: team,
           created_by_id: current_user.id,
-          meeting_type: params[:meeting_type] || "general"
+          meeting_type: params[:meeting_type] || "general",
+          folder_id: params[:folder_id]
         )
 
         if meeting.save
@@ -62,6 +71,7 @@ module Api
           team: team,
           created_by_id: current_user.id,
           meeting_type: params[:meeting_type] || "general",
+          folder_id: params[:folder_id],
           status: :transcribing,
           source: "upload",
           started_at: Time.current
@@ -89,11 +99,24 @@ module Api
       end
 
       def update
-        if @meeting.update(title: params[:title])
+        attrs = {}
+        attrs[:title] = params[:title] if params.key?(:title)
+        attrs[:folder_id] = params[:folder_id] if params.key?(:folder_id)
+
+        if @meeting.update(attrs)
           render json: { meeting: meeting_json(@meeting) }
         else
           render json: { errors: @meeting.errors.full_messages }, status: :unprocessable_entity
         end
+      end
+
+      def move_to_folder
+        meeting_ids = params[:meeting_ids]
+        return render json: { error: "meeting_ids is required" }, status: :unprocessable_entity if meeting_ids.blank?
+
+        meetings = Meeting.for_team(user_team_ids).where(id: meeting_ids)
+        meetings.update_all(folder_id: params[:folder_id])
+        render json: { updated: meetings.count }
       end
 
       def destroy
@@ -344,6 +367,7 @@ module Api
           audio_duration_ms: audio_duration_ms(meeting),
           last_transcript_end_ms: meeting.transcripts.maximum(:ended_at_ms).to_i,
           last_sequence_number: meeting.transcripts.maximum(:sequence_number).to_i,
+          folder_id: meeting.folder_id,
           created_at: meeting.created_at,
           updated_at: meeting.updated_at
         }
