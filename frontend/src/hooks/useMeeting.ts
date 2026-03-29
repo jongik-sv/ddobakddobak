@@ -8,6 +8,9 @@ import {
 } from '../api/meetings'
 import type { Meeting, SummaryResponse, UpdateMeetingParams } from '../api/meetings'
 
+// 모듈 레벨 캐시 — 페이지 전환 시 이전 데이터 즉시 표시
+const meetingCache = new Map<number, { meeting: Meeting; summary: SummaryResponse | null }>()
+
 interface UseMeetingReturn {
   meeting: Meeting | null
   summary: SummaryResponse | null
@@ -22,22 +25,24 @@ interface UseMeetingReturn {
 
 export function useMeeting(meetingId: number): UseMeetingReturn {
   const navigate = useNavigate()
-  const [meeting, setMeeting] = useState<Meeting | null>(null)
-  const [summary, setSummary] = useState<SummaryResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const cached = meetingCache.get(meetingId)
+  const [meeting, setMeeting] = useState<Meeting | null>(cached?.meeting ?? null)
+  const [summary, setSummary] = useState<SummaryResponse | null>(cached?.summary ?? null)
+  const [isLoading, setIsLoading] = useState(!cached)
   const [error, setError] = useState<string | null>(null)
 
   const [fetchKey, setFetchKey] = useState(0)
   const refetch = useCallback(() => setFetchKey((k) => k + 1), [])
 
   useEffect(() => {
-    setIsLoading(true)
+    if (!meetingCache.has(meetingId)) setIsLoading(true)
     setError(null)
 
     Promise.all([getMeeting(meetingId), getSummary(meetingId)])
       .then(([meetingData, summaryData]) => {
         setMeeting(meetingData)
         setSummary(summaryData)
+        meetingCache.set(meetingId, { meeting: meetingData, summary: summaryData })
       })
       .catch((err: Error) => {
         setError(err.message)

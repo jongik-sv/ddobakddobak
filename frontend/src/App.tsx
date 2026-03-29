@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { loadAppSettings } from './stores/appSettingsStore'
+import { usePromptTemplateStore } from './stores/promptTemplateStore'
 import { useUiStore } from './stores/uiStore'
 import DashboardPage from './pages/DashboardPage'
 import MeetingsPage from './pages/MeetingsPage'
@@ -17,7 +18,10 @@ function SettingsRedirect() {
 }
 
 function App() {
-  useEffect(() => { loadAppSettings() }, [])
+  useEffect(() => {
+    loadAppSettings()
+    usePromptTemplateStore.getState().fetch()
+  }, [])
 
   return (
     <SetupGate>
@@ -39,7 +43,14 @@ function App() {
           </AppLayout>
         }
       />
-      <Route path="/meetings/:id/live" element={<MeetingLivePage />} />
+      <Route
+        path="/meetings/:id/live"
+        element={
+          <AppLayout>
+            <MeetingLivePage />
+          </AppLayout>
+        }
+      />
       <Route path="/settings" element={<SettingsRedirect />} />
       <Route
         path="/meetings/:id"

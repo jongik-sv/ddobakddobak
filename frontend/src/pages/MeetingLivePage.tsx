@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { Settings, Monitor } from 'lucide-react'
+import { useParams } from 'react-router-dom'
+import { Settings, Monitor, Mic } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
 import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
@@ -25,7 +25,11 @@ type MeetingStatus = 'idle' | 'recording' | 'stopped'
 export default function MeetingLivePage() {
   const { id } = useParams<{ id: string }>()
   const meetingId = Number(id)
-  const navigate = useNavigate()
+
+  // 회의실 진입 시 사이드바 닫기
+  useEffect(() => {
+    useUiStore.getState().sidebarOpen && useUiStore.setState({ sidebarOpen: false })
+  }, [])
 
   const [status, setStatus] = useState<MeetingStatus>('idle')
   const [meetingApiStatus, setMeetingApiStatus] = useState<'pending' | 'recording' | 'completed' | null>(null)
@@ -34,9 +38,8 @@ export default function MeetingLivePage() {
   const [, setAudioDurationMs] = useState(0)
   const [, setLastSeqNum] = useState(0)
 
-  // 메모 에디터 ref + 반영 상태
+  // 메모 에디터 ref
   const memoEditorRef = useRef<BlockNoteEditor<typeof customSchema.blockSchema> | null>(null)
-  const [isSendingMemo, setIsSendingMemo] = useState(false)
 
   // 피드백 상태
   const [feedbackText, setFeedbackText] = useState('')
@@ -49,8 +52,9 @@ export default function MeetingLivePage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const statusTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
-  // 녹음 중 뒤로가기 차단
-  const [showLeaveBlock, setShowLeaveBlock] = useState(false)
+  // 경과 시간
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const elapsedBaseRef = useRef<number | null>(null)
 
   const showStatus = useCallback((msg: string, durationMs = 3000) => {
     setStatusMessage(msg)
@@ -145,6 +149,11 @@ export default function MeetingLivePage() {
     setAudioDurationMs(offsetMs)
     setLastSeqNum(seqNum)
 
+    // 경과 시간을 이전 녹음 시간 이어서 시작
+    const baseSec = Math.floor(offsetMs / 1000)
+    setElapsedSeconds(baseSec)
+    elapsedBaseRef.current = Date.now() - baseSec * 1000
+
     await start(offsetMs, seqNum + 1)
 
     // 시스템 오디오 캡처 (활성화된 경우)
@@ -185,6 +194,8 @@ export default function MeetingLivePage() {
       setStatus('stopped')
       setMeetingApiStatus('completed')
       setIsStopping(false)
+      setElapsedSeconds(0)
+      elapsedBaseRef.current = null
     }
   }
 
@@ -209,6 +220,8 @@ export default function MeetingLivePage() {
       setAudioDurationMs(0)
       setLastSeqNum(0)
       setSummaryCountdown(0)
+      setElapsedSeconds(0)
+      elapsedBaseRef.current = null
     } catch (err) {
       console.error('회의 초기화 실패:', err)
     } finally {
@@ -241,39 +254,6 @@ export default function MeetingLivePage() {
     }
   }
 
-  // 메모 내용을 AI 회의록에 반영
-  const handleApplyMemo = async () => {
-    const editor = memoEditorRef.current
-    if (!editor || isSendingMemo) return
-
-    let markdown: string
-    try {
-      markdown = await editor.blocksToMarkdownLossy(editor.document)
-    } catch {
-      alert('메모 내용을 읽을 수 없습니다.')
-      return
-    }
-
-    if (!markdown.trim()) {
-      alert('메모가 비어있습니다.')
-      return
-    }
-
-    setIsSendingMemo(true)
-    showStatus('메모를 회의록에 반영 중...', 10000)
-    try {
-      await feedbackNotes(meetingId, `다음 메모 내용을 회의록에 자연스럽게 반영해주세요:\n\n${markdown}`)
-      // 메모 비우기
-      editor.replaceBlocks(editor.document, [])
-      showStatus('메모가 회의록에 반영되었습니다')
-    } catch (err) {
-      console.error('메모 반영 실패:', err)
-      showStatus('메모 반영에 실패했습니다')
-    } finally {
-      setIsSendingMemo(false)
-    }
-  }
-
   // 사용자가 AI 회의록을 직접 편집 시 백엔드에 저장
   const handleNotesChange = useCallback(
     (markdown: string) => {
@@ -283,6 +263,38 @@ export default function MeetingLivePage() {
   )
 
   const isActive = status === 'recording'
+
+  // 녹음 상태를 글로벌 스토어에 동기화 (폴더 클릭 차단용)
+  const setRecordingActive = useUiStore((s) => s.setRecordingActive)
+  useEffect(() => {
+    setRecordingActive(isActive)
+    return () => setRecordingActive(false)
+  }, [isActive, setRecordingActive])
+
+  const formatElapsed = (totalSec: number) => {
+    const h = Math.floor(totalSec / 3600)
+    const m = Math.floor((totalSec % 3600) / 60)
+    const s = totalSec % 60
+    return h > 0
+      ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+      : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  }
+
+  // 경과 시간 타이머
+  useEffect(() => {
+    if (isActive && !isPaused) {
+      if (elapsedBaseRef.current === null) {
+        elapsedBaseRef.current = Date.now() - elapsedSeconds * 1000
+      }
+      const interval = setInterval(() => {
+        setElapsedSeconds(Math.floor((Date.now() - elapsedBaseRef.current!) / 1000))
+      }, 1000)
+      return () => clearInterval(interval)
+    } else if (isPaused) {
+      elapsedBaseRef.current = null
+    }
+    // 리셋은 handleStop / handleResetConfirm에서 명시적으로 처리
+  }, [isActive, isPaused])
 
   // 녹음 중 브라우저 뒤로가기/새로고침 차단
   useEffect(() => {
@@ -312,14 +324,6 @@ export default function MeetingLivePage() {
     }
   }
 
-  const handleNavigateBack = () => {
-    if (isActive) {
-      setShowLeaveBlock(true)
-      return
-    }
-    navigate('/meetings')
-  }
-
   useEffect(() => {
     getMeeting(meetingId)
       .then((m) => {
@@ -342,15 +346,14 @@ export default function MeetingLivePage() {
   }, [])
 
   // 녹음 중(일시정지 아닌) 1초 카운트다운 → 0이면 AI 요약 트리거
-  // AI 피드백/메모 전송 중에는 타이머 일시정지 후 재개
   useEffect(() => {
     if (!isActive || isPaused) {
       setSummaryCountdown(0)
       return
     }
 
-    // AI 피드백 또는 메모 반영 중이면 타이머 일시정지 (카운트다운 값 유지)
-    if (isSendingFeedback || isSendingMemo) {
+    // AI 피드백 반영 중이면 타이머 일시정지 (카운트다운 값 유지)
+    if (isSendingFeedback) {
       return
     }
 
@@ -378,21 +381,21 @@ export default function MeetingLivePage() {
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [isActive, isPaused, isSendingFeedback, isSendingMemo, meetingId, summaryIntervalSec])
+  }, [isActive, isPaused, isSendingFeedback, meetingId, summaryIntervalSec])
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
 
       {/* 헤더 컨트롤 바 */}
-      <div className="flex items-center justify-between px-4 py-2 border-b bg-white shadow-sm shrink-0">
+      <div className={`flex items-center justify-between px-4 py-2 shadow-sm shrink-0 transition-colors duration-300 ${
+        isActive && !isPaused
+          ? 'bg-red-50 border-b-2 border-red-400'
+          : isActive && isPaused
+            ? 'bg-amber-50 border-b-2 border-amber-400'
+            : 'bg-white border-b'
+      }`}>
+        {/* 좌측: 타이틀 */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleNavigateBack}
-            className="px-2 py-1 rounded-md text-sm text-gray-500 hover:bg-gray-100 transition-colors"
-            title="회의 목록으로"
-          >
-            ← 목록
-          </button>
           <h1 className="text-lg font-semibold text-gray-900">회의실</h1>
           <button
             onClick={useUiStore.getState().openSettings}
@@ -403,6 +406,56 @@ export default function MeetingLivePage() {
           </button>
         </div>
 
+        {/* 중앙: 녹음 상태 인디케이터 */}
+        {isActive && (
+          <div className="flex items-center gap-3">
+            <div
+              data-testid="recording-indicator"
+              className={`flex items-center gap-2 px-3 py-1 rounded-full border ${
+                isPaused
+                  ? 'bg-amber-100 border-amber-300'
+                  : 'bg-red-100 border-red-200'
+              }`}
+            >
+              <span
+                className={`inline-block w-2.5 h-2.5 rounded-full ${isPaused ? 'bg-amber-500' : 'bg-red-500'}`}
+                style={!isPaused ? { animation: 'recording-blink 1.2s ease-in-out infinite' } : undefined}
+              />
+              <Mic className={`w-3.5 h-3.5 ${isPaused ? 'text-amber-600' : 'text-red-500'}`} />
+              <span className={`text-sm font-semibold ${isPaused ? 'text-amber-700' : 'text-red-600'}`}>
+                {isPaused ? '일시정지' : '녹음 중'}
+              </span>
+            </div>
+
+            {/* 경과 시간 */}
+            <span className="font-mono text-sm font-semibold text-gray-700 tabular-nums tracking-wide">
+              {formatElapsed(elapsedSeconds)}
+            </span>
+
+            {/* 원형 카운트다운 타이머 */}
+            {summaryCountdown > 0 && (
+              <div className="flex items-center gap-1" title="다음 AI 회의록 적용까지">
+                <div className="relative w-7 h-7">
+                  <svg className="w-7 h-7 -rotate-90" viewBox="0 0 28 28">
+                    <circle cx="14" cy="14" r="12" fill="none" stroke="#e5e7eb" strokeWidth="2" />
+                    <circle
+                      cx="14" cy="14" r="12" fill="none" stroke="#3b82f6" strokeWidth="2"
+                      strokeDasharray={`${2 * Math.PI * 12}`}
+                      strokeDashoffset={`${2 * Math.PI * 12 * (1 - (summaryIntervalSec - summaryCountdown) / summaryIntervalSec)}`}
+                      strokeLinecap="round"
+                      className="transition-all duration-1000 ease-linear"
+                    />
+                  </svg>
+                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-blue-600 font-mono">
+                    {summaryCountdown}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 우측: 컨트롤 */}
         <div className="flex items-center gap-2">
           {(error || systemAudioError) && (
             <span className="text-sm text-red-500">{error || systemAudioError}</span>
@@ -497,15 +550,8 @@ export default function MeetingLivePage() {
             className="h-full flex flex-col overflow-hidden"
           >
             {/* 메모 영역 (60%) */}
-            <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
+            <div className="flex items-center px-4 py-2 border-b bg-gray-50 shrink-0">
               <h2 className="text-sm font-semibold text-gray-500">메모</h2>
-              <button
-                onClick={handleApplyMemo}
-                disabled={isSendingMemo}
-                className="px-3 py-1 rounded-md text-xs font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isSendingMemo ? '반영 중...' : '회의록에 반영'}
-              </button>
             </div>
             <div className="overflow-auto" style={{ flex: '0 0 60%' }}>
               <MeetingEditor editorRef={memoEditorRef} />
@@ -544,23 +590,10 @@ export default function MeetingLivePage() {
       {/* 하단 상태바 */}
       <div className="flex items-center justify-between px-4 h-7 border-t bg-gray-50 text-[11px] text-gray-500 shrink-0 select-none">
         <div className="flex items-center gap-3">
-          {/* 녹음 상태 */}
-          {isRecording && !isPaused && (
-            <span data-testid="recording-indicator" className="flex items-center gap-1 text-red-500 font-medium">
-              <span className="inline-block w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-              녹음 중
-            </span>
-          )}
           {isSystemCapturing && (
             <span className="flex items-center gap-1 text-purple-500 font-medium">
               <Monitor className="w-3 h-3" />
               시스템 오디오
-            </span>
-          )}
-          {isPaused && (
-            <span className="flex items-center gap-1 text-yellow-600 font-medium">
-              <span className="inline-block w-1.5 h-1.5 bg-yellow-500 rounded-full" />
-              일시정지
             </span>
           )}
           {!isActive && meetingApiStatus === 'completed' && (
@@ -569,31 +602,12 @@ export default function MeetingLivePage() {
           {!isActive && meetingApiStatus === 'pending' && (
             <span className="text-gray-400">대기 중</span>
           )}
-
-          {/* 타이머 */}
-          {summaryCountdown > 0 && (
-            <span className="flex items-center gap-1.5 font-mono tabular-nums">
-              다음 적용
-              <span className="inline-flex items-center gap-1">
-                <span className="text-blue-600 font-semibold">{summaryCountdown}s</span>
-                <span className="w-12 h-1 bg-gray-200 rounded-full overflow-hidden inline-block align-middle">
-                  <span
-                    className="block h-full bg-blue-500 rounded-full transition-all duration-1000 ease-linear"
-                    style={{ width: `${((summaryIntervalSec - summaryCountdown) / summaryIntervalSec) * 100}%` }}
-                  />
-                </span>
-              </span>
-            </span>
-          )}
         </div>
 
         <div className="flex items-center gap-3">
-          {/* 상태 메시지 */}
           {statusMessage && (
             <span className="text-blue-600 font-medium truncate max-w-xs">{statusMessage}</span>
           )}
-
-          {/* STT 모델 */}
           {sttEngine && (
             <span className="font-mono text-gray-400">
               STT: {ENGINE_LABELS_SHORT[sttEngine] ?? sttEngine}
@@ -601,26 +615,6 @@ export default function MeetingLivePage() {
           )}
         </div>
       </div>
-
-      {/* 녹음 중 뒤로가기 차단 다이얼로그 */}
-      {showLeaveBlock && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">녹음 진행 중</h3>
-            <p className="text-sm text-gray-600 mb-5">
-              녹음 중에는 페이지를 떠날 수 없습니다. 먼저 회의를 종료해주세요.
-            </p>
-            <div className="flex justify-end">
-              <button
-                onClick={() => setShowLeaveBlock(false)}
-                className="px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-              >
-                확인
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 초기화 확인 다이얼로그 */}
       {showResetConfirm && (

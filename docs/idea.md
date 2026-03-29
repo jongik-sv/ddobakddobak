@@ -84,18 +84,7 @@ TSK-01-05 (pane 1) + TSK-01-06 (pane 2) ← 병렬
   - 회의록과 전체 기록에서 특정 내용을 검색하는 기능
   - 검색 결과에서 해당 내용으로 이동하는 기능
 끝
-- 회의록에 파일, 링크 업로드 기능(회의 안건 파일, 참고 파일, 회의록에 첨부할 파일 등)
+- 회의록에 파일, 링크 업로드 기능(회의 안건 파일, 참고 파일, 회의록에 첨부할 파일 등 구분 필요)
 - 목록에 요약 정보를 같이 보여주면??
-
-```mermaid
-flowchart LR
-    A[모델 성능 비교] --> B[GPT-4 Codecs]
-    A --> C[MiniMax 2.7]
-    A --> D["Claude Opus<br>(Vibe Pro)"]
-    
-    B --> B_Score["Score: 50%"]
-    C --> C_Score["Score: 56.5%"]
-    D --> D_Rank["Tier: 최상위권"]
-    
-    style C_Score fill:#e1f5fe,stroke:#01579b,stroke-width:2px
-```
+- 서버의 포트를 3323, 3324, 3325 로 바꾸자
+- 메모는 그냥 그대로 저장하자. AI가 요약한 내용이 메모가 아니다.

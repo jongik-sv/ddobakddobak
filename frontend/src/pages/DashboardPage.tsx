@@ -1,15 +1,10 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Mic, CheckCircle2, Clock, FileText } from 'lucide-react'
 import { getMeetings } from '../api/meetings'
 import type { Meeting } from '../api/meetings'
-import { getPromptTemplates } from '../api/promptTemplates'
-import type { PromptTemplate } from '../api/promptTemplates'
-import { MEETING_TYPES } from '../config'
-
-const STATIC_TYPE_MAP: Record<string, string> = Object.fromEntries(
-  MEETING_TYPES.map((t) => [t.value, t.label]),
-)
+import { usePromptTemplateStore } from '../stores/promptTemplateStore'
+import { DashboardStatsSkeleton, DashboardMeetingsSkeleton } from '../components/ui/Skeleton'
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
@@ -21,29 +16,23 @@ function formatDate(dateStr: string): string {
   })
 }
 
+// 모듈 레벨 캐시 — 페이지 전환 시 이전 데이터 즉시 표시
+let dashboardCache: { meetings: Meeting[]; totalCount: number } | null = null
+
 export default function DashboardPage() {
   const navigate = useNavigate()
-  const [meetings, setMeetings] = useState<Meeting[]>([])
-  const [totalCount, setTotalCount] = useState(0)
-  const [isLoading, setIsLoading] = useState(true)
-  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
-
-  const meetingTypeMap = useMemo<Record<string, string>>(() => {
-    if (promptTemplates.length > 0) {
-      return Object.fromEntries(promptTemplates.map((t) => [t.meeting_type, t.label]))
-    }
-    return STATIC_TYPE_MAP
-  }, [promptTemplates])
+  const [meetings, setMeetings] = useState<Meeting[]>(dashboardCache?.meetings ?? [])
+  const [totalCount, setTotalCount] = useState(dashboardCache?.totalCount ?? 0)
+  const [isLoading, setIsLoading] = useState(!dashboardCache)
+  const meetingTypeMap = usePromptTemplateStore((s) => s.meetingTypeMap)
 
   useEffect(() => {
-    getPromptTemplates().then(setPromptTemplates).catch(() => {})
-  }, [])
-
-  useEffect(() => {
+    if (!dashboardCache) setIsLoading(true)
     getMeetings({ page: 1, per: 10 })
       .then((data) => {
         setMeetings(data.meetings)
         setTotalCount(data.meta.total)
+        dashboardCache = { meetings: data.meetings, totalCount: data.meta.total }
       })
       .catch(() => {})
       .finally(() => setIsLoading(false))
@@ -63,6 +52,9 @@ export default function DashboardPage() {
       </div>
 
       {/* 통계 카드 */}
+      {isLoading && meetings.length === 0 ? (
+        <DashboardStatsSkeleton />
+      ) : (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div
           onClick={() => navigate('/meetings')}
@@ -74,7 +66,7 @@ export default function DashboardPage() {
             </div>
             <span className="text-sm font-medium text-muted-foreground">전체 회의</span>
           </div>
-          <p className="text-3xl font-bold">{isLoading ? '-' : totalCount}</p>
+          <p className="text-3xl font-bold">{totalCount}</p>
         </div>
 
         <div
@@ -87,7 +79,7 @@ export default function DashboardPage() {
             </div>
             <span className="text-sm font-medium text-muted-foreground">녹음중</span>
           </div>
-          <p className="text-3xl font-bold">{isLoading ? '-' : recordingCount}</p>
+          <p className="text-3xl font-bold">{recordingCount}</p>
         </div>
 
         <div
@@ -100,7 +92,7 @@ export default function DashboardPage() {
             </div>
             <span className="text-sm font-medium text-muted-foreground">완료</span>
           </div>
-          <p className="text-3xl font-bold">{isLoading ? '-' : completedCount}</p>
+          <p className="text-3xl font-bold">{completedCount}</p>
         </div>
 
         <div
@@ -114,10 +106,11 @@ export default function DashboardPage() {
             <span className="text-sm font-medium text-muted-foreground">대기중</span>
           </div>
           <p className="text-3xl font-bold">
-            {isLoading ? '-' : totalCount - recordingCount - completedCount}
+            {totalCount - recordingCount - completedCount}
           </p>
         </div>
       </div>
+      )}
 
       {/* 최근 회의 */}
       <div>
@@ -131,8 +124,8 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        {isLoading ? (
-          <div className="text-center py-8 text-muted-foreground">불러오는 중...</div>
+        {isLoading && meetings.length === 0 ? (
+          <DashboardMeetingsSkeleton />
         ) : recentMeetings.length === 0 ? (
           <div className="rounded-lg border bg-card p-8 text-center">
             <p className="text-muted-foreground">아직 회의가 없습니다.</p>

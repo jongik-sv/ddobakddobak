@@ -12,6 +12,7 @@ interface MeetingState {
   dateTo: string
   folderId: SelectedFolder
   isLoading: boolean
+  isRefreshing: boolean
   error: string | null
 
   setSearchQuery: (q: string) => void
@@ -34,6 +35,7 @@ const initialState = {
   dateTo: '',
   folderId: 'all' as SelectedFolder,
   isLoading: false,
+  isRefreshing: false,
   error: null as string | null,
 }
 
@@ -47,7 +49,8 @@ export const useMeetingStore = create<MeetingState>()((set, get) => ({
   setFolderId: (id) => set({ folderId: id }),
 
   fetchMeetings: async (page = 1) => {
-    set({ isLoading: true, error: null })
+    const hasData = get().meetings.length > 0
+    set({ isLoading: !hasData, isRefreshing: true, error: null })
     try {
       const { searchQuery, statusFilter, dateFrom, dateTo, folderId } = get()
       const params: GetMeetingsParams = { page, per: 20 }
@@ -59,9 +62,9 @@ export const useMeetingStore = create<MeetingState>()((set, get) => ({
         params.folder_id = folderId
       }
       const data = await getMeetings(params)
-      set({ meetings: data.meetings, meta: data.meta, isLoading: false })
+      set({ meetings: data.meetings, meta: data.meta, isLoading: false, isRefreshing: false })
     } catch {
-      set({ error: '회의 목록을 불러오지 못했습니다.', isLoading: false })
+      set({ error: '회의 목록을 불러오지 못했습니다.', isLoading: false, isRefreshing: false })
     }
   },
 

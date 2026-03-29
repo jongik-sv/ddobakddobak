@@ -9,12 +9,12 @@ import {
   Pencil,
   Trash2,
   FolderPlus,
-  List,
-  Inbox,
 } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { getTeams } from '../../api/teams'
 import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
+import { useUiStore } from '../../stores/uiStore'
 import type { FolderNode } from '../../api/folders'
 import type { SelectedFolder } from '../../stores/folderStore'
 import CreateFolderDialog from './CreateFolderDialog'
@@ -34,6 +34,9 @@ function FolderTreeItem({ folder, depth, defaultTeamId }: FolderTreeItemProps) {
   const { selectedFolderId, expandedFolderIds, setSelectedFolder, toggleExpanded, renameFolder, removeFolder, createFolder } =
     useFolderStore()
   const { setFolderId, fetchMeetings } = useMeetingStore()
+  const isRecordingActive = useUiStore((s) => s.isRecordingActive)
+  const navigate = useNavigate()
+  const location = useLocation()
   const [showMenu, setShowMenu] = useState(false)
   const [showRenameDialog, setShowRenameDialog] = useState(false)
   const [showSubfolderDialog, setShowSubfolderDialog] = useState(false)
@@ -55,9 +58,16 @@ function FolderTreeItem({ folder, depth, defaultTeamId }: FolderTreeItemProps) {
   }, [showMenu])
 
   const handleSelect = () => {
+    if (isRecordingActive) return
     setSelectedFolder(folder.id)
     setFolderId(folder.id)
     fetchMeetings(1)
+    if (hasChildren && !isExpanded) {
+      toggleExpanded(folder.id)
+    }
+    if (location.pathname !== '/meetings') {
+      navigate('/meetings')
+    }
   }
 
   const handleToggle = (e: React.MouseEvent) => {
@@ -87,10 +97,12 @@ function FolderTreeItem({ folder, depth, defaultTeamId }: FolderTreeItemProps) {
       <div
         data-drop-folder-id={folder.id}
         onPointerDown={(e) => initDrag('folder', folder.id, folder.name, e)}
-        className={`group flex items-center gap-1 px-2 py-1 rounded-md text-sm cursor-pointer transition-colors ${
-          isSelected
-            ? 'bg-primary/10 text-primary font-medium'
-            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+        className={`group flex items-center gap-1 px-2 py-1 rounded-md text-sm transition-colors ${
+          isRecordingActive
+            ? 'opacity-50 cursor-not-allowed'
+            : isSelected
+              ? 'bg-primary/10 text-primary font-medium cursor-pointer'
+              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer'
         }`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={handleSelect}
@@ -188,8 +200,12 @@ function FolderTreeItem({ folder, depth, defaultTeamId }: FolderTreeItemProps) {
 export default function FolderTree() {
   const { folders, selectedFolderId, setSelectedFolder, fetchFolders, createFolder } = useFolderStore()
   const { setFolderId, fetchMeetings } = useMeetingStore()
+  const isRecordingActive = useUiStore((s) => s.isRecordingActive)
+  const navigate = useNavigate()
+  const location = useLocation()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [defaultTeamId, setDefaultTeamId] = useState<number | null>(null)
+  const [rootExpanded, setRootExpanded] = useState(true)
 
   useEffect(() => {
     fetchFolders()
@@ -201,9 +217,19 @@ export default function FolderTree() {
   }, [fetchFolders])
 
   const handleSelect = (id: SelectedFolder) => {
+    if (isRecordingActive) return
     setSelectedFolder(id)
     setFolderId(id)
     fetchMeetings(1)
+    if (location.pathname !== '/meetings') {
+      navigate('/meetings')
+    }
+  }
+
+  const handleSelectRoot = () => {
+    if (isRecordingActive) return
+    handleSelect(null)
+    if (!rootExpanded) setRootExpanded(true)
   }
 
   const handleCreate = async (name: string) => {
@@ -215,48 +241,59 @@ export default function FolderTree() {
   const totalFolders = countAllFolders(folders)
 
   const itemClass = (active: boolean) =>
-    `flex items-center gap-2 px-2 py-1 rounded-md text-sm cursor-pointer transition-colors ${
-      active
-        ? 'bg-primary/10 text-primary font-medium'
-        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+    `flex items-center gap-2 px-2 py-1 rounded-md text-sm transition-colors ${
+      isRecordingActive
+        ? 'opacity-50 cursor-not-allowed'
+        : active
+          ? 'bg-primary/10 text-primary font-medium cursor-pointer'
+          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer'
     }`
 
   return (
     <div className="mt-1 space-y-0.5">
-      {/* 네비게이션 */}
-      <div className={itemClass(selectedFolderId === 'all')} onClick={() => handleSelect('all')}>
-        <List className="w-4 h-4 shrink-0" />
-        <span className="truncate flex-1">전체 회의</span>
-      </div>
-      <div className={itemClass(selectedFolderId === null)} onClick={() => handleSelect(null)}>
-        <Inbox className="w-4 h-4 shrink-0" />
-        <span className="truncate flex-1">미분류</span>
-      </div>
-
-      {/* 구분선 */}
-      <div className="border-t border-dashed border-border my-2" />
-
-      {/* 폴더 섹션 헤더 — 여기에 드롭하면 루트로 이동 */}
+      {/* 최상위 폴더 — 선택 시 미분류 회의 표시, 펼침/접힘으로 하위 폴더 표시 */}
       <div
         data-drop-folder-id="root"
-        className="flex items-center gap-2 px-2 py-1 rounded-md transition-colors"
+        className={`${itemClass(selectedFolderId === null)} group`}
+        onClick={handleSelectRoot}
       >
-        <FolderClosed className="w-4 h-4 text-muted-foreground" />
-        <span className="text-xs font-medium text-muted-foreground flex-1">폴더</span>
-        <span className="text-xs text-muted-foreground tabular-nums">{totalFolders}</span>
         <button
-          onClick={() => setShowCreateDialog(true)}
+          onClick={(e) => {
+            e.stopPropagation()
+            setRootExpanded(!rootExpanded)
+          }}
+          className="shrink-0 p-0.5 hover:bg-black/5 rounded"
+        >
+          {rootExpanded ? (
+            <ChevronDown className="w-3 h-3" />
+          ) : (
+            <ChevronRight className="w-3 h-3" />
+          )}
+        </button>
+        {rootExpanded ? (
+          <FolderOpen className="w-4 h-4 shrink-0" />
+        ) : (
+          <FolderClosed className="w-4 h-4 shrink-0" />
+        )}
+        <span className="truncate flex-1">폴더</span>
+        <span className="text-xs text-muted-foreground tabular-nums group-hover:hidden ml-auto">{totalFolders}</span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            setShowCreateDialog(true)
+          }}
           disabled={!defaultTeamId}
-          className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors disabled:opacity-50"
+          className="hidden group-hover:block p-0.5 rounded hover:bg-black/5 text-muted-foreground hover:text-accent-foreground transition-colors disabled:opacity-50 ml-auto"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      {/* 폴더 트리 */}
-      {folders.map((folder) => (
-        <FolderTreeItem key={folder.id} folder={folder} depth={0} defaultTeamId={defaultTeamId} />
-      ))}
+      {/* 폴더 트리 — 최상위 폴더 펼침 시 표시 */}
+      {rootExpanded &&
+        folders.map((folder) => (
+          <FolderTreeItem key={folder.id} folder={folder} depth={1} defaultTeamId={defaultTeamId} />
+        ))}
 
       {showCreateDialog && (
         <CreateFolderDialog onConfirm={handleCreate} onClose={() => setShowCreateDialog(false)} />

@@ -1,20 +1,24 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Pencil, ArrowLeft } from 'lucide-react'
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
 import type { Transcript, UpdateMeetingParams } from '../api/meetings'
 import { getTranscripts, reopenMeeting, regenerateStt, regenerateNotes } from '../api/meetings'
-import { getPromptTemplates } from '../api/promptTemplates'
-import type { PromptTemplate } from '../api/promptTemplates'
 import { createConsumer } from '@rails/actioncable'
-import { WS_URL, MEETING_TYPES } from '../config'
+import { WS_URL } from '../config'
+import { usePromptTemplateStore } from '../stores/promptTemplateStore'
+import { MeetingPageSkeleton } from '../components/ui/Skeleton'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { AudioPlayer } from '../components/meeting/AudioPlayer'
 import { TranscriptPanel } from '../components/meeting/TranscriptPanel'
 import { ExportButton } from '../components/meeting/ExportButton'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
+import { MeetingEditor } from '../components/editor/MeetingEditor'
+import type { BlockNoteEditor } from '@blocknote/core'
+import type { customSchema } from '../components/editor/MeetingEditor'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 
 // ──────────────────────────────────────────────
@@ -34,21 +38,11 @@ export default function MeetingPage() {
   const { meeting, summary, isLoading, error: meetingError, updateTitle, updateMeetingInfo, deleteMeeting, refetch } =
     useMeeting(meetingId)
   const [showEditDialog, setShowEditDialog] = useState(false)
-  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
 
-  useEffect(() => {
-    getPromptTemplates().then(setPromptTemplates).catch(() => {})
-  }, [])
+  const meetingTypeList = usePromptTemplateStore((s) => s.meetingTypeList)
+  const meetingTypeMap = usePromptTemplateStore((s) => s.meetingTypeMap)
 
-  const meetingTypeList = useMemo(() => {
-    if (promptTemplates.length > 0) return promptTemplates.map((t) => ({ value: t.meeting_type, label: t.label }))
-    return MEETING_TYPES
-  }, [promptTemplates])
-
-  const meetingTypeLabel = useMemo(() => {
-    const found = meetingTypeList.find((t) => t.value === meeting?.meeting_type)
-    return found?.label ?? meeting?.meeting_type
-  }, [meetingTypeList, meeting?.meeting_type])
+  const meetingTypeLabel = meeting ? (meetingTypeMap[meeting.meeting_type] ?? meeting.meeting_type) : ''
 
   // 파일 변환 진행률 (transcribing 상태일 때만 구독)
   const isTranscribing = meeting?.status === 'transcribing'
@@ -124,6 +118,9 @@ export default function MeetingPage() {
     }
   }
 
+  // 메모 에디터
+  const memoEditorRef = useRef<BlockNoteEditor<typeof customSchema.blockSchema> | null>(null)
+
   // 오디오 seek 상태 (AudioPlayer ↔ TranscriptPanel 공유)
   const [seekMs, setSeekMs] = useState<number | null>(null)
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
@@ -187,11 +184,7 @@ export default function MeetingPage() {
   }
 
   if (accessLoading || isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full p-8">
-        <div className="text-gray-500 text-sm">불러오는 중...</div>
-      </div>
-    )
+    return <MeetingPageSkeleton />
   }
 
   if (meetingError) {
@@ -377,22 +370,42 @@ export default function MeetingPage() {
         </div>
       </div>
 
-      {/* 2컬럼 본문: 기록 30% / 요약 70% */}
-      <div className="flex flex-1 overflow-hidden min-h-0">
-        {/* 좌측: 트랜스크립트 패널 (30%) */}
-        <div className="w-[30%] border-r overflow-y-auto shrink-0">
-          <TranscriptPanel
-            transcripts={transcripts}
-            currentTimeMs={currentTimeMs}
-            onSeek={handleSeek}
-          />
-        </div>
+      {/* 3패널 리사이즈 레이아웃 */}
+      <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden min-h-0">
+        {/* 트랜스크립트 패널 — 기본 25% */}
+        <Panel defaultSize={25} minSize={15}>
+          <div className="h-full overflow-y-auto">
+            <TranscriptPanel
+              transcripts={transcripts}
+              currentTimeMs={currentTimeMs}
+              onSeek={handleSeek}
+            />
+          </div>
+        </Panel>
 
-        {/* 우측: AI 회의록 (70%) */}
-        <div className="w-[70%] bg-gray-50 overflow-hidden flex flex-col min-h-0">
-          <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={false} />
-        </div>
-      </div>
+        <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
+
+        {/* AI 회의록 — 기본 45% */}
+        <Panel defaultSize={45} minSize={20}>
+          <div className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
+            <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={false} />
+          </div>
+        </Panel>
+
+        <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
+
+        {/* 메모 — 기본 30% */}
+        <Panel defaultSize={30} minSize={15}>
+          <section data-testid="memo-editor" className="h-full flex flex-col overflow-hidden">
+            <div className="flex items-center px-4 py-2 border-b bg-gray-50 shrink-0">
+              <h2 className="text-sm font-semibold text-gray-500">메모</h2>
+            </div>
+            <div className="flex-1 overflow-auto">
+              <MeetingEditor editorRef={memoEditorRef} />
+            </div>
+          </section>
+        </Panel>
+      </PanelGroup>
 
       {/* STT 재생성 확인 다이얼로그 */}
       {showSttConfirm && (

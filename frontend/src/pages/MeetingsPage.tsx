@@ -3,21 +3,17 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FolderClosed, FolderInput, Pencil } from 'lucide-react'
 import { getTeams } from '../api/teams'
 import { createMeeting, stopMeeting, updateMeeting, uploadAudioFile } from '../api/meetings'
-import { getPromptTemplates } from '../api/promptTemplates'
-import type { PromptTemplate } from '../api/promptTemplates'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
-import { MEETING_TYPES, IS_TAURI } from '../config'
+import { usePromptTemplateStore } from '../stores/promptTemplateStore'
+import { IS_TAURI } from '../config'
 import type { Meeting } from '../api/meetings'
 import type { FolderNode } from '../api/folders'
 import FolderBreadcrumb from '../components/folder/FolderBreadcrumb'
 import MoveMeetingDialog from '../components/folder/MoveMeetingDialog'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
+import { MeetingsGridSkeleton } from '../components/ui/Skeleton'
 import { initDrag } from '../utils/dragState'
-
-const STATIC_TYPE_MAP: Record<string, string> = Object.fromEntries(
-  MEETING_TYPES.map((t) => [t.value, t.label]),
-)
 
 function StatusBadge({ status }: { status: Meeting['status'] }) {
   if (status === 'pending') {
@@ -424,7 +420,9 @@ export default function MeetingsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [movingMeeting, setMovingMeeting] = useState<Meeting | null>(null)
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
-  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
+
+  const meetingTypeList = usePromptTemplateStore((s) => s.meetingTypeList)
+  const meetingTypeMap = usePromptTemplateStore((s) => s.meetingTypeMap)
 
   // 현재 폴더 ID (number | null), 'all'일 때는 null
   const currentFolderId = typeof folderId === 'number' ? folderId : null
@@ -432,7 +430,7 @@ export default function MeetingsPage() {
   // 동적 페이지 제목
   const pageTitle = useMemo(() => {
     if (selectedFolderId === 'all') return '전체 회의'
-    if (selectedFolderId === null) return '미분류'
+    if (selectedFolderId === null) return '폴더'
     const find = (nodes: FolderNode[]): string | null => {
       for (const f of nodes) {
         if (f.id === selectedFolderId) return f.name
@@ -444,9 +442,9 @@ export default function MeetingsPage() {
     return find(folders) ?? '회의 목록'
   }, [folders, selectedFolderId])
 
-  // 하위 폴더 목록: '전체'면 루트 폴더, 특정 폴더면 하위 폴더
+  // 하위 폴더 목록: '전체'/'폴더(null)'면 루트 폴더, 특정 폴더면 하위 폴더
   const childFolders = useMemo(() => {
-    if (selectedFolderId === null) return []
+    if (selectedFolderId === null) return folders
     if (selectedFolderId === 'all') return folders
     const find = (nodes: FolderNode[]): FolderNode[] => {
       for (const f of nodes) {
@@ -458,28 +456,6 @@ export default function MeetingsPage() {
     }
     return find(folders)
   }, [folders, selectedFolderId])
-
-  // API에서 프롬프트 템플릿(회의 유형 목록) 로드
-  useEffect(() => {
-    getPromptTemplates()
-      .then(setPromptTemplates)
-      .catch(() => {})
-  }, [])
-
-  // 회의 유형 목록: API 데이터 우선, 없으면 config.yaml fallback
-  const meetingTypeList = useMemo(() => {
-    if (promptTemplates.length > 0) {
-      return promptTemplates.map((t) => ({ value: t.meeting_type, label: t.label }))
-    }
-    return MEETING_TYPES
-  }, [promptTemplates])
-
-  const meetingTypeMap = useMemo<Record<string, string>>(() => {
-    if (promptTemplates.length > 0) {
-      return Object.fromEntries(promptTemplates.map((t) => [t.meeting_type, t.label]))
-    }
-    return STATIC_TYPE_MAP
-  }, [promptTemplates])
 
   // URL의 status 파라미터를 스토어에 반영
   useEffect(() => {
@@ -498,14 +474,14 @@ export default function MeetingsPage() {
       .catch(() => {})
   }, [])
 
-  // 필터 변경 시 디바운스 후 fetch
+  // 필터 변경 시 디바운스 후 fetch (folderId는 클릭 핸들러에서 직접 fetch하므로 제외)
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchMeetings(1)
       setCurrentPage(1)
     }, 300)
     return () => clearTimeout(timer)
-  }, [searchQuery, statusFilter, dateFrom, dateTo, folderId, fetchMeetings])
+  }, [searchQuery, statusFilter, dateFrom, dateTo, fetchMeetings]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrevPage = () => {
     if (currentPage > 1) {
@@ -549,7 +525,7 @@ export default function MeetingsPage() {
             disabled={defaultTeamId === null}
             className="rounded-md border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
           >
-            파일 업로드
+            오디오 업로드
           </button>
           <button
             onClick={() => setShowModal(true)}
@@ -632,8 +608,8 @@ export default function MeetingsPage() {
       </div>
 
       {/* 폴더 + 회의 목록 */}
-      {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">불러오는 중...</div>
+      {isLoading && meetings.length === 0 ? (
+        <MeetingsGridSkeleton />
       ) : childFolders.length === 0 && meetings.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground">회의가 없습니다.</div>
       ) : (

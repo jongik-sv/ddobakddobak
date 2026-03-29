@@ -173,7 +173,8 @@ module Api
           started_at: nil,
           ended_at: nil,
           last_refined_seq: 0,
-          audio_file_path: nil
+          audio_file_path: nil,
+          brief_summary: nil
         )
 
         render json: { meeting: meeting_json(@meeting) }
