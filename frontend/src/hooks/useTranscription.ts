@@ -65,8 +65,8 @@ export function useTranscription(meetingId: number): UseTranscriptionResult {
 
   const sendSystemChunk = useCallback((pcm: Int16Array, meta?: ChunkMeta) => {
     if (subscriptionRef.current) {
-      // 시스템 오디오: diarization 스킵 (상대방만), audio_source='system'
-      sendAudioChunk(subscriptionRef.current, pcm, meta, undefined, languagesRef.current, 'system')
+      // 시스템 오디오도 마이크와 동일하게 처리 (별도 분리하지 않음)
+      sendAudioChunk(subscriptionRef.current, pcm, meta, diarizationConfigRef.current, languagesRef.current, 'mic')
     }
   }, [])
 

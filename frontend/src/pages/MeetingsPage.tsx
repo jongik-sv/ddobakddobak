@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FolderClosed, FolderInput } from 'lucide-react'
+import { FolderClosed, FolderInput, Pencil } from 'lucide-react'
 import { getTeams } from '../api/teams'
 import { createMeeting, stopMeeting, updateMeeting, uploadAudioFile } from '../api/meetings'
 import { getPromptTemplates } from '../api/promptTemplates'
@@ -12,6 +12,8 @@ import type { Meeting } from '../api/meetings'
 import type { FolderNode } from '../api/folders'
 import FolderBreadcrumb from '../components/folder/FolderBreadcrumb'
 import MoveMeetingDialog from '../components/folder/MoveMeetingDialog'
+import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
+import { initDrag } from '../utils/dragState'
 
 const STATIC_TYPE_MAP: Record<string, string> = Object.fromEntries(
   MEETING_TYPES.map((t) => [t.value, t.label]),
@@ -421,6 +423,7 @@ export default function MeetingsPage() {
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [movingMeeting, setMovingMeeting] = useState<Meeting | null>(null)
+  const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
 
   // 현재 폴더 ID (number | null), 'all'일 때는 null
@@ -441,9 +444,10 @@ export default function MeetingsPage() {
     return find(folders) ?? '회의 목록'
   }, [folders, selectedFolderId])
 
-  // 하위 폴더 목록
+  // 하위 폴더 목록: '전체'면 루트 폴더, 특정 폴더면 하위 폴더
   const childFolders = useMemo(() => {
-    if (selectedFolderId === 'all' || selectedFolderId === null) return []
+    if (selectedFolderId === null) return []
+    if (selectedFolderId === 'all') return folders
     const find = (nodes: FolderNode[]): FolderNode[] => {
       for (const f of nodes) {
         if (f.id === selectedFolderId) return f.children
@@ -526,6 +530,13 @@ export default function MeetingsPage() {
     fetchMeetings(currentPage)
   }
 
+  const handleEditMeeting = async (data: { title: string; meeting_type: string; tag_ids: number[] }) => {
+    if (!editingMeeting) return
+    await updateMeeting(editingMeeting.id, data)
+    setEditingMeeting(null)
+    fetchMeetings(currentPage)
+  }
+
   const totalPages = meta ? Math.ceil(meta.total / meta.per) : 0
 
   return (
@@ -559,27 +570,7 @@ export default function MeetingsPage() {
         </div>
       )}
 
-      {/* 하위 폴더 */}
-      {childFolders.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-4">
-          {childFolders.map((child) => (
-            <button
-              key={child.id}
-              onClick={() => {
-                useFolderStore.getState().setSelectedFolder(child.id)
-                useMeetingStore.getState().setFolderId(child.id)
-                fetchMeetings(1)
-              }}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-card hover:bg-muted/50 transition-colors text-sm"
-            >
-              <span className="text-xs font-bold text-muted-foreground bg-muted rounded px-1.5 py-0.5 tabular-nums">
-                {child.meeting_count}
-              </span>
-              <span className="font-medium truncate">{child.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      {/* 하위 폴더 — 회의 카드와 같은 그리드에 표시되도록 아래 그리드에 통합 */}
 
       {/* 상태 필터 탭 */}
       <div className="flex items-center gap-1 mb-4">
@@ -640,16 +631,55 @@ export default function MeetingsPage() {
         )}
       </div>
 
-      {/* 회의 목록 */}
+      {/* 폴더 + 회의 목록 */}
       {isLoading ? (
         <div className="text-center py-8 text-muted-foreground">불러오는 중...</div>
-      ) : meetings.length === 0 ? (
+      ) : childFolders.length === 0 && meetings.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground">회의가 없습니다.</div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {/* 폴더 카드 */}
+          {childFolders.map((child) => (
+            <div
+              key={`folder-${child.id}`}
+              data-drop-folder-id={child.id}
+              onPointerDown={(e) => initDrag('folder', child.id, child.name, e)}
+              onClick={() => {
+                useFolderStore.getState().setSelectedFolder(child.id)
+                useMeetingStore.getState().setFolderId(child.id)
+                fetchMeetings(1)
+              }}
+              className="group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 hover:shadow-sm transition-all flex flex-col"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <FolderClosed className="w-5 h-5 text-primary/70 shrink-0" />
+                <h3 className="font-medium text-sm truncate">{child.name}</h3>
+              </div>
+              {child.tags?.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {child.tags.map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="text-[10px] px-1.5 py-0.5 rounded-full text-white"
+                      style={{ backgroundColor: tag.color }}
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-3 text-xs text-muted-foreground mt-auto pt-2 border-t border-border/50">
+                <span>회의 {child.meeting_count}개</span>
+                {child.children.length > 0 && <span>하위 폴더 {child.children.length}개</span>}
+              </div>
+            </div>
+          ))}
+
+          {/* 회의 카드 */}
           {meetings.map((meeting) => (
             <div
               key={meeting.id}
+              onPointerDown={(e) => initDrag('meeting', meeting.id, meeting.title, e)}
               onClick={() => navigate(`/meetings/${meeting.id}`)}
               className="group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 hover:shadow-sm transition-all flex flex-col"
             >
@@ -666,9 +696,18 @@ export default function MeetingsPage() {
                       {folderName(folders, meeting.folder_id) ?? '폴더'}
                     </span>
                   )}
+                  {meeting.tags?.map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="text-xs px-2 py-0.5 rounded-full text-white"
+                      style={{ backgroundColor: tag.color }}
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
                 </div>
                 {meeting.brief_summary && (
-                  <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                  <p className="text-xs text-muted-foreground line-clamp-2 mb-2 leading-relaxed">
                     {meeting.brief_summary}
                   </p>
                 )}
@@ -690,6 +729,16 @@ export default function MeetingsPage() {
                       종료
                     </button>
                   )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setEditingMeeting(meeting)
+                    }}
+                    className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
+                    title="정보 수정"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
@@ -762,6 +811,16 @@ export default function MeetingsPage() {
           currentFolderId={movingMeeting.folder_id}
           onConfirm={handleMoveMeeting}
           onClose={() => setMovingMeeting(null)}
+        />
+      )}
+
+      {/* 회의 정보 수정 다이얼로그 */}
+      {editingMeeting && (
+        <EditMeetingDialog
+          meeting={editingMeeting}
+          meetingTypeList={meetingTypeList}
+          onConfirm={handleEditMeeting}
+          onClose={() => setEditingMeeting(null)}
         />
       )}
     </div>

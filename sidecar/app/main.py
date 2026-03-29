@@ -159,6 +159,7 @@ async def lifespan(app: FastAPI):
     await app.state.stt_adapter.load_model()
     app.state.summarizer = LLMSummarizer()
     app.state.engine_lock = asyncio.Lock()
+    app.state.gpu_lock = asyncio.Lock()  # Metal GPU 동시 접근 방지
 
     # 화자 구분 모델 로드 (HF_TOKEN이 있을 때만)
     # 파이프라인은 하나만 로드하고, 회의별 diarizer는 파이프라인을 공유
@@ -277,23 +278,12 @@ _LANG_PATTERNS: dict[str, re.Pattern[str]] = {
 def _filter_by_languages(segments: list, languages: list[str] | None = None) -> list:
     """선택된 언어에 해당하는 세그먼트만 남긴다.
 
-    languages가 None이거나 빈 리스트이면 기존 한국어 전용 필터를 적용한다.
+    languages가 None이거나 빈 리스트이면 필터링하지 않는다.
+    STT 모델이 한국어를 영어/기타 문자로 오인식하는 경우가 빈번하므로
+    실시간 STT에서는 필터링을 적용하지 않는다.
+    환각(hallucination) 제거는 백엔드의 WHISPER_HALLUCINATIONS에서 처리한다.
     """
-    if not languages:
-        languages = ["ko"]
-
-    patterns = [_LANG_PATTERNS[lang] for lang in languages if lang in _LANG_PATTERNS]
-    if not patterns:
-        return segments
-
-    def matches(text: str) -> bool:
-        return any(p.search(text) for p in patterns)
-
-    filtered = [seg for seg in segments if matches(seg.text)]
-    removed = len(segments) - len(filtered)
-    if removed:
-        print(f"[stt] 비대상 언어 세그먼트 {removed}개 필터링 (대상: {languages})", flush=True)
-    return filtered
+    return segments
 
 
 def _get_meeting_diarizer(meeting_id: int | None, diarization_config: dict | None = None):
@@ -341,25 +331,20 @@ async def transcribe(request: TranscribeRequest) -> TranscribeResponse:
         raise HTTPException(status_code=503, detail="STT 모델 변경 중입니다. 잠시 후 다시 시도하세요.")
     audio_bytes = base64.b64decode(request.audio)
 
-    # STT와 화자 분리를 병렬 실행 (Qwen3=Metal GPU, pyannote=CPU → 동시 가능)
+    # Metal GPU 동시 접근 방지 — STT(MLX)와 화자분리(MPS) 직렬화
     diarizer = _get_meeting_diarizer(request.meeting_id, request.diarization_config)
     langs = request.languages
-    if diarizer:
-        stt_result, diarization_result = await asyncio.gather(
-            adapter.transcribe(audio_bytes, languages=langs),
-            diarizer.diarize(audio_bytes),
-            return_exceptions=True,
-        )
-        segments = stt_result if not isinstance(stt_result, BaseException) else []
-        segments = _filter_by_languages(segments, langs)
-        if not isinstance(diarization_result, BaseException) and diarization_result and segments:
-            print(f"[diarizer] result={diarization_result}", flush=True)
-            segments = diarizer.merge_with_segments(segments, diarization_result)
-        elif isinstance(diarization_result, BaseException):
-            print(f"[diarizer] ERROR: {diarization_result}", flush=True)
-    else:
+    async with app.state.gpu_lock:
         segments = await adapter.transcribe(audio_bytes, languages=langs)
         segments = _filter_by_languages(segments, langs)
+        if diarizer and segments:
+            try:
+                diarization_result = await diarizer.diarize(audio_bytes)
+                if diarization_result:
+                    print(f"[diarizer] result={diarization_result}", flush=True)
+                    segments = diarizer.merge_with_segments(segments, diarization_result)
+            except Exception as e:
+                print(f"[diarizer] ERROR: {e}", flush=True)
 
     return TranscribeResponse(
         segments=[SegmentResponse(**dataclasses.asdict(seg)) for seg in segments]

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_29_094807) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_29_110001) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -91,6 +91,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_29_094807) do
     t.index ["meeting_id"], name: "index_summaries_on_meeting_id"
   end
 
+  create_table "taggings", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "tag_id", null: false
+    t.integer "taggable_id", null: false
+    t.string "taggable_type", null: false
+    t.datetime "updated_at", null: false
+    t.index ["tag_id", "taggable_type", "taggable_id"], name: "index_taggings_uniqueness", unique: true
+    t.index ["tag_id"], name: "index_taggings_on_tag_id"
+    t.index ["taggable_type", "taggable_id"], name: "index_taggings_on_taggable"
+  end
+
+  create_table "tags", force: :cascade do |t|
+    t.string "color", default: "#6b7280", null: false
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.integer "team_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["team_id", "name"], name: "index_tags_on_team_id_and_name", unique: true
+    t.index ["team_id"], name: "index_tags_on_team_id"
+  end
+
   create_table "team_memberships", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "role", default: "member", null: false
@@ -111,6 +132,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_29_094807) do
 
   create_table "transcripts", force: :cascade do |t|
     t.boolean "applied_to_minutes", default: false, null: false
+    t.string "audio_source", default: "mic", null: false
     t.text "content", null: false
     t.datetime "created_at", null: false
     t.integer "ended_at_ms", null: false
@@ -131,4 +153,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_29_094807) do
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["jti"], name: "index_users_on_jti", unique: true
   end
+
+  add_foreign_key "taggings", "tags"
+  add_foreign_key "tags", "teams"
 end

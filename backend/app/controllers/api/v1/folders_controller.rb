@@ -38,6 +38,11 @@ module Api
         permitted[:position] = params[:position] if params.key?(:position)
         permitted[:parent_id] = params[:parent_id] if params.key?(:parent_id)
 
+        if params.key?(:tag_ids)
+          tag_ids = Array(params[:tag_ids]).map(&:to_i)
+          @folder.tag_ids = tag_ids
+        end
+
         if @folder.update(permitted)
           render json: { folder: folder_json(@folder) }
         else
@@ -76,6 +81,7 @@ module Api
           position: folder.position,
           meeting_count: folder.meetings.count,
           children_count: folder.children.count,
+          tags: folder.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
           ancestors: folder.ancestors,
           created_at: folder.created_at,
           updated_at: folder.updated_at

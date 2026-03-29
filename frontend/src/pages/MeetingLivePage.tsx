@@ -287,6 +287,24 @@ export default function MeetingLivePage() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [isActive])
 
+  const handleToggleSystemAudio = async (next: boolean) => {
+    setSystemAudioEnabled(next)
+
+    // 녹음 중이면 즉시 캡처 시작/중지
+    if (isActive) {
+      if (next) {
+        const latest = await getMeeting(meetingId)
+        const offsetMs = Math.max(latest.audio_duration_ms ?? 0, latest.last_transcript_end_ms ?? 0)
+        const seqNum = latest.last_sequence_number ?? 0
+        startSystemCapture(offsetMs, seqNum + 1000000).catch((err) =>
+          console.warn('[SystemAudio] 시작 실패:', err)
+        )
+      } else {
+        stopSystemCapture()
+      }
+    }
+  }
+
   const handleNavigateBack = () => {
     if (isActive) {
       setShowLeaveBlock(true)
@@ -384,20 +402,13 @@ export default function MeetingLivePage() {
           )}
 
           {/* 시스템 오디오 토글 */}
-          {!isActive && (
-            <button
-              onClick={() => setSystemAudioEnabled((v) => !v)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                systemAudioEnabled
-                  ? 'bg-purple-50 text-purple-700 border-purple-300'
-                  : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
-              }`}
-              title="시스템 오디오 캡처 (온라인 회의 상대방 음성)"
-            >
-              <Monitor className="w-3.5 h-3.5" />
-              {systemAudioEnabled ? '시스템 오디오 ON' : '시스템 오디오'}
-            </button>
-          )}
+          <div className="flex items-center gap-1.5" title="시스템 오디오 캡처 (온라인 회의 상대방 음성)">
+            <Monitor className={`w-3.5 h-3.5 ${systemAudioEnabled ? 'text-purple-600' : 'text-gray-400'}`} />
+            <Switch
+              checked={systemAudioEnabled}
+              onChange={handleToggleSystemAudio}
+            />
+          </div>
 
           {!isActive && (
             <button

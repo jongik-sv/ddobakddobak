@@ -18,6 +18,7 @@ import { useMeetingStore } from '../../stores/meetingStore'
 import type { FolderNode } from '../../api/folders'
 import type { SelectedFolder } from '../../stores/folderStore'
 import CreateFolderDialog from './CreateFolderDialog'
+import { initDrag } from '../../utils/dragState'
 
 function countAllFolders(nodes: FolderNode[]): number {
   return nodes.reduce((sum, n) => sum + 1 + countAllFolders(n.children), 0)
@@ -84,6 +85,8 @@ function FolderTreeItem({ folder, depth, defaultTeamId }: FolderTreeItemProps) {
   return (
     <>
       <div
+        data-drop-folder-id={folder.id}
+        onPointerDown={(e) => initDrag('folder', folder.id, folder.name, e)}
         className={`group flex items-center gap-1 px-2 py-1 rounded-md text-sm cursor-pointer transition-colors ${
           isSelected
             ? 'bg-primary/10 text-primary font-medium'
@@ -233,8 +236,11 @@ export default function FolderTree() {
       {/* 구분선 */}
       <div className="border-t border-dashed border-border my-2" />
 
-      {/* 폴더 섹션 헤더 */}
-      <div className="flex items-center gap-2 px-2 py-1">
+      {/* 폴더 섹션 헤더 — 여기에 드롭하면 루트로 이동 */}
+      <div
+        data-drop-folder-id="root"
+        className="flex items-center gap-2 px-2 py-1 rounded-md transition-colors"
+      >
         <FolderClosed className="w-4 h-4 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground flex-1">폴더</span>
         <span className="text-xs text-muted-foreground tabular-nums">{totalFolders}</span>

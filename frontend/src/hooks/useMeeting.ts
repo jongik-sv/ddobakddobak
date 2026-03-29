@@ -6,7 +6,7 @@ import {
   updateMeeting,
   deleteMeeting as deleteMeetingApi,
 } from '../api/meetings'
-import type { Meeting, SummaryResponse } from '../api/meetings'
+import type { Meeting, SummaryResponse, UpdateMeetingParams } from '../api/meetings'
 
 interface UseMeetingReturn {
   meeting: Meeting | null
@@ -15,6 +15,7 @@ interface UseMeetingReturn {
   isLoading: boolean
   error: string | null
   updateTitle: (title: string) => Promise<void>
+  updateMeetingInfo: (data: UpdateMeetingParams) => Promise<void>
   deleteMeeting: () => Promise<void>
   refetch: () => void
 }
@@ -51,6 +52,11 @@ export function useMeeting(meetingId: number): UseMeetingReturn {
     setMeeting(updated)
   }
 
+  async function updateMeetingInfo(data: UpdateMeetingParams) {
+    const updated = await updateMeeting(meetingId, data)
+    setMeeting(updated)
+  }
+
   async function deleteMeeting() {
     await deleteMeetingApi(meetingId)
     navigate('/dashboard')
@@ -65,6 +71,7 @@ export function useMeeting(meetingId: number): UseMeetingReturn {
     isLoading,
     error,
     updateTitle,
+    updateMeetingInfo,
     deleteMeeting,
     refetch,
   }

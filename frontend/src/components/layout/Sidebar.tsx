@@ -1,8 +1,6 @@
-import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { LayoutDashboard, Mic, Settings } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
-import { getTeams } from '../../api/teams'
 import FolderTree from '../folder/FolderTree'
 
 function navLinkClass({ isActive }: { isActive: boolean }) {
@@ -16,15 +14,6 @@ export default function Sidebar() {
   const openSettings = useUiStore((s) => s.openSettings)
   const location = useLocation()
   const isMeetingsPage = location.pathname === '/meetings'
-  const [defaultTeamId, setDefaultTeamId] = useState<number | null>(null)
-
-  useEffect(() => {
-    getTeams()
-      .then((data) => {
-        if (data.length > 0) setDefaultTeamId(data[0].id)
-      })
-      .catch(() => {})
-  }, [])
 
   return (
     <aside className="hidden md:flex flex-col w-60 min-h-screen bg-sidebar border-r border-border">
@@ -42,7 +31,7 @@ export default function Sidebar() {
         </NavLink>
         {isMeetingsPage && (
           <div className="pl-2">
-            <FolderTree defaultTeamId={defaultTeamId} />
+            <FolderTree />
           </div>
         )}
         <button

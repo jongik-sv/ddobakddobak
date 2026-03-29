@@ -1,17 +1,21 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { Pencil } from 'lucide-react'
 import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
-import type { Transcript } from '../api/meetings'
+import type { Transcript, UpdateMeetingParams } from '../api/meetings'
 import { getTranscripts, reopenMeeting, regenerateStt, regenerateNotes } from '../api/meetings'
+import { getPromptTemplates } from '../api/promptTemplates'
+import type { PromptTemplate } from '../api/promptTemplates'
 import { createConsumer } from '@rails/actioncable'
-import { WS_URL } from '../config'
+import { WS_URL, MEETING_TYPES } from '../config'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { AudioPlayer } from '../components/meeting/AudioPlayer'
 import { TranscriptPanel } from '../components/meeting/TranscriptPanel'
 import { ExportButton } from '../components/meeting/ExportButton'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
+import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 
 // ──────────────────────────────────────────────
 // 회의 상세 페이지
@@ -27,8 +31,24 @@ export default function MeetingPage() {
 
   const { isLoading: accessLoading, error: accessError } = useMeetingAccess(meetingId)
 
-  const { meeting, summary, isLoading, error: meetingError, updateTitle, deleteMeeting, refetch } =
+  const { meeting, summary, isLoading, error: meetingError, updateTitle, updateMeetingInfo, deleteMeeting, refetch } =
     useMeeting(meetingId)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
+
+  useEffect(() => {
+    getPromptTemplates().then(setPromptTemplates).catch(() => {})
+  }, [])
+
+  const meetingTypeList = useMemo(() => {
+    if (promptTemplates.length > 0) return promptTemplates.map((t) => ({ value: t.meeting_type, label: t.label }))
+    return MEETING_TYPES
+  }, [promptTemplates])
+
+  const meetingTypeLabel = useMemo(() => {
+    const found = meetingTypeList.find((t) => t.value === meeting?.meeting_type)
+    return found?.label ?? meeting?.meeting_type
+  }, [meetingTypeList, meeting?.meeting_type])
 
   // 파일 변환 진행률 (transcribing 상태일 때만 구독)
   const isTranscribing = meeting?.status === 'transcribing'
@@ -266,6 +286,29 @@ export default function MeetingPage() {
               {meeting.status}
             </span>
           )}
+          {meetingTypeLabel && (
+            <span className="shrink-0 px-2 py-0.5 text-xs rounded-full bg-blue-50 text-blue-600 border border-blue-200">
+              {meetingTypeLabel}
+            </span>
+          )}
+          {meeting?.tags?.map((tag) => (
+            <span
+              key={tag.id}
+              className="shrink-0 px-2 py-0.5 text-xs rounded-full text-white"
+              style={{ backgroundColor: tag.color }}
+            >
+              {tag.name}
+            </span>
+          ))}
+          {meeting && (
+            <button
+              onClick={() => setShowEditDialog(true)}
+              className="shrink-0 p-1 rounded hover:bg-gray-100 transition-colors"
+              title="회의 정보 수정"
+            >
+              <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {meeting?.status === 'completed' && (
@@ -394,6 +437,19 @@ export default function MeetingPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 회의 정보 수정 다이얼로그 */}
+      {showEditDialog && meeting && (
+        <EditMeetingDialog
+          meeting={meeting}
+          meetingTypeList={meetingTypeList}
+          onConfirm={async (data) => {
+            await updateMeetingInfo(data)
+            setShowEditDialog(false)
+          }}
+          onClose={() => setShowEditDialog(false)}
+        />
       )}
     </div>
   )

@@ -22,6 +22,7 @@ interface FolderState {
   toggleExpanded: (id: number) => void
   createFolder: (name: string, teamId: number, parentId?: number | null) => Promise<void>
   renameFolder: (id: number, name: string) => Promise<void>
+  moveFolder: (id: number, newParentId: number | null) => Promise<void>
   removeFolder: (id: number) => Promise<void>
   reset: () => void
 }
@@ -68,6 +69,15 @@ export const useFolderStore = create<FolderState>()((set, get) => ({
       await get().fetchFolders()
     } catch {
       set({ error: '폴더 이름 변경에 실패했습니다.' })
+    }
+  },
+
+  moveFolder: async (id, newParentId) => {
+    try {
+      await apiUpdateFolder(id, { parent_id: newParentId })
+      await get().fetchFolders()
+    } catch {
+      set({ error: '폴더 이동에 실패했습니다.' })
     }
   },
 

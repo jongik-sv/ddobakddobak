@@ -102,6 +102,12 @@ module Api
         attrs = {}
         attrs[:title] = params[:title] if params.key?(:title)
         attrs[:folder_id] = params[:folder_id] if params.key?(:folder_id)
+        attrs[:meeting_type] = params[:meeting_type] if params.key?(:meeting_type)
+
+        if params.key?(:tag_ids)
+          tag_ids = Array(params[:tag_ids]).map(&:to_i)
+          @meeting.tag_ids = tag_ids
+        end
 
         if @meeting.update(attrs)
           render json: { meeting: meeting_json(@meeting) }
@@ -368,6 +374,7 @@ module Api
           last_transcript_end_ms: meeting.transcripts.maximum(:ended_at_ms).to_i,
           last_sequence_number: meeting.transcripts.maximum(:sequence_number).to_i,
           folder_id: meeting.folder_id,
+          tags: meeting.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
           created_at: meeting.created_at,
           updated_at: meeting.updated_at
         }

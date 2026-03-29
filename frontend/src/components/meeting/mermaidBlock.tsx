@@ -51,12 +51,7 @@ function MermaidRenderer({ code }: { code: string }) {
   }, [code])
 
   if (error) {
-    return (
-      <div className="p-3 bg-red-50 rounded text-sm">
-        <p className="text-red-600 font-medium text-xs mb-1">Mermaid 구문 오류</p>
-        <pre className="text-red-500 text-xs whitespace-pre-wrap">{error}</pre>
-      </div>
-    )
+    return null
   }
 
   return <div ref={containerRef} className="[&>svg]:max-w-full [&>svg]:h-auto" />

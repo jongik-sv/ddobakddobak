@@ -46,6 +46,9 @@ Rails.application.routes.draw do
       # Folders
       resources :folders, only: %i[index create update destroy]
 
+      # Tags
+      resources :tags, only: %i[index create update destroy]
+
       # Action Items (update, destroy)
       resources :action_items, only: %i[update destroy]
 

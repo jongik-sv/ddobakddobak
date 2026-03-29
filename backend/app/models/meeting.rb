@@ -2,6 +2,8 @@ class Meeting < ApplicationRecord
   belongs_to :team
   belongs_to :creator, class_name: "User", foreign_key: "created_by_id"
   belongs_to :folder, optional: true
+  has_many :taggings, as: :taggable, dependent: :destroy
+  has_many :tags, through: :taggings
   has_many :transcripts, dependent: :destroy
   has_many :summaries, dependent: :destroy
   has_many :action_items, dependent: :destroy

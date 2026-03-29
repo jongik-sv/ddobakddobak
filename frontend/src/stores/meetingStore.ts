@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { getMeetings } from '../api/meetings'
+import { getMeetings, updateMeeting } from '../api/meetings'
 import type { Meeting, MeetingListMeta, GetMeetingsParams } from '../api/meetings'
 import type { SelectedFolder } from './folderStore'
 
@@ -20,6 +20,7 @@ interface MeetingState {
   setDateTo: (date: string) => void
   setFolderId: (id: SelectedFolder) => void
   fetchMeetings: (page?: number) => Promise<void>
+  moveMeetingToFolder: (meetingId: number, folderId: number | null) => Promise<void>
   addMeeting: (meeting: Meeting) => void
   reset: () => void
 }
@@ -62,6 +63,11 @@ export const useMeetingStore = create<MeetingState>()((set, get) => ({
     } catch {
       set({ error: '회의 목록을 불러오지 못했습니다.', isLoading: false })
     }
+  },
+
+  moveMeetingToFolder: async (meetingId, folderId) => {
+    await updateMeeting(meetingId, { folder_id: folderId })
+    await get().fetchMeetings()
   },
 
   addMeeting: (meeting) =>

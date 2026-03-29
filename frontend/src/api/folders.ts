@@ -6,6 +6,7 @@ export interface FolderNode {
   parent_id: number | null
   position: number
   meeting_count: number
+  tags: { id: number; name: string; color: string }[]
   children: FolderNode[]
 }
 
@@ -45,7 +46,7 @@ export async function createFolder(data: {
 
 export async function updateFolder(
   id: number,
-  data: { name?: string; position?: number; parent_id?: number | null },
+  data: { name?: string; position?: number; parent_id?: number | null; tag_ids?: number[] },
 ): Promise<Folder> {
   const res = await apiClient.patch(`folders/${id}`, { json: data }).json<{ folder: Folder }>()
   return res.folder
