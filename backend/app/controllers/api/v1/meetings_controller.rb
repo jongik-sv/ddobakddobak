@@ -103,6 +103,7 @@ module Api
         attrs[:title] = params[:title] if params.key?(:title)
         attrs[:folder_id] = params[:folder_id] if params.key?(:folder_id)
         attrs[:meeting_type] = params[:meeting_type] if params.key?(:meeting_type)
+        attrs[:memo] = params[:memo] if params.key?(:memo)
 
         if params.key?(:tag_ids)
           tag_ids = Array(params[:tag_ids]).map(&:to_i)
@@ -377,6 +378,7 @@ module Api
           last_transcript_end_ms: meeting.transcripts.maximum(:ended_at_ms).to_i,
           last_sequence_number: meeting.transcripts.maximum(:sequence_number).to_i,
           folder_id: meeting.folder_id,
+          memo: meeting.memo,
           tags: meeting.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
           created_at: meeting.created_at,
           updated_at: meeting.updated_at

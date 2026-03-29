@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
-import { Settings, Monitor, Mic } from 'lucide-react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { Settings, Monitor, Mic, ArrowLeft } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
 import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
@@ -13,7 +13,7 @@ import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
 import type { BlockNoteEditor } from '@blocknote/core'
 import type { customSchema } from '../components/editor/MeetingEditor'
-import { getMeeting, startMeeting, stopMeeting, reopenMeeting, uploadAudio, triggerRealtimeSummary, getTranscripts, getSummary, resetMeetingContent, feedbackNotes, updateNotes } from '../api/meetings'
+import { getMeeting, startMeeting, stopMeeting, reopenMeeting, uploadAudio, triggerRealtimeSummary, getTranscripts, getSummary, resetMeetingContent, feedbackNotes, updateNotes, updateMemo } from '../api/meetings'
 import { getSttSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useAppSettingsStore } from '../stores/appSettingsStore'
@@ -25,6 +25,7 @@ type MeetingStatus = 'idle' | 'recording' | 'stopped'
 export default function MeetingLivePage() {
   const { id } = useParams<{ id: string }>()
   const meetingId = Number(id)
+  const navigate = useNavigate()
 
   // 회의실 진입 시 사이드바 닫기
   useEffect(() => {
@@ -38,12 +39,17 @@ export default function MeetingLivePage() {
   const [, setAudioDurationMs] = useState(0)
   const [, setLastSeqNum] = useState(0)
 
-  // 메모 에디터 ref
+  // 메모 에디터
   const memoEditorRef = useRef<BlockNoteEditor<typeof customSchema.blockSchema> | null>(null)
+  const [isSavingMemo, setIsSavingMemo] = useState(false)
+  const memoLoadedRef = useRef(false)
 
   // 피드백 상태
   const [feedbackText, setFeedbackText] = useState('')
   const [isSendingFeedback, setIsSendingFeedback] = useState(false)
+
+  // 녹음 중 뒤로가기 차단
+  const [showLeaveBlock, setShowLeaveBlock] = useState(false)
 
   // 초기화 확인 다이얼로그
   const [showResetConfirm, setShowResetConfirm] = useState(false)
@@ -262,6 +268,31 @@ export default function MeetingLivePage() {
     [meetingId]
   )
 
+  // 메모 저장
+  const handleSaveMemo = async () => {
+    const editor = memoEditorRef.current
+    if (!editor || isSavingMemo) return
+    setIsSavingMemo(true)
+    try {
+      const markdown = await editor.blocksToMarkdownLossy(editor.document)
+      await updateMemo(meetingId, markdown)
+      showStatus('메모가 저장되었습니다')
+    } catch {
+      showStatus('메모 저장에 실패했습니다')
+    } finally {
+      setIsSavingMemo(false)
+    }
+  }
+
+  // 뒤로가기 (미리보기로)
+  const handleNavigateBack = () => {
+    if (isActive) {
+      setShowLeaveBlock(true)
+      return
+    }
+    navigate(`/meetings/${meetingId}`)
+  }
+
   const isActive = status === 'recording'
 
   // 녹음 상태를 글로벌 스토어에 동기화 (폴더 클릭 차단용)
@@ -330,11 +361,20 @@ export default function MeetingLivePage() {
         setMeetingApiStatus(m.status as 'pending' | 'recording' | 'completed')
         setAudioDurationMs(m.audio_duration_ms ?? 0)
         setLastSeqNum(m.last_sequence_number ?? 0)
-        if (m.status === 'completed') {
-          // 오디오 플레이어는 회의 상세 페이지에서 표시
+        if (m.memo && !memoLoadedRef.current) {
+          memoLoadedRef.current = true
+          const waitForEditor = () => {
+            const editor = memoEditorRef.current
+            if (editor) {
+              editor.tryParseMarkdownToBlocks(m.memo!).then((blocks) => {
+                editor.replaceBlocks(editor.document, blocks)
+              })
+            } else {
+              setTimeout(waitForEditor, 100)
+            }
+          }
+          waitForEditor()
         }
-        // recording 상태여도 status를 idle로 유지 → "회의 시작" 버튼 표시
-        // 브라우저 정책상 사용자 클릭 없이 마이크/AudioContext 활성화 불가
       })
       .catch(() => {})
   }, [meetingId])
@@ -394,8 +434,15 @@ export default function MeetingLivePage() {
             ? 'bg-amber-50 border-b-2 border-amber-400'
             : 'bg-white border-b'
       }`}>
-        {/* 좌측: 타이틀 */}
+        {/* 좌측: 네비게이션 */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleNavigateBack}
+            className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
+            title="미리보기로"
+          >
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
           <h1 className="text-lg font-semibold text-gray-900">회의실</h1>
           <button
             onClick={useUiStore.getState().openSettings}
@@ -550,8 +597,15 @@ export default function MeetingLivePage() {
             className="h-full flex flex-col overflow-hidden"
           >
             {/* 메모 영역 (60%) */}
-            <div className="flex items-center px-4 py-2 border-b bg-gray-50 shrink-0">
+            <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
               <h2 className="text-sm font-semibold text-gray-500">메모</h2>
+              <button
+                onClick={handleSaveMemo}
+                disabled={isSavingMemo}
+                className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSavingMemo ? '저장 중...' : '저장'}
+              </button>
             </div>
             <div className="overflow-auto" style={{ flex: '0 0 60%' }}>
               <MeetingEditor editorRef={memoEditorRef} />
@@ -615,6 +669,26 @@ export default function MeetingLivePage() {
           )}
         </div>
       </div>
+
+      {/* 녹음 중 뒤로가기 차단 다이얼로그 */}
+      {showLeaveBlock && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">녹음 진행 중</h3>
+            <p className="text-sm text-gray-600 mb-5">
+              녹음 중에는 페이지를 떠날 수 없습니다. 먼저 회의를 종료해주세요.
+            </p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowLeaveBlock(false)}
+                className="px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 초기화 확인 다이얼로그 */}
       {showResetConfirm && (

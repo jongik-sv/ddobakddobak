@@ -48,6 +48,7 @@ export interface Meeting {
   audio_duration_ms: number
   last_transcript_end_ms: number
   last_sequence_number: number
+  memo: string | null
   tags?: { id: number; name: string; color: string }[]
   started_at: string | null
   ended_at: string | null
@@ -216,6 +217,10 @@ export async function feedbackNotes(meetingId: number, feedback: string): Promis
 
 export async function updateNotes(meetingId: number, notesMarkdown: string): Promise<void> {
   await apiClient.patch(`meetings/${meetingId}/update_notes`, { json: { notes_markdown: notesMarkdown } })
+}
+
+export async function updateMemo(meetingId: number, memo: string): Promise<void> {
+  await apiClient.patch(`meetings/${meetingId}`, { json: { memo } })
 }
 
 export interface Transcript {

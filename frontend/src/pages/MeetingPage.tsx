@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Pencil, ArrowLeft } from 'lucide-react'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
@@ -6,7 +6,7 @@ import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
 import type { Transcript, UpdateMeetingParams } from '../api/meetings'
-import { getTranscripts, reopenMeeting, regenerateStt, regenerateNotes } from '../api/meetings'
+import { getTranscripts, reopenMeeting, regenerateStt, regenerateNotes, updateMemo, updateNotes } from '../api/meetings'
 import { createConsumer } from '@rails/actioncable'
 import { WS_URL } from '../config'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
@@ -120,6 +120,45 @@ export default function MeetingPage() {
 
   // 메모 에디터
   const memoEditorRef = useRef<BlockNoteEditor<typeof customSchema.blockSchema> | null>(null)
+  const [isSavingMemo, setIsSavingMemo] = useState(false)
+  const memoLoadedRef = useRef(false)
+
+  const handleSaveMemo = async () => {
+    const editor = memoEditorRef.current
+    if (!editor || isSavingMemo) return
+    setIsSavingMemo(true)
+    try {
+      const markdown = await editor.blocksToMarkdownLossy(editor.document)
+      await updateMemo(meetingId, markdown)
+    } finally {
+      setIsSavingMemo(false)
+    }
+  }
+
+  // AI 회의록 수정 저장
+  const handleNotesChange = useCallback(
+    (markdown: string) => {
+      updateNotes(meetingId, markdown).catch((e) => console.error('[updateNotes] 저장 실패:', e))
+    },
+    [meetingId]
+  )
+
+  // 메모 로드
+  useEffect(() => {
+    if (!meeting?.memo || memoLoadedRef.current) return
+    memoLoadedRef.current = true
+    const waitForEditor = () => {
+      const editor = memoEditorRef.current
+      if (editor) {
+        editor.tryParseMarkdownToBlocks(meeting.memo!).then((blocks) => {
+          editor.replaceBlocks(editor.document, blocks)
+        })
+      } else {
+        setTimeout(waitForEditor, 100)
+      }
+    }
+    waitForEditor()
+  }, [meeting?.memo])
 
   // 오디오 seek 상태 (AudioPlayer ↔ TranscriptPanel 공유)
   const [seekMs, setSeekMs] = useState<number | null>(null)
@@ -388,7 +427,7 @@ export default function MeetingPage() {
         {/* AI 회의록 — 기본 45% */}
         <Panel defaultSize={45} minSize={20}>
           <div className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
-            <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={false} />
+            <AiSummaryPanel meetingId={meetingId} isRecording={false} onNotesChange={handleNotesChange} />
           </div>
         </Panel>
 
@@ -397,8 +436,15 @@ export default function MeetingPage() {
         {/* 메모 — 기본 30% */}
         <Panel defaultSize={30} minSize={15}>
           <section data-testid="memo-editor" className="h-full flex flex-col overflow-hidden">
-            <div className="flex items-center px-4 py-2 border-b bg-gray-50 shrink-0">
+            <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
               <h2 className="text-sm font-semibold text-gray-500">메모</h2>
+              <button
+                onClick={handleSaveMemo}
+                disabled={isSavingMemo}
+                className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSavingMemo ? '저장 중...' : '저장'}
+              </button>
             </div>
             <div className="flex-1 overflow-auto">
               <MeetingEditor editorRef={memoEditorRef} />
