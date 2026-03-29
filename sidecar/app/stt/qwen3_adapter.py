@@ -41,11 +41,12 @@ class Qwen3Adapter(SttAdapter):
         )
         self._is_loaded = True
 
-    async def transcribe(self, audio_chunk: bytes) -> list[TranscriptSegment]:
+    async def transcribe(self, audio_chunk: bytes, languages: list[str] | None = None) -> list[TranscriptSegment]:
         """PCM 오디오 청크를 텍스트 세그먼트로 변환한다.
 
         Args:
             audio_chunk: PCM 16kHz mono Int16 바이너리
+            languages: 인식 대상 언어 코드 목록 (Qwen3는 자동 감지)
 
         Returns:
             TranscriptSegment 리스트

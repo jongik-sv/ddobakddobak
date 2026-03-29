@@ -143,6 +143,7 @@ module Api
         "AUDIO_MIN_CHUNK_SEC" => :to_i,
         "AUDIO_PREROLL_MS" => :to_i,
         "AUDIO_OVERLAP_MS" => :to_i,
+        "AUDIO_FILE_CHUNK_SEC" => :to_i,
         "DIARIZATION_SIMILARITY_THRESHOLD" => :to_f,
         "DIARIZATION_MERGE_THRESHOLD" => :to_f,
         "DIARIZATION_MAX_EMBEDDINGS_PER_SPEAKER" => :to_i

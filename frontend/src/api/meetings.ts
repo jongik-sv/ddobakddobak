@@ -42,6 +42,7 @@ export interface Meeting {
   created_by: { id: number; name: string }
   brief_summary: string | null
   source?: 'live' | 'upload'
+  has_audio_file?: boolean
   transcription_progress?: number
   audio_duration_ms: number
   last_transcript_end_ms: number
@@ -67,6 +68,7 @@ export interface GetMeetingsParams {
   per?: number
   q?: string
   team_id?: number
+  status?: string
   date_from?: string
   date_to?: string
 }
@@ -77,6 +79,7 @@ export async function getMeetings(params: GetMeetingsParams): Promise<MeetingLis
   if (params.per) searchParams.per = params.per
   if (params.q) searchParams.q = params.q
   if (params.team_id) searchParams.team_id = params.team_id
+  if (params.status) searchParams.status = params.status
   if (params.date_from) searchParams.date_from = params.date_from
   if (params.date_to) searchParams.date_to = params.date_to
   return apiClient.get('meetings', { searchParams }).json()
@@ -114,6 +117,15 @@ export async function resetMeetingContent(id: number): Promise<Meeting> {
 
 export async function triggerRealtimeSummary(id: number): Promise<void> {
   await apiClient.post(`meetings/${id}/summarize`)
+}
+
+export async function regenerateStt(id: number): Promise<Meeting> {
+  const res: { meeting: Meeting } = await apiClient.post(`meetings/${id}/regenerate_stt`).json()
+  return res.meeting
+}
+
+export async function regenerateNotes(id: number): Promise<void> {
+  await apiClient.post(`meetings/${id}/regenerate_notes`)
 }
 
 export async function deleteTranscripts(meetingId: number, ids: number[]): Promise<{ deleted: number }> {

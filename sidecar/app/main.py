@@ -142,6 +142,8 @@ class TranscribeFileRequest(BaseModel):
     file_path: str  # Backend가 ffmpeg로 변환한 raw PCM 16kHz mono Int16 파일 경로
     meeting_id: int | None = None
     diarization_config: dict | None = None
+    languages: list[str] | None = None  # 인식 대상 언어 코드 목록 (예: ["ko", "ja"])
+    file_chunk_sec: int = 30  # 청크 분할 시간 (초). 0이면 분할 안 함 (Whisper 내부 윈도우 사용)
 
 
 class TranscribeFileResponse(BaseModel):
@@ -251,6 +253,7 @@ async def update_stt_engine(request: UpdateSttEngineRequest) -> HealthResponse:
             raise HTTPException(status_code=500, detail=f"모델 로드 실패: {e}") from e
         app.state.stt_adapter = new_adapter
         settings.STT_ENGINE = request.engine
+        _persist_env(STT_ENGINE=settings.STT_ENGINE)
         return HealthResponse(
             status="ok",
             stt_engine=settings.STT_ENGINE,
@@ -343,7 +346,7 @@ async def transcribe(request: TranscribeRequest) -> TranscribeResponse:
     langs = request.languages
     if diarizer:
         stt_result, diarization_result = await asyncio.gather(
-            adapter.transcribe(audio_bytes),
+            adapter.transcribe(audio_bytes, languages=langs),
             diarizer.diarize(audio_bytes),
             return_exceptions=True,
         )
@@ -355,7 +358,7 @@ async def transcribe(request: TranscribeRequest) -> TranscribeResponse:
         elif isinstance(diarization_result, BaseException):
             print(f"[diarizer] ERROR: {diarization_result}", flush=True)
     else:
-        segments = await adapter.transcribe(audio_bytes)
+        segments = await adapter.transcribe(audio_bytes, languages=langs)
         segments = _filter_by_languages(segments, langs)
 
     return TranscribeResponse(
@@ -391,8 +394,6 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
     print(f"[transcribe-file] 파일 크기={len(audio_bytes)} bytes, 길이={total_duration_ms}ms", flush=True)
 
     # 2. STT 실행 — 파일 변환은 항상 Whisper 사용
-    # Whisper는 내부적으로 ~30초 윈도우로 분할하여 정확한 타임스탬프와 다수 세그먼트를 반환.
-    # Qwen3는 내부 분할이 없어 파일 단위 처리에 부적합.
     from app.stt.whisper_adapter import WhisperAdapter
     file_adapter = adapter
     _whisper_loaded_here = False
@@ -402,15 +403,25 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
         await file_adapter.load_model()
         _whisper_loaded_here = True
 
+    chunk_sec = request.file_chunk_sec
     try:
-        segments = await file_adapter.transcribe(audio_bytes)
+        if chunk_sec > 0:
+            # 청크 분할 모드: 지정된 시간 단위로 분할하여 처리 (다국어 감지에 유리)
+            print(f"[transcribe-file] 청크 분할 모드 ({chunk_sec}초)", flush=True)
+            segments = await _chunked_transcribe(
+                file_adapter, audio_bytes,
+                chunk_sec=chunk_sec, overlap_sec=2,
+                languages=request.languages,
+            )
+        else:
+            # 분할 없이 Whisper 내부 윈도우(~30초)로 처리
+            segments = await file_adapter.transcribe(audio_bytes, languages=request.languages)
     finally:
-        # 임시로 로드한 Whisper 정리 (Metal GPU 충돌 방지)
         if _whisper_loaded_here:
             del file_adapter
             import gc; gc.collect()
 
-    segments = _filter_by_languages(segments)  # 파일 변환은 기본 한국어 필터
+    segments = _filter_by_languages(segments, request.languages)
     print(f"[transcribe-file] STT 세그먼트 {len(segments)}개", flush=True)
 
     # 3. 화자 분리 (옵션 — diarization_config에 enable: true가 있을 때만 실행)
@@ -449,6 +460,7 @@ async def _chunked_transcribe(
     audio_bytes: bytes,
     chunk_sec: int = 15,
     overlap_sec: int = 2,
+    languages: list[str] | None = None,
 ) -> list:
     """Qwen3 등 내부 분할이 없는 엔진을 위해 오디오를 청크로 나눠 처리한다.
 
@@ -474,7 +486,7 @@ async def _chunked_transcribe(
             break
 
         offset_ms = int(offset / bytes_per_sec * 1000)
-        segments = await adapter.transcribe(chunk)
+        segments = await adapter.transcribe(chunk, languages=languages)
 
         for seg in segments:
             seg.started_at_ms += offset_ms
@@ -588,6 +600,29 @@ class ActionItemsResponse(BaseModel):
 _CLI_LLM_PROVIDERS = CLI_LLM_PROVIDERS
 
 
+def _find_env_file() -> str | None:
+    """pydantic-settings와 동일한 순서로 .env 파일을 탐색한다."""
+    from pathlib import Path
+    for candidate in (".env", "../.env"):
+        p = Path(candidate).resolve()
+        if p.is_file():
+            return str(p)
+    return None
+
+
+def _persist_env(**kwargs: str) -> None:
+    """변경된 설정값을 .env 파일에 영구 저장한다."""
+    env_path = _find_env_file()
+    if not env_path:
+        return
+    try:
+        from dotenv import set_key
+        for key, value in kwargs.items():
+            set_key(env_path, key, value)
+    except Exception:
+        pass  # .env 쓰기 실패는 런타임에 영향 없음
+
+
 class UpdateLlmSettingsRequest(BaseModel):
     """PUT /settings/llm 요청 스키마."""
     provider: str | None = None  # "anthropic", "openai", "claude_cli", "gemini_cli", "codex_cli"
@@ -625,6 +660,8 @@ async def get_llm_settings() -> dict:
     return {
         "provider": provider,
         "auth_token_masked": token_masked,
+        "anthropic_token_masked": _mask_token(settings.ANTHROPIC_AUTH_TOKEN),
+        "openai_token_masked": _mask_token(settings.OPENAI_API_KEY),
         "base_url": base_url,
         "model": settings.LLM_MODEL,
     }
@@ -650,6 +687,18 @@ async def update_llm_settings(request: UpdateLlmSettingsRequest) -> dict:
 
     # LLM 클라이언트 재생성
     app.state.summarizer = LLMSummarizer()
+
+    # .env 파일에 영구 저장
+    env_updates: dict[str, str] = {"LLM_PROVIDER": settings.LLM_PROVIDER, "LLM_MODEL": settings.LLM_MODEL}
+    if settings.LLM_PROVIDER == "openai":
+        if request.auth_token is not None:
+            env_updates["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
+        env_updates["OPENAI_BASE_URL"] = settings.OPENAI_BASE_URL
+    elif settings.LLM_PROVIDER not in _CLI_LLM_PROVIDERS:
+        if request.auth_token is not None:
+            env_updates["ANTHROPIC_AUTH_TOKEN"] = settings.ANTHROPIC_AUTH_TOKEN
+        env_updates["ANTHROPIC_BASE_URL"] = settings.ANTHROPIC_BASE_URL
+    _persist_env(**env_updates)
 
     provider = settings.LLM_PROVIDER
     token_masked, base_url = _llm_token_and_url(provider)
@@ -719,6 +768,8 @@ async def update_hf_settings(request: UpdateHfSettingsRequest) -> dict:
             app.state.diarizer_pipeline = _loader._pipeline
         except Exception:
             pass
+
+    _persist_env(HF_TOKEN=settings.HF_TOKEN)
 
     return {
         "hf_token_masked": _mask_token(settings.HF_TOKEN),
@@ -796,6 +847,7 @@ class RefineNotesRequest(BaseModel):
     transcripts: list[TranscriptItem]
     meeting_title: str = ""
     meeting_type: str = "general"
+    sections_prompt: str | None = None
 
 
 class RefineNotesResponse(BaseModel):
@@ -816,6 +868,7 @@ async def refine_notes(request: RefineNotesRequest) -> RefineNotesResponse:
         transcripts=transcripts_dicts,
         meeting_title=request.meeting_title,
         meeting_type=request.meeting_type,
+        sections_prompt=request.sections_prompt,
     )
     return RefineNotesResponse(notes_markdown=result)
 

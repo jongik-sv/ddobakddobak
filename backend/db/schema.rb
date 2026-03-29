@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_26_220855) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_29_034848) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -52,6 +52,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_26_220855) do
     t.index ["created_by_id"], name: "index_meetings_on_created_by_id"
     t.index ["team_id", "status"], name: "index_meetings_on_team_id_and_status"
     t.index ["team_id"], name: "index_meetings_on_team_id"
+  end
+
+  create_table "prompt_templates", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.boolean "is_default", default: false, null: false
+    t.string "label", null: false
+    t.string "meeting_type", null: false
+    t.text "sections_prompt", null: false
+    t.datetime "updated_at", null: false
+    t.index ["meeting_type"], name: "index_prompt_templates_on_meeting_type", unique: true
   end
 
   create_table "summaries", force: :cascade do |t|

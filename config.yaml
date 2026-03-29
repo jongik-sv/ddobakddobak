@@ -49,6 +49,7 @@ audio:
   min_chunk_sec: 3             # 최소 청크 길이 (미만이면 무시)
   preroll_ms: 300              # 문장 시작 포착용 프리롤
   overlap_ms: 200              # 청크 경계 음절 손실 방지용 오버랩
+  file_chunk_sec: 30           # 파일 STT 처리 시 청크 분할 시간 (0 = 분할 안 함)
 
 # ── 화자 분리 (Diarization) ─────────────────────────
 diarization:

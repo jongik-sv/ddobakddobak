@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useMemo } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getTeams } from '../api/teams'
 import { createMeeting, stopMeeting, uploadAudioFile } from '../api/meetings'
+import { getPromptTemplates } from '../api/promptTemplates'
+import type { PromptTemplate } from '../api/promptTemplates'
 import { useMeetingStore } from '../stores/meetingStore'
 import { MEETING_TYPES, IS_TAURI } from '../config'
 import type { Meeting } from '../api/meetings'
 
-const MEETING_TYPE_MAP: Record<string, string> = Object.fromEntries(
+const STATIC_TYPE_MAP: Record<string, string> = Object.fromEntries(
   MEETING_TYPES.map((t) => [t.value, t.label]),
 )
 
@@ -41,10 +43,10 @@ function StatusBadge({ status }: { status: Meeting['status'] }) {
   )
 }
 
-function MeetingTypeBadge({ type }: { type: string }) {
+function MeetingTypeBadge({ type, typeMap }: { type: string; typeMap: Record<string, string> }) {
   return (
     <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200">
-      {MEETING_TYPE_MAP[type] ?? type}
+      {typeMap[type] ?? type}
     </span>
   )
 }
@@ -123,7 +125,7 @@ function CreateMeetingModal({ defaultTeamId, onClose, onCreated }: CreateMeeting
           <div>
             <label className="block text-sm font-medium mb-2">회의 유형</label>
             <div className="flex flex-wrap gap-2">
-              {MEETING_TYPES.map((t) => (
+              {meetingTypeList.map((t) => (
                 <button
                   key={t.value}
                   type="button"
@@ -328,7 +330,7 @@ function UploadAudioModal({ defaultTeamId, onClose, onCreated }: UploadAudioModa
           <div>
             <label className="block text-sm font-medium mb-2">회의 유형</label>
             <div className="flex flex-wrap gap-2">
-              {MEETING_TYPES.map((t) => (
+              {meetingTypeList.map((t) => (
                 <button
                   key={t.value}
                   type="button"
@@ -369,15 +371,18 @@ function UploadAudioModal({ defaultTeamId, onClose, onCreated }: UploadAudioModa
 
 export default function MeetingsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const {
     meetings,
     meta,
     searchQuery,
+    statusFilter,
     dateFrom,
     dateTo,
     isLoading,
     error,
     setSearchQuery,
+    setStatusFilter,
     setDateFrom,
     setDateTo,
     fetchMeetings,
@@ -388,6 +393,37 @@ export default function MeetingsPage() {
   const [showModal, setShowModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
+
+  // API에서 프롬프트 템플릿(회의 유형 목록) 로드
+  useEffect(() => {
+    getPromptTemplates()
+      .then(setPromptTemplates)
+      .catch(() => {})
+  }, [])
+
+  // 회의 유형 목록: API 데이터 우선, 없으면 config.yaml fallback
+  const meetingTypeList = useMemo(() => {
+    if (promptTemplates.length > 0) {
+      return promptTemplates.map((t) => ({ value: t.meeting_type, label: t.label }))
+    }
+    return MEETING_TYPES
+  }, [promptTemplates])
+
+  const meetingTypeMap = useMemo<Record<string, string>>(() => {
+    if (promptTemplates.length > 0) {
+      return Object.fromEntries(promptTemplates.map((t) => [t.meeting_type, t.label]))
+    }
+    return STATIC_TYPE_MAP
+  }, [promptTemplates])
+
+  // URL의 status 파라미터를 스토어에 반영
+  useEffect(() => {
+    const urlStatus = searchParams.get('status') || ''
+    if (urlStatus !== statusFilter) {
+      setStatusFilter(urlStatus)
+    }
+  }, [searchParams, setStatusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 팀 ID 자동 확보 (내부용, UI에 노출하지 않음)
   useEffect(() => {
@@ -405,7 +441,7 @@ export default function MeetingsPage() {
       setCurrentPage(1)
     }, 300)
     return () => clearTimeout(timer)
-  }, [searchQuery, dateFrom, dateTo, fetchMeetings])
+  }, [searchQuery, statusFilter, dateFrom, dateTo, fetchMeetings])
 
   const handlePrevPage = () => {
     if (currentPage > 1) {
@@ -452,6 +488,31 @@ export default function MeetingsPage() {
           {error}
         </div>
       )}
+
+      {/* 상태 필터 탭 */}
+      <div className="flex items-center gap-1 mb-4">
+        {([
+          { value: '', label: '전체' },
+          { value: 'recording', label: '녹음중' },
+          { value: 'completed', label: '완료' },
+          { value: 'pending', label: '대기중' },
+        ] as const).map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => {
+              setStatusFilter(tab.value)
+              setSearchParams(tab.value ? { status: tab.value } : {}, { replace: true })
+            }}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              statusFilter === tab.value
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {/* 필터 영역 */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
@@ -504,7 +565,7 @@ export default function MeetingsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-medium truncate">{meeting.title}</h3>
-                    <MeetingTypeBadge type={meeting.meeting_type} />
+                    <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
                   </div>
                   {meeting.brief_summary && (
                     <p className="text-sm text-muted-foreground mt-1 line-clamp-1">

@@ -14,25 +14,40 @@ _TIMESTAMP_UNIT_MS = 10
 
 import re as _re
 
-# 의미 있는 최소 한글 음절 수 — 이보다 짧으면 환각으로 간주
-_MIN_KOREAN_SYLLABLES = 3
+# 의미 있는 최소 글자 수 — 이보다 짧으면 환각으로 간주
+_MIN_MEANINGFUL_CHARS = 3
 
 # 구두점/공백 제거 후 순수 글자 수 계산용 패턴
 _PUNCT_RE = _re.compile(r'[\s\.,!?~\-\'"()]')
 
+# 언어별 문자 범위 (환각 판별용)
+_LANG_CHAR_RANGES = {
+    "ko": (0xAC00, 0xD7A3),  # 한글 음절
+    "ja": (0x3040, 0x30FF),  # 히라가나 + 카타카나
+    "zh": (0x4E00, 0x9FFF),  # CJK 통합 한자
+}
 
-def _is_hallucination(text: str) -> bool:
+
+def _is_hallucination(text: str, languages: list[str] | None = None) -> bool:
     """짧은 환각성 텍스트 여부 판별.
 
-    한글 음절이 MIN 미만이거나 공백/구두점만 남으면 환각으로 간주한다.
+    대상 언어의 문자가 최소 개수 미만이거나 공백/구두점만 남으면 환각으로 간주한다.
     """
     stripped = _PUNCT_RE.sub('', text.strip())
     if not stripped:
         return True
-    # 한글 음절 수 계산
-    korean_syllables = sum(1 for c in stripped if '\uAC00' <= c <= '\uD7A3')
-    # 한글이 포함된 경우 최소 음절 수 미달이면 환각
-    if korean_syllables > 0 and korean_syllables < _MIN_KOREAN_SYLLABLES:
+
+    target_langs = languages or ["ko"]
+    # 대상 언어 문자 수 합산
+    lang_chars = 0
+    for lang in target_langs:
+        char_range = _LANG_CHAR_RANGES.get(lang)
+        if char_range:
+            lo, hi = char_range
+            lang_chars += sum(1 for c in stripped if lo <= ord(c) <= hi)
+
+    # 대상 언어 문자가 있지만 최소 수 미만이면 환각
+    if 0 < lang_chars < _MIN_MEANINGFUL_CHARS:
         return True
     return False
 
@@ -50,7 +65,7 @@ class WhisperAdapter(SttAdapter):
         self._model = None
 
     async def load_model(self) -> None:
-        """pywhispercpp 모델을 로드한다."""
+        """pywhispercpp 모델을 로드한다 (다국어 모드)."""
         try:
             from pywhispercpp.model import Model  # noqa: F401
         except ImportError as e:
@@ -64,15 +79,16 @@ class WhisperAdapter(SttAdapter):
 
         self._model = await loop.run_in_executor(
             None,
-            lambda: Model(self._model_name, language="ko"),
+            lambda: Model(self._model_name),
         )
         self._is_loaded = True
 
-    async def transcribe(self, audio_chunk: bytes) -> list[TranscriptSegment]:
+    async def transcribe(self, audio_chunk: bytes, languages: list[str] | None = None) -> list[TranscriptSegment]:
         """PCM 오디오 청크를 텍스트 세그먼트로 변환한다.
 
         Args:
             audio_chunk: PCM 16kHz mono Int16 바이너리
+            languages: 인식 대상 언어 코드 목록. 단일 언어면 해당 언어로 고정, 다국어면 자동 감지.
 
         Returns:
             TranscriptSegment 리스트
@@ -82,20 +98,23 @@ class WhisperAdapter(SttAdapter):
                 "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
             )
 
+        # 단일 언어면 해당 언어로 고정, 다국어면 자동 감지
+        language = languages[0] if languages and len(languages) == 1 else None
         audio_array = _pcm_bytes_to_float32(audio_chunk)
-        raw_segments = await self._run_inference(audio_array)
+        raw_segments = await self._run_inference(audio_array, language=language)
         return [
-            _to_transcript_segment(seg)
+            _to_transcript_segment(seg, language=language)
             for seg in raw_segments
-            if seg.text.strip() and not _is_hallucination(seg.text)
+            if seg.text.strip() and not _is_hallucination(seg.text, languages)
         ]
 
-    async def _run_inference(self, audio_array) -> list:
+    async def _run_inference(self, audio_array, language: str | None = None) -> list:
         """pywhispercpp 추론 실행 (blocking → executor 비동기화)."""
         loop = asyncio.get_running_loop()
+        lang = language or "auto"
         return await loop.run_in_executor(
             None,
-            lambda: self._model.transcribe(audio_array),
+            lambda: self._model.transcribe(audio_array, language=lang),
         )
 
     async def transcribe_stream(
@@ -123,7 +142,7 @@ def _pcm_bytes_to_float32(audio_bytes: bytes):
         return audio_bytes
 
 
-def _to_transcript_segment(raw_seg) -> TranscriptSegment:
+def _to_transcript_segment(raw_seg, language: str | None = None) -> TranscriptSegment:
     """pywhispercpp Segment → TranscriptSegment 변환.
 
     pywhispercpp의 타임스탬프는 10ms 단위이므로 ms로 변환한다.
@@ -134,6 +153,6 @@ def _to_transcript_segment(raw_seg) -> TranscriptSegment:
         text=raw_seg.text.strip(),
         started_at_ms=started_at_ms,
         ended_at_ms=ended_at_ms,
-        language="ko",
+        language=language or "auto",
         confidence=0.85,
     )

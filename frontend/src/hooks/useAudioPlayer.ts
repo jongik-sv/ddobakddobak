@@ -9,9 +9,11 @@ export interface AudioPlayerResult {
   hasAudio: boolean
   currentTimeMs: number
   durationMs: number
+  playbackRate: number
   play: () => void
   pause: () => void
   seekTo: (ms: number) => void
+  setPlaybackRate: (rate: number) => void
   download: (filename?: string) => Promise<void>
 }
 
@@ -24,6 +26,7 @@ export function useAudioPlayer(
   const [hasAudio, setHasAudio] = useState(false)
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [durationMs, setDurationMs] = useState(0)
+  const [playbackRate, setPlaybackRateState] = useState(1)
 
   const wavesurferRef = useRef<import('wavesurfer.js').default | null>(null)
   const blobUrlRef = useRef<string | null>(null)
@@ -127,6 +130,11 @@ export function useAudioPlayer(
     }
   }, [])
 
+  const setPlaybackRate = useCallback((rate: number) => {
+    wavesurferRef.current?.setPlaybackRate(rate, true)
+    setPlaybackRateState(rate)
+  }, [])
+
   const download = useCallback(async (filename?: string) => {
     const url = blobUrlRef.current
     if (!url) return
@@ -135,5 +143,5 @@ export function useAudioPlayer(
     await downloadBlob(blob, filename ?? `meeting-${meetingId}.webm`)
   }, [meetingId])
 
-  return { isReady, isPlaying, hasAudio, currentTimeMs, durationMs, play, pause, seekTo, download }
+  return { isReady, isPlaying, hasAudio, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download }
 }

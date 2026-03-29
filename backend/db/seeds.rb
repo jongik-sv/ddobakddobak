@@ -7,3 +7,12 @@
 #   ["Action", "Comedy", "Drama", "Horror"].each do |genre_name|
 #     MovieGenre.find_or_create_by!(name: genre_name)
 #   end
+
+# 회의 유형별 프롬프트 템플릿
+PromptTemplate::DEFAULT_TEMPLATES.each do |meeting_type, attrs|
+  PromptTemplate.find_or_create_by!(meeting_type: meeting_type) do |t|
+    t.label = attrs[:label]
+    t.sections_prompt = attrs[:sections_prompt]
+    t.is_default = true
+  end
+end

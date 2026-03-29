@@ -2,11 +2,12 @@ module Api
   module V1
     class MeetingsController < ApplicationController
       before_action :authenticate_user!
-      before_action :set_meeting, only: %i[show update destroy start stop reopen reset_content summarize summary transcripts export feedback update_notes]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen reset_content summarize summary transcripts export feedback update_notes regenerate_stt regenerate_notes]
 
       def index
         meetings = Meeting.for_team(user_team_ids)
                           .search(params[:q])
+                          .by_status(params[:status])
                           .created_after(params[:date_from])
                           .created_before(params[:date_to])
 
@@ -160,6 +161,40 @@ module Api
         render json: { ok: true }
       end
 
+      def regenerate_stt
+        require_meeting_status!(@meeting, :completed?, "완료된 회의만 재생성 가능합니다")
+        return if performed?
+
+        unless @meeting.audio_file_path.present? && File.exist?(@meeting.audio_file_path)
+          return render json: { error: "오디오 파일이 없습니다" }, status: :unprocessable_entity
+        end
+
+        @meeting.transcripts.destroy_all
+        @meeting.summaries.destroy_all
+        @meeting.action_items.destroy_all
+        @meeting.blocks.destroy_all
+
+        @meeting.update!(status: :transcribing, transcription_progress: 0, last_refined_seq: 0)
+        FileTranscriptionJob.perform_later(@meeting.id)
+
+        render json: { meeting: meeting_json(@meeting) }
+      end
+
+      def regenerate_notes
+        if @meeting.pending?
+          return render json: { error: "아직 시작되지 않은 회의입니다" }, status: :unprocessable_entity
+        end
+        unless @meeting.transcripts.exists?
+          return render json: { error: "트랜스크립트가 없습니다" }, status: :unprocessable_entity
+        end
+
+        @meeting.summaries.destroy_all
+        @meeting.action_items.where(ai_generated: true).destroy_all
+
+        MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
+        render json: { ok: true }
+      end
+
       def summary
         summary = @meeting.summaries.find_by(summary_type: "final") ||
                   @meeting.summaries.order(generated_at: :desc).first
@@ -305,6 +340,7 @@ module Api
           brief_summary: meeting.brief_summary,
           source: meeting.source,
           transcription_progress: meeting.transcription_progress,
+          has_audio_file: meeting.audio_file_path.present? && File.exist?(meeting.audio_file_path.to_s),
           audio_duration_ms: audio_duration_ms(meeting),
           last_transcript_end_ms: meeting.transcripts.maximum(:ended_at_ms).to_i,
           last_sequence_number: meeting.transcripts.maximum(:sequence_number).to_i,

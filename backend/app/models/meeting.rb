@@ -16,6 +16,7 @@ class Meeting < ApplicationRecord
   scope :search, ->(q) { where("title LIKE ?", "%#{sanitize_sql_like(q)}%") if q.present? }
   scope :created_after, ->(date) { where("created_at >= ?", date) if date.present? }
   scope :created_before, ->(date) { where("created_at <= ?", Date.parse(date).end_of_day) if date.present? }
+  scope :by_status, ->(status) { where(status: status) if status.present? }
 
   def brief_summary(max_length = 80)
     summary = summaries.find_by(summary_type: "final") ||

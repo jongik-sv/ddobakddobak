@@ -27,7 +27,7 @@ describe('AppLayout', () => {
     expect(screen.getByRole('link', { name: /대시보드/i })).toBeInTheDocument()
   })
 
-  it('헤더가 렌더링됨', () => {
+  it('메인 영역이 렌더링됨', () => {
     render(
       <MemoryRouter>
         <AppLayout>
@@ -35,6 +35,6 @@ describe('AppLayout', () => {
         </AppLayout>
       </MemoryRouter>
     )
-    expect(document.querySelector('header')).toBeTruthy()
+    expect(document.querySelector('main')).toBeTruthy()
   })
 })

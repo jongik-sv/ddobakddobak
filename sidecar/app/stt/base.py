@@ -40,11 +40,12 @@ class SttAdapter(ABC):
         ...
 
     @abstractmethod
-    async def transcribe(self, audio_chunk: bytes) -> list[TranscriptSegment]:
+    async def transcribe(self, audio_chunk: bytes, languages: list[str] | None = None) -> list[TranscriptSegment]:
         """오디오 청크(bytes) → 텍스트 세그먼트 변환 (동기 배치).
 
         Args:
             audio_chunk: PCM 16kHz mono Int16 바이너리 데이터
+            languages: 인식 대상 언어 코드 목록 (예: ["ko", "ja"]). None이면 자동 감지.
 
         Returns:
             TranscriptSegment 리스트 (빈 리스트 가능)

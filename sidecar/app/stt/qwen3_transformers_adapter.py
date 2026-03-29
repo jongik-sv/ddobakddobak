@@ -121,7 +121,7 @@ class Qwen3TransformersAdapter(SttAdapter):
         self._is_loaded = True
         logger.info("Qwen3-ASR 모델 로드 완료 (model=%s)", self._model_id)
 
-    async def transcribe(self, audio_chunk: bytes) -> list[TranscriptSegment]:
+    async def transcribe(self, audio_chunk: bytes, languages: list[str] | None = None) -> list[TranscriptSegment]:
         """PCM 오디오 청크를 텍스트 세그먼트로 변환한다."""
         if not self._is_loaded:
             raise RuntimeError(

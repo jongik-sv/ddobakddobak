@@ -20,7 +20,7 @@ class MockAdapter(SttAdapter):
         """더미 모델 로드 (즉시 완료)."""
         self._is_loaded = True
 
-    async def transcribe(self, audio_chunk: bytes) -> list[TranscriptSegment]:
+    async def transcribe(self, audio_chunk: bytes, languages: list[str] | None = None) -> list[TranscriptSegment]:
         """더미 단일 세그먼트 반환."""
         return [
             TranscriptSegment(

@@ -15,18 +15,31 @@ _MODEL_SIZE = "large-v3-turbo"
 _SAMPLE_RATE = 16000
 _BYTES_PER_SAMPLE = 2  # Int16
 
-# 의미 있는 최소 한글 음절 수 — 이보다 짧으면 환각으로 간주
-_MIN_KOREAN_SYLLABLES = 3
+# 의미 있는 최소 글자 수 — 이보다 짧으면 환각으로 간주
+_MIN_MEANINGFUL_CHARS = 3
 _PUNCT_RE = re.compile(r'[\s\.,!?~\-\'"()]')
 
+# 언어별 문자 범위 (환각 판별용)
+_LANG_CHAR_RANGES = {
+    "ko": (0xAC00, 0xD7A3),
+    "ja": (0x3040, 0x30FF),
+    "zh": (0x4E00, 0x9FFF),
+}
 
-def _is_hallucination(text: str) -> bool:
+
+def _is_hallucination(text: str, languages: list[str] | None = None) -> bool:
     """짧은 환각성 텍스트 여부 판별."""
     stripped = _PUNCT_RE.sub('', text.strip())
     if not stripped:
         return True
-    korean_syllables = sum(1 for c in stripped if '\uAC00' <= c <= '\uD7A3')
-    if korean_syllables > 0 and korean_syllables < _MIN_KOREAN_SYLLABLES:
+    target_langs = languages or ["ko"]
+    lang_chars = 0
+    for lang in target_langs:
+        char_range = _LANG_CHAR_RANGES.get(lang)
+        if char_range:
+            lo, hi = char_range
+            lang_chars += sum(1 for c in stripped if lo <= ord(c) <= hi)
+    if 0 < lang_chars < _MIN_MEANINGFUL_CHARS:
         return True
     return False
 
@@ -68,7 +81,7 @@ class FasterWhisperAdapter(SttAdapter):
         self._model = await loop.run_in_executor(None, _load)
         self._is_loaded = True
 
-    async def transcribe(self, audio_chunk: bytes) -> list[TranscriptSegment]:
+    async def transcribe(self, audio_chunk: bytes, languages: list[str] | None = None) -> list[TranscriptSegment]:
         """PCM 오디오 청크를 텍스트 세그먼트로 변환한다."""
         if not self._is_loaded:
             raise RuntimeError(
@@ -79,22 +92,23 @@ class FasterWhisperAdapter(SttAdapter):
         if len(audio_array) == 0:
             return []
 
-        raw_segments = await self._run_inference(audio_array)
+        raw_segments = await self._run_inference(audio_array, languages=languages)
         return [
             seg for seg in raw_segments
-            if seg.text.strip() and not _is_hallucination(seg.text)
+            if seg.text.strip() and not _is_hallucination(seg.text, languages)
         ]
 
-    async def _run_inference(self, audio_array) -> list[TranscriptSegment]:
+    async def _run_inference(self, audio_array, languages: list[str] | None = None) -> list[TranscriptSegment]:
         """faster-whisper 추론 실행 (blocking → executor 비동기화)."""
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._infer, audio_array)
+        return await loop.run_in_executor(None, self._infer, audio_array, languages)
 
-    def _infer(self, audio_array) -> list[TranscriptSegment]:
+    def _infer(self, audio_array, languages: list[str] | None = None) -> list[TranscriptSegment]:
         """동기 faster-whisper 추론."""
+        language = languages[0] if languages and len(languages) == 1 else None
         segments_iter, _info = self._model.transcribe(
             audio_array,
-            language="ko",
+            language=language,
             vad_filter=True,
         )
         results = []
@@ -103,7 +117,7 @@ class FasterWhisperAdapter(SttAdapter):
                 text=seg.text.strip(),
                 started_at_ms=int(seg.start * 1000),
                 ended_at_ms=int(seg.end * 1000),
-                language="ko",
+                language=language or "auto",
                 confidence=seg.avg_logprob if seg.avg_logprob else 0.0,
             ))
         return results
@@ -117,7 +131,7 @@ class FasterWhisperAdapter(SttAdapter):
             for seg in segments:
                 yield seg
 
-    async def transcribe_file(self, file_path: str) -> list[TranscriptSegment]:
+    async def transcribe_file(self, file_path: str, languages: list[str] | None = None) -> list[TranscriptSegment]:
         """오디오 파일 전체를 변환한다.
 
         faster-whisper는 파일 경로를 직접 받을 수 있어 메모리 효율적이다.
@@ -128,22 +142,23 @@ class FasterWhisperAdapter(SttAdapter):
             )
 
         loop = asyncio.get_running_loop()
+        language = languages[0] if languages and len(languages) == 1 else None
 
         def _transcribe():
             segments_iter, _info = self._model.transcribe(
                 file_path,
-                language="ko",
+                language=language,
                 vad_filter=True,
             )
             results = []
             for seg in segments_iter:
                 text = seg.text.strip()
-                if text and not _is_hallucination(text):
+                if text and not _is_hallucination(text, languages):
                     results.append(TranscriptSegment(
                         text=text,
                         started_at_ms=int(seg.start * 1000),
                         ended_at_ms=int(seg.end * 1000),
-                        language="ko",
+                        language=language or "auto",
                         confidence=seg.avg_logprob if seg.avg_logprob else 0.0,
                     ))
             return results

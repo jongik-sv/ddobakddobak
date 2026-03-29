@@ -28,9 +28,13 @@ class MeetingSummarizationJob < ApplicationJob
 
     current_notes = current_notes_markdown(meeting)
     payload = transcripts_payload(new_transcripts)
+    template = PromptTemplate.find_by(meeting_type: meeting.meeting_type)
 
     result = SidecarClient.new.refine_notes(
-      current_notes, payload, meeting_title: meeting.title, meeting_type: meeting.meeting_type
+      current_notes, payload,
+      meeting_title: meeting.title,
+      meeting_type: meeting.meeting_type,
+      sections_prompt: template&.sections_prompt
     )
     notes_markdown = result["notes_markdown"]
 
@@ -60,9 +64,13 @@ class MeetingSummarizationJob < ApplicationJob
 
     current_notes = current_notes_markdown(meeting)
     payload = transcripts_payload(transcripts)
+    template = PromptTemplate.find_by(meeting_type: meeting.meeting_type)
 
     result = SidecarClient.new.refine_notes(
-      current_notes, payload, meeting_title: meeting.title, meeting_type: meeting.meeting_type
+      current_notes, payload,
+      meeting_title: meeting.title,
+      meeting_type: meeting.meeting_type,
+      sections_prompt: template&.sections_prompt
     )
     notes_markdown = result["notes_markdown"]
     return if notes_markdown.blank?

@@ -13,13 +13,13 @@ describe('Sidebar', () => {
     expect(screen.getByRole('link', { name: /대시보드/i })).toBeInTheDocument()
   })
 
-  it('팀 목록 링크가 렌더링됨', () => {
+  it('회의 목록 링크가 렌더링됨', () => {
     render(
       <MemoryRouter>
         <Sidebar />
       </MemoryRouter>
     )
-    expect(screen.getByRole('link', { name: /팀 목록/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /회의 목록/i })).toBeInTheDocument()
   })
 
   it('대시보드 링크 href가 /dashboard임', () => {
@@ -32,14 +32,23 @@ describe('Sidebar', () => {
     expect(dashboardLink).toHaveAttribute('href', '/dashboard')
   })
 
-  it('팀 목록 링크 href가 /teams임', () => {
+  it('회의 목록 링크 href가 /meetings임', () => {
     render(
       <MemoryRouter>
         <Sidebar />
       </MemoryRouter>
     )
-    const teamsLink = screen.getByRole('link', { name: /팀 목록/i })
-    expect(teamsLink).toHaveAttribute('href', '/teams')
+    const meetingsLink = screen.getByRole('link', { name: /회의 목록/i })
+    expect(meetingsLink).toHaveAttribute('href', '/meetings')
+  })
+
+  it('설정 버튼이 렌더링됨', () => {
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>
+    )
+    expect(screen.getByRole('button', { name: /설정/i })).toBeInTheDocument()
   })
 
   it('md 이하에서 숨김 클래스를 가짐', () => {

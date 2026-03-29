@@ -18,6 +18,8 @@ export async function updateSttEngine(engine: string): Promise<{ stt_engine: str
 export interface LlmSettings {
   provider: string
   auth_token_masked: string
+  anthropic_token_masked?: string
+  openai_token_masked?: string
   base_url: string
   model: string
   offline?: boolean
@@ -80,6 +82,7 @@ export interface AppSettings {
   audio_min_chunk_sec?: number
   audio_preroll_ms?: number
   audio_overlap_ms?: number
+  audio_file_chunk_sec?: number
   diarization_similarity_threshold?: number
   diarization_merge_threshold?: number
   diarization_max_embeddings_per_speaker?: number

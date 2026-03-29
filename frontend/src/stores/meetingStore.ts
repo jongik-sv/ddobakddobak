@@ -6,12 +6,14 @@ interface MeetingState {
   meetings: Meeting[]
   meta: MeetingListMeta | null
   searchQuery: string
+  statusFilter: string
   dateFrom: string
   dateTo: string
   isLoading: boolean
   error: string | null
 
   setSearchQuery: (q: string) => void
+  setStatusFilter: (status: string) => void
   setDateFrom: (date: string) => void
   setDateTo: (date: string) => void
   fetchMeetings: (page?: number) => Promise<void>
@@ -23,6 +25,7 @@ const initialState = {
   meetings: [] as Meeting[],
   meta: null as MeetingListMeta | null,
   searchQuery: '',
+  statusFilter: '',
   dateFrom: '',
   dateTo: '',
   isLoading: false,
@@ -33,15 +36,17 @@ export const useMeetingStore = create<MeetingState>()((set, get) => ({
   ...initialState,
 
   setSearchQuery: (q) => set({ searchQuery: q }),
+  setStatusFilter: (status) => set({ statusFilter: status }),
   setDateFrom: (date) => set({ dateFrom: date }),
   setDateTo: (date) => set({ dateTo: date }),
 
   fetchMeetings: async (page = 1) => {
     set({ isLoading: true, error: null })
     try {
-      const { searchQuery, dateFrom, dateTo } = get()
+      const { searchQuery, statusFilter, dateFrom, dateTo } = get()
       const params: GetMeetingsParams = { page, per: 20 }
       if (searchQuery) params.q = searchQuery
+      if (statusFilter) params.status = statusFilter
       if (dateFrom) params.date_from = dateFrom
       if (dateTo) params.date_to = dateTo
       const data = await getMeetings(params)

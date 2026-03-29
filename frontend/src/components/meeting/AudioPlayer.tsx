@@ -17,10 +17,17 @@ function formatTime(ms: number): string {
 
 export function AudioPlayer({ meetingId, onTimeUpdate, seekMs, autoPlayOnSeek = false }: AudioPlayerProps) {
   const waveformRef = useRef<HTMLDivElement>(null)
-  const { isReady, isPlaying, hasAudio, currentTimeMs, durationMs, play, pause, seekTo, download } = useAudioPlayer(
+  const { isReady, isPlaying, hasAudio, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download } = useAudioPlayer(
     meetingId,
     waveformRef
   )
+
+  const SPEED_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2]
+  const cycleSpeed = () => {
+    const currentIndex = SPEED_PRESETS.indexOf(playbackRate)
+    const nextIndex = (currentIndex + 1) % SPEED_PRESETS.length
+    setPlaybackRate(SPEED_PRESETS[nextIndex])
+  }
 
   useEffect(() => {
     onTimeUpdate(currentTimeMs)
@@ -66,6 +73,13 @@ export function AudioPlayer({ meetingId, onTimeUpdate, seekMs, autoPlayOnSeek = 
             <span className="text-sm text-gray-600 tabular-nums">
               {formatTime(currentTimeMs)} / {formatTime(durationMs)}
             </span>
+            <button
+              aria-label="배속"
+              onClick={cycleSpeed}
+              className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 text-sm hover:bg-gray-200 tabular-nums"
+            >
+              {playbackRate}x
+            </button>
             <button
               aria-label="다운로드"
               onClick={() => download()}

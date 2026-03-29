@@ -32,10 +32,12 @@ class SidecarClient
     post("/transcribe", body)
   end
 
-  def transcribe_file(file_path, meeting_id: nil, diarization_config: nil)
+  def transcribe_file(file_path, meeting_id: nil, diarization_config: nil, languages: nil, file_chunk_sec: nil)
     body = { file_path: file_path }
     body[:meeting_id] = meeting_id if meeting_id
     body[:diarization_config] = diarization_config if diarization_config
+    body[:languages] = languages if languages
+    body[:file_chunk_sec] = file_chunk_sec if file_chunk_sec
     post("/transcribe-file", body, timeout: 1800)
   end
 
@@ -49,13 +51,15 @@ class SidecarClient
     post("/summarize/action-items", { transcripts: transcripts }, timeout: 120)
   end
 
-  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general")
-    post("/refine-notes", {
+  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil)
+    body = {
       current_notes: current_notes,
       transcripts: transcripts,
       meeting_title: meeting_title,
       meeting_type: meeting_type
-    }, timeout: 120)
+    }
+    body[:sections_prompt] = sections_prompt if sections_prompt.present?
+    post("/refine-notes", body, timeout: 120)
   end
 
   def feedback_notes(current_notes, feedback, meeting_title: "")

@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Mic, CheckCircle2, Clock, FileText } from 'lucide-react'
 import { getMeetings } from '../api/meetings'
 import type { Meeting } from '../api/meetings'
+import { getPromptTemplates } from '../api/promptTemplates'
+import type { PromptTemplate } from '../api/promptTemplates'
 import { MEETING_TYPES } from '../config'
 
-const MEETING_TYPE_MAP: Record<string, string> = Object.fromEntries(
+const STATIC_TYPE_MAP: Record<string, string> = Object.fromEntries(
   MEETING_TYPES.map((t) => [t.value, t.label]),
 )
 
@@ -24,6 +26,18 @@ export default function DashboardPage() {
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
+
+  const meetingTypeMap = useMemo<Record<string, string>>(() => {
+    if (promptTemplates.length > 0) {
+      return Object.fromEntries(promptTemplates.map((t) => [t.meeting_type, t.label]))
+    }
+    return STATIC_TYPE_MAP
+  }, [promptTemplates])
+
+  useEffect(() => {
+    getPromptTemplates().then(setPromptTemplates).catch(() => {})
+  }, [])
 
   useEffect(() => {
     getMeetings({ page: 1, per: 10 })
@@ -50,7 +64,10 @@ export default function DashboardPage() {
 
       {/* 통계 카드 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="rounded-lg border bg-card p-5">
+        <div
+          onClick={() => navigate('/meetings')}
+          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 transition-colors"
+        >
           <div className="flex items-center gap-3 mb-2">
             <div className="rounded-md bg-blue-50 p-2">
               <FileText className="w-5 h-5 text-blue-600" />
@@ -60,7 +77,10 @@ export default function DashboardPage() {
           <p className="text-3xl font-bold">{isLoading ? '-' : totalCount}</p>
         </div>
 
-        <div className="rounded-lg border bg-card p-5">
+        <div
+          onClick={() => navigate('/meetings?status=recording')}
+          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 transition-colors"
+        >
           <div className="flex items-center gap-3 mb-2">
             <div className="rounded-md bg-red-50 p-2">
               <Mic className="w-5 h-5 text-red-500" />
@@ -70,7 +90,10 @@ export default function DashboardPage() {
           <p className="text-3xl font-bold">{isLoading ? '-' : recordingCount}</p>
         </div>
 
-        <div className="rounded-lg border bg-card p-5">
+        <div
+          onClick={() => navigate('/meetings?status=completed')}
+          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 transition-colors"
+        >
           <div className="flex items-center gap-3 mb-2">
             <div className="rounded-md bg-green-50 p-2">
               <CheckCircle2 className="w-5 h-5 text-green-600" />
@@ -80,7 +103,10 @@ export default function DashboardPage() {
           <p className="text-3xl font-bold">{isLoading ? '-' : completedCount}</p>
         </div>
 
-        <div className="rounded-lg border bg-card p-5">
+        <div
+          onClick={() => navigate('/meetings?status=pending')}
+          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 transition-colors"
+        >
           <div className="flex items-center gap-3 mb-2">
             <div className="rounded-md bg-amber-50 p-2">
               <Clock className="w-5 h-5 text-amber-600" />
@@ -129,7 +155,7 @@ export default function DashboardPage() {
                   <div className="flex items-center gap-3 min-w-0">
                     <h3 className="font-medium truncate">{meeting.title}</h3>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 shrink-0">
-                      {MEETING_TYPE_MAP[meeting.meeting_type] ?? meeting.meeting_type}
+                      {meetingTypeMap[meeting.meeting_type] ?? meeting.meeting_type}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">

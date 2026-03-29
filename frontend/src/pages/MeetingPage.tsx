@@ -4,7 +4,9 @@ import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
 import type { Transcript } from '../api/meetings'
-import { getTranscripts, reopenMeeting } from '../api/meetings'
+import { getTranscripts, reopenMeeting, regenerateStt, regenerateNotes } from '../api/meetings'
+import { createConsumer } from '@rails/actioncable'
+import { WS_URL } from '../config'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { AudioPlayer } from '../components/meeting/AudioPlayer'
 import { TranscriptPanel } from '../components/meeting/TranscriptPanel'
@@ -50,6 +52,57 @@ export default function MeetingPage() {
       setMeetingNotes(summary.notes_markdown)
     }
   }, [summary?.notes_markdown, setMeetingNotes])
+
+  // 회의록 재생성 상태
+  const [isRegeneratingNotes, setIsRegeneratingNotes] = useState(false)
+  const [showSttConfirm, setShowSttConfirm] = useState(false)
+  const [showNotesConfirm, setShowNotesConfirm] = useState(false)
+
+  // 회의록 재생성 완료 감지용 ActionCable 구독
+  useEffect(() => {
+    if (!isRegeneratingNotes) return
+
+    const consumer = createConsumer(WS_URL)
+    const sub = consumer.subscriptions.create(
+      { channel: 'TranscriptionChannel', meeting_id: meetingId },
+      {
+        received(data: Record<string, unknown>) {
+          if (data.type === 'meeting_notes_update') {
+            setIsRegeneratingNotes(false)
+            setMeetingNotes((data.notes_markdown as string) ?? '')
+            refetch()
+          }
+        },
+      }
+    )
+    return () => {
+      sub.unsubscribe()
+      consumer.disconnect()
+    }
+  }, [isRegeneratingNotes, meetingId, setMeetingNotes, refetch])
+
+  async function handleRegenerateStt() {
+    setShowSttConfirm(false)
+    try {
+      await regenerateStt(meetingId)
+      refetch()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '재생성에 실패했습니다'
+      alert(msg)
+    }
+  }
+
+  async function handleRegenerateNotes() {
+    setShowNotesConfirm(false)
+    setIsRegeneratingNotes(true)
+    try {
+      await regenerateNotes(meetingId)
+    } catch (e: unknown) {
+      setIsRegeneratingNotes(false)
+      const msg = e instanceof Error ? e.message : '재생성에 실패했습니다'
+      alert(msg)
+    }
+  }
 
   // 오디오 seek 상태 (AudioPlayer ↔ TranscriptPanel 공유)
   const [seekMs, setSeekMs] = useState<number | null>(null)
@@ -216,15 +269,42 @@ export default function MeetingPage() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {meeting?.status === 'completed' && (
-            <button
-              onClick={async () => {
-                await reopenMeeting(meetingId)
-                navigate(`/meetings/${meetingId}/live`)
-              }}
-              className="px-3 py-1.5 rounded-md text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition-colors"
-            >
-              회의 재개
-            </button>
+            <>
+              {meeting.has_audio_file && (
+                <button
+                  onClick={() => setShowSttConfirm(true)}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                >
+                  STT 재생성
+                </button>
+              )}
+              {transcripts.length > 0 && (
+                <button
+                  onClick={() => setShowNotesConfirm(true)}
+                  disabled={isRegeneratingNotes}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isRegeneratingNotes ? (
+                    <span className="flex items-center gap-1">
+                      <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      재생성 중...
+                    </span>
+                  ) : '회의록 재생성'}
+                </button>
+              )}
+              <button
+                onClick={async () => {
+                  await reopenMeeting(meetingId)
+                  navigate(`/meetings/${meetingId}/live`)
+                }}
+                className="px-3 py-1.5 rounded-md text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition-colors"
+              >
+                회의 재개
+              </button>
+            </>
           )}
           {(meeting?.status === 'pending' || meeting?.status === 'recording') && (
             <button
@@ -263,6 +343,58 @@ export default function MeetingPage() {
           <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={false} />
         </div>
       </div>
+
+      {/* STT 재생성 확인 다이얼로그 */}
+      {showSttConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-lg p-6 max-w-sm w-full mx-4">
+            <h3 className="text-base font-semibold text-gray-900 mb-2">STT 재생성</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              기존 트랜스크립트와 회의록이 모두 삭제되고, 저장된 오디오로 처음부터 다시 생성됩니다. 계속하시겠습니까?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowSttConfirm(false)}
+                className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleRegenerateStt}
+                className="px-3 py-1.5 text-sm rounded-md bg-amber-500 text-white hover:bg-amber-600"
+              >
+                재생성
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 회의록 재생성 확인 다이얼로그 */}
+      {showNotesConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-lg p-6 max-w-sm w-full mx-4">
+            <h3 className="text-base font-semibold text-gray-900 mb-2">회의록 재생성</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              기존 회의록을 삭제하고 전체 트랜스크립트를 바탕으로 처음부터 다시 생성합니다. 계속하시겠습니까?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowNotesConfirm(false)}
+                className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleRegenerateNotes}
+                className="px-3 py-1.5 text-sm rounded-md bg-amber-500 text-white hover:bg-amber-600"
+              >
+                재생성
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -21,6 +21,7 @@ interface AudioConfig {
   min_chunk_sec: number
   preroll_ms: number
   overlap_ms: number
+  file_chunk_sec: number
 }
 
 interface LanguageOption {

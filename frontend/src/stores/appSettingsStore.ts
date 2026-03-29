@@ -18,6 +18,7 @@ type AudioOverrides = Partial<{
   min_chunk_sec: number
   preroll_ms: number
   overlap_ms: number
+  file_chunk_sec: number
 }>
 
 type DiarizationOverrides = Partial<DiarizationConfig>
@@ -59,7 +60,7 @@ function debouncedSave() {
       selected_languages: s.selectedLanguages,
     }
     // 오디오: 오버라이드된 값만 전송, 기본값이면 전송하지 않음
-    const audioKeys = ['silence_threshold', 'speech_threshold', 'silence_duration_ms', 'max_chunk_sec', 'min_chunk_sec', 'preroll_ms', 'overlap_ms'] as const
+    const audioKeys = ['silence_threshold', 'speech_threshold', 'silence_duration_ms', 'max_chunk_sec', 'min_chunk_sec', 'preroll_ms', 'overlap_ms', 'file_chunk_sec'] as const
     for (const key of audioKeys) {
       const val = s.audioOverrides[key]
       const envKey = `audio_${key}` as keyof AppSettings
@@ -141,6 +142,7 @@ export async function loadAppSettings() {
       audio_min_chunk_sec: 'min_chunk_sec',
       audio_preroll_ms: 'preroll_ms',
       audio_overlap_ms: 'overlap_ms',
+      audio_file_chunk_sec: 'file_chunk_sec',
     } as const
     for (const [envKey, storeKey] of Object.entries(audioMap)) {
       const val = saved[envKey as keyof AppSettings] as number | undefined

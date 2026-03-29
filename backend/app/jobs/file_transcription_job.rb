@@ -11,8 +11,15 @@ class FileTranscriptionJob < ApplicationJob
     pcm_path = convert_to_pcm(meeting)
     broadcast_progress(channel, 10, "음성 파일 변환 완료")
 
-    # 2. Sidecar /transcribe-file 호출
-    result = SidecarClient.new.transcribe_file(pcm_path, meeting_id: meeting.id)
+    # 2. Sidecar /transcribe-file 호출 (설정된 언어 목록 + 청크 분할 시간 전달)
+    languages = ENV.fetch("SELECTED_LANGUAGES", "ko").split(",").map(&:strip).reject(&:empty?)
+    file_chunk_sec = ENV.fetch("AUDIO_FILE_CHUNK_SEC", "30").to_i
+    result = SidecarClient.new.transcribe_file(
+      pcm_path,
+      meeting_id: meeting.id,
+      languages: languages,
+      file_chunk_sec: file_chunk_sec
+    )
     broadcast_progress(channel, 70, "음성 인식 완료")
 
     # 3. Transcript 레코드 일괄 생성
@@ -94,8 +101,12 @@ class FileTranscriptionJob < ApplicationJob
       { speaker: t.speaker_label, text: t.content, started_at_ms: t.started_at_ms }
     end
 
+    template = PromptTemplate.find_by(meeting_type: meeting.meeting_type)
     result = SidecarClient.new.refine_notes(
-      "", payload, meeting_title: meeting.title, meeting_type: meeting.meeting_type
+      "", payload,
+      meeting_title: meeting.title,
+      meeting_type: meeting.meeting_type,
+      sections_prompt: template&.sections_prompt
     )
     notes_markdown = result["notes_markdown"]
 

@@ -17,6 +17,8 @@ Rails.application.routes.draw do
           post :reopen
           post :reset_content
           post :summarize
+          post :regenerate_stt
+          post :regenerate_notes
           post :feedback
           patch :update_notes
           post :audio, to: "meetings_audio#create"
@@ -47,6 +49,13 @@ Rails.application.routes.draw do
       resources :speakers, only: %i[index update] do
         collection do
           delete :destroy_all
+        end
+      end
+
+      # Prompt Templates
+      resources :prompt_templates, only: %i[index create update destroy] do
+        member do
+          post :reset
         end
       end
 
