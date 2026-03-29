@@ -426,6 +426,21 @@ export default function MeetingsPage() {
   // 현재 폴더 ID (number | null), 'all'일 때는 null
   const currentFolderId = typeof folderId === 'number' ? folderId : null
 
+  // 동적 페이지 제목
+  const pageTitle = useMemo(() => {
+    if (selectedFolderId === 'all') return '전체 회의'
+    if (selectedFolderId === null) return '미분류'
+    const find = (nodes: FolderNode[]): string | null => {
+      for (const f of nodes) {
+        if (f.id === selectedFolderId) return f.name
+        const found = find(f.children)
+        if (found) return found
+      }
+      return null
+    }
+    return find(folders) ?? '회의 목록'
+  }, [folders, selectedFolderId])
+
   // 하위 폴더 목록
   const childFolders = useMemo(() => {
     if (selectedFolderId === 'all' || selectedFolderId === null) return []
@@ -516,7 +531,7 @@ export default function MeetingsPage() {
   return (
     <div className="min-h-screen bg-background p-8">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">회의 목록</h1>
+        <h1 className="text-2xl font-bold">{pageTitle}</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowUploadModal(true)}
@@ -546,7 +561,7 @@ export default function MeetingsPage() {
 
       {/* 하위 폴더 */}
       {childFolders.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
+        <div className="flex flex-wrap gap-2 mb-4">
           {childFolders.map((child) => (
             <button
               key={child.id}
@@ -555,10 +570,12 @@ export default function MeetingsPage() {
                 useMeetingStore.getState().setFolderId(child.id)
                 fetchMeetings(1)
               }}
-              className="flex items-center gap-2 px-4 py-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors text-left"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-card hover:bg-muted/50 transition-colors text-sm"
             >
-              <FolderClosed className="w-5 h-5 text-blue-500 shrink-0" />
-              <span className="text-sm font-medium truncate">{child.name}</span>
+              <span className="text-xs font-bold text-muted-foreground bg-muted rounded px-1.5 py-0.5 tabular-nums">
+                {child.meeting_count}
+              </span>
+              <span className="font-medium truncate">{child.name}</span>
             </button>
           ))}
         </div>
@@ -629,33 +646,38 @@ export default function MeetingsPage() {
       ) : meetings.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground">회의가 없습니다.</div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {meetings.map((meeting) => (
             <div
               key={meeting.id}
               onClick={() => navigate(`/meetings/${meeting.id}`)}
-              className="group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+              className="group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 hover:shadow-sm transition-all flex flex-col"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-medium truncate">{meeting.title}</h3>
-                    <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
-                    {meeting.folder_id && selectedFolderId === 'all' && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-1">
-                        <FolderClosed className="w-3 h-3" />
-                        {folderName(folders, meeting.folder_id) ?? '폴더'}
-                      </span>
-                    )}
-                  </div>
-                  {meeting.brief_summary && (
-                    <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
-                      {meeting.brief_summary}
-                    </p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <h3 className="font-medium text-sm line-clamp-2">{meeting.title}</h3>
+                  <StatusBadge status={meeting.status} />
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                  <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
+                  {meeting.folder_id && selectedFolderId === 'all' && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-1">
+                      <FolderClosed className="w-3 h-3" />
+                      {folderName(folders, meeting.folder_id) ?? '폴더'}
+                    </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <StatusBadge status={meeting.status} />
+                {meeting.brief_summary && (
+                  <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                    {meeting.brief_summary}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/50">
+                <p className="text-xs text-muted-foreground">
+                  {formatDate(meeting.created_at)}
+                </p>
+                <div className="flex items-center gap-1">
                   {meeting.status === 'recording' && (
                     <button
                       onClick={async (e) => {
@@ -680,9 +702,6 @@ export default function MeetingsPage() {
                   </button>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                {formatDate(meeting.created_at)}
-              </p>
             </div>
           ))}
         </div>

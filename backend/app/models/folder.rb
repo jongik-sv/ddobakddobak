@@ -23,11 +23,13 @@ class Folder < ApplicationRecord
 
   def self.tree_for_team(team_ids)
     all_folders = where(team_id: team_ids).ordered.to_a
+    meeting_counts = Meeting.where(folder_id: all_folders.map(&:id))
+                            .group(:folder_id).count
     roots = all_folders.select { |f| f.parent_id.nil? }
-    build_tree(roots, all_folders)
+    build_tree(roots, all_folders, meeting_counts)
   end
 
-  def self.build_tree(nodes, all_folders)
+  def self.build_tree(nodes, all_folders, meeting_counts)
     nodes.map do |node|
       children = all_folders.select { |f| f.parent_id == node.id }
       {
@@ -35,7 +37,8 @@ class Folder < ApplicationRecord
         name: node.name,
         parent_id: node.parent_id,
         position: node.position,
-        children: build_tree(children, all_folders)
+        meeting_count: meeting_counts[node.id] || 0,
+        children: build_tree(children, all_folders, meeting_counts)
       }
     end
   end

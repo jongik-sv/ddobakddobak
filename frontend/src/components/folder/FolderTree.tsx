@@ -12,11 +12,16 @@ import {
   List,
   Inbox,
 } from 'lucide-react'
+import { getTeams } from '../../api/teams'
 import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
 import type { FolderNode } from '../../api/folders'
 import type { SelectedFolder } from '../../stores/folderStore'
 import CreateFolderDialog from './CreateFolderDialog'
+
+function countAllFolders(nodes: FolderNode[]): number {
+  return nodes.reduce((sum, n) => sum + 1 + countAllFolders(n.children), 0)
+}
 
 interface FolderTreeItemProps {
   folder: FolderNode
@@ -104,13 +109,16 @@ function FolderTreeItem({ folder, depth, defaultTeamId }: FolderTreeItemProps) {
           <FolderClosed className="w-4 h-4 shrink-0" />
         )}
         <span className="truncate flex-1">{folder.name}</span>
-        <div className="relative" ref={menuRef}>
+        <span className="text-xs text-muted-foreground tabular-nums group-hover:hidden ml-auto">
+          {folder.meeting_count}
+        </span>
+        <div className="relative hidden group-hover:block ml-auto" ref={menuRef}>
           <button
             onClick={(e) => {
               e.stopPropagation()
               setShowMenu(!showMenu)
             }}
-            className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
+            className="p-0.5 rounded hover:bg-black/5"
           >
             <MoreHorizontal className="w-3.5 h-3.5" />
           </button>
@@ -174,17 +182,19 @@ function FolderTreeItem({ folder, depth, defaultTeamId }: FolderTreeItemProps) {
   )
 }
 
-interface FolderTreeProps {
-  defaultTeamId: number | null
-}
-
-export default function FolderTree({ defaultTeamId }: FolderTreeProps) {
+export default function FolderTree() {
   const { folders, selectedFolderId, setSelectedFolder, fetchFolders, createFolder } = useFolderStore()
   const { setFolderId, fetchMeetings } = useMeetingStore()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [defaultTeamId, setDefaultTeamId] = useState<number | null>(null)
 
   useEffect(() => {
     fetchFolders()
+    getTeams()
+      .then((data) => {
+        if (data.length > 0) setDefaultTeamId(data[0].id)
+      })
+      .catch(() => {})
   }, [fetchFolders])
 
   const handleSelect = (id: SelectedFolder) => {
@@ -199,6 +209,8 @@ export default function FolderTree({ defaultTeamId }: FolderTreeProps) {
     setShowCreateDialog(false)
   }
 
+  const totalFolders = countAllFolders(folders)
+
   const itemClass = (active: boolean) =>
     `flex items-center gap-2 px-2 py-1 rounded-md text-sm cursor-pointer transition-colors ${
       active
@@ -208,27 +220,37 @@ export default function FolderTree({ defaultTeamId }: FolderTreeProps) {
 
   return (
     <div className="mt-1 space-y-0.5">
+      {/* 네비게이션 */}
       <div className={itemClass(selectedFolderId === 'all')} onClick={() => handleSelect('all')}>
         <List className="w-4 h-4 shrink-0" />
-        <span className="truncate">전체 회의</span>
+        <span className="truncate flex-1">전체 회의</span>
       </div>
       <div className={itemClass(selectedFolderId === null)} onClick={() => handleSelect(null)}>
         <Inbox className="w-4 h-4 shrink-0" />
-        <span className="truncate">미분류</span>
+        <span className="truncate flex-1">미분류</span>
       </div>
 
+      {/* 구분선 */}
+      <div className="border-t border-dashed border-border my-2" />
+
+      {/* 폴더 섹션 헤더 */}
+      <div className="flex items-center gap-2 px-2 py-1">
+        <FolderClosed className="w-4 h-4 text-muted-foreground" />
+        <span className="text-xs font-medium text-muted-foreground flex-1">폴더</span>
+        <span className="text-xs text-muted-foreground tabular-nums">{totalFolders}</span>
+        <button
+          onClick={() => setShowCreateDialog(true)}
+          disabled={!defaultTeamId}
+          className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-accent-foreground transition-colors disabled:opacity-50"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* 폴더 트리 */}
       {folders.map((folder) => (
         <FolderTreeItem key={folder.id} folder={folder} depth={0} defaultTeamId={defaultTeamId} />
       ))}
-
-      <button
-        onClick={() => setShowCreateDialog(true)}
-        disabled={!defaultTeamId}
-        className="flex items-center gap-2 px-2 py-1 rounded-md text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors w-full disabled:opacity-50"
-      >
-        <Plus className="w-4 h-4" />
-        <span>새 폴더</span>
-      </button>
 
       {showCreateDialog && (
         <CreateFolderDialog onConfirm={handleCreate} onClose={() => setShowCreateDialog(false)} />

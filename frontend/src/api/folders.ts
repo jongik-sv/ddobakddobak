@@ -5,6 +5,7 @@ export interface FolderNode {
   name: string
   parent_id: number | null
   position: number
+  meeting_count: number
   children: FolderNode[]
 }
 
