@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import {
   FolderOpen,
   FolderClosed,
@@ -28,15 +28,17 @@ interface FolderTreeItemProps {
   folder: FolderNode
   depth: number
   defaultTeamId: number | null
+  isRecordingActive: boolean
+  onSelectFolder: (id: SelectedFolder) => void
 }
 
-function FolderTreeItem({ folder, depth, defaultTeamId }: FolderTreeItemProps) {
-  const { selectedFolderId, expandedFolderIds, setSelectedFolder, toggleExpanded, renameFolder, removeFolder, createFolder } =
-    useFolderStore()
-  const { setFolderId, fetchMeetings } = useMeetingStore()
-  const isRecordingActive = useUiStore((s) => s.isRecordingActive)
-  const navigate = useNavigate()
-  const location = useLocation()
+function FolderTreeItem({ folder, depth, defaultTeamId, isRecordingActive, onSelectFolder }: FolderTreeItemProps) {
+  const selectedFolderId = useFolderStore((s) => s.selectedFolderId)
+  const expandedFolderIds = useFolderStore((s) => s.expandedFolderIds)
+  const toggleExpanded = useFolderStore((s) => s.toggleExpanded)
+  const renameFolder = useFolderStore((s) => s.renameFolder)
+  const removeFolder = useFolderStore((s) => s.removeFolder)
+  const createFolder = useFolderStore((s) => s.createFolder)
   const [showMenu, setShowMenu] = useState(false)
   const [showRenameDialog, setShowRenameDialog] = useState(false)
   const [showSubfolderDialog, setShowSubfolderDialog] = useState(false)
@@ -59,14 +61,9 @@ function FolderTreeItem({ folder, depth, defaultTeamId }: FolderTreeItemProps) {
 
   const handleSelect = () => {
     if (isRecordingActive) return
-    setSelectedFolder(folder.id)
-    setFolderId(folder.id)
-    fetchMeetings(1)
+    onSelectFolder(folder.id)
     if (hasChildren && !isExpanded) {
       toggleExpanded(folder.id)
-    }
-    if (location.pathname !== '/meetings') {
-      navigate('/meetings')
     }
   }
 
@@ -175,7 +172,7 @@ function FolderTreeItem({ folder, depth, defaultTeamId }: FolderTreeItemProps) {
 
       {isExpanded &&
         folder.children.map((child) => (
-          <FolderTreeItem key={child.id} folder={child} depth={depth + 1} defaultTeamId={defaultTeamId} />
+          <FolderTreeItem key={child.id} folder={child} depth={depth + 1} defaultTeamId={defaultTeamId} isRecordingActive={isRecordingActive} onSelectFolder={onSelectFolder} />
         ))}
 
       {showRenameDialog && (
@@ -198,8 +195,13 @@ function FolderTreeItem({ folder, depth, defaultTeamId }: FolderTreeItemProps) {
 }
 
 export default function FolderTree() {
-  const { folders, selectedFolderId, setSelectedFolder, fetchFolders, createFolder } = useFolderStore()
-  const { setFolderId, fetchMeetings } = useMeetingStore()
+  const folders = useFolderStore((s) => s.folders)
+  const selectedFolderId = useFolderStore((s) => s.selectedFolderId)
+  const setSelectedFolder = useFolderStore((s) => s.setSelectedFolder)
+  const fetchFolders = useFolderStore((s) => s.fetchFolders)
+  const createFolder = useFolderStore((s) => s.createFolder)
+  const setFolderId = useMeetingStore((s) => s.setFolderId)
+  const fetchMeetings = useMeetingStore((s) => s.fetchMeetings)
   const isRecordingActive = useUiStore((s) => s.isRecordingActive)
   const navigate = useNavigate()
   const location = useLocation()
@@ -216,7 +218,7 @@ export default function FolderTree() {
       .catch(() => {})
   }, [fetchFolders])
 
-  const handleSelect = (id: SelectedFolder) => {
+  const handleSelectFolder = useCallback((id: SelectedFolder) => {
     if (isRecordingActive) return
     setSelectedFolder(id)
     setFolderId(id)
@@ -224,11 +226,11 @@ export default function FolderTree() {
     if (location.pathname !== '/meetings') {
       navigate('/meetings')
     }
-  }
+  }, [isRecordingActive, setSelectedFolder, setFolderId, fetchMeetings, location.pathname, navigate])
 
   const handleSelectRoot = () => {
     if (isRecordingActive) return
-    handleSelect(null)
+    handleSelectFolder(null)
     if (!rootExpanded) setRootExpanded(true)
   }
 
@@ -292,7 +294,7 @@ export default function FolderTree() {
       {/* 폴더 트리 — 최상위 폴더 펼침 시 표시 */}
       {rootExpanded &&
         folders.map((folder) => (
-          <FolderTreeItem key={folder.id} folder={folder} depth={1} defaultTeamId={defaultTeamId} />
+          <FolderTreeItem key={folder.id} folder={folder} depth={1} defaultTeamId={defaultTeamId} isRecordingActive={isRecordingActive} onSelectFolder={handleSelectFolder} />
         ))}
 
       {showCreateDialog && (

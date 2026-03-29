@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Settings, Monitor, Mic, ArrowLeft } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
@@ -7,13 +7,12 @@ import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'reac
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useSystemAudioCapture } from '../hooks/useSystemAudioCapture'
 import { useTranscription } from '../hooks/useTranscription'
+import { useMemoEditor } from '../hooks/useMemoEditor'
 import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
-import type { BlockNoteEditor } from '@blocknote/core'
-import type { customSchema } from '../components/editor/MeetingEditor'
-import { getMeeting, startMeeting, stopMeeting, reopenMeeting, uploadAudio, triggerRealtimeSummary, getTranscripts, getSummary, resetMeetingContent, feedbackNotes, updateNotes, updateMemo } from '../api/meetings'
+import { getMeeting, startMeeting, stopMeeting, reopenMeeting, uploadAudio, triggerRealtimeSummary, getTranscripts, getSummary, resetMeetingContent, feedbackNotes, updateNotes } from '../api/meetings'
 import { getSttSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useAppSettingsStore } from '../stores/appSettingsStore'
@@ -29,7 +28,7 @@ export default function MeetingLivePage() {
 
   // 회의실 진입 시 사이드바 닫기
   useEffect(() => {
-    useUiStore.getState().sidebarOpen && useUiStore.setState({ sidebarOpen: false })
+    useUiStore.setState({ sidebarOpen: false })
   }, [])
 
   const [status, setStatus] = useState<MeetingStatus>('idle')
@@ -38,11 +37,6 @@ export default function MeetingLivePage() {
   const [summaryCountdown, setSummaryCountdown] = useState<number>(0)
   const [, setAudioDurationMs] = useState(0)
   const [, setLastSeqNum] = useState(0)
-
-  // 메모 에디터
-  const memoEditorRef = useRef<BlockNoteEditor<typeof customSchema.blockSchema> | null>(null)
-  const [isSavingMemo, setIsSavingMemo] = useState(false)
-  const memoLoadedRef = useRef(false)
 
   // 피드백 상태
   const [feedbackText, setFeedbackText] = useState('')
@@ -72,6 +66,14 @@ export default function MeetingLivePage() {
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const summaryIntervalSec = useAppSettingsStore((s) => s.summaryIntervalSec)
+
+  // 메모 에디터
+  const [meetingMemo, setMeetingMemo] = useState<string | null>(null)
+  const memoCallbacks = useMemo(() => ({
+    onSuccess: () => showStatus('메모가 저장되었습니다'),
+    onError: () => showStatus('메모 저장에 실패했습니다'),
+  }), [showStatus])
+  const { memoEditorRef, isSavingMemo, handleSaveMemo } = useMemoEditor(meetingId, meetingMemo, memoCallbacks)
 
   // 페이지 진입 시 기존 기록 + AI 회의록 로드
   useEffect(() => {
@@ -268,22 +270,6 @@ export default function MeetingLivePage() {
     [meetingId]
   )
 
-  // 메모 저장
-  const handleSaveMemo = async () => {
-    const editor = memoEditorRef.current
-    if (!editor || isSavingMemo) return
-    setIsSavingMemo(true)
-    try {
-      const markdown = await editor.blocksToMarkdownLossy(editor.document)
-      await updateMemo(meetingId, markdown)
-      showStatus('메모가 저장되었습니다')
-    } catch {
-      showStatus('메모 저장에 실패했습니다')
-    } finally {
-      setIsSavingMemo(false)
-    }
-  }
-
   // 뒤로가기 (미리보기로)
   const handleNavigateBack = () => {
     if (isActive) {
@@ -361,20 +347,7 @@ export default function MeetingLivePage() {
         setMeetingApiStatus(m.status as 'pending' | 'recording' | 'completed')
         setAudioDurationMs(m.audio_duration_ms ?? 0)
         setLastSeqNum(m.last_sequence_number ?? 0)
-        if (m.memo && !memoLoadedRef.current) {
-          memoLoadedRef.current = true
-          const waitForEditor = () => {
-            const editor = memoEditorRef.current
-            if (editor) {
-              editor.tryParseMarkdownToBlocks(m.memo!).then((blocks) => {
-                editor.replaceBlocks(editor.document, blocks)
-              })
-            } else {
-              setTimeout(waitForEditor, 100)
-            }
-          }
-          waitForEditor()
-        }
+        if (m.memo) setMeetingMemo(m.memo)
       })
       .catch(() => {})
   }, [meetingId])

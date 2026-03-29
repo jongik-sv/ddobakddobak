@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Pencil, ArrowLeft } from 'lucide-react'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
-import type { Transcript, UpdateMeetingParams } from '../api/meetings'
-import { getTranscripts, reopenMeeting, regenerateStt, regenerateNotes, updateMemo, updateNotes } from '../api/meetings'
+import { useMemoEditor } from '../hooks/useMemoEditor'
+import type { Transcript } from '../api/meetings'
+import { getTranscripts, reopenMeeting, regenerateStt, regenerateNotes, updateNotes } from '../api/meetings'
 import { createConsumer } from '@rails/actioncable'
 import { WS_URL } from '../config'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
@@ -17,8 +18,6 @@ import { TranscriptPanel } from '../components/meeting/TranscriptPanel'
 import { ExportButton } from '../components/meeting/ExportButton'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
-import type { BlockNoteEditor } from '@blocknote/core'
-import type { customSchema } from '../components/editor/MeetingEditor'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 
 // ──────────────────────────────────────────────
@@ -119,46 +118,14 @@ export default function MeetingPage() {
   }
 
   // 메모 에디터
-  const memoEditorRef = useRef<BlockNoteEditor<typeof customSchema.blockSchema> | null>(null)
-  const [isSavingMemo, setIsSavingMemo] = useState(false)
-  const memoLoadedRef = useRef(false)
+  const { memoEditorRef, isSavingMemo, handleSaveMemo } = useMemoEditor(meetingId, meeting?.memo)
 
-  const handleSaveMemo = async () => {
-    const editor = memoEditorRef.current
-    if (!editor || isSavingMemo) return
-    setIsSavingMemo(true)
-    try {
-      const markdown = await editor.blocksToMarkdownLossy(editor.document)
-      await updateMemo(meetingId, markdown)
-    } finally {
-      setIsSavingMemo(false)
-    }
-  }
-
-  // AI 회의록 수정 저장
   const handleNotesChange = useCallback(
     (markdown: string) => {
       updateNotes(meetingId, markdown).catch((e) => console.error('[updateNotes] 저장 실패:', e))
     },
     [meetingId]
   )
-
-  // 메모 로드
-  useEffect(() => {
-    if (!meeting?.memo || memoLoadedRef.current) return
-    memoLoadedRef.current = true
-    const waitForEditor = () => {
-      const editor = memoEditorRef.current
-      if (editor) {
-        editor.tryParseMarkdownToBlocks(meeting.memo!).then((blocks) => {
-          editor.replaceBlocks(editor.document, blocks)
-        })
-      } else {
-        setTimeout(waitForEditor, 100)
-      }
-    }
-    waitForEditor()
-  }, [meeting?.memo])
 
   // 오디오 seek 상태 (AudioPlayer ↔ TranscriptPanel 공유)
   const [seekMs, setSeekMs] = useState<number | null>(null)
