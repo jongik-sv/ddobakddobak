@@ -1,18 +1,8 @@
-import { NavLink } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 import { LayoutDashboard, Mic, Settings } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-
-interface NavItem {
-  to: string
-  icon: LucideIcon
-  label: string
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { to: '/dashboard', icon: LayoutDashboard, label: '대시보드' },
-  { to: '/meetings', icon: Mic, label: '회의 목록' },
-  { to: '/settings', icon: Settings, label: '설정' },
-]
+import { getTeams } from '../../api/teams'
+import FolderTree from '../folder/FolderTree'
 
 function navLinkClass({ isActive }: { isActive: boolean }) {
   const base = 'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors'
@@ -22,18 +12,41 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
 }
 
 export default function Sidebar() {
+  const location = useLocation()
+  const isMeetingsPage = location.pathname === '/meetings'
+  const [defaultTeamId, setDefaultTeamId] = useState<number | null>(null)
+
+  useEffect(() => {
+    getTeams()
+      .then((data) => {
+        if (data.length > 0) setDefaultTeamId(data[0].id)
+      })
+      .catch(() => {})
+  }, [])
+
   return (
     <aside className="hidden md:flex flex-col w-60 min-h-screen bg-sidebar border-r border-border">
       <div className="flex items-center h-16 px-6 border-b border-border">
         <span className="text-lg font-bold text-foreground">또박또박</span>
       </div>
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
-          <NavLink key={to} to={to} className={navLinkClass}>
-            <Icon className="w-4 h-4" />
-            {label}
-          </NavLink>
-        ))}
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <NavLink to="/dashboard" className={navLinkClass}>
+          <LayoutDashboard className="w-4 h-4" />
+          대시보드
+        </NavLink>
+        <NavLink to="/meetings" className={navLinkClass}>
+          <Mic className="w-4 h-4" />
+          회의 목록
+        </NavLink>
+        {isMeetingsPage && (
+          <div className="pl-2">
+            <FolderTree defaultTeamId={defaultTeamId} />
+          </div>
+        )}
+        <NavLink to="/settings" className={navLinkClass}>
+          <Settings className="w-4 h-4" />
+          설정
+        </NavLink>
       </nav>
     </aside>
   )

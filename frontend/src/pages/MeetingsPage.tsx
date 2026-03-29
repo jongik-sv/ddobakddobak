@@ -1,12 +1,19 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useMemo } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { FolderClosed, MoreHorizontal, FolderInput } from 'lucide-react'
 import { getTeams } from '../api/teams'
-import { createMeeting, stopMeeting, uploadAudioFile } from '../api/meetings'
+import { createMeeting, stopMeeting, updateMeeting, uploadAudioFile } from '../api/meetings'
+import { getPromptTemplates } from '../api/promptTemplates'
+import type { PromptTemplate } from '../api/promptTemplates'
 import { useMeetingStore } from '../stores/meetingStore'
+import { useFolderStore } from '../stores/folderStore'
 import { MEETING_TYPES, IS_TAURI } from '../config'
 import type { Meeting } from '../api/meetings'
+import type { FolderNode } from '../api/folders'
+import FolderBreadcrumb from '../components/folder/FolderBreadcrumb'
+import MoveMeetingDialog from '../components/folder/MoveMeetingDialog'
 
-const MEETING_TYPE_MAP: Record<string, string> = Object.fromEntries(
+const STATIC_TYPE_MAP: Record<string, string> = Object.fromEntries(
   MEETING_TYPES.map((t) => [t.value, t.label]),
 )
 
@@ -41,10 +48,10 @@ function StatusBadge({ status }: { status: Meeting['status'] }) {
   )
 }
 
-function MeetingTypeBadge({ type }: { type: string }) {
+function MeetingTypeBadge({ type, typeMap }: { type: string; typeMap: Record<string, string> }) {
   return (
     <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200">
-      {MEETING_TYPE_MAP[type] ?? type}
+      {typeMap[type] ?? type}
     </span>
   )
 }
@@ -62,11 +69,13 @@ function formatDate(dateStr: string): string {
 
 interface CreateMeetingModalProps {
   defaultTeamId: number
+  folderId: number | null
+  meetingTypeList: { value: string; label: string }[]
   onClose: () => void
   onCreated: (meeting: Meeting) => void
 }
 
-function CreateMeetingModal({ defaultTeamId, onClose, onCreated }: CreateMeetingModalProps) {
+function CreateMeetingModal({ defaultTeamId, folderId, meetingTypeList, onClose, onCreated }: CreateMeetingModalProps) {
   const [title, setTitle] = useState('')
   const [meetingType, setMeetingType] = useState('general')
   const [loading, setLoading] = useState(false)
@@ -82,6 +91,7 @@ function CreateMeetingModal({ defaultTeamId, onClose, onCreated }: CreateMeeting
         title: title.trim(),
         team_id: defaultTeamId,
         meeting_type: meetingType,
+        folder_id: folderId,
       })
       onCreated(meeting)
       onClose()
@@ -123,7 +133,7 @@ function CreateMeetingModal({ defaultTeamId, onClose, onCreated }: CreateMeeting
           <div>
             <label className="block text-sm font-medium mb-2">회의 유형</label>
             <div className="flex flex-wrap gap-2">
-              {MEETING_TYPES.map((t) => (
+              {meetingTypeList.map((t) => (
                 <button
                   key={t.value}
                   type="button"
@@ -166,11 +176,13 @@ const ACCEPTED_AUDIO_TYPES = '.mp3,.wav,.m4a,.webm,.ogg,.flac,.aac,.mp4'
 
 interface UploadAudioModalProps {
   defaultTeamId: number
+  folderId: number | null
+  meetingTypeList: { value: string; label: string }[]
   onClose: () => void
   onCreated: (meeting: Meeting) => void
 }
 
-function UploadAudioModal({ defaultTeamId, onClose, onCreated }: UploadAudioModalProps) {
+function UploadAudioModal({ defaultTeamId, folderId, meetingTypeList, onClose, onCreated }: UploadAudioModalProps) {
   const [title, setTitle] = useState('')
   const [meetingType, setMeetingType] = useState('general')
   const [file, setFile] = useState<File | null>(null)
@@ -204,8 +216,8 @@ function UploadAudioModal({ defaultTeamId, onClose, onCreated }: UploadAudioModa
       aac: 'audio/aac', mp4: 'audio/mp4',
     }
     const blob = new Blob([bytes], { type: mimeMap[ext] ?? 'audio/webm' })
-    const file = new File([blob], name, { type: blob.type })
-    handleFile(file)
+    const nativeFile = new File([blob], name, { type: blob.type })
+    handleFile(nativeFile)
   }
 
   const handleDropZoneClick = () => {
@@ -235,6 +247,11 @@ function UploadAudioModal({ defaultTeamId, onClose, onCreated }: UploadAudioModa
         meeting_type: meetingType,
         audio: file,
       })
+      // 폴더가 있으면 이동
+      if (folderId) {
+        await updateMeeting(meeting.id, { folder_id: folderId })
+        meeting.folder_id = folderId
+      }
       onCreated(meeting)
       onClose()
     } catch (err: unknown) {
@@ -328,7 +345,7 @@ function UploadAudioModal({ defaultTeamId, onClose, onCreated }: UploadAudioModa
           <div>
             <label className="block text-sm font-medium mb-2">회의 유형</label>
             <div className="flex flex-wrap gap-2">
-              {MEETING_TYPES.map((t) => (
+              {meetingTypeList.map((t) => (
                 <button
                   key={t.value}
                   type="button"
@@ -367,29 +384,93 @@ function UploadAudioModal({ defaultTeamId, onClose, onCreated }: UploadAudioModa
   )
 }
 
+function folderName(folders: FolderNode[], id: number): string | null {
+  for (const f of folders) {
+    if (f.id === id) return f.name
+    const found = folderName(f.children, id)
+    if (found) return found
+  }
+  return null
+}
+
 export default function MeetingsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const {
     meetings,
     meta,
     searchQuery,
+    statusFilter,
     dateFrom,
     dateTo,
+    folderId,
     isLoading,
     error,
     setSearchQuery,
+    setStatusFilter,
     setDateFrom,
     setDateTo,
     fetchMeetings,
     addMeeting,
   } = useMeetingStore()
 
+  const { folders, selectedFolderId } = useFolderStore()
+
   const [defaultTeamId, setDefaultTeamId] = useState<number | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const [movingMeeting, setMovingMeeting] = useState<Meeting | null>(null)
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
 
-  // 팀 ID 자동 확보 (내부용, UI에 노출하지 않음)
+  // 현재 폴더 ID (number | null), 'all'일 때는 null
+  const currentFolderId = typeof folderId === 'number' ? folderId : null
+
+  // 하위 폴더 목록
+  const childFolders = useMemo(() => {
+    if (selectedFolderId === 'all' || selectedFolderId === null) return []
+    const find = (nodes: FolderNode[]): FolderNode[] => {
+      for (const f of nodes) {
+        if (f.id === selectedFolderId) return f.children
+        const found = find(f.children)
+        if (found.length > 0) return found
+      }
+      return []
+    }
+    return find(folders)
+  }, [folders, selectedFolderId])
+
+  // API에서 프롬프트 템플릿(회의 유형 목록) 로드
+  useEffect(() => {
+    getPromptTemplates()
+      .then(setPromptTemplates)
+      .catch(() => {})
+  }, [])
+
+  // 회의 유형 목록: API 데이터 우선, 없으면 config.yaml fallback
+  const meetingTypeList = useMemo(() => {
+    if (promptTemplates.length > 0) {
+      return promptTemplates.map((t) => ({ value: t.meeting_type, label: t.label }))
+    }
+    return MEETING_TYPES
+  }, [promptTemplates])
+
+  const meetingTypeMap = useMemo<Record<string, string>>(() => {
+    if (promptTemplates.length > 0) {
+      return Object.fromEntries(promptTemplates.map((t) => [t.meeting_type, t.label]))
+    }
+    return STATIC_TYPE_MAP
+  }, [promptTemplates])
+
+  // URL의 status 파라미터를 스토어에 반영
+  useEffect(() => {
+    const urlStatus = searchParams.get('status') || ''
+    if (urlStatus !== statusFilter) {
+      setStatusFilter(urlStatus)
+    }
+  }, [searchParams, setStatusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 팀 ID 자동 확보
   useEffect(() => {
     getTeams()
       .then((data) => {
@@ -405,7 +486,7 @@ export default function MeetingsPage() {
       setCurrentPage(1)
     }, 300)
     return () => clearTimeout(timer)
-  }, [searchQuery, dateFrom, dateTo, fetchMeetings])
+  }, [searchQuery, statusFilter, dateFrom, dateTo, folderId, fetchMeetings])
 
   const handlePrevPage = () => {
     if (currentPage > 1) {
@@ -423,11 +504,18 @@ export default function MeetingsPage() {
     }
   }
 
+  const handleMoveMeeting = async (newFolderId: number | null) => {
+    if (!movingMeeting) return
+    await updateMeeting(movingMeeting.id, { folder_id: newFolderId })
+    setMovingMeeting(null)
+    fetchMeetings(currentPage)
+  }
+
   const totalPages = meta ? Math.ceil(meta.total / meta.per) : 0
 
   return (
     <div className="min-h-screen bg-background p-8">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">회의 목록</h1>
         <div className="flex items-center gap-2">
           <button
@@ -447,11 +535,59 @@ export default function MeetingsPage() {
         </div>
       </div>
 
+      {/* 폴더 경로 */}
+      <FolderBreadcrumb />
+
       {error && (
         <div role="alert" className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive mb-4">
           {error}
         </div>
       )}
+
+      {/* 하위 폴더 */}
+      {childFolders.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
+          {childFolders.map((child) => (
+            <button
+              key={child.id}
+              onClick={() => {
+                useFolderStore.getState().setSelectedFolder(child.id)
+                useMeetingStore.getState().setFolderId(child.id)
+                fetchMeetings(1)
+              }}
+              className="flex items-center gap-2 px-4 py-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors text-left"
+            >
+              <FolderClosed className="w-5 h-5 text-blue-500 shrink-0" />
+              <span className="text-sm font-medium truncate">{child.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 상태 필터 탭 */}
+      <div className="flex items-center gap-1 mb-4">
+        {([
+          { value: '', label: '전체' },
+          { value: 'recording', label: '녹음중' },
+          { value: 'completed', label: '완료' },
+          { value: 'pending', label: '대기중' },
+        ] as const).map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => {
+              setStatusFilter(tab.value)
+              setSearchParams(tab.value ? { status: tab.value } : {}, { replace: true })
+            }}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              statusFilter === tab.value
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {/* 필터 영역 */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
@@ -498,13 +634,19 @@ export default function MeetingsPage() {
             <div
               key={meeting.id}
               onClick={() => navigate(`/meetings/${meeting.id}`)}
-              className="rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+              className="group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 transition-colors"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-medium truncate">{meeting.title}</h3>
-                    <MeetingTypeBadge type={meeting.meeting_type} />
+                    <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
+                    {meeting.folder_id && selectedFolderId === 'all' && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-1">
+                        <FolderClosed className="w-3 h-3" />
+                        {folderName(folders, meeting.folder_id) ?? '폴더'}
+                      </span>
+                    )}
                   </div>
                   {meeting.brief_summary && (
                     <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
@@ -526,6 +668,16 @@ export default function MeetingsPage() {
                       종료
                     </button>
                   )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setMovingMeeting(meeting)
+                    }}
+                    className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
+                    title="폴더로 이동"
+                  >
+                    <FolderInput className="w-4 h-4 text-muted-foreground" />
+                  </button>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
@@ -563,6 +715,8 @@ export default function MeetingsPage() {
       {showModal && defaultTeamId && (
         <CreateMeetingModal
           defaultTeamId={defaultTeamId}
+          folderId={currentFolderId}
+          meetingTypeList={meetingTypeList}
           onClose={() => setShowModal(false)}
           onCreated={addMeeting}
         />
@@ -572,11 +726,23 @@ export default function MeetingsPage() {
       {showUploadModal && defaultTeamId && (
         <UploadAudioModal
           defaultTeamId={defaultTeamId}
+          folderId={currentFolderId}
+          meetingTypeList={meetingTypeList}
           onClose={() => setShowUploadModal(false)}
           onCreated={(meeting) => {
             addMeeting(meeting)
             navigate(`/meetings/${meeting.id}`)
           }}
+        />
+      )}
+
+      {/* 폴더 이동 다이얼로그 */}
+      {movingMeeting && (
+        <MoveMeetingDialog
+          meetingTitle={movingMeeting.title}
+          currentFolderId={movingMeeting.folder_id}
+          onConfirm={handleMoveMeeting}
+          onClose={() => setMovingMeeting(null)}
         />
       )}
     </div>

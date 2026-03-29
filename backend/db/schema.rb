@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_26_220855) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_29_094807) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -35,11 +35,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_26_220855) do
     t.index ["meeting_id", "position"], name: "index_blocks_on_meeting_id_and_position"
   end
 
+  create_table "folders", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.integer "parent_id"
+    t.integer "position", default: 0, null: false
+    t.integer "team_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["parent_id"], name: "index_folders_on_parent_id"
+    t.index ["team_id", "parent_id", "position"], name: "index_folders_on_team_id_and_parent_id_and_position"
+    t.index ["team_id"], name: "index_folders_on_team_id"
+  end
+
   create_table "meetings", force: :cascade do |t|
     t.string "audio_file_path"
     t.datetime "created_at", null: false
     t.integer "created_by_id", null: false
     t.datetime "ended_at"
+    t.integer "folder_id"
     t.integer "last_refined_seq", default: 0, null: false
     t.string "meeting_type", default: "general", null: false
     t.string "source", default: "live", null: false
@@ -50,6 +63,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_26_220855) do
     t.integer "transcription_progress", default: 0, null: false
     t.datetime "updated_at", null: false
     t.index ["created_by_id"], name: "index_meetings_on_created_by_id"
+    t.index ["folder_id"], name: "index_meetings_on_folder_id"
     t.index ["team_id", "status"], name: "index_meetings_on_team_id_and_status"
     t.index ["team_id"], name: "index_meetings_on_team_id"
   end

@@ -10,6 +10,7 @@ Rails.application.routes.draw do
       resources :meetings, only: %i[index create show update destroy] do
         collection do
           post :upload_audio
+          post :move_to_folder
         end
         member do
           post :start
@@ -39,6 +40,9 @@ Rails.application.routes.draw do
           end
         end
       end
+
+      # Folders
+      resources :folders, only: %i[index create update destroy]
 
       # Action Items (update, destroy)
       resources :action_items, only: %i[update destroy]
