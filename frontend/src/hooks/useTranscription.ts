@@ -9,6 +9,7 @@ import type { ChunkMeta } from './useAudioRecorder'
 
 export interface UseTranscriptionResult {
   sendChunk: (pcm: Int16Array, meta?: ChunkMeta) => void
+  sendSystemChunk: (pcm: Int16Array, meta?: ChunkMeta) => void
 }
 
 export function useTranscription(meetingId: number): UseTranscriptionResult {
@@ -58,9 +59,16 @@ export function useTranscription(meetingId: number): UseTranscriptionResult {
 
   const sendChunk = useCallback((pcm: Int16Array, meta?: ChunkMeta) => {
     if (subscriptionRef.current) {
-      sendAudioChunk(subscriptionRef.current, pcm, meta, diarizationConfigRef.current, languagesRef.current)
+      sendAudioChunk(subscriptionRef.current, pcm, meta, diarizationConfigRef.current, languagesRef.current, 'mic')
     }
   }, [])
 
-  return { sendChunk }
+  const sendSystemChunk = useCallback((pcm: Int16Array, meta?: ChunkMeta) => {
+    if (subscriptionRef.current) {
+      // 시스템 오디오: diarization 스킵 (상대방만), audio_source='system'
+      sendAudioChunk(subscriptionRef.current, pcm, meta, undefined, languagesRef.current, 'system')
+    }
+  }, [])
+
+  return { sendChunk, sendSystemChunk }
 }

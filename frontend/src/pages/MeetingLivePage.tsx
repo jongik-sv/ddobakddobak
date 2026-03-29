@@ -1,7 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { Settings, Monitor } from 'lucide-react'
+import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
+import { useSystemAudioCapture } from '../hooks/useSystemAudioCapture'
 import { useTranscription } from '../hooks/useTranscription'
 import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
@@ -85,10 +88,13 @@ export default function MeetingLivePage() {
     }).catch(() => {})
   }, [meetingId, reset, loadFinals, setMeetingNotes])
 
-  const { sendChunk } = useTranscription(meetingId)
+  const [systemAudioEnabled, setSystemAudioEnabled] = useState(false)
+  const { sendChunk, sendSystemChunk } = useTranscription(meetingId)
 
   const onChunkRef = useRef(sendChunk)
   onChunkRef.current = sendChunk
+  const onSystemChunkRef = useRef(sendSystemChunk)
+  onSystemChunkRef.current = sendSystemChunk
 
   type ChunkMeta = { sequence: number; offsetMs: number }
 
@@ -102,6 +108,15 @@ export default function MeetingLivePage() {
   const { isRecording, isPaused, error, start, stop, pause, resume } = useAudioRecorder({
     onChunk: (pcm: Int16Array, meta: ChunkMeta) => onChunkRef.current(pcm, meta),
     onStop,
+  })
+
+  const {
+    isCapturing: isSystemCapturing,
+    error: systemAudioError,
+    start: startSystemCapture,
+    stop: stopSystemCapture,
+  } = useSystemAudioCapture({
+    onChunk: (pcm: Int16Array, meta: ChunkMeta) => onSystemChunkRef.current(pcm, meta),
   })
 
   const handleStart = async () => {
@@ -123,6 +138,14 @@ export default function MeetingLivePage() {
     setLastSeqNum(seqNum)
 
     await start(offsetMs, seqNum + 1)
+
+    // 시스템 오디오 캡처 (활성화된 경우)
+    if (systemAudioEnabled) {
+      startSystemCapture(offsetMs, seqNum + 1000000).catch((err) =>
+        console.warn('[SystemAudio] 시작 실패:', err)
+      )
+    }
+
     setMeetingApiStatus('recording')
     setStatus('recording')
   }
@@ -137,6 +160,7 @@ export default function MeetingLivePage() {
     setIsStopping(true)
     showStatus('회의 종료 중... 기록을 회의록에 적용하고 있습니다', 10000)
     stop()
+    stopSystemCapture()
     try {
       // 종료 전 미적용 기록을 AI 회의록에 반영
       await triggerRealtimeSummary(meetingId).catch(() => {})
@@ -344,10 +368,35 @@ export default function MeetingLivePage() {
             ← 목록
           </button>
           <h1 className="text-lg font-semibold text-gray-900">회의실</h1>
+          <button
+            onClick={useUiStore.getState().openSettings}
+            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title="설정"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
         </div>
 
         <div className="flex items-center gap-2">
-          {error && <span className="text-sm text-red-500">{error}</span>}
+          {(error || systemAudioError) && (
+            <span className="text-sm text-red-500">{error || systemAudioError}</span>
+          )}
+
+          {/* 시스템 오디오 토글 */}
+          {!isActive && (
+            <button
+              onClick={() => setSystemAudioEnabled((v) => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                systemAudioEnabled
+                  ? 'bg-purple-50 text-purple-700 border-purple-300'
+                  : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
+              }`}
+              title="시스템 오디오 캡처 (온라인 회의 상대방 음성)"
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              {systemAudioEnabled ? '시스템 오디오 ON' : '시스템 오디오'}
+            </button>
+          )}
 
           {!isActive && (
             <button
@@ -481,6 +530,12 @@ export default function MeetingLivePage() {
             <span data-testid="recording-indicator" className="flex items-center gap-1 text-red-500 font-medium">
               <span className="inline-block w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
               녹음 중
+            </span>
+          )}
+          {isSystemCapturing && (
+            <span className="flex items-center gap-1 text-purple-500 font-medium">
+              <Monitor className="w-3 h-3" />
+              시스템 오디오
             </span>
           )}
           {isPaused && (

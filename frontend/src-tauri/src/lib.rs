@@ -1,3 +1,5 @@
+mod audio;
+
 use serde::Serialize;
 use std::net::SocketAddr;
 use std::net::TcpStream;
@@ -350,6 +352,7 @@ pub fn run() {
             project_dir,
             shell_path,
         })
+        .manage(audio::AudioCaptureState::default())
         .invoke_handler(tauri::generate_handler![
             check_environment,
             check_first_run,
@@ -357,6 +360,9 @@ pub fn run() {
             start_services,
             stop_services,
             check_health,
+            audio::start_system_audio_capture,
+            audio::stop_system_audio_capture,
+            audio::is_system_audio_capturing,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

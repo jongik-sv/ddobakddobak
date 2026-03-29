@@ -7,7 +7,7 @@ WHISPER_HALLUCINATIONS = %w[
 class TranscriptionJob < ApplicationJob
   queue_as :real_time
 
-  def perform(meeting_id:, audio_data:, sequence: 0, offset_ms: 0, diarization_config: nil, languages: nil)
+  def perform(meeting_id:, audio_data:, sequence: 0, offset_ms: 0, diarization_config: nil, languages: nil, audio_source: "mic")
     meeting = Meeting.find(meeting_id)
     client = SidecarClient.new
 
@@ -15,7 +15,10 @@ class TranscriptionJob < ApplicationJob
     # segment.started_at_ms / ended_at_ms = 청크 내 상대 위치
     # → 합산하면 녹음 시작 기준 절대 시간
 
-    result = client.transcribe(audio_data, meeting_id: meeting_id, diarization_config: diarization_config, languages: languages)
+    # 시스템 오디오는 모두 원격 참가자 → diarization 스킵
+    effective_diarization = audio_source == "system" ? nil : diarization_config
+
+    result = client.transcribe(audio_data, meeting_id: meeting_id, diarization_config: effective_diarization, languages: languages)
     segments = result["segments"] || []
 
     segments.each do |segment|
@@ -26,10 +29,15 @@ class TranscriptionJob < ApplicationJob
       global_started = offset_ms + segment.fetch("started_at_ms", 0)
       global_ended   = offset_ms + segment.fetch("ended_at_ms", 0)
 
+      # 시스템 오디오 소스의 화자 라벨에 REMOTE 접두사
+      speaker = segment.fetch("speaker_label", nil) || segment.fetch("speaker", "SPEAKER_00")
+      speaker = "REMOTE_#{speaker}" if audio_source == "system" && !speaker.start_with?("REMOTE_")
+
       transcript = Transcript.create!(
         meeting: meeting,
         content: text,
-        speaker_label: segment.fetch("speaker_label", nil) || segment.fetch("speaker", "SPEAKER_00"),
+        speaker_label: speaker,
+        audio_source: audio_source,
         started_at_ms: global_started,
         ended_at_ms: global_ended,
         sequence_number: sequence
@@ -42,6 +50,7 @@ class TranscriptionJob < ApplicationJob
           type: segment.fetch("type", "final"),
           text: transcript.content,
           speaker: transcript.speaker_label,
+          audio_source: transcript.audio_source,
           started_at_ms: transcript.started_at_ms,
           ended_at_ms: transcript.ended_at_ms,
           seq: transcript.sequence_number,

@@ -20,6 +20,7 @@ export type TranscriptFinalData = {
   sequence_number: number
   applied: boolean
   created_at?: string
+  audio_source?: 'mic' | 'system'
 }
 
 export type SpeakerChangeData = {
@@ -41,6 +42,7 @@ type BackendMessage = {
   notes_markdown?: string
   is_final?: boolean
   ids?: number[]
+  audio_source?: 'mic' | 'system'
 }
 
 export function createTranscriptionChannel(
@@ -80,6 +82,7 @@ export function createTranscriptionChannel(
               sequence_number: raw.seq ?? 0,
               applied: false,
               created_at: raw.created_at,
+              audio_source: raw.audio_source,
             })
             break
           case 'speaker_change':
@@ -123,6 +126,7 @@ export function sendAudioChunk(
   meta?: { sequence: number; offsetMs: number },
   diarizationConfig?: Record<string, unknown>,
   languages?: string[],
+  audioSource?: 'mic' | 'system',
 ): void {
   const bytes = new Uint8Array(pcm.buffer)
   const base64 = uint8ArrayToBase64(bytes)
@@ -136,6 +140,9 @@ export function sendAudioChunk(
   }
   if (languages && languages.length > 0) {
     payload.languages = languages
+  }
+  if (audioSource) {
+    payload.audio_source = audioSource
   }
   subscription.perform('audio_chunk', payload)
 }
