@@ -287,7 +287,6 @@ fn start_services(app: AppHandle) -> Result<(), String> {
             .env("DB_PATH", db_path.to_str().unwrap_or_default())
             .env("AUDIO_DIR", audio_dir.to_str().unwrap_or_default())
             .env("RAILS_LOG_TO_STDOUT", "1")
-            .env("DESKTOP_MODE", "true")
             .spawn()
             .map_err(|e| format!("Rails 서버 시작 실패: {}", e))?;
 

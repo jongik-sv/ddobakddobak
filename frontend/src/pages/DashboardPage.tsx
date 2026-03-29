@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Mic, CheckCircle2, Clock, FileText } from 'lucide-react'
-import { useAuthStore } from '../stores/authStore'
 import { getMeetings } from '../api/meetings'
 import type { Meeting } from '../api/meetings'
 import { MEETING_TYPES } from '../config'
@@ -21,7 +20,6 @@ function formatDate(dateStr: string): string {
 }
 
 export default function DashboardPage() {
-  const user = useAuthStore((s) => s.user)
   const navigate = useNavigate()
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [totalCount, setTotalCount] = useState(0)
@@ -45,7 +43,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-background p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold">
-          안녕하세요, {user?.name ?? ''}님
+          안녕하세요
         </h1>
         <p className="text-muted-foreground mt-1">회의 현황을 한눈에 확인하세요.</p>
       </div>

@@ -41,7 +41,6 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
       prevMarkdownRef.current = meetingNotes
       return () => { cancelled = true }
     }
-    prevMarkdownRef.current = meetingNotes
     async function updateBlocks() {
       try {
         isProgrammaticRef.current = true
@@ -49,6 +48,7 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
         if (cancelled) return
         const converted = codeBlocksToMermaid(blocks as any[])
         editor.replaceBlocks(editor.document, converted as any)
+        prevMarkdownRef.current = meetingNotes
       } catch { /* ignore */ } finally {
         if (!cancelled) {
           requestAnimationFrame(() => { isProgrammaticRef.current = false })

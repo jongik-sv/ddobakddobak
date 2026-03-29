@@ -46,8 +46,7 @@ module Api
       end
 
       def authorize_meeting_member!
-        return unless @meeting
-        require_team_membership!(@meeting.team)
+        # 싱글 유저 데스크톱 앱 — 항상 허용
       end
 
       def valid_audio_content_type?(content_type)

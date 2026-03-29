@@ -1,19 +1,10 @@
 Rails.application.routes.draw do
-  devise_for :users, skip: :all
-
   get "up" => "rails/health#show", as: :rails_health_check
   mount ActionCable.server => "/cable"
 
   namespace :api do
     namespace :v1 do
       get "health", to: "health#show"
-
-      # Auth
-      devise_scope :user do
-        post "signup",  to: "registrations#create"
-        post "login",   to: "sessions#create"
-        delete "logout", to: "sessions#destroy"
-      end
 
       # Meetings CRUD + start/stop + nested resources
       resources :meetings, only: %i[index create show update destroy] do
@@ -64,8 +55,11 @@ Rails.application.routes.draw do
       post "settings/stt_engine", to: "settings#update_stt"
       get  "settings/llm", to: "settings#llm"
       put  "settings/llm", to: "settings#update_llm"
+      post "settings/llm/test", to: "settings#test_llm"
       get  "settings/hf", to: "settings#hf"
       put  "settings/hf", to: "settings#update_hf"
+      get  "settings/app", to: "settings#app_settings"
+      put  "settings/app", to: "settings#update_app_settings"
 
       # Teams
       resources :teams, only: %i[index create] do

@@ -7,11 +7,7 @@ RSpec.describe "Api::V1::MeetingsAudio", type: :request do
   let!(:membership) { create(:team_membership, user: user, team: team, role: "admin") }
   let(:meeting)    { create(:meeting, team: team, creator: user) }
 
-  def auth_headers(u = user)
-    post "/api/v1/login", params: { email: u.email, password: "password123" }, as: :json
-    token = response.parsed_body["token"]
-    { "Authorization" => "Bearer #{token}" }
-  end
+  before { login_as(user) }
 
   def uploaded_file(content_type: "audio/webm", content: "\x1A\x45\xDF\xA3" + ("x" * 100), filename: "test.webm")
     Rack::Test::UploadedFile.new(
@@ -34,8 +30,7 @@ RSpec.describe "Api::V1::MeetingsAudio", type: :request do
     context "정상 케이스" do
       it "201 Created, audio_available 반환" do
         post "/api/v1/meetings/#{meeting.id}/audio",
-             params: { audio: webm_fixture },
-             headers: auth_headers
+             params: { audio: webm_fixture }
 
         expect(response).to have_http_status(:created)
         json = response.parsed_body
@@ -44,8 +39,7 @@ RSpec.describe "Api::V1::MeetingsAudio", type: :request do
 
       it "meetings.audio_file_path가 DB에 저장됨" do
         post "/api/v1/meetings/#{meeting.id}/audio",
-             params: { audio: webm_fixture },
-             headers: auth_headers
+             params: { audio: webm_fixture }
 
         expect(response).to have_http_status(:created)
         meeting.reload
@@ -57,51 +51,28 @@ RSpec.describe "Api::V1::MeetingsAudio", type: :request do
         expect(AudioUploadJob).to receive(:perform_later).with(meeting_id: meeting.id)
 
         post "/api/v1/meetings/#{meeting.id}/audio",
-             params: { audio: webm_fixture },
-             headers: auth_headers
+             params: { audio: webm_fixture }
       end
 
       it "video/webm content_type도 허용됨" do
         post "/api/v1/meetings/#{meeting.id}/audio",
-             params: { audio: uploaded_file(content_type: "video/webm") },
-             headers: auth_headers
+             params: { audio: uploaded_file(content_type: "video/webm") }
 
         expect(response).to have_http_status(:created)
       end
 
       it "audio/ogg content_type도 허용됨" do
         post "/api/v1/meetings/#{meeting.id}/audio",
-             params: { audio: uploaded_file(content_type: "audio/ogg", content: "OggS" + ("x" * 100), filename: "test.ogg") },
-             headers: auth_headers
+             params: { audio: uploaded_file(content_type: "audio/ogg", content: "OggS" + ("x" * 100), filename: "test.ogg") }
 
         expect(response).to have_http_status(:created)
-      end
-    end
-
-    context "비인증" do
-      it "401 Unauthorized 반환" do
-        post "/api/v1/meetings/#{meeting.id}/audio",
-             params: { audio: webm_fixture }
-
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
-
-    context "비멤버" do
-      it "403 Forbidden 반환" do
-        post "/api/v1/meetings/#{meeting.id}/audio",
-             params: { audio: webm_fixture },
-             headers: auth_headers(other_user)
-
-        expect(response).to have_http_status(:forbidden)
       end
     end
 
     context "존재하지 않는 meeting" do
       it "404 Not Found 반환" do
         post "/api/v1/meetings/999999/audio",
-             params: { audio: webm_fixture },
-             headers: auth_headers
+             params: { audio: webm_fixture }
 
         expect(response).to have_http_status(:not_found)
       end
@@ -110,8 +81,7 @@ RSpec.describe "Api::V1::MeetingsAudio", type: :request do
     context "잘못된 파일 타입" do
       it "422 Unprocessable Entity 반환" do
         post "/api/v1/meetings/#{meeting.id}/audio",
-             params: { audio: uploaded_file(content_type: "audio/mpeg", content: "ID3" + ("x" * 100), filename: "test.mp3") },
-             headers: auth_headers
+             params: { audio: uploaded_file(content_type: "audio/mpeg", content: "ID3" + ("x" * 100), filename: "test.mp3") }
 
         expect(response).to have_http_status(:unprocessable_entity)
         expect(response.parsed_body["error"]).to include("WebM")
@@ -121,8 +91,7 @@ RSpec.describe "Api::V1::MeetingsAudio", type: :request do
     context "audio 파라미터 누락" do
       it "400 Bad Request 반환" do
         post "/api/v1/meetings/#{meeting.id}/audio",
-             params: {},
-             headers: auth_headers
+             params: {}
 
         expect(response).to have_http_status(:bad_request)
       end
@@ -150,8 +119,7 @@ RSpec.describe "Api::V1::MeetingsAudio", type: :request do
       end
 
       it "200 OK, audio/webm 스트리밍 응답" do
-        get "/api/v1/meetings/#{meeting.id}/audio",
-            headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}/audio"
 
         expect(response).to have_http_status(:ok)
         expect(response.content_type).to include("audio/webm")
@@ -162,8 +130,7 @@ RSpec.describe "Api::V1::MeetingsAudio", type: :request do
       it "404 Not Found 반환" do
         meeting.update!(audio_file_path: nil)
 
-        get "/api/v1/meetings/#{meeting.id}/audio",
-            headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}/audio"
 
         expect(response).to have_http_status(:not_found)
         expect(response.parsed_body["error"]).to eq("Audio not found")
@@ -174,35 +141,16 @@ RSpec.describe "Api::V1::MeetingsAudio", type: :request do
       it "404 Not Found 반환" do
         meeting.update!(audio_file_path: "/nonexistent/path/audio.webm")
 
-        get "/api/v1/meetings/#{meeting.id}/audio",
-            headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}/audio"
 
         expect(response).to have_http_status(:not_found)
         expect(response.parsed_body["error"]).to eq("Audio not found")
       end
     end
 
-    context "비인증" do
-      it "401 Unauthorized 반환" do
-        get "/api/v1/meetings/#{meeting.id}/audio"
-
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
-
-    context "비멤버" do
-      it "403 Forbidden 반환" do
-        get "/api/v1/meetings/#{meeting.id}/audio",
-            headers: auth_headers(other_user)
-
-        expect(response).to have_http_status(:forbidden)
-      end
-    end
-
     context "존재하지 않는 meeting" do
       it "404 Not Found 반환" do
-        get "/api/v1/meetings/999999/audio",
-            headers: auth_headers
+        get "/api/v1/meetings/999999/audio"
 
         expect(response).to have_http_status(:not_found)
       end

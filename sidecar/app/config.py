@@ -21,13 +21,19 @@ class Settings(BaseSettings):
     HF_TOKEN: str = ""
 
     # LLM 설정
-    # LLM_PROVIDER: "anthropic" (기본) 또는 "openai" (OpenAI 호환 API: Ollama, vLLM 등)
+    # LLM_PROVIDER: "anthropic" (기본), "openai" (OpenAI 호환 API: Ollama, vLLM 등),
+    #               "claude_cli", "gemini_cli", "codex_cli" (CLI 파이프 모드)
     LLM_PROVIDER: str = "anthropic"
     ANTHROPIC_AUTH_TOKEN: str = "dummy"
     ANTHROPIC_BASE_URL: str = ""
     OPENAI_API_KEY: str = ""
     OPENAI_BASE_URL: str = ""
     LLM_MODEL: str = "glm-4-flash"
+
+    # CLI 바이너리 경로 (claude_cli / gemini_cli / codex_cli 프로바이더용)
+    CLAUDE_CLI_PATH: str = "claude"
+    GEMINI_CLI_PATH: str = "gemini"
+    CODEX_CLI_PATH: str = "codex"
 
     # 서버 설정
     HOST: str = "0.0.0.0"

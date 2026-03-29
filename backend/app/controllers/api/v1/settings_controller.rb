@@ -21,6 +21,9 @@ module Api
 
       def update_stt
         engine = params.require(:engine)
+
+        update_env_file("STT_ENGINE" => engine)
+
         result = SidecarClient.new.update_stt_engine(engine)
         render json: {
           stt_engine: result["stt_engine"],
@@ -36,26 +39,51 @@ module Api
         result = SidecarClient.new.get_llm_settings
         render json: result
       rescue SidecarClient::SidecarError, SidecarClient::ConnectionError, SidecarClient::TimeoutError
-        token = ENV.fetch("ANTHROPIC_AUTH_TOKEN", "")
+        provider = ENV.fetch("LLM_PROVIDER", "anthropic")
+        if provider == "openai"
+          token = ENV.fetch("OPENAI_API_KEY", "")
+          base_url = ENV.fetch("OPENAI_BASE_URL", "")
+        else
+          token = ENV.fetch("ANTHROPIC_AUTH_TOKEN", "")
+          base_url = ENV.fetch("ANTHROPIC_BASE_URL", "")
+        end
         masked = token.length > 8 ? "#{token[0..3]}#{"*" * (token.length - 8)}#{token[-4..]}" : "****"
         render json: {
+          provider: provider,
           auth_token_masked: masked,
-          base_url: ENV.fetch("ANTHROPIC_BASE_URL", ""),
+          base_url: base_url,
           model: ENV.fetch("LLM_MODEL", ""),
           offline: true
         }
       end
 
       def update_llm
+        provider = params[:provider]
+
         llm_params = {}
+        llm_params[:provider] = provider if provider.present?
         llm_params[:auth_token] = params[:auth_token] if params[:auth_token].present?
         llm_params[:base_url] = params[:base_url] if params.key?(:base_url)
         llm_params[:model] = params[:model] if params[:model].present?
 
-        # .env 파일에도 저장
+        # .env 파일에도 저장 (provider에 따라 올바른 키 사용)
+        effective_provider = provider.presence || ENV.fetch("LLM_PROVIDER", "anthropic")
         env_updates = {}
-        env_updates["ANTHROPIC_AUTH_TOKEN"] = llm_params[:auth_token] if llm_params[:auth_token]
-        env_updates["ANTHROPIC_BASE_URL"] = llm_params[:base_url] if llm_params.key?(:base_url)
+        env_updates["LLM_PROVIDER"] = effective_provider if provider.present?
+        if llm_params[:auth_token]
+          if effective_provider == "openai"
+            env_updates["OPENAI_API_KEY"] = llm_params[:auth_token]
+          else
+            env_updates["ANTHROPIC_AUTH_TOKEN"] = llm_params[:auth_token]
+          end
+        end
+        if llm_params.key?(:base_url)
+          if effective_provider == "openai"
+            env_updates["OPENAI_BASE_URL"] = llm_params[:base_url]
+          else
+            env_updates["ANTHROPIC_BASE_URL"] = llm_params[:base_url]
+          end
+        end
         env_updates["LLM_MODEL"] = llm_params[:model] if llm_params[:model]
         update_env_file(env_updates) if env_updates.any?
 
@@ -63,15 +91,36 @@ module Api
           result = SidecarClient.new.update_llm_settings(llm_params)
           render json: result
         rescue SidecarClient::SidecarError, SidecarClient::ConnectionError, SidecarClient::TimeoutError
-          token = ENV.fetch("ANTHROPIC_AUTH_TOKEN", "")
+          if effective_provider == "openai"
+            token = ENV.fetch("OPENAI_API_KEY", "")
+            base_url_fallback = ENV.fetch("OPENAI_BASE_URL", "")
+          else
+            token = ENV.fetch("ANTHROPIC_AUTH_TOKEN", "")
+            base_url_fallback = ENV.fetch("ANTHROPIC_BASE_URL", "")
+          end
           token = llm_params[:auth_token] if llm_params[:auth_token]
           masked = token.length > 8 ? "#{token[0..3]}#{"*" * (token.length - 8)}#{token[-4..]}" : "****"
           render json: {
+            provider: effective_provider,
             auth_token_masked: masked,
-            base_url: llm_params.fetch(:base_url, ENV.fetch("ANTHROPIC_BASE_URL", "")),
+            base_url: llm_params.fetch(:base_url, base_url_fallback),
             model: llm_params.fetch(:model, ENV.fetch("LLM_MODEL", ""))
           }
         end
+      end
+
+      def test_llm
+        test_params = {
+          provider: params.require(:provider),
+          model: params.require(:model)
+        }
+        test_params[:auth_token] = params[:auth_token] if params[:auth_token].present?
+        test_params[:base_url] = params[:base_url] if params[:base_url].present?
+
+        result = SidecarClient.new.test_llm_connection(test_params)
+        render json: result
+      rescue SidecarClient::SidecarError, SidecarClient::ConnectionError, SidecarClient::TimeoutError => e
+        render json: { success: false, error: e.message }, status: :service_unavailable
       end
 
       def hf
@@ -103,6 +152,61 @@ module Api
             has_token: true
           }
         end
+      end
+
+      # ── 앱 설정 (오디오/화자분리/요약 주기/언어) ──
+
+      APP_SETTING_KEYS = {
+        "SUMMARY_INTERVAL_SEC" => :to_i,
+        "DIARIZATION_ENABLED" => nil,  # boolean
+        "SELECTED_LANGUAGES" => nil,   # comma-separated
+        "AUDIO_SILENCE_THRESHOLD" => :to_f,
+        "AUDIO_SPEECH_THRESHOLD" => :to_f,
+        "AUDIO_SILENCE_DURATION_MS" => :to_i,
+        "AUDIO_MAX_CHUNK_SEC" => :to_i,
+        "AUDIO_MIN_CHUNK_SEC" => :to_i,
+        "AUDIO_PREROLL_MS" => :to_i,
+        "AUDIO_OVERLAP_MS" => :to_i,
+        "DIARIZATION_SIMILARITY_THRESHOLD" => :to_f,
+        "DIARIZATION_MERGE_THRESHOLD" => :to_f,
+        "DIARIZATION_MAX_EMBEDDINGS_PER_SPEAKER" => :to_i
+      }.freeze
+
+      def app_settings
+        result = {}
+        APP_SETTING_KEYS.each do |key, converter|
+          val = ENV[key]
+          next if val.nil? || val.empty?
+          result[key.downcase] = case converter
+                                 when :to_i then val.to_i
+                                 when :to_f then val.to_f
+                                 else val
+                                 end
+        end
+        # boolean 변환
+        result["diarization_enabled"] = result["diarization_enabled"] != "false" if result.key?("diarization_enabled")
+        # 배열 변환
+        result["selected_languages"] = result["selected_languages"].split(",") if result["selected_languages"].is_a?(String)
+        render json: result
+      end
+
+      def update_app_settings
+        updates = {}
+
+        params.each do |key, value|
+          env_key = key.to_s.upcase
+          next unless APP_SETTING_KEYS.key?(env_key)
+
+          str_value = if value.is_a?(Array)
+                        value.join(",")
+                      else
+                        value.to_s
+                      end
+          updates[env_key] = str_value
+        end
+
+        update_env_file(updates) if updates.any?
+        app_settings
       end
 
       private

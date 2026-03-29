@@ -73,8 +73,7 @@ module Api
       end
 
       def check_team_admin
-        return unless @team
-        require_team_admin!(@team)
+        # 싱글 유저 데스크톱 앱 — 항상 허용
       end
     end
   end

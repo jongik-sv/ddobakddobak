@@ -1,11 +1,13 @@
 """LLM 요약 클라이언트.
 
-Anthropic 호환 API 또는 OpenAI 호환 API를 사용하여 회의 트랜스크립트를 요약한다.
-LLM_PROVIDER 설정으로 백엔드를 선택한다.
+Anthropic 호환 API, OpenAI 호환 API, 또는 CLI 파이프 모드(claude/gemini/codex)를
+사용하여 회의 트랜스크립트를 요약한다. LLM_PROVIDER 설정으로 백엔드를 선택한다.
 """
+import asyncio
 import json
 import logging
 import re
+import shutil
 from typing import Any
 
 import anthropic
@@ -172,8 +174,12 @@ class LLMSummarizer:
         self._provider = settings.LLM_PROVIDER
         self._client = client if client is not None else self._build_client()
 
+    _CLI_PROVIDERS = frozenset({"claude_cli", "gemini_cli", "codex_cli"})
+
     def _build_client(self) -> Any:
         """설정에 따라 적절한 LLM 클라이언트를 생성한다."""
+        if self._provider in self._CLI_PROVIDERS:
+            return None  # CLI 모드는 클라이언트 객체 불필요
         if self._provider == "openai":
             return self._build_openai_client()
         return self._build_anthropic_client()
@@ -214,8 +220,90 @@ class LLMSummarizer:
             lines.append(f"{speaker}: {text}")
         return "\n".join(lines)
 
+    # ── CLI 파이프 모드 호출 ──────────────────────────────────────────────────
+
+    async def _run_cli(self, cmd: list[str], stdin_text: str) -> str:
+        """CLI 서브프로세스를 실행하고 stdout을 반환한다."""
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(input=stdin_text.encode("utf-8")),
+                timeout=180,
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise TimeoutError("CLI 응답 시간이 초과되었습니다 (180초).")
+
+        if proc.returncode != 0:
+            err_msg = stderr.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(
+                f"CLI 오류 (코드 {proc.returncode}): {err_msg}"
+            )
+        return stdout.decode("utf-8").strip()
+
+    async def _call_claude_cli(self, system: str, user_content: str) -> str:
+        """Claude Code CLI (-p) 를 사용하여 LLM을 호출한다."""
+        cli = settings.CLAUDE_CLI_PATH
+        if not shutil.which(cli):
+            raise FileNotFoundError(
+                f"Claude CLI를 찾을 수 없습니다: '{cli}'. "
+                "Claude Code가 설치되어 있는지 확인하세요."
+            )
+        cmd = [
+            cli, "-p",
+            "--output-format", "text",
+            "--system-prompt", system,
+        ]
+        if settings.LLM_MODEL:
+            cmd.extend(["--model", settings.LLM_MODEL])
+        return await self._run_cli(cmd, user_content)
+
+    async def _call_gemini_cli(self, system: str, user_content: str) -> str:
+        """Gemini CLI (-p) 를 사용하여 LLM을 호출한다."""
+        cli = settings.GEMINI_CLI_PATH
+        if not shutil.which(cli):
+            raise FileNotFoundError(
+                f"Gemini CLI를 찾을 수 없습니다: '{cli}'. "
+                "npm install -g @google/gemini-cli 로 설치하세요."
+            )
+        cmd = [cli, "-p", "--output-format", "text"]
+        if settings.LLM_MODEL:
+            cmd.extend(["--model", settings.LLM_MODEL])
+        # Gemini는 --system-prompt 플래그가 없으므로 stdin에 병합
+        merged = f"[시스템 지시]\n{system}\n\n[사용자 입력]\n{user_content}"
+        return await self._run_cli(cmd, merged)
+
+    async def _call_codex_cli(self, system: str, user_content: str) -> str:
+        """OpenAI Codex CLI (exec) 를 사용하여 LLM을 호출한다."""
+        cli = settings.CODEX_CLI_PATH
+        if not shutil.which(cli):
+            raise FileNotFoundError(
+                f"Codex CLI를 찾을 수 없습니다: '{cli}'. "
+                "npm install -g @openai/codex 로 설치하세요."
+            )
+        cmd = [cli, "exec", "-"]
+        if settings.LLM_MODEL:
+            cmd.extend(["--model", settings.LLM_MODEL])
+        # Codex는 --system-prompt 플래그가 없으므로 stdin에 병합
+        merged = f"[시스템 지시]\n{system}\n\n[사용자 입력]\n{user_content}"
+        return await self._run_cli(cmd, merged)
+
+    # ── LLM 호출 공통 인터페이스 ──────────────────────────────────────────────
+
     async def _call_llm_raw(self, system: str, user_content: str, max_tokens: int) -> str:
         """LLM을 비동기로 호출하여 텍스트 응답을 반환한다."""
+        if self._provider == "claude_cli":
+            return await self._call_claude_cli(system, user_content)
+        if self._provider == "gemini_cli":
+            return await self._call_gemini_cli(system, user_content)
+        if self._provider == "codex_cli":
+            return await self._call_codex_cli(system, user_content)
         if self._provider == "openai":
             response = await self._client.chat.completions.create(
                 model=settings.LLM_MODEL,

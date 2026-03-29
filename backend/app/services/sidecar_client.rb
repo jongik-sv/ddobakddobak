@@ -42,11 +42,11 @@ class SidecarClient
   def summarize(transcripts, type: "realtime", context: nil)
     body = { transcripts: transcripts, type: type }
     body[:context] = context if context
-    post("/summarize", body)
+    post("/summarize", body, timeout: 120)
   end
 
   def summarize_action_items(transcripts)
-    post("/summarize/action-items", { transcripts: transcripts })
+    post("/summarize/action-items", { transcripts: transcripts }, timeout: 120)
   end
 
   def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general")
@@ -55,7 +55,7 @@ class SidecarClient
       transcripts: transcripts,
       meeting_title: meeting_title,
       meeting_type: meeting_type
-    })
+    }, timeout: 120)
   end
 
   def feedback_notes(current_notes, feedback, meeting_title: "")
@@ -63,7 +63,7 @@ class SidecarClient
       current_notes: current_notes,
       feedback: feedback,
       meeting_title: meeting_title
-    })
+    }, timeout: 120)
   end
 
   def get_llm_settings
@@ -72,6 +72,10 @@ class SidecarClient
 
   def update_llm_settings(params)
     put("/settings/llm", params)
+  end
+
+  def test_llm_connection(params)
+    post("/settings/llm/test", params, timeout: 15)
   end
 
   def get_hf_settings

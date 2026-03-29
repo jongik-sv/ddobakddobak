@@ -7,11 +7,7 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
   let!(:membership) { create(:team_membership, user: user, team: team, role: "admin") }
   let(:meeting)    { create(:meeting, team: team, creator: user) }
 
-  def auth_headers(u = user)
-    post "/api/v1/login", params: { email: u.email, password: "password123" }, as: :json
-    token = response.parsed_body["token"]
-    { "Authorization" => "Bearer #{token}" }
-  end
+  before { login_as(user) }
 
   # ─────────────────────────────────────────────────────────
   # GET /api/v1/meetings/:id/transcripts
@@ -24,8 +20,7 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
       end
 
       it "200 OK, transcripts 배열 반환" do
-        get "/api/v1/meetings/#{meeting.id}/transcripts",
-            headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}/transcripts"
 
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
@@ -34,8 +29,7 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
       end
 
       it "sequence_number 순서로 정렬" do
-        get "/api/v1/meetings/#{meeting.id}/transcripts",
-            headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}/transcripts"
 
         json = response.parsed_body
         contents = json["transcripts"].map { |t| t["content"] }
@@ -43,8 +37,7 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
       end
 
       it "각 트랜스크립트에 필수 필드 포함" do
-        get "/api/v1/meetings/#{meeting.id}/transcripts",
-            headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}/transcripts"
 
         json = response.parsed_body
         transcript = json["transcripts"].first
@@ -59,8 +52,7 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
 
     context "트랜스크립트가 없는 경우" do
       it "빈 배열 반환" do
-        get "/api/v1/meetings/#{meeting.id}/transcripts",
-            headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}/transcripts"
 
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
@@ -68,27 +60,9 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
       end
     end
 
-    context "비인증" do
-      it "401 Unauthorized 반환" do
-        get "/api/v1/meetings/#{meeting.id}/transcripts"
-
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
-
-    context "비멤버" do
-      it "404 Not Found 반환 (팀 스코프 밖)" do
-        get "/api/v1/meetings/#{meeting.id}/transcripts",
-            headers: auth_headers(other_user)
-
-        expect(response).to have_http_status(:not_found)
-      end
-    end
-
     context "존재하지 않는 meeting" do
       it "404 Not Found 반환" do
-        get "/api/v1/meetings/999999/transcripts",
-            headers: auth_headers
+        get "/api/v1/meetings/999999/transcripts"
 
         expect(response).to have_http_status(:not_found)
       end

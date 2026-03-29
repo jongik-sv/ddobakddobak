@@ -7,11 +7,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
   let!(:membership) { create(:team_membership, user: user, team: team, role: "admin") }
   let(:meeting)    { create(:meeting, team: team, creator: user) }
 
-  def auth_headers(u = user)
-    post "/api/v1/login", params: { email: u.email, password: "password123" }, as: :json
-    token = response.parsed_body["token"]
-    { "Authorization" => "Bearer #{token}" }
-  end
+  before { login_as(user) }
 
   # ─────────────────────────────────────────────────────────
   # GET /api/v1/meetings/:meeting_id/blocks
@@ -22,7 +18,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
 
     context "정상 케이스" do
       it "200 OK, position 순으로 블록 목록 반환" do
-        get "/api/v1/meetings/#{meeting.id}/blocks", headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}/blocks"
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
         expect(json.length).to eq(2)
@@ -32,36 +28,22 @@ RSpec.describe "Api::V1::Blocks", type: :request do
 
       it "블록이 없으면 빈 배열 반환" do
         other_meeting = create(:meeting, team: team, creator: user)
-        get "/api/v1/meetings/#{other_meeting.id}/blocks", headers: auth_headers
+        get "/api/v1/meetings/#{other_meeting.id}/blocks"
         expect(response).to have_http_status(:ok)
         expect(response.parsed_body).to eq([])
       end
 
       it "응답에 필요한 필드 포함" do
-        get "/api/v1/meetings/#{meeting.id}/blocks", headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}/blocks"
         block_json = response.parsed_body.first
         expect(block_json.keys).to include("id", "meeting_id", "block_type", "content",
                                            "position", "parent_block_id", "created_at", "updated_at")
       end
     end
 
-    context "비인증" do
-      it "401 Unauthorized 반환" do
-        get "/api/v1/meetings/#{meeting.id}/blocks"
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
-
-    context "비멤버" do
-      it "403 Forbidden 반환" do
-        get "/api/v1/meetings/#{meeting.id}/blocks", headers: auth_headers(other_user)
-        expect(response).to have_http_status(:forbidden)
-      end
-    end
-
     context "존재하지 않는 meeting" do
       it "404 Not Found 반환" do
-        get "/api/v1/meetings/999999/blocks", headers: auth_headers
+        get "/api/v1/meetings/999999/blocks"
         expect(response).to have_http_status(:not_found)
       end
     end
@@ -76,7 +58,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
     context "정상 케이스" do
       it "201 Created, 블록 생성 반환" do
         post "/api/v1/meetings/#{meeting.id}/blocks",
-             params: valid_params, headers: auth_headers, as: :json
+             params: valid_params, as: :json
         expect(response).to have_http_status(:created)
         json = response.parsed_body
         expect(json["block_type"]).to eq("text")
@@ -86,14 +68,14 @@ RSpec.describe "Api::V1::Blocks", type: :request do
 
       it "첫 번째 블록 position은 1000.0" do
         post "/api/v1/meetings/#{meeting.id}/blocks",
-             params: valid_params, headers: auth_headers, as: :json
+             params: valid_params, as: :json
         expect(response.parsed_body["position"]).to eq(1000.0)
       end
 
       it "두 번째 블록 position은 2000.0" do
         create(:block, meeting: meeting, position: 1000.0)
         post "/api/v1/meetings/#{meeting.id}/blocks",
-             params: valid_params, headers: auth_headers, as: :json
+             params: valid_params, as: :json
         expect(response.parsed_body["position"]).to eq(2000.0)
       end
 
@@ -101,7 +83,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
         parent = create(:block, meeting: meeting, position: 1000.0)
         post "/api/v1/meetings/#{meeting.id}/blocks",
              params: { block: { block_type: "text", content: "child", parent_block_id: parent.id } },
-             headers: auth_headers, as: :json
+             as: :json
         expect(response).to have_http_status(:created)
         expect(response.parsed_body["parent_block_id"]).to eq(parent.id)
       end
@@ -109,31 +91,16 @@ RSpec.describe "Api::V1::Blocks", type: :request do
       it "heading1 block_type 생성 가능" do
         post "/api/v1/meetings/#{meeting.id}/blocks",
              params: { block: { block_type: "heading1", content: "Title" } },
-             headers: auth_headers, as: :json
+             as: :json
         expect(response).to have_http_status(:created)
         expect(response.parsed_body["block_type"]).to eq("heading1")
-      end
-    end
-
-    context "비인증" do
-      it "401 Unauthorized" do
-        post "/api/v1/meetings/#{meeting.id}/blocks", params: valid_params, as: :json
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
-
-    context "비멤버" do
-      it "403 Forbidden" do
-        post "/api/v1/meetings/#{meeting.id}/blocks",
-             params: valid_params, headers: auth_headers(other_user), as: :json
-        expect(response).to have_http_status(:forbidden)
       end
     end
 
     context "존재하지 않는 meeting" do
       it "404 Not Found" do
         post "/api/v1/meetings/999999/blocks",
-             params: valid_params, headers: auth_headers, as: :json
+             params: valid_params, as: :json
         expect(response).to have_http_status(:not_found)
       end
     end
@@ -142,7 +109,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
       it "422 Unprocessable Entity" do
         post "/api/v1/meetings/#{meeting.id}/blocks",
              params: { block: { block_type: "invalid_type", content: "Hello" } },
-             headers: auth_headers, as: :json
+             as: :json
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
@@ -158,7 +125,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
       it "200 OK, 블록 내용 수정" do
         patch "/api/v1/meetings/#{meeting.id}/blocks/#{block.id}",
               params: { block: { content: "updated" } },
-              headers: auth_headers, as: :json
+              as: :json
         expect(response).to have_http_status(:ok)
         expect(response.parsed_body["content"]).to eq("updated")
       end
@@ -166,26 +133,9 @@ RSpec.describe "Api::V1::Blocks", type: :request do
       it "block_type 수정 가능" do
         patch "/api/v1/meetings/#{meeting.id}/blocks/#{block.id}",
               params: { block: { block_type: "heading1" } },
-              headers: auth_headers, as: :json
+              as: :json
         expect(response).to have_http_status(:ok)
         expect(response.parsed_body["block_type"]).to eq("heading1")
-      end
-    end
-
-    context "비인증" do
-      it "401 Unauthorized" do
-        patch "/api/v1/meetings/#{meeting.id}/blocks/#{block.id}",
-              params: { block: { content: "updated" } }, as: :json
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
-
-    context "비멤버" do
-      it "403 Forbidden" do
-        patch "/api/v1/meetings/#{meeting.id}/blocks/#{block.id}",
-              params: { block: { content: "updated" } },
-              headers: auth_headers(other_user), as: :json
-        expect(response).to have_http_status(:forbidden)
       end
     end
 
@@ -193,7 +143,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
       it "404 Not Found" do
         patch "/api/v1/meetings/999999/blocks/#{block.id}",
               params: { block: { content: "updated" } },
-              headers: auth_headers, as: :json
+              as: :json
         expect(response).to have_http_status(:not_found)
       end
     end
@@ -202,7 +152,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
       it "404 Not Found" do
         patch "/api/v1/meetings/#{meeting.id}/blocks/999999",
               params: { block: { content: "updated" } },
-              headers: auth_headers, as: :json
+              as: :json
         expect(response).to have_http_status(:not_found)
       end
     end
@@ -211,7 +161,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
       it "422 Unprocessable Entity" do
         patch "/api/v1/meetings/#{meeting.id}/blocks/#{block.id}",
               params: { block: { block_type: "invalid" } },
-              headers: auth_headers, as: :json
+              as: :json
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
@@ -225,40 +175,22 @@ RSpec.describe "Api::V1::Blocks", type: :request do
 
     context "정상 케이스" do
       it "204 No Content 반환 및 DB에서 삭제" do
-        delete "/api/v1/meetings/#{meeting.id}/blocks/#{block.id}",
-               headers: auth_headers
+        delete "/api/v1/meetings/#{meeting.id}/blocks/#{block.id}"
         expect(response).to have_http_status(:no_content)
         expect(Block.find_by(id: block.id)).to be_nil
       end
     end
 
-    context "비인증" do
-      it "401 Unauthorized" do
-        delete "/api/v1/meetings/#{meeting.id}/blocks/#{block.id}"
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
-
-    context "비멤버" do
-      it "403 Forbidden" do
-        delete "/api/v1/meetings/#{meeting.id}/blocks/#{block.id}",
-               headers: auth_headers(other_user)
-        expect(response).to have_http_status(:forbidden)
-      end
-    end
-
     context "존재하지 않는 meeting" do
       it "404 Not Found" do
-        delete "/api/v1/meetings/999999/blocks/#{block.id}",
-               headers: auth_headers
+        delete "/api/v1/meetings/999999/blocks/#{block.id}"
         expect(response).to have_http_status(:not_found)
       end
     end
 
     context "존재하지 않는 block" do
       it "404 Not Found" do
-        delete "/api/v1/meetings/#{meeting.id}/blocks/999999",
-               headers: auth_headers
+        delete "/api/v1/meetings/#{meeting.id}/blocks/999999"
         expect(response).to have_http_status(:not_found)
       end
     end
@@ -276,7 +208,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
       it "200 OK, 두 블록 사이로 이동" do
         patch "/api/v1/meetings/#{meeting.id}/blocks/#{block_c.id}/reorder",
               params: { prev_block_id: block_a.id, next_block_id: block_b.id },
-              headers: auth_headers, as: :json
+              as: :json
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
         expect(json["block"]["position"]).to be_between(1000.0, 2000.0)
@@ -285,7 +217,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
       it "맨 앞으로 이동 (prev_block_id: null)" do
         patch "/api/v1/meetings/#{meeting.id}/blocks/#{block_c.id}/reorder",
               params: { prev_block_id: nil, next_block_id: block_a.id },
-              headers: auth_headers, as: :json
+              as: :json
         expect(response).to have_http_status(:ok)
         expect(response.parsed_body["block"]["position"]).to be < 1000.0
       end
@@ -293,7 +225,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
       it "맨 뒤로 이동 (next_block_id: null)" do
         patch "/api/v1/meetings/#{meeting.id}/blocks/#{block_a.id}/reorder",
               params: { prev_block_id: block_c.id, next_block_id: nil },
-              headers: auth_headers, as: :json
+              as: :json
         expect(response).to have_http_status(:ok)
         expect(response.parsed_body["block"]["position"]).to be > 3000.0
       end
@@ -303,7 +235,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
         block_x = create(:block, meeting: meeting, position: 1000.0005)
         patch "/api/v1/meetings/#{meeting.id}/blocks/#{block_c.id}/reorder",
               params: { prev_block_id: block_a.id, next_block_id: block_x.id },
-              headers: auth_headers, as: :json
+              as: :json
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
         expect(json["rebalanced"]).to be true
@@ -311,28 +243,11 @@ RSpec.describe "Api::V1::Blocks", type: :request do
       end
     end
 
-    context "비인증" do
-      it "401 Unauthorized" do
-        patch "/api/v1/meetings/#{meeting.id}/blocks/#{block_a.id}/reorder",
-              params: { prev_block_id: nil, next_block_id: block_b.id }, as: :json
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
-
-    context "비멤버" do
-      it "403 Forbidden" do
-        patch "/api/v1/meetings/#{meeting.id}/blocks/#{block_a.id}/reorder",
-              params: { prev_block_id: nil, next_block_id: block_b.id },
-              headers: auth_headers(other_user), as: :json
-        expect(response).to have_http_status(:forbidden)
-      end
-    end
-
     context "존재하지 않는 meeting" do
       it "404 Not Found" do
         patch "/api/v1/meetings/999999/blocks/#{block_a.id}/reorder",
               params: { prev_block_id: nil, next_block_id: block_b.id },
-              headers: auth_headers, as: :json
+              as: :json
         expect(response).to have_http_status(:not_found)
       end
     end
@@ -341,7 +256,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
       it "404 Not Found" do
         patch "/api/v1/meetings/#{meeting.id}/blocks/999999/reorder",
               params: { prev_block_id: nil, next_block_id: block_a.id },
-              headers: auth_headers, as: :json
+              as: :json
         expect(response).to have_http_status(:not_found)
       end
     end

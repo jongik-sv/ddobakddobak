@@ -36,6 +36,23 @@ export async function updateLlmSettings(params: {
   return apiClient.put('settings/llm', { json: params }).json()
 }
 
+export async function testLlmConnection(params: {
+  provider: string
+  auth_token?: string
+  base_url?: string
+  model: string
+}): Promise<{ success: boolean; error?: string }> {
+  return apiClient.post('settings/llm/test', { json: params }).json()
+}
+
+export async function fetchOllamaModels(baseUrl: string): Promise<string[]> {
+  const ollamaUrl = baseUrl.replace(/\/v1\/?$/, '')
+  const res = await fetch(`${ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(3000) })
+  if (!res.ok) return []
+  const data = await res.json()
+  return (data.models ?? []).map((m: { name: string }) => m.name)
+}
+
 // HuggingFace 설정
 export interface HfSettings {
   hf_token_masked: string
@@ -49,4 +66,29 @@ export async function getHfSettings(): Promise<HfSettings> {
 
 export async function updateHfToken(hf_token: string): Promise<HfSettings> {
   return apiClient.put('settings/hf', { json: { hf_token } }).json()
+}
+
+// 앱 설정 (.env 기반)
+export interface AppSettings {
+  summary_interval_sec?: number
+  diarization_enabled?: boolean
+  selected_languages?: string[]
+  audio_silence_threshold?: number
+  audio_speech_threshold?: number
+  audio_silence_duration_ms?: number
+  audio_max_chunk_sec?: number
+  audio_min_chunk_sec?: number
+  audio_preroll_ms?: number
+  audio_overlap_ms?: number
+  diarization_similarity_threshold?: number
+  diarization_merge_threshold?: number
+  diarization_max_embeddings_per_speaker?: number
+}
+
+export async function getAppSettings(): Promise<AppSettings> {
+  return apiClient.get('settings/app').json()
+}
+
+export async function updateAppSettings(settings: Partial<AppSettings>): Promise<AppSettings> {
+  return apiClient.put('settings/app', { json: settings }).json()
 }

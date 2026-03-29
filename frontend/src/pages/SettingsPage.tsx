@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { HTTPError } from 'ky'
-import { getSttSettings, updateSttEngine, getLlmSettings, updateLlmSettings, getHfSettings, updateHfToken } from '../api/settings'
+import { getSttSettings, updateSttEngine, getLlmSettings, updateLlmSettings, getHfSettings, updateHfToken, testLlmConnection, fetchOllamaModels } from '../api/settings'
 import type { SttSettings, LlmSettings, HfSettings } from '../api/settings'
 import { useAppSettingsStore, AUDIO_DEFAULTS, DIARIZATION_DEFAULTS } from '../stores/appSettingsStore'
 import { ENGINE_LABELS, SUMMARY_INTERVAL_OPTIONS, AUDIO, DIARIZATION, LANGUAGES } from '../config'
@@ -98,11 +98,100 @@ export default function SettingsPage() {
   }
 
   // LLM 설정
+  const SERVICE_PRESETS = [
+    { id: 'claude_cli', name: 'Claude Code', provider: 'claude_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['sonnet', 'opus', 'haiku'], description: 'Claude Code CLI (키 불필요)' },
+    { id: 'gemini_cli', name: 'Gemini CLI', provider: 'gemini_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['gemini-2.5-flash', 'gemini-2.5-pro'], description: 'Gemini CLI (키 불필요)' },
+    { id: 'codex_cli', name: 'Codex CLI', provider: 'codex_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['o4-mini', 'o3', 'gpt-4.1'], description: 'Codex CLI (키 불필요)' },
+    { id: 'anthropic', name: 'Anthropic', provider: 'anthropic' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: ['claude-sonnet-4-6', 'claude-haiku-4-5'], description: 'Claude API (키 필요)' },
+    { id: 'zai', name: 'Z.AI', provider: 'anthropic' as const, defaultBaseUrl: 'https://api.z.ai/api/anthropic', requiresApiKey: true, suggestedModels: ['glm-4.7', 'glm-4.5', 'glm-5', 'glm-5-turbo', 'glm-4.5-air'], description: 'GLM 모델 (Anthropic 호환)' },
+    { id: 'openai', name: 'OpenAI', provider: 'openai' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: ['gpt-4o', 'gpt-4o-mini'], description: 'GPT 모델 (키 필요)' },
+    { id: 'ollama', name: 'Ollama', provider: 'openai' as const, defaultBaseUrl: 'http://localhost:11434/v1', requiresApiKey: false, suggestedModels: [], description: '로컬 실행 (키 불필요)' },
+    { id: 'custom', name: '직접 입력', provider: 'openai' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: [], description: '호환 API 직접 설정' },
+  ]
+
   const [llmSettings, setLlmSettings] = useState<LlmSettings | null>(null)
   const [llmForm, setLlmForm] = useState({ provider: 'anthropic', auth_token: '', base_url: '', model: '' })
+  const [selectedPreset, setSelectedPreset] = useState('anthropic')
   const [llmSaving, setLlmSaving] = useState(false)
   const [llmSuccess, setLlmSuccess] = useState<string | null>(null)
   const [llmError, setLlmError] = useState<string | null>(null)
+  const [llmTesting, setLlmTesting] = useState(false)
+  const [llmTestResult, setLlmTestResult] = useState<{ success: boolean; error?: string } | null>(null)
+  const [ollamaModels, setOllamaModels] = useState<string[]>([])
+  const [ollamaLoading, setOllamaLoading] = useState(false)
+  const [ollamaError, setOllamaError] = useState<string | null>(null)
+  const [useCustomModel, setUseCustomModel] = useState(false)
+
+  // 서버에서 로드된 설정으로 프리셋 자동 매칭
+  useEffect(() => {
+    if (!llmSettings) return
+    const matched = SERVICE_PRESETS.find(
+      (p) => p.id !== 'custom' && p.provider === llmSettings.provider && p.defaultBaseUrl === llmSettings.base_url
+    )
+    setSelectedPreset(matched?.id ?? 'custom')
+  }, [llmSettings])
+
+  const handlePresetSelect = (presetId: string) => {
+    const preset = SERVICE_PRESETS.find((p) => p.id === presetId)!
+    setSelectedPreset(presetId)
+    setLlmForm((f) => ({
+      ...f,
+      provider: preset.provider,
+      base_url: preset.defaultBaseUrl,
+      model: preset.suggestedModels[0] ?? '',
+      auth_token: '',
+    }))
+    setUseCustomModel(false)
+    setLlmTestResult(null)
+    setOllamaModels([])
+    setOllamaError(null)
+  }
+
+  const loadOllamaModels = useCallback(async (baseUrl: string) => {
+    setOllamaLoading(true)
+    setOllamaError(null)
+    try {
+      const models = await fetchOllamaModels(baseUrl)
+      setOllamaModels(models)
+      if (models.length > 0 && !llmForm.model) {
+        setLlmForm((f) => ({ ...f, model: models[0] }))
+      }
+    } catch {
+      setOllamaError('Ollama에 연결할 수 없습니다. 실행 중인지 확인하세요.')
+      setOllamaModels([])
+    } finally {
+      setOllamaLoading(false)
+    }
+  }, [llmForm.model])
+
+  useEffect(() => {
+    if (selectedPreset === 'ollama' && llmForm.base_url) {
+      loadOllamaModels(llmForm.base_url)
+    }
+  }, [selectedPreset, llmForm.base_url, loadOllamaModels])
+
+  const currentPreset = SERVICE_PRESETS.find((p) => p.id === selectedPreset)!
+  const modelOptions = selectedPreset === 'ollama' ? ollamaModels : currentPreset.suggestedModels
+  const showModelSelect = modelOptions.length > 0 && !useCustomModel
+
+  const handleLlmTest = async () => {
+    setLlmTesting(true)
+    setLlmTestResult(null)
+    try {
+      const params: { provider: string; model: string; auth_token?: string; base_url?: string } = {
+        provider: llmForm.provider,
+        model: llmForm.model,
+      }
+      if (llmForm.auth_token) params.auth_token = llmForm.auth_token
+      if (llmForm.base_url) params.base_url = llmForm.base_url
+      const result = await testLlmConnection(params)
+      setLlmTestResult(result)
+    } catch {
+      setLlmTestResult({ success: false, error: '테스트 요청에 실패했습니다.' })
+    } finally {
+      setLlmTesting(false)
+    }
+  }
 
   const handleLlmSave = async () => {
     setLlmSaving(true)
@@ -270,73 +359,147 @@ export default function SettingsPage() {
         <div className="rounded-lg border bg-card p-6">
           <h2 className="text-lg font-semibold mb-1">AI 요약 모델</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            회의록 요약에 사용할 AI API 설정입니다.
+            회의록 요약에 사용할 AI 서비스를 선택합니다.
           </p>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
+            {/* 서비스 프리셋 카드 */}
             <div>
-              <label className="block text-sm font-medium mb-1">API 유형</label>
-              <div className="flex gap-3">
-                {([['anthropic', 'Anthropic 호환'], ['openai', 'OpenAI 호환']] as const).map(([value, label]) => (
-                  <label key={value} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="llm_provider"
-                      value={value}
-                      checked={llmForm.provider === value}
-                      onChange={() => setLlmForm((f) => ({ ...f, provider: value }))}
-                      className="accent-primary"
-                    />
-                    <span className="text-sm">{label}</span>
-                  </label>
+              <label className="block text-sm font-medium mb-2">서비스 선택</label>
+              <div className="grid grid-cols-4 gap-2">
+                {SERVICE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => handlePresetSelect(preset.id)}
+                    className={`
+                      rounded-lg border p-3 text-left transition-all
+                      ${selectedPreset === preset.id
+                        ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                        : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                      }
+                    `}
+                  >
+                    <p className="text-sm font-medium">{preset.name}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{preset.description}</p>
+                  </button>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {llmForm.provider === 'anthropic'
-                  ? 'Anthropic, ZAI(智谱), Amazon Bedrock 등 Anthropic API 호환 서비스'
-                  : 'OpenAI, Ollama, vLLM, LiteLLM 등 OpenAI API 호환 서비스'}
-              </p>
             </div>
+
+            {/* CLI 프로바이더 안내 */}
+            {['claude_cli', 'gemini_cli', 'codex_cli'].includes(selectedPreset) && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <p className="font-medium mb-1">CLI 모드 안내</p>
+                <p className="text-xs leading-relaxed">
+                  CLI 모드는 호출마다 프로세스를 새로 시작하여 <strong>약 6~7초의 지연</strong>이 발생합니다.
+                  실시간 회의록에는 부적합하며, <strong>일회성 테스트나 배치 작업</strong>에 적합합니다.
+                  실시간 요약이 필요하면 API 키 방식(Anthropic, Z.AI, OpenAI 등)을 사용하세요.
+                </p>
+              </div>
+            )}
+
+            {/* API Base URL (CLI 프로바이더에서는 불필요) */}
+            {!['claude_cli', 'gemini_cli', 'codex_cli'].includes(selectedPreset) && (
+              <div>
+                <label className="block text-sm font-medium mb-1">API Base URL</label>
+                <input
+                  type="text"
+                  value={llmForm.base_url}
+                  onChange={(e) => setLlmForm((f) => ({ ...f, base_url: e.target.value }))}
+                  placeholder={currentPreset.defaultBaseUrl || 'https://api.anthropic.com'}
+                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+                />
+              </div>
+            )}
+
+            {/* API Key (Ollama이면 숨김) */}
+            {currentPreset.requiresApiKey && (
+              <div>
+                <label className="block text-sm font-medium mb-1">API Key</label>
+                <input
+                  type="password"
+                  value={llmForm.auth_token}
+                  onChange={(e) => setLlmForm((f) => ({ ...f, auth_token: e.target.value }))}
+                  placeholder={llmSettings?.auth_token_masked || '토큰을 입력하세요'}
+                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+                />
+                {llmSettings?.auth_token_masked && !llmForm.auth_token && (
+                  <p className="text-xs text-muted-foreground mt-1">현재: {llmSettings.auth_token_masked}</p>
+                )}
+              </div>
+            )}
+
+            {/* 모델명 */}
             <div>
-              <label className="block text-sm font-medium mb-1">API Base URL</label>
-              <input
-                type="text"
-                value={llmForm.base_url}
-                onChange={(e) => setLlmForm((f) => ({ ...f, base_url: e.target.value }))}
-                placeholder="https://api.anthropic.com"
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">API Key</label>
-              <input
-                type="password"
-                value={llmForm.auth_token}
-                onChange={(e) => setLlmForm((f) => ({ ...f, auth_token: e.target.value }))}
-                placeholder={llmSettings?.auth_token_masked || '토큰을 입력하세요'}
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
-              />
-              {llmSettings?.auth_token_masked && !llmForm.auth_token && (
-                <p className="text-xs text-muted-foreground mt-1">현재: {llmSettings.auth_token_masked}</p>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium">모델명</label>
+                {modelOptions.length > 0 && (
+                  <button
+                    onClick={() => setUseCustomModel(!useCustomModel)}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {useCustomModel ? '목록에서 선택' : '직접 입력'}
+                  </button>
+                )}
+                {selectedPreset === 'ollama' && (
+                  <button
+                    onClick={() => loadOllamaModels(llmForm.base_url)}
+                    disabled={ollamaLoading}
+                    className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                  >
+                    {ollamaLoading ? '감지 중...' : '모델 새로고침'}
+                  </button>
+                )}
+              </div>
+              {showModelSelect ? (
+                <select
+                  value={llmForm.model}
+                  onChange={(e) => setLlmForm((f) => ({ ...f, model: e.target.value }))}
+                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono bg-white"
+                >
+                  {modelOptions.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={llmForm.model}
+                  onChange={(e) => setLlmForm((f) => ({ ...f, model: e.target.value }))}
+                  placeholder="모델명을 입력하세요"
+                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+                />
+              )}
+              {selectedPreset === 'ollama' && ollamaError && (
+                <p className="text-xs text-yellow-600 mt-1">{ollamaError}</p>
+              )}
+              {selectedPreset === 'ollama' && ollamaModels.length === 0 && !ollamaLoading && !ollamaError && (
+                <p className="text-xs text-muted-foreground mt-1">설치된 모델이 없습니다. ollama pull로 모델을 설치하세요.</p>
               )}
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">모델명</label>
-              <input
-                type="text"
-                value={llmForm.model}
-                onChange={(e) => setLlmForm((f) => ({ ...f, model: e.target.value }))}
-                placeholder="claude-sonnet-4-6"
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
-              />
+
+            {/* 버튼 + 결과 */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleLlmTest}
+                disabled={llmTesting || !llmForm.model}
+                className="px-4 py-2 rounded-md text-sm font-medium border border-blue-600 text-blue-600 hover:bg-blue-50 disabled:opacity-50 transition-colors"
+              >
+                {llmTesting ? '테스트 중...' : '연결 테스트'}
+              </button>
+              <button
+                onClick={handleLlmSave}
+                disabled={llmSaving}
+                className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {llmSaving ? '저장 중...' : '저장'}
+              </button>
             </div>
-            <button
-              onClick={handleLlmSave}
-              disabled={llmSaving}
-              className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              {llmSaving ? '저장 중...' : '저장'}
-            </button>
+            {llmTestResult && (
+              <p className={`text-sm ${llmTestResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                {llmTestResult.success ? '연결 성공' : `연결 실패: ${llmTestResult.error}`}
+              </p>
+            )}
             {llmError && <p className="text-sm text-red-600">{llmError}</p>}
             {llmSuccess && <p className="text-sm text-green-600">{llmSuccess}</p>}
             {llmSettings?.offline && (

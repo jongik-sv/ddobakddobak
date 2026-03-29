@@ -585,9 +585,12 @@ class ActionItemsResponse(BaseModel):
 
 # ── 화자 관리 엔드포인트 ──────────────────────────────────────────────────────
 
+_CLI_LLM_PROVIDERS = frozenset({"claude_cli", "gemini_cli", "codex_cli"})
+
+
 class UpdateLlmSettingsRequest(BaseModel):
     """PUT /settings/llm 요청 스키마."""
-    provider: str | None = None  # "anthropic" 또는 "openai"
+    provider: str | None = None  # "anthropic", "openai", "claude_cli", "gemini_cli", "codex_cli"
     auth_token: str | None = None
     base_url: str | None = None
     model: str | None = None
@@ -605,16 +608,20 @@ def _mask_token(token: str) -> str:
     return f"{token[:4]}{'*' * (len(token) - 8)}{token[-4:]}"
 
 
+def _llm_token_and_url(provider: str) -> tuple[str, str]:
+    """프로바이더에 따른 마스킹된 토큰과 base_url을 반환한다."""
+    if provider in _CLI_LLM_PROVIDERS:
+        return "", ""
+    if provider == "openai":
+        return _mask_token(settings.OPENAI_API_KEY), settings.OPENAI_BASE_URL
+    return _mask_token(settings.ANTHROPIC_AUTH_TOKEN), settings.ANTHROPIC_BASE_URL
+
+
 @app.get("/settings/llm")
 async def get_llm_settings() -> dict:
     """현재 LLM 설정을 반환한다."""
     provider = settings.LLM_PROVIDER
-    if provider == "openai":
-        token_masked = _mask_token(settings.OPENAI_API_KEY)
-        base_url = settings.OPENAI_BASE_URL
-    else:
-        token_masked = _mask_token(settings.ANTHROPIC_AUTH_TOKEN)
-        base_url = settings.ANTHROPIC_BASE_URL
+    token_masked, base_url = _llm_token_and_url(provider)
     return {
         "provider": provider,
         "auth_token_masked": token_masked,
@@ -628,12 +635,12 @@ async def update_llm_settings(request: UpdateLlmSettingsRequest) -> dict:
     """LLM 설정을 런타임에 변경하고 클라이언트를 재생성한다."""
     if request.provider is not None:
         settings.LLM_PROVIDER = request.provider
-    if request.auth_token is not None:
+    if request.auth_token is not None and settings.LLM_PROVIDER not in _CLI_LLM_PROVIDERS:
         if settings.LLM_PROVIDER == "openai":
             settings.OPENAI_API_KEY = request.auth_token
         else:
             settings.ANTHROPIC_AUTH_TOKEN = request.auth_token
-    if request.base_url is not None:
+    if request.base_url is not None and settings.LLM_PROVIDER not in _CLI_LLM_PROVIDERS:
         if settings.LLM_PROVIDER == "openai":
             settings.OPENAI_BASE_URL = request.base_url
         else:
@@ -645,18 +652,62 @@ async def update_llm_settings(request: UpdateLlmSettingsRequest) -> dict:
     app.state.summarizer = LLMSummarizer()
 
     provider = settings.LLM_PROVIDER
-    if provider == "openai":
-        token_masked = _mask_token(settings.OPENAI_API_KEY)
-        base_url = settings.OPENAI_BASE_URL
-    else:
-        token_masked = _mask_token(settings.ANTHROPIC_AUTH_TOKEN)
-        base_url = settings.ANTHROPIC_BASE_URL
+    token_masked, base_url = _llm_token_and_url(provider)
     return {
         "provider": provider,
         "auth_token_masked": token_masked,
         "base_url": base_url,
         "model": settings.LLM_MODEL,
     }
+
+
+class TestLlmRequest(BaseModel):
+    """POST /settings/llm/test 요청 스키마."""
+    provider: str  # "anthropic", "openai", "claude_cli", "gemini_cli", "codex_cli"
+    auth_token: str | None = None
+    base_url: str | None = None
+    model: str
+
+
+@app.post("/settings/llm/test")
+async def test_llm_connection(request: TestLlmRequest) -> dict:
+    """LLM 연결을 테스트한다. 현재 설정을 변경하지 않는다."""
+    original = {
+        "LLM_PROVIDER": settings.LLM_PROVIDER,
+        "ANTHROPIC_AUTH_TOKEN": settings.ANTHROPIC_AUTH_TOKEN,
+        "ANTHROPIC_BASE_URL": settings.ANTHROPIC_BASE_URL,
+        "OPENAI_API_KEY": settings.OPENAI_API_KEY,
+        "OPENAI_BASE_URL": settings.OPENAI_BASE_URL,
+        "LLM_MODEL": settings.LLM_MODEL,
+    }
+    try:
+        settings.LLM_PROVIDER = request.provider
+        settings.LLM_MODEL = request.model
+        if request.provider in _CLI_LLM_PROVIDERS:
+            pass  # CLI 모드는 인증 설정 불필요
+        elif request.provider == "openai":
+            if request.auth_token:
+                settings.OPENAI_API_KEY = request.auth_token
+            if request.base_url is not None:
+                settings.OPENAI_BASE_URL = request.base_url
+        else:
+            if request.auth_token:
+                settings.ANTHROPIC_AUTH_TOKEN = request.auth_token
+            if request.base_url is not None:
+                settings.ANTHROPIC_BASE_URL = request.base_url
+
+        test_summarizer = LLMSummarizer()
+        await test_summarizer._call_llm_raw("You are a test.", "Hi", max_tokens=5)
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+    finally:
+        settings.LLM_PROVIDER = original["LLM_PROVIDER"]
+        settings.ANTHROPIC_AUTH_TOKEN = original["ANTHROPIC_AUTH_TOKEN"]
+        settings.ANTHROPIC_BASE_URL = original["ANTHROPIC_BASE_URL"]
+        settings.OPENAI_API_KEY = original["OPENAI_API_KEY"]
+        settings.OPENAI_BASE_URL = original["OPENAI_BASE_URL"]
+        settings.LLM_MODEL = original["LLM_MODEL"]
 
 
 @app.get("/settings/hf")

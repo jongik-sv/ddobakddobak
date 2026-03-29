@@ -73,6 +73,14 @@ RSpec.configure do |config|
 
   # FactoryBot methods
   config.include FactoryBot::Syntax::Methods
+
+  # 인증 헬퍼: request spec에서 current_user를 지정된 유저로 설정
+  config.include Module.new {
+    def login_as(user)
+      allow_any_instance_of(ApplicationController).to receive(:current_user).and_return(user)
+      allow_any_instance_of(ApplicationController).to receive(:default_user).and_return(user)
+    end
+  }, type: :request
 end
 
 Shoulda::Matchers.configure do |config|

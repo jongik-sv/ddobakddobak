@@ -2,7 +2,6 @@ import { useEffect, useRef, useCallback } from 'react'
 import { createConsumer } from '@rails/actioncable'
 import type { Consumer, Subscription } from '@rails/actioncable'
 import { createTranscriptionChannel, sendAudioChunk } from '../channels/transcription'
-import { useAuthStore } from '../stores/authStore'
 import { useAppSettingsStore } from '../stores/appSettingsStore'
 import { DIARIZATION } from '../config'
 import { WS_URL } from '../config'
@@ -13,7 +12,6 @@ export interface UseTranscriptionResult {
 }
 
 export function useTranscription(meetingId: number): UseTranscriptionResult {
-  const token = useAuthStore((s) => s.token)
   const consumerRef = useRef<Consumer | null>(null)
   const subscriptionRef = useRef<Subscription | null>(null)
 
@@ -44,8 +42,7 @@ export function useTranscription(meetingId: number): UseTranscriptionResult {
   }, [])
 
   useEffect(() => {
-    const url = token ? `${WS_URL}?token=${token}` : WS_URL
-    const consumer = createConsumer(url)
+    const consumer = createConsumer(WS_URL)
     consumerRef.current = consumer
 
     const subscription = createTranscriptionChannel(meetingId, consumer)
@@ -57,7 +54,7 @@ export function useTranscription(meetingId: number): UseTranscriptionResult {
       consumerRef.current = null
       subscriptionRef.current = null
     }
-  }, [meetingId, token])
+  }, [meetingId])
 
   const sendChunk = useCallback((pcm: Int16Array, meta?: ChunkMeta) => {
     if (subscriptionRef.current) {

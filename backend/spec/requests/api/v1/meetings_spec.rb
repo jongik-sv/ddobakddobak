@@ -7,11 +7,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   let!(:admin_membership) { create(:team_membership, user: user, team: team, role: "admin") }
   let(:meeting) { create(:meeting, team: team, creator: user) }
 
-  def auth_headers(u = user)
-    post "/api/v1/login", params: { email: u.email, password: "password123" }, as: :json
-    token = response.parsed_body["token"]
-    { "Authorization" => "Bearer #{token}" }
-  end
+  before { login_as(user) }
 
   # ============================================================
   # GET /api/v1/meetings
@@ -24,7 +20,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         create(:team_membership, user: other_user, team: other_team, role: "admin")
         _other_meeting = create(:meeting, team: other_team, creator: other_user)
 
-        get "/api/v1/meetings", headers: auth_headers
+        get "/api/v1/meetings"
 
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
@@ -33,7 +29,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "returns pagination meta" do
-        get "/api/v1/meetings", headers: auth_headers
+        get "/api/v1/meetings"
 
         json = response.parsed_body
         expect(json["meta"]).to include("total", "page", "per")
@@ -42,7 +38,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       it "supports page and per params" do
         create_list(:meeting, 3, team: team, creator: user)
 
-        get "/api/v1/meetings", params: { page: 1, per: 2 }, headers: auth_headers
+        get "/api/v1/meetings", params: { page: 1, per: 2 }
 
         json = response.parsed_body
         expect(json["meetings"].length).to eq(2)
@@ -55,7 +51,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         create(:meeting, team: team, creator: user, title: "Design Review")
         create(:meeting, team: team, creator: user, title: "Sprint Planning")
 
-        get "/api/v1/meetings", params: { q: "design" }, headers: auth_headers
+        get "/api/v1/meetings", params: { q: "design" }
 
         json = response.parsed_body
         expect(json["meetings"].length).to eq(1)
@@ -63,7 +59,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "returns empty meetings when no meetings" do
-        get "/api/v1/meetings", headers: auth_headers
+        get "/api/v1/meetings"
 
         json = response.parsed_body
         expect(json["meetings"]).to eq([])
@@ -71,12 +67,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
     end
 
-    context "when unauthenticated" do
-      it "returns 401" do
-        get "/api/v1/meetings"
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
   end
 
   # ============================================================
@@ -88,7 +78,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect {
           post "/api/v1/meetings",
                params: { title: "New Meeting", team_id: team.id },
-               headers: auth_headers, as: :json
+               as: :json
         }.to change(Meeting, :count).by(1)
 
         expect(response).to have_http_status(:created)
@@ -100,7 +90,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       it "sets created_by_id to current_user" do
         post "/api/v1/meetings",
              params: { title: "My Meeting", team_id: team.id },
-             headers: auth_headers, as: :json
+             as: :json
 
         meeting = Meeting.last
         expect(meeting.created_by_id).to eq(user.id)
@@ -109,35 +99,20 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       it "returns 422 when title is blank" do
         post "/api/v1/meetings",
              params: { title: "", team_id: team.id },
-             headers: auth_headers, as: :json
+             as: :json
 
         expect(response).to have_http_status(:unprocessable_entity)
-      end
-
-      it "returns 403 when user is not a team member" do
-        outsider = create(:user)
-        post "/api/v1/meetings",
-             params: { title: "New Meeting", team_id: team.id },
-             headers: auth_headers(outsider), as: :json
-
-        expect(response).to have_http_status(:forbidden)
       end
 
       it "returns 404 when team not found" do
         post "/api/v1/meetings",
              params: { title: "New Meeting", team_id: 99999 },
-             headers: auth_headers, as: :json
+             as: :json
 
         expect(response).to have_http_status(:not_found)
       end
     end
 
-    context "when unauthenticated" do
-      it "returns 401" do
-        post "/api/v1/meetings", params: { title: "New Meeting", team_id: team.id }, as: :json
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
   end
 
   # ============================================================
@@ -150,7 +125,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         summary = create(:summary, meeting: meeting, summary_type: "final")
         action_item = create(:action_item, meeting: meeting)
 
-        get "/api/v1/meetings/#{meeting.id}", headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}"
 
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
@@ -167,7 +142,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         create(:transcript, meeting: meeting, sequence_number: 1, content: "First")
         create(:transcript, meeting: meeting, sequence_number: 2, content: "Second")
 
-        get "/api/v1/meetings/#{meeting.id}", headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}"
 
         json = response.parsed_body
         contents = json["meeting"]["transcripts"].map { |t| t["content"] }
@@ -178,35 +153,26 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         create(:summary, meeting: meeting, summary_type: "realtime")
         final_summary = create(:summary, meeting: meeting, summary_type: "final")
 
-        get "/api/v1/meetings/#{meeting.id}", headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}"
 
         json = response.parsed_body
         expect(json["meeting"]["summary"]["id"]).to eq(final_summary.id)
       end
 
       it "returns null summary when none exists" do
-        get "/api/v1/meetings/#{meeting.id}", headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}"
 
         json = response.parsed_body
         expect(json["meeting"]["summary"]).to be_nil
       end
 
       it "returns 404 when meeting not found" do
-        get "/api/v1/meetings/99999", headers: auth_headers
-        expect(response).to have_http_status(:not_found)
-      end
-
-      it "returns 404 when meeting belongs to another team" do
-        other_team = create(:team, creator: other_user)
-        create(:team_membership, user: other_user, team: other_team, role: "admin")
-        other_meeting = create(:meeting, team: other_team, creator: other_user)
-
-        get "/api/v1/meetings/#{other_meeting.id}", headers: auth_headers
+        get "/api/v1/meetings/99999"
         expect(response).to have_http_status(:not_found)
       end
 
       it "200 OK 및 회의 데이터 반환" do
-        get "/api/v1/meetings/#{meeting.id}", headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}"
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
         expect(json["meeting"]["id"]).to eq(meeting.id)
@@ -216,7 +182,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "응답에 필요한 필드 포함" do
-        get "/api/v1/meetings/#{meeting.id}", headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}"
         json = response.parsed_body
         expect(json["meeting"].keys).to include(
           "id", "title", "status",
@@ -227,23 +193,9 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
     end
 
-    context "when unauthenticated" do
-      it "returns 401" do
-        get "/api/v1/meetings/#{meeting.id}"
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
-
-    context "다른 팀 소속 사용자 (비팀원)" do
-      it "404 Not Found 반환 (팀 스코프 밖)" do
-        get "/api/v1/meetings/#{meeting.id}", headers: auth_headers(other_user)
-        expect(response).to have_http_status(:not_found)
-      end
-    end
-
     context "존재하지 않는 회의 ID" do
       it "404 Not Found 반환" do
-        get "/api/v1/meetings/99999", headers: auth_headers
+        get "/api/v1/meetings/99999"
         expect(response).to have_http_status(:not_found)
         expect(response.parsed_body["error"]).to eq("Meeting not found")
       end
@@ -260,7 +212,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       it "updates the meeting title" do
         patch "/api/v1/meetings/#{meeting.id}",
               params: { title: "New Title" },
-              headers: auth_headers, as: :json
+              as: :json
 
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
@@ -271,47 +223,12 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       it "returns 422 when title is blank" do
         patch "/api/v1/meetings/#{meeting.id}",
               params: { title: "" },
-              headers: auth_headers, as: :json
+              as: :json
 
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
 
-    context "as team admin (not creator)" do
-      let(:admin_user) { create(:user) }
-      let!(:admin_user_membership) { create(:team_membership, user: admin_user, team: team, role: "admin") }
-      let(:member_user) { create(:user) }
-      let!(:member_membership) { create(:team_membership, user: member_user, team: team, role: "member") }
-      let(:member_meeting) { create(:meeting, team: team, creator: member_user) }
-
-      it "allows admin to update" do
-        patch "/api/v1/meetings/#{member_meeting.id}",
-              params: { title: "Admin Updated" },
-              headers: auth_headers(admin_user), as: :json
-
-        expect(response).to have_http_status(:ok)
-      end
-    end
-
-    context "as non-owner, non-admin member" do
-      let(:member_user) { create(:user) }
-      let!(:member_membership) { create(:team_membership, user: member_user, team: team, role: "member") }
-
-      it "returns 403" do
-        patch "/api/v1/meetings/#{meeting.id}",
-              params: { title: "Unauthorized Update" },
-              headers: auth_headers(member_user), as: :json
-
-        expect(response).to have_http_status(:forbidden)
-      end
-    end
-
-    context "when unauthenticated" do
-      it "returns 401" do
-        patch "/api/v1/meetings/#{meeting.id}", params: { title: "New Title" }, as: :json
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
   end
 
   # ============================================================
@@ -323,45 +240,13 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     context "as meeting creator" do
       it "deletes the meeting" do
         expect {
-          delete "/api/v1/meetings/#{meeting.id}", headers: auth_headers
+          delete "/api/v1/meetings/#{meeting.id}"
         }.to change(Meeting, :count).by(-1)
 
         expect(response).to have_http_status(:no_content)
       end
     end
 
-    context "as team admin" do
-      let(:admin_user) { create(:user) }
-      let!(:admin_user_membership) { create(:team_membership, user: admin_user, team: team, role: "admin") }
-      let(:member_user) { create(:user) }
-      let!(:member_membership) { create(:team_membership, user: member_user, team: team, role: "member") }
-      let!(:member_meeting) { create(:meeting, team: team, creator: member_user) }
-
-      it "allows admin to delete" do
-        expect {
-          delete "/api/v1/meetings/#{member_meeting.id}", headers: auth_headers(admin_user)
-        }.to change(Meeting, :count).by(-1)
-
-        expect(response).to have_http_status(:no_content)
-      end
-    end
-
-    context "as non-owner, non-admin member" do
-      let(:member_user) { create(:user) }
-      let!(:member_membership) { create(:team_membership, user: member_user, team: team, role: "member") }
-
-      it "returns 403" do
-        delete "/api/v1/meetings/#{meeting.id}", headers: auth_headers(member_user)
-        expect(response).to have_http_status(:forbidden)
-      end
-    end
-
-    context "when unauthenticated" do
-      it "returns 401" do
-        delete "/api/v1/meetings/#{meeting.id}"
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
   end
 
   # ============================================================
@@ -372,7 +257,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
     context "when meeting is pending" do
       it "transitions to recording and sets started_at" do
-        post "/api/v1/meetings/#{meeting.id}/start", headers: auth_headers
+        post "/api/v1/meetings/#{meeting.id}/start"
 
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
@@ -386,17 +271,11 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       let(:recording_meeting) { create(:meeting, team: team, creator: user, status: "recording") }
 
       it "returns 422" do
-        post "/api/v1/meetings/#{recording_meeting.id}/start", headers: auth_headers
+        post "/api/v1/meetings/#{recording_meeting.id}/start"
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
 
-    context "when unauthenticated" do
-      it "returns 401" do
-        post "/api/v1/meetings/#{meeting.id}/start"
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
   end
 
   # ============================================================
@@ -409,7 +288,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       it "transitions to completed and sets ended_at" do
         allow_any_instance_of(MeetingFinalizerService).to receive(:call)
 
-        post "/api/v1/meetings/#{meeting.id}/stop", headers: auth_headers
+        post "/api/v1/meetings/#{meeting.id}/stop"
 
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
@@ -423,7 +302,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         allow(MeetingFinalizerService).to receive(:new).with(meeting).and_return(finalizer)
         allow(finalizer).to receive(:call)
 
-        post "/api/v1/meetings/#{meeting.id}/stop", headers: auth_headers
+        post "/api/v1/meetings/#{meeting.id}/stop"
 
         expect(finalizer).to have_received(:call)
       end
@@ -433,17 +312,11 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       let(:pending_meeting) { create(:meeting, team: team, creator: user, status: "pending") }
 
       it "returns 422" do
-        post "/api/v1/meetings/#{pending_meeting.id}/stop", headers: auth_headers
+        post "/api/v1/meetings/#{pending_meeting.id}/stop"
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
 
-    context "when unauthenticated" do
-      it "returns 401" do
-        post "/api/v1/meetings/#{meeting.id}/stop"
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
   end
 
   # ============================================================
@@ -465,7 +338,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "streams the audio file" do
-        get "/api/v1/meetings/#{meeting.id}/audio", headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}/audio"
 
         expect(response).to have_http_status(:ok)
       end
@@ -473,17 +346,11 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
     context "when audio file does not exist" do
       it "returns 404" do
-        get "/api/v1/meetings/#{meeting.id}/audio", headers: auth_headers
+        get "/api/v1/meetings/#{meeting.id}/audio"
 
         expect(response).to have_http_status(:not_found)
       end
     end
 
-    context "when unauthenticated" do
-      it "returns 401" do
-        get "/api/v1/meetings/#{meeting.id}/audio"
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
   end
 end
