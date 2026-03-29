@@ -21,22 +21,45 @@ class Meeting < ApplicationRecord
   scope :created_before, ->(date) { where("created_at <= ?", Date.parse(date).end_of_day) if date.present? }
   scope :by_status, ->(status) { where(status: status) if status.present? }
 
-  def brief_summary(max_length = 80)
-    summary = summaries.find_by(summary_type: "final") ||
-              summaries.order(generated_at: :desc).first
-    return nil unless summary&.notes_markdown.present?
+  # notes_markdown에서 의미 있는 요약 텍스트를 추출하여 brief_summary 컬럼에 저장
+  def refresh_brief_summary!(notes_markdown = nil)
+    notes_markdown ||= (summaries.find_by(summary_type: "final") ||
+                        summaries.order(generated_at: :desc).first)&.notes_markdown
+    return if notes_markdown.blank?
 
-    # 마크다운 헤더/기호 제거 후 첫 줄 추출
-    text = summary.notes_markdown
-                  .gsub(/^#+\s*/, "")
-                  .gsub(/[*_~`>\-]/, "")
-                  .strip
-                  .lines
-                  .map(&:strip)
-                  .reject(&:empty?)
-                  .first
-    return nil unless text
+    text = self.class.extract_brief_summary(notes_markdown)
+    update_column(:brief_summary, text) if text.present?
+  end
 
-    text.length > max_length ? "#{text[0...max_length]}..." : text
+  def self.extract_brief_summary(notes_markdown, max_length: 150)
+    lines = notes_markdown.lines.map(&:strip).reject(&:empty?)
+
+    # 마크다운 헤더, 구분선, 빈 블릿 등 건너뛰고 실제 내용 추출
+    content_lines = lines.reject { |l|
+      l.match?(/\A\#{1,6}\s/) ||      # 헤더
+      l.match?(/\A[-=*]{3,}\z/) ||     # 구분선
+      l.match?(/\A```/) ||             # 코드블록
+      l.match?(/\A\|/)                 # 테이블
+    }.map { |l|
+      l.gsub(/\A[-*+]\s+/, "")        # 불릿 마커 제거
+       .gsub(/\*\*(.+?)\*\*/, '\1')   # 볼드 제거
+       .gsub(/[*_~`>]/, "")           # 나머지 마크다운 기호 제거
+       .strip
+    }.reject(&:empty?)
+
+    return nil if content_lines.empty?
+
+    # 첫 2~3줄을 합쳐서 의미 있는 길이 확보
+    result = ""
+    content_lines.each do |line|
+      candidate = result.empty? ? line : "#{result} #{line}"
+      if candidate.length > max_length
+        result = result.empty? ? "#{line[0...max_length]}..." : result
+        break
+      end
+      result = candidate
+    end
+
+    result.presence
   end
 end

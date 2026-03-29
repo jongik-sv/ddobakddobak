@@ -36,6 +36,8 @@ function MermaidRenderer({ code }: { code: string }) {
     loadMermaid().then(async ({ default: mermaid }) => {
       if (cancelled) return
       try {
+        // 먼저 구문 검증 — 실패하면 render()를 호출하지 않아 DOM 오염 방지
+        await mermaid.parse(code.trim())
         const id = `mmd-${Math.random().toString(36).slice(2, 9)}`
         const { svg } = await mermaid.render(id, code.trim())
         if (!cancelled && containerRef.current) {
@@ -44,6 +46,8 @@ function MermaidRenderer({ code }: { code: string }) {
         }
       } catch (e) {
         if (!cancelled) setError((e as Error).message)
+        // render가 실패한 경우 DOM에 남긴 잔여 요소 제거
+        document.querySelectorAll('[id^="dmmd-"]').forEach((el) => el.remove())
       }
     })
 

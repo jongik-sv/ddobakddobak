@@ -106,10 +106,14 @@ export default function MeetingLivePage() {
     [meetingId]
   )
 
-  const { isRecording, isPaused, error, start, stop, pause, resume } = useAudioRecorder({
+  const { isRecording, isPaused, error, start, stop, pause, resume, feedSystemAudio } = useAudioRecorder({
     onChunk: (pcm: Int16Array, meta: ChunkMeta) => onChunkRef.current(pcm, meta),
     onStop,
   })
+
+  // feedSystemAudio를 ref로 관리 (콜백 안정성)
+  const feedSystemAudioRef = useRef(feedSystemAudio)
+  feedSystemAudioRef.current = feedSystemAudio
 
   const {
     isCapturing: isSystemCapturing,
@@ -117,7 +121,10 @@ export default function MeetingLivePage() {
     start: startSystemCapture,
     stop: stopSystemCapture,
   } = useSystemAudioCapture({
+    // VAD 처리된 청크 → STT 전송용
     onChunk: (pcm: Int16Array, meta: ChunkMeta) => onSystemChunkRef.current(pcm, meta),
+    // VAD 전 원본 연속 PCM → 녹음 파일 믹싱용 (중복/에코 없음)
+    onRawAudio: (pcm: Int16Array) => feedSystemAudioRef.current(pcm),
   })
 
   const handleStart = async () => {

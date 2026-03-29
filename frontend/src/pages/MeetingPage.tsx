@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Pencil } from 'lucide-react'
+import { Pencil, ArrowLeft } from 'lucide-react'
 import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
@@ -247,7 +247,14 @@ export default function MeetingPage() {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* 페이지 제목 */}
-      <div className="px-6 py-4 bg-white border-b shrink-0">
+      <div className="px-6 py-4 bg-white border-b shrink-0 flex items-center gap-3">
+        <button
+          onClick={() => navigate('/')}
+          className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
+          title="목록으로 돌아가기"
+        >
+          <ArrowLeft className="w-5 h-5 text-gray-600" />
+        </button>
         <h1 className="text-xl font-bold text-gray-900">회의 미리보기</h1>
       </div>
 

@@ -42,6 +42,7 @@ class MeetingSummarizationJob < ApplicationJob
       summary = meeting.summaries.find_or_initialize_by(summary_type: "realtime")
       summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
 
+      meeting.refresh_brief_summary!(notes_markdown)
       meeting.transcripts.where(id: applied_ids).update_all(applied_to_minutes: true)
 
       ActionCable.server.broadcast(channel, {
@@ -78,6 +79,7 @@ class MeetingSummarizationJob < ApplicationJob
     summary = meeting.summaries.find_or_initialize_by(summary_type: "final")
     summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
 
+    meeting.refresh_brief_summary!(notes_markdown)
     meeting.transcripts.update_all(applied_to_minutes: true)
 
     ActionCable.server.broadcast(

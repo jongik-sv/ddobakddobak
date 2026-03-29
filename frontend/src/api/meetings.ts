@@ -48,7 +48,7 @@ export interface Meeting {
   audio_duration_ms: number
   last_transcript_end_ms: number
   last_sequence_number: number
-  tags: { id: number; name: string; color: string }[]
+  tags?: { id: number; name: string; color: string }[]
   started_at: string | null
   ended_at: string | null
   created_at: string

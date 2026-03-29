@@ -153,10 +153,10 @@ describe('useAudioRecorder', () => {
 
     const testData = new Int16Array([100, 200, 300])
     act(() => {
-      mockPort.onmessage?.({ data: testData } as MessageEvent)
+      mockPort.onmessage?.({ data: { pcm: testData, startSample: 0 } } as MessageEvent)
     })
 
-    expect(callbacks.onChunk).toHaveBeenCalledWith(testData)
+    expect(callbacks.onChunk).toHaveBeenCalledWith(testData, { sequence: 0, offsetMs: 0 })
   })
 
   it('stop() 시 onStop(Blob) 콜백 호출', async () => {

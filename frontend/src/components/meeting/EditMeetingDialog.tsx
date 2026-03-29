@@ -20,7 +20,7 @@ export default function EditMeetingDialog({
 }: EditMeetingDialogProps) {
   const [title, setTitle] = useState(meeting.title)
   const [meetingType, setMeetingType] = useState(meeting.meeting_type)
-  const [selectedTagIds, setSelectedTagIds] = useState<number[]>(meeting.tags.map((t) => t.id))
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>(meeting.tags?.map((t) => t.id) ?? [])
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [newTagName, setNewTagName] = useState('')
   const [showNewTag, setShowNewTag] = useState(false)
@@ -95,7 +95,7 @@ export default function EditMeetingDialog({
                   onClick={() => setMeetingType(t.value)}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
                     meetingType === t.value
-                      ? 'bg-primary text-primary-foreground border-primary'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                       : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
                   }`}
                 >

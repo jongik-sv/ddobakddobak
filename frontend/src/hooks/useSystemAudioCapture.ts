@@ -8,6 +8,8 @@ import type { ChunkMeta } from './useAudioRecorder'
 
 export interface SystemAudioCaptureCallbacks {
   onChunk: (pcm: Int16Array, meta: ChunkMeta) => void
+  /** VAD 전 원본 PCM — 녹음 믹싱용 (연속 스트림, 중복 없음) */
+  onRawAudio?: (pcm: Int16Array) => void
 }
 
 export interface SystemAudioCaptureResult {
@@ -50,21 +52,20 @@ export function useSystemAudioCapture(
   const callbacksRef = useRef(callbacks)
   callbacksRef.current = callbacks
 
-  const captureStartRef = useRef<number>(0)
+  const baseOffsetMsRef = useRef<number>(0)
   const chunkSeqRef = useRef<number>(0)
 
   const start = useCallback(async (baseOffsetMs = 0, baseSeq = 0) => {
     try {
-      captureStartRef.current = Date.now() - baseOffsetMs
+      baseOffsetMsRef.current = baseOffsetMs
       chunkSeqRef.current = baseSeq
 
       // VAD 초기화
       const audioConfig = getEffectiveAudioConfig()
-      vadRef.current = new SystemAudioVAD(audioConfig, (pcm: Int16Array) => {
+      vadRef.current = new SystemAudioVAD(audioConfig, (pcm: Int16Array, startSample: number) => {
         const seq = chunkSeqRef.current++
-        const now = Date.now() - captureStartRef.current
-        const chunkDurationMs = (pcm.length / AUDIO.sample_rate) * 1000
-        const offsetMs = Math.max(0, now - chunkDurationMs)
+        // 샘플 카운트 기반 오프셋: 실제 오디오 타임라인과 정확히 동기화
+        const offsetMs = Math.round(baseOffsetMsRef.current + (startSample / AUDIO.sample_rate) * 1000)
         callbacksRef.current.onChunk(pcm, { sequence: seq, offsetMs })
       })
 
@@ -74,6 +75,9 @@ export function useSystemAudioCapture(
         (event) => {
           const { pcm_base64 } = event.payload
           const pcmI16 = base64ToInt16Array(pcm_base64)
+          // 원본 PCM을 녹음 믹싱용으로 전달 (VAD 전, 중복 없음)
+          callbacksRef.current.onRawAudio?.(pcmI16)
+          // VAD 처리 → STT용 청크 생성
           vadRef.current?.feed(pcmI16)
         },
       )

@@ -48,9 +48,13 @@ export class SystemAudioVAD {
   private tail: Float32Array
   private tailLen = 0
 
-  private onChunk: (pcm: Int16Array) => void
+  // 샘플 기반 타임스탬프
+  private totalSamplesIn = 0
+  private chunkStartSample = 0
 
-  constructor(config: Partial<AudioConfig>, onChunk: (pcm: Int16Array) => void) {
+  private onChunk: (pcm: Int16Array, startSample: number) => void
+
+  constructor(config: Partial<AudioConfig>, onChunk: (pcm: Int16Array, startSample: number) => void) {
     this.config = { ...DEFAULT_CONFIG, ...config }
     this.onChunk = onChunk
 
@@ -92,6 +96,8 @@ export class SystemAudioVAD {
   }
 
   private processFloats(channel: Float32Array): void {
+    this.totalSamplesIn += channel.length
+
     // RMS 계산
     let sumSq = 0
     for (let i = 0; i < channel.length; i++) {
@@ -107,15 +113,13 @@ export class SystemAudioVAD {
 
       if (rms > this.config.silence_threshold) {
         const prerollLen = Math.min(this.prerollHead, this.prerollSamples)
-        const startIdx = this.prerollHead % this.prerollSamples
+        // FIX: 버퍼 미충족 시 0부터 시작
+        const startIdx = this.prerollHead <= this.prerollSamples ? 0 : this.prerollHead % this.prerollSamples
         for (let i = 0; i < prerollLen; i++) {
           this.speech[this.speechLen++] = this.preroll[(startIdx + i) % this.prerollSamples]
         }
-        for (let i = 0; i < channel.length; i++) {
-          if (this.speechLen < this.maxChunkSamples) {
-            this.speech[this.speechLen++] = channel[i]
-          }
-        }
+        // FIX: 현재 프레임은 이미 프리롤에 포함 — 중복 복사 제거
+        this.chunkStartSample = this.totalSamplesIn - prerollLen
         this.state = 'SPEECH'
         this.prerollHead = 0
       }
@@ -165,7 +169,7 @@ export class SystemAudioVAD {
       const s = Math.max(-1, Math.min(1, this.speech[i]))
       int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff
     }
-    this.onChunk(int16)
+    this.onChunk(int16, this.chunkStartSample)
 
     // overlap tail 저장
     const overlapStart = Math.max(0, this.speechLen - this.overlapSamples)

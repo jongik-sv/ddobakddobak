@@ -681,7 +681,7 @@ export default function MeetingsPage() {
               key={meeting.id}
               onPointerDown={(e) => initDrag('meeting', meeting.id, meeting.title, e)}
               onClick={() => navigate(`/meetings/${meeting.id}`)}
-              className="group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 hover:shadow-sm transition-all flex flex-col"
+              className="group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 hover:shadow-sm transition-all flex flex-col min-h-[180px]"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2 mb-1">
@@ -707,7 +707,7 @@ export default function MeetingsPage() {
                   ))}
                 </div>
                 {meeting.brief_summary && (
-                  <p className="text-xs text-muted-foreground line-clamp-2 mb-2 leading-relaxed">
+                  <p className="text-xs text-muted-foreground line-clamp-5 mb-2 leading-relaxed">
                     {meeting.brief_summary}
                   </p>
                 )}

@@ -69,6 +69,8 @@ TSK-01-05 (pane 1) + TSK-01-06 (pane 2) ← 병렬
 - 전체 STT 생성 : 현재 까지의 오디오로 전체 기록을 다시 생성하는 기능
 - 회의록 재생성 : 전체 기록을 바탕으로 회의록을 다시 생성하는 기능, 실시간 보다 정교해야 함
 - loop back audio capture 기능(현재 macOS)
+- 회의록을 카테고리별로 폴더 분류, 폴더 생성, 이동 기능 추가 (회의록 자체를 폴더 아래 파일과 같은 개념으로 생각)
+- 회의카드에 요약 내용 보여주기
 
 ---
 ### 진행
@@ -77,13 +79,23 @@ TSK-01-05 (pane 1) + TSK-01-06 (pane 2) ← 병렬
 
 - 또박또박 컨셉에 맞는 아이콘을 추가하자. 제미나이에서 그려
 
-- https://huggingface.co/CohereLabs/cohere-transcribe-03-2026
-
-
+- https://huggingface.co/CohereLabs/cohere-transcribe-03-2026 - 시간이 더 지나야함
 - 회의록과 전체 기록에서 필요로 한 내용을 검색하는 기능 추가
   - 회의록과 전체 기록에서 특정 내용을 검색하는 기능
   - 검색 결과에서 해당 내용으로 이동하는 기능
-
-- 회의록을 카테고리별로 폴더 분류, 폴더 생성, 이동 기능 추가 (회의록 자체를 폴더 아래 파일과 같은 개념으로 생각)
+끝
 - 회의록에 파일, 링크 업로드 기능(회의 안건 파일, 참고 파일, 회의록에 첨부할 파일 등)
 - 목록에 요약 정보를 같이 보여주면??
+
+```mermaid
+flowchart LR
+    A[모델 성능 비교] --> B[GPT-4 Codecs]
+    A --> C[MiniMax 2.7]
+    A --> D["Claude Opus<br>(Vibe Pro)"]
+    
+    B --> B_Score["Score: 50%"]
+    C --> C_Score["Score: 56.5%"]
+    D --> D_Rank["Tier: 최상위권"]
+    
+    style C_Score fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+```

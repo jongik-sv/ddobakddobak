@@ -249,6 +249,7 @@ module Api
         if notes_markdown.present?
           summary = find_or_create_active_summary
           summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
+          @meeting.refresh_brief_summary!(notes_markdown)
 
           ActionCable.server.broadcast("meeting_#{@meeting.id}_transcription", {
             type: "meeting_notes_update",
@@ -269,6 +270,7 @@ module Api
 
         summary = find_or_create_active_summary
         summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
+        @meeting.refresh_brief_summary!(notes_markdown)
 
         render json: { notes_markdown: notes_markdown }
       end

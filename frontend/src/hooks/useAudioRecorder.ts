@@ -20,6 +20,8 @@ export interface AudioRecorderResult {
   stop: () => void
   pause: () => void
   resume: () => void
+  /** 시스템 오디오 PCM을 녹음 믹스에 주입 (16kHz Int16) */
+  feedSystemAudio: (pcm: Int16Array) => void
 }
 
 export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecorderResult {
@@ -30,14 +32,12 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
   const streamRef = useRef<MediaStream | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const workletNodeRef = useRef<AudioWorkletNode | null>(null)
+  const systemInjectorRef = useRef<AudioWorkletNode | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const pausedRef = useRef(false)
-  const recordingStartRef = useRef<number>(0)
   const chunkSeqRef = useRef<number>(0)
-  const totalPausedMsRef = useRef<number>(0)   // 누적 일시정지 시간 (ms)
-  const pauseStartedAtRef = useRef<number>(0)  // 현재 일시정지 시작 시각
-  // 콜백 ref 패턴: start/stop 의존성 없이 최신 콜백 참조
+  const baseOffsetMsRef = useRef<number>(0)
   const callbacksRef = useRef(callbacks)
   callbacksRef.current = callbacks
 
@@ -49,27 +49,34 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
       const audioContext = new AudioContext({ sampleRate: AUDIO.sample_rate })
       audioContextRef.current = audioContext
 
+      // STT용 VAD worklet
       await audioContext.audioWorklet.addModule('/audio-processor.js')
-
       const source = audioContext.createMediaStreamSource(stream)
       const workletNode = new AudioWorkletNode(audioContext, 'audio-processor')
       workletNodeRef.current = workletNode
-
-      // config.yaml 기본값 + 사용자 오버라이드를 worklet에 전달
       workletNode.port.postMessage({ type: 'init', config: getEffectiveAudioConfig() })
 
-      workletNode.port.onmessage = (event: MessageEvent<Int16Array>) => {
+      workletNode.port.onmessage = (event: MessageEvent<{ pcm: Int16Array; startSample: number }>) => {
         if (!pausedRef.current) {
+          const { pcm, startSample } = event.data
           const seq = chunkSeqRef.current++
-          const now = Date.now() - recordingStartRef.current - totalPausedMsRef.current
-          // 청크 시작 시점 = 현재 시점 - 청크 길이(샘플 수 / 샘플레이트)
-          const chunkDurationMs = (event.data.length / AUDIO.sample_rate) * 1000
-          const offsetMs = Math.max(0, now - chunkDurationMs)
-          callbacksRef.current.onChunk(event.data, { sequence: seq, offsetMs })
+          // 샘플 카운트 기반 오프셋: AudioContext 클럭과 정확히 동기화
+          const offsetMs = Math.round(baseOffsetMsRef.current + (startSample / AUDIO.sample_rate) * 1000)
+          callbacksRef.current.onChunk(pcm, { sequence: seq, offsetMs })
         }
       }
 
       source.connect(workletNode)
+
+      // 녹음용 믹싱: 마이크 + 시스템 오디오 → MediaStreamDestination
+      const destination = audioContext.createMediaStreamDestination()
+      source.connect(destination)
+
+      // 시스템 오디오 인젝터 worklet
+      await audioContext.audioWorklet.addModule('/system-audio-injector.js')
+      const injector = new AudioWorkletNode(audioContext, 'system-audio-injector')
+      systemInjectorRef.current = injector
+      injector.connect(destination)
 
       // WKWebView(macOS Tauri)는 webm 미지원 → mp4 폴백
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -77,7 +84,8 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
         : MediaRecorder.isTypeSupported('audio/mp4')
           ? 'audio/mp4'
           : 'audio/webm'
-      const mediaRecorder = new MediaRecorder(stream, { mimeType })
+      // 믹싱된 스트림에서 녹음
+      const mediaRecorder = new MediaRecorder(destination.stream, { mimeType })
       mediaRecorderRef.current = mediaRecorder
       chunksRef.current = []
 
@@ -88,11 +96,9 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
       }
 
       mediaRecorder.start()
-      recordingStartRef.current = Date.now() - baseOffsetMs
+      baseOffsetMsRef.current = baseOffsetMs
       chunkSeqRef.current = baseSeq
       pausedRef.current = false
-      totalPausedMsRef.current = 0
-      pauseStartedAtRef.current = 0
       setIsRecording(true)
       setIsPaused(false)
       setError(null)
@@ -107,9 +113,7 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
     if (mediaRecorder && mediaRecorder.state === 'recording') {
       mediaRecorder.pause()
     }
-    // Worklet VAD도 일시정지 — 마이크 입력을 무시하고 진행 중인 청크 전송
     workletNodeRef.current?.port.postMessage({ type: 'pause' })
-    pauseStartedAtRef.current = Date.now()
     pausedRef.current = true
     setIsPaused(true)
   }, [])
@@ -120,24 +124,18 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
       mediaRecorder.resume()
     }
     workletNodeRef.current?.port.postMessage({ type: 'resume' })
-    // 일시정지 동안 흐른 시간을 누적하여 offsetMs 계산에서 차감
-    if (pauseStartedAtRef.current > 0) {
-      totalPausedMsRef.current += Date.now() - pauseStartedAtRef.current
-      pauseStartedAtRef.current = 0
-    }
     pausedRef.current = false
     setIsPaused(false)
   }, [])
 
   const stop = useCallback(() => {
     pausedRef.current = false
-
-    // flush: worklet에 남은 음성 전송 요청
     workletNodeRef.current?.port.postMessage({ type: 'flush' })
 
-    // 200ms 후 정리 (worklet이 flush 응답할 시간 확보)
     setTimeout(() => {
       workletNodeRef.current?.disconnect()
+      systemInjectorRef.current?.disconnect()
+      systemInjectorRef.current = null
       audioContextRef.current?.close()
       streamRef.current?.getTracks().forEach((track) => track.stop())
     }, 200)
@@ -159,5 +157,9 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
     setIsPaused(false)
   }, [])
 
-  return { isRecording, isPaused, error, start, stop, pause, resume }
+  const feedSystemAudio = useCallback((pcm: Int16Array) => {
+    systemInjectorRef.current?.port.postMessage(pcm)
+  }, [])
+
+  return { isRecording, isPaused, error, start, stop, pause, resume, feedSystemAudio }
 }

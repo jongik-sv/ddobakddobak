@@ -30,6 +30,10 @@ class AudioProcessor extends AudioWorkletProcessor {
 
     this._paused = false
 
+    // 샘플 기반 타임스탬프: Date.now() 대신 실제 오디오 샘플 수로 정확한 위치 추적
+    this._totalSamplesIn = 0
+    this._chunkStartSample = 0
+
     this.port.onmessage = (event) => {
       if (event.data?.type === 'pause') {
         // 일시정지: 진행 중인 음성이 있으면 전송 후 리셋
@@ -77,6 +81,7 @@ class AudioProcessor extends AudioWorkletProcessor {
     if (this._paused) return true
 
     const channel = input[0]
+    this._totalSamplesIn += channel.length
 
     let sumSq = 0
     for (let i = 0; i < channel.length; i++) {
@@ -92,15 +97,13 @@ class AudioProcessor extends AudioWorkletProcessor {
 
       if (rms > SILENCE_THRESHOLD) {
         const prerollLen = Math.min(this._prerollHead, PREROLL_SAMPLES)
-        const startIdx = this._prerollHead % PREROLL_SAMPLES
+        // FIX: 버퍼 미충족 시 0부터 시작 (기존에는 미초기화 영역 읽음)
+        const startIdx = this._prerollHead <= PREROLL_SAMPLES ? 0 : this._prerollHead % PREROLL_SAMPLES
         for (let i = 0; i < prerollLen; i++) {
           this._speech[this._speechLen++] = this._preroll[(startIdx + i) % PREROLL_SAMPLES]
         }
-        for (let i = 0; i < channel.length; i++) {
-          if (this._speechLen < MAX_CHUNK_SAMPLES) {
-            this._speech[this._speechLen++] = channel[i]
-          }
-        }
+        // FIX: 현재 프레임은 이미 프리롤에 포함 — 중복 복사 제거
+        this._chunkStartSample = this._totalSamplesIn - prerollLen
         this._state = 'SPEECH'
         this._prerollHead = 0
       }
@@ -151,7 +154,7 @@ class AudioProcessor extends AudioWorkletProcessor {
       const s = Math.max(-1, Math.min(1, this._speech[i]))
       int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff
     }
-    this.port.postMessage(int16, [int16.buffer])
+    this.port.postMessage({ pcm: int16, startSample: this._chunkStartSample }, [int16.buffer])
 
     // Save tail for overlap with next chunk
     const overlapStart = Math.max(0, this._speechLen - OVERLAP_SAMPLES)
