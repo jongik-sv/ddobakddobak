@@ -35,6 +35,8 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
   const pausedRef = useRef(false)
   const recordingStartRef = useRef<number>(0)
   const chunkSeqRef = useRef<number>(0)
+  const totalPausedMsRef = useRef<number>(0)   // 누적 일시정지 시간 (ms)
+  const pauseStartedAtRef = useRef<number>(0)  // 현재 일시정지 시작 시각
   // 콜백 ref 패턴: start/stop 의존성 없이 최신 콜백 참조
   const callbacksRef = useRef(callbacks)
   callbacksRef.current = callbacks
@@ -59,7 +61,7 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
       workletNode.port.onmessage = (event: MessageEvent<Int16Array>) => {
         if (!pausedRef.current) {
           const seq = chunkSeqRef.current++
-          const now = Date.now() - recordingStartRef.current
+          const now = Date.now() - recordingStartRef.current - totalPausedMsRef.current
           // 청크 시작 시점 = 현재 시점 - 청크 길이(샘플 수 / 샘플레이트)
           const chunkDurationMs = (event.data.length / AUDIO.sample_rate) * 1000
           const offsetMs = Math.max(0, now - chunkDurationMs)
@@ -89,6 +91,8 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
       recordingStartRef.current = Date.now() - baseOffsetMs
       chunkSeqRef.current = baseSeq
       pausedRef.current = false
+      totalPausedMsRef.current = 0
+      pauseStartedAtRef.current = 0
       setIsRecording(true)
       setIsPaused(false)
       setError(null)
@@ -105,6 +109,7 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
     }
     // Worklet VAD도 일시정지 — 마이크 입력을 무시하고 진행 중인 청크 전송
     workletNodeRef.current?.port.postMessage({ type: 'pause' })
+    pauseStartedAtRef.current = Date.now()
     pausedRef.current = true
     setIsPaused(true)
   }, [])
@@ -115,6 +120,11 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
       mediaRecorder.resume()
     }
     workletNodeRef.current?.port.postMessage({ type: 'resume' })
+    // 일시정지 동안 흐른 시간을 누적하여 offsetMs 계산에서 차감
+    if (pauseStartedAtRef.current > 0) {
+      totalPausedMsRef.current += Date.now() - pauseStartedAtRef.current
+      pauseStartedAtRef.current = 0
+    }
     pausedRef.current = false
     setIsPaused(false)
   }, [])

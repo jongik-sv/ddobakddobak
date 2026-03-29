@@ -1,6 +1,5 @@
 import { HTTPError } from 'ky'
 import apiClient from './client'
-import { useAuthStore } from '../stores/authStore'
 import { API_BASE_URL } from '../config'
 
 export interface MeetingDetail {
@@ -45,6 +44,7 @@ export interface Meeting {
   source?: 'live' | 'upload'
   transcription_progress?: number
   audio_duration_ms: number
+  last_transcript_end_ms: number
   last_sequence_number: number
   started_at: string | null
   ended_at: string | null
@@ -126,10 +126,8 @@ export async function uploadAudio(id: number, blob: Blob): Promise<void> {
 
   // FormData 전송 시 브라우저가 Content-Type(multipart boundary 포함)을 자동 설정하도록
   // ky 대신 fetch를 직접 사용
-  const token = useAuthStore.getState().token
   await fetch(`${API_BASE_URL}/meetings/${id}/audio`, {
     method: 'POST',
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: formData,
   })
 }
@@ -146,10 +144,8 @@ export async function uploadAudioFile(data: {
   if (data.meeting_type) formData.append('meeting_type', data.meeting_type)
   formData.append('audio', data.audio)
 
-  const token = useAuthStore.getState().token
   const res = await fetch(`${API_BASE_URL}/meetings/upload_audio`, {
     method: 'POST',
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: formData,
   })
   if (!res.ok) {

@@ -15,6 +15,7 @@ const mockMeetingBase = {
   created_by: { id: 1, name: '테스터' },
   brief_summary: null,
   audio_duration_ms: 0,
+  last_transcript_end_ms: 0,
   last_sequence_number: 0,
   started_at: '2026-03-25T10:00:00Z',
   ended_at: '2026-03-25T11:00:00Z',

@@ -17,6 +17,7 @@ const mockMeeting = {
   meeting_type: 'general',
   brief_summary: null,
   audio_duration_ms: 0,
+  last_transcript_end_ms: 0,
   last_sequence_number: 0,
   started_at: null,
   ended_at: null,

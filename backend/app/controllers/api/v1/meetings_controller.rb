@@ -25,9 +25,6 @@ module Api
         team = Team.find_by(id: params[:team_id])
         return render json: { error: "Team not found" }, status: :not_found unless team
 
-        require_team_membership!(team)
-        return if performed?
-
         meeting = Meeting.new(
           title: params[:title],
           team: team,
@@ -52,9 +49,6 @@ module Api
       def upload_audio
         team = Team.find_by(id: params[:team_id])
         return render json: { error: "Team not found" }, status: :not_found unless team
-
-        require_team_membership!(team)
-        return if performed?
 
         audio_file = params[:audio]
         return render json: { error: "오디오 파일이 필요합니다" }, status: :unprocessable_entity unless audio_file.is_a?(ActionDispatch::Http::UploadedFile)
@@ -94,9 +88,6 @@ module Api
       end
 
       def update
-        require_resource_owner_or_admin!(@meeting, @meeting.team)
-        return if performed?
-
         if @meeting.update(title: params[:title])
           render json: { meeting: meeting_json(@meeting) }
         else
@@ -105,9 +96,6 @@ module Api
       end
 
       def destroy
-        require_resource_owner_or_admin!(@meeting, @meeting.team)
-        return if performed?
-
         @meeting.destroy
         head :no_content
       end
@@ -318,6 +306,7 @@ module Api
           source: meeting.source,
           transcription_progress: meeting.transcription_progress,
           audio_duration_ms: audio_duration_ms(meeting),
+          last_transcript_end_ms: meeting.transcripts.maximum(:ended_at_ms).to_i,
           last_sequence_number: meeting.transcripts.maximum(:sequence_number).to_i,
           created_at: meeting.created_at,
           updated_at: meeting.updated_at

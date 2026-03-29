@@ -117,7 +117,7 @@ export default function MeetingLivePage() {
     }
     // 재개 시 최신 오디오 길이 + 시퀀스 번호를 서버에서 가져옴
     const latest = await getMeeting(meetingId)
-    const offsetMs = latest.audio_duration_ms ?? 0
+    const offsetMs = Math.max(latest.audio_duration_ms ?? 0, latest.last_transcript_end_ms ?? 0)
     const seqNum = latest.last_sequence_number ?? 0
     setAudioDurationMs(offsetMs)
     setLastSeqNum(seqNum)
