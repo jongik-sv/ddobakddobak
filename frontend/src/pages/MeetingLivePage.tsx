@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Settings, Monitor, Mic, ArrowLeft } from 'lucide-react'
+import { Settings, Monitor, Mic, ArrowLeft, StickyNote } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
 import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
@@ -281,6 +281,10 @@ export default function MeetingLivePage() {
 
   const isActive = status === 'recording'
 
+  // 메모 토글
+  const memoVisible = useUiStore((s) => s.memoVisible)
+  const toggleMemo = useUiStore((s) => s.toggleMemo)
+
   // 녹음 상태를 글로벌 스토어에 동기화 (폴더 클릭 차단용)
   const setRecordingActive = useUiStore((s) => s.setRecordingActive)
   useEffect(() => {
@@ -417,6 +421,13 @@ export default function MeetingLivePage() {
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
           <h1 className="text-lg font-semibold text-gray-900">회의실</h1>
+          <button
+            onClick={toggleMemo}
+            className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+            title={memoVisible ? '메모 숨기기' : '메모 보기'}
+          >
+            <StickyNote className="w-4 h-4" />
+          </button>
           <button
             onClick={useUiStore.getState().openSettings}
             className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
@@ -561,57 +572,61 @@ export default function MeetingLivePage() {
           </section>
         </Panel>
 
-        <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
+        {memoVisible && (
+          <>
+            <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-        {/* 메모 + 피드백 영역 — 나머지 30% */}
-        <Panel defaultSize={30} minSize={15}>
-          <section
-            data-testid="memo-editor"
-            className="h-full flex flex-col overflow-hidden"
-          >
-            {/* 메모 영역 (60%) */}
-            <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
-              <h2 className="text-sm font-semibold text-gray-500">메모</h2>
-              <button
-                onClick={handleSaveMemo}
-                disabled={isSavingMemo}
-                className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            {/* 메모 + 피드백 영역 — 나머지 30% */}
+            <Panel defaultSize={30} minSize={15}>
+              <section
+                data-testid="memo-editor"
+                className="h-full flex flex-col overflow-hidden"
               >
-                {isSavingMemo ? '저장 중...' : '저장'}
-              </button>
-            </div>
-            <div className="overflow-auto" style={{ flex: '0 0 60%' }}>
-              <MeetingEditor editorRef={memoEditorRef} />
-            </div>
+                {/* 메모 영역 (60%) */}
+                <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
+                  <h2 className="text-sm font-semibold text-gray-500">메모</h2>
+                  <button
+                    onClick={handleSaveMemo}
+                    disabled={isSavingMemo}
+                    className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isSavingMemo ? '저장 중...' : '저장'}
+                  </button>
+                </div>
+                <div className="overflow-auto" style={{ flex: '0 0 60%' }}>
+                  <MeetingEditor editorRef={memoEditorRef} />
+                </div>
 
-            {/* 피드백 영역 (40%) */}
-            <div className="flex flex-col border-t" style={{ flex: '0 0 40%' }}>
-              <h2 className="px-4 py-2 text-sm font-semibold text-gray-500 border-b bg-gray-50 shrink-0">
-                AI 피드백
-              </h2>
-              <div className="flex-1 flex flex-col p-3 gap-2 overflow-hidden">
-                <p className="text-xs text-gray-400 shrink-0">
-                  AI에게 회의록 수정을 요청하세요
-                </p>
-                <textarea
-                  value={feedbackText}
-                  onChange={(e) => setFeedbackText(e.target.value)}
-                  onKeyDown={handleFeedbackKeyDown}
-                  placeholder="예: 결정사항을 표로 정리해줘, 핵심 요약을 더 짧게 줄여줘..."
-                  className="flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-                  disabled={isSendingFeedback}
-                />
-                <button
-                  onClick={handleSendFeedback}
-                  disabled={!feedbackText.trim() || isSendingFeedback}
-                  className="shrink-0 px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isSendingFeedback ? '반영 중...' : '피드백 전송'}
-                </button>
-              </div>
-            </div>
-          </section>
-        </Panel>
+                {/* 피드백 영역 (40%) */}
+                <div className="flex flex-col border-t" style={{ flex: '0 0 40%' }}>
+                  <h2 className="px-4 py-2 text-sm font-semibold text-gray-500 border-b bg-gray-50 shrink-0">
+                    AI 피드백
+                  </h2>
+                  <div className="flex-1 flex flex-col p-3 gap-2 overflow-hidden">
+                    <p className="text-xs text-gray-400 shrink-0">
+                      AI에게 회의록 수정을 요청하세요
+                    </p>
+                    <textarea
+                      value={feedbackText}
+                      onChange={(e) => setFeedbackText(e.target.value)}
+                      onKeyDown={handleFeedbackKeyDown}
+                      placeholder="예: 결정사항을 표로 정리해줘, 핵심 요약을 더 짧게 줄여줘..."
+                      className="flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                      disabled={isSendingFeedback}
+                    />
+                    <button
+                      onClick={handleSendFeedback}
+                      disabled={!feedbackText.trim() || isSendingFeedback}
+                      className="shrink-0 px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isSendingFeedback ? '반영 중...' : '피드백 전송'}
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </Panel>
+          </>
+        )}
       </PanelGroup>
 
       {/* 하단 상태바 */}

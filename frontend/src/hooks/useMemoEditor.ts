@@ -26,13 +26,12 @@ export function useMemoEditor(
     loadedForIdRef.current = meetingId
     let cancelled = false
 
-    const tryLoad = () => {
+    const tryLoad = async () => {
       if (cancelled) return
       const editor = memoEditorRef.current
       if (editor) {
-        editor.tryParseMarkdownToBlocks(memo).then((blocks) => {
-          if (!cancelled) editor.replaceBlocks(editor.document, blocks)
-        })
+        const blocks = await editor.tryParseMarkdownToBlocks(memo)
+        if (!cancelled) editor.replaceBlocks(editor.document, blocks)
       } else {
         setTimeout(tryLoad, 100)
       }

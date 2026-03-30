@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { RefObject } from 'react'
 import { apiClient } from '../api/client'
 import { downloadBlob } from '../lib/download'
 
@@ -7,6 +6,7 @@ export interface AudioPlayerResult {
   isReady: boolean
   isPlaying: boolean
   hasAudio: boolean
+  audioLoaded: boolean
   currentTimeMs: number
   durationMs: number
   playbackRate: number
@@ -17,28 +17,22 @@ export interface AudioPlayerResult {
   download: (filename?: string) => Promise<void>
 }
 
-export function useAudioPlayer(
-  meetingId: number,
-  waveformRef: RefObject<HTMLDivElement | null>
-): AudioPlayerResult {
+export function useAudioPlayer(meetingId: number): AudioPlayerResult {
   const [isReady, setIsReady] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasAudio, setHasAudio] = useState(false)
+  const [audioLoaded, setAudioLoaded] = useState(false)
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [durationMs, setDurationMs] = useState(0)
   const [playbackRate, setPlaybackRateState] = useState(1)
 
-  const wavesurferRef = useRef<import('wavesurfer.js').default | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const blobUrlRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!waveformRef.current) return
-
     let cancelled = false
 
     async function init() {
-      const WaveSurfer = (await import('wavesurfer.js')).default
-
       try {
         const response = await apiClient.get(`meetings/${meetingId}/audio`)
 
@@ -53,42 +47,24 @@ export function useAudioPlayer(
         const blobUrl = URL.createObjectURL(blob)
         blobUrlRef.current = blobUrl
 
-        if (!waveformRef.current || cancelled) return
+        const audio = new Audio(blobUrl)
+        audioRef.current = audio
 
-        const ws = WaveSurfer.create({
-          container: waveformRef.current,
-          waveColor: '#6366f1',
-          progressColor: '#4f46e5',
-          url: blobUrl,
+        audio.addEventListener('loadedmetadata', () => {
+          if (cancelled) return
+          setHasAudio(true)
+          setAudioLoaded(true)
+          setDurationMs(audio.duration * 1000)
+          setIsReady(true)
         })
 
-        ws.on('ready', () => {
-          if (!cancelled) {
-            setHasAudio(true)
-            setDurationMs(ws.getDuration() * 1000)
-            setIsReady(true)
-          }
+        audio.addEventListener('play', () => { if (!cancelled) setIsPlaying(true) })
+        audio.addEventListener('pause', () => { if (!cancelled) setIsPlaying(false) })
+        audio.addEventListener('ended', () => { if (!cancelled) setIsPlaying(false) })
+        audio.addEventListener('timeupdate', () => {
+          if (!cancelled) setCurrentTimeMs(audio.currentTime * 1000)
         })
-
-        ws.on('play', () => {
-          if (!cancelled) setIsPlaying(true)
-        })
-
-        ws.on('pause', () => {
-          if (!cancelled) setIsPlaying(false)
-        })
-
-        ws.on('finish', () => {
-          if (!cancelled) setIsPlaying(false)
-        })
-
-        ws.on('timeupdate', (currentTime: number) => {
-          if (!cancelled) setCurrentTimeMs(currentTime * 1000)
-        })
-
-        wavesurferRef.current = ws
       } catch {
-        // audio may not be available for this meeting — mark as ready so UI isn't stuck
         if (!cancelled) setIsReady(true)
       }
     }
@@ -97,8 +73,12 @@ export function useAudioPlayer(
 
     return () => {
       cancelled = true
-      wavesurferRef.current?.destroy()
-      wavesurferRef.current = null
+      const audio = audioRef.current
+      if (audio) {
+        audio.pause()
+        audio.src = ''
+        audioRef.current = null
+      }
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current)
         blobUrlRef.current = null
@@ -106,32 +86,29 @@ export function useAudioPlayer(
       setIsReady(false)
       setIsPlaying(false)
       setHasAudio(false)
+      setAudioLoaded(false)
       setCurrentTimeMs(0)
       setDurationMs(0)
     }
-  }, [meetingId, waveformRef])
+  }, [meetingId])
 
   const play = useCallback(() => {
-    wavesurferRef.current?.play()
+    audioRef.current?.play()
   }, [])
 
   const pause = useCallback(() => {
-    wavesurferRef.current?.pause()
+    audioRef.current?.pause()
   }, [])
 
   const seekTo = useCallback((ms: number) => {
-    const ws = wavesurferRef.current
-    if (!ws) return
-    const duration = ws.getDuration()
-    if (duration > 0) {
-      ws.seekTo(ms / (duration * 1000))
-    } else {
-      ws.seekTo(0)
-    }
+    const audio = audioRef.current
+    if (!audio) return
+    audio.currentTime = ms / 1000
   }, [])
 
   const setPlaybackRate = useCallback((rate: number) => {
-    wavesurferRef.current?.setPlaybackRate(rate, true)
+    const audio = audioRef.current
+    if (audio) audio.playbackRate = rate
     setPlaybackRateState(rate)
   }, [])
 
@@ -143,5 +120,5 @@ export function useAudioPlayer(
     await downloadBlob(blob, filename ?? `meeting-${meetingId}.webm`)
   }, [meetingId])
 
-  return { isReady, isPlaying, hasAudio, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download }
+  return { isReady, isPlaying, hasAudio, audioLoaded, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download }
 }

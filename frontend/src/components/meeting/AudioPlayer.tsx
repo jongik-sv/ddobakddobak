@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react'
+import { Play, Pause, Download } from 'lucide-react'
 import { useAudioPlayer } from '../../hooks/useAudioPlayer'
 
 interface AudioPlayerProps {
@@ -16,11 +17,8 @@ function formatTime(ms: number): string {
 }
 
 export function AudioPlayer({ meetingId, onTimeUpdate, seekMs, autoPlayOnSeek = false }: AudioPlayerProps) {
-  const waveformRef = useRef<HTMLDivElement>(null)
-  const { isReady, isPlaying, hasAudio, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download } = useAudioPlayer(
-    meetingId,
-    waveformRef
-  )
+  const progressRef = useRef<HTMLDivElement>(null)
+  const { isReady, isPlaying, hasAudio, audioLoaded, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download } = useAudioPlayer(meetingId)
 
   const SPEED_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2]
   const cycleSpeed = () => {
@@ -40,56 +38,82 @@ export function AudioPlayer({ meetingId, onTimeUpdate, seekMs, autoPlayOnSeek = 
     }
   }, [seekMs, seekTo, autoPlayOnSeek, play])
 
+  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const bar = progressRef.current
+    if (!bar || durationMs <= 0) return
+    const rect = bar.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    seekTo(ratio * durationMs)
+  }
+
   if (isReady && !hasAudio) return null
 
-  return (
-    <div className="flex flex-col gap-2 p-4 bg-white border-b">
-      {/* WaveSurfer 파형 컨테이너 */}
-      <div data-testid="waveform" ref={waveformRef} className="w-full h-20 overflow-hidden" />
+  const progress = durationMs > 0 ? (currentTimeMs / durationMs) * 100 : 0
 
-      {/* 컨트롤 영역 */}
-      <div className="relative z-10 flex items-center gap-4">
-        {!isReady ? (
-          <span className="text-sm text-gray-400">오디오 불러오는 중...</span>
-        ) : (
-          <>
-            {isPlaying ? (
-              <button
-                aria-label="정지"
-                onClick={pause}
-                className="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700"
-              >
-                정지
-              </button>
-            ) : (
-              <button
-                aria-label="재생"
-                onClick={play}
-                className="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700"
-              >
-                재생
-              </button>
-            )}
-            <span className="text-sm text-gray-600 tabular-nums">
-              {formatTime(currentTimeMs)} / {formatTime(durationMs)}
-            </span>
-            <button
-              aria-label="배속"
-              onClick={cycleSpeed}
-              className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 text-sm hover:bg-gray-200 tabular-nums"
-            >
-              {playbackRate}x
-            </button>
-            <button
-              aria-label="다운로드"
-              onClick={() => download()}
-              className="ml-auto px-3 py-1.5 rounded bg-gray-100 text-gray-700 text-sm hover:bg-gray-200"
-            >
-              다운로드
-            </button>
-          </>
-        )}
-      </div>
+  return (
+    <div className="flex items-center gap-3 px-4 py-2 bg-white border-b">
+      {!isReady ? (
+        <span className="text-sm text-gray-400">오디오 불러오는 중...</span>
+      ) : (
+        <>
+          {/* 재생/정지 버튼 */}
+          <button
+            onClick={isPlaying ? pause : play}
+            disabled={!audioLoaded}
+            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+          </button>
+
+          {/* 시간 (현재) */}
+          <span className="shrink-0 text-xs text-gray-500 tabular-nums w-10 text-right">
+            {formatTime(currentTimeMs)}
+          </span>
+
+          {/* 프로그레스 바 */}
+          <div
+            ref={progressRef}
+            onClick={handleProgressClick}
+            className="flex-1 h-1.5 bg-gray-200 rounded-full cursor-pointer relative group"
+          >
+            <div
+              className="h-full bg-indigo-600 rounded-full transition-[width] duration-100"
+              style={{ width: `${progress}%` }}
+            />
+            <div
+              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-indigo-600 rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ left: `calc(${progress}% - 6px)` }}
+            />
+          </div>
+
+          {/* 시간 (전체) */}
+          <span className="shrink-0 text-xs text-gray-500 tabular-nums w-10">
+            {formatTime(durationMs)}
+          </span>
+
+          {/* 배속 */}
+          <button
+            onClick={cycleSpeed}
+            className="shrink-0 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 tabular-nums"
+          >
+            {playbackRate}x
+          </button>
+
+          {/* 다운로드 */}
+          <button
+            onClick={() => download()}
+            disabled={!audioLoaded}
+            className="shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="다운로드"
+          >
+            <Download className="w-4 h-4" />
+          </button>
+
+          {!audioLoaded && (
+            <span className="text-xs text-gray-400">로딩...</span>
+          )}
+        </>
+      )}
     </div>
   )
 }
