@@ -33,50 +33,39 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
     let cancelled = false
     const audioUrl = `${API_BASE_URL}/meetings/${meetingId}/audio`
 
-    // HEAD 요청으로 오디오 파일 존재 여부 먼저 확인
-    apiClient.head(`meetings/${meetingId}/audio`).then(() => {
+    const audio = new Audio()
+    audioRef.current = audio
+    audio.preload = 'metadata'
+
+    audio.addEventListener('loadedmetadata', () => {
       if (cancelled) return
+      setHasAudio(true)
+      setDurationMs(audio.duration * 1000)
+      setIsReady(true)
+    })
 
-      const audio = new Audio()
-      audioRef.current = audio
+    audio.addEventListener('canplay', () => {
+      if (!cancelled) setAudioLoaded(true)
+    })
 
-      audio.addEventListener('loadedmetadata', () => {
-        if (cancelled) return
-        setHasAudio(true)
-        setDurationMs(audio.duration * 1000)
-        setIsReady(true)
-      })
-
-      audio.addEventListener('canplay', () => {
-        if (!cancelled) setAudioLoaded(true)
-      })
-
-      audio.addEventListener('play', () => { if (!cancelled) setIsPlaying(true) })
-      audio.addEventListener('pause', () => { if (!cancelled) setIsPlaying(false) })
-      audio.addEventListener('ended', () => { if (!cancelled) setIsPlaying(false) })
-      audio.addEventListener('timeupdate', () => {
-        if (!cancelled) setCurrentTimeMs(audio.currentTime * 1000)
-      })
-      audio.addEventListener('error', () => {
-        if (!cancelled) setIsReady(true)
-      })
-
-      // 브라우저가 스트리밍으로 처리 — 즉시 재생 가능
-      audio.src = audioUrl
-      audio.preload = 'metadata'
-    }).catch(() => {
-      // 오디오 파일 없음
+    audio.addEventListener('play', () => { if (!cancelled) setIsPlaying(true) })
+    audio.addEventListener('pause', () => { if (!cancelled) setIsPlaying(false) })
+    audio.addEventListener('ended', () => { if (!cancelled) setIsPlaying(false) })
+    audio.addEventListener('timeupdate', () => {
+      if (!cancelled) setCurrentTimeMs(audio.currentTime * 1000)
+    })
+    audio.addEventListener('error', () => {
       if (!cancelled) setIsReady(true)
     })
 
+    audio.src = audioUrl
+
     return () => {
       cancelled = true
-      const audio = audioRef.current
-      if (audio) {
-        audio.pause()
-        audio.src = ''
-        audioRef.current = null
-      }
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+      audioRef.current = null
       setIsReady(false)
       setIsPlaying(false)
       setHasAudio(false)

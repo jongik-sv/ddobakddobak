@@ -2,6 +2,7 @@ module Api
   module V1
     class MeetingsAudioController < ApplicationController
       ALLOWED_AUDIO_CONTENT_TYPES = %w[audio/webm audio/ogg video/webm audio/mp4].freeze
+      AUDIO_MIME_OVERRIDES = { ".m4a" => "audio/mp4", ".aac" => "audio/aac" }.freeze
 
       before_action :authenticate_user!
       before_action :set_meeting
@@ -32,7 +33,7 @@ module Api
         end
 
         ext = File.extname(path).downcase
-        mime = Rack::Mime.mime_type(ext, "application/octet-stream")
+        mime = AUDIO_MIME_OVERRIDES[ext] || Rack::Mime.mime_type(ext, "application/octet-stream")
         send_file path,
                   type:        mime,
                   disposition: "inline",
