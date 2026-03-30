@@ -108,8 +108,11 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
 
   const download = useCallback(async (filename?: string) => {
     const response = await apiClient.get(`meetings/${meetingId}/audio`)
+    const disposition = response.headers.get('content-disposition') ?? ''
+    const match = disposition.match(/filename="?(.+?)"?$/)
+    const serverFilename = match?.[1] ?? `meeting-${meetingId}.webm`
     const blob = await response.blob()
-    await downloadBlob(blob, filename ?? `meeting-${meetingId}.webm`)
+    await downloadBlob(blob, filename ?? serverFilename)
   }, [meetingId])
 
   return { isReady, isPlaying, hasAudio, audioLoaded, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download }

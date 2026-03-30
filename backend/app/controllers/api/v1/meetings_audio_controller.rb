@@ -31,10 +31,29 @@ module Api
           return
         end
 
+        ext = File.extname(path).downcase
+        mime = Rack::Mime.mime_type(ext, "application/octet-stream")
         send_file path,
-                  type:        "audio/webm",
+                  type:        mime,
                   disposition: "inline",
-                  filename:    "#{@meeting.id}.webm"
+                  filename:    "#{@meeting.id}#{ext}"
+      end
+
+      def peaks
+        path = @meeting.audio_file_path
+
+        unless audio_file_accessible?(path)
+          render json: { error: "Audio not found" }, status: :not_found
+          return
+        end
+
+        peaks_path = "#{path}.peaks.json"
+        generate_peaks!(path, peaks_path) unless File.exist?(peaks_path)
+
+        send_file peaks_path, type: "application/json", disposition: "inline"
+      rescue StandardError => e
+        Rails.logger.error "[AudioPeaks] #{e.message}"
+        render json: { error: "Failed to generate peaks" }, status: :internal_server_error
       end
 
       private
@@ -101,6 +120,25 @@ module Api
 
       def audio_file_accessible?(path)
         path.present? && File.exist?(path)
+      end
+
+      def generate_peaks!(audio_path, peaks_path)
+        duration = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 #{Shellwords.escape(audio_path)}`.strip.to_f
+
+        raw = IO.popen(
+          ["ffmpeg", "-i", audio_path, "-ac", "1", "-ar", "100", "-f", "f32le", "-acodec", "pcm_f32le", "pipe:1"],
+          "rb", err: File::NULL
+        ) { |io| io.read }
+
+        samples = raw.unpack("e*")
+        target = 800
+        chunk_size = [(samples.length / target.to_f).ceil, 1].max
+        peaks_data = samples.each_slice(chunk_size).map { |c| c.map(&:abs).max || 0.0 }
+
+        max_val = peaks_data.max || 1.0
+        peaks_data = peaks_data.map { |p| (p / max_val).round(4) } if max_val > 0
+
+        File.write(peaks_path, JSON.generate({ peaks: [peaks_data], duration: duration }))
       end
     end
   end
