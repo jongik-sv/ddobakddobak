@@ -5,8 +5,7 @@ module Api
       before_action :set_meeting, only: %i[show update destroy start stop reopen reset_content summarize summary transcripts export feedback update_notes regenerate_stt regenerate_notes]
 
       def index
-        meetings = Meeting.for_team(user_team_ids)
-                          .search(params[:q])
+        meetings = Meeting.search(params[:q])
                           .by_status(params[:status])
                           .created_after(params[:date_from])
                           .created_before(params[:date_to])
@@ -31,12 +30,8 @@ module Api
       end
 
       def create
-        team = Team.find_by(id: params[:team_id])
-        return render json: { error: "Team not found" }, status: :not_found unless team
-
         meeting = Meeting.new(
           title: params[:title],
-          team: team,
           created_by_id: current_user.id,
           meeting_type: params[:meeting_type] || "general",
           folder_id: params[:folder_id]
@@ -57,9 +52,6 @@ module Api
       ].freeze
 
       def upload_audio
-        team = Team.find_by(id: params[:team_id])
-        return render json: { error: "Team not found" }, status: :not_found unless team
-
         audio_file = params[:audio]
         return render json: { error: "오디오 파일이 필요합니다" }, status: :unprocessable_entity unless audio_file.is_a?(ActionDispatch::Http::UploadedFile)
 
@@ -68,7 +60,6 @@ module Api
 
         meeting = Meeting.create!(
           title: params[:title].presence || "업로드된 회의",
-          team: team,
           created_by_id: current_user.id,
           meeting_type: params[:meeting_type] || "general",
           folder_id: params[:folder_id],
@@ -84,6 +75,16 @@ module Api
 
         File.open(audio_path, "wb") do |f|
           f.write(audio_file.read)
+        end
+
+        # MP4/M4A: moov atom을 파일 앞으로 이동하여 브라우저 스트리밍 재생 지원
+        if %w[.m4a .mp4 .aac].include?(ext)
+          faststart_path = "#{audio_path}.faststart#{ext}"
+          if system("ffmpeg", "-y", "-i", audio_path, "-c", "copy", "-movflags", "+faststart", faststart_path, out: File::NULL, err: File::NULL)
+            FileUtils.mv(faststart_path, audio_path)
+          else
+            FileUtils.rm_f(faststart_path)
+          end
         end
 
         meeting.update!(audio_file_path: audio_path)
@@ -104,6 +105,7 @@ module Api
         attrs[:folder_id] = params[:folder_id] if params.key?(:folder_id)
         attrs[:meeting_type] = params[:meeting_type] if params.key?(:meeting_type)
         attrs[:memo] = params[:memo] if params.key?(:memo)
+        attrs[:brief_summary] = params[:brief_summary] if params.key?(:brief_summary)
 
         if params.key?(:tag_ids)
           tag_ids = Array(params[:tag_ids]).map(&:to_i)
@@ -121,12 +123,15 @@ module Api
         meeting_ids = params[:meeting_ids]
         return render json: { error: "meeting_ids is required" }, status: :unprocessable_entity if meeting_ids.blank?
 
-        meetings = Meeting.for_team(user_team_ids).where(id: meeting_ids)
+        meetings = Meeting.where(id: meeting_ids)
         meetings.update_all(folder_id: params[:folder_id])
         render json: { updated: meetings.count }
       end
 
       def destroy
+        if @meeting.audio_file_path.present? && File.exist?(@meeting.audio_file_path)
+          File.delete(@meeting.audio_file_path)
+        end
         @meeting.destroy
         head :no_content
       end
@@ -163,6 +168,7 @@ module Api
         @meeting.summaries.destroy_all
         @meeting.action_items.destroy_all
         @meeting.blocks.destroy_all
+        @meeting.meeting_attachments.destroy_all
 
         # 오디오 파일 삭제
         if @meeting.audio_file_path.present? && File.exist?(@meeting.audio_file_path)
@@ -296,32 +302,41 @@ module Api
 
       def export
         include_summary    = boolean_param(:include_summary)
+        include_memo       = boolean_param(:include_memo)
         include_transcript = boolean_param(:include_transcript)
 
-        markdown = MarkdownExporter.new(
-          @meeting,
-          include_summary:    include_summary,
-          include_transcript: include_transcript
-        ).call
+        if params[:export_format] == "json"
+          data = MeetingExportSerializer.new(
+            @meeting,
+            include_summary:    include_summary,
+            include_memo:       include_memo,
+            include_transcript: include_transcript
+          ).call
 
-        filename = "meeting_#{@meeting.id}_#{Date.today}.md"
+          render json: data
+        else
+          markdown = MarkdownExporter.new(
+            @meeting,
+            include_summary:    include_summary,
+            include_memo:       include_memo,
+            include_transcript: include_transcript
+          ).call
 
-        send_data markdown,
-          type:        "text/markdown; charset=utf-8",
-          disposition: "attachment",
-          filename:    filename
+          filename = "meeting_#{@meeting.id}_#{Date.today}.md"
+
+          send_data markdown,
+            type:        "text/markdown; charset=utf-8",
+            disposition: "attachment",
+            filename:    filename
+        end
       end
 
       private
 
       def set_meeting
-        @meeting = Meeting.for_team(user_team_ids).find(params[:id])
+        @meeting = Meeting.find(params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Meeting not found" }, status: :not_found
-      end
-
-      def user_team_ids
-        current_user.team_memberships.pluck(:team_id)
       end
 
       def pagination_page
@@ -380,6 +395,11 @@ module Api
           folder_id: meeting.folder_id,
           memo: meeting.memo,
           tags: meeting.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
+          attachment_counts: {
+            agenda: meeting.meeting_attachments.where(category: "agenda").count,
+            reference: meeting.meeting_attachments.where(category: "reference").count,
+            minutes: meeting.meeting_attachments.where(category: "minutes").count
+          },
           created_at: meeting.created_at,
           updated_at: meeting.updated_at
         }

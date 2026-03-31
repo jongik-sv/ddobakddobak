@@ -30,6 +30,9 @@
     "fs:allow-read-file",
     "fs:allow-write-file",
     "dialog:allow-save",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "dialog:allow-ask",
+    "dialog:allow-confirm",
+    "dialog:allow-message"
   ]
 }

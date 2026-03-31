@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FolderClosed, FolderInput, Pencil } from 'lucide-react'
-import { getTeams } from '../api/teams'
-import { createMeeting, stopMeeting, updateMeeting, uploadAudioFile } from '../api/meetings'
+import { FolderClosed, FolderInput, Pencil, Trash2 } from 'lucide-react'
+import { createMeeting, deleteMeeting, stopMeeting, updateMeeting, uploadAudioFile } from '../api/meetings'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
@@ -66,14 +65,13 @@ function formatDate(dateStr: string): string {
 }
 
 interface CreateMeetingModalProps {
-  defaultTeamId: number
   folderId: number | null
   meetingTypeList: { value: string; label: string }[]
   onClose: () => void
   onCreated: (meeting: Meeting) => void
 }
 
-function CreateMeetingModal({ defaultTeamId, folderId, meetingTypeList, onClose, onCreated }: CreateMeetingModalProps) {
+function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreated }: CreateMeetingModalProps) {
   const [title, setTitle] = useState('')
   const [meetingType, setMeetingType] = useState('general')
   const [loading, setLoading] = useState(false)
@@ -87,7 +85,6 @@ function CreateMeetingModal({ defaultTeamId, folderId, meetingTypeList, onClose,
     try {
       const meeting = await createMeeting({
         title: title.trim(),
-        team_id: defaultTeamId,
         meeting_type: meetingType,
         folder_id: folderId,
       })
@@ -173,14 +170,13 @@ function CreateMeetingModal({ defaultTeamId, folderId, meetingTypeList, onClose,
 const ACCEPTED_AUDIO_TYPES = '.mp3,.wav,.m4a,.webm,.ogg,.flac,.aac,.mp4'
 
 interface UploadAudioModalProps {
-  defaultTeamId: number
   folderId: number | null
   meetingTypeList: { value: string; label: string }[]
   onClose: () => void
   onCreated: (meeting: Meeting) => void
 }
 
-function UploadAudioModal({ defaultTeamId, folderId, meetingTypeList, onClose, onCreated }: UploadAudioModalProps) {
+function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated }: UploadAudioModalProps) {
   const [title, setTitle] = useState('')
   const [meetingType, setMeetingType] = useState('general')
   const [file, setFile] = useState<File | null>(null)
@@ -241,7 +237,6 @@ function UploadAudioModal({ defaultTeamId, folderId, meetingTypeList, onClose, o
     try {
       const meeting = await uploadAudioFile({
         title: title.trim(),
-        team_id: defaultTeamId,
         meeting_type: meetingType,
         audio: file,
       })
@@ -414,7 +409,6 @@ export default function MeetingsPage() {
 
   const { folders, selectedFolderId } = useFolderStore()
 
-  const [defaultTeamId, setDefaultTeamId] = useState<number | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -465,15 +459,6 @@ export default function MeetingsPage() {
     }
   }, [searchParams, setStatusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 팀 ID 자동 확보
-  useEffect(() => {
-    getTeams()
-      .then((data) => {
-        if (data.length > 0) setDefaultTeamId(data[0].id)
-      })
-      .catch(() => {})
-  }, [])
-
   // 필터 변경 시 디바운스 후 fetch (folderId는 클릭 핸들러에서 직접 fetch하므로 제외)
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -522,15 +507,13 @@ export default function MeetingsPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowUploadModal(true)}
-            disabled={defaultTeamId === null}
-            className="rounded-md border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+            className="rounded-md border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
           >
             오디오 업로드
           </button>
           <button
             onClick={() => setShowModal(true)}
-            disabled={defaultTeamId === null}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors disabled:opacity-50"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
           >
             새 회의
           </button>
@@ -725,6 +708,20 @@ export default function MeetingsPage() {
                   >
                     <FolderInput className="w-4 h-4 text-muted-foreground" />
                   </button>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      const { confirm } = await import('@tauri-apps/plugin-dialog')
+                      const ok = await confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`, { title: '회의 삭제', kind: 'warning' })
+                      if (!ok) return
+                      await deleteMeeting(meeting.id)
+                      fetchMeetings(currentPage)
+                    }}
+                    className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 hover:bg-red-50 transition-opacity"
+                    title="삭제"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -756,9 +753,8 @@ export default function MeetingsPage() {
       )}
 
       {/* 회의 생성 모달 */}
-      {showModal && defaultTeamId && (
+      {showModal && (
         <CreateMeetingModal
-          defaultTeamId={defaultTeamId}
           folderId={currentFolderId}
           meetingTypeList={meetingTypeList}
           onClose={() => setShowModal(false)}
@@ -767,9 +763,8 @@ export default function MeetingsPage() {
       )}
 
       {/* 오디오 파일 업로드 모달 */}
-      {showUploadModal && defaultTeamId && (
+      {showUploadModal && (
         <UploadAudioModal
-          defaultTeamId={defaultTeamId}
           folderId={currentFolderId}
           meetingTypeList={meetingTypeList}
           onClose={() => setShowUploadModal(false)}
