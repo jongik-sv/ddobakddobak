@@ -5,6 +5,7 @@ import type { MeetingExportData } from '../api/meetings'
  * docx 패키지는 코드 스플리팅을 위해 동적 임포트한다.
  */
 export async function generateDocx(data: MeetingExportData): Promise<Blob> {
+  console.log('[DOCX] generateDocx called, summary type:', data.summary?.type)
   const { Document, Packer, Paragraph, TextRun, HeadingLevel, Table } = await import('docx')
   const { markdownToDocxParagraphs } = await import('./markdownToDocx')
 

@@ -6,6 +6,7 @@ import {
   Table,
   TableRow,
   TableCell,
+  TableLayoutType,
   BorderStyle,
   WidthType,
   ShadingType,
@@ -22,47 +23,53 @@ async function renderMermaidToImage(
 ): Promise<{ buffer: ArrayBuffer; width: number; height: number } | null> {
   try {
     const mermaid = (await import('mermaid')).default
+    const html2canvas = (await import('html2canvas')).default
+
     mermaid.initialize({ startOnLoad: false, theme: 'default' })
 
     const id = `docx-mmd-${idx}-${Date.now()}`
+    console.log('[DOCX-MERMAID] rendering idx=', idx)
     const { svg } = await mermaid.render(id, code.trim())
 
+    // SVG를 숨겨진 DOM 컨테이너에 삽입 (충분한 폭 확보)
+    const container = document.createElement('div')
+    container.style.position = 'fixed'
+    container.style.left = '0'
+    container.style.top = '0'
+    container.style.width = '800px'
+    container.style.zIndex = '-9999'
+    container.style.background = 'white'
+    container.style.padding = '16px'
+    container.innerHTML = svg
+    // SVG를 컨테이너 폭에 맞게 확장
+    const svgEl = container.querySelector('svg')
+    if (svgEl) {
+      svgEl.style.width = '100%'
+      svgEl.style.height = 'auto'
+    }
+    document.body.appendChild(container)
+
+    // html2canvas로 DOM 요소를 직접 캡처 (Image 요소 우회)
+    const canvas = await html2canvas(container, { scale: 2, backgroundColor: '#ffffff' })
+    document.body.removeChild(container)
+
     // 잔여 DOM 요소 정리
-    document.querySelectorAll(`[id^="ddocx-mmd-"]`).forEach((el) => el.remove())
-
-    // SVG → Canvas → PNG
-    const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
-    const url = URL.createObjectURL(svgBlob)
-
-    const img = new Image()
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve()
-      img.onerror = reject
-      img.src = url
-    })
-
-    const scale = 2
-    const canvas = document.createElement('canvas')
-    canvas.width = img.naturalWidth * scale
-    canvas.height = img.naturalHeight * scale
-    const ctx = canvas.getContext('2d')!
-    ctx.scale(scale, scale)
-    ctx.drawImage(img, 0, 0)
-    URL.revokeObjectURL(url)
+    document.querySelectorAll(`[id^="d${id}"]`).forEach((el) => el.remove())
 
     const blob = await new Promise<Blob>((resolve) =>
       canvas.toBlob((b) => resolve(b!), 'image/png'),
     )
     const buffer = await blob.arrayBuffer()
 
-    // DOCX에 삽입할 크기 (EMU 기준으로 적절한 폭, 최대 600px)
+    const natW = canvas.width / 2
+    const natH = canvas.height / 2
     const maxWidth = 600
-    const ratio = Math.min(maxWidth / img.naturalWidth, 1)
-    const width = Math.round(img.naturalWidth * ratio)
-    const height = Math.round(img.naturalHeight * ratio)
+    const ratio = Math.min(maxWidth / natW, 1)
 
-    return { buffer, width, height }
-  } catch {
+    console.log('[DOCX-MERMAID] captured, size=', natW, 'x', natH)
+    return { buffer, width: Math.round(natW * ratio), height: Math.round(natH * ratio) }
+  } catch (err) {
+    console.error('[DOCX-MERMAID] render failed:', err)
     return null
   }
 }
@@ -289,8 +296,13 @@ export async function markdownToDocxParagraphs(markdown: string): Promise<(Parag
         insideVertical: borderStyle,
       }
 
+      // A4 콘텐츠 폭 ≈ 9072 DXA (약 160mm)를 균등 분배
+      const totalWidthDxa = 9072
+      const cellWidthDxa = Math.floor(totalWidthDxa / colCount)
+      console.log('[DOCX-TABLE] colCount=', colCount, 'cellWidthDxa=', cellWidthDxa, 'layout=FIXED')
       const makeCell = (text: string, isHeader: boolean): TableCell =>
         new TableCell({
+          width: { size: cellWidthDxa, type: WidthType.DXA },
           children: [new Paragraph({ children: parseInlineFormatting(text) })],
           ...(isHeader
             ? { shading: { fill: 'F0F0F0', type: ShadingType.CLEAR, color: 'auto' } }
@@ -322,7 +334,9 @@ export async function markdownToDocxParagraphs(markdown: string): Promise<(Parag
         paragraphs.push(
           new Table({
             rows,
-            width: { size: 100, type: WidthType.PERCENTAGE },
+            width: { size: totalWidthDxa, type: WidthType.DXA },
+            columnWidths: Array(colCount).fill(cellWidthDxa),
+            layout: TableLayoutType.FIXED,
             borders: tableBorders,
           }),
         )

@@ -138,7 +138,8 @@ export async function deleteTranscripts(meetingId: number, ids: number[]): Promi
 
 export async function uploadAudio(id: number, blob: Blob): Promise<void> {
   const formData = new FormData()
-  formData.append('audio', blob, 'recording.webm')
+  const ext = blob.type.includes('wav') ? 'wav' : 'webm'
+  formData.append('audio', blob, `recording.${ext}`)
 
   // FormData 전송 시 브라우저가 Content-Type(multipart boundary 포함)을 자동 설정하도록
   // ky 대신 fetch를 직접 사용
@@ -238,6 +239,14 @@ export async function getTranscripts(meetingId: number, perPage = 5000): Promise
   } catch {
     return []
   }
+}
+
+/**
+ * 회의 프롬프트를 텍스트로 다운로드한다.
+ * GET /api/v1/meetings/:id/export_prompt
+ */
+export async function exportPrompt(meetingId: number): Promise<string> {
+  return apiClient.get(`meetings/${meetingId}/export_prompt`).text()
 }
 
 export interface ExportOptions {

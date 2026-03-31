@@ -39,6 +39,10 @@ class AudioProcessor extends AudioWorkletProcessor {
     this._totalSamplesIn = 0
     this._chunkStartSample = 0
 
+    // 녹음용 원본 믹싱 PCM 배치 출력 (4800 samples = 300ms)
+    this._rawBuf = new Float32Array(4800)
+    this._rawPos = 0
+
     this.port.onmessage = (event) => {
       if (event.data?.type === 'system-audio') {
         // 시스템 오디오 PCM (Int16Array) → Float32 변환 후 큐에 추가
@@ -62,6 +66,10 @@ class AudioProcessor extends AudioWorkletProcessor {
         this._paused = true
       } else if (event.data?.type === 'resume') {
         this._paused = false
+        // 일시정지 중 쌓인 stale 시스템 오디오 큐 클리어
+        this._sysQueue = []
+        this._sysCurrent = null
+        this._sysOffset = 0
       } else if (event.data?.type === 'init') {
         const c = event.data.config
         if (c) {
@@ -116,6 +124,22 @@ class AudioProcessor extends AudioWorkletProcessor {
         sys = this._sysCurrent[this._sysOffset++]
       }
       channel[i] = mic[i] + sys
+    }
+
+    // 녹음용: 믹싱된 PCM을 배치로 메인 스레드에 전달
+    if (!this._paused) {
+      for (let i = 0; i < channel.length; i++) {
+        this._rawBuf[this._rawPos++] = channel[i]
+        if (this._rawPos >= 4800) {
+          const int16 = new Int16Array(4800)
+          for (let j = 0; j < 4800; j++) {
+            const s = Math.max(-1, Math.min(1, this._rawBuf[j]))
+            int16[j] = s < 0 ? s * 0x8000 : s * 0x7fff
+          }
+          this.port.postMessage({ type: 'raw-pcm', pcm: int16 }, [int16.buffer])
+          this._rawPos = 0
+        }
+      }
     }
 
     this._totalSamplesIn += channel.length

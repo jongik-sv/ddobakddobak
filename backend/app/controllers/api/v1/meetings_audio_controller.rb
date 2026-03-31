@@ -1,7 +1,7 @@
 module Api
   module V1
     class MeetingsAudioController < ApplicationController
-      ALLOWED_AUDIO_CONTENT_TYPES = %w[audio/webm audio/ogg video/webm audio/mp4].freeze
+      ALLOWED_AUDIO_CONTENT_TYPES = %w[audio/webm audio/ogg video/webm audio/mp4 audio/wav audio/x-wav audio/wave].freeze
       AUDIO_MIME_OVERRIDES = { ".m4a" => "audio/mp4", ".aac" => "audio/aac" }.freeze
 
       before_action :authenticate_user!
@@ -84,7 +84,8 @@ module Api
 
       # 기존 오디오가 있으면 ffmpeg로 병합, 없으면 단순 저장
       def save_or_merge_audio(audio_file, meeting)
-        dest_path = audio_dest_path(meeting.id)
+        ext = File.extname(audio_file.original_filename).downcase.presence || ".webm"
+        dest_path = File.join(audio_dir, "#{meeting.id}#{ext}")
         FileUtils.mkdir_p(audio_dir)
 
         existing = meeting.audio_file_path

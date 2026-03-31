@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { HTTPError } from 'ky'
 import { getSttSettings, updateSttEngine, getLlmSettings, updateLlmSettings, getHfSettings, updateHfToken, testLlmConnection, fetchOllamaModels } from '../../api/settings'
-import type { SttSettings, LlmSettings, HfSettings } from '../../api/settings'
+import type { SttSettings, LlmSettings, LlmPreset, HfSettings } from '../../api/settings'
 import { useAppSettingsStore, AUDIO_DEFAULTS, DIARIZATION_DEFAULTS } from '../../stores/appSettingsStore'
 import { ENGINE_LABELS, SUMMARY_INTERVAL_OPTIONS, AUDIO, DIARIZATION, LANGUAGES } from '../../config'
 import PromptTemplateManager from '../PromptTemplateManager'
@@ -84,7 +84,19 @@ export default function SettingsContent() {
       else setError('설정을 불러오지 못했습니다.')
       if (llm) {
         setLlmSettings(llm)
-        setLlmForm({ provider: llm.provider || 'anthropic', auth_token: '', base_url: llm.base_url, model: llm.model, max_input_tokens: llm.max_input_tokens, max_output_tokens: llm.max_output_tokens })
+        setSelectedPreset(llm.active_preset || 'anthropic')
+        // 서버 프리셋 데이터로 로컬 캐시 초기화
+        const cache: Record<string, PresetFormState> = {}
+        for (const [id, preset] of Object.entries(llm.presets || {})) {
+          cache[id] = {
+            auth_token: '',  // 마스킹된 값이므로 비워둠
+            base_url: preset.base_url || SERVICE_PRESETS.find((p) => p.id === id)?.defaultBaseUrl || '',
+            model: preset.model || '',
+            max_input_tokens: preset.max_input_tokens || 200000,
+            max_output_tokens: preset.max_output_tokens || 10000,
+          }
+        }
+        setPresetCache(cache)
       }
       if (hf) setHfSettings(hf)
     }).finally(() => setLoading(false))
@@ -111,9 +123,17 @@ export default function SettingsContent() {
     }
   }
 
-  // LLM 설정
+  // LLM 설정 — 프리셋별 폼 캐시
+  interface PresetFormState {
+    auth_token: string
+    base_url: string
+    model: string
+    max_input_tokens: number
+    max_output_tokens: number
+  }
+
   const [llmSettings, setLlmSettings] = useState<LlmSettings | null>(null)
-  const [llmForm, setLlmForm] = useState({ provider: 'anthropic', auth_token: '', base_url: '', model: '', max_input_tokens: 200000, max_output_tokens: 32768 })
+  const [presetCache, setPresetCache] = useState<Record<string, PresetFormState>>({})
   const [selectedPreset, setSelectedPreset] = useState('anthropic')
   const [llmSaving, setLlmSaving] = useState(false)
   const [llmSuccess, setLlmSuccess] = useState<string | null>(null)
@@ -125,25 +145,31 @@ export default function SettingsContent() {
   const [ollamaError, setOllamaError] = useState<string | null>(null)
   const [useCustomModel, setUseCustomModel] = useState(false)
 
-  // 서버에서 로드된 설정으로 프리셋 자동 매칭
-  useEffect(() => {
-    if (!llmSettings) return
-    const matched = SERVICE_PRESETS.find(
-      (p) => p.id !== 'custom' && p.provider === llmSettings.provider && p.defaultBaseUrl === llmSettings.base_url
-    )
-    setSelectedPreset(matched?.id ?? 'custom')
-  }, [llmSettings])
+  // 현재 선택된 프리셋의 폼 값
+  const currentForm = presetCache[selectedPreset] || { auth_token: '', base_url: '', model: '' }
+  const updateCurrentForm = (updates: Partial<PresetFormState>) => {
+    setPresetCache((c) => ({
+      ...c,
+      [selectedPreset]: { ...currentForm, ...updates },
+    }))
+  }
 
   const handlePresetSelect = (presetId: string) => {
-    const preset = SERVICE_PRESETS.find((p) => p.id === presetId)!
     setSelectedPreset(presetId)
-    setLlmForm((f) => ({
-      ...f,
-      provider: preset.provider,
-      base_url: preset.defaultBaseUrl,
-      model: preset.suggestedModels[0] ?? '',
-      auth_token: '',
-    }))
+    // 캐시에 없으면 기본값으로 초기화
+    if (!presetCache[presetId]) {
+      const presetDef = SERVICE_PRESETS.find((p) => p.id === presetId)!
+      setPresetCache((c) => ({
+        ...c,
+        [presetId]: {
+          auth_token: '',
+          base_url: presetDef.defaultBaseUrl,
+          model: presetDef.suggestedModels[0] ?? '',
+          max_input_tokens: 200000,
+          max_output_tokens: 10000,
+        },
+      }))
+    }
     setUseCustomModel(false)
     setLlmTestResult(null)
     setOllamaModels([])
@@ -156,8 +182,8 @@ export default function SettingsContent() {
     try {
       const models = await fetchOllamaModels(baseUrl)
       setOllamaModels(models)
-      if (models.length > 0 && !llmForm.model) {
-        setLlmForm((f) => ({ ...f, model: models[0] }))
+      if (models.length > 0 && !currentForm.model) {
+        updateCurrentForm({ model: models[0] })
       }
     } catch {
       setOllamaError('Ollama에 연결할 수 없습니다. 실행 중인지 확인하세요.')
@@ -165,13 +191,13 @@ export default function SettingsContent() {
     } finally {
       setOllamaLoading(false)
     }
-  }, [llmForm.model])
+  }, [currentForm.model, selectedPreset])
 
   useEffect(() => {
-    if (selectedPreset === 'ollama' && llmForm.base_url) {
-      loadOllamaModels(llmForm.base_url)
+    if (selectedPreset === 'ollama' && currentForm.base_url) {
+      loadOllamaModels(currentForm.base_url)
     }
-  }, [selectedPreset, llmForm.base_url, loadOllamaModels])
+  }, [selectedPreset, currentForm.base_url, loadOllamaModels])
 
   const currentPreset = SERVICE_PRESETS.find((p) => p.id === selectedPreset)!
   const modelOptions = selectedPreset === 'ollama' ? ollamaModels : currentPreset.suggestedModels
@@ -181,13 +207,13 @@ export default function SettingsContent() {
     setLlmTesting(true)
     setLlmTestResult(null)
     try {
-      const params: { provider: string; model: string; auth_token?: string; base_url?: string } = {
-        provider: llmForm.provider,
-        model: llmForm.model,
+      const testParams: { provider: string; model: string; auth_token?: string; base_url?: string } = {
+        provider: currentPreset.provider,
+        model: currentForm.model,
       }
-      if (llmForm.auth_token) params.auth_token = llmForm.auth_token
-      if (llmForm.base_url) params.base_url = llmForm.base_url
-      const result = await testLlmConnection(params)
+      if (currentForm.auth_token) testParams.auth_token = currentForm.auth_token
+      if (currentForm.base_url) testParams.base_url = currentForm.base_url
+      const result = await testLlmConnection(testParams)
       setLlmTestResult(result)
     } catch {
       setLlmTestResult({ success: false, error: '테스트 요청에 실패했습니다.' })
@@ -201,20 +227,24 @@ export default function SettingsContent() {
     setLlmError(null)
     setLlmSuccess(null)
     try {
-      const params: Record<string, string | number> = {}
-      if (llmForm.provider !== llmSettings?.provider) params.provider = llmForm.provider
-      if (llmForm.auth_token) params.auth_token = llmForm.auth_token
-      if (llmForm.base_url !== llmSettings?.base_url) params.base_url = llmForm.base_url
-      if (llmForm.model !== llmSettings?.model) params.model = llmForm.model
-      if (llmForm.max_input_tokens !== llmSettings?.max_input_tokens) params.max_input_tokens = llmForm.max_input_tokens
-      if (llmForm.max_output_tokens !== llmSettings?.max_output_tokens) params.max_output_tokens = llmForm.max_output_tokens
-      if (Object.keys(params).length === 0) {
-        setLlmSaving(false)
-        return
+      const presetData: Record<string, string | number> = {
+        provider: currentPreset.provider,
+        model: currentForm.model,
+        base_url: currentForm.base_url,
+        max_input_tokens: currentForm.max_input_tokens,
+        max_output_tokens: currentForm.max_output_tokens,
       }
-      const result = await updateLlmSettings(params)
+      if (currentForm.auth_token) {
+        presetData.auth_token = currentForm.auth_token
+      }
+
+      const result = await updateLlmSettings({
+        active_preset: selectedPreset,
+        preset_id: selectedPreset,
+        preset_data: presetData,
+      })
       setLlmSettings(result)
-      setLlmForm((f) => ({ ...f, auth_token: '' }))
+      updateCurrentForm({ auth_token: '' })
       setLlmSuccess('AI 설정이 저장되었습니다.')
     } catch {
       setLlmError('AI 설정 저장에 실패했습니다.')
@@ -381,7 +411,12 @@ export default function SettingsContent() {
                     }
                   `}
                 >
-                  <p className="text-sm font-medium">{preset.name}</p>
+                  <div className="flex items-center gap-1">
+                    <p className="text-sm font-medium">{preset.name}</p>
+                    {llmSettings?.active_preset === preset.id && (
+                      <span className="text-[10px] text-green-600 font-medium">●</span>
+                    )}
+                  </div>
                   <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{preset.description}</p>
                 </button>
               ))}
@@ -406,8 +441,8 @@ export default function SettingsContent() {
               <label className="block text-sm font-medium mb-1">API Base URL</label>
               <input
                 type="text"
-                value={llmForm.base_url}
-                onChange={(e) => setLlmForm((f) => ({ ...f, base_url: e.target.value }))}
+                value={currentForm.base_url}
+                onChange={(e) => updateCurrentForm({ base_url: e.target.value })}
                 placeholder={currentPreset.defaultBaseUrl || 'https://api.anthropic.com'}
                 className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
               />
@@ -416,20 +451,19 @@ export default function SettingsContent() {
 
           {/* API Key (Ollama이면 숨김) */}
           {currentPreset.requiresApiKey && (() => {
-            const tokenMasked = currentPreset.provider === 'openai'
-              ? (llmSettings?.openai_token_masked || llmSettings?.auth_token_masked)
-              : (llmSettings?.anthropic_token_masked || llmSettings?.auth_token_masked)
+            const serverPreset = llmSettings?.presets?.[selectedPreset]
+            const tokenMasked = serverPreset?.auth_token_masked
             return (
               <div>
                 <label className="block text-sm font-medium mb-1">API Key</label>
                 <input
                   type="password"
-                  value={llmForm.auth_token}
-                  onChange={(e) => setLlmForm((f) => ({ ...f, auth_token: e.target.value }))}
+                  value={currentForm.auth_token}
+                  onChange={(e) => updateCurrentForm({ auth_token: e.target.value })}
                   placeholder={tokenMasked || '토큰을 입력하세요'}
                   className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
                 />
-                {tokenMasked && !llmForm.auth_token && (
+                {tokenMasked && !currentForm.auth_token && (
                   <p className="text-xs text-muted-foreground mt-1">현재: {tokenMasked}</p>
                 )}
               </div>
@@ -450,7 +484,7 @@ export default function SettingsContent() {
               )}
               {selectedPreset === 'ollama' && (
                 <button
-                  onClick={() => loadOllamaModels(llmForm.base_url)}
+                  onClick={() => loadOllamaModels(currentForm.base_url)}
                   disabled={ollamaLoading}
                   className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
                 >
@@ -460,8 +494,8 @@ export default function SettingsContent() {
             </div>
             {showModelSelect ? (
               <select
-                value={llmForm.model}
-                onChange={(e) => setLlmForm((f) => ({ ...f, model: e.target.value }))}
+                value={currentForm.model}
+                onChange={(e) => updateCurrentForm({ model: e.target.value })}
                 className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono bg-white"
               >
                 {modelOptions.map((m) => (
@@ -471,8 +505,8 @@ export default function SettingsContent() {
             ) : (
               <input
                 type="text"
-                value={llmForm.model}
-                onChange={(e) => setLlmForm((f) => ({ ...f, model: e.target.value }))}
+                value={currentForm.model}
+                onChange={(e) => updateCurrentForm({ model: e.target.value })}
                 placeholder="모델명을 입력하세요"
                 className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
               />
@@ -491,8 +525,8 @@ export default function SettingsContent() {
               <label className="block text-sm font-medium mb-1">최대 입력 토큰</label>
               <input
                 type="number"
-                value={llmForm.max_input_tokens}
-                onChange={(e) => setLlmForm((f) => ({ ...f, max_input_tokens: parseInt(e.target.value) || 0 }))}
+                value={currentForm.max_input_tokens}
+                onChange={(e) => updateCurrentForm({ max_input_tokens: parseInt(e.target.value) || 0 })}
                 placeholder="200000"
                 className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
               />
@@ -502,8 +536,8 @@ export default function SettingsContent() {
               <label className="block text-sm font-medium mb-1">최대 출력 토큰</label>
               <input
                 type="number"
-                value={llmForm.max_output_tokens}
-                onChange={(e) => setLlmForm((f) => ({ ...f, max_output_tokens: parseInt(e.target.value) || 0 }))}
+                value={currentForm.max_output_tokens}
+                onChange={(e) => updateCurrentForm({ max_output_tokens: parseInt(e.target.value) || 0 })}
                 placeholder="32768"
                 className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
               />
@@ -518,7 +552,7 @@ export default function SettingsContent() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleLlmTest}
-              disabled={llmTesting || !llmForm.model}
+              disabled={llmTesting || !currentForm.model}
               className="px-4 py-2 rounded-md text-sm font-medium border border-blue-600 text-blue-600 hover:bg-blue-50 disabled:opacity-50 transition-colors"
             >
               {llmTesting ? '테스트 중...' : '연결 테스트'}
@@ -756,12 +790,18 @@ export default function SettingsContent() {
         )}
 
         <div className={`space-y-5 ${!diarizationEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
+          <div className="rounded-md border border-blue-100 bg-blue-50/50 p-3 mb-2">
+            <p className="text-xs text-blue-700">
+              <span className="font-semibold">스트리밍 엔진</span> — 롤링 버퍼 방식으로 긴 컨텍스트에서 화자를 분리합니다.
+              파일 업로드 시에는 WhisperX 배치 처리로 최고 정확도를 제공합니다.
+            </p>
+          </div>
           <SettingSlider
             label="화자 매칭 기준"
             description="임베딩 유사도가 이 값 이상이면 기존 화자로 인식합니다. 낮을수록 같은 화자로 쉽게 매칭되고, 높을수록 새 화자로 분리됩니다."
             value={dv('similarity_threshold')}
             defaultValue={DIARIZATION_DEFAULTS.similarity_threshold}
-            min={0.05} max={0.50} step={0.05}
+            min={0.10} max={0.60} step={0.05}
             onChange={(v) => setDiarizationOverride('similarity_threshold', v)}
           />
           <SettingSlider
@@ -769,7 +809,7 @@ export default function SettingsContent() {
             description="처리 후 유사한 화자를 하나로 합치는 기준값. 높을수록 병합이 까다로워져 화자가 많아집니다."
             value={dv('merge_threshold')}
             defaultValue={DIARIZATION_DEFAULTS.merge_threshold}
-            min={0.10} max={0.70} step={0.05}
+            min={0.20} max={0.80} step={0.05}
             onChange={(v) => setDiarizationOverride('merge_threshold', v)}
           />
           <SettingSlider
@@ -777,7 +817,7 @@ export default function SettingsContent() {
             description="화자를 식별하기 위해 보관하는 음성 샘플 수. 많을수록 정확하지만 메모리를 더 사용합니다."
             value={dv('max_embeddings_per_speaker')}
             defaultValue={DIARIZATION_DEFAULTS.max_embeddings_per_speaker}
-            min={3} max={20} step={1}
+            min={3} max={25} step={1}
             unit="개"
             onChange={(v) => setDiarizationOverride('max_embeddings_per_speaker', v)}
           />

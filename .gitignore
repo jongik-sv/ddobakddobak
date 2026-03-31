@@ -1,5 +1,6 @@
-# 환경 변수
+# 환경 변수 / 사용자 설정
 .env
+settings.yaml
 
 # OS 파일
 .DS_Store

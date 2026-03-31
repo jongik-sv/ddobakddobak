@@ -2,7 +2,7 @@ module Api
   module V1
     class MeetingsController < ApplicationController
       before_action :authenticate_user!
-      before_action :set_meeting, only: %i[show update destroy start stop reopen reset_content summarize summary transcripts export feedback update_notes regenerate_stt regenerate_notes]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes]
 
       def index
         meetings = Meeting.search(params[:q])
@@ -331,6 +331,31 @@ module Api
         end
       end
 
+      def export_prompt
+        transcripts = @meeting.transcripts.order(:sequence_number)
+        if transcripts.empty?
+          return render json: { error: "트랜스크립트가 없습니다" }, status: :unprocessable_entity
+        end
+
+        current_notes = current_notes_markdown(@meeting)
+        payload = transcripts.map { |t| { speaker: t.speaker_label, text: t.content, started_at_ms: t.started_at_ms } }
+        sections_prompt = sections_prompt_for(@meeting)
+
+        result = SidecarClient.new.build_prompt(
+          current_notes, payload,
+          meeting_title: @meeting.title,
+          sections_prompt: sections_prompt
+        )
+
+        filename = "prompt_#{@meeting.id}_#{Date.today}.txt"
+        send_data result["prompt_text"],
+          type:        "text/plain; charset=utf-8",
+          disposition: "attachment",
+          filename:    filename
+      rescue SidecarClient::SidecarError => e
+        render json: { error: e.message }, status: :service_unavailable
+      end
+
       private
 
       def set_meeting
@@ -362,6 +387,11 @@ module Api
         latest = meeting.summaries.find_by(summary_type: "final") ||
                  meeting.summaries.order(generated_at: :desc).first
         latest&.notes_markdown.to_s
+      end
+
+      def sections_prompt_for(meeting)
+        template = PromptTemplate.find_by(meeting_type: meeting.meeting_type)
+        template&.sections_prompt || PromptTemplate::DEFAULT_TEMPLATES.dig(meeting.meeting_type, :sections_prompt)
       end
 
       def latest_summary_type

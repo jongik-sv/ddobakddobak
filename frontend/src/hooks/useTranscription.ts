@@ -9,7 +9,6 @@ import type { ChunkMeta } from './useAudioRecorder'
 
 export interface UseTranscriptionResult {
   sendChunk: (pcm: Int16Array, meta?: ChunkMeta) => void
-  sendSystemChunk: (pcm: Int16Array, meta?: ChunkMeta) => void
 }
 
 export function useTranscription(meetingId: number): UseTranscriptionResult {
@@ -63,12 +62,5 @@ export function useTranscription(meetingId: number): UseTranscriptionResult {
     }
   }, [])
 
-  const sendSystemChunk = useCallback((pcm: Int16Array, meta?: ChunkMeta) => {
-    if (subscriptionRef.current) {
-      // 시스템 오디오도 마이크와 동일하게 처리 (별도 분리하지 않음)
-      sendAudioChunk(subscriptionRef.current, pcm, meta, diarizationConfigRef.current, languagesRef.current, 'mic')
-    }
-  }, [])
-
-  return { sendChunk, sendSystemChunk }
+  return { sendChunk }
 }

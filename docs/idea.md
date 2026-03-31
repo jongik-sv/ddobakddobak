@@ -94,9 +94,13 @@ TSK-01-05 (pane 1) + TSK-01-06 (pane 2) ← 병렬
 - 안건파일에 대해 회의록을 미리 생성하는 기능
   - 회의 시작전 안건파일을 업로드하면 AI가 안건파일을 분석해서 회의록을 미리 생성하는 기능
   - OCR 기능으로 이미지 파일도 분석 가능해야 함
-
+- 미팅 stt -> 요약 -> 회의록 생성 -> cps 생성 -> prd 생성 -> 화면 설게(샘플 화면 구현) -> 승인 -> 개발
 
 - https://huggingface.co/CohereLabs/cohere-transcribe-03-2026 - 시간이 더 지나야함, 아직 쓸만한 양자화 모델이 안나왔어
+
+base_url = "http://10.90.3.61:9500/v1",
+api_key="9f1c3b2e4a6d7c8f5b1e9a2d3c7e8b4a1c2d5e7f",  
+model="Qwen3.5-27B",
 
 ---
 

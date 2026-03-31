@@ -17,9 +17,6 @@ sidecar:
 
 # ── STT 엔진 ─────────────────────────────────────
 stt_engines:
-  mock:
-    label: "Mock (테스트용)"
-    short: "Mock"
   whisper_cpp:
     label: "Whisper Large v3 Turbo"
     short: "Whisper v3 Turbo"
@@ -42,20 +39,20 @@ stt_engines:
 # ── 오디오 청킹 (VAD) ─────────────────────────────
 audio:
   sample_rate: 16000
-  silence_threshold: 0.03      # RMS — SPEECH → TRAILING_SILENCE 진입
-  speech_threshold: 0.06       # RMS — TRAILING_SILENCE → SPEECH 복귀 (히스테리시스)
-  silence_duration_ms: 1500    # 무음 지속 시간 → 청크 전송 (짧으면 문장 중간에 끊김)
-  max_chunk_sec: 30            # 최대 청크 길이 (연속 발화 강제 전송)
-  min_chunk_sec: 3             # 최소 청크 길이 (미만이면 무시 — 짧은 청크는 STT 정확도 저하)
-  preroll_ms: 300              # 문장 시작 포착용 프리롤
-  overlap_ms: 200              # 청크 경계 음절 손실 방지용 오버랩
+  silence_threshold: 0.02      # RMS — SPEECH → TRAILING_SILENCE 진입 (낮을수록 작은 목소리 감지)
+  speech_threshold: 0.04       # RMS — TRAILING_SILENCE → SPEECH 복귀 (히스테리시스 갭을 좁혀 복귀 민감도 향상)
+  silence_duration_ms: 2000    # 무음 지속 시간 → 청크 전송 (2초면 자연스러운 문장 경계)
+  max_chunk_sec: 20            # 최대 청크 길이 (겹치는 대화에서 강제 절단 빈도 감소)
+  min_chunk_sec: 1             # 최소 청크 길이 (1초로 낮춰 "네", "응" 등 짧은 발화 누락 방지)
+  preroll_ms: 500              # 문장 시작 포착용 프리롤 (500ms로 늘려 첫 음절 포착 개선)
+  overlap_ms: 500              # 청크 경계 음절 손실 방지용 오버랩
   file_chunk_sec: 30           # 파일 STT 처리 시 청크 분할 시간 (0 = 분할 안 함)
 
 # ── 화자 분리 (Diarization) ─────────────────────────
 diarization:
-  similarity_threshold: 0.10   # 이 이상이면 기존 화자로 매칭
-  merge_threshold: 0.35        # 이 이상이면 두 화자를 사후 병합
-  max_embeddings_per_speaker: 10
+  similarity_threshold: 0.35    # 기존 화자 매칭 임계값 (0.3~0.4 권장)
+  merge_threshold: 0.50         # 사후 병합 임계값
+  max_embeddings_per_speaker: 15
 
 # ── 회의 언어 ──────────────────────────────────────
 languages:
@@ -79,25 +76,81 @@ languages:
     label: "Tiếng Việt"
 
 # ── 회의 유형 ──────────────────────────────────────
+# sections_prompt: 회의록 구조화 지시문 (LLM 시스템 프롬프트의 "2. 구조화" 블록을 대체)
 meeting_types:
   - value: "general"
     label: "일반 회의"
+    sections_prompt: |
+      2. **구조화**: 회의록을 다음과 같이 체계적으로 구성하세요:
+         - ## 핵심 요약 (3~5개 항목. 각 항목을 별도의 Markdown 불릿(- )으로 작성하고 항목 사이에 빈 줄을 넣어 분리할 것. 여러 항목을 한 줄에 이어붙이지 말 것)
+         - ## 논의 사항 (각 주제별로 소제목 사용)
+         - ## 결정사항 (결정된 내용을 표로 정리)
+         - ## Action Items (담당자, 기한이 있으면 표로 정리)
   - value: "team"
     label: "팀 회의"
+    sections_prompt: |
+      2. **구조화**: 회의록을 다음과 같이 체계적으로 구성하세요:
+         - ## 핵심 요약 (3~5개 항목. 각 항목을 별도의 Markdown 불릿(- )으로 작성하고 항목 사이에 빈 줄을 넣어 분리할 것. 여러 항목을 한 줄에 이어붙이지 말 것)
+         - ## 논의 사항 (각 주제별로 소제목 사용)
+         - ## 결정사항 (결정된 내용을 표로 정리)
+         - ## Action Items (담당자, 기한이 있으면 표로 정리)
   - value: "standup"
     label: "스탠드업"
+    sections_prompt: |
+      2. **구조화**: 스탠드업 회의에 맞게 간결하게 구성하세요:
+         - ## 진행 현황 (팀원별 어제/오늘 한 일을 표로 정리)
+         - ## 오늘 계획 (팀원별 오늘 할 일)
+         - ## 이슈/블로커 (진행을 막는 문제와 필요한 도움)
   - value: "brainstorm"
     label: "브레인스토밍"
+    sections_prompt: |
+      2. **구조화**: 브레인스토밍에 맞게 아이디어 중심으로 구성하세요:
+         - ## 아이디어 목록 (제안된 모든 아이디어를 번호 매겨 나열)
+         - ## 카테고리 분류 (유사 아이디어를 그룹화)
+         - ## 우선순위 (논의된 우선순위나 투표 결과 정리)
+         - ## 다음 단계 (선정된 아이디어의 후속 조치)
+         - 아이디어가 5개 이상이면 mindmap 다이어그램으로 카테고리 분류를 시각화하세요.
   - value: "review"
     label: "리뷰/회고"
+    sections_prompt: |
+      2. **구조화**: 리뷰/회고에 맞게 구성하세요:
+         - ## 잘된 점 (긍정적 피드백, 성과)
+         - ## 개선점 (아쉬운 점, 문제점)
+         - ## 다음 액션 (개선을 위한 구체적 행동 계획, 표로 정리)
+         - 점수나 비율 데이터가 있으면 pie 다이어그램을 활용하세요.
   - value: "interview"
     label: "인터뷰"
+    sections_prompt: |
+      2. **구조화**: 인터뷰에 맞게 Q&A 중심으로 구성하세요:
+         - ## 질문-답변 정리 (주요 질문과 답변을 순서대로)
+         - ## 평가 포인트 (인터뷰 중 주목할 만한 점)
+         - ## 종합 의견
   - value: "workshop"
     label: "워크숍"
+    sections_prompt: |
+      2. **구조화**: 워크숍에 맞게 세션별로 구성하세요:
+         - ## 학습 내용 (세션별 핵심 내용 정리)
+         - ## 실습 결과 (실습/활동의 결과물)
+         - ## 핵심 Takeaway (참가자가 가져갈 핵심 교훈)
+         - 세션 흐름이 복잡하면 flowchart 다이어그램으로 시각화하세요.
   - value: "one_on_one"
     label: "1:1 미팅"
+    sections_prompt: |
+      2. **구조화**: 1:1 미팅에 맞게 구성하세요:
+         - ## 논의 주제 (주요 대화 주제 나열)
+         - ## 피드백 (주고받은 피드백 정리)
+         - ## 합의 사항 (합의된 내용, 약속)
+         - ## Follow-up (다음 1:1까지 할 일, 표로 정리)
   - value: "lecture"
     label: "강연"
+    sections_prompt: |
+      2. **구조화**: 강연에 맞게 내용 중심으로 구성하세요:
+         - ## 강연 개요 (발표자, 주제, 핵심 메시지 요약)
+         - ## 주요 내용 (섹션별 핵심 내용 정리)
+         - ## 핵심 인사이트 (인용할 만한 문장, 중요 데이터/사례)
+         - ## Q&A 정리 (질의응답이 있었다면 주요 질문과 답변)
+         - ## Takeaway (청중이 가져갈 핵심 교훈)
+         - 개념 간 관계가 복잡하면 flowchart 다이어그램으로 시각화하세요.
 
 # ── AI 회의록 ──────────────────────────────────────
 summary:

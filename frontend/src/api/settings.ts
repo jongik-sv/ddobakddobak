@@ -14,17 +14,21 @@ export async function updateSttEngine(engine: string): Promise<{ stt_engine: str
   return apiClient.post('settings/stt_engine', { json: { engine } }).json()
 }
 
-// LLM 설정
-export interface LlmSettings {
+// LLM 프리셋 설정
+export interface LlmPreset {
   provider: string
   auth_token_masked: string
-  anthropic_token_masked?: string
-  openai_token_masked?: string
-  base_url: string
-  model: string
-  max_input_tokens: number
-  max_output_tokens: number
+  base_url?: string
+  model?: string
+  max_input_tokens?: number
+  max_output_tokens?: number
+}
+
+export interface LlmSettings {
+  active_preset: string
+  presets: Record<string, LlmPreset>
   offline?: boolean
+  sidecar?: Record<string, unknown>
 }
 
 export async function getLlmSettings(): Promise<LlmSettings> {
@@ -32,12 +36,16 @@ export async function getLlmSettings(): Promise<LlmSettings> {
 }
 
 export async function updateLlmSettings(params: {
-  provider?: string
-  auth_token?: string
-  base_url?: string
-  model?: string
-  max_input_tokens?: number
-  max_output_tokens?: number
+  active_preset?: string
+  preset_id?: string
+  preset_data?: {
+    provider?: string
+    auth_token?: string
+    base_url?: string
+    model?: string
+    max_input_tokens?: number
+    max_output_tokens?: number
+  }
 }): Promise<LlmSettings> {
   return apiClient.put('settings/llm', { json: params }).json()
 }
@@ -74,7 +82,7 @@ export async function updateHfToken(hf_token: string): Promise<HfSettings> {
   return apiClient.put('settings/hf', { json: { hf_token } }).json()
 }
 
-// 앱 설정 (.env 기반)
+// 앱 설정 (settings.yaml 기반)
 export interface AppSettings {
   summary_interval_sec?: number
   diarization_enabled?: boolean

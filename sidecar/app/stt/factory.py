@@ -10,7 +10,7 @@ _KNOWN_ENGINES: frozenset[str] = frozenset(
     {"qwen3_asr_4bit", "qwen3_asr_6bit", "qwen3_asr_8bit",
      "qwen3_asr_transformers",
      "whisper_cpp", "faster_whisper", "faster_whisper_cpu",
-     "sensevoice", "mock", "auto"}
+     "sensevoice", "auto"}
 )
 
 # Qwen3-ASR 양자화별 모델 ID 매핑
@@ -70,10 +70,6 @@ def create_stt_adapter(engine: str | None = None) -> SttAdapter:
     if engine == "auto":
         engine = auto_select_engine()
         print(f"[STT] 자동 감지 엔진: {engine} (platform={sys.platform}, arch={platform.machine()})")
-
-    if engine == "mock":
-        from app.stt.mock_adapter import MockAdapter
-        return MockAdapter()
 
     if engine in _QWEN3_MODEL_IDS:
         from app.stt.qwen3_adapter import Qwen3Adapter

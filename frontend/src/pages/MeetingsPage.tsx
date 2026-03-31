@@ -758,7 +758,10 @@ export default function MeetingsPage() {
           folderId={currentFolderId}
           meetingTypeList={meetingTypeList}
           onClose={() => setShowModal(false)}
-          onCreated={addMeeting}
+          onCreated={(meeting) => {
+            addMeeting(meeting)
+            navigate(`/meetings/${meeting.id}/live`)
+          }}
         />
       )}
 

@@ -4,9 +4,14 @@ import base64
 import binascii
 import dataclasses
 import gc
+import logging
 import multiprocessing
 import os
 import re
+import time
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 from contextlib import asynccontextmanager
 
 # macOS 세마포어 누수 방지
@@ -62,7 +67,7 @@ def _is_model_cached(model_id: str) -> bool:
 
 def _detect_available_engines() -> list[str]:
     """설치된 패키지 및 다운로드된 모델 기준으로 사용 가능한 STT 엔진 목록을 반환한다."""
-    available = ["mock"]
+    available = []
     try:
         import pywhispercpp  # noqa: F401
         available.append("whisper_cpp")
@@ -111,6 +116,7 @@ class TranscribeRequest(BaseModel):
     meeting_id: int | None = None  # 회의별 화자 DB 분리를 위한 ID
     diarization_config: dict | None = None  # optional: {enable, similarity_threshold, merge_threshold, max_embeddings_per_speaker}
     languages: list[str] | None = None  # 인식 대상 언어 코드 목록 (예: ["ko", "en"])
+    offset_ms: int = 0  # 청크의 녹음 시작 기준 절대 시작 시각 (스트리밍 화자 분리에 사용)
 
     @field_validator("audio")
     @classmethod
@@ -160,20 +166,12 @@ async def lifespan(app: FastAPI):
     app.state.summarizer = LLMSummarizer()
     app.state.engine_lock = asyncio.Lock()
     app.state.gpu_lock = asyncio.Lock()  # Metal GPU 동시 접근 방지
+    app.state.refine_locks: dict[str, asyncio.Lock] = {}  # 회의별 LLM 동시 호출 방지
 
-    # 화자 구분 모델 로드 (HF_TOKEN이 있을 때만)
-    # 파이프라인은 하나만 로드하고, 회의별 diarizer는 파이프라인을 공유
+    # 화자 구분 모델은 lazy load — 첫 요청 시 로드
     app.state.diarizer_pipeline = None   # 공유 ML 파이프라인
+    app.state.diarizer_loading = False   # 로드 진행 중 플래그
     app.state.meeting_diarizers: dict[int, Any] = {}  # {meeting_id: SpeakerDiarizer}
-    if settings.HF_TOKEN:
-        try:
-            from app.diarization.speaker import SpeakerDiarizer
-            _loader = SpeakerDiarizer()
-            await _loader.load(hf_token=settings.HF_TOKEN)
-            app.state.diarizer_pipeline = _loader._pipeline
-            print("✓ 화자 구분 모델 로드 완료")
-        except Exception as e:
-            print(f"⚠ 화자 구분 모델 로드 실패 (화자 구분 없이 계속): {e}")
 
     yield
 
@@ -286,6 +284,29 @@ def _filter_by_languages(segments: list, languages: list[str] | None = None) -> 
     return segments
 
 
+async def _ensure_diarizer_pipeline():
+    """화자 구분 파이프라인을 lazy load한다. 이미 로드됐으면 즉시 반환."""
+    if app.state.diarizer_pipeline is not None:
+        return app.state.diarizer_pipeline
+    if app.state.diarizer_loading:
+        return None  # 다른 요청에서 로드 중
+    if not settings.HF_TOKEN:
+        return None
+    app.state.diarizer_loading = True
+    try:
+        from app.diarization.speaker import SpeakerDiarizer
+        _loader = SpeakerDiarizer()
+        await _loader.load(hf_token=settings.HF_TOKEN)
+        app.state.diarizer_pipeline = _loader._pipeline
+        logger.info("화자 구분 모델 lazy load 완료")
+        return app.state.diarizer_pipeline
+    except Exception as e:
+        logger.error("화자 구분 모델 로드 실패: %s", e)
+        return None
+    finally:
+        app.state.diarizer_loading = False
+
+
 def _get_meeting_diarizer(meeting_id: int | None, diarization_config: dict | None = None):
     """회의별 SpeakerDiarizer를 가져온다 (없으면 생성)."""
     from app.diarization.speaker import make_meeting_diarizer
@@ -299,10 +320,10 @@ def _get_meeting_diarizer(meeting_id: int | None, diarization_config: dict | Non
     if meeting_id not in diarizers:
         kwargs = {}
         if diarization_config:
-            kwargs = {k: v for k, v in diarization_config.items() if k in ('similarity_threshold', 'merge_threshold', 'max_embeddings_per_speaker')}
+            kwargs = {k: v for k, v in diarization_config.items()
+                      if k in ('similarity_threshold', 'merge_threshold', 'max_embeddings_per_speaker')}
         diarizers[meeting_id] = make_meeting_diarizer(meeting_id, pipeline, **kwargs)
     elif diarization_config:
-        # Update existing diarizer thresholds
         d = diarizers[meeting_id]
         if 'similarity_threshold' in diarization_config:
             d._similarity_threshold = diarization_config['similarity_threshold']
@@ -325,12 +346,19 @@ async def transcribe(request: TranscribeRequest) -> TranscribeResponse:
     Returns:
         { segments: [TranscriptSegment, ...] }
     """
+    t0 = time.monotonic()
     from fastapi import HTTPException
     adapter = app.state.stt_adapter
     if adapter is None:
         raise HTTPException(status_code=503, detail="STT 모델 변경 중입니다. 잠시 후 다시 시도하세요.")
     audio_bytes = base64.b64decode(request.audio)
+    chunk_sec = len(audio_bytes) / 2 / 16000
+    logger.info("[STT] /transcribe 요청 (engine=%s, meeting_id=%s, audio=%d bytes, %.1f초)",
+                settings.STT_ENGINE, request.meeting_id, len(audio_bytes), chunk_sec)
 
+    # 화자분리 요청 시 파이프라인 lazy load
+    if request.diarization_config and request.diarization_config.get("enable"):
+        await _ensure_diarizer_pipeline()
     # Metal GPU 동시 접근 방지 — STT(MLX)와 화자분리(MPS) 직렬화
     diarizer = _get_meeting_diarizer(request.meeting_id, request.diarization_config)
     langs = request.languages
@@ -339,13 +367,14 @@ async def transcribe(request: TranscribeRequest) -> TranscribeResponse:
         segments = _filter_by_languages(segments, langs)
         if diarizer and segments:
             try:
-                diarization_result = await diarizer.diarize(audio_bytes)
+                diarization_result = await diarizer.diarize(audio_bytes, offset_ms=request.offset_ms)
                 if diarization_result:
                     print(f"[diarizer] result={diarization_result}", flush=True)
                     segments = diarizer.merge_with_segments(segments, diarization_result)
             except Exception as e:
                 print(f"[diarizer] ERROR: {e}", flush=True)
 
+    logger.info("[STT] /transcribe 완료 (%.1f초, %d 세그먼트)", time.monotonic() - t0, len(segments))
     return TranscribeResponse(
         segments=[SegmentResponse(**dataclasses.asdict(seg)) for seg in segments]
     )
@@ -358,6 +387,8 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
     Backend가 ffmpeg로 변환한 raw PCM 16kHz mono Int16 파일 경로를 받아
     전체 파일을 정교하게 변환한다.
     """
+    t0 = time.monotonic()
+    logger.info("[STT] /transcribe-file 요청 (engine=%s, file=%s)", settings.STT_ENGINE, request.file_path)
     from fastapi import HTTPException
     import os
 
@@ -409,18 +440,24 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
     segments = _filter_by_languages(segments, request.languages)
     print(f"[transcribe-file] STT 세그먼트 {len(segments)}개", flush=True)
 
-    # 3. 화자 분리 (옵션 — diarization_config에 enable: true가 있을 때만 실행)
+    # 3. 화자 분리 — WhisperX(ASR+alignment+diarization) 시도, 실패 시 pyannote 배치 폴백
     enable_diarization = (request.diarization_config or {}).get("enable", False)
-    if enable_diarization:
-        diarizer = _get_meeting_diarizer(request.meeting_id, request.diarization_config)
-        if diarizer:
-            try:
-                diarization_result = await diarizer.diarize(audio_bytes)
-                if diarization_result and segments:
-                    segments = diarizer.merge_with_segments(segments, diarization_result)
-                    print(f"[transcribe-file] 화자 분리 완료", flush=True)
-            except Exception as e:
-                print(f"[transcribe-file] 화자 분리 실패 (무시): {e}", flush=True)
+    if enable_diarization and segments:
+        whisperx_result = await _try_whisperx_batch(request, audio_bytes)
+        if whisperx_result is not None:
+            segments = whisperx_result
+            print(f"[transcribe-file] WhisperX 배치 완료: {len(segments)}개 세그먼트", flush=True)
+        else:
+            # WhisperX 실패 → pyannote 전체 오디오 배치 폴백
+            await _ensure_diarizer_pipeline()
+            pipeline = getattr(app.state, "diarizer_pipeline", None)
+            if pipeline:
+                try:
+                    from app.diarization.batch_processor import batch_diarize
+                    segments = await batch_diarize(audio_bytes, pipeline, segments)
+                    print(f"[transcribe-file] pyannote 배치 화자 분리 완료", flush=True)
+                except Exception as e:
+                    print(f"[transcribe-file] 화자 분리 실패 (무시): {e}", flush=True)
     else:
         print(f"[transcribe-file] 화자 분리 스킵", flush=True)
 
@@ -429,10 +466,38 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
     segments = segment_korean_sentences(segments)
     print(f"[transcribe-file] 문장 분리 후 {len(segments)}개 세그먼트", flush=True)
 
+    logger.info("[STT] /transcribe-file 완료 (%.1f초, %d 세그먼트)", time.monotonic() - t0, len(segments))
     return TranscribeFileResponse(
         segments=[SegmentResponse(**dataclasses.asdict(seg)) for seg in segments],
         total_duration_ms=total_duration_ms,
     )
+
+
+async def _try_whisperx_batch(request: TranscribeFileRequest, audio_bytes: bytes):
+    """WhisperX 배치 처리를 시도한다. 성공 시 세그먼트 리스트, 실패 시 None 반환."""
+    try:
+        from app.diarization.whisperx_processor import WhisperXBatchProcessor
+    except ImportError:
+        print("[transcribe-file] whisperx 미설치 — 폴백", flush=True)
+        return None
+
+    try:
+        # WhisperX 프로세서 lazy load (app.state에 캐싱)
+        processor = getattr(app.state, "whisperx_processor", None)
+        if processor is None:
+            processor = WhisperXBatchProcessor(
+                device="cpu",
+                compute_type="int8",
+                hf_token=settings.HF_TOKEN,
+            )
+            await processor.load()
+            app.state.whisperx_processor = processor
+
+        segments = await processor.process_bytes(audio_bytes, languages=request.languages)
+        return segments if segments else None
+    except Exception as e:
+        print(f"[transcribe-file] WhisperX 실패: {e} — 폴백", flush=True)
+        return None
 
 
 # sidecar/app/main.py에서 사용하는 상수 (파일 엔드포인트용)
@@ -759,15 +824,8 @@ async def update_hf_settings(request: UpdateHfSettingsRequest) -> dict:
     """HuggingFace 토큰을 런타임에 변경한다."""
     settings.HF_TOKEN = request.hf_token
 
-    # 화자 구분 모델 재로드 시도
-    if request.hf_token and app.state.diarizer_pipeline is None:
-        try:
-            from app.diarization.speaker import SpeakerDiarizer
-            _loader = SpeakerDiarizer()
-            await _loader.load(hf_token=request.hf_token)
-            app.state.diarizer_pipeline = _loader._pipeline
-        except Exception:
-            pass
+    # 토큰 변경 시 기존 파이프라인 초기화 (다음 요청에서 lazy load)
+    app.state.diarizer_pipeline = None
 
     _persist_env(HF_TOKEN=settings.HF_TOKEN)
 
@@ -826,6 +884,8 @@ async def summarize(request: SummarizeRequest) -> SummarizeResponse:
     Returns:
         { key_points, decisions, discussion_details, action_items }
     """
+    t0 = time.monotonic()
+    logger.info("[LLM] /summarize 요청 (model=%s, type=%s, transcripts=%d건)", settings.LLM_MODEL, request.type, len(request.transcripts))
     summarizer: LLMSummarizer = app.state.summarizer
     transcripts_dicts = [item.model_dump() for item in request.transcripts]
     result = await summarizer.summarize(
@@ -833,6 +893,7 @@ async def summarize(request: SummarizeRequest) -> SummarizeResponse:
         summary_type=request.type,
         context=request.context,
     )
+    logger.info("[LLM] /summarize 완료 (%.1f초)", time.monotonic() - t0)
     return SummarizeResponse(
         key_points=result["key_points"],
         decisions=result["decisions"],
@@ -860,17 +921,64 @@ async def refine_notes(request: RefineNotesRequest) -> RefineNotesResponse:
     """회의록 자동 정제 엔드포인트.
 
     현재 회의록(Markdown) + 새 자막을 받아 오타 교정, 구조화, 통합된 회의록을 반환한다.
+    동일 회의에 대한 동시 요청은 순차 처리된다.
+    """
+    # 회의별 락 — 동시 LLM 호출 방지
+    lock_key = request.meeting_title or "_default"
+    locks = app.state.refine_locks
+    if lock_key not in locks:
+        locks[lock_key] = asyncio.Lock()
+    lock = locks[lock_key]
+
+    if lock.locked():
+        logger.info("[LLM] /refine-notes 대기 (이전 요청 처리 중: %s)", lock_key)
+
+    async with lock:
+        t0 = time.monotonic()
+        logger.info("[LLM] /refine-notes 요청 (model=%s, title=%s, transcripts=%d건, notes=%d자)",
+                    settings.LLM_MODEL, request.meeting_title, len(request.transcripts), len(request.current_notes))
+        summarizer: LLMSummarizer = app.state.summarizer
+        transcripts_dicts = [item.model_dump() for item in request.transcripts]
+        result = await summarizer.refine_notes(
+            current_notes=request.current_notes,
+            transcripts=transcripts_dicts,
+            meeting_title=request.meeting_title,
+            meeting_type=request.meeting_type,
+            sections_prompt=request.sections_prompt,
+        )
+        logger.info("[LLM] /refine-notes 완료 (%.1f초, 출력=%d자)", time.monotonic() - t0, len(result))
+        return RefineNotesResponse(notes_markdown=result)
+
+
+class BuildPromptRequest(BaseModel):
+    """POST /build-prompt 요청 스키마."""
+    current_notes: str = ""
+    transcripts: list[TranscriptItem]
+    meeting_title: str = ""
+    sections_prompt: str | None = None
+
+
+class BuildPromptResponse(BaseModel):
+    """POST /build-prompt 응답 스키마."""
+    prompt_text: str
+
+
+@app.post("/build-prompt", response_model=BuildPromptResponse)
+async def build_prompt(request: BuildPromptRequest) -> BuildPromptResponse:
+    """LLM 호출 없이 완성된 프롬프트 텍스트를 반환한다.
+
+    사용자가 외부 LLM(ChatGPT, Claude 웹 등)에 직접 붙여넣을 수 있는
+    자기 완결형 프롬프트를 조립한다.
     """
     summarizer: LLMSummarizer = app.state.summarizer
     transcripts_dicts = [item.model_dump() for item in request.transcripts]
-    result = await summarizer.refine_notes(
+    result = summarizer.build_prompt(
         current_notes=request.current_notes,
         transcripts=transcripts_dicts,
         meeting_title=request.meeting_title,
-        meeting_type=request.meeting_type,
         sections_prompt=request.sections_prompt,
     )
-    return RefineNotesResponse(notes_markdown=result)
+    return BuildPromptResponse(prompt_text=result)
 
 
 class FeedbackNotesRequest(BaseModel):
@@ -888,12 +996,15 @@ class FeedbackNotesResponse(BaseModel):
 @app.post("/feedback-notes", response_model=FeedbackNotesResponse)
 async def feedback_notes(request: FeedbackNotesRequest) -> FeedbackNotesResponse:
     """사용자 피드백을 반영하여 회의록을 수정하는 엔드포인트."""
+    t0 = time.monotonic()
+    logger.info("[LLM] /feedback-notes 요청 (model=%s, title=%s, feedback=%d자)", settings.LLM_MODEL, request.meeting_title, len(request.feedback))
     summarizer: LLMSummarizer = app.state.summarizer
     result = await summarizer.apply_feedback(
         current_notes=request.current_notes,
         feedback=request.feedback,
         meeting_title=request.meeting_title,
     )
+    logger.info("[LLM] /feedback-notes 완료 (%.1f초, 출력=%d자)", time.monotonic() - t0, len(result))
     return FeedbackNotesResponse(notes_markdown=result)
 
 

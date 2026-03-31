@@ -749,6 +749,7 @@ pub fn run() {
             tool_paths: Mutex::new(tool_paths),
         })
         .manage(audio::AudioCaptureState::default())
+        .manage(audio::RecorderState::default())
         .invoke_handler(tauri::generate_handler![
             check_environment,
             install_dependencies,
@@ -760,6 +761,11 @@ pub fn run() {
             audio::start_system_audio_capture,
             audio::stop_system_audio_capture,
             audio::is_system_audio_capturing,
+            audio::start_recording,
+            audio::stop_recording,
+            audio::pause_recording,
+            audio::resume_recording,
+            audio::feed_recorder_mic,
         ])
         .setup(|app| {
             app.handle().plugin(

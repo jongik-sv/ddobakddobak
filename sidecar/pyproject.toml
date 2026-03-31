@@ -10,6 +10,7 @@ dependencies = [
     "numpy>=1.26.0",
     "openai>=2.30.0",
     "pydantic-settings>=2.13.1",
+    "pyyaml>=6.0",
     "uvicorn>=0.42.0",
 ]
 
@@ -20,11 +21,15 @@ macos = [
     "mlx-lm>=0.31.1",
     "pywhispercpp>=1.4.1",
     "pyannote-audio>=4.0.4",
+    "whisperx>=3.3",
+    "omegaconf>=2.3",
 ]
 # Windows/Linux NVIDIA GPU: faster-whisper (CUDA) + 화자 분리
 cuda = [
     "faster-whisper>=1.1.0",
     "pyannote-audio>=4.0.4",
+    "whisperx>=3.3",
+    "omegaconf>=2.3",
 ]
 # Windows/Linux CPU 전용: whisper.cpp만 (화자 분리 비활성화)
 cpu = [

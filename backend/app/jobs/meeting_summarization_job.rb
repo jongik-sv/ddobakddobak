@@ -28,13 +28,12 @@ class MeetingSummarizationJob < ApplicationJob
 
     current_notes = current_notes_markdown(meeting)
     payload = transcripts_payload(new_transcripts)
-    template = PromptTemplate.find_by(meeting_type: meeting.meeting_type)
 
     result = SidecarClient.new.refine_notes(
       current_notes, payload,
       meeting_title: meeting.title,
       meeting_type: meeting.meeting_type,
-      sections_prompt: template&.sections_prompt
+      sections_prompt: sections_prompt_for(meeting)
     )
     notes_markdown = result["notes_markdown"]
 
@@ -65,13 +64,12 @@ class MeetingSummarizationJob < ApplicationJob
 
     current_notes = current_notes_markdown(meeting)
     payload = transcripts_payload(transcripts)
-    template = PromptTemplate.find_by(meeting_type: meeting.meeting_type)
 
     result = SidecarClient.new.refine_notes(
       current_notes, payload,
       meeting_title: meeting.title,
       meeting_type: meeting.meeting_type,
-      sections_prompt: template&.sections_prompt
+      sections_prompt: sections_prompt_for(meeting)
     )
     notes_markdown = result["notes_markdown"]
     return if notes_markdown.blank?
@@ -99,5 +97,10 @@ class MeetingSummarizationJob < ApplicationJob
     transcripts.map do |t|
       { speaker: t.speaker_label, text: t.content, started_at_ms: t.started_at_ms }
     end
+  end
+
+  def sections_prompt_for(meeting)
+    template = PromptTemplate.find_by(meeting_type: meeting.meeting_type)
+    template&.sections_prompt || PromptTemplate::DEFAULT_TEMPLATES.dig(meeting.meeting_type, :sections_prompt)
   end
 end

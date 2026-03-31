@@ -24,8 +24,8 @@ class SidecarClient
     put("/settings/stt-engine", { engine: engine })
   end
 
-  def transcribe(audio_base64, meeting_id: nil, diarization_config: nil, languages: nil)
-    body = { audio: audio_base64 }
+  def transcribe(audio_base64, meeting_id: nil, diarization_config: nil, languages: nil, offset_ms: 0)
+    body = { audio: audio_base64, offset_ms: offset_ms }
     body[:meeting_id] = meeting_id if meeting_id
     body[:diarization_config] = diarization_config if diarization_config
     body[:languages] = languages if languages
@@ -60,6 +60,16 @@ class SidecarClient
     }
     body[:sections_prompt] = sections_prompt if sections_prompt.present?
     post("/refine-notes", body, timeout: 120)
+  end
+
+  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil)
+    body = {
+      current_notes: current_notes,
+      transcripts: transcripts,
+      meeting_title: meeting_title
+    }
+    body[:sections_prompt] = sections_prompt if sections_prompt.present?
+    post("/build-prompt", body)
   end
 
   def feedback_notes(current_notes, feedback, meeting_title: "")

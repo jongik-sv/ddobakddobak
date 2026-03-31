@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
-import { exportMeeting, exportMeetingData } from '../../api/meetings'
+import { exportMeeting, exportMeetingData, exportPrompt } from '../../api/meetings'
 import { downloadMarkdown } from '../../lib/markdown'
-import { downloadBlob } from '../../lib/download'
+import { downloadBlob, downloadText } from '../../lib/download'
 
-type ExportFormat = 'md' | 'pdf' | 'docx'
+type ExportFormat = 'md' | 'pdf' | 'docx' | 'prompt'
 
 interface ExportButtonProps {
   meetingId: number
@@ -20,7 +20,8 @@ function buildExportFilename(title: string | undefined, format: ExportFormat, da
   const d = date ? new Date(date) : new Date()
   const dateStr = d.toISOString().slice(0, 10)
   const baseName = title ? sanitizeFilename(title) : 'meeting'
-  return `${baseName}_${dateStr}.${format}`
+  const ext = format === 'prompt' ? 'txt' : format
+  return `${baseName}_${dateStr}.${ext}`
 }
 
 export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportButtonProps) {
@@ -57,11 +58,15 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
     try {
       const filename = buildExportFilename(meetingTitle, format, meetingDate ?? undefined)
 
-      if (format === 'md') {
+      if (format === 'prompt') {
+        const content = await exportPrompt(meetingId)
+        await downloadText(content, filename)
+      } else if (format === 'md') {
         const content = await exportMeeting(meetingId, exportOptions)
         await downloadMarkdown(content, filename)
       } else {
         const data = await exportMeetingData(meetingId, exportOptions)
+        console.log('[EXPORT] format=', format, 'data received, summary type=', data.summary?.type)
 
         let blob: Blob
         if (format === 'pdf') {
@@ -69,6 +74,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
           blob = await generatePdf(data)
         } else {
           const { generateDocx } = await import('../../lib/docxExporter')
+          console.log('[EXPORT] calling generateDocx')
           blob = await generateDocx(data)
         }
         await downloadBlob(blob, filename)
@@ -80,6 +86,8 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
       setIsDownloading(false)
     }
   }
+
+  const downloadLabel = format === 'prompt' ? '다운로드 .txt' : `다운로드 .${format}`
 
   return (
     <div className="relative" ref={panelRef}>
@@ -100,7 +108,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
 
           {/* 형식 선택 */}
           <div className="flex gap-1.5 mb-3">
-            {(['md', 'pdf', 'docx'] as const).map((f) => (
+            {(['md', 'pdf', 'docx', 'prompt'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFormat(f)}
@@ -110,43 +118,54 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
                     : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
                 }`}
               >
-                .{f}
+                {f === 'prompt' ? '프롬프트' : `.${f}`}
               </button>
             ))}
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-gray-700 mb-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={includeSummary}
-              onChange={(e) => setIncludeSummary(e.target.checked)}
-              className="rounded"
-              aria-label="AI 요약 포함"
-            />
-            AI 요약 포함
-          </label>
+          {format !== 'prompt' && (
+            <>
+              <label className="flex items-center gap-2 text-sm text-gray-700 mb-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeSummary}
+                  onChange={(e) => setIncludeSummary(e.target.checked)}
+                  className="rounded"
+                  aria-label="AI 요약 포함"
+                />
+                AI 요약 포함
+              </label>
 
-          <label className="flex items-center gap-2 text-sm text-gray-700 mb-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={includeMemo}
-              onChange={(e) => setIncludeMemo(e.target.checked)}
-              className="rounded"
-              aria-label="메모 포함"
-            />
-            메모 포함
-          </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700 mb-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeMemo}
+                  onChange={(e) => setIncludeMemo(e.target.checked)}
+                  className="rounded"
+                  aria-label="메모 포함"
+                />
+                메모 포함
+              </label>
 
-          <label className="flex items-center gap-2 text-sm text-gray-700 mb-4 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={includeTranscript}
-              onChange={(e) => setIncludeTranscript(e.target.checked)}
-              className="rounded"
-              aria-label="원본 텍스트 포함"
-            />
-            원본 텍스트 포함
-          </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700 mb-4 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeTranscript}
+                  onChange={(e) => setIncludeTranscript(e.target.checked)}
+                  className="rounded"
+                  aria-label="원본 텍스트 포함"
+                />
+                원본 텍스트 포함
+              </label>
+            </>
+          )}
+
+          {format === 'prompt' && (
+            <p className="text-xs text-gray-500 mb-4">
+              시스템 프롬프트 + 자막 데이터를 포함한 텍스트 파일을 다운로드합니다.
+              ChatGPT, Claude 등에 붙여넣어 회의록을 생성할 수 있습니다.
+            </p>
+          )}
 
           {error && (
             <p className="text-xs text-red-500 mb-2">{error}</p>
@@ -162,10 +181,10 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
             <button
               onClick={handleDownload}
               disabled={isDownloading}
-              aria-label={isDownloading ? '다운로드 중...' : `다운로드 .${format}`}
+              aria-label={isDownloading ? '다운로드 중...' : downloadLabel}
               className="flex-1 px-3 py-1.5 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
-              {isDownloading ? '다운로드 중...' : `다운로드 .${format}`}
+              {isDownloading ? '다운로드 중...' : downloadLabel}
             </button>
           </div>
         </div>

@@ -21,11 +21,11 @@ const DEFAULT_CONFIG: AudioConfig = {
   sample_rate: 16000,
   silence_threshold: 0.03,
   speech_threshold: 0.06,
-  silence_duration_ms: 800,
+  silence_duration_ms: 3000,
   max_chunk_sec: 15,
   min_chunk_sec: 3,
   preroll_ms: 300,
-  overlap_ms: 200,
+  overlap_ms: 500,
 }
 
 type VADState = 'SILENCE' | 'SPEECH' | 'TRAILING_SILENCE'
@@ -150,8 +150,11 @@ export class SystemAudioVAD {
       } else {
         this.silenceCount += channel.length
 
-        if (this.silenceCount >= this.silenceSamples && this.speechLen >= this.minChunkSamples) {
-          this.sendChunk()
+        if (this.silenceCount >= this.silenceSamples) {
+          if (this.speechLen >= this.minChunkSamples) {
+            this.sendChunk()
+          }
+          // min_chunk_sec 미만이면 짧은 소음으로 판단하여 버림
           this.resetToSilence()
         } else if (this.speechLen >= this.maxChunkSamples) {
           this.sendChunk()

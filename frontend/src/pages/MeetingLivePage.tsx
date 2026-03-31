@@ -6,6 +6,7 @@ import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useSystemAudioCapture } from '../hooks/useSystemAudioCapture'
+import { useMicCapture } from '../hooks/useMicCapture'
 import { useTranscription } from '../hooks/useTranscription'
 import { useMemoEditor } from '../hooks/useMemoEditor'
 import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
@@ -103,18 +104,24 @@ export default function MeetingLivePage() {
   }, [meetingId, reset, loadFinals, setMeetingNotes])
 
   const [systemAudioEnabled, setSystemAudioEnabled] = useState(false)
-  const { sendChunk, sendSystemChunk } = useTranscription(meetingId)
+  const { sendChunk } = useTranscription(meetingId)
 
   const onChunkRef = useRef(sendChunk)
   onChunkRef.current = sendChunk
-  const onSystemChunkRef = useRef(sendSystemChunk)
-  onSystemChunkRef.current = sendSystemChunk
 
   type ChunkMeta = { sequence: number; offsetMs: number }
 
+  // 오디오 업로드 프로미스 추적 (중단→재시작 시 업로드 완료 보장)
+  const uploadPromiseRef = useRef<Promise<void> | null>(null)
+
   const onStop = useCallback(
     async (blob: Blob) => {
-      await uploadAudio(meetingId, blob)
+      uploadPromiseRef.current = uploadAudio(meetingId, blob)
+      try {
+        await uploadPromiseRef.current
+      } finally {
+        uploadPromiseRef.current = null
+      }
     },
     [meetingId]
   )
@@ -124,9 +131,20 @@ export default function MeetingLivePage() {
     onStop,
   })
 
-  // feedSystemAudio를 ref로 관리 (콜백 안정성)
-  const feedSystemAudioRef = useRef(feedSystemAudio)
-  feedSystemAudioRef.current = feedSystemAudio
+  // Tauri 네이티브 마이크 캡처 (STT용) — 시스템 오디오도 여기서 믹싱하여 하나의 STT 스트림으로 처리
+  const {
+    start: startMicCapture,
+    stop: stopMicCapture,
+    pause: pauseMicCapture,
+    resume: resumeMicCapture,
+    feedSystemAudio: feedMicSystemAudio,
+  } = useMicCapture({
+    onChunk: (pcm: Int16Array, meta: ChunkMeta) => onChunkRef.current(pcm, meta),
+  })
+
+  // 시스템 오디오 믹싱 대상 ref (Tauri: useMicCapture, 브라우저: useAudioRecorder)
+  const feedSystemAudioRef = useRef(IS_TAURI ? feedMicSystemAudio : feedSystemAudio)
+  feedSystemAudioRef.current = IS_TAURI ? feedMicSystemAudio : feedSystemAudio
 
   const {
     isCapturing: isSystemCapturing,
@@ -134,13 +152,19 @@ export default function MeetingLivePage() {
     start: startSystemCapture,
     stop: stopSystemCapture,
   } = useSystemAudioCapture({
-    // 시스템 오디오는 인젝터 → STT VAD로 합류하므로 별도 STT 전송 불필요
+    // STT는 마이크와 믹싱 후 처리 — 별도 VAD 청크 전송 안 함
     onChunk: () => {},
-    // 원본 연속 PCM → 인젝터 → (녹음 믹싱 + STT VAD 합류)
+    // 원본 PCM을 마이크 캡처에 전달하여 믹싱 후 STT
     onRawAudio: (pcm: Int16Array) => feedSystemAudioRef.current(pcm),
   })
 
   const handleStart = async () => {
+    // 이전 세션 오디오 업로드 완료 대기 (중단→재시작 싱크 보장)
+    if (uploadPromiseRef.current) {
+      showStatus('이전 녹음 저장 중... 잠시 기다려주세요', 10000)
+      await uploadPromiseRef.current.catch(() => {})
+    }
+
     try {
       if (meetingApiStatus === 'completed') {
         await reopenMeeting(meetingId)
@@ -165,9 +189,16 @@ export default function MeetingLivePage() {
 
     await start(offsetMs, seqNum + 1)
 
-    // 시스템 오디오 캡처 (활성화된 경우)
+    // Tauri 모드: 네이티브 마이크 캡처 시작 (녹음 시작 후에 호출 — recorder가 먼저 존재해야 함)
+    if (IS_TAURI) {
+      startMicCapture(offsetMs, seqNum + 1).catch((err) =>
+        console.warn('[MicCapture] 시작 실패:', err)
+      )
+    }
+
+    // 시스템 오디오 캡처 (활성화된 경우) — STT는 마이크와 믹싱하여 처리
     if (systemAudioEnabled) {
-      startSystemCapture(offsetMs, seqNum + 1000000).catch((err) =>
+      startSystemCapture(offsetMs, 0).catch((err) =>
         console.warn('[SystemAudio] 시작 실패:', err)
       )
     }
@@ -177,16 +208,32 @@ export default function MeetingLivePage() {
   }
 
   const handlePause = () => {
+    if (IS_TAURI) {
+      pauseMicCapture()
+      import('@tauri-apps/api/core').then(({ invoke }) => invoke('pause_recording')).catch(() => {})
+    }
     pause()
     // 일시정지 시 아직 적용되지 않은 기록을 AI 회의록에 반영
     triggerRealtimeSummary(meetingId).catch(() => {})
   }
 
+  const handleResume = () => {
+    if (IS_TAURI) {
+      resumeMicCapture()
+      import('@tauri-apps/api/core').then(({ invoke }) => invoke('resume_recording')).catch(() => {})
+    }
+    resume()
+  }
+
   const handleStop = async () => {
     setIsStopping(true)
     showStatus('회의 종료 중... 기록을 회의록에 적용하고 있습니다', 10000)
-    stop()
+    // 캡처 먼저 중지 → 녹음기에 남은 데이터 플러시
+    if (IS_TAURI) {
+      stopMicCapture()
+    }
     stopSystemCapture()
+    await stop()
     try {
       // 종료 전 미적용 기록을 AI 회의록에 반영
       await triggerRealtimeSummary(meetingId).catch(() => {})
@@ -340,8 +387,7 @@ export default function MeetingLivePage() {
       if (next) {
         const latest = await getMeeting(meetingId)
         const offsetMs = Math.max(latest.audio_duration_ms ?? 0, latest.last_transcript_end_ms ?? 0)
-        const seqNum = latest.last_sequence_number ?? 0
-        startSystemCapture(offsetMs, seqNum + 1000000).catch((err) =>
+        startSystemCapture(offsetMs, 0).catch((err) =>
           console.warn('[SystemAudio] 시작 실패:', err)
         )
       } else {
@@ -536,7 +582,7 @@ export default function MeetingLivePage() {
           ) : (
             <>
               <button
-                onClick={isPaused ? resume : handlePause}
+                onClick={isPaused ? handleResume : handlePause}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium text-white transition-colors ${
                   isPaused
                     ? 'bg-green-500 hover:bg-green-600'

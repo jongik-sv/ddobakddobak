@@ -1,13 +1,6 @@
-"""Tests for STT Factory pattern and MockAdapter."""
+"""Tests for STT Factory pattern."""
 import pytest
 import asyncio
-
-
-def test_create_mock_adapter_returns_mock_instance():
-    from app.stt.factory import create_stt_adapter
-    from app.stt.mock_adapter import MockAdapter
-    adapter = create_stt_adapter("mock")
-    assert isinstance(adapter, MockAdapter)
 
 
 def test_create_adapter_with_unknown_engine_raises_value_error():

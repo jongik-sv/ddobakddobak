@@ -22,7 +22,7 @@ export async function generatePdf(data: MeetingExportData): Promise<Blob> {
 
   const container = document.createElement('div')
   container.innerHTML = html
-  container.style.width = '210mm'
+  container.style.width = '180mm'
 
   wrapper.appendChild(container)
   document.body.appendChild(wrapper)
@@ -37,6 +37,7 @@ export async function generatePdf(data: MeetingExportData): Promise<Blob> {
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css'] },
       })
       .from(container)
       .outputPdf('blob')
@@ -79,8 +80,7 @@ async function renderMermaidBlocks(container: HTMLElement): Promise<void> {
         // SVG가 페이지 폭을 넘지 않도록 제한
         const svgEl = el.querySelector('svg')
         if (svgEl) {
-          svgEl.style.maxWidth = '100%'
-          svgEl.style.height = 'auto'
+          fitSvgToPage(svgEl)
         }
       } catch {
         // 렌더링 실패 시 코드 블록으로 fallback
@@ -98,6 +98,50 @@ async function renderMermaidBlocks(container: HTMLElement): Promise<void> {
   }
 }
 
+// ── SVG 크기 조정 ──────────────────────────────
+
+// A4 콘텐츠 영역: 180mm × 267mm (여백 15mm 제외)
+const CONTENT_W_PX = 180 * 3.7795  // ≈ 680px
+const CONTENT_H_PX = 267 * 3.7795  // ≈ 1009px
+
+/** SVG의 실제 크기를 읽어 페이지 콘텐츠 영역에 맞게 축소한다. */
+function fitSvgToPage(svgEl: SVGSVGElement) {
+  // 1) viewBox 또는 width/height 속성에서 원본 크기 추출
+  const vb = svgEl.viewBox?.baseVal
+  let natW = vb && vb.width > 0 ? vb.width : 0
+  let natH = vb && vb.height > 0 ? vb.height : 0
+
+  if (!natW || !natH) {
+    natW = parseFloat(svgEl.getAttribute('width') ?? '0')
+    natH = parseFloat(svgEl.getAttribute('height') ?? '0')
+  }
+
+  // 크기를 알 수 없으면 100% 폭으로 fallback
+  if (!natW || !natH) {
+    svgEl.removeAttribute('width')
+    svgEl.removeAttribute('height')
+    svgEl.style.maxWidth = '100%'
+    svgEl.style.height = 'auto'
+    return
+  }
+
+  // 2) 콘텐츠 영역에 맞는 축소 비율 계산
+  const scaleW = natW > CONTENT_W_PX ? CONTENT_W_PX / natW : 1
+  const scaleH = natH > CONTENT_H_PX * 0.6 ? (CONTENT_H_PX * 0.6) / natH : 1  // 페이지 60% 이내
+  const scale = Math.min(scaleW, scaleH)
+
+  const finalW = Math.round(natW * scale)
+  const finalH = Math.round(natH * scale)
+
+  // 3) viewBox 유지, 크기만 조정
+  if (!vb || vb.width === 0) {
+    svgEl.setAttribute('viewBox', `0 0 ${natW} ${natH}`)
+  }
+  svgEl.setAttribute('width', `${finalW}`)
+  svgEl.setAttribute('height', `${finalH}`)
+  svgEl.style.maxWidth = '100%'
+}
+
 // ── HTML Renderer ───────────────────────────────
 
 const FONT_STACK =
@@ -113,14 +157,14 @@ const BASE_STYLES = `
     margin: 0;
     padding: 0;
   }
-  h1 { font-size: 18pt; font-weight: bold; margin: 0 0 8px 0; }
-  h2 { font-size: 14pt; font-weight: bold; margin: 20px 0 8px 0; }
-  h3 { font-size: 12pt; font-weight: bold; margin: 16px 0 6px 0; }
-  h4, h5, h6 { font-size: 11pt; font-weight: bold; margin: 12px 0 4px 0; }
+  h1 { font-size: 18pt; font-weight: bold; margin: 0 0 8px 0; break-after: avoid; }
+  h2 { font-size: 14pt; font-weight: bold; margin: 20px 0 8px 0; break-after: avoid; }
+  h3 { font-size: 12pt; font-weight: bold; margin: 16px 0 6px 0; break-after: avoid; }
+  h4, h5, h6 { font-size: 11pt; font-weight: bold; margin: 12px 0 4px 0; break-after: avoid; }
   hr { border: none; border-top: 1px solid #ccc; margin: 16px 0; }
   ul, ol { padding-left: 24px; margin: 4px 0; }
-  li { margin-bottom: 4px; }
-  p { margin: 6px 0; }
+  li { margin-bottom: 4px; break-inside: avoid; }
+  p { margin: 6px 0; break-inside: avoid; }
   strong { font-weight: bold; }
   em { font-style: italic; }
   code {
@@ -144,6 +188,7 @@ const BASE_STYLES = `
     overflow: hidden;
     margin: 8px 0;
     max-width: 100%;
+    break-inside: avoid;
   }
   pre code {
     background: none;
@@ -156,12 +201,14 @@ const BASE_STYLES = `
     font-style: italic;
     color: #666;
     margin: 8px 0;
+    break-inside: avoid;
   }
   .metadata-table {
     width: 100%;
     border-collapse: collapse;
     margin-bottom: 12px;
     font-size: 10pt;
+    break-inside: avoid;
   }
   .metadata-table td {
     padding: 4px 8px;
@@ -187,6 +234,7 @@ const BASE_STYLES = `
   }
   .transcript-entry {
     margin-bottom: 12px;
+    break-inside: avoid;
   }
   .transcript-speaker {
     font-weight: bold;
@@ -202,6 +250,7 @@ const BASE_STYLES = `
   .mermaid-render {
     text-align: center;
     margin: 12px 0;
+    break-inside: avoid;
     overflow: hidden;
   }
   .mermaid-render svg {

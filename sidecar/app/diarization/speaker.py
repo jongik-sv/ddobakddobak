@@ -24,10 +24,10 @@ _BYTES_PER_SAMPLE = 2  # Int16
 _SEC_TO_MS = 1000
 _MIN_AUDIO_BYTES = _SAMPLE_RATE * _BYTES_PER_SAMPLE  # 1초 미만은 불안정
 
-# 짧은 청크에서 동일 화자 유사도 실측값이 0.05~0.25 수준 → 매우 낮게 설정
-_SIMILARITY_THRESHOLD = 0.10   # 이 이상이면 기존 화자로 매칭
-_MERGE_THRESHOLD = 0.35        # 이 이상이면 두 화자를 같은 사람으로 사후 병합
-_MAX_EMBEDDINGS_PER_SPEAKER = 10  # 화자당 보관할 최대 embedding 수
+# 임계값 상향: 0.10이 너무 낮아 다른 화자도 같은 화자로 매칭되던 문제 수정
+_SIMILARITY_THRESHOLD = 0.35   # 이 이상이면 기존 화자로 매칭 (기존 0.10 → 0.35)
+_MERGE_THRESHOLD = 0.50        # 이 이상이면 두 화자를 같은 사람으로 사후 병합 (기존 0.35 → 0.50)
+_MAX_EMBEDDINGS_PER_SPEAKER = 15  # 화자당 보관할 최대 embedding 수
 _MAX_SPEAKERS = 10                # 최대 화자 수
 
 # 회의별 DB 저장 디렉터리: SPEAKER_DBS_DIR 환경변수 또는 sidecar/speaker_dbs/
@@ -192,7 +192,7 @@ class SpeakerDiarizer:
 
     # ── 화자 분리 ─────────────────────────────────────────────────────────────
 
-    async def diarize(self, audio_bytes: bytes) -> dict[tuple[int, int], str]:
+    async def diarize(self, audio_bytes: bytes, offset_ms: int = 0) -> dict[tuple[int, int], str]:
         if not self._is_loaded:
             raise RuntimeError("SpeakerDiarizer가 로드되지 않았습니다.")
         if len(audio_bytes) < _MIN_AUDIO_BYTES:
@@ -232,9 +232,8 @@ class SpeakerDiarizer:
                         meeting_id = f"화자 {self._next_num}"
                         self._next_num += 1
                 else:
-                    # 단일 화자 청크 + DB에 기존 화자 있음 → 강제 매칭 (새 화자 생성 안함)
-                    force_match = (num_local_speakers == 1 and len(self._speaker_embeddings) > 0)
-                    meeting_id = self._match_or_create(emb, force_match=force_match)
+                    # force_match 제거: 단일 화자 청크에서도 새 화자 생성 허용
+                    meeting_id = self._match_or_create(emb, force_match=False)
             else:
                 # centroids 없음 — 기존 화자가 있으면 마지막 화자, 없으면 새로 생성
                 if self._speaker_embeddings:

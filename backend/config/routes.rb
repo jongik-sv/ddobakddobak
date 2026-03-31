@@ -26,6 +26,7 @@ Rails.application.routes.draw do
           get  :audio, to: "meetings_audio#show"
           get  :peaks, to: "meetings_audio#peaks"
           get  :export
+          get  :export_prompt
           get  :summary
           get  :transcripts
         end

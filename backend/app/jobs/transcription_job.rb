@@ -15,7 +15,7 @@ class TranscriptionJob < ApplicationJob
     # segment.started_at_ms / ended_at_ms = 청크 내 상대 위치
     # → 합산하면 녹음 시작 기준 절대 시간
 
-    result = client.transcribe(audio_data, meeting_id: meeting_id, diarization_config: diarization_config, languages: languages)
+    result = client.transcribe(audio_data, meeting_id: meeting_id, diarization_config: diarization_config, languages: languages, offset_ms: offset_ms)
     segments = result["segments"] || []
 
     segments.each do |segment|
