@@ -72,11 +72,12 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
       const destination = audioContext.createMediaStreamDestination()
       source.connect(destination)
 
-      // 시스템 오디오 인젝터 worklet
+      // 시스템 오디오 인젝터 worklet (녹음 믹싱 전용)
       await audioContext.audioWorklet.addModule('/system-audio-injector.js')
       const injector = new AudioWorkletNode(audioContext, 'system-audio-injector')
       systemInjectorRef.current = injector
       injector.connect(destination)
+      // STT VAD 합류는 audio-processor 내부 직접 믹싱으로 처리 (injector→worklet 제거)
 
       // WKWebView(macOS Tauri)는 webm 미지원 → mp4 폴백
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -158,7 +159,10 @@ export function useAudioRecorder(callbacks: AudioRecorderCallbacks): AudioRecord
   }, [])
 
   const feedSystemAudio = useCallback((pcm: Int16Array) => {
+    // 녹음 믹싱용: injector → MediaRecorder destination
     systemInjectorRef.current?.port.postMessage(pcm)
+    // STT VAD용: audio-processor 내부에서 직접 믹싱 (AudioContext 그래프 경유 제거)
+    workletNodeRef.current?.port.postMessage({ type: 'system-audio', pcm })
   }, [])
 
   return { isRecording, isPaused, error, start, stop, pause, resume, feedSystemAudio }

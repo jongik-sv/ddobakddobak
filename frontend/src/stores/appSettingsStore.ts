@@ -97,7 +97,7 @@ export const useAppSettingsStore = create<AppSettingsState>()(
     },
     resetAudioOverrides: () => { set({ audioOverrides: {} }); debouncedSave() },
 
-    diarizationEnabled: true,
+    diarizationEnabled: false,
     setDiarizationEnabled: (enabled) => { set({ diarizationEnabled: enabled }); debouncedSave() },
 
     diarizationOverrides: {},

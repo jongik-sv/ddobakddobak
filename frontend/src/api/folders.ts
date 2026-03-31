@@ -13,7 +13,6 @@ export interface FolderNode {
 export interface Folder {
   id: number
   name: string
-  team_id: number
   parent_id: number | null
   position: number
   meeting_count: number
@@ -37,7 +36,6 @@ export async function getFoldersFlat(): Promise<Folder[]> {
 
 export async function createFolder(data: {
   name: string
-  team_id: number
   parent_id?: number | null
 }): Promise<Folder> {
   const res = await apiClient.post('folders', { json: data }).json<{ folder: Folder }>()

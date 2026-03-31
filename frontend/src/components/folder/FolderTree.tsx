@@ -11,7 +11,6 @@ import {
   FolderPlus,
 } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { getTeams } from '../../api/teams'
 import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -27,12 +26,11 @@ function countAllFolders(nodes: FolderNode[]): number {
 interface FolderTreeItemProps {
   folder: FolderNode
   depth: number
-  defaultTeamId: number | null
   isRecordingActive: boolean
   onSelectFolder: (id: SelectedFolder) => void
 }
 
-function FolderTreeItem({ folder, depth, defaultTeamId, isRecordingActive, onSelectFolder }: FolderTreeItemProps) {
+function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: FolderTreeItemProps) {
   const selectedFolderId = useFolderStore((s) => s.selectedFolderId)
   const expandedFolderIds = useFolderStore((s) => s.expandedFolderIds)
   const toggleExpanded = useFolderStore((s) => s.toggleExpanded)
@@ -83,8 +81,7 @@ function FolderTreeItem({ folder, depth, defaultTeamId, isRecordingActive, onSel
   }
 
   const handleCreateSubfolder = async (name: string) => {
-    if (!defaultTeamId) return
-    await createFolder(name, defaultTeamId, folder.id)
+    await createFolder(name, folder.id)
     setShowSubfolderDialog(false)
     if (!isExpanded) toggleExpanded(folder.id)
   }
@@ -172,7 +169,7 @@ function FolderTreeItem({ folder, depth, defaultTeamId, isRecordingActive, onSel
 
       {isExpanded &&
         folder.children.map((child) => (
-          <FolderTreeItem key={child.id} folder={child} depth={depth + 1} defaultTeamId={defaultTeamId} isRecordingActive={isRecordingActive} onSelectFolder={onSelectFolder} />
+          <FolderTreeItem key={child.id} folder={child} depth={depth + 1} isRecordingActive={isRecordingActive} onSelectFolder={onSelectFolder} />
         ))}
 
       {showRenameDialog && (
@@ -206,16 +203,10 @@ export default function FolderTree() {
   const navigate = useNavigate()
   const location = useLocation()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [defaultTeamId, setDefaultTeamId] = useState<number | null>(null)
   const [rootExpanded, setRootExpanded] = useState(true)
 
   useEffect(() => {
     fetchFolders()
-    getTeams()
-      .then((data) => {
-        if (data.length > 0) setDefaultTeamId(data[0].id)
-      })
-      .catch(() => {})
   }, [fetchFolders])
 
   const handleSelectFolder = useCallback((id: SelectedFolder) => {
@@ -235,8 +226,7 @@ export default function FolderTree() {
   }
 
   const handleCreate = async (name: string) => {
-    if (!defaultTeamId) return
-    await createFolder(name, defaultTeamId)
+    await createFolder(name)
     setShowCreateDialog(false)
   }
 
@@ -284,8 +274,7 @@ export default function FolderTree() {
             e.stopPropagation()
             setShowCreateDialog(true)
           }}
-          disabled={!defaultTeamId}
-          className="hidden group-hover:block p-0.5 rounded hover:bg-black/5 text-muted-foreground hover:text-accent-foreground transition-colors disabled:opacity-50 ml-auto"
+          className="hidden group-hover:block p-0.5 rounded hover:bg-black/5 text-muted-foreground hover:text-accent-foreground transition-colors ml-auto"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
@@ -294,7 +283,7 @@ export default function FolderTree() {
       {/* 폴더 트리 — 최상위 폴더 펼침 시 표시 */}
       {rootExpanded &&
         folders.map((folder) => (
-          <FolderTreeItem key={folder.id} folder={folder} depth={1} defaultTeamId={defaultTeamId} isRecordingActive={isRecordingActive} onSelectFolder={handleSelectFolder} />
+          <FolderTreeItem key={folder.id} folder={folder} depth={1} isRecordingActive={isRecordingActive} onSelectFolder={handleSelectFolder} />
         ))}
 
       {showCreateDialog && (

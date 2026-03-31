@@ -3,7 +3,6 @@ module Api
     class BlocksController < ApplicationController
       before_action :authenticate_user!
       before_action :set_meeting
-      before_action :authorize_meeting_member!
       before_action :set_block, only: %i[update destroy reorder]
 
       def index
@@ -60,12 +59,6 @@ module Api
         @meeting = Meeting.find(params[:meeting_id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Meeting not found" }, status: :not_found
-      end
-
-      def authorize_meeting_member!
-        unless @meeting.team.team_memberships.exists?(user: current_user)
-          render json: { error: "Forbidden" }, status: :forbidden
-        end
       end
 
       def set_block

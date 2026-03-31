@@ -1,20 +1,34 @@
 import { useState, useRef, useEffect } from 'react'
-import { exportMeeting } from '../../api/meetings'
-import { downloadMarkdown, buildMarkdownFilename } from '../../lib/markdown'
+import { exportMeeting, exportMeetingData } from '../../api/meetings'
+import { downloadMarkdown } from '../../lib/markdown'
+import { downloadBlob } from '../../lib/download'
+
+type ExportFormat = 'md' | 'pdf' | 'docx'
 
 interface ExportButtonProps {
   meetingId: number
-  /**
-   * meeting.started_at 또는 meeting.created_at — 파일명 날짜에 사용
-   * 없으면 오늘 날짜 사용
-   */
+  meetingTitle?: string
   meetingDate?: string | null
 }
 
-export function ExportButton({ meetingId, meetingDate }: ExportButtonProps) {
+/** 파일명에 사용할 수 없는 문자를 제거하고 안전한 이름을 만든다 */
+function sanitizeFilename(name: string): string {
+  return name.replace(/[/\\:*?"<>|]/g, '').replace(/\s+/g, '_').slice(0, 100)
+}
+
+function buildExportFilename(title: string | undefined, format: ExportFormat, date?: string | Date): string {
+  const d = date ? new Date(date) : new Date()
+  const dateStr = d.toISOString().slice(0, 10)
+  const baseName = title ? sanitizeFilename(title) : 'meeting'
+  return `${baseName}_${dateStr}.${format}`
+}
+
+export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [format, setFormat] = useState<ExportFormat>('md')
   const [includeSummary, setIncludeSummary] = useState(true)
-  const [includeTranscript, setIncludeTranscript] = useState(true)
+  const [includeMemo, setIncludeMemo] = useState(true)
+  const [includeTranscript, setIncludeTranscript] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -31,16 +45,34 @@ export function ExportButton({ meetingId, meetingDate }: ExportButtonProps) {
     return () => document.removeEventListener('mousedown', handler)
   }, [isOpen])
 
+  const exportOptions = {
+    include_summary: includeSummary,
+    include_memo: includeMemo,
+    include_transcript: includeTranscript,
+  }
+
   const handleDownload = async () => {
     setIsDownloading(true)
     setError(null)
     try {
-      const content = await exportMeeting(meetingId, {
-        include_summary: includeSummary,
-        include_transcript: includeTranscript,
-      })
-      const filename = buildMarkdownFilename(meetingId, meetingDate ?? undefined)
-      await downloadMarkdown(content, filename)
+      const filename = buildExportFilename(meetingTitle, format, meetingDate ?? undefined)
+
+      if (format === 'md') {
+        const content = await exportMeeting(meetingId, exportOptions)
+        await downloadMarkdown(content, filename)
+      } else {
+        const data = await exportMeetingData(meetingId, exportOptions)
+
+        let blob: Blob
+        if (format === 'pdf') {
+          const { generatePdf } = await import('../../lib/pdfExporter')
+          blob = await generatePdf(data)
+        } else {
+          const { generateDocx } = await import('../../lib/docxExporter')
+          blob = await generateDocx(data)
+        }
+        await downloadBlob(blob, filename)
+      }
       setIsOpen(false)
     } catch {
       setError('내보내기에 실패했습니다. 다시 시도해 주세요.')
@@ -63,8 +95,25 @@ export function ExportButton({ meetingId, meetingDate }: ExportButtonProps) {
 
       {/* 옵션 패널 */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-10">
-          <p className="text-sm font-medium text-gray-800 mb-3">Markdown 내보내기</p>
+        <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-10">
+          <p className="text-sm font-medium text-gray-800 mb-3">회의록 내보내기</p>
+
+          {/* 형식 선택 */}
+          <div className="flex gap-1.5 mb-3">
+            {(['md', 'pdf', 'docx'] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFormat(f)}
+                className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                  format === f
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                }`}
+              >
+                .{f}
+              </button>
+            ))}
+          </div>
 
           <label className="flex items-center gap-2 text-sm text-gray-700 mb-2 cursor-pointer">
             <input
@@ -75,6 +124,17 @@ export function ExportButton({ meetingId, meetingDate }: ExportButtonProps) {
               aria-label="AI 요약 포함"
             />
             AI 요약 포함
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-gray-700 mb-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeMemo}
+              onChange={(e) => setIncludeMemo(e.target.checked)}
+              className="rounded"
+              aria-label="메모 포함"
+            />
+            메모 포함
           </label>
 
           <label className="flex items-center gap-2 text-sm text-gray-700 mb-4 cursor-pointer">
@@ -102,10 +162,10 @@ export function ExportButton({ meetingId, meetingDate }: ExportButtonProps) {
             <button
               onClick={handleDownload}
               disabled={isDownloading}
-              aria-label={isDownloading ? '다운로드 중...' : '다운로드 .md'}
+              aria-label={isDownloading ? '다운로드 중...' : `다운로드 .${format}`}
               className="flex-1 px-3 py-1.5 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
-              {isDownloading ? '다운로드 중...' : '다운로드 .md'}
+              {isDownloading ? '다운로드 중...' : `다운로드 .${format}`}
             </button>
           </div>
         </div>

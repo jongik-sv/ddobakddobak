@@ -284,7 +284,7 @@ RAILS_MAX_THREADS=10
 
 # ─── Sidecar 연결 ───
 SIDECAR_HOST="localhost"
-SIDECAR_PORT=8000
+SIDECAR_PORT=13324
 
 # ─── 화자 분리 (선택) ───
 HF_TOKEN="your_hf_token"             # Hugging Face 토큰
@@ -334,32 +334,32 @@ foreman start
 
 | 프로세스 | 명령어 | 포트 |
 |----------|--------|------|
-| rails | `cd backend && bin/rails server -p 3000` | 3000 |
-| sidecar | `cd sidecar && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000` | 8000 |
-| frontend | `cd frontend && npm run dev -- --port 5173` | 5173 |
+| rails | `cd backend && bin/rails server -p 13323` | 13323 |
+| sidecar | `cd sidecar && uv run uvicorn app.main:app --host 0.0.0.0 --port 13324` | 13324 |
+| frontend | `cd frontend && npm run dev -- --port 13325` | 13325 |
 
 ### 방법 B: 터미널 3개로 각각 실행
 
 ```bash
 # 터미널 1 — Rails API
-cd backend && bin/rails server -p 3000
+cd backend && bin/rails server -p 13323
 
 # 터미널 2 — Python Sidecar
-cd sidecar && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+cd sidecar && uv run uvicorn app.main:app --host 0.0.0.0 --port 13324
 
 # 터미널 3 — React Frontend
-cd frontend && npm run dev -- --port 5173
+cd frontend && npm run dev -- --port 13325
 ```
 
 ### 접속
 
 | 서비스 | URL | 설명 |
 |--------|-----|------|
-| 프론트엔드 | http://localhost:5173 | 메인 UI |
-| Rails API | http://localhost:3000/api/v1 | REST API |
-| Sidecar API | http://localhost:8000 | STT/LLM 서비스 |
-| 헬스 체크 | http://localhost:3000/api/v1/health | 서버 상태 확인 |
-| Sidecar 헬스 | http://localhost:8000/health | STT 엔진 상태 확인 |
+| 프론트엔드 | http://localhost:13325 | 메인 UI |
+| Rails API | http://localhost:13323/api/v1 | REST API |
+| Sidecar API | http://localhost:13324 | STT/LLM 서비스 |
+| 헬스 체크 | http://localhost:13323/api/v1/health | 서버 상태 확인 |
+| Sidecar 헬스 | http://localhost:13324/health | STT 엔진 상태 확인 |
 
 ---
 
@@ -528,13 +528,13 @@ E2E 테스트 범위:
 ```yaml
 # API 서버 URL
 api:
-  base_url: "http://localhost:3000/api/v1"
-  ws_url: "ws://localhost:3000/cable"
+  base_url: "http://localhost:13323/api/v1"
+  ws_url: "ws://localhost:13323/cable"
 
 # Sidecar 연결
 sidecar:
   host: "localhost"
-  port: 8000
+  port: 13324
   timeout: 30
 
 # 오디오 설정

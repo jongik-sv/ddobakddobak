@@ -3,12 +3,11 @@ import { X, Plus } from 'lucide-react'
 import type { Meeting } from '../../api/meetings'
 import type { Tag } from '../../api/tags'
 import { getTags, createTag } from '../../api/tags'
-import { getTeams } from '../../api/teams'
 
 interface EditMeetingDialogProps {
   meeting: Meeting
   meetingTypeList: { value: string; label: string }[]
-  onConfirm: (data: { title: string; meeting_type: string; tag_ids: number[] }) => void
+  onConfirm: (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null }) => void
   onClose: () => void
 }
 
@@ -19,24 +18,21 @@ export default function EditMeetingDialog({
   onClose,
 }: EditMeetingDialogProps) {
   const [title, setTitle] = useState(meeting.title)
+  const [briefSummary, setBriefSummary] = useState(meeting.brief_summary ?? '')
   const [meetingType, setMeetingType] = useState(meeting.meeting_type)
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>(meeting.tags?.map((t) => t.id) ?? [])
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [newTagName, setNewTagName] = useState('')
   const [showNewTag, setShowNewTag] = useState(false)
-  const [teamId, setTeamId] = useState<number | null>(null)
 
   useEffect(() => {
     getTags().then(setAllTags).catch(() => {})
-    getTeams()
-      .then((teams) => { if (teams.length > 0) setTeamId(teams[0].id) })
-      .catch(() => {})
   }, [])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
-    onConfirm({ title: title.trim(), meeting_type: meetingType, tag_ids: selectedTagIds })
+    onConfirm({ title: title.trim(), meeting_type: meetingType, tag_ids: selectedTagIds, brief_summary: briefSummary.trim() || null })
   }
 
   const toggleTag = (tagId: number) => {
@@ -46,10 +42,10 @@ export default function EditMeetingDialog({
   }
 
   const handleCreateTag = async () => {
-    if (!newTagName.trim() || !teamId) return
+    if (!newTagName.trim()) return
     const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316']
     const color = colors[allTags.length % colors.length]
-    const tag = await createTag({ name: newTagName.trim(), color, team_id: teamId })
+    const tag = await createTag({ name: newTagName.trim(), color })
     setAllTags((prev) => [...prev, tag])
     setSelectedTagIds((prev) => [...prev, tag.id])
     setNewTagName('')
@@ -81,6 +77,18 @@ export default function EditMeetingDialog({
               onChange={(e) => setTitle(e.target.value)}
               className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               autoFocus
+            />
+          </div>
+
+          {/* 요약 */}
+          <div>
+            <label className="block text-sm font-medium mb-1">요약</label>
+            <textarea
+              value={briefSummary}
+              onChange={(e) => setBriefSummary(e.target.value)}
+              rows={3}
+              placeholder="회의 요약을 입력하세요"
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring resize-none"
             />
           </div>
 

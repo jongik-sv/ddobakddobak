@@ -20,7 +20,7 @@ interface FolderState {
   fetchFolders: () => Promise<void>
   setSelectedFolder: (id: SelectedFolder) => void
   toggleExpanded: (id: number) => void
-  createFolder: (name: string, teamId: number, parentId?: number | null) => Promise<void>
+  createFolder: (name: string, parentId?: number | null) => Promise<void>
   renameFolder: (id: number, name: string) => Promise<void>
   moveFolder: (id: number, newParentId: number | null) => Promise<void>
   removeFolder: (id: number) => Promise<void>
@@ -54,9 +54,9 @@ export const useFolderStore = create<FolderState>()((set, get) => ({
       return { expandedFolderIds: next }
     }),
 
-  createFolder: async (name, teamId, parentId) => {
+  createFolder: async (name, parentId) => {
     try {
-      await apiCreateFolder({ name, team_id: teamId, parent_id: parentId })
+      await apiCreateFolder({ name, parent_id: parentId })
       await get().fetchFolders()
     } catch {
       set({ error: '폴더 생성에 실패했습니다.' })

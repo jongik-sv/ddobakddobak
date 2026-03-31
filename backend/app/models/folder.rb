@@ -1,5 +1,5 @@
 class Folder < ApplicationRecord
-  belongs_to :team
+  belongs_to :team, optional: true
   belongs_to :parent, class_name: "Folder", optional: true
   has_many :children, class_name: "Folder", foreign_key: :parent_id, dependent: :nullify
   has_many :meetings, dependent: :nullify
@@ -9,7 +9,6 @@ class Folder < ApplicationRecord
   validates :name, presence: true, length: { maximum: 100 }
   validates :position, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
 
-  scope :for_team, ->(team_ids) { where(team_id: team_ids) }
   scope :roots, -> { where(parent_id: nil) }
   scope :ordered, -> { order(:position, :name) }
 
@@ -23,8 +22,8 @@ class Folder < ApplicationRecord
     path
   end
 
-  def self.tree_for_team(team_ids)
-    all_folders = where(team_id: team_ids).ordered.includes(:tags).to_a
+  def self.tree
+    all_folders = ordered.includes(:tags).to_a
     meeting_counts = Meeting.where(folder_id: all_folders.map(&:id))
                             .group(:folder_id).count
     roots = all_folders.select { |f| f.parent_id.nil? }

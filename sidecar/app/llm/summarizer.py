@@ -347,6 +347,10 @@ class LLMSummarizer:
         if self._provider == "codex_cli":
             return await self._call_codex_cli(system, user_content)
         if self._provider == "openai":
+            # Qwen3.5 등 thinking 모드 모델은 enable_thinking=false로 비활성화
+            extra: dict[str, Any] = {}
+            if "qwen" in self._settings.LLM_MODEL.lower():
+                extra["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
             response = await self._client.chat.completions.create(
                 model=self._settings.LLM_MODEL,
                 max_tokens=max_tokens,
@@ -354,6 +358,7 @@ class LLMSummarizer:
                     {"role": "system", "content": system},
                     {"role": "user", "content": user_content},
                 ],
+                **extra,
             )
             return response.choices[0].message.content or ""
         else:
@@ -394,7 +399,7 @@ class LLMSummarizer:
         if context:
             user_content += f"\n\n이전 요약 컨텍스트:\n{context}"
 
-        data = await self._call_llm(_SUMMARIZE_SYSTEM_PROMPT, user_content, max_tokens=2048)
+        data = await self._call_llm(_SUMMARIZE_SYSTEM_PROMPT, user_content, max_tokens=self._settings.LLM_MAX_OUTPUT_TOKENS)
         if data is None:
             return {"key_points": [], "decisions": [], "discussion_details": [], "action_items": []}
         return {
@@ -416,7 +421,7 @@ class LLMSummarizer:
         transcript_text = self._format_transcripts(transcripts)
         user_content = f"회의 트랜스크립트:\n{transcript_text}"
 
-        data = await self._call_llm(_ACTION_ITEMS_SYSTEM_PROMPT, user_content, max_tokens=1024)
+        data = await self._call_llm(_ACTION_ITEMS_SYSTEM_PROMPT, user_content, max_tokens=self._settings.LLM_MAX_OUTPUT_TOKENS)
         if data is None:
             return []
         return data.get("action_items", [])
@@ -457,9 +462,10 @@ class LLMSummarizer:
         user_content = "\n\n".join(parts)
 
         # 기존 회의록 길이에 비례하여 max_tokens를 동적으로 설정
-        # 기존 내용을 모두 보존 + 새 내용 추가 여유분
-        estimated_tokens = len(current_notes) // 2 + len(transcript_text) // 2 + 1024
-        max_tokens = max(4096, min(estimated_tokens, 16384))
+        # 한국어는 글자당 ~1토큰이므로 len()을 그대로 사용
+        # 기존 내용 전체 보존 + 새 내용 추가 여유분
+        estimated_tokens = len(current_notes) + len(transcript_text) + 2048
+        max_tokens = max(4096, min(estimated_tokens, self._settings.LLM_MAX_OUTPUT_TOKENS))
 
         try:
             if sections_prompt:
@@ -503,7 +509,7 @@ class LLMSummarizer:
 
         try:
             result = (await self._call_llm_raw(
-                _FEEDBACK_NOTES_SYSTEM_PROMPT, user_content, 4096
+                _FEEDBACK_NOTES_SYSTEM_PROMPT, user_content, self._settings.LLM_MAX_OUTPUT_TOKENS
             )).strip()
             return _strip_markdown_fence(result)
         except Exception as e:

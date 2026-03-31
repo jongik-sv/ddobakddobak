@@ -8,9 +8,10 @@ class MarkdownExporter
   # @param meeting [Meeting] ActiveRecord Meeting 인스턴스
   # @param include_summary [Boolean] AI 요약 섹션 포함 여부 (기본: true)
   # @param include_transcript [Boolean] 원본 텍스트 섹션 포함 여부 (기본: true)
-  def initialize(meeting, include_summary: true, include_transcript: true)
+  def initialize(meeting, include_summary: true, include_memo: true, include_transcript: true)
     @meeting            = meeting
     @include_summary    = include_summary
+    @include_memo       = include_memo
     @include_transcript = include_transcript
   end
 
@@ -19,6 +20,7 @@ class MarkdownExporter
     sections = []
     sections << render_header
     sections << render_summary    if @include_summary
+    sections << render_memo       if @include_memo
     sections << render_transcript if @include_transcript
     sections.compact.join("\n\n---\n\n")
   end
@@ -79,6 +81,16 @@ class MarkdownExporter
       lines << action_items_lines
     end
 
+    lines.join("\n")
+  end
+
+  def render_memo
+    return nil if @meeting.memo.blank?
+
+    lines = []
+    lines << "## 메모"
+    lines << ""
+    lines << @meeting.memo
     lines.join("\n")
   end
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Pencil, ArrowLeft, StickyNote } from 'lucide-react'
+import { Pencil, ArrowLeft, StickyNote, Paperclip } from 'lucide-react'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
@@ -20,6 +20,7 @@ import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
 import { useUiStore } from '../stores/uiStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
+import { AttachmentSection } from '../components/meeting/AttachmentSection'
 
 // ──────────────────────────────────────────────
 // 회의 상세 페이지
@@ -121,6 +122,8 @@ export default function MeetingPage() {
   // 메모 에디터 + 토글
   const memoVisible = useUiStore((s) => s.memoVisible)
   const toggleMemo = useUiStore((s) => s.toggleMemo)
+  const attachmentsVisible = useUiStore((s) => s.attachmentsVisible)
+  const toggleAttachments = useUiStore((s) => s.toggleAttachments)
   const { memoEditorRef, isSavingMemo, handleSaveMemo } = useMemoEditor(meetingId, meeting?.memo)
 
   const handleNotesChange = useCallback(
@@ -259,6 +262,13 @@ export default function MeetingPage() {
         </button>
         <h1 className="text-xl font-bold text-gray-900">회의 미리보기</h1>
         <button
+          onClick={toggleAttachments}
+          className={`p-1.5 rounded-md transition-colors ${attachmentsVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+          title={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}
+        >
+          <Paperclip className="w-4 h-4" />
+        </button>
+        <button
           onClick={toggleMemo}
           className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
           title={memoVisible ? '메모 숨기기' : '메모 보기'}
@@ -375,6 +385,7 @@ export default function MeetingPage() {
           )}
           <ExportButton
             meetingId={meetingId}
+            meetingTitle={meeting?.title}
             meetingDate={meeting?.started_at ?? meeting?.created_at}
           />
           <button
@@ -385,6 +396,9 @@ export default function MeetingPage() {
           </button>
         </div>
       </div>
+
+      {/* 첨부 파일/링크 섹션 */}
+      {attachmentsVisible && <AttachmentSection meetingId={meetingId} />}
 
       {/* 3패널 리사이즈 레이아웃 */}
       <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden min-h-0">

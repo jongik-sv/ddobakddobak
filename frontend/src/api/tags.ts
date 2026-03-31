@@ -4,7 +4,6 @@ export interface Tag {
   id: number
   name: string
   color: string
-  team_id: number
 }
 
 export async function getTags(): Promise<Tag[]> {
@@ -15,7 +14,6 @@ export async function getTags(): Promise<Tag[]> {
 export async function createTag(data: {
   name: string
   color?: string
-  team_id: number
 }): Promise<Tag> {
   const res = await apiClient.post('tags', { json: data }).json<{ tag: Tag }>()
   return res.tag

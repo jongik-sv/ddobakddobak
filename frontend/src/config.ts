@@ -59,17 +59,13 @@ export const IS_TAURI =
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 // ── API / WebSocket ────────────────────────────
-// tauri dev → 기존 개발 서버(3000), tauri build(프로덕션) → 3001
+// Tauri 환경에서는 항상 13323 포트 사용
 export const API_BASE_URL = IS_TAURI
-  ? import.meta.env.DEV
-    ? 'http://127.0.0.1:3000/api/v1'
-    : 'http://127.0.0.1:3001/api/v1'
+  ? 'http://127.0.0.1:13323/api/v1'
   : import.meta.env.VITE_API_BASE_URL || cfg.api.base_url
 
 export const WS_URL = IS_TAURI
-  ? import.meta.env.DEV
-    ? 'ws://127.0.0.1:3000/cable'
-    : 'ws://127.0.0.1:3001/cable'
+  ? 'ws://127.0.0.1:13323/cable'
   : import.meta.env.VITE_WS_URL || cfg.api.ws_url
 
 // ── STT 엔진 라벨 ─────────────────────────────

@@ -24,11 +24,9 @@ module Api
       private
 
       def set_action_item
-        team_ids = current_user.team_memberships.pluck(:team_id)
-        meeting_ids = Meeting.where(team_id: team_ids).pluck(:id)
-        @action_item = ActionItem.where(meeting_id: meeting_ids).find(params[:id])
+        @action_item = ActionItem.find(params[:id])
       rescue ActiveRecord::RecordNotFound
-        render json: { error: "Forbidden" }, status: :forbidden
+        render json: { error: "Not found" }, status: :not_found
       end
 
       def action_item_params

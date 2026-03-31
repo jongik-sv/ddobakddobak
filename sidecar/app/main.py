@@ -614,6 +614,8 @@ class UpdateLlmSettingsRequest(BaseModel):
     auth_token: str | None = None
     base_url: str | None = None
     model: str | None = None
+    max_input_tokens: int | None = None
+    max_output_tokens: int | None = None
 
 
 class UpdateHfSettingsRequest(BaseModel):
@@ -649,6 +651,8 @@ async def get_llm_settings() -> dict:
         "openai_token_masked": _mask_token(settings.OPENAI_API_KEY),
         "base_url": base_url,
         "model": settings.LLM_MODEL,
+        "max_input_tokens": settings.LLM_MAX_INPUT_TOKENS,
+        "max_output_tokens": settings.LLM_MAX_OUTPUT_TOKENS,
     }
 
 
@@ -669,12 +673,21 @@ async def update_llm_settings(request: UpdateLlmSettingsRequest) -> dict:
             settings.ANTHROPIC_BASE_URL = request.base_url
     if request.model is not None:
         settings.LLM_MODEL = request.model
+    if request.max_input_tokens is not None:
+        settings.LLM_MAX_INPUT_TOKENS = request.max_input_tokens
+    if request.max_output_tokens is not None:
+        settings.LLM_MAX_OUTPUT_TOKENS = request.max_output_tokens
 
     # LLM 클라이언트 재생성
     app.state.summarizer = LLMSummarizer()
 
     # .env 파일에 영구 저장
-    env_updates: dict[str, str] = {"LLM_PROVIDER": settings.LLM_PROVIDER, "LLM_MODEL": settings.LLM_MODEL}
+    env_updates: dict[str, str] = {
+        "LLM_PROVIDER": settings.LLM_PROVIDER,
+        "LLM_MODEL": settings.LLM_MODEL,
+        "LLM_MAX_INPUT_TOKENS": str(settings.LLM_MAX_INPUT_TOKENS),
+        "LLM_MAX_OUTPUT_TOKENS": str(settings.LLM_MAX_OUTPUT_TOKENS),
+    }
     if settings.LLM_PROVIDER == "openai":
         if request.auth_token is not None:
             env_updates["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
@@ -692,6 +705,8 @@ async def update_llm_settings(request: UpdateLlmSettingsRequest) -> dict:
         "auth_token_masked": token_masked,
         "base_url": base_url,
         "model": settings.LLM_MODEL,
+        "max_input_tokens": settings.LLM_MAX_INPUT_TOKENS,
+        "max_output_tokens": settings.LLM_MAX_OUTPUT_TOKENS,
     }
 
 

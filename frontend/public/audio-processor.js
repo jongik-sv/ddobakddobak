@@ -30,12 +30,27 @@ class AudioProcessor extends AudioWorkletProcessor {
 
     this._paused = false
 
+    // 시스템 오디오 직접 주입 큐 (injector worklet 경유 제거)
+    this._sysQueue = []
+    this._sysCurrent = null
+    this._sysOffset = 0
+
     // 샘플 기반 타임스탬프: Date.now() 대신 실제 오디오 샘플 수로 정확한 위치 추적
     this._totalSamplesIn = 0
     this._chunkStartSample = 0
 
     this.port.onmessage = (event) => {
-      if (event.data?.type === 'pause') {
+      if (event.data?.type === 'system-audio') {
+        // 시스템 오디오 PCM (Int16Array) → Float32 변환 후 큐에 추가
+        const pcm = event.data.pcm
+        if (pcm && pcm.length > 0) {
+          const f32 = new Float32Array(pcm.length)
+          for (let i = 0; i < pcm.length; i++) {
+            f32[i] = pcm[i] / 32768.0
+          }
+          this._sysQueue.push(f32)
+        }
+      } else if (event.data?.type === 'pause') {
         // 일시정지: 진행 중인 음성이 있으면 전송 후 리셋
         if (
           (this._state === 'SPEECH' || this._state === 'TRAILING_SILENCE') &&
@@ -80,7 +95,29 @@ class AudioProcessor extends AudioWorkletProcessor {
     if (!input || !input[0]) return true
     if (this._paused) return true
 
-    const channel = input[0]
+    const mic = input[0]
+
+    // 마이크 + 시스템 오디오 믹싱 (시스템 오디오는 postMessage로 직접 수신)
+    if (!this._mixBuf || this._mixBuf.length < mic.length) {
+      this._mixBuf = new Float32Array(mic.length)
+    }
+    const channel = this._mixBuf
+    for (let i = 0; i < mic.length; i++) {
+      let sys = 0
+      if (!this._sysCurrent || this._sysOffset >= this._sysCurrent.length) {
+        if (this._sysQueue.length > 0) {
+          this._sysCurrent = this._sysQueue.shift()
+          this._sysOffset = 0
+        } else {
+          this._sysCurrent = null
+        }
+      }
+      if (this._sysCurrent) {
+        sys = this._sysCurrent[this._sysOffset++]
+      }
+      channel[i] = mic[i] + sys
+    }
+
     this._totalSamplesIn += channel.length
 
     let sumSq = 0

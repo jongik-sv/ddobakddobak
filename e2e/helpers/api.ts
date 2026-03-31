@@ -3,7 +3,7 @@
  * 테스트 setup/teardown에서 사용한다.
  */
 
-const API_BASE = 'http://localhost:3000/api/v1';
+const API_BASE = 'http://localhost:13323/api/v1';
 
 export interface TestUser {
   id: number;

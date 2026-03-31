@@ -5,14 +5,14 @@
 # ── API / WebSocket ──────────────────────────────
 # 환경변수(VITE_API_BASE_URL, VITE_WS_URL)로 오버라이드 가능
 api:
-  base_url: "http://localhost:3000/api/v1"
-  ws_url: "ws://localhost:3000/cable"
+  base_url: "http://localhost:13323/api/v1"
+  ws_url: "ws://localhost:13323/cable"
 
 # ── Sidecar 서비스 ────────────────────────────────
 # 환경변수(SIDECAR_HOST, SIDECAR_PORT)로 오버라이드 가능
 sidecar:
   host: "localhost"
-  port: 8000
+  port: 13324
   timeout_sec: 30
 
 # ── STT 엔진 ─────────────────────────────────────
@@ -44,9 +44,9 @@ audio:
   sample_rate: 16000
   silence_threshold: 0.03      # RMS — SPEECH → TRAILING_SILENCE 진입
   speech_threshold: 0.06       # RMS — TRAILING_SILENCE → SPEECH 복귀 (히스테리시스)
-  silence_duration_ms: 800     # 무음 지속 시간 → 청크 전송
-  max_chunk_sec: 15            # 최대 청크 길이 (연속 발화 강제 전송)
-  min_chunk_sec: 3             # 최소 청크 길이 (미만이면 무시)
+  silence_duration_ms: 1500    # 무음 지속 시간 → 청크 전송 (짧으면 문장 중간에 끊김)
+  max_chunk_sec: 30            # 최대 청크 길이 (연속 발화 강제 전송)
+  min_chunk_sec: 3             # 최소 청크 길이 (미만이면 무시 — 짧은 청크는 STT 정확도 저하)
   preroll_ms: 300              # 문장 시작 포착용 프리롤
   overlap_ms: 200              # 청크 경계 음절 손실 방지용 오버랩
   file_chunk_sec: 30           # 파일 STT 처리 시 청크 분할 시간 (0 = 분할 안 함)
@@ -103,8 +103,8 @@ meeting_types:
 summary:
   default_interval_sec: 60
   interval_options:
-    - value: 15
-      label: "15초"
+    - value: 0
+      label: "안함"
     - value: 30
       label: "30초"
     - value: 60

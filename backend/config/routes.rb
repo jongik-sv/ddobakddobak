@@ -24,6 +24,7 @@ Rails.application.routes.draw do
           patch :update_notes
           post :audio, to: "meetings_audio#create"
           get  :audio, to: "meetings_audio#show"
+          get  :peaks, to: "meetings_audio#peaks"
           get  :export
           get  :summary
           get  :transcripts
@@ -38,6 +39,13 @@ Rails.application.routes.draw do
         end
         resources :blocks, only: %i[index create update destroy] do
           member do
+            patch :reorder
+          end
+        end
+        resources :attachments, only: %i[index create update destroy],
+                  controller: "meeting_attachments" do
+          member do
+            get :download
             patch :reorder
           end
         end
@@ -77,13 +85,6 @@ Rails.application.routes.draw do
       get  "settings/app", to: "settings#app_settings"
       put  "settings/app", to: "settings#update_app_settings"
 
-      # Teams
-      resources :teams, only: %i[index create] do
-        member do
-          post "invite"
-          delete "members/:user_id", to: "teams#remove_member", as: :remove_member
-        end
-      end
     end
   end
 end

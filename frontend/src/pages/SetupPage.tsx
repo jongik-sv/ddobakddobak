@@ -101,6 +101,25 @@ export default function SetupPage({ onReady }: { onReady: () => void }) {
     }
   }, [])
 
+  const [installing, setInstalling] = useState(false)
+
+  const autoInstall = useCallback(async () => {
+    setInstalling(true)
+    setError(null)
+    try {
+      const status = await invoke<EnvironmentStatus>('install_dependencies')
+      setEnvStatus(status)
+      if (status.all_ready) {
+        await proceedAfterEnvCheck()
+      }
+    } catch (err) {
+      setError(String(err))
+      setPhase('error')
+    } finally {
+      setInstalling(false)
+    }
+  }, [proceedAfterEnvCheck])
+
   const retry = useCallback(() => {
     setError(null)
     setPhase('env_check')
@@ -152,12 +171,24 @@ export default function SetupPage({ onReady }: { onReady: () => void }) {
                   )}
                   {!envStatus.ffmpeg && <li>ffmpeg: <code>brew install ffmpeg</code></li>}
                 </ul>
-                <button
-                  onClick={retry}
-                  className="mt-3 px-4 py-1.5 bg-amber-600 text-white text-sm rounded-md hover:bg-amber-700 transition"
-                >
-                  다시 확인
-                </button>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={autoInstall}
+                    disabled={installing}
+                    className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50 transition"
+                  >
+                    {installing ? '설치 중...' : '자동 설치'}
+                  </button>
+                  <button
+                    onClick={retry}
+                    className="px-4 py-1.5 bg-amber-600 text-white text-sm rounded-md hover:bg-amber-700 transition"
+                  >
+                    다시 확인
+                  </button>
+                </div>
+                {installing && progress && (
+                  <p className="mt-2 text-xs text-blue-700">{progress.message}</p>
+                )}
               </div>
             </div>
           </div>

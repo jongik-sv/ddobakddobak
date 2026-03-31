@@ -15,7 +15,7 @@ export default defineConfig({
     ['list'],
   ],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:13325',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'on-first-retry',
@@ -35,14 +35,14 @@ export default defineConfig({
   globalSetup: './global-setup.ts',
   webServer: [
     {
-      command: 'cd ../backend && bundle exec rails server -p 3000 -e test',
-      url: 'http://localhost:3000/api/v1/health',
+      command: 'cd ../backend && bundle exec rails server -p 13323 -e test',
+      url: 'http://localhost:13323/api/v1/health',
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
     },
     {
-      command: 'cd ../frontend && npm run dev -- --port 5173',
-      url: 'http://localhost:5173',
+      command: 'cd ../frontend && npm run dev -- --port 13325',
+      url: 'http://localhost:13325',
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
     },

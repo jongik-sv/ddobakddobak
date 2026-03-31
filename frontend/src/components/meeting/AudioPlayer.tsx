@@ -10,10 +10,14 @@ interface AudioPlayerProps {
 }
 
 function formatTime(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '00:00'
   const totalSeconds = Math.floor(ms / 1000)
-  const minutes = Math.floor(totalSeconds / 60)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  const mm = String(minutes).padStart(2, '0')
+  const ss = String(seconds).padStart(2, '0')
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`
 }
 
 export function AudioPlayer({ meetingId, onTimeUpdate, seekMs, autoPlayOnSeek = false }: AudioPlayerProps) {
@@ -66,7 +70,7 @@ export function AudioPlayer({ meetingId, onTimeUpdate, seekMs, autoPlayOnSeek = 
           </button>
 
           {/* 시간 (현재) */}
-          <span className="shrink-0 text-xs text-gray-500 tabular-nums w-10 text-right">
+          <span className="shrink-0 text-xs text-gray-500 tabular-nums text-right">
             {formatTime(currentTimeMs)}
           </span>
 
@@ -87,7 +91,7 @@ export function AudioPlayer({ meetingId, onTimeUpdate, seekMs, autoPlayOnSeek = 
           </div>
 
           {/* 시간 (전체) */}
-          <span className="shrink-0 text-xs text-gray-500 tabular-nums w-10">
+          <span className="shrink-0 text-xs text-gray-500 tabular-nums">
             {formatTime(durationMs)}
           </span>
 

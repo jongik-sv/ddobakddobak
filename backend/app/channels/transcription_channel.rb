@@ -1,7 +1,7 @@
 class TranscriptionChannel < ApplicationCable::Channel
   def subscribed
     meeting = Meeting.find_by(id: params[:meeting_id])
-    if meeting && team_member?(meeting)
+    if meeting
       @meeting_id = meeting.id
       stream_from "meeting_#{meeting.id}_transcription"
     else
@@ -25,11 +25,5 @@ class TranscriptionChannel < ApplicationCable::Channel
       languages: data["languages"],
       audio_source: data["audio_source"] || "mic"
     )
-  end
-
-  private
-
-  def team_member?(meeting)
-    meeting.team.team_memberships.exists?(user: current_user)
   end
 end

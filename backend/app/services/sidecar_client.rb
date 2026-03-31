@@ -9,7 +9,7 @@ class SidecarClient
 
   def initialize
     @host = ENV.fetch("SIDECAR_HOST", "localhost")
-    @port = ENV.fetch("SIDECAR_PORT", "8000").to_i
+    @port = ENV.fetch("SIDECAR_PORT", "13324").to_i
   end
 
   def health

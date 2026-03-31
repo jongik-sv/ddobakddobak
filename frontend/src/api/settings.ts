@@ -22,6 +22,8 @@ export interface LlmSettings {
   openai_token_masked?: string
   base_url: string
   model: string
+  max_input_tokens: number
+  max_output_tokens: number
   offline?: boolean
 }
 
@@ -34,6 +36,8 @@ export async function updateLlmSettings(params: {
   auth_token?: string
   base_url?: string
   model?: string
+  max_input_tokens?: number
+  max_output_tokens?: number
 }): Promise<LlmSettings> {
   return apiClient.put('settings/llm', { json: params }).json()
 }

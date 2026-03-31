@@ -23,25 +23,25 @@ else
   fail "Procfile does not exist"
 fi
 
-# rails 프로세스 (포트 3000)
-if grep -qE '^rails:.*3000' "$PROJECT_ROOT/Procfile" 2>/dev/null; then
-  pass "Procfile defines rails on port 3000"
+# rails 프로세스 (포트 13323)
+if grep -qE '^rails:.*13323' "$PROJECT_ROOT/Procfile" 2>/dev/null; then
+  pass "Procfile defines rails on port 13323"
 else
-  fail "Procfile missing rails process on port 3000"
+  fail "Procfile missing rails process on port 13323"
 fi
 
-# sidecar 프로세스 (포트 8000)
-if grep -qE '^sidecar:.*8000' "$PROJECT_ROOT/Procfile" 2>/dev/null; then
-  pass "Procfile defines sidecar on port 8000"
+# sidecar 프로세스 (포트 13324)
+if grep -qE '^sidecar:.*13324' "$PROJECT_ROOT/Procfile" 2>/dev/null; then
+  pass "Procfile defines sidecar on port 13324"
 else
-  fail "Procfile missing sidecar process on port 8000"
+  fail "Procfile missing sidecar process on port 13324"
 fi
 
-# frontend 프로세스 (포트 5173)
-if grep -qE '^frontend:.*5173' "$PROJECT_ROOT/Procfile" 2>/dev/null; then
-  pass "Procfile defines frontend on port 5173"
+# frontend 프로세스 (포트 13325)
+if grep -qE '^frontend:.*13325' "$PROJECT_ROOT/Procfile" 2>/dev/null; then
+  pass "Procfile defines frontend on port 13325"
 else
-  fail "Procfile missing frontend process on port 5173"
+  fail "Procfile missing frontend process on port 13325"
 fi
 
 # 프로세스가 정확히 3개

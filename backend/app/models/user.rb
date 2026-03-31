@@ -1,7 +1,4 @@
 class User < ApplicationRecord
-  has_many :team_memberships, dependent: :destroy
-  has_many :teams, through: :team_memberships
-
   validates :name, presence: true
 
   before_validation :set_defaults, on: :create

@@ -84,7 +84,7 @@ export default function SettingsContent() {
       else setError('설정을 불러오지 못했습니다.')
       if (llm) {
         setLlmSettings(llm)
-        setLlmForm({ provider: llm.provider || 'anthropic', auth_token: '', base_url: llm.base_url, model: llm.model })
+        setLlmForm({ provider: llm.provider || 'anthropic', auth_token: '', base_url: llm.base_url, model: llm.model, max_input_tokens: llm.max_input_tokens, max_output_tokens: llm.max_output_tokens })
       }
       if (hf) setHfSettings(hf)
     }).finally(() => setLoading(false))
@@ -113,7 +113,7 @@ export default function SettingsContent() {
 
   // LLM 설정
   const [llmSettings, setLlmSettings] = useState<LlmSettings | null>(null)
-  const [llmForm, setLlmForm] = useState({ provider: 'anthropic', auth_token: '', base_url: '', model: '' })
+  const [llmForm, setLlmForm] = useState({ provider: 'anthropic', auth_token: '', base_url: '', model: '', max_input_tokens: 200000, max_output_tokens: 32768 })
   const [selectedPreset, setSelectedPreset] = useState('anthropic')
   const [llmSaving, setLlmSaving] = useState(false)
   const [llmSuccess, setLlmSuccess] = useState<string | null>(null)
@@ -201,11 +201,13 @@ export default function SettingsContent() {
     setLlmError(null)
     setLlmSuccess(null)
     try {
-      const params: Record<string, string> = {}
+      const params: Record<string, string | number> = {}
       if (llmForm.provider !== llmSettings?.provider) params.provider = llmForm.provider
       if (llmForm.auth_token) params.auth_token = llmForm.auth_token
       if (llmForm.base_url !== llmSettings?.base_url) params.base_url = llmForm.base_url
       if (llmForm.model !== llmSettings?.model) params.model = llmForm.model
+      if (llmForm.max_input_tokens !== llmSettings?.max_input_tokens) params.max_input_tokens = llmForm.max_input_tokens
+      if (llmForm.max_output_tokens !== llmSettings?.max_output_tokens) params.max_output_tokens = llmForm.max_output_tokens
       if (Object.keys(params).length === 0) {
         setLlmSaving(false)
         return
@@ -483,6 +485,35 @@ export default function SettingsContent() {
             )}
           </div>
 
+          {/* 토큰 제한 */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">최대 입력 토큰</label>
+              <input
+                type="number"
+                value={llmForm.max_input_tokens}
+                onChange={(e) => setLlmForm((f) => ({ ...f, max_input_tokens: parseInt(e.target.value) || 0 }))}
+                placeholder="200000"
+                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+              />
+              <p className="text-xs text-muted-foreground mt-1">기본: 200,000</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">최대 출력 토큰</label>
+              <input
+                type="number"
+                value={llmForm.max_output_tokens}
+                onChange={(e) => setLlmForm((f) => ({ ...f, max_output_tokens: parseInt(e.target.value) || 0 }))}
+                placeholder="32768"
+                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+              />
+              <p className="text-xs text-muted-foreground mt-1">기본: 32,768 (회의록이 길면 늘리세요)</p>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            사용 중인 모델의 스펙에 맞게 설정하세요. 모르겠으면 기본값을 유지하면 됩니다.
+          </p>
+
           {/* 버튼 + 결과 */}
           <div className="flex items-center gap-2">
             <button
@@ -508,45 +539,6 @@ export default function SettingsContent() {
           {llmError && <p className="text-sm text-red-600">{llmError}</p>}
           {llmSuccess && <p className="text-sm text-green-600">{llmSuccess}</p>}
           {llmSettings?.offline && (
-            <p className="text-sm text-yellow-600">Sidecar 연결 불가 — 오프라인 상태</p>
-          )}
-        </div>
-      </div>
-
-      {/* HuggingFace 설정 */}
-      <div className="rounded-lg border bg-card p-6">
-        <h2 className="text-lg font-semibold mb-1">HuggingFace</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          화자 분리(pyannote) 모델 다운로드에 필요한 토큰입니다.
-        </p>
-
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">HF Token</label>
-            <input
-              type="password"
-              value={hfToken}
-              onChange={(e) => setHfToken(e.target.value)}
-              placeholder={hfSettings?.hf_token_masked || 'hf_...'}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
-            />
-            {hfSettings?.has_token && !hfToken && (
-              <p className="text-xs text-muted-foreground mt-1">현재: {hfSettings.hf_token_masked}</p>
-            )}
-            {hfSettings && !hfSettings.has_token && (
-              <p className="text-xs text-yellow-600 mt-1">토큰 미설정 — 화자 분리 기능이 비활성화됩니다.</p>
-            )}
-          </div>
-          <button
-            onClick={handleHfSave}
-            disabled={hfSaving || !hfToken.trim()}
-            className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            {hfSaving ? '저장 중...' : '저장'}
-          </button>
-          {hfError && <p className="text-sm text-red-600">{hfError}</p>}
-          {hfSuccess && <p className="text-sm text-green-600">{hfSuccess}</p>}
-          {hfSettings?.offline && (
             <p className="text-sm text-yellow-600">Sidecar 연결 불가 — 오프라인 상태</p>
           )}
         </div>
@@ -581,7 +573,9 @@ export default function SettingsContent() {
         </div>
 
         <p className="mt-3 text-xs text-muted-foreground">
-          주기가 짧을수록 회의록이 자주 갱신되지만, AI 처리 부하가 높아질 수 있습니다.
+          {summaryIntervalSec === 0
+            ? '"안함" 선택 시 녹음 중 실시간 요약 없이, 회의 종료 시 한 번만 정리합니다.'
+            : '주기가 짧을수록 회의록이 자주 갱신되지만, AI 처리 부하가 높아질 수 있습니다.'}
         </p>
       </div>
 
@@ -676,6 +670,45 @@ export default function SettingsContent() {
             unit="초"
             onChange={(v) => setAudioOverride('file_chunk_sec', v)}
           />
+        </div>
+      </div>
+
+      {/* HuggingFace 설정 */}
+      <div className="rounded-lg border bg-card p-6">
+        <h2 className="text-lg font-semibold mb-1">HuggingFace</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          화자 분리(pyannote) 모델 다운로드에 필요한 토큰입니다.
+        </p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium mb-1">HF Token</label>
+            <input
+              type="password"
+              value={hfToken}
+              onChange={(e) => setHfToken(e.target.value)}
+              placeholder={hfSettings?.hf_token_masked || 'hf_...'}
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+            />
+            {hfSettings?.has_token && !hfToken && (
+              <p className="text-xs text-muted-foreground mt-1">현재: {hfSettings.hf_token_masked}</p>
+            )}
+            {hfSettings && !hfSettings.has_token && (
+              <p className="text-xs text-yellow-600 mt-1">토큰 미설정 — 화자 분리 기능이 비활성화됩니다.</p>
+            )}
+          </div>
+          <button
+            onClick={handleHfSave}
+            disabled={hfSaving || !hfToken.trim()}
+            className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            {hfSaving ? '저장 중...' : '저장'}
+          </button>
+          {hfError && <p className="text-sm text-red-600">{hfError}</p>}
+          {hfSuccess && <p className="text-sm text-green-600">{hfSuccess}</p>}
+          {hfSettings?.offline && (
+            <p className="text-sm text-yellow-600">Sidecar 연결 불가 — 오프라인 상태</p>
+          )}
         </div>
       </div>
 

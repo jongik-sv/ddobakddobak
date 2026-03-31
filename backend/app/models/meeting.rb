@@ -1,5 +1,5 @@
 class Meeting < ApplicationRecord
-  belongs_to :team
+  belongs_to :team, optional: true
   belongs_to :creator, class_name: "User", foreign_key: "created_by_id"
   belongs_to :folder, optional: true
   has_many :taggings, as: :taggable, dependent: :destroy
@@ -8,6 +8,7 @@ class Meeting < ApplicationRecord
   has_many :summaries, dependent: :destroy
   has_many :action_items, dependent: :destroy
   has_many :blocks, dependent: :destroy
+  has_many :meeting_attachments, dependent: :destroy
 
   validates :title, presence: true
   validates :status, inclusion: { in: %w[pending recording transcribing completed] }
@@ -15,7 +16,6 @@ class Meeting < ApplicationRecord
 
   enum :status, { pending: "pending", recording: "recording", transcribing: "transcribing", completed: "completed" }
 
-  scope :for_team, ->(team_ids) { where(team_id: team_ids) }
   scope :search, ->(q) { where("title LIKE ?", "%#{sanitize_sql_like(q)}%") if q.present? }
   scope :created_after, ->(date) { where("created_at >= ?", date) if date.present? }
   scope :created_before, ->(date) { where("created_at <= ?", Date.parse(date).end_of_day) if date.present? }

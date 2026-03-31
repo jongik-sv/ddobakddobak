@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { SystemAudioVAD } from '../lib/systemAudioVAD'
 import { getEffectiveAudioConfig } from '../stores/appSettingsStore'
-import { AUDIO } from '../config'
+import { AUDIO, IS_TAURI } from '../config'
 import type { ChunkMeta } from './useAudioRecorder'
 
 export interface SystemAudioCaptureCallbacks {
@@ -56,6 +56,10 @@ export function useSystemAudioCapture(
   const chunkSeqRef = useRef<number>(0)
 
   const start = useCallback(async (baseOffsetMs = 0, baseSeq = 0) => {
+    if (!IS_TAURI) {
+      setError('시스템 오디오 캡처는 데스크톱 앱에서만 사용할 수 있습니다.')
+      return
+    }
     try {
       baseOffsetMsRef.current = baseOffsetMs
       chunkSeqRef.current = baseSeq

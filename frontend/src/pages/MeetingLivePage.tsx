@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Settings, Monitor, Mic, ArrowLeft, StickyNote } from 'lucide-react'
+import { Settings, Monitor, Mic, ArrowLeft, StickyNote, Paperclip } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
 import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
@@ -16,7 +16,8 @@ import { getMeeting, startMeeting, stopMeeting, reopenMeeting, uploadAudio, trig
 import { getSttSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useAppSettingsStore } from '../stores/appSettingsStore'
-import { ENGINE_LABELS_SHORT } from '../config'
+import { ENGINE_LABELS_SHORT, IS_TAURI } from '../config'
+import { AttachmentSection } from '../components/meeting/AttachmentSection'
 import type { TranscriptFinalData } from '../channels/transcription'
 
 type MeetingStatus = 'idle' | 'recording' | 'stopped'
@@ -133,9 +134,9 @@ export default function MeetingLivePage() {
     start: startSystemCapture,
     stop: stopSystemCapture,
   } = useSystemAudioCapture({
-    // VAD 처리된 청크 → STT 전송용
-    onChunk: (pcm: Int16Array, meta: ChunkMeta) => onSystemChunkRef.current(pcm, meta),
-    // VAD 전 원본 연속 PCM → 녹음 파일 믹싱용 (중복/에코 없음)
+    // 시스템 오디오는 인젝터 → STT VAD로 합류하므로 별도 STT 전송 불필요
+    onChunk: () => {},
+    // 원본 연속 PCM → 인젝터 → (녹음 믹싱 + STT VAD 합류)
     onRawAudio: (pcm: Int16Array) => feedSystemAudioRef.current(pcm),
   })
 
@@ -285,6 +286,10 @@ export default function MeetingLivePage() {
   const memoVisible = useUiStore((s) => s.memoVisible)
   const toggleMemo = useUiStore((s) => s.toggleMemo)
 
+  // 첨부 토글
+  const attachmentsVisible = useUiStore((s) => s.attachmentsVisible)
+  const toggleAttachments = useUiStore((s) => s.toggleAttachments)
+
   // 녹음 상태를 글로벌 스토어에 동기화 (폴더 클릭 차단용)
   const setRecordingActive = useUiStore((s) => s.setRecordingActive)
   useEffect(() => {
@@ -363,8 +368,9 @@ export default function MeetingLivePage() {
   }, [])
 
   // 녹음 중(일시정지 아닌) 1초 카운트다운 → 0이면 AI 요약 트리거
+  // summaryIntervalSec === 0 이면 "안함" — 실시간 요약 비활성화 (종료 시 final 요약만)
   useEffect(() => {
-    if (!isActive || isPaused) {
+    if (!isActive || isPaused || summaryIntervalSec === 0) {
       setSummaryCountdown(0)
       return
     }
@@ -421,6 +427,13 @@ export default function MeetingLivePage() {
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
           <h1 className="text-lg font-semibold text-gray-900">회의실</h1>
+          <button
+            onClick={toggleAttachments}
+            className={`p-1.5 rounded-md transition-colors ${attachmentsVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+            title={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
           <button
             onClick={toggleMemo}
             className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
@@ -492,14 +505,16 @@ export default function MeetingLivePage() {
             <span className="text-sm text-red-500">{error || systemAudioError}</span>
           )}
 
-          {/* 시스템 오디오 토글 */}
-          <div className="flex items-center gap-1.5" title="시스템 오디오 캡처 (온라인 회의 상대방 음성)">
-            <Monitor className={`w-3.5 h-3.5 ${systemAudioEnabled ? 'text-purple-600' : 'text-gray-400'}`} />
-            <Switch
-              checked={systemAudioEnabled}
-              onChange={handleToggleSystemAudio}
-            />
-          </div>
+          {/* 시스템 오디오 토글 (Tauri 데스크톱 앱에서만 표시) */}
+          {IS_TAURI && (
+            <div className="flex items-center gap-1.5" title="시스템 오디오 캡처 (온라인 회의 상대방 음성)">
+              <Monitor className={`w-3.5 h-3.5 ${systemAudioEnabled ? 'text-purple-600' : 'text-gray-400'}`} />
+              <Switch
+                checked={systemAudioEnabled}
+                onChange={handleToggleSystemAudio}
+              />
+            </div>
+          )}
 
           {!isActive && (
             <button
@@ -541,6 +556,9 @@ export default function MeetingLivePage() {
           )}
         </div>
       </div>
+
+      {/* 첨부 파일/링크 섹션 */}
+      {attachmentsVisible && <AttachmentSection meetingId={meetingId} />}
 
       {/* 3영역 리사이즈 레이아웃 */}
       <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden">

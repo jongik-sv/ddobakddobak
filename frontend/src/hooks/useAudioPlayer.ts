@@ -33,6 +33,7 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
     let cancelled = false
     const audioUrl = `${API_BASE_URL}/meetings/${meetingId}/audio`
 
+    // Audio 엘리먼트를 동기적으로 생성 (cleanup에서 확실히 접근 가능)
     const audio = new Audio()
     audioRef.current = audio
     audio.preload = 'metadata'
@@ -40,14 +41,19 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
     audio.addEventListener('loadedmetadata', () => {
       if (cancelled) return
       setHasAudio(true)
-      setDurationMs(audio.duration * 1000)
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        setDurationMs(audio.duration * 1000)
+      }
       setIsReady(true)
     })
 
-    audio.addEventListener('canplay', () => {
-      if (!cancelled) setAudioLoaded(true)
+    audio.addEventListener('durationchange', () => {
+      if (!cancelled && Number.isFinite(audio.duration) && audio.duration > 0) {
+        setDurationMs(audio.duration * 1000)
+      }
     })
 
+    audio.addEventListener('canplay', () => { if (!cancelled) setAudioLoaded(true) })
     audio.addEventListener('play', () => { if (!cancelled) setIsPlaying(true) })
     audio.addEventListener('pause', () => { if (!cancelled) setIsPlaying(false) })
     audio.addEventListener('ended', () => { if (!cancelled) setIsPlaying(false) })
@@ -58,6 +64,18 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
       if (!cancelled) setIsReady(true)
     })
 
+    // peaks API에서 duration을 먼저 확보 (moov atom이 파일 끝에 있어 메타데이터 로드 실패하는 경우 대비)
+    apiClient.get(`meetings/${meetingId}/peaks`)
+      .json<{ duration: number }>()
+      .then((res) => {
+        if (cancelled || !res.duration) return
+        setDurationMs(res.duration * 1000)
+        setHasAudio(true)
+        setIsReady(true)
+      })
+      .catch(() => {})
+
+    // 오디오 엘리먼트 src 설정 (peaks와 병렬로 로드)
     audio.src = audioUrl
 
     return () => {

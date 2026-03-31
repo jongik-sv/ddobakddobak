@@ -8,6 +8,8 @@ interface UiState {
   toggleSidebar: () => void
   memoVisible: boolean
   toggleMemo: () => void
+  attachmentsVisible: boolean
+  toggleAttachments: () => void
   isRecordingActive: boolean
   setRecordingActive: (active: boolean) => void
 }
@@ -20,6 +22,8 @@ export const useUiStore = create<UiState>((set) => ({
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   memoVisible: true,
   toggleMemo: () => set((s) => ({ memoVisible: !s.memoVisible })),
+  attachmentsVisible: false,
+  toggleAttachments: () => set((s) => ({ attachmentsVisible: !s.attachmentsVisible })),
   isRecordingActive: false,
   setRecordingActive: (active) => set({ isRecordingActive: active }),
 }))

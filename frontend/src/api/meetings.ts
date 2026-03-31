@@ -8,7 +8,6 @@ export interface MeetingDetail {
   status: 'pending' | 'recording' | 'transcribing' | 'completed'
   started_at: string | null
   ended_at: string | null
-  team_id: number
   created_by_id: number
   created_at: string
   updated_at: string
@@ -70,7 +69,6 @@ export interface GetMeetingsParams {
   page?: number
   per?: number
   q?: string
-  team_id?: number
   status?: string
   date_from?: string
   date_to?: string
@@ -82,7 +80,6 @@ export async function getMeetings(params: GetMeetingsParams): Promise<MeetingLis
   if (params.page) searchParams.page = params.page
   if (params.per) searchParams.per = params.per
   if (params.q) searchParams.q = params.q
-  if (params.team_id) searchParams.team_id = params.team_id
   if (params.status) searchParams.status = params.status
   if (params.date_from) searchParams.date_from = params.date_from
   if (params.date_to) searchParams.date_to = params.date_to
@@ -92,7 +89,7 @@ export async function getMeetings(params: GetMeetingsParams): Promise<MeetingLis
   return apiClient.get('meetings', { searchParams }).json()
 }
 
-export async function createMeeting(data: { title: string; team_id: number; meeting_type?: string; folder_id?: number | null }): Promise<Meeting> {
+export async function createMeeting(data: { title: string; meeting_type?: string; folder_id?: number | null }): Promise<Meeting> {
   const res: { meeting: Meeting } = await apiClient.post('meetings', { json: data }).json()
   return res.meeting
 }
@@ -153,13 +150,11 @@ export async function uploadAudio(id: number, blob: Blob): Promise<void> {
 
 export async function uploadAudioFile(data: {
   title: string
-  team_id: number
   meeting_type?: string
   audio: File
 }): Promise<Meeting> {
   const formData = new FormData()
   formData.append('title', data.title)
-  formData.append('team_id', String(data.team_id))
   if (data.meeting_type) formData.append('meeting_type', data.meeting_type)
   formData.append('audio', data.audio)
 
@@ -199,6 +194,7 @@ export interface UpdateMeetingParams {
   folder_id?: number | null
   meeting_type?: string
   tag_ids?: number[]
+  brief_summary?: string | null
 }
 
 export async function updateMeeting(id: number, params: UpdateMeetingParams): Promise<Meeting> {
@@ -246,6 +242,7 @@ export async function getTranscripts(meetingId: number, perPage = 5000): Promise
 
 export interface ExportOptions {
   include_summary: boolean
+  include_memo: boolean
   include_transcript: boolean
 }
 
@@ -260,9 +257,56 @@ export async function exportMeeting(
 ): Promise<string> {
   const searchParams = new URLSearchParams({
     include_summary: String(options.include_summary),
+    include_memo: String(options.include_memo),
     include_transcript: String(options.include_transcript),
   })
   return apiClient
     .get(`meetings/${meetingId}/export`, { searchParams })
     .text()
+}
+
+export interface MeetingExportData {
+  meeting: {
+    id: number
+    title: string
+    date: string
+    start_time: string
+    end_time: string
+    status: string
+    creator_name: string
+  }
+  summary: {
+    type: 'notes_markdown' | 'json_fields'
+    notes_markdown?: string
+    key_points?: string[]
+    decisions?: string[]
+    discussion_details?: string[]
+  } | null
+  memo?: string | null
+  action_items: Array<{
+    content: string
+    status: string
+    assignee_name: string | null
+    due_date: string | null
+  }>
+  transcripts: Array<{
+    speaker_label: string
+    timestamp: string
+    content: string
+  }>
+}
+
+export async function exportMeetingData(
+  meetingId: number,
+  options: ExportOptions,
+): Promise<MeetingExportData> {
+  const searchParams = new URLSearchParams({
+    include_summary: String(options.include_summary),
+    include_memo: String(options.include_memo),
+    include_transcript: String(options.include_transcript),
+    export_format: 'json',
+  })
+  return apiClient
+    .get(`meetings/${meetingId}/export`, { searchParams })
+    .json()
 }

@@ -6,23 +6,19 @@ module Api
 
       def index
         if params[:flat] == "true"
-          folders = Folder.for_team(user_team_ids).ordered
+          folders = Folder.ordered
           render json: { folders: folders.map { |f| folder_json(f) } }
         else
-          tree = Folder.tree_for_team(user_team_ids)
+          tree = Folder.tree
           render json: { folders: tree }
         end
       end
 
       def create
-        team = Team.find_by(id: params[:team_id])
-        return render json: { error: "Team not found" }, status: :not_found unless team
-
         folder = Folder.new(
           name: params[:name],
-          team: team,
           parent_id: params[:parent_id],
-          position: params[:position] || next_position(team, params[:parent_id])
+          position: params[:position] || next_position(params[:parent_id])
         )
 
         if folder.save
@@ -61,22 +57,17 @@ module Api
       private
 
       def set_folder
-        @folder = Folder.for_team(user_team_ids).find(params[:id])
+        @folder = Folder.find(params[:id])
       end
 
-      def user_team_ids
-        current_user.team_memberships.pluck(:team_id)
-      end
-
-      def next_position(team, parent_id)
-        Folder.where(team: team, parent_id: parent_id).maximum(:position).to_i + 1
+      def next_position(parent_id)
+        Folder.where(parent_id: parent_id).maximum(:position).to_i + 1
       end
 
       def folder_json(folder)
         {
           id: folder.id,
           name: folder.name,
-          team_id: folder.team_id,
           parent_id: folder.parent_id,
           position: folder.position,
           meeting_count: folder.meetings.count,

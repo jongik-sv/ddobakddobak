@@ -113,7 +113,7 @@ RSpec.describe SidecarClient, type: :service do
   describe "configuration" do
     it "uses SIDECAR_HOST and SIDECAR_PORT environment variables" do
       allow(ENV).to receive(:fetch).with("SIDECAR_HOST", "localhost").and_return("sidecar-host")
-      allow(ENV).to receive(:fetch).with("SIDECAR_PORT", "8000").and_return("9000")
+      allow(ENV).to receive(:fetch).with("SIDECAR_PORT", "13324").and_return("9000")
 
       expect(Net::HTTP).to receive(:new).with("sidecar-host", 9000).and_return(mock_http)
       allow(mock_http).to receive(:request).and_return(stub_response({ "status" => "ok" }))

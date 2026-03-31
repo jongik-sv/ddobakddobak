@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_29_233226) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_30_064737) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -40,11 +40,30 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_29_233226) do
     t.string "name", null: false
     t.integer "parent_id"
     t.integer "position", default: 0, null: false
-    t.integer "team_id", null: false
+    t.integer "team_id"
     t.datetime "updated_at", null: false
     t.index ["parent_id"], name: "index_folders_on_parent_id"
     t.index ["team_id", "parent_id", "position"], name: "index_folders_on_team_id_and_parent_id_and_position"
     t.index ["team_id"], name: "index_folders_on_team_id"
+  end
+
+  create_table "meeting_attachments", force: :cascade do |t|
+    t.string "category", null: false
+    t.string "content_type"
+    t.datetime "created_at", null: false
+    t.string "display_name", null: false
+    t.string "file_path"
+    t.integer "file_size"
+    t.string "kind", null: false
+    t.integer "meeting_id", null: false
+    t.string "original_filename"
+    t.float "position", null: false
+    t.datetime "updated_at", null: false
+    t.integer "uploaded_by_id", null: false
+    t.string "url"
+    t.index ["meeting_id", "category", "position"], name: "idx_attachments_meeting_cat_pos"
+    t.index ["meeting_id"], name: "index_meeting_attachments_on_meeting_id"
+    t.index ["uploaded_by_id"], name: "index_meeting_attachments_on_uploaded_by_id"
   end
 
   create_table "meetings", force: :cascade do |t|
@@ -60,7 +79,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_29_233226) do
     t.string "source", default: "live", null: false
     t.datetime "started_at"
     t.string "status", default: "pending", null: false
-    t.integer "team_id", null: false
+    t.integer "team_id"
     t.string "title", null: false
     t.integer "transcription_progress", default: 0, null: false
     t.datetime "updated_at", null: false
@@ -108,7 +127,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_29_233226) do
     t.string "color", default: "#6b7280", null: false
     t.datetime "created_at", null: false
     t.string "name", null: false
-    t.integer "team_id", null: false
+    t.integer "team_id"
     t.datetime "updated_at", null: false
     t.index ["team_id", "name"], name: "index_tags_on_team_id_and_name", unique: true
     t.index ["team_id"], name: "index_tags_on_team_id"

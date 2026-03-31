@@ -5,7 +5,7 @@
   "identifier": "com.ddobakddobak.app",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://localhost:13325",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npx vite build"
   },
@@ -28,12 +28,34 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "macOS": {
+      "entitlements": "Entitlements.plist"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": {
+      "../../backend/app": "backend/app",
+      "../../backend/bin": "backend/bin",
+      "../../backend/config": "backend/config",
+      "../../backend/config.ru": "backend/config.ru",
+      "../../backend/db/migrate": "backend/db/migrate",
+      "../../backend/db/schema.rb": "backend/db/schema.rb",
+      "../../backend/db/seeds.rb": "backend/db/seeds.rb",
+      "../../backend/lib": "backend/lib",
+      "../../backend/Gemfile": "backend/Gemfile",
+      "../../backend/Gemfile.lock": "backend/Gemfile.lock",
+      "../../backend/Rakefile": "backend/Rakefile",
+      "../../backend/.ruby-version": "backend/.ruby-version",
+      "../../sidecar/app": "sidecar/app",
+      "../../sidecar/pyproject.toml": "sidecar/pyproject.toml",
+      "../../sidecar/uv.lock": "sidecar/uv.lock",
+      "../../sidecar/.python-version": "sidecar/.python-version",
+      "../../config.yaml": "config.yaml"
+    }
   }
 }
