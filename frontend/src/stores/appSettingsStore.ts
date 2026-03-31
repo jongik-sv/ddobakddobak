@@ -132,7 +132,7 @@ export async function loadAppSettings() {
     if (saved.diarization_enabled != null) updates.diarizationEnabled = saved.diarization_enabled
     if (saved.selected_languages?.length) updates.selectedLanguages = saved.selected_languages
 
-    // 오디오 오버라이드: .env 값이 config.yaml 기본값과 다르면 오버라이드로 설정
+    // 오디오 오버라이드: settings.yaml 값이 있으면 무조건 적용 (기본값 비교 없이)
     const audioOverrides: AudioOverrides = {}
     const audioMap = {
       audio_silence_threshold: 'silence_threshold',
@@ -146,13 +146,13 @@ export async function loadAppSettings() {
     } as const
     for (const [envKey, storeKey] of Object.entries(audioMap)) {
       const val = saved[envKey as keyof AppSettings] as number | undefined
-      if (val != null && val !== AUDIO_DEFAULTS[storeKey as keyof typeof AUDIO_DEFAULTS]) {
+      if (val != null) {
         (audioOverrides as Record<string, number>)[storeKey] = val
       }
     }
-    if (Object.keys(audioOverrides).length > 0) updates.audioOverrides = audioOverrides
+    updates.audioOverrides = audioOverrides
 
-    // 화자분리 오버라이드
+    // 화자분리 오버라이드: settings.yaml 값이 있으면 무조건 적용
     const diarOverrides: DiarizationOverrides = {}
     const diarMap = {
       diarization_similarity_threshold: 'similarity_threshold',
@@ -161,11 +161,11 @@ export async function loadAppSettings() {
     } as const
     for (const [envKey, storeKey] of Object.entries(diarMap)) {
       const val = saved[envKey as keyof AppSettings] as number | undefined
-      if (val != null && val !== DIARIZATION_DEFAULTS[storeKey as keyof typeof DIARIZATION_DEFAULTS]) {
+      if (val != null) {
         (diarOverrides as Record<string, number>)[storeKey] = val
       }
     }
-    if (Object.keys(diarOverrides).length > 0) updates.diarizationOverrides = diarOverrides
+    updates.diarizationOverrides = diarOverrides
 
     if (Object.keys(updates).length > 0) {
       useAppSettingsStore.setState(updates)

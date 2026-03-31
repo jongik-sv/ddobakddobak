@@ -39,11 +39,11 @@ stt_engines:
 # ── 오디오 청킹 (VAD) ─────────────────────────────
 audio:
   sample_rate: 16000
-  silence_threshold: 0.02      # RMS — SPEECH → TRAILING_SILENCE 진입 (낮을수록 작은 목소리 감지)
-  speech_threshold: 0.04       # RMS — TRAILING_SILENCE → SPEECH 복귀 (히스테리시스 갭을 좁혀 복귀 민감도 향상)
-  silence_duration_ms: 2000    # 무음 지속 시간 → 청크 전송 (2초면 자연스러운 문장 경계)
-  max_chunk_sec: 20            # 최대 청크 길이 (겹치는 대화에서 강제 절단 빈도 감소)
-  min_chunk_sec: 1             # 최소 청크 길이 (1초로 낮춰 "네", "응" 등 짧은 발화 누락 방지)
+  silence_threshold: 0.05      # RMS — SPEECH → TRAILING_SILENCE 진입 (낮을수록 작은 목소리 감지)
+  speech_threshold: 0.06       # RMS — TRAILING_SILENCE → SPEECH 복귀 (히스테리시스 갭을 좁혀 복귀 민감도 향상)
+  silence_duration_ms: 500     # 무음 지속 시간 → 청크 전송 (0.5초면 빠른 응답)
+  max_chunk_sec: 10            # 최대 청크 길이
+  min_chunk_sec: 2             # 최소 청크 길이
   preroll_ms: 500              # 문장 시작 포착용 프리롤 (500ms로 늘려 첫 음절 포착 개선)
   overlap_ms: 500              # 청크 경계 음절 손실 방지용 오버랩
   file_chunk_sec: 30           # 파일 STT 처리 시 청크 분할 시간 (0 = 분할 안 함)

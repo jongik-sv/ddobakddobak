@@ -35,6 +35,31 @@ from app.config import CLI_LLM_PROVIDERS, settings
 from app.llm.summarizer import LLMSummarizer
 from app.stt.factory import create_stt_adapter
 
+# settings.yaml에서 오디오 최소 청크 길이 로드
+_SAMPLE_RATE = 16000
+_BYTES_PER_SAMPLE = 2  # Int16
+
+def _load_min_chunk_sec() -> float:
+    """settings.yaml → config.yaml 순으로 min_chunk_sec를 로드한다."""
+    import yaml
+    from pathlib import Path
+    for candidate in [
+        Path(__file__).resolve().parent.parent.parent / "settings.yaml",
+        Path(__file__).resolve().parent.parent.parent / "config.yaml",
+    ]:
+        if candidate.is_file():
+            try:
+                cfg = yaml.safe_load(candidate.read_text(encoding="utf-8")) or {}
+                val = (cfg.get("audio") or {}).get("min_chunk_sec")
+                if val is not None:
+                    return float(val)
+            except Exception:
+                continue
+    return 1.0  # 기본값 1초
+
+MIN_CHUNK_SEC = _load_min_chunk_sec()
+MIN_CHUNK_BYTES = int(MIN_CHUNK_SEC * _SAMPLE_RATE * _BYTES_PER_SAMPLE)
+
 
 class HealthResponse(BaseModel):
     """GET /health 응답 스키마."""
@@ -352,9 +377,14 @@ async def transcribe(request: TranscribeRequest) -> TranscribeResponse:
     if adapter is None:
         raise HTTPException(status_code=503, detail="STT 모델 변경 중입니다. 잠시 후 다시 시도하세요.")
     audio_bytes = base64.b64decode(request.audio)
-    chunk_sec = len(audio_bytes) / 2 / 16000
+    chunk_sec = len(audio_bytes) / _BYTES_PER_SAMPLE / _SAMPLE_RATE
     logger.info("[STT] /transcribe 요청 (engine=%s, meeting_id=%s, audio=%d bytes, %.1f초)",
                 settings.STT_ENGINE, request.meeting_id, len(audio_bytes), chunk_sec)
+
+    # 최소 길이 미만의 오디오는 환각 방지를 위해 스킵
+    if len(audio_bytes) < MIN_CHUNK_BYTES:
+        logger.info("[STT] /transcribe 스킵 (%.1f초 < 최소 %.1f초)", chunk_sec, MIN_CHUNK_SEC)
+        return TranscribeResponse(segments=[])
 
     # 화자분리 요청 시 파이프라인 lazy load
     if request.diarization_config and request.diarization_config.get("enable"):
@@ -500,9 +530,7 @@ async def _try_whisperx_batch(request: TranscribeFileRequest, audio_bytes: bytes
         return None
 
 
-# sidecar/app/main.py에서 사용하는 상수 (파일 엔드포인트용)
-_SAMPLE_RATE = 16000
-_BYTES_PER_SAMPLE = 2
+# _SAMPLE_RATE, _BYTES_PER_SAMPLE는 파일 상단에서 정의됨
 
 
 async def _chunked_transcribe(

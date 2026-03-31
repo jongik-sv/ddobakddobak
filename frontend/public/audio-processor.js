@@ -8,13 +8,13 @@
 
 // 기본값 (config.yaml과 동기화)
 let SAMPLE_RATE = 16000
-let SILENCE_THRESHOLD = 0.03
+let SILENCE_THRESHOLD = 0.05
 let SPEECH_THRESHOLD = 0.06
-let SILENCE_SAMPLES = 12800    // 800ms
-let MAX_CHUNK_SAMPLES = 240000 // 15s
-let MIN_CHUNK_SAMPLES = 48000  // 3s
-let PREROLL_SAMPLES = 4800     // 300ms
-let OVERLAP_SAMPLES = 3200     // 200ms
+let SILENCE_SAMPLES = 8000     // 500ms
+let MAX_CHUNK_SAMPLES = 160000 // 10s
+let MIN_CHUNK_SAMPLES = 32000  // 2s
+let PREROLL_SAMPLES = 6400     // 400ms
+let OVERLAP_SAMPLES = 4800     // 300ms
 
 class AudioProcessor extends AudioWorkletProcessor {
   constructor() {

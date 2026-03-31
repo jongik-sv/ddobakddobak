@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
-import { getEffectiveAudioConfig } from '../stores/appSettingsStore'
+import { getEffectiveAudioConfig, loadAppSettings } from '../stores/appSettingsStore'
 import { AUDIO, IS_TAURI } from '../config'
 import type { ChunkMeta } from './useAudioRecorder'
 
@@ -59,7 +59,10 @@ export function useMicCapture(callbacks: MicCaptureCallbacks): MicCaptureResult 
       baseOffsetMsRef.current = baseOffsetMs
       chunkSeqRef.current = baseSeq
 
+      // settings.yaml 오버라이드를 확실히 로드한 후 설정 가져오기
+      await loadAppSettings()
       const audioConfig = getEffectiveAudioConfig()
+      console.log('[MicCapture] audioConfig:', JSON.stringify(audioConfig))
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {

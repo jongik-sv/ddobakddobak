@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import { AUDIO, IS_TAURI } from '../config'
-import { getEffectiveAudioConfig } from '../stores/appSettingsStore'
+import { getEffectiveAudioConfig, loadAppSettings } from '../stores/appSettingsStore'
 
 export interface ChunkMeta {
   sequence: number
@@ -119,9 +119,15 @@ function useBrowserRecorder(callbacks: AudioRecorderCallbacks): AudioRecorderRes
       const source = audioContext.createMediaStreamSource(stream)
       const workletNode = new AudioWorkletNode(audioContext, 'audio-processor')
       workletNodeRef.current = workletNode
-      workletNode.port.postMessage({ type: 'init', config: getEffectiveAudioConfig() })
+      // settings.yaml 오버라이드를 확실히 로드한 후 init
+      await loadAppSettings()
+      const config = getEffectiveAudioConfig()
+      console.log('[AudioRecorder] init config:', config)
+      workletNode.port.postMessage({ type: 'init', config })
 
-      workletNode.port.onmessage = (event: MessageEvent<{ pcm: Int16Array; startSample: number }>) => {
+      workletNode.port.onmessage = (event: MessageEvent<{ pcm: Int16Array; startSample: number; type?: string }>) => {
+        // raw-pcm은 녹음 파일용 — STT로 보내지 않음
+        if (event.data.type === 'raw-pcm') return
         const { pcm, startSample } = event.data
         const seq = chunkSeqRef.current++
         const offsetMs = Math.round(baseOffsetMsRef.current + (startSample / AUDIO.sample_rate) * 1000)

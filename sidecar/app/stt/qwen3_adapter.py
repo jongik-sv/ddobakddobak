@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import AsyncIterator
 
 import numpy as np
@@ -11,6 +12,36 @@ from app.stt.base import SttAdapter, TranscriptSegment
 _MODEL_ID = "mlx-community/Qwen3-ASR-1.7B-4bit"
 _SAMPLE_RATE = 16000
 _BYTES_PER_SAMPLE = 2  # Int16
+
+# 환각 판별용 상수
+_MIN_MEANINGFUL_CHARS = 3
+_PUNCT_RE = re.compile(r'[\s\.,!?~\-\'"()]')
+
+# 언어별 문자 범위 (환각 판별용)
+_LANG_CHAR_RANGES = {
+    "ko": (0xAC00, 0xD7A3),  # 한글 음절
+    "ja": (0x3040, 0x30FF),  # 히라가나 + 카타카나
+    "zh": (0x4E00, 0x9FFF),  # CJK 통합 한자
+    "en": (0x0041, 0x007A),  # ASCII 영문자
+}
+
+
+def _is_hallucination(text: str, languages: list[str] | None = None) -> bool:
+    """짧은 환각성 텍스트 여부 판별."""
+    stripped = _PUNCT_RE.sub("", text.strip())
+    if not stripped:
+        return True
+    target_langs = languages or ["ko"]
+    lang_chars = 0
+    for lang in target_langs:
+        char_range = _LANG_CHAR_RANGES.get(lang)
+        if char_range:
+            lo, hi = char_range
+            lang_chars += sum(1 for c in stripped if lo <= ord(c) <= hi)
+    # 대상 언어 문자가 있지만 최소 수 미만이면 환각
+    if 0 < lang_chars < _MIN_MEANINGFUL_CHARS:
+        return True
+    return False
 
 
 class Qwen3Adapter(SttAdapter):
@@ -62,8 +93,9 @@ class Qwen3Adapter(SttAdapter):
 
         chunk_duration_ms = int(len(audio_array) / _SAMPLE_RATE * 1000)
 
-        text = await self._run_inference(audio_array)
-        if not text or not text.strip():
+        lang = (languages[0] if languages else "ko")
+        text = await self._run_inference(audio_array, lang)
+        if not text or not text.strip() or _is_hallucination(text, languages):
             return []
 
         return [
@@ -71,19 +103,19 @@ class Qwen3Adapter(SttAdapter):
                 text=text.strip(),
                 started_at_ms=0,
                 ended_at_ms=max(chunk_duration_ms, 1000),
-                language="ko",
+                language=lang,
                 confidence=0.9,
             )
         ]
 
-    async def _run_inference(self, audio_array: np.ndarray) -> str:
+    async def _run_inference(self, audio_array: np.ndarray, language: str = "ko") -> str:
         """mlx-audio 추론 실행 (blocking → executor 비동기화)."""
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._infer, audio_array)
+        return await loop.run_in_executor(None, self._infer, audio_array, language)
 
-    def _infer(self, audio_array: np.ndarray) -> str:
+    def _infer(self, audio_array: np.ndarray, language: str = "ko") -> str:
         """동기 mlx-audio 추론."""
-        result = self._model.generate(audio_array, language="ko")
+        result = self._model.generate(audio_array, language=language)
         return result.text if hasattr(result, "text") else str(result)
 
     async def transcribe_stream(
