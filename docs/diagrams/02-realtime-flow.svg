@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 720" font-family="'Pretendard','Apple SD Gothic Neo','Noto Sans KR',sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+    </marker>
+    <filter id="sh">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <rect width="600" height="720" rx="16" fill="#f8fafc"/>
+
+  <!-- Step 1: Microphone -->
+  <rect x="180" y="20" width="240" height="56" rx="28" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="300" y="44" font-size="13" fill="#1e40af" text-anchor="middle" font-weight="700">마이크 음성 입력</text>
+  <text x="300" y="60" font-size="10" fill="#3b82f6" text-anchor="middle">사용자 발화</text>
+
+  <line x1="300" y1="76" x2="300" y2="110" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- Step 2: AudioWorklet -->
+  <rect x="130" y="116" width="340" height="80" rx="10" fill="#e0e7ff" stroke="#818cf8" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="300" y="140" font-size="13" fill="#4338ca" text-anchor="middle" font-weight="700">AudioWorklet (VAD)</text>
+  <text x="300" y="160" font-size="11" fill="#6366f1" text-anchor="middle">무음 구간 자동 필터링</text>
+  <text x="300" y="176" font-size="11" fill="#6366f1" text-anchor="middle">PCM 16kHz 청크화 + base64 인코딩</text>
+
+  <line x1="300" y1="196" x2="300" y2="230" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="225" y="204" width="150" height="20" rx="4" fill="#f1f5f9"/>
+  <text x="300" y="218" font-size="10" fill="#475569" text-anchor="middle">WebSocket 전송</text>
+
+  <!-- Step 3: ActionCable -->
+  <rect x="150" y="236" width="300" height="50" rx="10" fill="#fce7f3" stroke="#f472b6" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="300" y="258" font-size="13" fill="#be185d" text-anchor="middle" font-weight="700">Rails ActionCable</text>
+  <text x="300" y="274" font-size="11" fill="#db2777" text-anchor="middle">TranscriptionChannel 수신</text>
+
+  <line x1="300" y1="286" x2="300" y2="320" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- Step 4: Solid Queue -->
+  <rect x="150" y="326" width="300" height="50" rx="10" fill="#fce7f3" stroke="#f472b6" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="300" y="348" font-size="13" fill="#be185d" text-anchor="middle" font-weight="700">Solid Queue Job</text>
+  <text x="300" y="364" font-size="11" fill="#db2777" text-anchor="middle">비동기 작업 큐 처리</text>
+
+  <line x1="300" y1="376" x2="300" y2="410" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="240" y="384" width="120" height="20" rx="4" fill="#f1f5f9"/>
+  <text x="300" y="398" font-size="10" fill="#475569" text-anchor="middle">HTTP 요청</text>
+
+  <!-- Step 5: Python Sidecar -->
+  <rect x="100" y="416" width="400" height="110" rx="10" fill="#d1fae5" stroke="#34d399" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="300" y="440" font-size="13" fill="#065f46" text-anchor="middle" font-weight="700">Python Sidecar (FastAPI)</text>
+
+  <rect x="125" y="452" width="160" height="32" rx="6" fill="#fff" stroke="#6ee7b7" stroke-width="1"/>
+  <text x="205" y="473" font-size="11" fill="#065f46" text-anchor="middle" font-weight="600">STT 엔진 → 텍스트</text>
+
+  <rect x="310" y="452" width="168" height="32" rx="6" fill="#fff" stroke="#6ee7b7" stroke-width="1"/>
+  <text x="394" y="473" font-size="11" fill="#065f46" text-anchor="middle" font-weight="600">화자 분리 → 라벨</text>
+
+  <text x="300" y="512" font-size="11" fill="#059669" text-anchor="middle">신뢰도 + 타임스탬프 포함 결과 반환</text>
+
+  <line x1="300" y1="526" x2="300" y2="560" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- Step 6: DB Save -->
+  <rect x="150" y="566" width="300" height="50" rx="10" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="300" y="588" font-size="13" fill="#92400e" text-anchor="middle" font-weight="700">Transcript 레코드 저장</text>
+  <text x="300" y="604" font-size="11" fill="#b45309" text-anchor="middle">SQLite3 DB</text>
+
+  <line x1="300" y1="616" x2="300" y2="650" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="210" y="624" width="180" height="20" rx="4" fill="#f1f5f9"/>
+  <text x="300" y="638" font-size="10" fill="#475569" text-anchor="middle">ActionCable broadcast</text>
+
+  <!-- Step 7: Frontend Update -->
+  <rect x="130" y="656" width="340" height="50" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="300" y="678" font-size="13" fill="#1e40af" text-anchor="middle" font-weight="700">프론트엔드 실시간 갱신</text>
+  <text x="300" y="694" font-size="11" fill="#3b82f6" text-anchor="middle">라이브 기록 패널 · 화자 목록 업데이트</text>
+</svg>

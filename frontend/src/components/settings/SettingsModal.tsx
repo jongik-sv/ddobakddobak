@@ -23,7 +23,7 @@ export default function SettingsModal() {
       role="dialog"
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={(e) => { if (e.target === e.currentTarget) closeSettings() }}
+      onClick={(e) => e.stopPropagation()}
     >
       <div className="relative w-full max-w-3xl max-h-[90vh] rounded-xl bg-white shadow-2xl border border-gray-100 flex flex-col mx-4">
         {/* 헤더 */}

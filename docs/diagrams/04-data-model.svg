@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 420" font-family="'Pretendard','Apple SD Gothic Neo','Noto Sans KR',sans-serif">
+  <defs>
+    <filter id="ds">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <rect width="780" height="420" rx="16" fill="#f8fafc"/>
+
+  <!-- User -->
+  <rect x="30" y="160" width="110" height="50" rx="8" fill="#dbeafe" stroke="#3b82f6" stroke-width="2" filter="url(#ds)"/>
+  <text x="85" y="190" font-size="14" fill="#1e40af" text-anchor="middle" font-weight="700">User</text>
+
+  <!-- Meeting -->
+  <rect x="220" y="160" width="120" height="50" rx="8" fill="#fce7f3" stroke="#ec4899" stroke-width="2" filter="url(#ds)"/>
+  <text x="280" y="190" font-size="14" fill="#be185d" text-anchor="middle" font-weight="700">Meeting</text>
+
+  <!-- User → Meeting -->
+  <line x1="140" y1="185" x2="220" y2="185" stroke="#64748b" stroke-width="2"/>
+  <text x="180" y="178" font-size="10" fill="#64748b" text-anchor="middle">has_many</text>
+
+  <!-- Meeting children -->
+  <!-- Transcript -->
+  <rect x="440" y="20" width="146" height="56" rx="8" fill="#d1fae5" stroke="#34d399" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="513" y="43" font-size="12" fill="#065f46" text-anchor="middle" font-weight="700">Transcript</text>
+  <text x="513" y="60" font-size="9" fill="#059669" text-anchor="middle">텍스트 · 타임스탬프 · 화자</text>
+
+  <!-- Summary -->
+  <rect x="440" y="90" width="146" height="56" rx="8" fill="#d1fae5" stroke="#34d399" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="513" y="113" font-size="12" fill="#065f46" text-anchor="middle" font-weight="700">Summary</text>
+  <text x="513" y="130" font-size="9" fill="#059669" text-anchor="middle">realtime / final / feedback</text>
+
+  <!-- ActionItem -->
+  <rect x="440" y="160" width="146" height="56" rx="8" fill="#d1fae5" stroke="#34d399" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="513" y="183" font-size="12" fill="#065f46" text-anchor="middle" font-weight="700">ActionItem</text>
+  <text x="513" y="200" font-size="9" fill="#059669" text-anchor="middle">할 일 · 담당자 · 기한</text>
+
+  <!-- Block -->
+  <rect x="440" y="230" width="146" height="56" rx="8" fill="#d1fae5" stroke="#34d399" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="513" y="253" font-size="12" fill="#065f46" text-anchor="middle" font-weight="700">Block</text>
+  <text x="513" y="270" font-size="9" fill="#059669" text-anchor="middle">에디터 콘텐츠 · JSON</text>
+
+  <!-- Attachment -->
+  <rect x="440" y="300" width="146" height="56" rx="8" fill="#d1fae5" stroke="#34d399" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="513" y="323" font-size="12" fill="#065f46" text-anchor="middle" font-weight="700">Attachment</text>
+  <text x="513" y="340" font-size="9" fill="#059669" text-anchor="middle">첨부파일</text>
+
+  <!-- Tag -->
+  <rect x="440" y="370" width="146" height="36" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="513" y="393" font-size="12" fill="#92400e" text-anchor="middle" font-weight="700">Tag</text>
+
+  <!-- Lines from Meeting to children -->
+  <line x1="340" y1="185" x2="380" y2="185" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="380" y1="48" x2="380" y2="388" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="380" y1="48" x2="440" y2="48" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="380" y1="118" x2="440" y2="118" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="380" y1="188" x2="440" y2="188" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="380" y1="258" x2="440" y2="258" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="380" y1="328" x2="440" y2="328" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="380" y1="388" x2="440" y2="388" stroke="#94a3b8" stroke-width="1.5"/>
+
+  <!-- User → Team -->
+  <rect x="30" y="280" width="110" height="50" rx="8" fill="#e0e7ff" stroke="#818cf8" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="85" y="310" font-size="14" fill="#4338ca" text-anchor="middle" font-weight="700">Team</text>
+  <line x1="85" y1="210" x2="85" y2="280" stroke="#64748b" stroke-width="1.5"/>
+
+  <!-- User → Folder -->
+  <rect x="30" y="50" width="110" height="50" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="85" y="80" font-size="14" fill="#92400e" text-anchor="middle" font-weight="700">Folder</text>
+  <line x1="85" y1="160" x2="85" y2="100" stroke="#64748b" stroke-width="1.5"/>
+  <text x="72" y="138" font-size="9" fill="#64748b">계층적</text>
+
+  <!-- PromptTemplate -->
+  <rect x="220" y="280" width="120" height="50" rx="8" fill="#e0e7ff" stroke="#818cf8" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="280" y="302" font-size="11" fill="#4338ca" text-anchor="middle" font-weight="700">PromptTemplate</text>
+  <text x="280" y="318" font-size="9" fill="#6366f1" text-anchor="middle">AI 프롬프트 커스텀</text>
+  <line x1="140" y1="200" x2="160" y2="305" stroke="#64748b" stroke-width="1" stroke-dasharray="4 2"/>
+  <line x1="160" y1="305" x2="220" y2="305" stroke="#64748b" stroke-width="1" stroke-dasharray="4 2"/>
+
+  <!-- State flow -->
+  <text x="645" y="24" font-size="13" fill="#334155" font-weight="700">Meeting 상태 흐름</text>
+
+  <rect x="620" y="40" width="90" height="30" rx="15" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+  <text x="665" y="60" font-size="10" fill="#475569" text-anchor="middle" font-weight="600">pending</text>
+
+  <line x1="665" y1="70" x2="665" y2="90" stroke="#64748b" stroke-width="1.5"/>
+  <polygon points="660,87 665,95 670,87" fill="#64748b"/>
+
+  <rect x="615" y="98" width="100" height="30" rx="15" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="665" y="118" font-size="10" fill="#1e40af" text-anchor="middle" font-weight="600">recording</text>
+
+  <line x1="665" y1="128" x2="665" y2="148" stroke="#64748b" stroke-width="1.5"/>
+  <polygon points="660,145 665,153 670,145" fill="#64748b"/>
+
+  <rect x="607" y="156" width="116" height="30" rx="15" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="665" y="176" font-size="10" fill="#92400e" text-anchor="middle" font-weight="600">transcribing</text>
+
+  <line x1="665" y1="186" x2="665" y2="206" stroke="#64748b" stroke-width="1.5"/>
+  <polygon points="660,203 665,211 670,203" fill="#64748b"/>
+
+  <rect x="613" y="214" width="104" height="30" rx="15" fill="#d1fae5" stroke="#34d399" stroke-width="1.5"/>
+  <text x="665" y="234" font-size="10" fill="#065f46" text-anchor="middle" font-weight="600">completed</text>
+
+  <!-- Reopen arrow -->
+  <path d="M 717 229 Q 750 229 750 168 Q 750 113 717 113" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4 2"/>
+  <polygon points="720,109 713,113 720,117" fill="#f59e0b"/>
+  <text x="762" y="175" font-size="9" fill="#b45309" font-weight="500">reopen</text>
+</svg>
