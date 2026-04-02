@@ -1,5 +1,5 @@
-import apiClient from './client'
-import { API_BASE_URL } from '../config'
+import apiClient, { getAuthHeaders } from './client'
+import { getApiBaseUrl } from '../config'
 
 export type AttachmentCategory = 'agenda' | 'reference' | 'minutes'
 export type AttachmentKind = 'file' | 'link'
@@ -42,8 +42,9 @@ export async function createFileAttachment(
   formData.append('file', file)
   if (displayName) formData.append('display_name', displayName)
 
-  const res = await fetch(`${API_BASE_URL}/meetings/${meetingId}/attachments`, {
+  const res = await fetch(`${getApiBaseUrl()}/meetings/${meetingId}/attachments`, {
     method: 'POST',
+    headers: { ...getAuthHeaders() },
     body: formData,
   })
   if (!res.ok) {
@@ -90,7 +91,7 @@ export function getAttachmentDownloadUrl(
   meetingId: number,
   attachmentId: number,
 ): string {
-  return `${API_BASE_URL}/meetings/${meetingId}/attachments/${attachmentId}/download`
+  return `${getApiBaseUrl()}/meetings/${meetingId}/attachments/${attachmentId}/download`
 }
 
 export async function reorderAttachment(

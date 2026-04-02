@@ -1,6 +1,6 @@
 import { HTTPError } from 'ky'
-import apiClient from './client'
-import { API_BASE_URL } from '../config'
+import apiClient, { getAuthHeaders } from './client'
+import { getApiBaseUrl } from '../config'
 
 export interface MeetingDetail {
   id: number
@@ -143,8 +143,9 @@ export async function uploadAudio(id: number, blob: Blob): Promise<void> {
 
   // FormData 전송 시 브라우저가 Content-Type(multipart boundary 포함)을 자동 설정하도록
   // ky 대신 fetch를 직접 사용
-  await fetch(`${API_BASE_URL}/meetings/${id}/audio`, {
+  await fetch(`${getApiBaseUrl()}/meetings/${id}/audio`, {
     method: 'POST',
+    headers: { ...getAuthHeaders() },
     body: formData,
   })
 }
@@ -159,8 +160,9 @@ export async function uploadAudioFile(data: {
   if (data.meeting_type) formData.append('meeting_type', data.meeting_type)
   formData.append('audio', data.audio)
 
-  const res = await fetch(`${API_BASE_URL}/meetings/upload_audio`, {
+  const res = await fetch(`${getApiBaseUrl()}/meetings/upload_audio`, {
     method: 'POST',
+    headers: { ...getAuthHeaders() },
     body: formData,
   })
   if (!res.ok) {

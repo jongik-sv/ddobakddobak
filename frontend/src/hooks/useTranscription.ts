@@ -1,14 +1,22 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { createConsumer } from '@rails/actioncable'
 import type { Consumer, Subscription } from '@rails/actioncable'
 import { createTranscriptionChannel, sendAudioChunk } from '../channels/transcription'
 import { useAppSettingsStore } from '../stores/appSettingsStore'
 import { DIARIZATION } from '../config'
-import { WS_URL } from '../config'
+import { createAuthenticatedConsumer } from '../lib/actionCableAuth'
 import type { ChunkMeta } from './useAudioRecorder'
 
 export interface UseTranscriptionResult {
   sendChunk: (pcm: Int16Array, meta?: ChunkMeta) => void
+}
+
+/** appSettingsStore 상태에서 diarization 설정 객체를 생성한다. */
+function buildDiarizationConfig(state: ReturnType<typeof useAppSettingsStore.getState>): Record<string, unknown> {
+  return {
+    ...DIARIZATION,
+    ...state.diarizationOverrides,
+    enable: state.diarizationEnabled,
+  }
 }
 
 export function useTranscription(meetingId: number): UseTranscriptionResult {
@@ -19,30 +27,20 @@ export function useTranscription(meetingId: number): UseTranscriptionResult {
   const diarizationConfigRef = useRef<Record<string, unknown>>({})
   const languagesRef = useRef<string[]>([])
 
+  // 초기값 설정 + subscribe를 하나의 effect로 통합
   useEffect(() => {
-    return useAppSettingsStore.subscribe((state) => {
-      diarizationConfigRef.current = {
-        ...DIARIZATION,
-        ...state.diarizationOverrides,
-        enable: state.diarizationEnabled,
-      }
-      languagesRef.current = state.selectedLanguages
+    const state = useAppSettingsStore.getState()
+    diarizationConfigRef.current = buildDiarizationConfig(state)
+    languagesRef.current = state.selectedLanguages
+
+    return useAppSettingsStore.subscribe((s) => {
+      diarizationConfigRef.current = buildDiarizationConfig(s)
+      languagesRef.current = s.selectedLanguages
     })
   }, [])
 
-  // 초기값 설정
   useEffect(() => {
-    const state = useAppSettingsStore.getState()
-    diarizationConfigRef.current = {
-      ...DIARIZATION,
-      ...state.diarizationOverrides,
-      enable: state.diarizationEnabled,
-    }
-    languagesRef.current = state.selectedLanguages
-  }, [])
-
-  useEffect(() => {
-    const consumer = createConsumer(WS_URL)
+    const consumer = createAuthenticatedConsumer()
     consumerRef.current = consumer
 
     const subscription = createTranscriptionChannel(meetingId, consumer)

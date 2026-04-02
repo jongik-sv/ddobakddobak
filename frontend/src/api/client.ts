@@ -21,6 +21,15 @@ async function getOrRefreshToken(refreshToken: string): Promise<string> {
   return refreshPromise
 }
 
+/**
+ * 현재 accessToken 기반 Authorization 헤더를 반환한다.
+ * FormData fetch 등 ky를 사용하지 않는 호출에서 사용한다.
+ */
+export function getAuthHeaders(): HeadersInit {
+  const { accessToken } = useAuthStore.getState()
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+}
+
 export const apiClient = ky.create({
   prefixUrl: getApiBaseUrl(),
   hooks: {
