@@ -207,7 +207,7 @@
 ### TSK-03-01: User 모델 LLM 필드 추가
 - category: feature
 - domain: backend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - tags: database, user, llm
@@ -233,7 +233,7 @@
 ### TSK-03-02: 사용자별 LLM API 구현
 - category: feature
 - domain: backend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - tags: api, llm, user
@@ -256,7 +256,7 @@
 ### TSK-03-03: 사용자 LLM 설정 UI
 - category: feature
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: high
 - assignee: -
 - tags: ui, settings, llm

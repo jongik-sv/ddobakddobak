@@ -5,6 +5,7 @@ import type { SttSettings, LlmSettings, LlmPreset, HfSettings } from '../../api/
 import { useAppSettingsStore, AUDIO_DEFAULTS, DIARIZATION_DEFAULTS } from '../../stores/appSettingsStore'
 import { ENGINE_LABELS, SUMMARY_INTERVAL_OPTIONS, AUDIO, DIARIZATION, LANGUAGES } from '../../config'
 import PromptTemplateManager from '../PromptTemplateManager'
+import UserLlmSettings from './UserLlmSettings'
 
 const SERVICE_PRESETS = [
   { id: 'claude_cli', name: 'Claude Code', provider: 'claude_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['sonnet', 'opus', 'haiku'], description: 'Claude Code CLI (키 불필요)' },
@@ -386,6 +387,9 @@ export default function SettingsContent() {
           선택한 언어의 음성만 인식됩니다. 최소 1개 이상 선택해야 합니다.
         </p>
       </div>
+
+      {/* 내 LLM 설정 (사용자 개인) */}
+      <UserLlmSettings />
 
       {/* AI (LLM) 설정 */}
       <div className="rounded-lg border bg-card p-6">

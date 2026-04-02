@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_02_072514) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_02_104351) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -169,6 +169,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_072514) do
     t.string "email", default: "", null: false
     t.string "encrypted_password", default: "", null: false
     t.string "jti", null: false
+    t.text "llm_api_key"
+    t.string "llm_base_url"
+    t.string "llm_model"
+    t.string "llm_provider"
     t.string "name", default: "", null: false
     t.string "refresh_token_jti"
     t.datetime "updated_at", null: false
