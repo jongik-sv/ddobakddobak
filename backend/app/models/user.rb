@@ -5,6 +5,9 @@ class User < ApplicationRecord
   devise :database_authenticatable, :jwt_authenticatable,
          jwt_revocation_strategy: self
 
+  has_many :team_memberships, dependent: :destroy
+  has_many :teams, through: :team_memberships
+
   validates :name, presence: true
 
   # Refresh Token jti management

@@ -53,7 +53,7 @@
 ### TSK-01-02: 브라우저 로그인 페이지
 - category: feature
 - domain: backend
-- status: [im]
+- status: [xx]
 - priority: critical
 - assignee: -
 - tags: auth, web, html
