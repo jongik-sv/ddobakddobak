@@ -30,7 +30,8 @@ class MeetingShareService
     ensure_host!(meeting, user)
 
     ActiveRecord::Base.transaction do
-      meeting.active_participants.update_all(left_at: Time.current)
+      # update_all はコールバックをスキップするため、個別に更新して broadcast_participant_left を発火
+      meeting.meeting_participants.where(left_at: nil).to_a.each { |p| p.update!(left_at: Time.current) }
       meeting.update!(share_code: nil)
     end
   end
@@ -40,33 +41,33 @@ class MeetingShareService
     meeting = Meeting.find_by(share_code: share_code)
     raise InvalidShareCodeError, "Invalid share code" unless meeting
 
-    # 이미 참여 중이면 기존 정보 반환
-    existing = meeting.active_participants.find_by(user: user)
-    return { meeting: meeting, participant: existing } if existing
+    meeting.with_lock do
+      existing = meeting.active_participants.find_by(user: user)
+      return { meeting: meeting, participant: existing } if existing
 
-    # 참여자 수 제한 체크
-    if meeting.active_participants.count >= MAX_PARTICIPANTS
-      raise ParticipantLimitError, "Maximum #{MAX_PARTICIPANTS} participants allowed"
+      if meeting.active_participants.count >= MAX_PARTICIPANTS
+        raise ParticipantLimitError, "Maximum #{MAX_PARTICIPANTS} participants allowed"
+      end
+
+      participant = meeting.meeting_participants.create!(
+        user: user,
+        role: "viewer",
+        joined_at: Time.current
+      )
+
+      { meeting: meeting, participant: participant }
     end
-
-    participant = meeting.meeting_participants.create!(
-      user: user,
-      role: "viewer",
-      joined_at: Time.current
-    )
-
-    { meeting: meeting, participant: participant }
   end
 
   # 호스트 위임
   def transfer_host(meeting, current_user, target_user_id)
-    ensure_host!(meeting, current_user)
+    current_host = ensure_host!(meeting, current_user)
 
     target_participant = meeting.active_participants.find_by(user_id: target_user_id)
     raise InvalidTargetError, "Target user is not an active participant" unless target_participant
 
     ActiveRecord::Base.transaction do
-      meeting.host_participant.update!(role: "viewer")
+      current_host.update!(role: "viewer")
       target_participant.update!(role: "host")
     end
 
@@ -84,15 +85,14 @@ class MeetingShareService
       was_host = participant.role == "host"
       participant.update!(left_at: Time.current)
 
-      if was_host
-        auto_delegate_host!(meeting)
-      end
-
-      # 활성 참여자가 없으면 공유 코드 제거
-      if meeting.active_participants.reload.empty?
-        meeting.update!(share_code: nil)
-      end
+      remaining = meeting.active_participants.reload
+      auto_delegate_host!(meeting, remaining) if was_host
+      meeting.update!(share_code: nil) if remaining.empty?
     end
+  end
+
+  def serialize_active_participants(meeting)
+    meeting.active_participants.reload.includes(:user).map(&:as_summary)
   end
 
   private
@@ -107,11 +107,12 @@ class MeetingShareService
   def ensure_host!(meeting, user)
     host = meeting.host_participant
     raise NotHostError, "Only the host can perform this action" unless host&.user_id == user.id
+    host
   end
 
-  # 가장 먼저 참여한 활성 viewer에게 호스트를 자동 위임
-  def auto_delegate_host!(meeting)
-    next_host = meeting.active_participants.where(role: "viewer").order(:joined_at).first
+  def auto_delegate_host!(meeting, remaining = nil)
+    remaining ||= meeting.active_participants.reload
+    next_host = remaining.where(role: "viewer").order(:joined_at).first
     return unless next_host
 
     next_host.update!(role: "host")
@@ -129,8 +130,4 @@ class MeetingShareService
     )
   end
 
-  # N+1 방지를 위해 includes(:user) 적용, MeetingParticipant#as_summary로 직렬화 일원화
-  def serialize_active_participants(meeting)
-    meeting.active_participants.reload.includes(:user).map(&:as_summary)
-  end
 end

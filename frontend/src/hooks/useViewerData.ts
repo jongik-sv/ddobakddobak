@@ -4,13 +4,10 @@ import { useTranscriptStore } from '../stores/transcriptStore'
 import { useSharingStore } from '../stores/sharingStore'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 
-/**
- * 뷰어 페이지 초기 데이터 로드 훅.
- * 회의 정보, 전사 기록, AI 요약, 참여자 목록을 병렬로 로드한다.
- */
 export function useViewerData(meetingId: number) {
   const [meetingTitle, setMeetingTitle] = useState('')
   const [isLoaded, setIsLoaded] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const reset = useTranscriptStore((s) => s.reset)
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
@@ -19,29 +16,19 @@ export function useViewerData(meetingId: number) {
   useEffect(() => {
     reset()
 
-    getMeeting(meetingId)
-      .then((m) => {
-        setMeetingTitle(m.title)
-        setIsLoaded(true)
-      })
-      .catch(() => {})
-
-    getTranscripts(meetingId)
-      .then((transcripts) => loadFinals(mapTranscriptsToFinals(transcripts)))
-      .catch(() => {})
-
-    getSummary(meetingId)
-      .then((summary) => {
-        if (summary?.notes_markdown) {
-          setMeetingNotes(summary.notes_markdown)
-        }
-      })
-      .catch(() => {})
-
-    getParticipants(meetingId)
-      .then((list) => useSharingStore.getState().setParticipants(list))
-      .catch(() => {})
+    Promise.all([
+      getMeeting(meetingId).then((m) => setMeetingTitle(m.title)),
+      getTranscripts(meetingId).then((t) => loadFinals(mapTranscriptsToFinals(t))),
+      getSummary(meetingId).then((s) => {
+        if (s?.notes_markdown) setMeetingNotes(s.notes_markdown)
+      }),
+      getParticipants(meetingId).then((list) =>
+        useSharingStore.getState().setParticipants(list),
+      ),
+    ])
+      .then(() => setIsLoaded(true))
+      .catch(() => setError('회의 정보를 불러올 수 없습니다'))
   }, [meetingId, reset, loadFinals, setMeetingNotes])
 
-  return { meetingTitle, isLoaded }
+  return { meetingTitle, isLoaded, error }
 }

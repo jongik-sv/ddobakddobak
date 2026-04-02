@@ -35,7 +35,6 @@ describe('sharingStore', () => {
     const state = useSharingStore.getState()
     expect(state.shareCode).toBeNull()
     expect(state.participants).toEqual([])
-    expect(state.isSharing).toBe(false)
     expect(state.isLoading).toBe(false)
   })
 
@@ -101,7 +100,7 @@ describe('sharingStore', () => {
     useSharingStore.getState().startSharing('X9Y8Z7', [hostParticipant, viewerParticipant])
     const state = useSharingStore.getState()
     expect(state.shareCode).toBe('X9Y8Z7')
-    expect(state.isSharing).toBe(true)
+    expect(state.shareCode).not.toBeNull()
     expect(state.participants).toHaveLength(2)
   })
 
@@ -110,7 +109,7 @@ describe('sharingStore', () => {
     useSharingStore.getState().stopSharing()
     const state = useSharingStore.getState()
     expect(state.shareCode).toBeNull()
-    expect(state.isSharing).toBe(false)
+    expect(state.shareCode).toBeNull()
     expect(state.participants).toEqual([])
   })
 
@@ -120,7 +119,6 @@ describe('sharingStore', () => {
     const state = useSharingStore.getState()
     expect(state.shareCode).toBeNull()
     expect(state.participants).toEqual([])
-    expect(state.isSharing).toBe(false)
     expect(state.isLoading).toBe(false)
   })
 

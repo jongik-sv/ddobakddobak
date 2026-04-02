@@ -31,14 +31,7 @@ class MeetingParticipant < ApplicationRecord
   def broadcast_participant_joined
     ActionCable.server.broadcast(
       meeting.transcription_stream,
-      {
-        type: "participant_joined",
-        participant_id: id,
-        user_id: user_id,
-        user_name: user.name,
-        role: role,
-        joined_at: joined_at
-      }
+      as_summary.merge(type: "participant_joined", participant_id: id)
     )
   end
 

@@ -78,7 +78,7 @@ export default function MeetingLivePage() {
   const summaryIntervalSec = useAppSettingsStore((s) => s.summaryIntervalSec)
 
   // 공유 상태
-  const isSharing = useSharingStore((s) => s.isSharing)
+  const isSharing = useSharingStore((s) => s.shareCode !== null)
   const sharingParticipants = useSharingStore((s) => s.participants)
   const [currentUserId, setCurrentUserId] = useState<number>(0)
   const isHost = useMemo(() => {

@@ -15,9 +15,7 @@ export function ViewerHeader({
 }: ViewerHeaderProps) {
   return (
     <div className="shrink-0">
-      {/* 헤더 바 */}
       <div className="flex items-center justify-between px-4 py-2 border-b bg-white shadow-sm">
-        {/* 좌측: 뒤로가기 + 라벨 */}
         <div className="flex items-center gap-2">
           <button
             onClick={onLeave}
@@ -29,7 +27,6 @@ export function ViewerHeader({
           <span className="text-sm font-medium text-gray-600">회의 참여 중</span>
         </div>
 
-        {/* 중앙: 회의 제목 + 참여자 수 + 녹음 상태 */}
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
           <div className="flex items-center gap-1 text-gray-500">
@@ -51,7 +48,6 @@ export function ViewerHeader({
           )}
         </div>
 
-        {/* 우측: 나가기 버튼 */}
         <button
           onClick={onLeave}
           className="px-3 py-1.5 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors"
@@ -60,7 +56,6 @@ export function ViewerHeader({
         </button>
       </div>
 
-      {/* 녹음 종료 안내 배너 */}
       {isRecordingStopped && (
         <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border-b border-blue-200 text-sm text-blue-700">
           <Info className="w-4 h-4 shrink-0" />

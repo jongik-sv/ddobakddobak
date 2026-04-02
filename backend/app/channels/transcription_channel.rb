@@ -41,15 +41,10 @@ class TranscriptionChannel < ApplicationCable::Channel
 
   # 구독 권한 결정: owner / host / viewer / nil(거부)
   def determine_role(meeting)
-    if meeting.created_by_id == current_user.id
+    if meeting.owner?(current_user)
       "owner"
     else
-      participant = MeetingParticipant.find_by(
-        meeting_id: meeting.id,
-        user_id: current_user.id,
-        left_at: nil
-      )
-      participant&.role
+      meeting.active_participants.find_by(user_id: current_user.id)&.role
     end
   end
 end

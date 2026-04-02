@@ -20,18 +20,14 @@ export default function MeetingViewerPage() {
   const recordingStopped = useSharingStore((s) => s.recordingStopped)
   const participants = useSharingStore((s) => s.participants)
 
-  // 뷰어 진입 시 사이드바 닫기
   useEffect(() => {
     useUiStore.setState({ sidebarOpen: false })
   }, [])
 
-  // 초기 데이터 로드 (회의 정보, 전사, 요약, 참여자)
-  const { meetingTitle, isLoaded } = useViewerData(meetingId)
+  const { meetingTitle, isLoaded, error } = useViewerData(meetingId)
 
-  // TranscriptionChannel 구독 (실시간 전사 수신, sendChunk는 사용하지 않음)
   useTranscription(meetingId)
 
-  // 언마운트 시 스토어 정리
   useEffect(() => {
     return () => {
       useTranscriptStore.getState().reset()
@@ -41,6 +37,14 @@ export default function MeetingViewerPage() {
 
   const handleLeave = () => {
     navigate('/meetings')
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-red-500 text-sm">{error}</div>
+      </div>
+    )
   }
 
   if (!isLoaded) {
@@ -53,7 +57,6 @@ export default function MeetingViewerPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* 뷰어 헤더 */}
       <ViewerHeader
         title={meetingTitle}
         participantCount={participants.length}
@@ -61,9 +64,7 @@ export default function MeetingViewerPage() {
         onLeave={handleLeave}
       />
 
-      {/* 2영역 리사이즈 레이아웃 */}
       <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden">
-        {/* 기록 + 화자 + 참여자 영역 — 기본 30% */}
         <Panel defaultSize={30} minSize={15}>
           <section className="h-full border-r overflow-hidden flex flex-col">
             <div className="flex-1 overflow-hidden">
@@ -86,7 +87,6 @@ export default function MeetingViewerPage() {
 
         <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-        {/* AI 회의록 영역 — 기본 70% */}
         <Panel defaultSize={70} minSize={20}>
           <section
             data-testid="ai-minutes"
@@ -97,7 +97,6 @@ export default function MeetingViewerPage() {
         </Panel>
       </PanelGroup>
 
-      {/* 하단 상태바 */}
       <div className="flex items-center justify-between px-4 h-7 border-t bg-gray-50 text-[11px] text-gray-500 shrink-0 select-none">
         <span className="text-gray-400">
           {recordingStopped ? '종료됨' : '실시간 참여 중'}

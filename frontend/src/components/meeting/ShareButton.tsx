@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Share2, Copy, Check, X } from 'lucide-react'
 import { useSharingStore } from '../../stores/sharingStore'
 import { shareMeeting, stopSharing } from '../../api/meetings'
@@ -8,11 +8,14 @@ interface ShareButtonProps {
 }
 
 export function ShareButton({ meetingId }: ShareButtonProps) {
-  const isSharing = useSharingStore((s) => s.isSharing)
   const shareCode = useSharingStore((s) => s.shareCode)
   const isLoading = useSharingStore((s) => s.isLoading)
+  const isSharing = shareCode !== null
 
   const [copied, setCopied] = useState(false)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout>>()
+
+  useEffect(() => () => clearTimeout(copyTimerRef.current), [])
 
   const handleShare = useCallback(async () => {
     useSharingStore.getState().setLoading(true)
@@ -40,7 +43,8 @@ export function ShareButton({ meetingId }: ShareButtonProps) {
     try {
       await navigator.clipboard.writeText(shareCode)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000)
     } catch (err) {
       console.error('[ShareButton] 클립보드 복사 실패:', err)
     }

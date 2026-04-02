@@ -66,7 +66,7 @@ RSpec.describe MeetingShareService do
     it "sets left_at for all active participants" do
       service.revoke_share_code(meeting, user)
 
-      meeting.meeting_participants.each do |p|
+      meeting.meeting_participants.reload.each do |p|
         expect(p.left_at).to be_present
       end
     end

@@ -11,7 +11,7 @@ module Api
 
       # POST /api/v1/meetings/:id/share
       def create_share
-        unless @meeting.created_by_id == current_user.id
+        unless @meeting.owner?(current_user)
           return render json: { error: "Only the meeting creator can share" }, status: :forbidden
         end
 
@@ -40,8 +40,7 @@ module Api
           return render json: { error: "Access denied" }, status: :forbidden
         end
 
-        participants_data = @meeting.active_participants.includes(:user).map(&:as_summary)
-        render json: { participants: participants_data }
+        render json: { participants: service.serialize_active_participants(@meeting) }
       end
 
       # POST /api/v1/meetings/:id/transfer_host
@@ -54,8 +53,6 @@ module Api
 
       def set_meeting
         @meeting = Meeting.find(params[:id])
-      rescue ActiveRecord::RecordNotFound
-        render json: { error: "Meeting not found" }, status: :not_found
       end
 
       def service
@@ -63,7 +60,7 @@ module Api
       end
 
       def participant_or_creator?
-        @meeting.created_by_id == current_user.id ||
+        @meeting.owner?(current_user) ||
           @meeting.active_participants.exists?(user: current_user)
       end
 

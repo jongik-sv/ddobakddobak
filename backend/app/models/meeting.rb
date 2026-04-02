@@ -28,7 +28,10 @@ class Meeting < ApplicationRecord
     share_code.present?
   end
 
-  # ActionCable ストリーム名を一元管理
+  def owner?(user)
+    created_by_id == user.id
+  end
+
   def transcription_stream
     "meeting_#{id}_transcription"
   end
