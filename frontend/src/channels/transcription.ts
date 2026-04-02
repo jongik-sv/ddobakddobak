@@ -1,4 +1,5 @@
 import type { Consumer, Subscription } from '@rails/actioncable'
+import { uint8ArrayToBase64 } from '../lib/audioUtils'
 import { useTranscriptStore } from '../stores/transcriptStore'
 
 /**
@@ -63,7 +64,6 @@ export function createTranscriptionChannel(
       },
       received(raw: BackendMessage) {
         const store = useTranscriptStore.getState()
-        console.log('[ActionCable] 수신:', raw.type, raw)
         switch (raw.type) {
           case 'partial':
             store.setPartial({
@@ -103,18 +103,6 @@ export function createTranscriptionChannel(
       },
     }
   )
-}
-
-/**
- * Uint8Array를 Base64로 인코딩한다.
- */
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let binary = ''
-  const chunkSize = 8192
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
-  }
-  return btoa(binary)
 }
 
 /**

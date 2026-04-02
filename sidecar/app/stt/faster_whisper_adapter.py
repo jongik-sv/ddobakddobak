@@ -6,42 +6,13 @@ CPU에서도 동작하지만, GPU 없는 환경에서는 whisper.cpp가 더 효�
 from __future__ import annotations
 
 import asyncio
-import re
 from typing import AsyncIterator
 
+from app.stt.audio_utils import is_hallucination, pcm_bytes_to_float32
 from app.stt.base import SttAdapter, TranscriptSegment
 
 _MODEL_SIZE = "large-v3-turbo"
 _SAMPLE_RATE = 16000
-_BYTES_PER_SAMPLE = 2  # Int16
-
-# 의미 있는 최소 글자 수 — 이보다 짧으면 환각으로 간주
-_MIN_MEANINGFUL_CHARS = 3
-_PUNCT_RE = re.compile(r'[\s\.,!?~\-\'"()]')
-
-# 언어별 문자 범위 (환각 판별용)
-_LANG_CHAR_RANGES = {
-    "ko": (0xAC00, 0xD7A3),
-    "ja": (0x3040, 0x30FF),
-    "zh": (0x4E00, 0x9FFF),
-}
-
-
-def _is_hallucination(text: str, languages: list[str] | None = None) -> bool:
-    """짧은 환각성 텍스트 여부 판별."""
-    stripped = _PUNCT_RE.sub('', text.strip())
-    if not stripped:
-        return True
-    target_langs = languages or ["ko"]
-    lang_chars = 0
-    for lang in target_langs:
-        char_range = _LANG_CHAR_RANGES.get(lang)
-        if char_range:
-            lo, hi = char_range
-            lang_chars += sum(1 for c in stripped if lo <= ord(c) <= hi)
-    if 0 < lang_chars < _MIN_MEANINGFUL_CHARS:
-        return True
-    return False
 
 
 class FasterWhisperAdapter(SttAdapter):
@@ -88,14 +59,14 @@ class FasterWhisperAdapter(SttAdapter):
                 "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
             )
 
-        audio_array = _pcm_bytes_to_float32(audio_chunk)
+        audio_array = pcm_bytes_to_float32(audio_chunk)
         if len(audio_array) == 0:
             return []
 
         raw_segments = await self._run_inference(audio_array, languages=languages)
         return [
             seg for seg in raw_segments
-            if seg.text.strip() and not _is_hallucination(seg.text, languages)
+            if seg.text.strip() and not is_hallucination(seg.text, languages)
         ]
 
     async def _run_inference(self, audio_array, languages: list[str] | None = None) -> list[TranscriptSegment]:
@@ -153,7 +124,7 @@ class FasterWhisperAdapter(SttAdapter):
             results = []
             for seg in segments_iter:
                 text = seg.text.strip()
-                if text and not _is_hallucination(text, languages):
+                if text and not is_hallucination(text, languages):
                     results.append(TranscriptSegment(
                         text=text,
                         started_at_ms=int(seg.start * 1000),
@@ -166,7 +137,3 @@ class FasterWhisperAdapter(SttAdapter):
         return await loop.run_in_executor(None, _transcribe)
 
 
-def _pcm_bytes_to_float32(audio_bytes: bytes):
-    """PCM Int16 bytes를 float32 numpy 배열로 변환한다."""
-    import numpy as np
-    return np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0

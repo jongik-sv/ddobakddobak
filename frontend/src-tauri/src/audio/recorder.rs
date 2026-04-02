@@ -54,10 +54,6 @@ impl AudioRecorder {
             }
         }
     }
-
-    /// 하위 호환: 시스템 오디오는 JS에서 믹싱되므로 no-op.
-    pub fn feed_system(&self, _samples: &[i16]) {}
-
     pub fn stop(&self) -> Result<String, String> {
         let mut writer_lock = self.writer.lock().unwrap();
         if let Some(writer) = writer_lock.take() {

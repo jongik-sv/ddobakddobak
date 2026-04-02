@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import { getEffectiveAudioConfig, loadAppSettings } from '../stores/appSettingsStore'
+import { uint8ArrayToBase64 } from '../lib/audioUtils'
 import { AUDIO, IS_TAURI } from '../config'
 import type { ChunkMeta } from './useAudioRecorder'
 
@@ -16,15 +17,6 @@ export interface MicCaptureResult {
   resume: () => void
   /** 시스템 오디오 PCM을 마이크와 믹싱하여 STT 처리 (16kHz Int16) */
   feedSystemAudio: (pcm: Int16Array) => void
-}
-
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let bin = ''
-  const sz = 8192
-  for (let i = 0; i < bytes.length; i += sz) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + sz))
-  }
-  return btoa(bin)
 }
 
 /**

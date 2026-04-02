@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { SystemAudioVAD } from '../lib/systemAudioVAD'
+import { base64ToInt16Array } from '../lib/audioUtils'
 import { getEffectiveAudioConfig } from '../stores/appSettingsStore'
 import { AUDIO, IS_TAURI } from '../config'
 import type { ChunkMeta } from './useAudioRecorder'
@@ -22,18 +23,6 @@ export interface SystemAudioCaptureResult {
 interface SystemAudioChunkPayload {
   pcm_base64: string
   sample_count: number
-}
-
-/**
- * Base64 인코딩된 PCM Int16 데이터를 Int16Array로 디코딩
- */
-function base64ToInt16Array(base64: string): Int16Array {
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
-  }
-  return new Int16Array(bytes.buffer)
 }
 
 /**

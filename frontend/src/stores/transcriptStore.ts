@@ -54,7 +54,6 @@ export const useTranscriptStore = create<TranscriptState>()((set) => ({
       updated.sort(
         (a, b) => a.started_at_ms - b.started_at_ms
       )
-      console.log('[store] addFinal:', data.id, 'applied:', finalData.applied, 'total:', updated.length, 'unapplied:', updated.filter(f => !f.applied).length)
       return { finals: updated, partial: null }
     }),
 

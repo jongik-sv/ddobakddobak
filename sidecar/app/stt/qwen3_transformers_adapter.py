@@ -8,39 +8,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import tempfile
 from typing import AsyncIterator
 
 import numpy as np
 
+from app.stt.audio_utils import is_hallucination, pcm_bytes_to_float32
 from app.stt.base import SttAdapter, TranscriptSegment
 
 logger = logging.getLogger(__name__)
 
 _MODEL_ID = "Qwen/Qwen3-ASR-1.7B"
 _SAMPLE_RATE = 16000
-_BYTES_PER_SAMPLE = 2  # Int16
-
-# 의미 있는 최소 한글 음절 수 -- 이보다 짧으면 환각으로 간주
-_MIN_KOREAN_SYLLABLES = 3
-_PUNCT_RE = re.compile(r'[\s\.,!?~\-\'"()]')
-
-
-def _is_hallucination(text: str) -> bool:
-    """짧은 환각성 텍스트 여부 판별."""
-    stripped = _PUNCT_RE.sub("", text.strip())
-    if not stripped:
-        return True
-    korean_syllables = sum(1 for c in stripped if "\uAC00" <= c <= "\uD7A3")
-    if 0 < korean_syllables < _MIN_KOREAN_SYLLABLES:
-        return True
-    return False
-
-
-def _pcm_bytes_to_float32(audio_bytes: bytes) -> np.ndarray:
-    """PCM Int16 bytes -> float32 numpy array (범위: -1.0 ~ 1.0)."""
-    return np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
 
 
 class Qwen3TransformersAdapter(SttAdapter):
@@ -128,14 +107,14 @@ class Qwen3TransformersAdapter(SttAdapter):
                 "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
             )
 
-        audio_array = _pcm_bytes_to_float32(audio_chunk)
+        audio_array = pcm_bytes_to_float32(audio_chunk)
         if len(audio_array) == 0:
             return []
 
         chunk_duration_ms = int(len(audio_array) / _SAMPLE_RATE * 1000)
 
         text = await self._run_inference_from_pcm(audio_array)
-        if not text or not text.strip() or _is_hallucination(text):
+        if not text or not text.strip() or is_hallucination(text):
             return []
 
         return [
@@ -192,7 +171,7 @@ class Qwen3TransformersAdapter(SttAdapter):
             segments = []
             for r in results:
                 text = r.text.strip()
-                if text and not _is_hallucination(text):
+                if text and not is_hallucination(text):
                     segments.append(TranscriptSegment(
                         text=text,
                         started_at_ms=0,
@@ -209,7 +188,7 @@ class Qwen3TransformersAdapter(SttAdapter):
         import soundfile as sf
 
         with open(file_path, "rb") as f:
-            audio_array = _pcm_bytes_to_float32(f.read())
+            audio_array = pcm_bytes_to_float32(f.read())
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             sf.write(tmp.name, audio_array, _SAMPLE_RATE)
@@ -218,7 +197,7 @@ class Qwen3TransformersAdapter(SttAdapter):
         segments = []
         for r in results:
             text = r.text.strip()
-            if text and not _is_hallucination(text):
+            if text and not is_hallucination(text):
                 segments.append(TranscriptSegment(
                     text=text,
                     started_at_ms=0,
