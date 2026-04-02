@@ -58,15 +58,47 @@ const cfg = parse(configYaml) as AppConfig
 export const IS_TAURI =
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
-// ── API / WebSocket ────────────────────────────
-// Tauri 환경에서는 항상 13323 포트 사용
-export const API_BASE_URL = IS_TAURI
-  ? 'http://127.0.0.1:13323/api/v1'
-  : import.meta.env.VITE_API_BASE_URL || cfg.api.base_url
+// ── 모드 / 서버 URL ─────────────────────────────
+export function getMode(): 'local' | 'server' {
+  const mode = localStorage.getItem('mode')
+  return mode === 'server' ? 'server' : 'local'
+}
 
-export const WS_URL = IS_TAURI
-  ? 'ws://127.0.0.1:13323/cable'
-  : import.meta.env.VITE_WS_URL || cfg.api.ws_url
+export function getServerUrl(): string {
+  return localStorage.getItem('server_url') || ''
+}
+
+// ── API / WebSocket URL 동적 결정 ────────────────
+export function getApiBaseUrl(): string {
+  if (getMode() === 'server') {
+    const serverUrl = getServerUrl()
+    return serverUrl ? `${serverUrl}/api/v1` : 'http://127.0.0.1:13323/api/v1'
+  }
+  // 로컬 모드: Tauri는 항상 13323, 웹 dev는 환경변수 또는 config.yaml
+  return IS_TAURI
+    ? 'http://127.0.0.1:13323/api/v1'
+    : import.meta.env.VITE_API_BASE_URL || cfg.api.base_url
+}
+
+export function getWsUrl(): string {
+  if (getMode() === 'server') {
+    const serverUrl = getServerUrl()
+    if (serverUrl) {
+      return serverUrl
+        .replace(/^https:\/\//, 'wss://')
+        .replace(/^http:\/\//, 'ws://') + '/cable'
+    }
+  }
+  return IS_TAURI
+    ? 'ws://127.0.0.1:13323/cable'
+    : import.meta.env.VITE_WS_URL || cfg.api.ws_url
+}
+
+// ── 하위 호환용 상수 (기존 코드 사용처 대응) ──────
+// 주의: 이 상수들은 모듈 로드 시점의 값으로 고정된다.
+// ServerSetup 완료 후 모드가 변경되면 앱이 리로드/리마운트되어야 반영된다.
+export const API_BASE_URL = getApiBaseUrl()
+export const WS_URL = getWsUrl()
 
 // ── STT 엔진 라벨 ─────────────────────────────
 export const ENGINE_LABELS: Record<string, string> = Object.fromEntries(

@@ -1,23 +1,23 @@
-import { useEffect } from 'react';
-import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
-import { parseDeepLink } from '../lib/deepLinkParser';
+import { useEffect } from 'react'
+import { onOpenUrl } from '@tauri-apps/plugin-deep-link'
+import { parseDeepLink } from '../lib/deepLinkParser'
+import { useAuthStore } from '../stores/authStore'
 
-const TOKEN_KEY = 'access_token';
+export function useDeepLink(): void {
+  const setTokens = useAuthStore((s) => s.setTokens)
 
-export function useDeepLink(onToken?: (token: string) => void): void {
   useEffect(() => {
     const unlisten = onOpenUrl((urls: string[]) => {
       for (const url of urls) {
-        const result = parseDeepLink(url);
+        const result = parseDeepLink(url)
         if (result) {
-          localStorage.setItem(TOKEN_KEY, result.token);
-          onToken?.(result.token);
-          break;
+          setTokens(result.accessToken, result.refreshToken)
+          break
         }
       }
-    });
+    })
     return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [onToken]);
+      unlisten.then((fn) => fn())
+    }
+  }, [setTokens])
 }

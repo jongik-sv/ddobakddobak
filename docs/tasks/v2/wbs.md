@@ -152,7 +152,7 @@
 ### TSK-02-03: 로그인 흐름 구현
 - category: feature
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - tags: auth, ui, jwt
