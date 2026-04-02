@@ -105,7 +105,7 @@
 ### TSK-02-01: Tauri 딥링크 설정
 - category: feature
 - domain: frontend
-- status: [ ]
+- status: [im]
 - priority: critical
 - assignee: -
 - tags: tauri, deep-link
@@ -128,7 +128,7 @@
 ### TSK-02-02: 서버 URL 설정 UI
 - category: feature
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - tags: ui, settings, auth
