@@ -256,7 +256,7 @@
 ### TSK-03-03: 사용자 LLM 설정 UI
 - category: feature
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: high
 - assignee: -
 - tags: ui, settings, llm
