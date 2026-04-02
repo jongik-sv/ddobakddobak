@@ -4,10 +4,8 @@ import { Monitor, Globe, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 type Mode = 'local' | 'server'
 type HealthStatus = 'idle' | 'checking' | 'success' | 'error'
 
-const VALID_MODES: ReadonlySet<string> = new Set<Mode>(['local', 'server'])
-
 function isValidMode(value: string | null): value is Mode {
-  return value !== null && VALID_MODES.has(value)
+  return value === 'local' || value === 'server'
 }
 
 /** 후행 슬래시를 제거한 URL을 반환한다. */
@@ -200,11 +198,7 @@ export function ServerSetup({ onComplete }: ServerSetupProps) {
           type="button"
           onClick={handleComplete}
           disabled={!isStartEnabled}
-          className={`w-full py-3 rounded-xl text-white font-semibold text-base transition-all ${
-            isStartEnabled
-              ? 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
-              : 'bg-blue-600 opacity-50 cursor-not-allowed'
-          }`}
+          className="w-full py-3 rounded-xl text-white font-semibold text-base transition-all bg-blue-600 hover:bg-blue-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           시작하기
         </button>

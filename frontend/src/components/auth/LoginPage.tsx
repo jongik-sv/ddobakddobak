@@ -1,32 +1,17 @@
-import { Loader2, LogIn } from 'lucide-react'
+import { LogIn } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 
-const PAGE_BG = 'min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center'
-
 export function LoginPage() {
-  const { login, isLoading } = useAuth()
-
-  if (isLoading) {
-    return (
-      <div className={PAGE_BG}>
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-          <p className="text-slate-500">인증 확인 중...</p>
-        </div>
-      </div>
-    )
-  }
+  const { login } = useAuth()
 
   return (
-    <div className={`${PAGE_BG} p-4`}>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
-        {/* 헤더 */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-slate-800 mb-2">또박또박</h1>
           <p className="text-slate-500">AI 회의록 - 로그인이 필요합니다</p>
         </div>
 
-        {/* 로그인 버튼 */}
         <button
           type="button"
           onClick={login}
