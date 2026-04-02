@@ -67,7 +67,6 @@ export default function UserLlmSettings() {
   const initFormFromSettings = useCallback((data: UserLlmSettingsResponse) => {
     const ls = data.llm_settings
     if (ls.configured && ls.provider) {
-      // base_url이 있고 provider가 openai면 openai_custom
       if (ls.provider === 'openai' && ls.base_url) {
         setProvider('openai_custom')
       } else {
@@ -83,7 +82,6 @@ export default function UserLlmSettings() {
     setTestResult(null)
   }, [])
 
-  // 초기 로드
   useEffect(() => {
     getUserLlmSettings()
       .then((data) => {
@@ -97,6 +95,7 @@ export default function UserLlmSettings() {
   }, [initFormFromSettings])
 
   const currentProviderOption = PROVIDER_OPTIONS.find((p) => p.id === provider)
+  const actualProvider = currentProviderOption?.actualProvider ?? provider
 
   const handleProviderSelect = (id: string) => {
     setProvider(id)
@@ -115,12 +114,11 @@ export default function UserLlmSettings() {
     setError(null)
     setSuccess(null)
     try {
-      const actualProvider = currentProviderOption?.actualProvider ?? provider
       const result = await updateUserLlmSettings({
         llm_settings: {
           provider: actualProvider,
           ...(apiKey ? { api_key: apiKey } : {}),
-          model: model,
+          model,
           base_url: baseUrl || null,
         },
       })
@@ -139,14 +137,12 @@ export default function UserLlmSettings() {
     setTesting(true)
     setTestResult(null)
     try {
-      const actualProvider = currentProviderOption?.actualProvider ?? provider
-      const params: { provider: string; model: string; api_key?: string; base_url?: string } = {
+      const result = await testUserLlmConnection({
         provider: actualProvider,
-        model: model,
-      }
-      if (apiKey) params.api_key = apiKey
-      if (baseUrl) params.base_url = baseUrl
-      const result = await testUserLlmConnection(params)
+        model,
+        ...(apiKey ? { api_key: apiKey } : {}),
+        ...(baseUrl ? { base_url: baseUrl } : {}),
+      })
       setTestResult(result)
     } catch {
       setTestResult({ success: false, error: '테스트 요청에 실패했습니다.' })

@@ -26,7 +26,6 @@ module Api
             return render json: build_response
           end
 
-          # provider 유효성 검증
           unless VALID_PROVIDERS.include?(attrs[:llm_provider])
             return render json: { error: "provider는 #{VALID_PROVIDERS.join(', ')} 중 하나여야 합니다" },
                           status: :unprocessable_entity
@@ -72,7 +71,7 @@ module Api
           attrs = {
             llm_provider: p[:provider],
             llm_model: p[:model],
-            llm_base_url: p[:base_url].presence  # 빈 문자열 -> nil
+            llm_base_url: p[:base_url].presence
           }
 
           # api_key 처리: 빈 문자열 → 기존 유지, nil → 삭제, 값 있으면 갱신

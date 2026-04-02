@@ -1,7 +1,5 @@
 import apiClient from './client'
 
-// ── 타입 정의 ────────────────────────────
-
 export interface UserLlmSettingsResponse {
   llm_settings: {
     provider: string | null
@@ -39,8 +37,6 @@ export interface UserLlmTestResult {
   message?: string
   response_time_ms?: number
 }
-
-// ── API 함수 ────────────────────────────
 
 export async function getUserLlmSettings(): Promise<UserLlmSettingsResponse> {
   return apiClient.get('user/llm_settings').json()

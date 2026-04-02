@@ -11,15 +11,12 @@ class User < ApplicationRecord
 
   validates :name, presence: true
 
-  # ── LLM 설정 ──
   encrypts :llm_api_key
 
-  # 사용자에게 개인 LLM 설정이 있는지 여부
   def llm_configured?
     llm_provider.present? && llm_api_key.present?
   end
 
-  # 유효한 LLM 설정 해시 반환 (개인 설정 우선, 없으면 서버 기본값)
   def effective_llm_config
     if llm_configured?
       {
@@ -33,7 +30,6 @@ class User < ApplicationRecord
     end
   end
 
-  # 서버 기본 LLM 설정 (settings.yaml → ENV)
   def self.server_default_llm_config
     provider = ENV.fetch("LLM_PROVIDER", "anthropic")
     {
