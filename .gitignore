@@ -31,11 +31,10 @@ sidecar/speaker_dbs/
 *.stackdump
 
 # Node / Frontend
-frontend/node_modules/
+node_modules/
 frontend/dist/
 
 # E2E 테스트
-e2e/node_modules/
 e2e/test-results/
 
 # Playwright MCP 로그
