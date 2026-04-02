@@ -2,6 +2,24 @@ Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
   mount ActionCable.server => "/cable"
 
+  # ── Authentication (Devise + JWT) ──
+  devise_for :users, path: "auth",
+    path_names: { sign_in: "login", sign_out: "logout" },
+    controllers: { sessions: "auth/sessions" },
+    defaults: { format: :json }
+
+  # Refresh Token endpoint (inside devise_scope for mapping)
+  devise_scope :user do
+    post "auth/refresh", to: "auth/sessions#refresh"
+  end
+
+  # ── Browser Login (서버 렌더링 HTML) ──
+  scope "auth" do
+    get  "web_login", to: "auth/browser_sessions#new",    as: :browser_login
+    post "web_login", to: "auth/browser_sessions#create",  as: :browser_login_submit
+  end
+
+  # ── API v1 ──
   namespace :api do
     namespace :v1 do
       get "health", to: "health#show"
@@ -72,6 +90,14 @@ Rails.application.routes.draw do
       resources :prompt_templates, only: %i[index create update destroy] do
         member do
           post :reset
+        end
+      end
+
+      # Teams
+      resources :teams, only: %i[index create] do
+        member do
+          post :invite
+          delete "members/:user_id", action: :remove_member, as: :remove_member
         end
       end
 

@@ -19,7 +19,7 @@
 ### TSK-01-01: Devise JWT 인증 구현
 - category: feature
 - domain: backend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - tags: auth, jwt, devise
@@ -53,7 +53,7 @@
 ### TSK-01-02: 브라우저 로그인 페이지
 - category: feature
 - domain: backend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - tags: auth, web, html
@@ -76,7 +76,7 @@
 ### TSK-01-03: 서버/로컬 모드 분기
 - category: feature
 - domain: backend
-- status: [ ]
+- status: [xx]
 - priority: high
 - assignee: -
 - tags: auth, mode

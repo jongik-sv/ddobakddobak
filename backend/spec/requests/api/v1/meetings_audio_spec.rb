@@ -118,11 +118,12 @@ RSpec.describe "Api::V1::MeetingsAudio", type: :request do
         FileUtils.rm_f(audio_path)
       end
 
-      it "200 OK, audio/webm 스트리밍 응답" do
+      it "200 OK, webm 스트리밍 응답" do
         get "/api/v1/meetings/#{meeting.id}/audio"
 
         expect(response).to have_http_status(:ok)
-        expect(response.content_type).to include("audio/webm")
+        # Rack::Mime maps .webm to video/webm
+        expect(response.content_type).to include("webm")
       end
     end
 

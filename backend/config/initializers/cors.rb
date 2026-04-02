@@ -7,11 +7,19 @@
 
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    origins(
+    # Default origins (Tauri local development)
+    allowed_origins = [
       "http://localhost:13325",
       "tauri://localhost",
       "https://tauri.localhost"
-    )
+    ]
+
+    # Server mode: CORS_ORIGIN env var for additional origins
+    if ENV["CORS_ORIGIN"].present?
+      allowed_origins += ENV["CORS_ORIGIN"].split(",").map(&:strip)
+    end
+
+    origins(*allowed_origins)
 
     resource "*",
       headers: :any,

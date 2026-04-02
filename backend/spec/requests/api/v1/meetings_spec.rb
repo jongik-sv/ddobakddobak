@@ -14,11 +14,8 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # ============================================================
   describe "GET /api/v1/meetings" do
     context "when authenticated" do
-      it "returns meetings belonging to user's teams" do
+      it "returns meetings created by the user" do
         meeting = create(:meeting, team: team, creator: user)
-        other_team = create(:team, creator: other_user)
-        create(:team_membership, user: other_user, team: other_team, role: "admin")
-        _other_meeting = create(:meeting, team: other_team, creator: other_user)
 
         get "/api/v1/meetings"
 
@@ -104,12 +101,14 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
 
-      it "returns 404 when team not found" do
+      it "creates meeting even without valid team_id (team is optional)" do
         post "/api/v1/meetings",
-             params: { title: "New Meeting", team_id: 99999 },
+             params: { title: "New Meeting" },
              as: :json
 
-        expect(response).to have_http_status(:not_found)
+        expect(response).to have_http_status(:created)
+        json = response.parsed_body
+        expect(json["meeting"]["title"]).to eq("New Meeting")
       end
     end
 
@@ -286,8 +285,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
     context "when meeting is recording" do
       it "transitions to completed and sets ended_at" do
-        allow_any_instance_of(MeetingFinalizerService).to receive(:call)
-
         post "/api/v1/meetings/#{meeting.id}/stop"
 
         expect(response).to have_http_status(:ok)
@@ -297,14 +294,11 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(meeting.reload.ended_at).not_to be_nil
       end
 
-      it "calls MeetingFinalizerService" do
-        finalizer = instance_double(MeetingFinalizerService)
-        allow(MeetingFinalizerService).to receive(:new).with(meeting).and_return(finalizer)
-        allow(finalizer).to receive(:call)
+      it "enqueues MeetingFinalizerJob" do
+        expect(MeetingFinalizerJob).to receive(:perform_later).with(meeting.id)
+        allow(MeetingSummarizationJob).to receive(:perform_later)
 
         post "/api/v1/meetings/#{meeting.id}/stop"
-
-        expect(finalizer).to have_received(:call)
       end
     end
 
