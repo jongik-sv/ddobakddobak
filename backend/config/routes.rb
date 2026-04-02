@@ -101,6 +101,13 @@ Rails.application.routes.draw do
         end
       end
 
+      # User-scoped settings
+      namespace :user do
+        resource :llm_settings, only: [:show, :update] do
+          post :test, on: :collection
+        end
+      end
+
       # Settings
       get  "settings", to: "settings#show"
       post "settings/stt_engine", to: "settings#update_stt"

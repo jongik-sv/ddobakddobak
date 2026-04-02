@@ -36,7 +36,7 @@ module Api
       end
 
       def invite
-        invited_user = User.find_by(email: params[:email])
+        invited_user = ::User.find_by(email: params[:email])
         return render json: { error: "User not found" }, status: :not_found unless invited_user
 
         membership = TeamMembership.new(user: invited_user, team: @team, role: "member")

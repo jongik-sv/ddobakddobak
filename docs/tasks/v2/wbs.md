@@ -233,7 +233,7 @@
 ### TSK-03-02: 사용자별 LLM API 구현
 - category: feature
 - domain: backend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - tags: api, llm, user
