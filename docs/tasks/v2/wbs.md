@@ -572,7 +572,7 @@
 ### TSK-05-03: 회의 공유 UI (호스트)
 - category: feature
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: high
 - assignee: -
 - tags: ui, sharing, meeting

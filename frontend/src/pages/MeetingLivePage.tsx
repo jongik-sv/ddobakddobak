@@ -13,12 +13,17 @@ import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
-import { getMeeting, startMeeting, stopMeeting, reopenMeeting, uploadAudio, triggerRealtimeSummary, getTranscripts, getSummary, resetMeetingContent, feedbackNotes, updateNotes } from '../api/meetings'
+import { getMeeting, startMeeting, stopMeeting, reopenMeeting, uploadAudio, triggerRealtimeSummary, getTranscripts, getSummary, resetMeetingContent, feedbackNotes, updateNotes, getParticipants } from '../api/meetings'
+import type { Participant } from '../api/meetings'
 import { getSttSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useAppSettingsStore } from '../stores/appSettingsStore'
+import { useSharingStore } from '../stores/sharingStore'
 import { ENGINE_LABELS_SHORT, IS_TAURI } from '../config'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
+import { ShareButton } from '../components/meeting/ShareButton'
+import { ParticipantList } from '../components/meeting/ParticipantList'
+import { HostTransferDialog } from '../components/meeting/HostTransferDialog'
 import type { TranscriptFinalData } from '../channels/transcription'
 
 type MeetingStatus = 'idle' | 'recording' | 'stopped'
@@ -47,6 +52,9 @@ export default function MeetingLivePage() {
   // 녹음 중 뒤로가기 차단
   const [showLeaveBlock, setShowLeaveBlock] = useState(false)
 
+  // 호스트 위임 다이얼로그
+  const [transferTarget, setTransferTarget] = useState<Participant | null>(null)
+
   // 초기화 확인 다이얼로그
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
@@ -68,6 +76,15 @@ export default function MeetingLivePage() {
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const summaryIntervalSec = useAppSettingsStore((s) => s.summaryIntervalSec)
+
+  // 공유 상태
+  const isSharing = useSharingStore((s) => s.isSharing)
+  const sharingParticipants = useSharingStore((s) => s.participants)
+  const [currentUserId, setCurrentUserId] = useState<number>(0)
+  const isHost = useMemo(() => {
+    const host = sharingParticipants.find((p) => p.role === 'host')
+    return host?.user_id === currentUserId && currentUserId !== 0
+  }, [sharingParticipants, currentUserId])
 
   // 메모 에디터
   const [meetingMemo, setMeetingMemo] = useState<string | null>(null)
@@ -403,9 +420,31 @@ export default function MeetingLivePage() {
         setAudioDurationMs(m.audio_duration_ms ?? 0)
         setLastSeqNum(m.last_sequence_number ?? 0)
         if (m.memo) setMeetingMemo(m.memo)
+        // 현재 사용자 ID 저장 (호스트 여부 판별용)
+        setCurrentUserId(m.created_by.id)
+        // 공유 상태 초기화: share_code가 있으면 참여자 로드
+        if (m.share_code) {
+          getParticipants(meetingId)
+            .then((participants) => {
+              useSharingStore.getState().startSharing(
+                m.share_code!,
+                participants,
+              )
+            })
+            .catch(() => {})
+        } else {
+          useSharingStore.getState().reset()
+        }
       })
       .catch(() => {})
   }, [meetingId])
+
+  // 페이지 언마운트 시 sharingStore 초기화
+  useEffect(() => {
+    return () => {
+      useSharingStore.getState().reset()
+    }
+  }, [])
 
   useEffect(() => {
     getSttSettings()
@@ -551,6 +590,9 @@ export default function MeetingLivePage() {
             <span className="text-sm text-red-500">{error || systemAudioError}</span>
           )}
 
+          {/* 공유 버튼 */}
+          <ShareButton meetingId={meetingId} />
+
           {/* 시스템 오디오 토글 (Tauri 데스크톱 앱에서만 표시) */}
           {IS_TAURI && (
             <div className="flex items-center gap-1.5" title="시스템 오디오 캡처 (온라인 회의 상대방 음성)">
@@ -621,6 +663,15 @@ export default function MeetingLivePage() {
             <div className="border-t shrink-0">
               <SpeakerPanel meetingId={meetingId} isRecording={isActive} />
             </div>
+            {isSharing && (
+              <div className="border-t shrink-0">
+                <ParticipantList
+                  isHost={isHost}
+                  currentUserId={currentUserId}
+                  onTransferRequest={(p) => setTransferTarget(p)}
+                />
+              </div>
+            )}
           </section>
         </Panel>
 
@@ -767,6 +818,16 @@ export default function MeetingLivePage() {
           </div>
         </div>
       )}
+
+      {/* 호스트 위임 다이얼로그 */}
+      <HostTransferDialog
+        open={transferTarget !== null}
+        targetUserName={transferTarget?.user_name ?? ''}
+        targetUserId={transferTarget?.user_id ?? 0}
+        meetingId={meetingId}
+        onClose={() => setTransferTarget(null)}
+        onTransferred={() => setTransferTarget(null)}
+      />
     </div>
   )
 }

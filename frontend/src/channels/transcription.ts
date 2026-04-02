@@ -1,6 +1,7 @@
 import type { Consumer, Subscription } from '@rails/actioncable'
 import { uint8ArrayToBase64 } from '../lib/audioUtils'
 import { useTranscriptStore } from '../stores/transcriptStore'
+import { useSharingStore } from '../stores/sharingStore'
 
 /**
  * TranscriptionChannel - ActionCable 실시간 STT 채널
@@ -44,6 +45,14 @@ type BackendMessage = {
   is_final?: boolean
   ids?: number[]
   audio_source?: 'mic' | 'system'
+  // sharing events
+  participant_id?: number
+  user_id?: number
+  user_name?: string
+  role?: string
+  joined_at?: string
+  old_host_user_id?: number
+  new_host_user_id?: number
 }
 
 export function createTranscriptionChannel(
@@ -99,6 +108,28 @@ export function createTranscriptionChannel(
               store.markApplied(raw.ids)
             }
             break
+          case 'participant_joined': {
+            const sharingStore = useSharingStore.getState()
+            sharingStore.addParticipant({
+              id: raw.participant_id ?? 0,
+              user_id: raw.user_id ?? 0,
+              user_name: raw.user_name ?? '',
+              role: (raw.role as 'host' | 'viewer') ?? 'viewer',
+              joined_at: raw.joined_at ?? '',
+            })
+            break
+          }
+          case 'participant_left': {
+            const sharingStore = useSharingStore.getState()
+            sharingStore.removeParticipant(raw.user_id ?? 0)
+            break
+          }
+          case 'host_changed': {
+            const sharingStore = useSharingStore.getState()
+            sharingStore.updateParticipantRole(raw.old_host_user_id ?? 0, 'viewer')
+            sharingStore.updateParticipantRole(raw.new_host_user_id ?? 0, 'host')
+            break
+          }
         }
       },
     }
