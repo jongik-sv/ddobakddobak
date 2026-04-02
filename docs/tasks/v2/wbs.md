@@ -179,7 +179,7 @@
 ### TSK-02-04: 라우팅 인증 가드
 - category: feature
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: high
 - assignee: -
 - tags: auth, routing
