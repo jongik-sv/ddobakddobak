@@ -3,7 +3,6 @@ module Api
     class TeamsController < ApplicationController
       before_action :authenticate_user!
       before_action :set_team, only: %i[invite remove_member]
-      before_action :check_team_admin, only: %i[invite remove_member]
 
       def index
         memberships = current_user.team_memberships.includes(:team)
@@ -72,9 +71,6 @@ module Api
         end
       end
 
-      def check_team_admin
-        # 싱글 유저 데스크톱 앱 — 항상 허용
-      end
     end
   end
 end

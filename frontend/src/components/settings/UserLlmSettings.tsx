@@ -46,18 +46,15 @@ const PROVIDER_OPTIONS: readonly ProviderOption[] = [
 ]
 
 export default function UserLlmSettings() {
-  // 데이터 상태
   const [settings, setSettings] = useState<UserLlmSettingsResponse | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // 폼 상태
   const [provider, setProvider] = useState<string>('')
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [useCustomModel, setUseCustomModel] = useState(false)
 
-  // 액션 상태
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<UserLlmTestResult | null>(null)
@@ -190,7 +187,6 @@ export default function UserLlmSettings() {
 
       {!loading && settings && (
         <div className="space-y-4">
-          {/* 미설정 배너 */}
           {!settings.llm_settings.configured && (
             <div className="border border-amber-200 bg-amber-50 rounded-md p-4" role="status">
               <p className="font-medium">서버 기본값 사용 중</p>
@@ -206,7 +202,6 @@ export default function UserLlmSettings() {
             </div>
           )}
 
-          {/* Provider 선택 */}
           <fieldset>
             <legend className="block text-sm font-medium mb-2">Provider 선택</legend>
             <div className="grid grid-cols-3 gap-2" role="radiogroup">
@@ -232,7 +227,6 @@ export default function UserLlmSettings() {
             </div>
           </fieldset>
 
-          {/* API Key */}
           {provider && (
             <div>
               <label htmlFor="user-llm-api-key" className="block text-sm font-medium mb-1">API Key</label>
@@ -252,7 +246,6 @@ export default function UserLlmSettings() {
             </div>
           )}
 
-          {/* Base URL (커스텀 선택 시만) */}
           {showBaseUrl && (
             <div>
               <label htmlFor="user-llm-base-url" className="block text-sm font-medium mb-1">Base URL</label>
@@ -267,7 +260,6 @@ export default function UserLlmSettings() {
             </div>
           )}
 
-          {/* 모델명 */}
           {provider && (
             <div>
               <div className="flex items-center justify-between mb-1">
@@ -306,7 +298,6 @@ export default function UserLlmSettings() {
             </div>
           )}
 
-          {/* 액션 버튼 */}
           {provider && (
             <div className="flex items-center gap-2">
               <button
@@ -338,7 +329,6 @@ export default function UserLlmSettings() {
             </div>
           )}
 
-          {/* 테스트 결과 */}
           {testResult && (
             <div role="status" aria-live="polite">
               {testResult.success ? (
@@ -353,7 +343,6 @@ export default function UserLlmSettings() {
             </div>
           )}
 
-          {/* 성공/에러 메시지 */}
           {success && (
             <p className="text-sm text-green-600" role="status">{success}</p>
           )}

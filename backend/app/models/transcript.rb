@@ -8,4 +8,10 @@ class Transcript < ApplicationRecord
   validates :sequence_number, presence: true
 
   default_scope { order(:sequence_number) }
+
+  def self.to_sidecar_payload(transcripts)
+    transcripts.map do |t|
+      { speaker: t.speaker_label, text: t.content, started_at_ms: t.started_at_ms }
+    end
+  end
 end

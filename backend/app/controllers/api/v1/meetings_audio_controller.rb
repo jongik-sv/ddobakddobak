@@ -1,12 +1,13 @@
 module Api
   module V1
     class MeetingsAudioController < ApplicationController
+      include MeetingLookup
+
       ALLOWED_AUDIO_CONTENT_TYPES = %w[audio/webm audio/ogg video/webm audio/mp4 audio/wav audio/x-wav audio/wave].freeze
       AUDIO_MIME_OVERRIDES = { ".m4a" => "audio/mp4", ".aac" => "audio/aac" }.freeze
 
       before_action :authenticate_user!
       before_action :set_meeting
-      before_action :authorize_meeting_member!
 
       def create
         audio_file = params.require(:audio)
@@ -58,16 +59,6 @@ module Api
       end
 
       private
-
-      def set_meeting
-        @meeting = Meeting.find(params[:id])
-      rescue ActiveRecord::RecordNotFound
-        render json: { error: "Meeting not found" }, status: :not_found
-      end
-
-      def authorize_meeting_member!
-        # 싱글 유저 데스크톱 앱 — 항상 허용
-      end
 
       def valid_audio_content_type?(content_type)
         base_type = content_type.to_s.split(";").first.strip

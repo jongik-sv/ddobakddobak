@@ -2,6 +2,8 @@ module Api
   module V1
     module User
       class LlmSettingsController < ApplicationController
+        include TokenMasking
+
         before_action :authenticate_user!
 
         VALID_PROVIDERS = %w[anthropic openai].freeze
@@ -87,7 +89,7 @@ module Api
           {
             llm_settings: {
               provider: current_user.llm_provider,
-              api_key_masked: mask_api_key(current_user.llm_api_key),
+              api_key_masked: mask_token(current_user.llm_api_key),
               model: current_user.llm_model,
               base_url: current_user.llm_base_url,
               configured: current_user.llm_configured?
@@ -100,11 +102,6 @@ module Api
           }
         end
 
-        def mask_api_key(key)
-          return nil if key.blank?
-          return "****" if key.length <= 8
-          "#{key[0..3]}#{"*" * (key.length - 8)}#{key[-4..]}"
-        end
       end
     end
   end

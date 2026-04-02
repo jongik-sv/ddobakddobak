@@ -74,7 +74,6 @@ export function createTranscriptionChannel(
       },
       received(raw: BackendMessage) {
         const store = useTranscriptStore.getState()
-        const sharingStore = useSharingStore.getState()
         const speakerLabel = raw.speaker ?? raw.speaker_label ?? 'SPEAKER_00'
 
         switch (raw.type) {
@@ -113,7 +112,7 @@ export function createTranscriptionChannel(
             }
             break
           case 'participant_joined':
-            sharingStore.addParticipant({
+            useSharingStore.getState().addParticipant({
               id: raw.participant_id ?? 0,
               user_id: raw.user_id ?? 0,
               user_name: raw.user_name ?? '',
@@ -122,16 +121,16 @@ export function createTranscriptionChannel(
             })
             break
           case 'participant_left':
-            sharingStore.removeParticipant(raw.user_id ?? 0)
+            useSharingStore.getState().removeParticipant(raw.user_id ?? 0)
             break
           case 'host_transferred':
-            sharingStore.transferHost(raw.new_host_id ?? 0)
+            useSharingStore.getState().transferHost(raw.new_host_id ?? 0)
             break
           case 'recording_stopped':
-            sharingStore.setRecordingStopped(true)
+            useSharingStore.getState().setRecordingStopped(true)
             break
           case 'sharing_stopped':
-            sharingStore.stopSharing()
+            useSharingStore.getState().stopSharing()
             break
         }
       },

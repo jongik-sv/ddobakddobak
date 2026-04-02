@@ -7,7 +7,6 @@ import gc
 import logging
 import multiprocessing
 import os
-import re
 import time
 
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +26,7 @@ try:
 except Exception:
     pass
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
@@ -146,10 +145,13 @@ class TranscribeRequest(BaseModel):
     @field_validator("audio")
     @classmethod
     def validate_base64(cls, v: str) -> str:
+        # base64 alphabet만 검증 (전체 디코딩은 transcribe()에서 1회만 수행)
         try:
-            base64.b64decode(v, validate=True)
-        except Exception as e:
+            binascii.a2b_base64(v[:32] if len(v) > 32 else v, strict_mode=True)
+        except binascii.Error as e:
             raise ValueError(f"audio 필드가 유효한 base64가 아닙니다: {e}") from e
+        if not v:
+            raise ValueError("audio 필드가 비어있습니다")
         return v
 
 
@@ -246,7 +248,6 @@ async def get_stt_engine() -> dict:
 @app.put("/settings/stt-engine")
 async def update_stt_engine(request: UpdateSttEngineRequest) -> HealthResponse:
     """STT 엔진을 런타임에 변경한다."""
-    from fastapi import HTTPException
     if request.engine not in AVAILABLE_STT_ENGINES:
         raise HTTPException(
             status_code=422,
@@ -285,30 +286,6 @@ async def update_stt_engine(request: UpdateSttEngineRequest) -> HealthResponse:
         )
 
 
-_LANG_PATTERNS: dict[str, re.Pattern[str]] = {
-    "ko": re.compile(r"[\uAC00-\uD7A3]"),
-    "ja": re.compile(r"[\u3040-\u30FF\u4E00-\u9FFF]"),
-    "zh": re.compile(r"[\u4E00-\u9FFF]"),
-    "en": re.compile(r"[a-zA-Z]"),
-    "es": re.compile(r"[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ]"),
-    "fr": re.compile(r"[a-zA-ZàâçéèêëîïôùûüÿœæÀÂÇÉÈÊËÎÏÔÙÛÜŸŒÆ]"),
-    "de": re.compile(r"[a-zA-ZäöüßÄÖÜ]"),
-    "th": re.compile(r"[\u0E01-\u0E5B]"),
-    "vi": re.compile(r"[a-zA-Zàáâãèéêìíòóôõùúýăđĩũơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]"),
-}
-
-
-def _filter_by_languages(segments: list, languages: list[str] | None = None) -> list:
-    """선택된 언어에 해당하는 세그먼트만 남긴다.
-
-    languages가 None이거나 빈 리스트이면 필터링하지 않는다.
-    STT 모델이 한국어를 영어/기타 문자로 오인식하는 경우가 빈번하므로
-    실시간 STT에서는 필터링을 적용하지 않는다.
-    환각(hallucination) 제거는 백엔드의 WHISPER_HALLUCINATIONS에서 처리한다.
-    """
-    return segments
-
-
 async def _ensure_diarizer_pipeline():
     """화자 구분 파이프라인을 lazy load한다. 이미 로드됐으면 즉시 반환."""
     if app.state.diarizer_pipeline is not None:
@@ -322,7 +299,7 @@ async def _ensure_diarizer_pipeline():
         from app.diarization.speaker import SpeakerDiarizer
         _loader = SpeakerDiarizer()
         await _loader.load(hf_token=settings.HF_TOKEN)
-        app.state.diarizer_pipeline = _loader._pipeline
+        app.state.diarizer_pipeline = _loader.pipeline
         logger.info("화자 구분 모델 lazy load 완료")
         return app.state.diarizer_pipeline
     except Exception as e:
@@ -349,13 +326,10 @@ def _get_meeting_diarizer(meeting_id: int | None, diarization_config: dict | Non
                       if k in ('similarity_threshold', 'merge_threshold', 'max_embeddings_per_speaker')}
         diarizers[meeting_id] = make_meeting_diarizer(meeting_id, pipeline, **kwargs)
     elif diarization_config:
-        d = diarizers[meeting_id]
-        if 'similarity_threshold' in diarization_config:
-            d._similarity_threshold = diarization_config['similarity_threshold']
-        if 'merge_threshold' in diarization_config:
-            d._merge_threshold = diarization_config['merge_threshold']
-        if 'max_embeddings_per_speaker' in diarization_config:
-            d._max_embeddings = diarization_config['max_embeddings_per_speaker']
+        config_kwargs = {k: v for k, v in diarization_config.items()
+                         if k in ('similarity_threshold', 'merge_threshold', 'max_embeddings_per_speaker')}
+        if config_kwargs:
+            diarizers[meeting_id].update_config(**config_kwargs)
     return diarizers[meeting_id]
 
 
@@ -372,7 +346,6 @@ async def transcribe(request: TranscribeRequest) -> TranscribeResponse:
         { segments: [TranscriptSegment, ...] }
     """
     t0 = time.monotonic()
-    from fastapi import HTTPException
     adapter = app.state.stt_adapter
     if adapter is None:
         raise HTTPException(status_code=503, detail="STT 모델 변경 중입니다. 잠시 후 다시 시도하세요.")
@@ -394,7 +367,6 @@ async def transcribe(request: TranscribeRequest) -> TranscribeResponse:
     langs = request.languages
     async with app.state.gpu_lock:
         segments = await adapter.transcribe(audio_bytes, languages=langs)
-        segments = _filter_by_languages(segments, langs)
         if diarizer and segments:
             try:
                 diarization_result = await diarizer.diarize(audio_bytes, offset_ms=request.offset_ms)
@@ -419,8 +391,6 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
     """
     t0 = time.monotonic()
     logger.info("[STT] /transcribe-file 요청 (engine=%s, file=%s)", settings.STT_ENGINE, request.file_path)
-    from fastapi import HTTPException
-    import os
 
     adapter = app.state.stt_adapter
     if adapter is None:
@@ -467,7 +437,6 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
             del file_adapter
             import gc; gc.collect()
 
-    segments = _filter_by_languages(segments, request.languages)
     print(f"[transcribe-file] STT 세그먼트 {len(segments)}개", flush=True)
 
     # 3. 화자 분리 — WhisperX(ASR+alignment+diarization) 시도, 실패 시 pyannote 배치 폴백
@@ -607,15 +576,6 @@ async def ws_transcribe(websocket: WebSocket):
             audio_bytes = await websocket.receive_bytes()
             segments = await adapter.transcribe(audio_bytes)
 
-            # 화자 구분 적용
-            diarizer = app.state.diarizer
-            if diarizer and diarizer.is_loaded and segments:
-                try:
-                    diarization = await diarizer.diarize(audio_bytes)
-                    segments = diarizer.merge_with_segments(segments, diarization)
-                except Exception:
-                    pass
-
             for seg in segments:
                 seq += 1
                 await websocket.send_json({
@@ -675,9 +635,6 @@ class ActionItemsResponse(BaseModel):
 
 # ── 화자 관리 엔드포인트 ──────────────────────────────────────────────────────
 
-_CLI_LLM_PROVIDERS = CLI_LLM_PROVIDERS
-
-
 def _find_env_file() -> str | None:
     """pydantic-settings와 동일한 순서로 .env 파일을 탐색한다."""
     from pathlib import Path
@@ -725,7 +682,7 @@ def _mask_token(token: str) -> str:
 
 def _llm_token_and_url(provider: str) -> tuple[str, str]:
     """프로바이더에 따른 마스킹된 토큰과 base_url을 반환한다."""
-    if provider in _CLI_LLM_PROVIDERS:
+    if provider in CLI_LLM_PROVIDERS:
         return "", ""
     if provider == "openai":
         return _mask_token(settings.OPENAI_API_KEY), settings.OPENAI_BASE_URL
@@ -754,12 +711,12 @@ async def update_llm_settings(request: UpdateLlmSettingsRequest) -> dict:
     """LLM 설정을 런타임에 변경하고 클라이언트를 재생성한다."""
     if request.provider is not None:
         settings.LLM_PROVIDER = request.provider
-    if request.auth_token is not None and settings.LLM_PROVIDER not in _CLI_LLM_PROVIDERS:
+    if request.auth_token is not None and settings.LLM_PROVIDER not in CLI_LLM_PROVIDERS:
         if settings.LLM_PROVIDER == "openai":
             settings.OPENAI_API_KEY = request.auth_token
         else:
             settings.ANTHROPIC_AUTH_TOKEN = request.auth_token
-    if request.base_url is not None and settings.LLM_PROVIDER not in _CLI_LLM_PROVIDERS:
+    if request.base_url is not None and settings.LLM_PROVIDER not in CLI_LLM_PROVIDERS:
         if settings.LLM_PROVIDER == "openai":
             settings.OPENAI_BASE_URL = request.base_url
         else:
@@ -785,7 +742,7 @@ async def update_llm_settings(request: UpdateLlmSettingsRequest) -> dict:
         if request.auth_token is not None:
             env_updates["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
         env_updates["OPENAI_BASE_URL"] = settings.OPENAI_BASE_URL
-    elif settings.LLM_PROVIDER not in _CLI_LLM_PROVIDERS:
+    elif settings.LLM_PROVIDER not in CLI_LLM_PROVIDERS:
         if request.auth_token is not None:
             env_updates["ANTHROPIC_AUTH_TOKEN"] = settings.ANTHROPIC_AUTH_TOKEN
         env_updates["ANTHROPIC_BASE_URL"] = settings.ANTHROPIC_BASE_URL
@@ -818,7 +775,7 @@ async def test_llm_connection(request: TestLlmRequest) -> dict:
     test_settings = settings.model_copy()
     test_settings.LLM_PROVIDER = request.provider
     test_settings.LLM_MODEL = request.model
-    if request.provider not in _CLI_LLM_PROVIDERS:
+    if request.provider not in CLI_LLM_PROVIDERS:
         if request.provider == "openai":
             if request.auth_token:
                 test_settings.OPENAI_API_KEY = request.auth_token
@@ -880,7 +837,6 @@ async def get_speakers(meeting_id: int) -> dict:
 @app.put("/speakers/{speaker_id}")
 async def rename_speaker(speaker_id: str, meeting_id: int, request: RenameSpeakerRequest) -> dict:
     """화자에 이름을 부여한다."""
-    from fastapi import HTTPException
     import urllib.parse
     decoded_id = urllib.parse.unquote(speaker_id)
     diarizer = _get_meeting_diarizer(meeting_id)

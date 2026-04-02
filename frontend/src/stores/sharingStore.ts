@@ -48,9 +48,10 @@ export const useSharingStore = create<SharingState>()((set) => ({
     }),
 
   removeParticipant: (userId) =>
-    set((state) => ({
-      participants: state.participants.filter((p) => p.user_id !== userId),
-    })),
+    set((state) => {
+      if (!state.participants.some((p) => p.user_id === userId)) return state
+      return { participants: state.participants.filter((p) => p.user_id !== userId) }
+    }),
 
   transferHost: (newHostUserId) =>
     set((state) => {

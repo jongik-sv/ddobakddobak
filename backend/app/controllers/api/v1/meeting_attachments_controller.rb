@@ -1,6 +1,8 @@
 module Api
   module V1
     class MeetingAttachmentsController < ApplicationController
+      include MeetingLookup
+
       before_action :authenticate_user!
       before_action :set_meeting
       before_action :set_attachment, only: %i[update destroy download reorder]
@@ -65,12 +67,6 @@ module Api
 
       private
 
-      def set_meeting
-        @meeting = Meeting.find(params[:meeting_id])
-      rescue ActiveRecord::RecordNotFound
-        render json: { error: "Meeting not found" }, status: :not_found
-      end
-
       def set_attachment
         @attachment = @meeting.meeting_attachments.find_by(id: params[:id])
         render json: { error: "Attachment not found" }, status: :not_found unless @attachment
@@ -107,7 +103,7 @@ module Api
         if attachment.save
           render json: { attachment: attachment_json(attachment) }, status: :created
         else
-          File.delete(dest_path) if File.exist?(dest_path)
+          FileUtils.rm_f(dest_path)
           render json: { errors: attachment.errors.full_messages }, status: :unprocessable_entity
         end
       end

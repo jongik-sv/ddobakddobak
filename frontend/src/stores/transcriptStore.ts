@@ -33,7 +33,13 @@ const initialState = {
 export const useTranscriptStore = create<TranscriptState>()((set) => ({
   ...initialState,
 
-  setPartial: (data) => set({ partial: data }),
+  setPartial: (data) =>
+    set((state) =>
+      state.partial?.content === data.content &&
+      state.partial?.speaker_label === data.speaker_label
+        ? state
+        : { partial: data },
+    ),
 
   loadFinals: (data) => {
     const appliedIds = new Set<number>()
@@ -46,14 +52,14 @@ export const useTranscriptStore = create<TranscriptState>()((set) => ({
 
   addFinal: (data) =>
     set((state) => {
-      // 이미 applied로 알려진 ID면 applied: true로 설정 (타이밍 이슈 방지)
       const finalData = state.appliedIds.has(data.id)
         ? { ...data, applied: true }
         : data
-      const updated = [...state.finals, finalData]
-      updated.sort(
-        (a, b) => a.started_at_ms - b.started_at_ms
-      )
+      const finals = state.finals
+      // Insert at correct position (transcripts arrive mostly in order)
+      let i = finals.length
+      while (i > 0 && finals[i - 1].started_at_ms > finalData.started_at_ms) i--
+      const updated = [...finals.slice(0, i), finalData, ...finals.slice(i)]
       return { finals: updated, partial: null }
     }),
 
@@ -64,6 +70,7 @@ export const useTranscriptStore = create<TranscriptState>()((set) => ({
 
   markApplied: (ids) =>
     set((state) => {
+      if (ids.every((id) => state.appliedIds.has(id))) return state
       const newAppliedIds = new Set(state.appliedIds)
       const idSet = new Set(ids)
       ids.forEach((id) => newAppliedIds.add(id))

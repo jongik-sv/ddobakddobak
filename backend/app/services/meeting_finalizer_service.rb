@@ -8,7 +8,7 @@ class MeetingFinalizerService
     transcripts = @meeting.transcripts.order(:sequence_number)
     return if transcripts.empty?
 
-    payload = transcripts_payload(transcripts)
+    payload = Transcript.to_sidecar_payload(transcripts)
 
     # Action Items 추출 (structured JSON)
     items_result = @client.summarize_action_items(payload)
@@ -29,9 +29,4 @@ class MeetingFinalizerService
     end
   end
 
-  def transcripts_payload(transcripts)
-    transcripts.map do |t|
-      { speaker: t.speaker_label, text: t.content, started_at_ms: t.started_at_ms }
-    end
-  end
 end

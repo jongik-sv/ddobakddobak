@@ -104,16 +104,13 @@ class FileTranscriptionJob < ApplicationJob
     transcripts = meeting.transcripts.order(:sequence_number)
     return if transcripts.empty?
 
-    payload = transcripts.map do |t|
-      { speaker: t.speaker_label, text: t.content, started_at_ms: t.started_at_ms }
-    end
+    payload = Transcript.to_sidecar_payload(transcripts)
 
-    template = PromptTemplate.find_by(meeting_type: meeting.meeting_type)
     result = SidecarClient.new.refine_notes(
       "", payload,
       meeting_title: meeting.title,
       meeting_type: meeting.meeting_type,
-      sections_prompt: template&.sections_prompt
+      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type)
     )
     notes_markdown = result["notes_markdown"]
 

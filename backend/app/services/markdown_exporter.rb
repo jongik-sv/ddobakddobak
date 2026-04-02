@@ -48,7 +48,7 @@ class MarkdownExporter
   end
 
   def render_summary
-    summary = pick_summary
+    summary = @meeting.active_summary
     return nil unless summary
 
     # notes_markdown이 있으면 우선 사용
@@ -130,11 +130,6 @@ class MarkdownExporter
     end
 
     lines.join("\n")
-  end
-
-  def pick_summary
-    @meeting.summaries.find { |s| s.summary_type == "final" } ||
-      @meeting.summaries.select { |s| s.summary_type == "realtime" }.max_by(&:generated_at)
   end
 
   def append_bullet_section(lines, heading, items)

@@ -3,6 +3,8 @@ require "yaml"
 module Api
   module V1
     class SettingsController < ApplicationController
+      include TokenMasking
+
       before_action :authenticate_user!
 
       SETTINGS_PATH = Rails.root.join("..", "settings.yaml").to_s.freeze
@@ -311,10 +313,6 @@ module Api
         params
       end
 
-      def mask_token(token)
-        return "****" if token.blank? || token.length <= 8
-        "#{token[0..3]}#{"*" * (token.length - 8)}#{token[-4..]}"
-      end
     end
   end
 end

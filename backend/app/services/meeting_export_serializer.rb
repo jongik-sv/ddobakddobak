@@ -39,7 +39,7 @@ class MeetingExportSerializer
   end
 
   def build_summary
-    summary = pick_summary
+    summary = @meeting.active_summary
     return nil unless summary
 
     if summary.notes_markdown.present?
@@ -80,11 +80,6 @@ class MeetingExportSerializer
         content:       t.content
       }
     end
-  end
-
-  def pick_summary
-    @meeting.summaries.find { |s| s.summary_type == "final" } ||
-      @meeting.summaries.select { |s| s.summary_type == "realtime" }.max_by(&:generated_at)
   end
 
   def parse_field(value)

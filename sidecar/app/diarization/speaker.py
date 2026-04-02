@@ -71,6 +71,25 @@ class SpeakerDiarizer:
     def is_loaded(self) -> bool:
         return self._is_loaded
 
+    @property
+    def pipeline(self) -> Any:
+        """공유 가능한 ML 파이프라인 참조."""
+        return self._pipeline
+
+    def update_config(
+        self,
+        similarity_threshold: float | None = None,
+        merge_threshold: float | None = None,
+        max_embeddings_per_speaker: int | None = None,
+    ) -> None:
+        """런타임에 분리 설정을 변경한다."""
+        if similarity_threshold is not None:
+            self._similarity_threshold = similarity_threshold
+        if merge_threshold is not None:
+            self._merge_threshold = merge_threshold
+        if max_embeddings_per_speaker is not None:
+            self._max_embeddings = max_embeddings_per_speaker
+
     async def load(self, hf_token: str = "") -> None:
         """pyannote.audio Pipeline을 로드한다."""
         try:

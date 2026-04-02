@@ -26,15 +26,15 @@ class Folder < ApplicationRecord
     all_folders = ordered.includes(:tags).to_a
     meeting_counts = Meeting.where(folder_id: all_folders.map(&:id))
                             .group(:folder_id).count
-    roots = all_folders.select { |f| f.parent_id.nil? }
-    build_tree(roots, all_folders, meeting_counts)
+    children_by_parent = all_folders.group_by(&:parent_id)
+    roots = children_by_parent[nil] || []
+    build_tree(roots, children_by_parent, meeting_counts)
   end
 
-  def self.build_tree(nodes, all_folders, meeting_counts)
+  def self.build_tree(nodes, children_by_parent, meeting_counts)
     nodes.map do |node|
-      children = all_folders.select { |f| f.parent_id == node.id }
-      child_nodes = build_tree(children, all_folders, meeting_counts)
-      # 직속 회의 수 + 모든 하위 폴더의 총 회의 수
+      children = children_by_parent[node.id] || []
+      child_nodes = build_tree(children, children_by_parent, meeting_counts)
       total_meeting_count = (meeting_counts[node.id] || 0) +
                             child_nodes.sum { |c| c[:meeting_count] }
       {

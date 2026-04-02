@@ -1,6 +1,8 @@
 module Api
   module V1
     class MeetingsController < ApplicationController
+      include MeetingLookup
+
       before_action :authenticate_user!
       before_action :set_meeting, only: %i[show update destroy start stop reopen reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes]
 
@@ -19,7 +21,8 @@ module Api
         end
 
         total    = meetings.count
-        meetings = meetings.order(created_at: :desc)
+        meetings = meetings.includes(:creator, :tags, :meeting_attachments)
+                           .order(created_at: :desc)
                            .limit(pagination_per)
                            .offset((pagination_page - 1) * pagination_per)
 
@@ -129,9 +132,7 @@ module Api
       end
 
       def destroy
-        if @meeting.audio_file_path.present? && File.exist?(@meeting.audio_file_path)
-          File.delete(@meeting.audio_file_path)
-        end
+        FileUtils.rm_f(@meeting.audio_file_path) if @meeting.audio_file_path.present?
         @meeting.destroy
         head :no_content
       end
@@ -177,10 +178,7 @@ module Api
         @meeting.blocks.destroy_all
         @meeting.meeting_attachments.destroy_all
 
-        # 오디오 파일 삭제
-        if @meeting.audio_file_path.present? && File.exist?(@meeting.audio_file_path)
-          File.delete(@meeting.audio_file_path)
-        end
+        FileUtils.rm_f(@meeting.audio_file_path) if @meeting.audio_file_path.present?
 
         @meeting.update!(
           status: :pending,
@@ -240,8 +238,7 @@ module Api
       end
 
       def summary
-        summary = @meeting.summaries.find_by(summary_type: "final") ||
-                  @meeting.summaries.order(generated_at: :desc).first
+        summary = @meeting.active_summary
 
         if summary
           render json: serialize_summary_hash(summary)
@@ -254,7 +251,7 @@ module Api
         feedback_text = params[:feedback]
         return render json: { error: "Feedback is required" }, status: :unprocessable_entity if feedback_text.blank?
 
-        current_notes = current_notes_markdown(@meeting)
+        current_notes = @meeting.current_notes_markdown
         # 기존 회의록이 없으면 빈 문자열로 시작 (메모 반영 등에서 새로 생성 가능)
         current_notes = "" if current_notes.blank?
 
@@ -344,9 +341,9 @@ module Api
           return render json: { error: "트랜스크립트가 없습니다" }, status: :unprocessable_entity
         end
 
-        current_notes = current_notes_markdown(@meeting)
-        payload = transcripts.map { |t| { speaker: t.speaker_label, text: t.content, started_at_ms: t.started_at_ms } }
-        sections_prompt = sections_prompt_for(@meeting)
+        current_notes = @meeting.current_notes_markdown
+        payload = Transcript.to_sidecar_payload(transcripts)
+        sections_prompt = PromptTemplate.sections_prompt_for(@meeting.meeting_type)
 
         result = SidecarClient.new.build_prompt(
           current_notes, payload,
@@ -364,12 +361,6 @@ module Api
       end
 
       private
-
-      def set_meeting
-        @meeting = Meeting.find(params[:id])
-      rescue ActiveRecord::RecordNotFound
-        render json: { error: "Meeting not found" }, status: :not_found
-      end
 
       def pagination_page
         (params[:page] || 1).to_i
@@ -390,29 +381,20 @@ module Api
         params.fetch(key, "true") != "false"
       end
 
-      def current_notes_markdown(meeting)
-        latest = meeting.summaries.find_by(summary_type: "final") ||
-                 meeting.summaries.order(generated_at: :desc).first
-        latest&.notes_markdown.to_s
-      end
-
-      def sections_prompt_for(meeting)
-        template = PromptTemplate.find_by(meeting_type: meeting.meeting_type)
-        template&.sections_prompt || PromptTemplate::DEFAULT_TEMPLATES.dig(meeting.meeting_type, :sections_prompt)
-      end
-
       def latest_summary_type
         @meeting.completed? ? "final" : "realtime"
       end
 
-      # summary 액션과 동일한 레코드를 반환하거나, 없으면 새로 생성
       def find_or_create_active_summary
-        @meeting.summaries.find_by(summary_type: "final") ||
-          @meeting.summaries.order(generated_at: :desc).first ||
+        @meeting.active_summary ||
           @meeting.summaries.build(summary_type: latest_summary_type)
       end
 
       def meeting_json(meeting, full: false)
+        attachment_counts = meeting.meeting_attachments.loaded? ?
+          meeting.meeting_attachments.group_by(&:category).transform_values(&:size) :
+          meeting.meeting_attachments.group(:category).count
+
         json = {
           id: meeting.id,
           title: meeting.title,
@@ -425,23 +407,23 @@ module Api
           brief_summary: meeting.brief_summary,
           source: meeting.source,
           transcription_progress: meeting.transcription_progress,
-          has_audio_file: meeting.audio_file_path.present? && File.exist?(meeting.audio_file_path.to_s),
-          audio_duration_ms: audio_duration_ms(meeting),
-          last_transcript_end_ms: meeting.transcripts.maximum(:ended_at_ms).to_i,
-          last_sequence_number: meeting.transcripts.maximum(:sequence_number).to_i,
+          has_audio_file: meeting.audio_file_path.present?,
           folder_id: meeting.folder_id,
           memo: meeting.memo,
           tags: meeting.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
           attachment_counts: {
-            agenda: meeting.meeting_attachments.where(category: "agenda").count,
-            reference: meeting.meeting_attachments.where(category: "reference").count,
-            minutes: meeting.meeting_attachments.where(category: "minutes").count
+            agenda: attachment_counts["agenda"] || 0,
+            reference: attachment_counts["reference"] || 0,
+            minutes: attachment_counts["minutes"] || 0
           },
           created_at: meeting.created_at,
           updated_at: meeting.updated_at
         }
 
         if full
+          json[:audio_duration_ms] = audio_duration_ms(meeting)
+          json[:last_transcript_end_ms] = meeting.transcripts.maximum(:ended_at_ms).to_i
+          json[:last_sequence_number] = meeting.transcripts.maximum(:sequence_number).to_i
           json[:transcripts]   = serialize_transcripts(meeting)
           json[:summary]       = serialize_summary(meeting)
           json[:action_items]  = serialize_action_items(meeting)
@@ -464,8 +446,7 @@ module Api
       end
 
       def serialize_summary(meeting)
-        summary = meeting.summaries.find_by(summary_type: "final") ||
-                  meeting.summaries.order(generated_at: :desc).first
+        summary = meeting.active_summary
         return nil unless summary
 
         serialize_summary_hash(summary)

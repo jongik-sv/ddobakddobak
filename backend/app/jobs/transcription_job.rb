@@ -1,11 +1,10 @@
-# Whisper가 조용한 구간에 생성하는 대표적 환각 문구
-WHISPER_HALLUCINATIONS = %w[
-  감사합니다 고맙습니다 감사합니다. 고맙습니다. 수고하셨습니다 수고하셨습니다.
-  구독과\ 좋아요 시청해\ 주셔서\ 감사합니다 MBC 뉴스 KBS 뉴스
-].freeze
-
 class TranscriptionJob < ApplicationJob
   queue_as :real_time
+
+  WHISPER_HALLUCINATIONS = %w[
+    감사합니다 고맙습니다 감사합니다. 고맙습니다. 수고하셨습니다 수고하셨습니다.
+    구독과\ 좋아요 시청해\ 주셔서\ 감사합니다 MBC 뉴스 KBS 뉴스
+  ].freeze
 
   def perform(meeting_id:, audio_data:, sequence: 0, offset_ms: 0, diarization_config: nil, languages: nil, audio_source: "mic")
     meeting = Meeting.find(meeting_id)

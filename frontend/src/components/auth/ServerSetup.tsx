@@ -23,7 +23,6 @@ export function ServerSetup({ onComplete }: ServerSetupProps) {
   const [healthStatus, setHealthStatus] = useState<HealthStatus>('idle')
   const [healthError, setHealthError] = useState<string | null>(null)
 
-  // 마운트 시 localStorage에서 기존 설정 복원
   useEffect(() => {
     const savedMode = localStorage.getItem('mode')
     const savedUrl = localStorage.getItem('server_url')
@@ -33,7 +32,6 @@ export function ServerSetup({ onComplete }: ServerSetupProps) {
 
   const handleUrlChange = (value: string) => {
     setServerUrl(value)
-    // URL 변경 시 헬스체크 상태 리셋
     if (healthStatus !== 'idle') {
       setHealthStatus('idle')
       setHealthError(null)
@@ -85,13 +83,11 @@ export function ServerSetup({ onComplete }: ServerSetupProps) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
       <div className="w-full max-w-lg bg-white rounded-2xl shadow-lg p-8">
-        {/* 헤더 */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-slate-800 mb-2">또박또박</h1>
           <p className="text-slate-500">AI 회의록 - 실행 모드를 선택하세요</p>
         </div>
 
-        {/* 모드 선택 카드 */}
         <div className="grid grid-cols-2 gap-4 mb-6">
           <button
             type="button"
@@ -132,7 +128,6 @@ export function ServerSetup({ onComplete }: ServerSetupProps) {
           </button>
         </div>
 
-        {/* 서버 URL 입력 영역 (서버 모드일 때만) */}
         {mode === 'server' && (
           <div className="mb-6 space-y-4">
             <div>
@@ -169,7 +164,6 @@ export function ServerSetup({ onComplete }: ServerSetupProps) {
               </div>
             </div>
 
-            {/* 헬스체크 결과 */}
             <div role="status" aria-live="polite">
               {healthStatus === 'checking' && (
                 <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -193,7 +187,6 @@ export function ServerSetup({ onComplete }: ServerSetupProps) {
           </div>
         )}
 
-        {/* 시작하기 버튼 */}
         <button
           type="button"
           onClick={handleComplete}

@@ -59,9 +59,7 @@ class MeetingAttachment < ApplicationRecord
   end
 
   def remove_file_from_disk
-    return unless file? && file_path.present? && File.exist?(file_path)
-    File.delete(file_path)
-  rescue StandardError => e
-    Rails.logger.error "[MeetingAttachment] Failed to delete file #{file_path}: #{e.message}"
+    return unless file? && file_path.present?
+    FileUtils.rm_f(file_path)
   end
 end

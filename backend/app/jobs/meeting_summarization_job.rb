@@ -26,14 +26,14 @@ class MeetingSummarizationJob < ApplicationJob
     applied_ids = new_transcripts.pluck(:id)
     channel = meeting.transcription_stream
 
-    current_notes = current_notes_markdown(meeting)
-    payload = transcripts_payload(new_transcripts)
+    current_notes = meeting.current_notes_markdown
+    payload = Transcript.to_sidecar_payload(new_transcripts)
 
     result = SidecarClient.new.refine_notes(
       current_notes, payload,
       meeting_title: meeting.title,
       meeting_type: meeting.meeting_type,
-      sections_prompt: sections_prompt_for(meeting)
+      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type)
     )
     notes_markdown = result["notes_markdown"]
 
@@ -62,14 +62,14 @@ class MeetingSummarizationJob < ApplicationJob
     transcripts = meeting.transcripts.order(:sequence_number)
     return if transcripts.empty?
 
-    current_notes = current_notes_markdown(meeting)
-    payload = transcripts_payload(transcripts)
+    current_notes = meeting.current_notes_markdown
+    payload = Transcript.to_sidecar_payload(transcripts)
 
     result = SidecarClient.new.refine_notes(
       current_notes, payload,
       meeting_title: meeting.title,
       meeting_type: meeting.meeting_type,
-      sections_prompt: sections_prompt_for(meeting)
+      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type)
     )
     notes_markdown = result["notes_markdown"]
     return if notes_markdown.blank?
@@ -88,19 +88,4 @@ class MeetingSummarizationJob < ApplicationJob
     Rails.logger.error "[MeetingSummarizationJob] final meeting=#{meeting.id} error=#{e.message}"
   end
 
-  def current_notes_markdown(meeting)
-    latest = meeting.summaries.order(generated_at: :desc).first
-    latest&.notes_markdown.to_s
-  end
-
-  def transcripts_payload(transcripts)
-    transcripts.map do |t|
-      { speaker: t.speaker_label, text: t.content, started_at_ms: t.started_at_ms }
-    end
-  end
-
-  def sections_prompt_for(meeting)
-    template = PromptTemplate.find_by(meeting_type: meeting.meeting_type)
-    template&.sections_prompt || PromptTemplate::DEFAULT_TEMPLATES.dig(meeting.meeting_type, :sections_prompt)
-  end
 end

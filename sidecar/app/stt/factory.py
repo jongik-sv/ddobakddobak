@@ -79,14 +79,6 @@ def create_stt_adapter(engine: str | None = None) -> SttAdapter:
         from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter
         return Qwen3TransformersAdapter()
 
-    if engine == "qwen3_asr_8bit":
-        from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter
-        return Qwen3TransformersAdapter(quantization="8bit")
-
-    if engine == "qwen3_asr_6bit":
-        from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter
-        return Qwen3TransformersAdapter(quantization="6bit")
-
     if engine == "whisper_cpp":
         from app.stt.whisper_adapter import WhisperAdapter
         return WhisperAdapter()

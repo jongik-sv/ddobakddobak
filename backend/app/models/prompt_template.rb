@@ -31,4 +31,9 @@ class PromptTemplate < ApplicationRecord
   end
 
   DEFAULT_TEMPLATES = load_default_templates.freeze
+
+  def self.sections_prompt_for(meeting_type)
+    template = find_by(meeting_type: meeting_type)
+    template&.sections_prompt || DEFAULT_TEMPLATES.dig(meeting_type, :sections_prompt)
+  end
 end

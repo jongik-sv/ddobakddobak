@@ -40,6 +40,15 @@ class Meeting < ApplicationRecord
     active_participants.find_by(role: MeetingParticipant::ROLE_HOST)
   end
 
+  def active_summary
+    summaries.find_by(summary_type: "final") ||
+      summaries.order(generated_at: :desc).first
+  end
+
+  def current_notes_markdown
+    active_summary&.notes_markdown.to_s
+  end
+
   # notes_markdown에서 의미 있는 요약 텍스트를 추출하여 brief_summary 컬럼에 저장
   def refresh_brief_summary!(notes_markdown = nil)
     notes_markdown ||= (summaries.find_by(summary_type: "final") ||

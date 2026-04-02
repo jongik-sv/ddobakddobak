@@ -1,6 +1,8 @@
 module Api
   module V1
     class BlocksController < ApplicationController
+      include MeetingLookup
+
       before_action :authenticate_user!
       before_action :set_meeting
       before_action :set_block, only: %i[update destroy reorder]
@@ -54,12 +56,6 @@ module Api
       end
 
       private
-
-      def set_meeting
-        @meeting = Meeting.find(params[:meeting_id])
-      rescue ActiveRecord::RecordNotFound
-        render json: { error: "Meeting not found" }, status: :not_found
-      end
 
       def set_block
         @block = @meeting.blocks.find_by(id: params[:id])
