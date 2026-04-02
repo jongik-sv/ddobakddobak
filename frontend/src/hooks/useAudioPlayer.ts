@@ -79,7 +79,7 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
     // 서버 모드: fetch로 blob을 가져와 objectURL 생성 (Authorization 헤더 필요)
     // 로컬 모드: 기존 방식 유지 (직접 URL 설정)
     if (getMode() === 'server') {
-      fetch(audioUrl, { headers: { ...getAuthHeaders() } })
+      fetch(audioUrl, { headers: getAuthHeaders() })
         .then((res) => {
           if (cancelled || !res.ok) return null
           return res.blob()

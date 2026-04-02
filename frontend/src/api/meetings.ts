@@ -146,7 +146,7 @@ export async function uploadAudio(id: number, blob: Blob): Promise<void> {
   // ky 대신 fetch를 직접 사용
   await fetch(`${getApiBaseUrl()}/meetings/${id}/audio`, {
     method: 'POST',
-    headers: { ...getAuthHeaders() },
+    headers: getAuthHeaders(),
     body: formData,
   })
 }
@@ -163,7 +163,7 @@ export async function uploadAudioFile(data: {
 
   const res = await fetch(`${getApiBaseUrl()}/meetings/upload_audio`, {
     method: 'POST',
-    headers: { ...getAuthHeaders() },
+    headers: getAuthHeaders(),
     body: formData,
   })
   if (!res.ok) {

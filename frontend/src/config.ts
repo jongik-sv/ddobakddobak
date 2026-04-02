@@ -96,12 +96,6 @@ export function getWsUrl(): string {
     : import.meta.env.VITE_WS_URL || cfg.api.ws_url
 }
 
-// ── 하위 호환용 상수 (기존 코드 사용처 대응) ──────
-// 주의: 이 상수들은 모듈 로드 시점의 값으로 고정된다.
-// ServerSetup 완료 후 모드가 변경되면 앱이 리로드/리마운트되어야 반영된다.
-export const API_BASE_URL = getApiBaseUrl()
-export const WS_URL = getWsUrl()
-
 // ── STT 엔진 라벨 ─────────────────────────────
 export const ENGINE_LABELS: Record<string, string> = Object.fromEntries(
   Object.entries(cfg.stt_engines).map(([k, v]) => [k, v.label]),

@@ -44,7 +44,7 @@ export async function createFileAttachment(
 
   const res = await fetch(`${getApiBaseUrl()}/meetings/${meetingId}/attachments`, {
     method: 'POST',
-    headers: { ...getAuthHeaders() },
+    headers: getAuthHeaders(),
     body: formData,
   })
   if (!res.ok) {

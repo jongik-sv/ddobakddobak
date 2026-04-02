@@ -30,10 +30,15 @@ class MeetingShareService
     ensure_host!(meeting, user)
 
     ActiveRecord::Base.transaction do
-      # update_all はコールバックをスキップするため、個別に更新して broadcast_participant_left を発火
-      meeting.meeting_participants.where(left_at: nil).to_a.each { |p| p.update!(left_at: Time.current) }
+      meeting.active_participants.update_all(left_at: Time.current)
       meeting.update!(share_code: nil)
     end
+
+    # 개별 participant_left 대신 단일 sharing_stopped 이벤트로 클라이언트 일괄 정리
+    ActionCable.server.broadcast(
+      meeting.transcription_stream,
+      { type: "sharing_stopped" }
+    )
   end
 
   # 공유 코드로 회의 참여 (멱등)
