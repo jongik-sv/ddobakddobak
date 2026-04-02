@@ -19,7 +19,7 @@
 ### TSK-01-01: Devise JWT 인증 구현
 - category: feature
 - domain: backend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - tags: auth, jwt, devise

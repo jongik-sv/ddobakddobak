@@ -2,6 +2,18 @@ Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
   mount ActionCable.server => "/cable"
 
+  # ── Authentication (Devise + JWT) ──
+  devise_for :users, path: "auth",
+    path_names: { sign_in: "login", sign_out: "logout" },
+    controllers: { sessions: "auth/sessions" },
+    defaults: { format: :json }
+
+  # Refresh Token endpoint (inside devise_scope for mapping)
+  devise_scope :user do
+    post "auth/refresh", to: "auth/sessions#refresh"
+  end
+
+  # ── API v1 ──
   namespace :api do
     namespace :v1 do
       get "health", to: "health#show"

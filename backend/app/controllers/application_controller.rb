@@ -8,12 +8,27 @@ class ApplicationController < ActionController::API
   private
 
   def authenticate_user!
-    @current_user = default_user
+    if server_mode?
+      # Server mode: JWT authentication via Warden/devise-jwt
+      warden.authenticate!(scope: :user)
+      @current_user = warden.user(:user)
+    else
+      # Local mode: existing default_user flow
+      @current_user = default_user
+    end
     true
   end
 
   def current_user
-    @current_user ||= default_user
+    @current_user ||= if server_mode?
+      warden.user(:user)
+    else
+      default_user
+    end
+  end
+
+  def server_mode?
+    ENV["SERVER_MODE"] == "true"
   end
 
   def record_not_found(exception)
