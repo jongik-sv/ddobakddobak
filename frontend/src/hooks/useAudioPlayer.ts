@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { API_BASE_URL } from '../config'
-import { apiClient } from '../api/client'
+import { getApiBaseUrl, getMode } from '../config'
+import { apiClient, getAuthHeaders } from '../api/client'
 import { downloadBlob } from '../lib/download'
 
 export interface AudioPlayerResult {
@@ -31,7 +31,8 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
 
   useEffect(() => {
     let cancelled = false
-    const audioUrl = `${API_BASE_URL}/meetings/${meetingId}/audio`
+    let blobUrl: string | null = null
+    const audioUrl = `${getApiBaseUrl()}/meetings/${meetingId}/audio`
 
     // Audio 엘리먼트를 동기적으로 생성 (cleanup에서 확실히 접근 가능)
     const audio = new Audio()
@@ -75,14 +76,30 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
       })
       .catch(() => {})
 
-    // 오디오 엘리먼트 src 설정 (peaks와 병렬로 로드)
-    audio.src = audioUrl
+    // 서버 모드: fetch로 blob을 가져와 objectURL 생성 (Authorization 헤더 필요)
+    // 로컬 모드: 기존 방식 유지 (직접 URL 설정)
+    if (getMode() === 'server') {
+      fetch(audioUrl, { headers: { ...getAuthHeaders() } })
+        .then((res) => {
+          if (cancelled || !res.ok) return null
+          return res.blob()
+        })
+        .then((blob) => {
+          if (cancelled || !blob) return
+          blobUrl = URL.createObjectURL(blob)
+          audio.src = blobUrl
+        })
+        .catch(() => {})
+    } else {
+      audio.src = audioUrl
+    }
 
     return () => {
       cancelled = true
       audio.pause()
       audio.removeAttribute('src')
       audio.load()
+      if (blobUrl) URL.revokeObjectURL(blobUrl)
       audioRef.current = null
       setIsReady(false)
       setIsPlaying(false)

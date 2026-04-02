@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import { createConsumer } from '@rails/actioncable'
-import { WS_URL } from '../config'
+import { createAuthenticatedConsumer } from '../lib/actionCableAuth'
 
 type TranscriptionStatus = 'processing' | 'complete' | 'error'
 
@@ -20,7 +19,7 @@ export function useFileTranscriptionProgress(meetingId: number | null): FileTran
   useEffect(() => {
     if (!meetingId) return
 
-    const consumer = createConsumer(WS_URL)
+    const consumer = createAuthenticatedConsumer()
 
     const subscription = consumer.subscriptions.create(
       { channel: 'TranscriptionChannel', meeting_id: meetingId },

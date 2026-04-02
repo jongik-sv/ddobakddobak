@@ -1,7 +1,20 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import App from './App'
+
+// mermaidBlock가 createReactBlockSpec을 사용하므로 직접 모킹
+vi.mock('./components/meeting/mermaidBlock', async () => {
+  const { BlockNoteSchema, defaultBlockSpecs } = await import('@blocknote/core')
+  return {
+    editorSchema: BlockNoteSchema.create({ blockSpecs: defaultBlockSpecs }),
+    codeBlocksToMermaid: (blocks: unknown[]) => blocks,
+  }
+})
+
+vi.mock('./hooks/useDeepLink', () => ({
+  useDeepLink: vi.fn(),
+}))
 
 vi.mock('./components/editor/MeetingEditor', () => ({
   MeetingEditor: () => null,
@@ -10,20 +23,6 @@ vi.mock('./components/editor/MeetingEditor', () => ({
 
 vi.mock('./hooks/useSttBlockInserter', () => ({
   useSttBlockInserter: vi.fn(),
-}))
-
-vi.mock('@blocknote/react', () => ({
-  useCreateBlockNote: vi.fn(() => ({ document: [] })),
-  createReactBlockSpec: vi.fn(() => ({})),
-}))
-
-vi.mock('@blocknote/mantine', () => ({
-  BlockNoteView: () => null,
-}))
-
-vi.mock('@blocknote/core', () => ({
-  BlockNoteSchema: { create: vi.fn(() => ({ blockSpecs: {} })) },
-  defaultBlockSpecs: {},
 }))
 
 describe('App 라우팅', () => {

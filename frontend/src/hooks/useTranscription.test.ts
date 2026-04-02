@@ -21,8 +21,8 @@ const mockConsumer = {
   disconnect: vi.fn(),
 }
 
-vi.mock('@rails/actioncable', () => ({
-  createConsumer: vi.fn(() => mockConsumer),
+vi.mock('../lib/actionCableAuth', () => ({
+  createAuthenticatedConsumer: vi.fn(() => mockConsumer),
 }))
 
 // ──────────────────────────────────────────────
@@ -70,7 +70,9 @@ describe('useTranscription', () => {
     act(() => {
       received({
         type: 'partial',
-        data: { content: '테스트', speaker_label: 'SPEAKER_00', started_at_ms: 0 },
+        text: '테스트',
+        speaker: 'SPEAKER_00',
+        started_at_ms: 0,
       })
     })
     expect(useTranscriptStore.getState().partial?.content).toBe('테스트')
@@ -82,14 +84,12 @@ describe('useTranscription', () => {
     act(() => {
       received({
         type: 'final',
-        data: {
-          id: 1,
-          content: '확정 발화',
-          speaker_label: 'SPEAKER_00',
-          started_at_ms: 0,
-          ended_at_ms: 3000,
-          sequence_number: 1,
-        },
+        id: 1,
+        text: '확정 발화',
+        speaker: 'SPEAKER_00',
+        started_at_ms: 0,
+        ended_at_ms: 3000,
+        seq: 1,
       })
     })
     expect(useTranscriptStore.getState().finals).toHaveLength(1)
@@ -102,7 +102,8 @@ describe('useTranscription', () => {
     act(() => {
       received({
         type: 'speaker_change',
-        data: { speaker_label: 'SPEAKER_01', started_at_ms: 5000 },
+        speaker: 'SPEAKER_01',
+        started_at_ms: 5000,
       })
     })
     expect(useTranscriptStore.getState().currentSpeaker).toBe('SPEAKER_01')

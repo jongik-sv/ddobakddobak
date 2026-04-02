@@ -11,6 +11,7 @@ const { mockJson, mockGet, mockPost } = vi.hoisted(() => {
 
 vi.mock('./client', () => ({
   default: { get: mockGet, post: mockPost },
+  getAuthHeaders: vi.fn(() => ({})),
 }))
 
 function makeHTTPError(status: number): HTTPError {
@@ -29,7 +30,7 @@ describe('meetings API', () => {
 
   describe('getMeeting', () => {
     it('meetings/:id 엔드포인트로 GET 요청', async () => {
-      mockJson.mockResolvedValue({ id: 1, title: '회의1', status: 'pending' })
+      mockJson.mockResolvedValue({ meeting: { id: 1, title: '회의1', status: 'pending' } })
       await getMeeting(1)
       expect(mockGet).toHaveBeenCalledWith('meetings/1')
     })
@@ -50,9 +51,9 @@ describe('meetings API', () => {
         meetings: [],
         meta: { total: 0, page: 1, per: 20 },
       })
-      await getMeetings({ page: 2, per: 10, q: '검색어', team_id: 3 })
+      await getMeetings({ page: 2, per: 10, q: '검색어' })
       expect(mockGet).toHaveBeenCalledWith('meetings', {
-        searchParams: { page: 2, per: 10, q: '검색어', team_id: 3 },
+        searchParams: expect.objectContaining({ page: 2, per: 10, q: '검색어' }),
       })
     })
 
@@ -80,18 +81,19 @@ describe('meetings API', () => {
   describe('createMeeting', () => {
     it('meetings 엔드포인트로 POST 요청', async () => {
       mockJson.mockResolvedValue({
-        id: 2,
-        title: '새 회의',
-        status: 'pending',
-        team: { id: 1, name: '팀A' },
-        created_by: { id: 1, name: '사용자1' },
-        started_at: null,
-        ended_at: null,
-        created_at: '2024-01-01T00:00:00Z',
+        meeting: {
+          id: 2,
+          title: '새 회의',
+          status: 'pending',
+          created_by: { id: 1, name: '사용자1' },
+          started_at: null,
+          ended_at: null,
+          created_at: '2024-01-01T00:00:00Z',
+        },
       })
-      await createMeeting({ title: '새 회의', team_id: 1 })
+      await createMeeting({ title: '새 회의' })
       expect(mockPost).toHaveBeenCalledWith('meetings', {
-        json: { meeting: { title: '새 회의', team_id: 1 } },
+        json: { title: '새 회의' },
       })
     })
 
@@ -100,14 +102,13 @@ describe('meetings API', () => {
         id: 2,
         title: '새 회의',
         status: 'pending' as const,
-        team: { id: 1, name: '팀A' },
         created_by: { id: 1, name: '사용자1' },
         started_at: null,
         ended_at: null,
         created_at: '2024-01-01T00:00:00Z',
       }
-      mockJson.mockResolvedValue(meeting)
-      const result = await createMeeting({ title: '새 회의', team_id: 1 })
+      mockJson.mockResolvedValue({ meeting })
+      const result = await createMeeting({ title: '새 회의' })
       expect(result.id).toBe(2)
       expect(result.title).toBe('새 회의')
     })
@@ -120,7 +121,6 @@ const mockMeeting = {
   status: 'completed' as const,
   started_at: '2026-03-25T10:00:00.000Z',
   ended_at: '2026-03-25T11:00:00.000Z',
-  team_id: 1,
   created_by_id: 2,
   created_at: '2026-03-25T09:50:00.000Z',
   updated_at: '2026-03-25T11:00:00.000Z',
@@ -133,14 +133,14 @@ describe('getMeetingDetail', () => {
   })
 
   it('성공 시 meeting 데이터와 null error 반환', async () => {
-    mockJson.mockResolvedValue(mockMeeting)
+    mockJson.mockResolvedValue({ meeting: mockMeeting })
     const result = await getMeetingDetail(1)
     expect(result.meeting).toEqual(mockMeeting)
     expect(result.error).toBeNull()
   })
 
   it('올바른 엔드포인트로 GET 요청', async () => {
-    mockJson.mockResolvedValue(mockMeeting)
+    mockJson.mockResolvedValue({ meeting: mockMeeting })
     await getMeetingDetail(42)
     expect(mockGet).toHaveBeenCalledWith('meetings/42')
   })

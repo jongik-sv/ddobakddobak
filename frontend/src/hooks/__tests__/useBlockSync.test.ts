@@ -108,7 +108,7 @@ describe('useBlockSync', () => {
       expect(result.current.initialContent).toBeNull()
     })
 
-    it('빈 블록 배열 → initialContent가 빈 배열로 설정된다', async () => {
+    it('빈 블록 배열 → initialContent가 null로 설정된다 (에디터 기본 콘텐츠 사용)', async () => {
       mockedGetBlocks.mockResolvedValue([])
 
       const { result } = renderHook(() =>
@@ -119,7 +119,7 @@ describe('useBlockSync', () => {
         expect(result.current.isLoading).toBe(false)
       })
 
-      expect(result.current.initialContent).toEqual([])
+      expect(result.current.initialContent).toBeNull()
     })
   })
 

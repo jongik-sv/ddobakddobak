@@ -1,7 +1,34 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi, beforeAll } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { AiSummaryPanel } from './AiSummaryPanel'
 import { useTranscriptStore } from '../../stores/transcriptStore'
+
+// jsdom에 matchMedia가 없으므로 폴리필
+beforeAll(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  })
+})
+
+// mermaidBlock는 jsdom에서 createReactBlockSpec이 동작하지 않으므로 모킹
+vi.mock('./mermaidBlock', async () => {
+  const { BlockNoteSchema, defaultBlockSpecs } = await import('@blocknote/core')
+  return {
+    editorSchema: BlockNoteSchema.create({ blockSpecs: defaultBlockSpecs }),
+    codeBlocksToMermaid: (blocks: unknown[]) => blocks,
+  }
+})
+
+import { AiSummaryPanel } from './AiSummaryPanel'
 
 describe('AiSummaryPanel', () => {
   beforeEach(() => {

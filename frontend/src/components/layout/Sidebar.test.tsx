@@ -1,9 +1,14 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Sidebar from './Sidebar'
+import { useUiStore } from '../../stores/uiStore'
 
 describe('Sidebar', () => {
+  beforeEach(() => {
+    useUiStore.setState({ sidebarOpen: true })
+  })
+
   it('대시보드 링크가 렌더링됨', () => {
     render(
       <MemoryRouter>
@@ -51,14 +56,13 @@ describe('Sidebar', () => {
     expect(screen.getByRole('button', { name: /설정/i })).toBeInTheDocument()
   })
 
-  it('md 이하에서 숨김 클래스를 가짐', () => {
+  it('sidebarOpen=false일 때 아무것도 렌더링하지 않음', () => {
+    useUiStore.setState({ sidebarOpen: false })
     const { container } = render(
       <MemoryRouter>
         <Sidebar />
       </MemoryRouter>
     )
-    const sidebar = container.firstChild as HTMLElement
-    expect(sidebar.className).toMatch(/hidden/)
-    expect(sidebar.className).toMatch(/md:/)
+    expect(container.firstChild).toBeNull()
   })
 })

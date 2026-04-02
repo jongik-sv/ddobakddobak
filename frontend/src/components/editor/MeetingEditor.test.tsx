@@ -1,9 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createRef } from 'react'
 import { render, screen } from '@testing-library/react'
-import { MeetingEditor } from './MeetingEditor'
 
 const mockEditor = { document: [{ id: 'block-0', type: 'paragraph' }], insertBlocks: vi.fn() }
+
+// mermaidBlock를 먼저 모킹 (MeetingEditor가 import할 때 MermaidBlock()를 호출하므로)
+vi.mock('../meeting/mermaidBlock', () => ({
+  MermaidBlock: vi.fn(() => ({})),
+  editorSchema: { blockSpecs: {} },
+  codeBlocksToMermaid: (blocks: unknown[]) => blocks,
+}))
 
 // BlockNote는 브라우저 DOM API에 의존하므로 테스트 환경에서 mock 처리
 vi.mock('@blocknote/react', () => ({
@@ -11,7 +17,9 @@ vi.mock('@blocknote/react', () => ({
   BlockNoteView: vi.fn(({ editor: _editor, ...props }: { editor: unknown; [key: string]: unknown }) => (
     <div data-testid="blocknote-view" {...props} />
   )),
-  createReactBlockSpec: vi.fn(() => ({})),
+  createReactBlockSpec: vi.fn(() => vi.fn(() => ({}))),
+  SuggestionMenuController: () => null,
+  getDefaultReactSlashMenuItems: vi.fn(() => []),
 }))
 
 vi.mock('@blocknote/mantine', () => ({
@@ -20,6 +28,8 @@ vi.mock('@blocknote/mantine', () => ({
   )),
 }))
 
+vi.mock('@blocknote/mantine/style.css', () => ({}))
+
 vi.mock('@blocknote/core', () => ({
   BlockNoteSchema: {
     create: vi.fn(() => ({ blockSpecs: {} })),
@@ -27,11 +37,14 @@ vi.mock('@blocknote/core', () => ({
   defaultBlockSpecs: {},
   filterSuggestionItems: vi.fn(),
   insertOrUpdateBlock: vi.fn(),
+  insertOrUpdateBlockForSlashMenu: vi.fn(),
 }))
 
 vi.mock('./blocks', () => ({
-  TranscriptBlock: {},
+  TranscriptBlock: vi.fn(() => ({})),
 }))
+
+import { MeetingEditor } from './MeetingEditor'
 
 describe('MeetingEditor', () => {
   beforeEach(() => {

@@ -8,8 +8,7 @@ import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgr
 import { useMemoEditor } from '../hooks/useMemoEditor'
 import type { Transcript } from '../api/meetings'
 import { getTranscripts, reopenMeeting, regenerateStt, regenerateNotes, updateNotes } from '../api/meetings'
-import { createConsumer } from '@rails/actioncable'
-import { WS_URL } from '../config'
+import { createAuthenticatedConsumer } from '../lib/actionCableAuth'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { MeetingPageSkeleton } from '../components/ui/Skeleton'
 import { useTranscriptStore } from '../stores/transcriptStore'
@@ -77,7 +76,7 @@ export default function MeetingPage() {
   useEffect(() => {
     if (!isRegeneratingNotes) return
 
-    const consumer = createConsumer(WS_URL)
+    const consumer = createAuthenticatedConsumer()
     const sub = consumer.subscriptions.create(
       { channel: 'TranscriptionChannel', meeting_id: meetingId },
       {

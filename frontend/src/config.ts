@@ -88,7 +88,9 @@ export function getWsUrl(): string {
         .replace(/^https:\/\//, 'wss://')
         .replace(/^http:\/\//, 'ws://') + '/cable'
     }
+    return 'ws://127.0.0.1:13323/cable'
   }
+  // 로컬 모드: Tauri는 항상 13323, 웹 dev는 환경변수 또는 config.yaml
   return IS_TAURI
     ? 'ws://127.0.0.1:13323/cable'
     : import.meta.env.VITE_WS_URL || cfg.api.ws_url
