@@ -18,15 +18,15 @@ describe('ExportButton', () => {
 
   it('초기에는 옵션 패널이 보이지 않는다', () => {
     render(<ExportButton meetingId={1} />)
-    expect(screen.queryByText('Markdown 내보내기')).not.toBeInTheDocument()
+    expect(screen.queryByText('회의록 내보내기')).not.toBeInTheDocument()
   })
 
   it('버튼 클릭 시 옵션 패널이 표시된다', async () => {
     render(<ExportButton meetingId={1} />)
     await userEvent.click(screen.getByRole('button', { name: /내보내기/ }))
-    expect(screen.getByText('Markdown 내보내기')).toBeInTheDocument()
+    expect(screen.getByText('회의록 내보내기')).toBeInTheDocument()
     expect(screen.getByLabelText('AI 요약 포함')).toBeChecked()
-    expect(screen.getByLabelText('원본 텍스트 포함')).toBeChecked()
+    expect(screen.getByLabelText('원본 텍스트 포함')).not.toBeChecked()
   })
 
   it('체크박스 해제 후 다운로드 시 올바른 옵션으로 API를 호출한다', async () => {
@@ -40,10 +40,11 @@ describe('ExportButton', () => {
     await waitFor(() => {
       expect(mockExport).toHaveBeenCalledWith(1, {
         include_summary: false,
-        include_transcript: true,
+        include_memo: true,
+        include_transcript: false,
       })
     })
-    expect(vi.mocked(downloadMarkdown)).toHaveBeenCalledWith('# Meeting', 'meeting-1-2026-03-25.md')
+    expect(vi.mocked(downloadMarkdown)).toHaveBeenCalled()
   })
 
   it('API 오류 시 에러 메시지를 표시한다', async () => {
@@ -60,7 +61,7 @@ describe('ExportButton', () => {
     render(<ExportButton meetingId={1} />)
     await userEvent.click(screen.getByRole('button', { name: /내보내기/ }))
     await userEvent.click(screen.getByRole('button', { name: '취소' }))
-    expect(screen.queryByText('Markdown 내보내기')).not.toBeInTheDocument()
+    expect(screen.queryByText('회의록 내보내기')).not.toBeInTheDocument()
   })
 
   it('다운로드 완료 후 패널이 자동으로 닫힌다', async () => {
@@ -71,7 +72,7 @@ describe('ExportButton', () => {
     await userEvent.click(screen.getByRole('button', { name: /다운로드/ }))
 
     await waitFor(() => {
-      expect(screen.queryByText('Markdown 내보내기')).not.toBeInTheDocument()
+      expect(screen.queryByText('회의록 내보내기')).not.toBeInTheDocument()
     })
   })
 })

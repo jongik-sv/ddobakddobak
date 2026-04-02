@@ -30,12 +30,40 @@ vi.mock('../hooks/useAudioRecorder', () => ({
     stop: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
+    feedSystemAudio: vi.fn(),
   }),
 }))
 
 vi.mock('../hooks/useTranscription', () => ({
   useTranscription: vi.fn().mockReturnValue({
     sendChunk: vi.fn(),
+  }),
+}))
+
+vi.mock('../hooks/useSystemAudioCapture', () => ({
+  useSystemAudioCapture: vi.fn().mockReturnValue({
+    isCapturing: false,
+    error: null,
+    start: vi.fn().mockResolvedValue(undefined),
+    stop: vi.fn(),
+  }),
+}))
+
+vi.mock('../hooks/useMicCapture', () => ({
+  useMicCapture: vi.fn().mockReturnValue({
+    start: vi.fn().mockResolvedValue(undefined),
+    stop: vi.fn(),
+    pause: vi.fn(),
+    resume: vi.fn(),
+    feedSystemAudio: vi.fn(),
+  }),
+}))
+
+vi.mock('../hooks/useMemoEditor', () => ({
+  useMemoEditor: vi.fn().mockReturnValue({
+    memoEditorRef: { current: null },
+    isSavingMemo: false,
+    handleSaveMemo: vi.fn(),
   }),
 }))
 
@@ -54,6 +82,10 @@ vi.mock('../components/meeting/SpeakerPanel', () => ({
 vi.mock('../components/editor/MeetingEditor', () => ({
   MeetingEditor: () => <div data-testid="meeting-editor">에디터 영역</div>,
   customSchema: { blockSpecs: {}, blockSchema: {} },
+}))
+
+vi.mock('../components/meeting/AttachmentSection', () => ({
+  AttachmentSection: () => <div data-testid="attachment-section" />,
 }))
 
 vi.mock('../api/settings', () => ({
@@ -86,9 +118,10 @@ describe('MeetingLivePage', () => {
       stop: vi.fn(),
       pause: vi.fn(),
       resume: vi.fn(),
+      feedSystemAudio: vi.fn(),
     })
-    vi.mocked(meetingsApi.startMeeting).mockResolvedValue({ id: 1, status: 'recording', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' })
-    vi.mocked(meetingsApi.stopMeeting).mockResolvedValue({ id: 1, status: 'completed', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' })
+    vi.mocked(meetingsApi.startMeeting).mockResolvedValue({ id: 1, status: 'recording', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' } as any)
+    vi.mocked(meetingsApi.stopMeeting).mockResolvedValue({ id: 1, status: 'completed', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' } as any)
     vi.mocked(meetingsApi.uploadAudio).mockResolvedValue(undefined)
   })
 
@@ -97,16 +130,16 @@ describe('MeetingLivePage', () => {
     expect(screen.getByRole('button', { name: /회의 시작/i })).toBeInTheDocument()
   })
 
-  it('"회의 종료" 버튼은 회의 시작 전 비활성화', () => {
+  it('"회의 종료" 버튼은 회의 시작 전에 표시되지 않음', () => {
     renderPage()
-    expect(screen.getByRole('button', { name: /회의 종료/i })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /회의 종료/i })).not.toBeInTheDocument()
   })
 
   it('3영역 레이아웃 표시 (기록, 요약, 메모)', () => {
     renderPage()
     expect(screen.getByTestId('live-transcript')).toBeInTheDocument()
     expect(screen.getByTestId('ai-summary')).toBeInTheDocument()
-    expect(screen.getByTestId('memo-editor')).toBeInTheDocument()
+    expect(screen.getByTestId('meeting-editor')).toBeInTheDocument()
   })
 
   it('"회의 시작" 클릭 시 startMeeting API 호출', async () => {
@@ -126,6 +159,7 @@ describe('MeetingLivePage', () => {
       stop: vi.fn(),
       pause: vi.fn(),
       resume: vi.fn(),
+      feedSystemAudio: vi.fn(),
     })
     renderPage()
     await act(async () => {
@@ -137,15 +171,27 @@ describe('MeetingLivePage', () => {
   })
 
   it('"회의 종료" 클릭 시 stopMeeting API 호출', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     renderPage()
     // 먼저 회의 시작
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /회의 시작/i }))
     })
+    // 회의 시작 후 "회의 종료" 버튼이 나타날 때까지 대기
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /회의 종료/i })).toBeInTheDocument()
+    })
     // 회의 종료
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /회의 종료/i }))
     })
-    expect(meetingsApi.stopMeeting).toHaveBeenCalledWith(1)
+    // handleStop 내부에 2초 지연이 있어 타이머를 진행시킨다
+    await act(async () => {
+      vi.advanceTimersByTime(3000)
+    })
+    await waitFor(() => {
+      expect(meetingsApi.stopMeeting).toHaveBeenCalledWith(1)
+    })
+    vi.useRealTimers()
   })
 })

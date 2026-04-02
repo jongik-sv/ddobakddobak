@@ -3,6 +3,29 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useAudioRecorder, type AudioRecorderCallbacks } from './useAudioRecorder'
 
 // ──────────────────────────────────────────────
+// Mock config to ensure IS_TAURI is false (browser mode)
+// ──────────────────────────────────────────────
+vi.mock('../config', () => ({
+  AUDIO: { sample_rate: 16000 },
+  IS_TAURI: false,
+}))
+
+vi.mock('../stores/appSettingsStore', () => ({
+  getEffectiveAudioConfig: vi.fn(() => ({
+    sample_rate: 16000,
+    silence_threshold: 0.05,
+    speech_threshold: 0.06,
+    silence_duration_ms: 500,
+    max_chunk_sec: 10,
+    min_chunk_sec: 2,
+    preroll_ms: 500,
+    overlap_ms: 500,
+    file_chunk_sec: 30,
+  })),
+  loadAppSettings: vi.fn().mockResolvedValue(undefined),
+}))
+
+// ──────────────────────────────────────────────
 // Mock objects (shared across tests)
 // ──────────────────────────────────────────────
 
@@ -17,21 +40,28 @@ const mockPort = {
 const mockWorkletNode = {
   port: mockPort,
   disconnect: vi.fn(),
+  connect: vi.fn(),
 }
 
 const mockSource = { connect: vi.fn() }
+
+const mockDestinationNode = {
+  stream: {},
+}
 
 const mockAudioWorklet = { addModule: vi.fn() }
 
 const mockAudioContext = {
   audioWorklet: mockAudioWorklet,
   createMediaStreamSource: vi.fn(),
+  createMediaStreamDestination: vi.fn(() => mockDestinationNode),
   close: vi.fn(),
   sampleRate: 16000,
 }
 
 const mockMediaRecorder = {
   state: 'inactive' as string,
+  mimeType: 'audio/webm;codecs=opus',
   ondataavailable: null as ((e: { data: Blob }) => void) | null,
   onstop: null as (() => void) | null,
   start: vi.fn(() => { mockMediaRecorder.state = 'recording' }),
@@ -39,6 +69,8 @@ const mockMediaRecorder = {
     mockMediaRecorder.state = 'inactive'
     mockMediaRecorder.onstop?.()
   }),
+  pause: vi.fn(),
+  resume: vi.fn(),
 }
 
 // 생성자 mock은 반드시 일반 function 사용 (arrow function 불가)
@@ -68,8 +100,10 @@ describe('useAudioRecorder', () => {
     // 구현 재설정
     mockAudioWorklet.addModule.mockReset().mockResolvedValue(undefined)
     mockAudioContext.createMediaStreamSource.mockReset().mockReturnValue(mockSource)
+    mockAudioContext.createMediaStreamDestination.mockReset().mockReturnValue(mockDestinationNode)
     mockSource.connect.mockReset()
     mockWorkletNode.disconnect.mockReset()
+    mockWorkletNode.connect.mockReset()
     mockAudioContext.close.mockReset()
     mockTrack.stop.mockReset()
     mockMediaRecorder.start.mockReset().mockImplementation(() => { mockMediaRecorder.state = 'recording' })

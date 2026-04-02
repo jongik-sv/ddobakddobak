@@ -12,6 +12,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // @tauri-apps/plugin-deep-link is not installed as npm dep (Tauri-only);
+      // provide a stub so tests can resolve the import
+      '@tauri-apps/plugin-deep-link': path.resolve(__dirname, './src/test/__mocks__/tauri-deep-link.ts'),
     },
   },
   server: {

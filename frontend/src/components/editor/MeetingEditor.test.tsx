@@ -12,6 +12,8 @@ vi.mock('@blocknote/react', () => ({
     <div data-testid="blocknote-view" {...props} />
   )),
   createReactBlockSpec: vi.fn(() => ({})),
+  SuggestionMenuController: () => null,
+  getDefaultReactSlashMenuItems: vi.fn(() => []),
 }))
 
 vi.mock('@blocknote/mantine', () => ({
@@ -27,10 +29,18 @@ vi.mock('@blocknote/core', () => ({
   defaultBlockSpecs: {},
   filterSuggestionItems: vi.fn(),
   insertOrUpdateBlock: vi.fn(),
+  insertOrUpdateBlockForSlashMenu: vi.fn(),
 }))
 
 vi.mock('./blocks', () => ({
-  TranscriptBlock: {},
+  TranscriptBlock: vi.fn(() => ({})),
+}))
+
+vi.mock('../meeting/mermaidBlock', () => ({
+  MermaidBlock: vi.fn(() => ({})),
+  editorSchema: { blockSpecs: {} },
+  codeBlocksToMermaid: vi.fn((b: unknown[]) => b),
+  mermaidToCodeBlocks: vi.fn((b: unknown[]) => b),
 }))
 
 describe('MeetingEditor', () => {
