@@ -9,6 +9,7 @@ import MeetingLivePage from './pages/MeetingLivePage'
 import MeetingPage from './pages/MeetingPage'
 import AppLayout from './components/layout/AppLayout'
 import SetupGate from './components/SetupGate'
+import { AuthGuard } from './components/auth/AuthGuard'
 import SettingsModal from './components/settings/SettingsModal'
 
 function SettingsRedirect() {
@@ -25,6 +26,7 @@ function App() {
 
   return (
     <SetupGate>
+    <AuthGuard>
     <Routes>
       <Route path="/" element={<Navigate to="/meetings" replace />} />
       <Route
@@ -63,6 +65,7 @@ function App() {
       <Route path="*" element={<Navigate to="/meetings" replace />} />
     </Routes>
     <SettingsModal />
+    </AuthGuard>
     </SetupGate>
   )
 }

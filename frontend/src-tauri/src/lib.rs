@@ -738,6 +738,7 @@ pub fn run() {
     log::info!("초기 도구 경로: ruby={:?} bundle={:?} uv={:?}", tool_paths.ruby, tool_paths.bundle, tool_paths.uv);
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())

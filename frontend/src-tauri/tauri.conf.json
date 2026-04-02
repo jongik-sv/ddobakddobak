@@ -3,6 +3,13 @@
   "productName": "ddobakddobak",
   "version": "0.1.0",
   "identifier": "com.ddobakddobak.app",
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["ddobak"]
+      }
+    }
+  },
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:13325",
