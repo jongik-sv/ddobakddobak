@@ -5,13 +5,7 @@ RSpec.describe "Server/Local mode branching", type: :request do
   let(:user) { create(:user, password: password) }
 
   describe "LOCAL mode (SERVER_MODE=false, default)" do
-    around do |example|
-      original = ENV["SERVER_MODE"]
-      ENV["SERVER_MODE"] = nil
-      example.run
-    ensure
-      ENV["SERVER_MODE"] = original
-    end
+    include_context "local mode"
 
     it "allows API access without JWT (uses desktop@local)" do
       get "/api/v1/meetings", as: :json
@@ -36,13 +30,7 @@ RSpec.describe "Server/Local mode branching", type: :request do
   end
 
   describe "SERVER mode (SERVER_MODE=true)" do
-    around do |example|
-      original = ENV["SERVER_MODE"]
-      ENV["SERVER_MODE"] = "true"
-      example.run
-    ensure
-      ENV["SERVER_MODE"] = original
-    end
+    include_context "server mode"
 
     it "rejects API requests without JWT (401)" do
       get "/api/v1/meetings", as: :json

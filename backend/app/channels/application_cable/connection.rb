@@ -29,8 +29,6 @@ module ApplicationCable
       return reject_unauthorized_connection unless user
 
       user
-    rescue JWT::DecodeError, JWT::ExpiredSignature
-      reject_unauthorized_connection
     end
 
     def extract_token
@@ -47,10 +45,5 @@ module ApplicationCable
       nil
     end
 
-    def local_default_user
-      User.find_or_create_by!(email: "desktop@local") do |u|
-        u.name = "사용자"
-      end
-    end
   end
 end

@@ -25,6 +25,7 @@ require 'shoulda/matchers'
 # require only the support files necessary.
 #
 # Rails.root.glob('spec/support/**/*.rb').sort_by(&:to_s).each { |f| require f }
+Dir[Rails.root.join("spec/support/**/*.rb")].each { |f| require f }
 
 # Ensures that the test database schema matches the current schema file.
 # If there are pending migrations it will invoke `db:test:prepare` to
@@ -81,7 +82,6 @@ RSpec.configure do |config|
   config.include Module.new {
     def login_as(user)
       allow_any_instance_of(ApplicationController).to receive(:current_user).and_return(user)
-      allow_any_instance_of(ApplicationController).to receive(:default_user).and_return(user)
       allow_any_instance_of(ApplicationController).to receive(:local_default_user).and_return(user)
     end
 

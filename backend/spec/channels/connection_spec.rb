@@ -4,13 +4,7 @@ RSpec.describe ApplicationCable::Connection, type: :channel do
   let(:user) { create(:user, password: "password123") }
 
   context "LOCAL mode" do
-    around do |example|
-      original = ENV["SERVER_MODE"]
-      ENV["SERVER_MODE"] = nil
-      example.run
-    ensure
-      ENV["SERVER_MODE"] = original
-    end
+    include_context "local mode"
 
     it "connects without token (uses desktop@local)" do
       connect
@@ -23,13 +17,7 @@ RSpec.describe ApplicationCable::Connection, type: :channel do
   end
 
   context "SERVER mode" do
-    around do |example|
-      original = ENV["SERVER_MODE"]
-      ENV["SERVER_MODE"] = "true"
-      example.run
-    ensure
-      ENV["SERVER_MODE"] = original
-    end
+    include_context "server mode"
 
     it "connects with valid JWT token" do
       token = JwtService.encode_access_token(user)

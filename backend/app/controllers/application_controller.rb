@@ -27,14 +27,6 @@ class ApplicationController < ActionController::API
     end
   end
 
-  # Local mode only: desktop@local user
-  # Bypasses concern's server_mode? guard
-  def local_default_user
-    User.find_or_create_by!(email: "desktop@local") do |u|
-      u.name = "사용자"
-    end
-  end
-
   def record_not_found(exception)
     render json: { error: exception.message }, status: :not_found
   end

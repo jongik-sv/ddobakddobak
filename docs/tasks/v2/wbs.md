@@ -53,7 +53,7 @@
 ### TSK-01-02: 브라우저 로그인 페이지
 - category: feature
 - domain: backend
-- status: [dd]
+- status: [im]
 - priority: critical
 - assignee: -
 - tags: auth, web, html
@@ -76,7 +76,7 @@
 ### TSK-01-03: 서버/로컬 모드 분기
 - category: feature
 - domain: backend
-- status: [im]
+- status: [xx]
 - priority: high
 - assignee: -
 - tags: auth, mode
