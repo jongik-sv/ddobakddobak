@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { IS_TAURI } from '../config'
+import { IS_TAURI, getMode } from '../config'
 import SetupPage from '../pages/SetupPage'
 
 /**
@@ -8,7 +8,9 @@ import SetupPage from '../pages/SetupPage'
  */
 export default function SetupGate({ children }: { children: React.ReactNode }) {
   // tauri dev: 개발자가 서비스를 직접 관리하므로 건너뜀
-  const needsSetup = IS_TAURI && !import.meta.env.DEV
+  // 서버 모드: 원격 서버에 연결하므로 로컬 환경 셋업 불필요
+  const isServerMode = getMode() === 'server'
+  const needsSetup = IS_TAURI && !import.meta.env.DEV && !isServerMode
   const [ready, setReady] = useState(!needsSetup)
 
   if (!ready) {

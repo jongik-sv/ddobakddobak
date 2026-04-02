@@ -311,7 +311,7 @@
 ### TSK-04-02: SetupPage 모드 분기
 - category: feature
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: high
 - assignee: -
 - tags: setup, tauri, mode
