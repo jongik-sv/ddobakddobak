@@ -82,6 +82,7 @@ RSpec.configure do |config|
     def login_as(user)
       allow_any_instance_of(ApplicationController).to receive(:current_user).and_return(user)
       allow_any_instance_of(ApplicationController).to receive(:default_user).and_return(user)
+      allow_any_instance_of(ApplicationController).to receive(:local_default_user).and_return(user)
     end
 
     # JWT 인증 헬퍼: 실제 토큰 발급 후 헤더에 설정

@@ -13,8 +13,8 @@ class ApplicationController < ActionController::API
       warden.authenticate!(scope: :user)
       @current_user = warden.user(:user)
     else
-      # Local mode: existing default_user flow
-      @current_user = default_user
+      # Local mode: existing desktop@local flow
+      @current_user = local_default_user
     end
     true
   end
@@ -23,12 +23,16 @@ class ApplicationController < ActionController::API
     @current_user ||= if server_mode?
       warden.user(:user)
     else
-      default_user
+      local_default_user
     end
   end
 
-  def server_mode?
-    ENV["SERVER_MODE"] == "true"
+  # Local mode only: desktop@local user
+  # Bypasses concern's server_mode? guard
+  def local_default_user
+    User.find_or_create_by!(email: "desktop@local") do |u|
+      u.name = "사용자"
+    end
   end
 
   def record_not_found(exception)
