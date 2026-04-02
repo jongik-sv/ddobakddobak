@@ -207,7 +207,7 @@
 ### TSK-03-01: User 모델 LLM 필드 추가
 - category: feature
 - domain: backend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - tags: database, user, llm
