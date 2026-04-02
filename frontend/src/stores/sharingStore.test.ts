@@ -38,17 +38,6 @@ describe('sharingStore', () => {
     expect(state.isLoading).toBe(false)
   })
 
-  it('setShareCode: 공유 코드 설정', () => {
-    useSharingStore.getState().setShareCode('A1B2C3')
-    expect(useSharingStore.getState().shareCode).toBe('A1B2C3')
-  })
-
-  it('setShareCode: null로 초기화', () => {
-    useSharingStore.getState().setShareCode('A1B2C3')
-    useSharingStore.getState().setShareCode(null)
-    expect(useSharingStore.getState().shareCode).toBeNull()
-  })
-
   it('setParticipants: 참여자 목록 설정 (host 우선 정렬)', () => {
     useSharingStore.getState().setParticipants([viewerParticipant, hostParticipant])
     const participants = useSharingStore.getState().participants
@@ -80,17 +69,9 @@ describe('sharingStore', () => {
     expect(participants[0].user_id).toBe(10)
   })
 
-  it('updateParticipantRole: 참여자 역할 변경', () => {
+  it('transferHost: 호스트 위임', () => {
     useSharingStore.getState().setParticipants([hostParticipant, viewerParticipant])
-    useSharingStore.getState().updateParticipantRole(20, 'host')
-    const participant = useSharingStore.getState().participants.find(p => p.user_id === 20)
-    expect(participant?.role).toBe('host')
-  })
-
-  it('updateParticipantRole: 역할 변경 후 host 우선 정렬', () => {
-    useSharingStore.getState().setParticipants([hostParticipant, viewerParticipant])
-    useSharingStore.getState().updateParticipantRole(10, 'viewer')
-    useSharingStore.getState().updateParticipantRole(20, 'host')
+    useSharingStore.getState().transferHost(20)
     const participants = useSharingStore.getState().participants
     expect(participants[0].role).toBe('host')
     expect(participants[0].user_id).toBe(20)
@@ -100,7 +81,6 @@ describe('sharingStore', () => {
     useSharingStore.getState().startSharing('X9Y8Z7', [hostParticipant, viewerParticipant])
     const state = useSharingStore.getState()
     expect(state.shareCode).toBe('X9Y8Z7')
-    expect(state.shareCode).not.toBeNull()
     expect(state.participants).toHaveLength(2)
   })
 
@@ -108,7 +88,6 @@ describe('sharingStore', () => {
     useSharingStore.getState().startSharing('X9Y8Z7', [hostParticipant])
     useSharingStore.getState().stopSharing()
     const state = useSharingStore.getState()
-    expect(state.shareCode).toBeNull()
     expect(state.shareCode).toBeNull()
     expect(state.participants).toEqual([])
   })

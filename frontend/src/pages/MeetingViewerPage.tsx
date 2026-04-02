@@ -18,7 +18,7 @@ export default function MeetingViewerPage() {
   const navigate = useNavigate()
 
   const recordingStopped = useSharingStore((s) => s.recordingStopped)
-  const participants = useSharingStore((s) => s.participants)
+  const participantCount = useSharingStore((s) => s.participants.length)
 
   useEffect(() => {
     useUiStore.setState({ sidebarOpen: false })
@@ -59,7 +59,7 @@ export default function MeetingViewerPage() {
     <div className="flex flex-col h-full">
       <ViewerHeader
         title={meetingTitle}
-        participantCount={participants.length}
+        participantCount={participantCount}
         isRecordingStopped={recordingStopped}
         onLeave={handleLeave}
       />

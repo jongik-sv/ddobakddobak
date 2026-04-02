@@ -13,6 +13,7 @@
 - [아키텍처](#아키텍처)
 - [기술 스택](#기술-스택)
 - [STT 엔진](#stt-엔진)
+- [LLM 프로바이더](#llm-프로바이더)
 - [사전 요구사항](#사전-요구사항)
 - [설치 및 설정](#설치-및-설정)
 - [실행](#실행)
@@ -32,7 +33,7 @@
 - 브라우저 마이크로 녹음하면 즉시 텍스트로 변환
 - Voice Activity Detection (VAD)으로 무음 구간 자동 건너뛰기
 - AudioWorklet 기반 저지연 오디오 처리
-- 설정 가능한 청크 크기 (3~15초, 오버랩 지원)
+- 설정 가능한 청크 크기 (2~20초, 오버랩 지원)
 
 ### AI 화자 분리
 
@@ -43,16 +44,25 @@
 
 ### AI 회의록 자동 생성
 
-- 실시간 중간 요약 (15초~5분 간격, 설정 가능)
+- 실시간 중간 요약 (30초~5분 간격, 설정 가능)
 - 회의 종료 시 최종 요약 자동 생성
 - 구조화된 결과물: 핵심 요약, 논의 사항, 결정 사항, Action Item
 - AI 피드백: 자연어로 수정 요청하면 AI가 회의록 수정
+- 회의 유형별 맞춤 프롬프트 (일반회의, 팀회의, 스탠드업, 브레인스토밍, 리뷰, 인터뷰, 워크숍, 1:1, 강연)
+- 커스텀 프롬프트 템플릿 관리
 
 ### 블록 에디터
 
 - Notion 스타일 WYSIWYG 편집 (BlockNote 기반)
 - AI 요약 결과를 직접 편집 가능
 - Mermaid 다이어그램 자동 렌더링
+
+### 실시간 회의 공유
+
+- 공유 코드 생성으로 다른 사용자에게 실시간 회의 공유
+- 뷰어 모드: 읽기 전용으로 전사 기록 · AI 요약 실시간 확인
+- 참여자 목록 및 호스트 권한 이전
+- ActionCable WebSocket 기반 실시간 동기화
 
 ### 오디오 파일 업로드
 
@@ -69,8 +79,16 @@
 ### 내보내기 & 관리
 
 - Markdown 파일로 회의록 내보내기
-- 회의 유형별 분류 (일반회의, 스탠드업, 브레인스토밍, 리뷰, 인터뷰, 워크숍, 1:1, 강연)
+- 폴더별 회의 정리
+- 태그 기반 분류
+- 파일 첨부 기능
 - 팀 관리 및 초대 기능
+
+### 사용자별 LLM 설정
+
+- 사용자마다 자신의 LLM 프로바이더/API 키 설정 가능
+- 미설정 시 서버 기본값(settings.yaml) 사용
+- 연결 테스트 기능
 
 ### 다국어 지원
 
@@ -87,6 +105,11 @@
 | Deutsch | `de` |
 | ภาษาไทย | `th` |
 | Tiếng Việt | `vi` |
+
+### 로컬/서버 모드
+
+- **로컬 모드**: Tauri 데스크톱 앱에서 백엔드를 로컬로 실행
+- **서버 모드**: 원격 서버에 연결하여 사용 (헬스체크 기능 내장)
 
 ---
 
@@ -125,7 +148,7 @@
 │  ┌──────────────────────────────────────┐│           │
 │  │ Services                             ││           │
 │  │  SidecarClient │ MeetingFinalizer    ││           │
-│  │  MarkdownExporter                    ││           │
+│  │  MeetingShareService │ MarkdownExport││           │
 │  └──────────────────────────────────────┘│           │
 └─────────┬────────────────────────────────┼───────────┘
           │                                │ HTTP
@@ -135,16 +158,16 @@
 │              │  │  ┌─────────────────────────────────┐│
 │  - Meeting   │  │  │ STT (Adapter Pattern)           ││
 │  - Transcript│  │  │  Qwen3-ASR │ Whisper │ Faster   ││
-│  - Summary   │  │  │  SenseVoice │ Mock              ││
-│  - Block     │  │  └─────────────────────────────────┘│
-│  - User      │  │  ┌─────────────────────────────────┐│
-│  - Team      │  │  │ 화자 분리 (pyannote.audio)      ││
-│  - ActionItem│  │  │  화자 DB │ 임베딩 클러스터링     ││
-│              │  │  └─────────────────────────────────┘│
-│              │  │  ┌─────────────────────────────────┐│
-│              │  │  │ LLM (Anthropic SDK)             ││
-│              │  │  │  요약 │ Action Item │ 피드백     ││
-│              │  │  └─────────────────────────────────┘│
+│  - Summary   │  │  └─────────────────────────────────┘│
+│  - Block     │  │  ┌─────────────────────────────────┐│
+│  - User      │  │  │ 화자 분리 (pyannote.audio)      ││
+│  - Team      │  │  │  화자 DB │ 임베딩 클러스터링     ││
+│  - Folder    │  │  └─────────────────────────────────┘│
+│  - Tag       │  │  ┌─────────────────────────────────┐│
+│  - Attachment│  │  │ LLM (Anthropic/OpenAI/CLI)      ││
+│  - Participant│  │  │  요약 │ Action Item │ 피드백     ││
+│  - ActionItem│  │  └─────────────────────────────────┘│
+│  - Prompt    │  │                                     │
 └──────────────┘  └─────────────────────────────────────┘
 ```
 
@@ -178,7 +201,7 @@
 |--------|------|------|
 | **Frontend** | React 19, TypeScript, Vite | SPA, 빌드 |
 | | Tailwind CSS 4 | 스타일링 |
-| | Zustand | 상태 관리 (auth, meeting, transcript, appSettings) |
+| | Zustand | 상태 관리 (auth, meeting, transcript, sharing, folder, appSettings) |
 | | BlockNote | Notion 스타일 블록 에디터 |
 | | WaveSurfer.js | 오디오 파형 시각화 |
 | | ky | HTTP 클라이언트 (fetch 기반) |
@@ -187,13 +210,14 @@
 | | SQLite3 (WAL mode) | 로컬 데이터베이스 |
 | | ActionCable | WebSocket 실시간 통신 |
 | | Solid Queue | 비동기 작업 큐 |
-| | Devise + JWT | 인증 (JTI 기반 토큰 폐기) |
+| | Devise + JWT | 인증 (JTI 기반 토큰 폐기, Refresh Token) |
 | **Sidecar** | Python 3.11+, FastAPI | 오디오 처리 서버 |
 | | mlx-audio | Apple Silicon 최적화 STT |
 | | pywhispercpp | Whisper Metal/ANE 가속 |
 | | faster-whisper | CUDA GPU 가속 STT |
 | | pyannote.audio | 화자 분리 |
-| | Anthropic SDK | LLM 요약 (Claude 호환 API) |
+| | Anthropic/OpenAI SDK | LLM 요약 (API 방식) |
+| | Claude/Gemini/Codex CLI | LLM 요약 (CLI 방식) |
 | **Desktop** | Tauri 2.10 | 크로스플랫폼 데스크톱 앱 |
 | **Testing** | Vitest | 프론트엔드 단위 테스트 |
 | | RSpec | 백엔드 단위 테스트 |
@@ -204,7 +228,7 @@
 
 ## STT 엔진
 
-`.env`의 `STT_ENGINE` 값으로 음성 인식 엔진을 교체할 수 있습니다. Adapter 패턴으로 설계되어 환경 변수 변경만으로 전환됩니다.
+`settings.yaml`의 `stt.engine` 값으로 음성 인식 엔진을 교체할 수 있습니다. Adapter 패턴으로 설계되어 설정 변경만으로 전환됩니다.
 
 | 엔진 | 모델 | 플랫폼 | 특징 |
 |------|------|--------|------|
@@ -218,11 +242,27 @@
 
 ### 자동 감지
 
-`STT_ENGINE`을 지정하지 않으면 플랫폼에 따라 최적 엔진을 자동 선택합니다:
+`stt.engine`을 지정하지 않으면 플랫폼에 따라 최적 엔진을 자동 선택합니다:
 
 - **macOS ARM64** → `qwen3_asr_8bit` (MLX Metal GPU 가속)
 - **NVIDIA CUDA 사용 가능** → `qwen3_asr_transformers` (transformers + CUDA 가속, CJK 최적)
 - **그 외** → `whisper_cpp` (CPU 범용)
+
+---
+
+## LLM 프로바이더
+
+`settings.yaml`의 `llm.presets`에서 여러 LLM 프로바이더를 설정하고, `llm.active_preset`으로 활성 프리셋을 전환합니다.
+
+| 프로바이더 | 방식 | 특징 |
+|-----------|------|------|
+| `claude_cli` | CLI 파이프 | Claude CLI 도구 활용. API 키 불필요 |
+| `gemini_cli` | CLI 파이프 | Google Gemini CLI 활용. API 키 불필요 |
+| `codex_cli` | CLI 파이프 | Codex CLI 활용. API 키 불필요 |
+| `anthropic` | Anthropic SDK | Claude API 또는 호환 API (Z.ai 등) |
+| `openai` | OpenAI SDK | GPT 시리즈 또는 호환 API (Ollama 등) |
+
+사용자별 LLM 설정도 지원합니다. 개별 사용자가 자신의 API 키를 설정하면 서버 기본값 대신 사용됩니다.
 
 ---
 
@@ -260,40 +300,37 @@ git clone https://github.com/your-username/ddobakddobak.git
 cd ddobakddobak
 ```
 
-### 2. 환경 변수 설정
+### 2. 설정 파일
 
-```bash
-cp .env.example .env
+프로젝트 루트의 `settings.yaml`에서 STT 엔진, LLM, 화자 분리 등을 설정합니다:
+
+```yaml
+stt:
+  engine: qwen3_asr_8bit       # STT 엔진 (위 표 참고)
+
+hf:
+  token: "your_hf_token"       # Hugging Face 토큰 (화자 분리용, 선택)
+
+llm:
+  active_preset: claude_cli    # 활성 LLM 프리셋
+  presets:
+    claude_cli:
+      provider: claude_cli
+      model: opus
+    anthropic:
+      provider: anthropic
+      auth_token: "your_api_key"
+      base_url: "https://api.anthropic.com"
+      model: claude-sonnet-4-6
+
+diarization:
+  enabled: false               # 화자 분리 on/off
+
+languages:
+  selected: [ko, en]           # 음성 인식 대상 언어
 ```
 
-`.env` 파일을 편집합니다:
-
-```env
-# ─── STT 엔진 ───
-STT_ENGINE="qwen3_asr_8bit"          # 위 STT 엔진 표 참고
-
-# ─── AI 요약 API (Anthropic API 호환) ───
-ANTHROPIC_AUTH_TOKEN="your_token"     # API 키
-ANTHROPIC_BASE_URL="https://api.anthropic.com"  # 또는 호환 API URL (Z.ai 등)
-LLM_MODEL="claude-sonnet-4-6"        # 사용할 모델
-
-# ─── Rails ───
-RAILS_ENV="development"
-SECRET_KEY_BASE=""                    # cd backend && bin/rails secret 으로 생성
-RAILS_MAX_THREADS=10
-
-# ─── Sidecar 연결 ───
-SIDECAR_HOST="localhost"
-SIDECAR_PORT=13324
-
-# ─── 화자 분리 (선택) ───
-HF_TOKEN="your_hf_token"             # Hugging Face 토큰
-```
-
-> **SECRET_KEY_BASE 생성:**
-> ```bash
-> cd backend && bin/rails secret
-> ```
+`config.yaml`은 UI 라벨, 오디오 파라미터 등의 정적 설정을 관리합니다 (일반적으로 수정 불필요).
 
 ### 3. Backend (Rails)
 
@@ -375,6 +412,15 @@ Tauri 2.10 기반 크로스플랫폼 데스크톱 앱으로도 사용할 수 있
 | Windows | x64 | `.msi`, `.exe` |
 | Linux | x64 | `.deb`, `.AppImage` |
 
+### 로컬/서버 모드
+
+데스크톱 앱은 두 가지 모드를 지원합니다:
+
+- **로컬 모드**: 앱이 백엔드(Rails + Sidecar)를 로컬에서 자동 실행
+- **서버 모드**: 원격 서버에 접속하여 사용 (서버 URL 입력 + 헬스체크)
+
+첫 실행 시 SetupPage에서 모드를 선택합니다.
+
 ### 개발 모드 실행
 
 ```bash
@@ -397,8 +443,6 @@ Git 태그를 푸시하면 GitHub Actions가 자동으로 멀티플랫폼 빌드
 git tag v1.0.0
 git push origin v1.0.0
 ```
-
-> 데스크톱 모드에서는 JWT 인증을 건너뛰고 `DESKTOP_MODE`로 자동 인증됩니다.
 
 ---
 
@@ -453,9 +497,11 @@ E2E 테스트 범위:
 
 | Method | Endpoint | 설명 |
 |--------|----------|------|
-| `POST` | `/api/v1/signup` | 회원가입 |
-| `POST` | `/api/v1/login` | 로그인 (JWT 발급) |
-| `DELETE` | `/api/v1/logout` | 로그아웃 (토큰 폐기) |
+| `POST` | `/auth/login` | JWT 로그인 |
+| `DELETE` | `/auth/logout` | 로그아웃 (토큰 폐기) |
+| `POST` | `/auth/refresh` | Refresh Token |
+| `GET` | `/auth/web_login` | 브라우저 로그인 폼 |
+| `POST` | `/auth/web_login` | 브라우저 로그인 처리 |
 
 ### 회의
 
@@ -469,39 +515,76 @@ E2E 테스트 범위:
 | `POST` | `/api/v1/meetings/:id/start` | 녹음 시작 |
 | `POST` | `/api/v1/meetings/:id/stop` | 녹음 종료 |
 | `POST` | `/api/v1/meetings/:id/reopen` | 회의 재개 |
-| `POST` | `/api/v1/meetings/:id/upload_audio` | 오디오 파일 업로드 |
+| `POST` | `/api/v1/meetings/upload_audio` | 오디오 파일 업로드 |
 | `POST` | `/api/v1/meetings/:id/summarize` | AI 요약 요청 |
+| `POST` | `/api/v1/meetings/:id/regenerate_stt` | STT 재생성 |
+| `POST` | `/api/v1/meetings/:id/regenerate_notes` | 회의록 재생성 |
 | `POST` | `/api/v1/meetings/:id/feedback` | AI 피드백 요청 |
+| `PATCH` | `/api/v1/meetings/:id/update_notes` | 회의록 수정 |
+| `POST` | `/api/v1/meetings/:id/reset_content` | 콘텐츠 초기화 |
 | `GET` | `/api/v1/meetings/:id/export` | Markdown 내보내기 |
+| `GET` | `/api/v1/meetings/:id/export_prompt` | 내보내기 프롬프트 |
 | `GET` | `/api/v1/meetings/:id/summary` | 요약 조회 |
 | `GET` | `/api/v1/meetings/:id/transcripts` | 전사 기록 조회 |
 | `POST` | `/api/v1/meetings/:id/audio` | 녹음 중 오디오 업로드 |
 | `GET` | `/api/v1/meetings/:id/audio` | 오디오 다운로드 |
+| `GET` | `/api/v1/meetings/:id/peaks` | 오디오 파형 데이터 |
+| `POST` | `/api/v1/meetings/move_to_folder` | 폴더 이동 |
+
+### 회의 공유
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| `POST` | `/api/v1/meetings/:id/share` | 공유 코드 생성 |
+| `DELETE` | `/api/v1/meetings/:id/share` | 공유 코드 해제 |
+| `POST` | `/api/v1/meetings/join` | 공유 코드로 참여 |
+| `GET` | `/api/v1/meetings/:id/participants` | 참여자 목록 |
+| `POST` | `/api/v1/meetings/:id/transfer_host` | 호스트 권한 이전 |
 
 ### 회의 하위 리소스
 
 | Method | Endpoint | 설명 |
 |--------|----------|------|
-| `POST` | `/api/v1/meetings/:id/action_items` | Action Item 생성 |
-| `POST` | `/api/v1/meetings/:id/blocks` | 블록 저장 |
-| `POST` | `/api/v1/meetings/:id/transcripts/destroy_batch` | 전사 일괄 삭제 |
+| `GET/POST` | `/api/v1/meetings/:id/action_items` | Action Item 조회/생성 |
+| `PATCH/DELETE` | `/api/v1/action_items/:id` | Action Item 수정/삭제 |
+| `GET/POST/PATCH/DELETE` | `/api/v1/meetings/:id/blocks` | 블록 CRUD |
+| `PATCH` | `/api/v1/meetings/:id/blocks/:id/reorder` | 블록 순서 변경 |
+| `DELETE` | `/api/v1/meetings/:id/transcripts/destroy_batch` | 전사 일괄 삭제 |
+| `GET/POST/PATCH/DELETE` | `/api/v1/meetings/:id/attachments` | 첨부파일 CRUD |
+| `GET` | `/api/v1/meetings/:id/attachments/:id/download` | 첨부파일 다운로드 |
+
+### 폴더 & 태그
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| `GET/POST/PATCH/DELETE` | `/api/v1/folders` | 폴더 CRUD |
+| `GET/POST/PATCH/DELETE` | `/api/v1/tags` | 태그 CRUD |
 
 ### 설정
 
 | Method | Endpoint | 설명 |
 |--------|----------|------|
-| `GET/PUT` | `/api/v1/settings` | 전체 설정 |
-| `GET/PUT` | `/api/v1/settings/stt_engine` | STT 엔진 설정 |
-| `GET/PUT` | `/api/v1/settings/llm` | LLM 설정 |
-| `GET/PUT` | `/api/v1/settings/hf` | HF 토큰 설정 |
+| `GET` | `/api/v1/settings` | 전체 설정 조회 |
+| `POST` | `/api/v1/settings/stt_engine` | STT 엔진 변경 |
+| `GET/PUT` | `/api/v1/settings/llm` | LLM 설정 조회/변경 |
+| `POST` | `/api/v1/settings/llm/test` | LLM 연결 테스트 |
+| `GET/PUT` | `/api/v1/settings/hf` | HF 토큰 조회/변경 |
+| `GET/PUT` | `/api/v1/settings/app` | 앱 설정 조회/변경 |
 
-### 팀
+### 사용자 LLM 설정
 
 | Method | Endpoint | 설명 |
 |--------|----------|------|
-| `POST` | `/api/v1/teams` | 팀 생성 |
-| `POST` | `/api/v1/teams/:id/invite` | 팀원 초대 |
-| `DELETE` | `/api/v1/teams/:id/members/:user_id` | 팀원 제거 |
+| `GET` | `/api/v1/user/llm_settings` | 사용자 LLM 설정 조회 |
+| `PUT` | `/api/v1/user/llm_settings` | 사용자 LLM 설정 변경 |
+| `POST` | `/api/v1/user/llm_settings/test` | 사용자 LLM 연결 테스트 |
+
+### 프롬프트 템플릿
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| `GET/POST/PATCH/DELETE` | `/api/v1/prompt_templates` | 프롬프트 템플릿 CRUD |
+| `POST` | `/api/v1/prompt_templates/:id/reset` | 기본값으로 초기화 |
 
 ### 화자
 
@@ -509,7 +592,15 @@ E2E 테스트 범위:
 |--------|----------|------|
 | `GET` | `/api/v1/speakers` | 화자 목록 |
 | `PATCH` | `/api/v1/speakers/:id` | 화자 이름 변경 |
-| `DELETE` | `/api/v1/speakers/:id` | 화자 삭제 |
+| `DELETE` | `/api/v1/speakers` | 전체 화자 초기화 |
+
+### 팀
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| `GET/POST` | `/api/v1/teams` | 팀 목록/생성 |
+| `POST` | `/api/v1/teams/:id/invite` | 팀원 초대 |
+| `DELETE` | `/api/v1/teams/:id/members/:user_id` | 팀원 제거 |
 
 ### WebSocket
 
@@ -521,12 +612,62 @@ E2E 테스트 범위:
 
 ## 설정 가이드
 
-### config.yaml
+### settings.yaml (런타임 설정)
 
-프로젝트 루트의 `config.yaml`에서 앱 전체 설정을 관리합니다:
+프로젝트 루트의 `settings.yaml`에서 런타임 설정을 관리합니다. 앱 설정 UI에서도 변경 가능합니다:
 
 ```yaml
-# API 서버 URL
+# STT 엔진
+stt:
+  engine: qwen3_asr_8bit
+
+# HuggingFace 토큰 (화자 분리용)
+hf:
+  token: "your_hf_token"
+
+# LLM 프리셋
+llm:
+  active_preset: claude_cli
+  presets:
+    claude_cli:
+      provider: claude_cli
+      model: opus
+    anthropic:
+      provider: anthropic
+      auth_token: "your_api_key"
+      base_url: ""
+      model: claude-sonnet-4-6
+
+# 화자 분리
+diarization:
+  enabled: false
+  similarity_threshold: 0.45
+  merge_threshold: 0.6
+  max_embeddings_per_speaker: 17
+
+# 오디오 VAD
+audio:
+  silence_threshold: 0.05
+  speech_threshold: 0.06
+  silence_duration_ms: 500
+  max_chunk_sec: 20
+  min_chunk_sec: 2
+
+# AI 요약 간격
+summary:
+  interval_sec: 120
+
+# 음성 인식 대상 언어
+languages:
+  selected: [ko, en]
+```
+
+### config.yaml (정적 설정)
+
+API URL, UI 라벨, 오디오 파라미터 기본값 등의 정적 설정:
+
+```yaml
+# API / WebSocket
 api:
   base_url: "http://localhost:13323/api/v1"
   ws_url: "ws://localhost:13323/cable"
@@ -535,37 +676,8 @@ api:
 sidecar:
   host: "localhost"
   port: 13324
-  timeout: 30
-
-# 오디오 설정
-audio:
-  sample_rate: 16000         # PCM 샘플레이트
-  vad:
-    energy_threshold: 0.01   # 음성 감지 에너지 임계값
-    silence_duration: 1.0    # 무음 판정 시간 (초)
-  chunk:
-    min_length: 3            # 최소 청크 길이 (초)
-    max_length: 15           # 최대 청크 길이 (초)
-    overlap: 0.5             # 청크 간 오버랩 (초)
-
-# 화자 분리
-diarization:
-  similarity_threshold: 0.10  # 기존 화자 매칭 임계값
-  merge_threshold: 0.35       # 화자 병합 임계값
-  max_embeddings: 10          # 화자당 최대 임베딩 수
-
-# AI 요약 간격
-summarization:
-  interval: 60               # 중간 요약 생성 간격 (초)
+  timeout_sec: 30
 ```
-
-### 화자 분리 세부 설정
-
-| 파라미터 | 기본값 | 설명 |
-|----------|--------|------|
-| `similarity_threshold` | 0.10 | 낮을수록 같은 화자로 판정하기 쉬움 |
-| `merge_threshold` | 0.35 | 회의 종료 후 화자 클러스터링 임계값 |
-| `max_embeddings_per_speaker` | 10 | 화자별 유지할 음성 샘플 수 |
 
 ---
 
@@ -582,28 +694,38 @@ ddobakddobak/
 │   │   ├── api/              # API 클라이언트 (ky 기반)
 │   │   ├── channels/         # ActionCable WebSocket 연결
 │   │   ├── components/       # UI 컴포넌트
-│   │   │   ├── layout/       # AppLayout, Navigation
-│   │   │   ├── meeting/      # AudioRecorder, LiveRecord, SpeakerLabel
+│   │   │   ├── layout/       # AppLayout, Sidebar
+│   │   │   ├── meeting/      # AudioRecorder, LiveRecord, ShareButton, ViewerHeader
 │   │   │   ├── editor/       # MeetingEditor (BlockNote)
+│   │   │   ├── auth/         # LoginPage, AuthGuard, ServerSetup
+│   │   │   ├── folder/       # 폴더 관리
+│   │   │   ├── action-item/  # Action Item 관리
+│   │   │   ├── settings/     # UserLlmSettings
 │   │   │   └── ui/           # 공통 UI 컴포넌트
 │   │   ├── hooks/            # 커스텀 React 훅
 │   │   │   ├── useAudioRecorder.ts    # AudioWorklet 녹음 + VAD
 │   │   │   ├── useTranscription.ts    # WebSocket STT 연동
 │   │   │   ├── useAudioPlayer.ts      # WaveSurfer 래퍼
 │   │   │   ├── useBlockSync.ts        # 블록 에디터 동기화
-│   │   │   └── useSttBlockInserter.ts # STT 결과 블록 삽입
+│   │   │   ├── useSttBlockInserter.ts # STT 결과 블록 삽입
+│   │   │   └── useAuth.ts            # JWT 인증 훅
 │   │   ├── pages/            # 페이지 컴포넌트
-│   │   │   ├── HomePage.tsx           # 랜딩 (웹 모드 전용)
 │   │   │   ├── DashboardPage.tsx      # 대시보드 (통계 + 최근 회의)
 │   │   │   ├── MeetingsPage.tsx       # 회의 CRUD, 필터, 업로드
 │   │   │   ├── MeetingLivePage.tsx    # 실시간 녹음 (3패널 레이아웃)
 │   │   │   ├── MeetingPage.tsx        # 회의 상세 (에디터 + 기록)
+│   │   │   ├── MeetingViewerPage.tsx  # 공유 회의 뷰어
+│   │   │   ├── SetupPage.tsx          # 로컬/서버 모드 설정
 │   │   │   └── SettingsPage.tsx       # STT/LLM/오디오 설정
 │   │   ├── stores/           # Zustand 상태 관리
 │   │   │   ├── authStore.ts           # 인증 상태
 │   │   │   ├── meetingStore.ts        # 회의 상태
 │   │   │   ├── transcriptStore.ts     # 전사 기록 상태
-│   │   │   └── appSettingsStore.ts    # 앱 설정 상태
+│   │   │   ├── sharingStore.ts        # 실시간 공유 상태
+│   │   │   ├── folderStore.ts         # 폴더 상태
+│   │   │   ├── promptTemplateStore.ts # 프롬프트 템플릿 상태
+│   │   │   ├── appSettingsStore.ts    # 앱 설정 상태
+│   │   │   └── uiStore.ts            # UI 상태
 │   │   ├── lib/              # 유틸리티
 │   │   └── config.ts         # config.yaml 로더
 │   ├── package.json
@@ -611,35 +733,54 @@ ddobakddobak/
 │
 ├── backend/                   # Rails API 서버
 │   ├── app/
-│   │   ├── controllers/api/v1/  # REST API 컨트롤러
-│   │   │   ├── meetings_controller.rb
-│   │   │   ├── sessions_controller.rb
-│   │   │   ├── registrations_controller.rb
-│   │   │   ├── settings_controller.rb
-│   │   │   ├── teams_controller.rb
-│   │   │   ├── speakers_controller.rb
-│   │   │   └── health_controller.rb
+│   │   ├── controllers/
+│   │   │   ├── api/v1/       # REST API 컨트롤러
+│   │   │   │   ├── meetings_controller.rb
+│   │   │   │   ├── meeting_shares_controller.rb
+│   │   │   │   ├── meeting_attachments_controller.rb
+│   │   │   │   ├── meeting_action_items_controller.rb
+│   │   │   │   ├── settings_controller.rb
+│   │   │   │   ├── teams_controller.rb
+│   │   │   │   ├── speakers_controller.rb
+│   │   │   │   ├── folders_controller.rb
+│   │   │   │   ├── tags_controller.rb
+│   │   │   │   ├── prompt_templates_controller.rb
+│   │   │   │   ├── health_controller.rb
+│   │   │   │   └── user/llm_settings_controller.rb
+│   │   │   └── auth/         # 인증 컨트롤러
+│   │   │       ├── sessions_controller.rb
+│   │   │       └── browser_sessions_controller.rb
 │   │   ├── channels/         # ActionCable WebSocket
 │   │   │   └── transcription_channel.rb
 │   │   ├── jobs/             # Solid Queue 비동기 작업
 │   │   │   ├── transcription_job.rb
 │   │   │   ├── summarization_job.rb
 │   │   │   ├── meeting_summarization_job.rb
+│   │   │   ├── meeting_finalizer_job.rb
 │   │   │   ├── audio_upload_job.rb
 │   │   │   └── file_transcription_job.rb
 │   │   ├── models/           # ActiveRecord 모델
-│   │   │   ├── user.rb       # Devise JWT, 팀 연관
-│   │   │   ├── meeting.rb    # 핵심 모델 (status, source)
+│   │   │   ├── user.rb       # Devise JWT, 사용자별 LLM 설정
+│   │   │   ├── meeting.rb    # 핵심 모델 (status, source, share_code)
 │   │   │   ├── transcript.rb # 오디오 청크, 타임스탬프, 화자
 │   │   │   ├── summary.rb    # AI 생성 요약
 │   │   │   ├── block.rb      # BlockNote 직렬화
 │   │   │   ├── action_item.rb
+│   │   │   ├── folder.rb
+│   │   │   ├── tag.rb / tagging.rb
+│   │   │   ├── meeting_attachment.rb
+│   │   │   ├── meeting_participant.rb  # 실시간 공유 참여자
+│   │   │   ├── prompt_template.rb
 │   │   │   ├── team.rb
 │   │   │   └── team_membership.rb
 │   │   └── services/         # 비즈니스 로직
-│   │       ├── sidecar_client.rb       # Sidecar HTTP 클라이언트
+│   │       ├── sidecar_client.rb
 │   │       ├── meeting_finalizer_service.rb
-│   │       └── markdown_exporter.rb
+│   │       ├── meeting_share_service.rb
+│   │       ├── meeting_export_serializer.rb
+│   │       ├── markdown_exporter.rb
+│   │       ├── jwt_service.rb
+│   │       └── login_form_template.rb
 │   ├── config/
 │   │   ├── routes.rb         # API 라우팅
 │   │   └── database.yml      # SQLite WAL 설정
@@ -649,14 +790,15 @@ ddobakddobak/
 ├── sidecar/                   # Python FastAPI 서비스
 │   ├── app/
 │   │   ├── main.py           # FastAPI 엔트리포인트
-│   │   ├── config.py         # Pydantic 설정
+│   │   ├── config.py         # settings.yaml 로더 + Pydantic 설정
 │   │   ├── stt/              # STT 어댑터 패턴
 │   │   │   ├── base.py       # 추상 어댑터
 │   │   │   ├── factory.py    # 엔진 팩토리 (자동 감지)
-│   │   │   ├── qwen3_adapter.py      # Qwen3-ASR (MLX)
-│   │   │   ├── whisper_adapter.py    # whisper.cpp
-│   │   │   ├── faster_whisper_adapter.py  # CUDA Whisper
-│   │   │   └── mock_adapter.py       # 테스트용
+│   │   │   ├── qwen3_adapter.py          # Qwen3-ASR (MLX)
+│   │   │   ├── qwen3_transformers_adapter.py  # Qwen3-ASR (CUDA)
+│   │   │   ├── whisper_adapter.py        # whisper.cpp
+│   │   │   ├── faster_whisper_adapter.py # CUDA Whisper
+│   │   │   └── mock_adapter.py           # 테스트용
 │   │   ├── diarization/      # 화자 분리
 │   │   │   └── speaker_diarizer.py
 │   │   └── llm/              # LLM 통합
@@ -689,9 +831,9 @@ ddobakddobak/
 │   ├── build.yml             # Tauri 멀티플랫폼 빌드
 │   └── e2e.yml               # E2E 테스트
 │
-├── config.yaml                # 앱 통합 설정
+├── settings.yaml              # 런타임 설정 (STT, LLM, 화자분리 등)
+├── config.yaml                # 정적 설정 (URL, UI 라벨, 오디오 파라미터)
 ├── Procfile                   # foreman 프로세스 정의
-├── .env.example               # 환경 변수 템플릿
 └── .gitignore
 ```
 
@@ -713,7 +855,7 @@ class MySttAdapter(SttAdapter):
 
 - SQLite WAL 모드로 별도 DB 서버 불필요
 - 모든 데이터가 로컬에 저장되어 프라이버시 보장
-- 인터넷은 AI 요약 API 호출에만 필요
+- 인터넷은 AI 요약 API 호출에만 필요 (CLI 모드 사용 시 불필요)
 - STT는 완전히 로컬에서 실행
 
 ### 이벤트 기반 실시간 처리

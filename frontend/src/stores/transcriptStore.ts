@@ -59,24 +59,27 @@ export const useTranscriptStore = create<TranscriptState>()((set) => ({
 
   setSpeaker: (data) => set({ currentSpeaker: data.speaker_label }),
 
-  setMeetingNotes: (markdown) => set({ meetingNotes: markdown }),
+  setMeetingNotes: (markdown) =>
+    set((state) => state.meetingNotes === markdown ? state : { meetingNotes: markdown }),
 
   markApplied: (ids) =>
     set((state) => {
       const newAppliedIds = new Set(state.appliedIds)
+      const idSet = new Set(ids)
       ids.forEach((id) => newAppliedIds.add(id))
       return {
         appliedIds: newAppliedIds,
         finals: state.finals.map((f) =>
-          ids.includes(f.id) ? { ...f, applied: true } : f
+          idSet.has(f.id) ? { ...f, applied: true } : f
         ),
       }
     }),
 
   removeFinals: (ids) =>
-    set((state) => ({
-      finals: state.finals.filter((f) => !ids.includes(f.id)),
-    })),
+    set((state) => {
+      const idSet = new Set(ids)
+      return { finals: state.finals.filter((f) => !idSet.has(f.id)) }
+    }),
 
   reset: () => set(initialState),
 }))
