@@ -28,6 +28,11 @@ class Meeting < ApplicationRecord
     share_code.present?
   end
 
+  # ActionCable ストリーム名を一元管理
+  def transcription_stream
+    "meeting_#{id}_transcription"
+  end
+
   def host_participant
     active_participants.find_by(role: "host")
   end

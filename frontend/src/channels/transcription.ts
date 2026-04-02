@@ -51,8 +51,9 @@ type BackendMessage = {
   user_name?: string
   role?: string
   joined_at?: string
-  old_host_user_id?: number
-  new_host_user_id?: number
+  new_host_id?: number
+  new_host_name?: string
+  meeting_id?: number
 }
 
 export function createTranscriptionChannel(
@@ -124,10 +125,14 @@ export function createTranscriptionChannel(
             sharingStore.removeParticipant(raw.user_id ?? 0)
             break
           }
-          case 'host_changed': {
+          case 'host_transferred': {
             const sharingStore = useSharingStore.getState()
-            sharingStore.updateParticipantRole(raw.old_host_user_id ?? 0, 'viewer')
-            sharingStore.updateParticipantRole(raw.new_host_user_id ?? 0, 'host')
+            sharingStore.transferHost(raw.new_host_id ?? 0)
+            break
+          }
+          case 'recording_stopped': {
+            const sharingStore = useSharingStore.getState()
+            sharingStore.setRecordingStopped(true)
             break
           }
         }

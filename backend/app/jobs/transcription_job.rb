@@ -39,7 +39,7 @@ class TranscriptionJob < ApplicationJob
       )
 
       ActionCable.server.broadcast(
-        "meeting_#{meeting.id}_transcription",
+        meeting.transcription_stream,
         {
           id: transcript.id,
           type: segment.fetch("type", "final"),

@@ -12,6 +12,9 @@ class MeetingParticipant < ApplicationRecord
   scope :active, -> { where(left_at: nil) }
   scope :host, -> { where(role: "host") }
 
+  after_create_commit :broadcast_participant_joined
+  after_update_commit :broadcast_participant_left, if: -> { saved_change_to_left_at? && left_at.present? }
+
   # 참여자 정보를 JSON-serializable 해시로 변환 (단일 직렬화 경로)
   def as_summary
     {
@@ -21,5 +24,32 @@ class MeetingParticipant < ApplicationRecord
       role: role,
       joined_at: joined_at
     }
+  end
+
+  private
+
+  def broadcast_participant_joined
+    ActionCable.server.broadcast(
+      meeting.transcription_stream,
+      {
+        type: "participant_joined",
+        participant_id: id,
+        user_id: user_id,
+        user_name: user.name,
+        role: role,
+        joined_at: joined_at
+      }
+    )
+  end
+
+  def broadcast_participant_left
+    ActionCable.server.broadcast(
+      meeting.transcription_stream,
+      {
+        type: "participant_left",
+        user_id: user_id,
+        user_name: user.name
+      }
+    )
   end
 end

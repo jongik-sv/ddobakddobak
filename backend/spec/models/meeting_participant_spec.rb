@@ -59,4 +59,70 @@ RSpec.describe MeetingParticipant, type: :model do
       end
     end
   end
+
+  # ============================================================
+  # Broadcast Callbacks
+  # ============================================================
+  describe "broadcast callbacks" do
+    let(:other_user) { create(:user) }
+    let(:stream_name) { "meeting_#{meeting.id}_transcription" }
+
+    describe "after_create_commit :broadcast_participant_joined" do
+      it "broadcasts participant_joined to the meeting transcription stream" do
+        expect(ActionCable.server).to receive(:broadcast).with(
+          stream_name,
+          hash_including(
+            type: "participant_joined",
+            user_id: other_user.id,
+            user_name: other_user.name,
+            role: "viewer"
+          )
+        )
+
+        create(:meeting_participant, meeting: meeting, user: other_user, role: "viewer", joined_at: Time.current)
+      end
+
+      it "includes participant_id and joined_at in the broadcast" do
+        expect(ActionCable.server).to receive(:broadcast).with(stream_name, anything) do |_stream, payload|
+          expect(payload[:type]).to eq("participant_joined")
+          expect(payload[:participant_id]).to be_a(Integer)
+          expect(payload[:joined_at]).to be_a(Time)
+        end
+
+        create(:meeting_participant, meeting: meeting, user: other_user, role: "viewer", joined_at: Time.current)
+      end
+    end
+
+    describe "after_update_commit :broadcast_participant_left" do
+      let!(:participant) do
+        # Suppress broadcast_participant_joined for setup
+        allow(ActionCable.server).to receive(:broadcast)
+        create(:meeting_participant, meeting: meeting, user: other_user, role: "viewer", joined_at: Time.current)
+      end
+
+      before { allow(ActionCable.server).to receive(:broadcast).and_call_original }
+
+      it "broadcasts participant_left when left_at is set" do
+        expect(ActionCable.server).to receive(:broadcast).with(
+          stream_name,
+          hash_including(
+            type: "participant_left",
+            user_id: other_user.id,
+            user_name: other_user.name
+          )
+        )
+
+        participant.update!(left_at: Time.current)
+      end
+
+      it "does NOT broadcast participant_left when other fields change" do
+        expect(ActionCable.server).not_to receive(:broadcast).with(
+          stream_name,
+          hash_including(type: "participant_left")
+        )
+
+        participant.update!(role: "host")
+      end
+    end
+  end
 end

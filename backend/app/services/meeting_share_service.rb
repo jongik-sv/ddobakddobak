@@ -70,6 +70,8 @@ class MeetingShareService
       target_participant.update!(role: "host")
     end
 
+    broadcast_host_transferred(meeting, target_participant.user)
+
     { participants: serialize_active_participants(meeting) }
   end
 
@@ -110,7 +112,21 @@ class MeetingShareService
   # 가장 먼저 참여한 활성 viewer에게 호스트를 자동 위임
   def auto_delegate_host!(meeting)
     next_host = meeting.active_participants.where(role: "viewer").order(:joined_at).first
-    next_host&.update!(role: "host")
+    return unless next_host
+
+    next_host.update!(role: "host")
+    broadcast_host_transferred(meeting, next_host.user)
+  end
+
+  def broadcast_host_transferred(meeting, new_host_user)
+    ActionCable.server.broadcast(
+      meeting.transcription_stream,
+      {
+        type: "host_transferred",
+        new_host_id: new_host_user.id,
+        new_host_name: new_host_user.name
+      }
+    )
   end
 
   # N+1 방지를 위해 includes(:user) 적용, MeetingParticipant#as_summary로 직렬화 일원화

@@ -5,7 +5,7 @@ class FileTranscriptionJob < ApplicationJob
     meeting = Meeting.find_by(id: meeting_id)
     return unless meeting&.transcribing?
 
-    channel = "meeting_#{meeting.id}_transcription"
+    channel = meeting.transcription_stream
 
     # 1. ffmpeg로 원본 → raw PCM 16kHz mono 변환
     pcm_path = convert_to_pcm(meeting)
@@ -55,7 +55,7 @@ class FileTranscriptionJob < ApplicationJob
     Rails.logger.error "[FileTranscriptionJob] meeting=#{meeting_id} error=#{e.class}: #{e.message}"
     if meeting
       meeting.update(status: :pending, transcription_progress: 0)
-      ActionCable.server.broadcast("meeting_#{meeting.id}_transcription", {
+      ActionCable.server.broadcast(meeting.transcription_stream, {
         type: "file_transcription_error",
         error: e.message
       })

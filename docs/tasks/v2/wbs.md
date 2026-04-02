@@ -549,7 +549,7 @@
 ### TSK-05-02: 실시간 전사 브로드캐스트
 - category: feature
 - domain: backend
-- status: [ ]
+- status: [xx]
 - priority: high
 - assignee: -
 - tags: actioncable, websocket, realtime

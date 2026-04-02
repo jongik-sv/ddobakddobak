@@ -160,6 +160,21 @@ RSpec.describe MeetingShareService do
         service.transfer_host(meeting, user, non_participant.id)
       }.to raise_error(MeetingShareService::InvalidTargetError)
     end
+
+    it "broadcasts host_transferred event with new host info" do
+      target_user = other_user
+
+      expect(ActionCable.server).to receive(:broadcast).with(
+        "meeting_#{meeting.id}_transcription",
+        hash_including(
+          type: "host_transferred",
+          new_host_id: target_user.id,
+          new_host_name: target_user.name
+        )
+      )
+
+      service.transfer_host(meeting, user, target_user.id)
+    end
   end
 
   # ============================================================
@@ -203,6 +218,24 @@ RSpec.describe MeetingShareService do
       service.leave_meeting(meeting, user)
 
       expect(meeting.reload.share_code).to be_nil
+    end
+
+    it "broadcasts host_transferred when host leaves and auto-delegates" do
+      third_user = create(:user)
+      service.join_meeting(meeting.share_code, third_user)
+
+      broadcasts = []
+      allow(ActionCable.server).to receive(:broadcast) do |stream, payload|
+        broadcasts << { stream: stream, payload: payload }
+      end
+
+      service.leave_meeting(meeting, user)
+
+      host_transferred = broadcasts.find { |b| b[:payload][:type] == "host_transferred" }
+      expect(host_transferred).to be_present
+      expect(host_transferred[:stream]).to eq("meeting_#{meeting.id}_transcription")
+      expect(host_transferred[:payload][:new_host_id]).to eq(other_user.id)
+      expect(host_transferred[:payload][:new_host_name]).to eq(other_user.name)
     end
   end
 end

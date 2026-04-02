@@ -300,6 +300,21 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
         post "/api/v1/meetings/#{meeting.id}/stop"
       end
+
+      it "broadcasts recording_stopped to the meeting transcription stream" do
+        allow(MeetingFinalizerJob).to receive(:perform_later)
+        allow(MeetingSummarizationJob).to receive(:perform_later)
+
+        expect(ActionCable.server).to receive(:broadcast).with(
+          "meeting_#{meeting.id}_transcription",
+          hash_including(
+            type: "recording_stopped",
+            meeting_id: meeting.id
+          )
+        )
+
+        post "/api/v1/meetings/#{meeting.id}/stop"
+      end
     end
 
     context "when meeting is not recording" do
