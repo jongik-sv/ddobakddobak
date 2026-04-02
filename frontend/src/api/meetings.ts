@@ -49,6 +49,7 @@ export interface Meeting {
   last_sequence_number: number
   memo: string | null
   tags?: { id: number; name: string; color: string }[]
+  share_code?: string | null
   started_at: string | null
   ended_at: string | null
   created_at: string
@@ -305,6 +306,50 @@ export interface MeetingExportData {
     timestamp: string
     content: string
   }>
+}
+
+// --- 공유 API ---
+
+export interface Participant {
+  id: number
+  user_id: number
+  user_name: string
+  role: 'host' | 'viewer'
+  joined_at: string
+}
+
+export interface ShareResponse {
+  share_code: string
+  participants: Participant[]
+}
+
+export interface JoinResponse {
+  meeting: Meeting
+  participant: Participant
+}
+
+export async function shareMeeting(meetingId: number): Promise<ShareResponse> {
+  return apiClient.post(`meetings/${meetingId}/share`).json()
+}
+
+export async function stopSharing(meetingId: number): Promise<void> {
+  await apiClient.delete(`meetings/${meetingId}/share`)
+}
+
+export async function joinMeeting(shareCode: string): Promise<JoinResponse> {
+  return apiClient.post('meetings/join', { json: { share_code: shareCode } }).json()
+}
+
+export async function getParticipants(meetingId: number): Promise<Participant[]> {
+  const res = await apiClient.get(`meetings/${meetingId}/participants`).json<{ participants: Participant[] }>()
+  return res.participants
+}
+
+export async function transferHost(meetingId: number, targetUserId: number): Promise<Participant[]> {
+  const res = await apiClient.post(`meetings/${meetingId}/transfer_host`, {
+    json: { target_user_id: targetUserId },
+  }).json<{ participants: Participant[] }>()
+  return res.participants
 }
 
 export async function exportMeetingData(

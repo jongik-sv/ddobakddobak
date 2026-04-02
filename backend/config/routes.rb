@@ -29,6 +29,7 @@ Rails.application.routes.draw do
         collection do
           post :upload_audio
           post :move_to_folder
+          post :join, to: "meeting_shares#join"
         end
         member do
           post :start
@@ -47,6 +48,10 @@ Rails.application.routes.draw do
           get  :export_prompt
           get  :summary
           get  :transcripts
+          post :share, to: "meeting_shares#create_share"
+          delete :share, to: "meeting_shares#destroy_share"
+          get :participants, to: "meeting_shares#participants"
+          post :transfer_host, to: "meeting_shares#transfer_host"
         end
         resources :action_items,
           only: %i[index create],

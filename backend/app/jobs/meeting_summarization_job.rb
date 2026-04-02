@@ -24,7 +24,7 @@ class MeetingSummarizationJob < ApplicationJob
     return if new_transcripts.empty?
 
     applied_ids = new_transcripts.pluck(:id)
-    channel = "meeting_#{meeting.id}_transcription"
+    channel = meeting.transcription_stream
 
     current_notes = current_notes_markdown(meeting)
     payload = transcripts_payload(new_transcripts)
@@ -81,7 +81,7 @@ class MeetingSummarizationJob < ApplicationJob
     meeting.transcripts.update_all(applied_to_minutes: true)
 
     ActionCable.server.broadcast(
-      "meeting_#{meeting.id}_transcription",
+      meeting.transcription_stream,
       { type: "meeting_notes_update", notes_markdown: notes_markdown, is_final: true }
     )
   rescue SidecarClient::SidecarError => e

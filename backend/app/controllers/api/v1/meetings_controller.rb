@@ -149,6 +149,13 @@ module Api
         return if performed?
 
         @meeting.update!(status: :completed, ended_at: Time.current)
+
+        # 참여자에게 녹음 종료 브로드캐스트
+        ActionCable.server.broadcast(
+          @meeting.transcription_stream,
+          { type: "recording_stopped", meeting_id: @meeting.id }
+        )
+
         # Sidecar 호출은 비동기 Job으로 — 실패해도 회의 종료에 영향 없음
         MeetingFinalizerJob.perform_later(@meeting.id)
         MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
@@ -259,7 +266,7 @@ module Api
           summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
           @meeting.refresh_brief_summary!(notes_markdown)
 
-          ActionCable.server.broadcast("meeting_#{@meeting.id}_transcription", {
+          ActionCable.server.broadcast(@meeting.transcription_stream, {
             type: "meeting_notes_update",
             notes_markdown: notes_markdown
           })

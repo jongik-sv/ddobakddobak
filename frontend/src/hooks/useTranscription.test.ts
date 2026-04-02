@@ -54,6 +54,8 @@ vi.mock('../stores/appSettingsStore', () => ({
 vi.mock('../config', () => ({
   DIARIZATION: {},
   WS_URL: 'ws://localhost/cable',
+  getWsUrl: () => 'ws://localhost/cable',
+  getMode: () => 'local',
 }))
 
 // ──────────────────────────────────────────────
