@@ -24,7 +24,7 @@ class TranscriptionChannel < ApplicationCable::Channel
     return unless @meeting_id
 
     # viewer는 오디오 전송 차단 (owner 또는 host만 허용)
-    return if @role == "viewer"
+    return if @role == MeetingParticipant::ROLE_VIEWER
 
     TranscriptionJob.perform_later(
       meeting_id: @meeting_id,

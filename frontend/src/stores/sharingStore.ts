@@ -6,19 +6,15 @@ interface SharingState {
   participants: Participant[]
   isLoading: boolean
   recordingStopped: boolean
-  viewerMeetingId: number | null
 
-  setShareCode: (code: string | null) => void
   setParticipants: (participants: Participant[]) => void
   addParticipant: (participant: Participant) => void
   removeParticipant: (userId: number) => void
-  updateParticipantRole: (userId: number, role: 'host' | 'viewer') => void
   transferHost: (newHostUserId: number) => void
   startSharing: (code: string, participants: Participant[]) => void
   stopSharing: () => void
   setLoading: (loading: boolean) => void
   setRecordingStopped: (stopped: boolean) => void
-  setViewerMeetingId: (id: number | null) => void
   reset: () => void
 }
 
@@ -35,13 +31,10 @@ const initialState = {
   participants: [] as Participant[],
   isLoading: false,
   recordingStopped: false,
-  viewerMeetingId: null as number | null,
 }
 
 export const useSharingStore = create<SharingState>()((set) => ({
   ...initialState,
-
-  setShareCode: (code) => set({ shareCode: code }),
 
   setParticipants: (participants) =>
     set({ participants: sortParticipants(participants) }),
@@ -58,14 +51,6 @@ export const useSharingStore = create<SharingState>()((set) => ({
     set((state) => ({
       participants: state.participants.filter((p) => p.user_id !== userId),
     })),
-
-  updateParticipantRole: (userId, role) =>
-    set((state) => {
-      const updated = state.participants.map((p) =>
-        p.user_id === userId ? { ...p, role } : p,
-      )
-      return { participants: sortParticipants(updated) }
-    }),
 
   transferHost: (newHostUserId) =>
     set((state) => {
@@ -93,8 +78,6 @@ export const useSharingStore = create<SharingState>()((set) => ({
   setLoading: (loading) => set({ isLoading: loading }),
 
   setRecordingStopped: (stopped) => set({ recordingStopped: stopped }),
-
-  setViewerMeetingId: (id) => set({ viewerMeetingId: id }),
 
   reset: () => set(initialState),
 }))

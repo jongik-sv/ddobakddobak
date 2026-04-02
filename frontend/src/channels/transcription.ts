@@ -75,11 +75,13 @@ export function createTranscriptionChannel(
       received(raw: BackendMessage) {
         const store = useTranscriptStore.getState()
         const sharingStore = useSharingStore.getState()
+        const speakerLabel = raw.speaker ?? raw.speaker_label ?? 'SPEAKER_00'
+
         switch (raw.type) {
           case 'partial':
             store.setPartial({
               content: raw.text ?? '',
-              speaker_label: raw.speaker ?? raw.speaker_label ?? 'SPEAKER_00',
+              speaker_label: speakerLabel,
               started_at_ms: raw.started_at_ms ?? 0,
             })
             break
@@ -87,7 +89,7 @@ export function createTranscriptionChannel(
             store.addFinal({
               id: raw.id ?? raw.seq ?? 0,
               content: raw.text ?? '',
-              speaker_label: raw.speaker ?? raw.speaker_label ?? 'SPEAKER_00',
+              speaker_label: speakerLabel,
               started_at_ms: raw.started_at_ms ?? 0,
               ended_at_ms: raw.ended_at_ms ?? 0,
               sequence_number: raw.seq ?? 0,
@@ -98,7 +100,7 @@ export function createTranscriptionChannel(
             break
           case 'speaker_change':
             store.setSpeaker({
-              speaker_label: raw.speaker ?? raw.speaker_label ?? 'SPEAKER_00',
+              speaker_label: speakerLabel,
               started_at_ms: raw.started_at_ms ?? 0,
             })
             break
@@ -110,7 +112,7 @@ export function createTranscriptionChannel(
               store.markApplied(raw.ids)
             }
             break
-          case 'participant_joined': {
+          case 'participant_joined':
             sharingStore.addParticipant({
               id: raw.participant_id ?? 0,
               user_id: raw.user_id ?? 0,
@@ -119,19 +121,18 @@ export function createTranscriptionChannel(
               joined_at: raw.joined_at ?? '',
             })
             break
-          }
-          case 'participant_left': {
+          case 'participant_left':
             sharingStore.removeParticipant(raw.user_id ?? 0)
             break
-          }
-          case 'host_transferred': {
+          case 'host_transferred':
             sharingStore.transferHost(raw.new_host_id ?? 0)
             break
-          }
-          case 'recording_stopped': {
+          case 'recording_stopped':
             sharingStore.setRecordingStopped(true)
             break
-          }
+          case 'sharing_stopped':
+            sharingStore.stopSharing()
+            break
         }
       },
     }

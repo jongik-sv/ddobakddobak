@@ -47,6 +47,12 @@ RSpec.describe User, type: :model do
       jti = user.generate_refresh_token_jti!
       expect(jti).to match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
     end
+
+    it "changes the value on subsequent calls" do
+      jti1 = user.generate_refresh_token_jti!
+      jti2 = user.generate_refresh_token_jti!
+      expect(jti1).not_to eq(jti2)
+    end
   end
 
   describe "#revoke_refresh_token!" do
@@ -70,6 +76,15 @@ RSpec.describe User, type: :model do
 
     it "responds to jwt_payload" do
       expect(user).to respond_to(:jwt_payload)
+    end
+  end
+
+  describe "password handling" do
+    it "encrypts the password with bcrypt" do
+      user = create(:user, password: "testpass123")
+      expect(user.encrypted_password).to be_present
+      expect(user.valid_password?("testpass123")).to be true
+      expect(user.valid_password?("wrongpass")).to be false
     end
   end
 end

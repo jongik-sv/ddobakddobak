@@ -11,10 +11,6 @@ module Api
 
       # POST /api/v1/meetings/:id/share
       def create_share
-        unless @meeting.owner?(current_user)
-          return render json: { error: "Only the meeting creator can share" }, status: :forbidden
-        end
-
         result = service.generate_share_code(@meeting, current_user)
         render json: { share_code: result[:share_code], participants: result[:participants] }
       end

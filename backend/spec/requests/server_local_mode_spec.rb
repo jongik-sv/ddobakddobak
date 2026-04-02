@@ -17,12 +17,6 @@ RSpec.describe "Server/Local mode branching", type: :request do
       expect(User.find_by(email: "desktop@local")).to be_present
     end
 
-    it "uses desktop@local as current_user for all requests" do
-      get "/api/v1/meetings", as: :json
-      expect(response).to have_http_status(:ok)
-      expect(User.find_by(email: "desktop@local")).to be_present
-    end
-
     it "health endpoint is accessible" do
       get "/api/v1/health", as: :json
       expect(response).to have_http_status(:ok)

@@ -29,8 +29,6 @@ class Auth::BrowserSessionsController < ApplicationController
 
   private
 
-  # ── Before actions ──
-
   def set_callback
     @callback = params[:callback]
   end
@@ -40,8 +38,6 @@ class Auth::BrowserSessionsController < ApplicationController
 
     render_error_page("잘못된 callback URL입니다.")
   end
-
-  # ── Callback URL helpers ──
 
   def valid_callback?(callback)
     return false if callback.blank?
@@ -73,8 +69,6 @@ class Auth::BrowserSessionsController < ApplicationController
     "#{base}?#{query}"
   end
 
-  # ── HMAC-based CSRF protection (stateless, no session needed) ──
-
   def generate_csrf_token
     timestamp = Time.current.to_i
     signature = OpenSSL::HMAC.hexdigest("SHA256", csrf_secret, timestamp.to_s)
@@ -102,8 +96,6 @@ class Auth::BrowserSessionsController < ApplicationController
     render_error_page("유효하지 않은 요청입니다. 다시 시도해 주세요.",
       status: :unprocessable_content)
   end
-
-  # ── HTML rendering ──
 
   def render_login_form(status: :ok)
     html = LoginFormTemplate.render(

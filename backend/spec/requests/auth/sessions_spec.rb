@@ -154,46 +154,4 @@ RSpec.describe "Auth::Sessions", type: :request do
     end
   end
 
-  describe "authenticated API calls (SERVER_MODE)" do
-    context "with SERVER_MODE=true" do
-      around do |example|
-        original = ENV["SERVER_MODE"]
-        ENV["SERVER_MODE"] = "true"
-        example.run
-      ensure
-        ENV["SERVER_MODE"] = original
-      end
-
-      it "allows access with valid access_token" do
-        post "/auth/login", params: { user: { email: user.email, password: password } }, as: :json
-        access_token = response.parsed_body["access_token"]
-
-        get "/api/v1/health", headers: { "Authorization" => "Bearer #{access_token}" }, as: :json
-
-        expect(response).to have_http_status(:ok)
-      end
-
-      it "rejects requests without access_token" do
-        get "/api/v1/meetings", as: :json
-
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
-
-    context "with SERVER_MODE=false (default)" do
-      around do |example|
-        original = ENV["SERVER_MODE"]
-        ENV["SERVER_MODE"] = nil
-        example.run
-      ensure
-        ENV["SERVER_MODE"] = original
-      end
-
-      it "uses default_user (desktop@local) without JWT" do
-        get "/api/v1/health", as: :json
-
-        expect(response).to have_http_status(:ok)
-      end
-    end
-  end
 end

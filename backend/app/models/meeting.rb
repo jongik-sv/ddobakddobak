@@ -37,7 +37,7 @@ class Meeting < ApplicationRecord
   end
 
   def host_participant
-    active_participants.find_by(role: "host")
+    active_participants.find_by(role: MeetingParticipant::ROLE_HOST)
   end
 
   # notes_markdown에서 의미 있는 요약 텍스트를 추출하여 brief_summary 컬럼에 저장

@@ -19,30 +19,16 @@ module ApplicationCable
     end
 
     def authenticate_websocket_user
-      token = extract_token
+      token = request.params["token"]
       return reject_unauthorized_connection unless token
 
-      payload = decode_jwt(token)
+      payload = JwtService.decode(token)
       return reject_unauthorized_connection unless payload
 
       user = User.find_by(id: payload["sub"], jti: payload["jti"])
       return reject_unauthorized_connection unless user
 
       user
-    end
-
-    def extract_token
-      # WebSocket connections pass token as query parameter
-      # ws://server/cable?token=xxx
-      request.params["token"]
-    end
-
-    def decode_jwt(token)
-      secret = Devise::JWT.config.secret
-      decoded = JWT.decode(token, secret, true, algorithm: "HS256")
-      decoded.first
-    rescue JWT::DecodeError, JWT::ExpiredSignature
-      nil
     end
 
   end

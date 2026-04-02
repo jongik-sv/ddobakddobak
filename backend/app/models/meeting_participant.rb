@@ -1,8 +1,12 @@
 class MeetingParticipant < ApplicationRecord
+  ROLE_HOST   = "host"
+  ROLE_VIEWER = "viewer"
+  ROLES = [ROLE_HOST, ROLE_VIEWER].freeze
+
   belongs_to :meeting
   belongs_to :user
 
-  validates :role, inclusion: { in: %w[host viewer] }
+  validates :role, inclusion: { in: ROLES }
   validates :user_id, uniqueness: {
     scope: :meeting_id,
     conditions: -> { where(left_at: nil) },
@@ -10,7 +14,7 @@ class MeetingParticipant < ApplicationRecord
   }
 
   scope :active, -> { where(left_at: nil) }
-  scope :host, -> { where(role: "host") }
+  scope :host, -> { where(role: ROLE_HOST) }
 
   after_create_commit :broadcast_participant_joined
   after_update_commit :broadcast_participant_left, if: -> { saved_change_to_left_at? && left_at.present? }

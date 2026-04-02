@@ -8,6 +8,8 @@ class MeetingShareService
 
   # 공유 코드 생성 (멱등) — 이미 공유 중이면 기존 코드 반환
   def generate_share_code(meeting, user)
+    raise NotHostError, "Only the meeting creator can share" unless meeting.owner?(user)
+
     if meeting.sharing?
       return { share_code: meeting.share_code, participants: serialize_active_participants(meeting) }
     end
@@ -18,7 +20,7 @@ class MeetingShareService
     # 호출자를 host participant로 등록
     meeting.meeting_participants.create!(
       user: user,
-      role: "host",
+      role: MeetingParticipant::ROLE_HOST,
       joined_at: Time.current
     )
 
@@ -56,7 +58,7 @@ class MeetingShareService
 
       participant = meeting.meeting_participants.create!(
         user: user,
-        role: "viewer",
+        role: MeetingParticipant::ROLE_VIEWER,
         joined_at: Time.current
       )
 
@@ -72,8 +74,8 @@ class MeetingShareService
     raise InvalidTargetError, "Target user is not an active participant" unless target_participant
 
     ActiveRecord::Base.transaction do
-      current_host.update!(role: "viewer")
-      target_participant.update!(role: "host")
+      current_host.update!(role: MeetingParticipant::ROLE_VIEWER)
+      target_participant.update!(role: MeetingParticipant::ROLE_HOST)
     end
 
     broadcast_host_transferred(meeting, target_participant.user)
@@ -87,7 +89,7 @@ class MeetingShareService
     return unless participant
 
     ActiveRecord::Base.transaction do
-      was_host = participant.role == "host"
+      was_host = participant.role == MeetingParticipant::ROLE_HOST
       participant.update!(left_at: Time.current)
 
       remaining = meeting.active_participants.reload
@@ -117,7 +119,7 @@ class MeetingShareService
 
   def auto_delegate_host!(meeting, remaining = nil)
     remaining ||= meeting.active_participants.reload
-    next_host = remaining.where(role: "viewer").order(:joined_at).first
+    next_host = remaining.where(role: MeetingParticipant::ROLE_VIEWER).order(:joined_at).first
     return unless next_host
 
     next_host.update!(role: "host")

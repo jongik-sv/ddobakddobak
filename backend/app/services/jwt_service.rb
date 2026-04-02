@@ -3,7 +3,6 @@ class JwtService
   REFRESH_EXPIRATION = 30.days.to_i
 
   class << self
-    # Encode a Refresh Token
     def encode_refresh_token(user, jti)
       payload = {
         sub: user.id,
@@ -15,7 +14,6 @@ class JwtService
       JWT.encode(payload, SECRET.call, "HS256")
     end
 
-    # Decode a Refresh Token (validates expiration and signature)
     def decode_refresh_token(token)
       decoded = JWT.decode(token, SECRET.call, true, {
         algorithm: "HS256",
@@ -28,7 +26,13 @@ class JwtService
       payload
     end
 
-    # Manually issue an Access Token (for refresh endpoint)
+    def decode(token)
+      decoded = JWT.decode(token, SECRET.call, true, { algorithm: "HS256" })
+      decoded.first
+    rescue JWT::DecodeError, JWT::ExpiredSignature
+      nil
+    end
+
     def encode_access_token(user)
       payload = {
         sub: user.id,

@@ -9,11 +9,9 @@ class ApplicationController < ActionController::API
 
   def authenticate_user!
     if server_mode?
-      # Server mode: JWT authentication via Warden/devise-jwt
       warden.authenticate!(scope: :user)
       @current_user = warden.user(:user)
     else
-      # Local mode: existing desktop@local flow
       @current_user = local_default_user
     end
     true
