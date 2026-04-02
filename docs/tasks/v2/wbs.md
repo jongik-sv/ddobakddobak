@@ -598,7 +598,7 @@
 ### TSK-05-04: 회의 참여 UI (뷰어)
 - category: feature
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: high
 - assignee: -
 - tags: ui, viewer, realtime

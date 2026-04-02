@@ -24,7 +24,7 @@ import { AttachmentSection } from '../components/meeting/AttachmentSection'
 import { ShareButton } from '../components/meeting/ShareButton'
 import { ParticipantList } from '../components/meeting/ParticipantList'
 import { HostTransferDialog } from '../components/meeting/HostTransferDialog'
-import type { TranscriptFinalData } from '../channels/transcription'
+import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 
 type MeetingStatus = 'idle' | 'recording' | 'stopped'
 
@@ -99,18 +99,9 @@ export default function MeetingLivePage() {
     reset()
 
     // 기존 기록 로드
-    getTranscripts(meetingId).then((transcripts) => {
-      const finals: TranscriptFinalData[] = transcripts.map((t) => ({
-        id: t.id,
-        content: t.content,
-        speaker_label: t.speaker_label,
-        started_at_ms: t.started_at_ms,
-        ended_at_ms: t.ended_at_ms,
-        sequence_number: t.sequence_number,
-        applied: t.applied_to_minutes ?? false,
-      }))
-      loadFinals(finals)
-    }).catch(() => {})
+    getTranscripts(meetingId)
+      .then((transcripts) => loadFinals(mapTranscriptsToFinals(transcripts)))
+      .catch(() => {})
 
     // 기존 AI 회의록 로드
     getSummary(meetingId).then((summary) => {

@@ -11,6 +11,7 @@ import type { FolderNode } from '../api/folders'
 import FolderBreadcrumb from '../components/folder/FolderBreadcrumb'
 import MoveMeetingDialog from '../components/folder/MoveMeetingDialog'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
+import { JoinMeetingDialog } from '../components/meeting/JoinMeetingDialog'
 import { MeetingsGridSkeleton } from '../components/ui/Skeleton'
 import { initDrag } from '../utils/dragState'
 
@@ -411,6 +412,7 @@ export default function MeetingsPage() {
 
   const [showModal, setShowModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
+  const [showJoinDialog, setShowJoinDialog] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [movingMeeting, setMovingMeeting] = useState<Meeting | null>(null)
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
@@ -505,6 +507,12 @@ export default function MeetingsPage() {
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">{pageTitle}</h1>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowJoinDialog(true)}
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+          >
+            회의 참여
+          </button>
           <button
             onClick={() => setShowUploadModal(true)}
             className="rounded-md border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
@@ -797,6 +805,12 @@ export default function MeetingsPage() {
           onClose={() => setEditingMeeting(null)}
         />
       )}
+
+      {/* 회의 참여 다이얼로그 */}
+      <JoinMeetingDialog
+        open={showJoinDialog}
+        onClose={() => setShowJoinDialog(false)}
+      />
     </div>
   )
 }

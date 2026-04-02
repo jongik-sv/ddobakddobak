@@ -8,6 +8,7 @@ interface SharingState {
   isSharing: boolean
   isLoading: boolean
   recordingStopped: boolean
+  viewerMeetingId: number | null
 
   // 액션
   setShareCode: (code: string | null) => void
@@ -20,6 +21,7 @@ interface SharingState {
   stopSharing: () => void
   setLoading: (loading: boolean) => void
   setRecordingStopped: (stopped: boolean) => void
+  setViewerMeetingId: (id: number | null) => void
   reset: () => void
 }
 
@@ -38,6 +40,7 @@ const initialState = {
   isSharing: false,
   isLoading: false,
   recordingStopped: false,
+  viewerMeetingId: null as number | null,
 }
 
 export const useSharingStore = create<SharingState>()((set) => ({
@@ -98,6 +101,8 @@ export const useSharingStore = create<SharingState>()((set) => ({
   setLoading: (loading) => set({ isLoading: loading }),
 
   setRecordingStopped: (stopped) => set({ recordingStopped: stopped }),
+
+  setViewerMeetingId: (id) => set({ viewerMeetingId: id }),
 
   reset: () => set(initialState),
 }))

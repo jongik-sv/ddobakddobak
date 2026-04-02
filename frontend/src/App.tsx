@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage'
 import MeetingsPage from './pages/MeetingsPage'
 import MeetingLivePage from './pages/MeetingLivePage'
 import MeetingPage from './pages/MeetingPage'
+import MeetingViewerPage from './pages/MeetingViewerPage'
 import AppLayout from './components/layout/AppLayout'
 import SetupGate from './components/SetupGate'
 import { AuthGuard } from './components/auth/AuthGuard'
@@ -50,6 +51,14 @@ function App() {
         element={
           <AppLayout>
             <MeetingLivePage />
+          </AppLayout>
+        }
+      />
+      <Route
+        path="/meetings/:id/viewer"
+        element={
+          <AppLayout>
+            <MeetingViewerPage />
           </AppLayout>
         }
       />
