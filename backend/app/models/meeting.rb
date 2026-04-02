@@ -9,8 +9,11 @@ class Meeting < ApplicationRecord
   has_many :action_items, dependent: :destroy
   has_many :blocks, dependent: :destroy
   has_many :meeting_attachments, dependent: :destroy
+  has_many :meeting_participants, dependent: :destroy
+  has_many :active_participants, -> { where(left_at: nil) }, class_name: "MeetingParticipant"
 
   validates :title, presence: true
+  validates :share_code, uniqueness: true, allow_nil: true
   validates :status, inclusion: { in: %w[pending recording transcribing completed] }
   validates :source, inclusion: { in: %w[live upload] }
 
@@ -20,6 +23,14 @@ class Meeting < ApplicationRecord
   scope :created_after, ->(date) { where("created_at >= ?", date) if date.present? }
   scope :created_before, ->(date) { where("created_at <= ?", Date.parse(date).end_of_day) if date.present? }
   scope :by_status, ->(status) { where(status: status) if status.present? }
+
+  def sharing?
+    share_code.present?
+  end
+
+  def host_participant
+    active_participants.find_by(role: "host")
+  end
 
   # notes_markdown에서 의미 있는 요약 텍스트를 추출하여 brief_summary 컬럼에 저장
   def refresh_brief_summary!(notes_markdown = nil)

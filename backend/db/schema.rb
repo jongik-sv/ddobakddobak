@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_02_104351) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_02_120001) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -66,6 +66,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_104351) do
     t.index ["uploaded_by_id"], name: "index_meeting_attachments_on_uploaded_by_id"
   end
 
+  create_table "meeting_participants", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "joined_at", null: false
+    t.datetime "left_at"
+    t.integer "meeting_id", null: false
+    t.string "role", default: "viewer", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["meeting_id", "role"], name: "idx_participants_meeting_role"
+    t.index ["meeting_id", "user_id", "left_at"], name: "idx_participants_meeting_user_active"
+    t.index ["meeting_id"], name: "index_meeting_participants_on_meeting_id"
+    t.index ["user_id"], name: "index_meeting_participants_on_user_id"
+  end
+
   create_table "meetings", force: :cascade do |t|
     t.string "audio_file_path"
     t.string "brief_summary"
@@ -76,6 +90,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_104351) do
     t.integer "last_refined_seq", default: 0, null: false
     t.string "meeting_type", default: "general", null: false
     t.text "memo"
+    t.string "share_code"
     t.string "source", default: "live", null: false
     t.datetime "started_at"
     t.string "status", default: "pending", null: false
@@ -85,6 +100,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_104351) do
     t.datetime "updated_at", null: false
     t.index ["created_by_id"], name: "index_meetings_on_created_by_id"
     t.index ["folder_id"], name: "index_meetings_on_folder_id"
+    t.index ["share_code"], name: "index_meetings_on_share_code", unique: true
     t.index ["team_id", "status"], name: "index_meetings_on_team_id_and_status"
     t.index ["team_id"], name: "index_meetings_on_team_id"
   end
@@ -181,6 +197,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_104351) do
     t.index ["refresh_token_jti"], name: "index_users_on_refresh_token_jti", unique: true
   end
 
+  add_foreign_key "meeting_participants", "meetings"
+  add_foreign_key "meeting_participants", "users"
   add_foreign_key "taggings", "tags"
   add_foreign_key "tags", "teams"
 end

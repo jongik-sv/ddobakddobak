@@ -503,3 +503,119 @@
 - acceptance:
   - cron 등록 확인
   - 백업 파일 생성 확인
+
+---
+
+## WP-05: 실시간 회의 공유
+- status: in-progress
+- priority: high
+- progress: 0%
+- note: 회의 공유 코드 생성, 실시간 전사 브로드캐스트, 호스트/뷰어 UI
+
+### TSK-05-01: 회의 공유 모델 및 API
+- category: feature
+- domain: backend
+- status: [xx]
+- priority: high
+- assignee: -
+- tags: meeting, sharing, api
+- depends: TSK-01-01 [xx]
+- note: 회의 공유 코드 생성, 참여자 관리 API
+
+#### PRD 요구사항
+- prd-ref: PRD 3.5 실시간 회의 공유
+- requirements:
+  - MeetingParticipant 모델 생성 (meeting_id, user_id, role, joined_at, left_at)
+  - Meeting 모델에 share_code 필드 추가 (6자리 영숫자, unique)
+  - `POST /api/v1/meetings/:id/share` — 공유 코드 생성
+  - `DELETE /api/v1/meetings/:id/share` — 공유 중지
+  - `POST /api/v1/meetings/join` — 공유 코드로 회의 참여
+  - `GET /api/v1/meetings/:id/participants` — 참여자 목록 조회
+  - `POST /api/v1/meetings/:id/transfer_host` — 호스트 권한 위임
+  - 호스트 나가기 시 참여자가 있으면 자동 위임 또는 위임 대상 선택
+- acceptance:
+  - 공유 코드 생성 및 조회 성공
+  - 공유 코드로 회의 참여 성공
+  - 참여자 목록에 host + viewer 표시
+  - 호스트 위임 후 새 호스트가 녹음 컨트롤 가능
+
+#### 기술 스펙
+- data-model:
+  - MeetingParticipant (신규): meeting_id, user_id, role ("host"/"viewer"), joined_at, left_at
+  - Meeting (추가 필드): share_code (string, unique, nullable) — 6자리 영숫자
+
+---
+
+### TSK-05-02: 실시간 전사 브로드캐스트
+- category: feature
+- domain: backend
+- status: [ ]
+- priority: high
+- assignee: -
+- tags: actioncable, websocket, realtime
+- depends: TSK-05-01
+- note: TranscriptionChannel 확장하여 참여자에게도 전사 이벤트 전송
+
+#### PRD 요구사항
+- prd-ref: PRD 3.5.2
+- requirements:
+  - TranscriptionChannel에서 회의 참여자(viewer)도 구독 가능하도록 확장
+  - 참여/퇴장 시 다른 참여자에게 알림 브로드캐스트
+  - 녹음 종료 시 참여자에게 종료 이벤트 전송
+  - 참여자 수 제한 (최대 20명)
+- acceptance:
+  - viewer가 ActionCable 구독 후 실시간 전사 수신
+  - 녹음 종료 시 viewer에게 종료 알림
+
+---
+
+### TSK-05-03: 회의 공유 UI (호스트)
+- category: feature
+- domain: frontend
+- status: [ ]
+- priority: high
+- assignee: -
+- tags: ui, sharing, meeting
+- depends: TSK-05-01
+- note: 녹음 중인 회의에서 공유 버튼, 공유 코드 표시, 참여자 목록
+
+#### PRD 요구사항
+- prd-ref: PRD 3.5.1
+- requirements:
+  - 회의 녹음 화면에 "공유" 버튼 추가
+  - 공유 코드 표시 + 클립보드 복사
+  - 현재 참여자 목록 실시간 표시
+  - 공유 중지 버튼
+  - 참여자 목록에서 특정 뷰어에게 "호스트 넘기기" 버튼
+  - 호스트가 나갈 때 참여자가 있으면 위임 확인 다이얼로그
+- acceptance:
+  - 공유 코드 생성 후 UI에 표시
+  - 참여자 입장/퇴장 시 목록 실시간 업데이트
+  - 호스트 위임 시 새 호스트에게 녹음 컨트롤 활성화
+
+---
+
+### TSK-05-04: 회의 참여 UI (뷰어)
+- category: feature
+- domain: frontend
+- status: [ ]
+- priority: high
+- assignee: -
+- tags: ui, viewer, realtime
+- depends: TSK-05-02, TSK-05-03
+- note: 공유 코드로 회의에 참여하여 실시간 전사를 보는 읽기 전용 화면
+
+#### PRD 요구사항
+- prd-ref: PRD 3.5.1, 3.5.2
+- requirements:
+  - 공유 코드 입력 화면 (메인 화면에 "회의 참여" 버튼)
+  - 실시간 전사 + AI 요약만 표시하는 읽기 전용 화면
+  - 편집, 메모, 녹음 컨트롤, 내보내기 등 모든 조작 버튼 비활성화
+  - 화자 라벨, 타임스탬프 표시
+  - 녹음 종료 알림 → 최종 회의록 읽기 전용 보기
+  - 참여 중인 다른 사용자 아바타/이름 표시
+- acceptance:
+  - 공유 코드 입력 후 실시간 전사 화면 진입
+  - 호스트의 전사 내용이 실시간으로 표시
+  - 편집/메모/녹음/내보내기 버튼이 뷰어에게 비활성화
+  - 녹음 종료 후 회의록 읽기 전용 열람 가능
