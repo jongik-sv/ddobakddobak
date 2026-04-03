@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_02_120001) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_03_062223) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -66,6 +66,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120001) do
     t.index ["uploaded_by_id"], name: "index_meeting_attachments_on_uploaded_by_id"
   end
 
+  create_table "meeting_bookmarks", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "label"
+    t.integer "meeting_id", null: false
+    t.integer "timestamp_ms", null: false
+    t.datetime "updated_at", null: false
+    t.index ["meeting_id", "timestamp_ms"], name: "index_meeting_bookmarks_on_meeting_id_and_timestamp_ms"
+    t.index ["meeting_id"], name: "index_meeting_bookmarks_on_meeting_id"
+  end
+
   create_table "meeting_participants", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "joined_at", null: false
@@ -78,6 +88,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120001) do
     t.index ["meeting_id", "user_id", "left_at"], name: "idx_participants_meeting_user_active"
     t.index ["meeting_id"], name: "index_meeting_participants_on_meeting_id"
     t.index ["user_id"], name: "index_meeting_participants_on_user_id"
+  end
+
+  create_table "meeting_templates", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "folder_id"
+    t.string "meeting_type"
+    t.string "name", null: false
+    t.json "settings_json", default: {}
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["folder_id"], name: "index_meeting_templates_on_folder_id"
+    t.index ["user_id"], name: "index_meeting_templates_on_user_id"
   end
 
   create_table "meetings", force: :cascade do |t|
@@ -197,8 +219,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120001) do
     t.index ["refresh_token_jti"], name: "index_users_on_refresh_token_jti", unique: true
   end
 
+  add_foreign_key "meeting_bookmarks", "meetings"
   add_foreign_key "meeting_participants", "meetings"
   add_foreign_key "meeting_participants", "users"
+  add_foreign_key "meeting_templates", "folders"
+  add_foreign_key "meeting_templates", "users"
   add_foreign_key "taggings", "tags"
   add_foreign_key "tags", "teams"
 end

@@ -66,6 +66,8 @@ Rails.application.routes.draw do
             patch :reorder
           end
         end
+        resources :bookmarks, only: %i[index create destroy],
+                  controller: "meeting_bookmarks"
         resources :attachments, only: %i[index create update destroy],
                   controller: "meeting_attachments" do
           member do
@@ -90,6 +92,9 @@ Rails.application.routes.draw do
           delete :destroy_all
         end
       end
+
+      # Meeting Templates
+      resources :meeting_templates, only: %i[index create update destroy]
 
       # Prompt Templates
       resources :prompt_templates, only: %i[index create update destroy] do

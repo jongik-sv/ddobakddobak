@@ -10,6 +10,8 @@ interface UiState {
   toggleMemo: () => void
   attachmentsVisible: boolean
   toggleAttachments: () => void
+  bookmarksVisible: boolean
+  toggleBookmarks: () => void
   isRecordingActive: boolean
   setRecordingActive: (active: boolean) => void
 }
@@ -24,6 +26,8 @@ export const useUiStore = create<UiState>((set) => ({
   toggleMemo: () => set((s) => ({ memoVisible: !s.memoVisible })),
   attachmentsVisible: false,
   toggleAttachments: () => set((s) => ({ attachmentsVisible: !s.attachmentsVisible })),
+  bookmarksVisible: true,
+  toggleBookmarks: () => set((s) => ({ bookmarksVisible: !s.bookmarksVisible })),
   isRecordingActive: false,
   setRecordingActive: (active) => set({ isRecordingActive: active }),
 }))

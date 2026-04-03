@@ -5,6 +5,7 @@ import { createMeeting, deleteMeeting, stopMeeting, updateMeeting, uploadAudioFi
 import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
+import { useMeetingTemplateStore } from '../stores/meetingTemplateStore'
 import { IS_TAURI } from '../config'
 import type { Meeting } from '../api/meetings'
 import type { FolderNode } from '../api/folders'
@@ -77,6 +78,18 @@ function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreated }: C
   const [meetingType, setMeetingType] = useState('general')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const templates = useMeetingTemplateStore((s) => s.templates)
+  const fetchTemplates = useMeetingTemplateStore((s) => s.fetch)
+
+  useEffect(() => { fetchTemplates() }, [fetchTemplates])
+
+  const handleTemplateSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const templateId = Number(e.target.value)
+    if (!templateId) return
+    const tpl = templates.find((t) => t.id === templateId)
+    if (!tpl) return
+    if (tpl.meeting_type) setMeetingType(tpl.meeting_type)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -114,6 +127,23 @@ function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreated }: C
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* 템플릿 선택 */}
+          {templates.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium mb-1">템플릿</label>
+              <select
+                onChange={handleTemplateSelect}
+                defaultValue=""
+                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-white"
+              >
+                <option value="">템플릿 없이 시작</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium mb-1">회의 제목</label>
             <input
