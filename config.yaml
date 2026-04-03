@@ -154,7 +154,7 @@ meeting_types:
 
 # ── AI 회의록 ──────────────────────────────────────
 summary:
-  default_interval_sec: 60
+  default_interval_sec: 120
   interval_options:
     - value: 0
       label: "안함"

@@ -44,11 +44,11 @@ class SidecarClient
   def summarize(transcripts, type: "realtime", context: nil)
     body = { transcripts: transcripts, type: type }
     body[:context] = context if context
-    post("/summarize", body, timeout: 120)
+    post("/summarize", body, timeout: 300)
   end
 
   def summarize_action_items(transcripts)
-    post("/summarize/action-items", { transcripts: transcripts }, timeout: 120)
+    post("/summarize/action-items", { transcripts: transcripts }, timeout: 300)
   end
 
   def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil)
@@ -59,7 +59,7 @@ class SidecarClient
       meeting_type: meeting_type
     }
     body[:sections_prompt] = sections_prompt if sections_prompt.present?
-    post("/refine-notes", body, timeout: 120)
+    post("/refine-notes", body, timeout: 300)
   end
 
   def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil)
@@ -72,12 +72,11 @@ class SidecarClient
     post("/build-prompt", body)
   end
 
-  def feedback_notes(current_notes, feedback, meeting_title: "")
+  def correct_terms(current_notes, corrections)
     post("/feedback-notes", {
       current_notes: current_notes,
-      feedback: feedback,
-      meeting_title: meeting_title
-    }, timeout: 120)
+      corrections: corrections.map { |c| { from: c[:from], to: c[:to] } }
+    }, timeout: 30)
   end
 
   def get_llm_settings

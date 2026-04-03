@@ -248,32 +248,41 @@ module Api
       end
 
       def feedback
-        feedback_text = params[:feedback]
-        return render json: { error: "Feedback is required" }, status: :unprocessable_entity if feedback_text.blank?
+        corrections = params[:corrections]
+        return render json: { error: "Corrections are required" }, status: :unprocessable_entity if corrections.blank?
 
-        current_notes = @meeting.current_notes_markdown
-        # 기존 회의록이 없으면 빈 문자열로 시작 (메모 반영 등에서 새로 생성 가능)
-        current_notes = "" if current_notes.blank?
+        corrections = corrections.map { |c| { from: c[:from].to_s, to: c[:to].to_s } }
+                                 .reject { |c| c[:from].blank? }
 
-        result = SidecarClient.new.feedback_notes(current_notes, feedback_text, meeting_title: @meeting.title)
-        notes_markdown = result["notes_markdown"]
+        return render json: { error: "No valid corrections provided" }, status: :unprocessable_entity if corrections.empty?
 
-        if notes_markdown.present?
+        # 회의록(notes_markdown) 치환
+        current_notes = @meeting.current_notes_markdown || ""
+        corrected_notes = apply_term_corrections(current_notes, corrections)
+
+        if corrected_notes != current_notes && corrected_notes.present?
           summary = find_or_create_active_summary
-          summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
-          @meeting.refresh_brief_summary!(notes_markdown)
+          summary.update!(notes_markdown: corrected_notes, generated_at: Time.current)
+          @meeting.refresh_brief_summary!(corrected_notes)
 
           ActionCable.server.broadcast(@meeting.transcription_stream, {
             type: "meeting_notes_update",
-            notes_markdown: notes_markdown
+            notes_markdown: corrected_notes
           })
-
-          render json: { notes_markdown: notes_markdown }
-        else
-          render json: { error: "Failed to apply feedback" }, status: :unprocessable_entity
         end
-      rescue SidecarClient::SidecarError => e
-        render json: { error: e.message }, status: :service_unavailable
+
+        # 트랜스크립트 원문 치환
+        corrected_count = 0
+        @meeting.transcripts.find_each do |transcript|
+          original = transcript.content
+          corrected = apply_term_corrections(original, corrections)
+          if corrected != original
+            transcript.update!(content: corrected)
+            corrected_count += 1
+          end
+        end
+
+        render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
       end
 
       def update_notes
@@ -482,6 +491,12 @@ module Api
             created_at: ai.created_at
           }
         end
+      end
+
+      def apply_term_corrections(text, corrections)
+        result = text
+        corrections.each { |c| result = result.gsub(c[:from], c[:to]) }
+        result
       end
 
       def transcript_json(transcript)

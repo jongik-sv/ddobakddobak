@@ -210,9 +210,13 @@ export async function deleteMeeting(id: number): Promise<void> {
   await apiClient.delete(`meetings/${id}`)
 }
 
-export async function feedbackNotes(meetingId: number, feedback: string): Promise<string> {
-  const res = await apiClient.post(`meetings/${meetingId}/feedback`, { json: { feedback }, timeout: 60000 }).json<{ notes_markdown: string }>()
-  return res.notes_markdown
+export interface TermCorrection {
+  from: string
+  to: string
+}
+
+export async function correctTerms(meetingId: number, corrections: TermCorrection[]): Promise<{ notes_markdown: string; corrected_transcripts: number }> {
+  return apiClient.post(`meetings/${meetingId}/feedback`, { json: { corrections }, timeout: 60000 }).json()
 }
 
 export async function updateNotes(meetingId: number, notesMarkdown: string): Promise<void> {
