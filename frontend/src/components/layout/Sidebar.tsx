@@ -1,5 +1,5 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Mic, Settings, PanelLeftClose } from 'lucide-react'
+import { LayoutDashboard, Mic, Search, Settings, PanelLeftClose } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
 import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
@@ -50,6 +50,10 @@ export default function Sidebar() {
         <NavLink to="/meetings" className={navLinkClass} onClick={handleMeetingsClick}>
           <Mic className="w-4 h-4" />
           회의 목록
+        </NavLink>
+        <NavLink to="/search" className={navLinkClass}>
+          <Search className="w-4 h-4" />
+          검색
         </NavLink>
         <div className={`pl-2 ${isMeetingsPage ? '' : 'hidden'}`}>
           <FolderTree />

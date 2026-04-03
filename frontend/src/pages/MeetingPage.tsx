@@ -20,6 +20,7 @@ import { MeetingEditor } from '../components/editor/MeetingEditor'
 import { useUiStore } from '../stores/uiStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
+import { DecisionList } from '../components/decision/DecisionList'
 
 // ──────────────────────────────────────────────
 // 회의 상세 페이지
@@ -414,10 +415,13 @@ export default function MeetingPage() {
 
         <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-        {/* AI 회의록 — 기본 45% */}
+        {/* AI 회의록 + Decision Log — 기본 45% */}
         <Panel defaultSize={45} minSize={20}>
           <div className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
             <AiSummaryPanel meetingId={meetingId} isRecording={false} onNotesChange={handleNotesChange} />
+            <div className="border-t shrink-0 overflow-y-auto max-h-[40%]">
+              <DecisionList meetingId={meetingId} />
+            </div>
           </div>
         </Panel>
 

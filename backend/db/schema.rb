@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_02_120001) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_03_100001) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -33,6 +33,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120001) do
     t.float "position", null: false
     t.datetime "updated_at", null: false
     t.index ["meeting_id", "position"], name: "index_blocks_on_meeting_id_and_position"
+  end
+
+  create_table "decisions", force: :cascade do |t|
+    t.boolean "ai_generated", default: false, null: false
+    t.text "content", null: false
+    t.text "context"
+    t.datetime "created_at", null: false
+    t.datetime "decided_at"
+    t.integer "meeting_id", null: false
+    t.text "participants"
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.index ["meeting_id"], name: "index_decisions_on_meeting_id"
+    t.index ["status"], name: "index_decisions_on_status"
   end
 
   create_table "folders", force: :cascade do |t|
@@ -201,4 +215,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120001) do
   add_foreign_key "meeting_participants", "users"
   add_foreign_key "taggings", "tags"
   add_foreign_key "tags", "teams"
+
+  # Virtual tables defined in this database.
+  # Note that virtual tables may not work with other database engines. Be careful if changing database.
+  create_virtual_table "summaries_fts", "fts5", ["notes_markdown", "key_points", "decisions", "discussion_details", "source_id UNINDEXED", "tokenize='unicode61'"]
+  create_virtual_table "transcripts_fts", "fts5", ["content", "speaker_label", "source_id UNINDEXED", "tokenize='unicode61'"]
 end

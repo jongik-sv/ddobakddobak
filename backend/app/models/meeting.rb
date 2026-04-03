@@ -7,6 +7,7 @@ class Meeting < ApplicationRecord
   has_many :transcripts, dependent: :destroy
   has_many :summaries, dependent: :destroy
   has_many :action_items, dependent: :destroy
+  has_many :decisions, dependent: :destroy
   has_many :blocks, dependent: :destroy
   has_many :meeting_attachments, dependent: :destroy
   has_many :meeting_participants, dependent: :destroy
