@@ -1,5 +1,6 @@
 import ky from 'ky'
 import { getApiBaseUrl } from '../config'
+import type { UserInfo } from '../stores/authStore'
 
 /**
  * auth 엔드포인트는 /api/v1이 아닌 /auth 경로이므로
@@ -18,7 +19,8 @@ export interface RefreshResponse {
 }
 
 export interface ValidateResponse {
-  user: { id: number; email: string; name: string }
+  status: string
+  user?: UserInfo
 }
 
 export async function refreshAccessToken(

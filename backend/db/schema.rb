@@ -213,6 +213,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_03_062223) do
     t.string "llm_provider"
     t.string "name", default: "", null: false
     t.string "refresh_token_jti"
+    t.string "role", default: "member", null: false
     t.datetime "updated_at", null: false
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["jti"], name: "index_users_on_jti", unique: true

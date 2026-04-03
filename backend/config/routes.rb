@@ -111,6 +111,11 @@ Rails.application.routes.draw do
         end
       end
 
+      # Admin
+      namespace :admin do
+        resources :users, only: %i[index create update destroy]
+      end
+
       # User-scoped settings
       namespace :user do
         resource :llm_settings, only: [:show, :update] do

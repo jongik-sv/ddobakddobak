@@ -42,19 +42,24 @@ describe('useAuth', () => {
       refreshToken: null,
       isAuthenticated: false,
       isLoading: true,
+      user: null,
     })
   })
 
   describe('로컬 모드', () => {
-    it('로컬 모드에서는 인증 검증 없이 isLoading이 false가 된다', async () => {
+    it('로컬 모드에서는 validateToken으로 사용자 정보를 가져온다', async () => {
       vi.mocked(getMode).mockReturnValue('local')
+      mockValidateToken.mockResolvedValue({
+        status: 'ok',
+        user: { id: 1, email: 'desktop@local', name: '사용자', role: 'admin' },
+      })
 
       const { result } = renderHook(() => useAuth())
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false)
       })
-      expect(mockValidateToken).not.toHaveBeenCalled()
+      expect(mockValidateToken).toHaveBeenCalledWith('')
     })
   })
 
@@ -80,7 +85,8 @@ describe('useAuth', () => {
         isLoading: true,
       })
       mockValidateToken.mockResolvedValue({
-        user: { id: 1, email: 'test@test.com', name: 'Test' },
+        status: 'ok',
+        user: { id: 1, email: 'test@test.com', name: 'Test', role: 'member' },
       })
 
       const { result } = renderHook(() => useAuth())
@@ -90,6 +96,30 @@ describe('useAuth', () => {
       })
       expect(result.current.isAuthenticated).toBe(true)
       expect(mockValidateToken).toHaveBeenCalledWith('valid-token')
+    })
+
+    it('사용자 정보가 store에 저장된다', async () => {
+      vi.mocked(getMode).mockReturnValue('server')
+      useAuthStore.setState({
+        accessToken: 'valid-token',
+        refreshToken: 'refresh-token',
+        isLoading: true,
+      })
+      mockValidateToken.mockResolvedValue({
+        status: 'ok',
+        user: { id: 1, email: 'test@test.com', name: 'Test', role: 'admin' },
+      })
+
+      renderHook(() => useAuth())
+
+      await waitFor(() => {
+        expect(useAuthStore.getState().user).toEqual({
+          id: 1,
+          email: 'test@test.com',
+          name: 'Test',
+          role: 'admin',
+        })
+      })
     })
   })
 
@@ -101,7 +131,9 @@ describe('useAuth', () => {
         refreshToken: 'valid-refresh',
         isLoading: true,
       })
-      mockValidateToken.mockRejectedValue(new Error('Unauthorized'))
+      mockValidateToken
+        .mockRejectedValueOnce(new Error('Unauthorized'))
+        .mockResolvedValueOnce({ status: 'ok', user: { id: 1, email: 'test@test.com', name: 'Test', role: 'member' } })
       mockRefreshAccessToken.mockResolvedValue({ access_token: 'new-token' })
 
       const { result } = renderHook(() => useAuth())
