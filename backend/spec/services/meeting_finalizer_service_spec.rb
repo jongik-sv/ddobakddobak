@@ -10,9 +10,14 @@ RSpec.describe MeetingFinalizerService do
     { "action_items" => [{ "content" => "item1" }, { "content" => "item2" }] }
   end
 
+  let(:summarize_result) do
+    { "decisions" => ["결정사항 1", "결정사항 2"], "key_points" => [], "discussion_details" => [], "action_items" => [] }
+  end
+
   before do
     allow(SidecarClient).to receive(:new).and_return(client_double)
     allow(client_double).to receive(:summarize_action_items).and_return(action_items_result)
+    allow(client_double).to receive(:summarize).and_return(summarize_result)
     create(:transcript, meeting: meeting)
   end
 
@@ -83,6 +88,46 @@ RSpec.describe MeetingFinalizerService do
         expect {
           described_class.new(meeting).call
         }.not_to change(ActionItem, :count)
+      end
+    end
+
+    # Decision 추출 테스트
+    it "calls SidecarClient#summarize to extract decisions" do
+      expect(client_double).to receive(:summarize).with(
+        array_including(hash_including(speaker: anything, text: anything, started_at_ms: anything)),
+        type: "final"
+      )
+      described_class.new(meeting).call
+    end
+
+    it "creates decisions with ai_generated: true" do
+      expect {
+        described_class.new(meeting).call
+      }.to change { meeting.decisions.where(ai_generated: true).count }.by(2)
+    end
+
+    it "creates decisions with correct content" do
+      described_class.new(meeting).call
+      contents = meeting.decisions.pluck(:content)
+      expect(contents).to include("결정사항 1", "결정사항 2")
+    end
+
+    it "creates decisions with status 'active'" do
+      described_class.new(meeting).call
+      meeting.decisions.each do |d|
+        expect(d.status).to eq("active")
+      end
+    end
+
+    context "when decisions result is empty" do
+      before do
+        allow(client_double).to receive(:summarize).and_return({ "decisions" => [] })
+      end
+
+      it "creates no decisions" do
+        expect {
+          described_class.new(meeting).call
+        }.not_to change(Decision, :count)
       end
     end
   end

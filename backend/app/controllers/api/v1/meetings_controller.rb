@@ -175,6 +175,7 @@ module Api
         @meeting.transcripts.destroy_all
         @meeting.summaries.destroy_all
         @meeting.action_items.destroy_all
+        @meeting.decisions.destroy_all
         @meeting.blocks.destroy_all
         @meeting.meeting_attachments.destroy_all
 
@@ -214,6 +215,7 @@ module Api
         @meeting.transcripts.destroy_all
         @meeting.summaries.destroy_all
         @meeting.action_items.destroy_all
+        @meeting.decisions.destroy_all
         @meeting.blocks.destroy_all
 
         @meeting.update!(status: :transcribing, transcription_progress: 0, last_refined_seq: 0)
@@ -232,6 +234,7 @@ module Api
 
         @meeting.summaries.destroy_all
         @meeting.action_items.where(ai_generated: true).destroy_all
+        @meeting.decisions.where(ai_generated: true).destroy_all
 
         MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
         render json: { ok: true }

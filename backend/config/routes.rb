@@ -23,6 +23,7 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
       get "health", to: "health#show"
+      get "search", to: "search#index"
 
       # Meetings CRUD + start/stop + nested resources
       resources :meetings, only: %i[index create show update destroy] do
@@ -56,6 +57,9 @@ Rails.application.routes.draw do
         resources :action_items,
           only: %i[index create],
           controller: "meeting_action_items"
+        resources :decisions,
+          only: %i[index create],
+          controller: "meeting_decisions"
         resources :transcripts, only: [] do
           collection do
             delete :destroy_batch
@@ -85,6 +89,9 @@ Rails.application.routes.draw do
 
       # Action Items (update, destroy)
       resources :action_items, only: %i[update destroy]
+
+      # Decisions (timeline, update, destroy)
+      resources :decisions, only: %i[index update destroy]
 
       # Speakers (화자 목록 조회 / 이름 변경 / 리셋)
       resources :speakers, only: %i[index update] do

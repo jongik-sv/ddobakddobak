@@ -8,6 +8,7 @@ import MeetingsPage from './pages/MeetingsPage'
 import MeetingLivePage from './pages/MeetingLivePage'
 import MeetingPage from './pages/MeetingPage'
 import MeetingViewerPage from './pages/MeetingViewerPage'
+import SearchPage from './pages/SearchPage'
 import AppLayout from './components/layout/AppLayout'
 import SetupGate from './components/SetupGate'
 import { AuthGuard } from './components/auth/AuthGuard'
@@ -35,6 +36,14 @@ function App() {
         element={
           <AppLayout>
             <DashboardPage />
+          </AppLayout>
+        }
+      />
+      <Route
+        path="/search"
+        element={
+          <AppLayout>
+            <SearchPage />
           </AppLayout>
         }
       />
