@@ -144,7 +144,7 @@ export const MermaidBlock = createReactBlockSpec(
           </div>
 
           {code.trim() && !isEditing && (
-            <div className="flex justify-center py-2 overflow-x-auto">
+            <div className="flex justify-center py-2 overflow-x-auto min-h-[240px]">
               <MermaidRenderer code={code} />
             </div>
           )}
@@ -161,7 +161,7 @@ export const MermaidBlock = createReactBlockSpec(
                   }
                 }}
                 placeholder={'graph LR\n  A[시작] --> B[끝]'}
-                className="w-full min-h-[120px] font-mono text-sm p-2 border rounded bg-gray-50 resize-y outline-none focus:ring-1 focus:ring-blue-300"
+                className="w-full min-h-[240px] font-mono text-sm p-2 border rounded bg-gray-50 resize-y outline-none focus:ring-1 focus:ring-blue-300"
               />
               <div className="flex justify-between items-center mt-2">
                 <span className="text-xs text-gray-400">Cmd+Enter로 적용</span>

@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Settings, Monitor, Mic, ArrowLeft, StickyNote, Paperclip } from 'lucide-react'
+import { Settings, Monitor, Mic, ArrowLeft, StickyNote, Paperclip, Timer } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
 import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
@@ -13,13 +13,12 @@ import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
-import { getMeeting, startMeeting, stopMeeting, reopenMeeting, uploadAudio, triggerRealtimeSummary, getTranscripts, getSummary, resetMeetingContent, feedbackNotes, updateNotes, getParticipants } from '../api/meetings'
-import type { Participant } from '../api/meetings'
+import { getMeeting, startMeeting, stopMeeting, reopenMeeting, uploadAudio, triggerRealtimeSummary, getTranscripts, getSummary, resetMeetingContent, correctTerms, updateNotes, getParticipants } from '../api/meetings'
+import type { Participant, TermCorrection } from '../api/meetings'
 import { getSttSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
-import { useAppSettingsStore } from '../stores/appSettingsStore'
 import { useSharingStore } from '../stores/sharingStore'
-import { ENGINE_LABELS_SHORT, IS_TAURI } from '../config'
+import { ENGINE_LABELS_SHORT, IS_TAURI, SUMMARY_INTERVAL_OPTIONS, DEFAULT_SUMMARY_INTERVAL_SEC } from '../config'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
 import { ShareButton } from '../components/meeting/ShareButton'
 import { ParticipantList } from '../components/meeting/ParticipantList'
@@ -45,9 +44,9 @@ export default function MeetingLivePage() {
   const [, setAudioDurationMs] = useState(0)
   const [, setLastSeqNum] = useState(0)
 
-  // 피드백 상태
-  const [feedbackText, setFeedbackText] = useState('')
-  const [isSendingFeedback, setIsSendingFeedback] = useState(false)
+  // 오타 수정 상태
+  const [corrections, setCorrections] = useState<TermCorrection[]>([{ from: '', to: '' }])
+  const [isApplyingCorrections, setIsApplyingCorrections] = useState(false)
 
   // 녹음 중 뒤로가기 차단
   const [showLeaveBlock, setShowLeaveBlock] = useState(false)
@@ -75,7 +74,7 @@ export default function MeetingLivePage() {
   const reset = useTranscriptStore((s) => s.reset)
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
-  const summaryIntervalSec = useAppSettingsStore((s) => s.summaryIntervalSec)
+  const [summaryIntervalSec, setSummaryIntervalSec] = useState(DEFAULT_SUMMARY_INTERVAL_SEC)
 
   // 공유 상태
   const isSharing = useSharingStore((s) => s.shareCode !== null)
@@ -293,29 +292,37 @@ export default function MeetingLivePage() {
     }
   }
 
-  // 피드백 전송
-  const handleSendFeedback = async () => {
-    const text = feedbackText.trim()
-    if (!text || isSendingFeedback) return
+  // 오타 수정 적용
+  const handleApplyCorrections = async () => {
+    const valid = corrections.filter((c) => c.from.trim() && c.to.trim())
+    if (valid.length === 0 || isApplyingCorrections) return
 
-    setIsSendingFeedback(true)
-    showStatus('AI 피드백 반영 중...', 10000)
+    setIsApplyingCorrections(true)
+    showStatus('오타 수정 반영 중...', 10000)
     try {
-      await feedbackNotes(meetingId, text)
-      setFeedbackText('')
-      showStatus('피드백이 회의록에 반영되었습니다')
+      const result = await correctTerms(meetingId, valid)
+      setCorrections([{ from: '', to: '' }])
+      const msg = result.corrected_transcripts > 0
+        ? `오타 수정 완료 (트랜스크립트 ${result.corrected_transcripts}건 수정)`
+        : '오타 수정이 회의록에 반영되었습니다'
+      showStatus(msg)
     } catch {
-      showStatus('피드백 반영에 실패했습니다')
+      showStatus('오타 수정 반영에 실패했습니다')
     } finally {
-      setIsSendingFeedback(false)
+      setIsApplyingCorrections(false)
     }
   }
 
-  const handleFeedbackKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSendFeedback()
-    }
+  const updateCorrection = (index: number, field: 'from' | 'to', value: string) => {
+    setCorrections((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)))
+  }
+
+  const addCorrectionRow = () => {
+    setCorrections((prev) => [...prev, { from: '', to: '' }])
+  }
+
+  const removeCorrectionRow = (index: number) => {
+    setCorrections((prev) => (prev.length <= 1 ? [{ from: '', to: '' }] : prev.filter((_, i) => i !== index)))
   }
 
   // 사용자가 AI 회의록을 직접 편집 시 백엔드에 저장
@@ -595,6 +602,21 @@ export default function MeetingLivePage() {
             </div>
           )}
 
+          {/* 적용주기 선택 */}
+          <div className="flex items-center gap-1.5" title="AI 회의록 적용 주기">
+            <Timer className="w-3.5 h-3.5 text-gray-500" />
+            <select
+              value={summaryIntervalSec}
+              onChange={(e) => setSummaryIntervalSec(Number(e.target.value))}
+              disabled={isActive}
+              className="text-xs border border-gray-300 rounded-md px-1.5 py-1 bg-white text-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {SUMMARY_INTERVAL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
           {!isActive && (
             <button
               onClick={handleResetClick}
@@ -703,29 +725,56 @@ export default function MeetingLivePage() {
                   <MeetingEditor editorRef={memoEditorRef} />
                 </div>
 
-                {/* 피드백 영역 (40%) */}
+                {/* 오타 수정 영역 (40%) */}
                 <div className="flex flex-col border-t" style={{ flex: '0 0 40%' }}>
                   <h2 className="px-4 py-2 text-sm font-semibold text-gray-500 border-b bg-gray-50 shrink-0">
-                    AI 피드백
+                    오타 수정
                   </h2>
-                  <div className="flex-1 flex flex-col p-3 gap-2 overflow-hidden">
+                  <div className="flex-1 flex flex-col p-3 gap-2 overflow-auto">
                     <p className="text-xs text-gray-400 shrink-0">
-                      AI에게 회의록 수정을 요청하세요
+                      잘못된 용어를 올바른 용어로 일괄 치환합니다
                     </p>
-                    <textarea
-                      value={feedbackText}
-                      onChange={(e) => setFeedbackText(e.target.value)}
-                      onKeyDown={handleFeedbackKeyDown}
-                      placeholder="예: 결정사항을 표로 정리해줘, 핵심 요약을 더 짧게 줄여줘..."
-                      className="flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-                      disabled={isSendingFeedback}
-                    />
+                    {corrections.map((c, i) => (
+                      <div key={i} className="flex items-center gap-1 shrink-0">
+                        <input
+                          type="text"
+                          value={c.from}
+                          onChange={(e) => updateCorrection(i, 'from', e.target.value)}
+                          placeholder="잘못된 용어"
+                          className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                          disabled={isApplyingCorrections}
+                        />
+                        <span className="text-gray-400 text-xs shrink-0">&rarr;</span>
+                        <input
+                          type="text"
+                          value={c.to}
+                          onChange={(e) => updateCorrection(i, 'to', e.target.value)}
+                          placeholder="올바른 용어"
+                          className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                          disabled={isApplyingCorrections}
+                        />
+                        <button
+                          onClick={() => removeCorrectionRow(i)}
+                          className="shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 text-sm"
+                          title="삭제"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    ))}
                     <button
-                      onClick={handleSendFeedback}
-                      disabled={!feedbackText.trim() || isSendingFeedback}
+                      onClick={addCorrectionRow}
+                      disabled={isApplyingCorrections}
+                      className="shrink-0 text-xs text-blue-500 hover:text-blue-700 self-start"
+                    >
+                      + 용어 추가
+                    </button>
+                    <button
+                      onClick={handleApplyCorrections}
+                      disabled={!corrections.some((c) => c.from.trim() && c.to.trim()) || isApplyingCorrections}
                       className="shrink-0 px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
-                      {isSendingFeedback ? '반영 중...' : '피드백 전송'}
+                      {isApplyingCorrections ? '반영 중...' : '오타 수정 적용'}
                     </button>
                   </div>
                 </div>

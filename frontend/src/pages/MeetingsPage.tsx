@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FolderClosed, FolderInput, Pencil, Trash2 } from 'lucide-react'
+import { FolderClosed, FolderInput, Pencil, Trash2, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight } from 'lucide-react'
 import { createMeeting, deleteMeeting, stopMeeting, updateMeeting, uploadAudioFile } from '../api/meetings'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
@@ -14,6 +14,17 @@ import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { JoinMeetingDialog } from '../components/meeting/JoinMeetingDialog'
 import { MeetingsGridSkeleton } from '../components/ui/Skeleton'
 import { initDrag } from '../utils/dragState'
+
+type ViewMode = 'card' | 'list'
+type SortField = 'created_at' | 'title'
+type SortDirection = 'asc' | 'desc'
+
+const VIEW_MODE_KEY = 'meetings-view-mode'
+
+function getStoredViewMode(): ViewMode {
+  const stored = localStorage.getItem(VIEW_MODE_KEY)
+  return stored === 'list' ? 'list' : 'card'
+}
 
 function StatusBadge({ status }: { status: Meeting['status'] }) {
   if (status === 'pending') {
@@ -417,6 +428,29 @@ export default function MeetingsPage() {
   const [movingMeeting, setMovingMeeting] = useState<Meeting | null>(null)
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
 
+  const [viewMode, setViewMode] = useState<ViewMode>(getStoredViewMode)
+  const [sortField, setSortField] = useState<SortField>('created_at')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
+    setViewMode(mode)
+    localStorage.setItem(VIEW_MODE_KEY, mode)
+  }, [])
+
+  const handleSort = useCallback((field: SortField) => {
+    setSortDirection((prev) => (sortField === field ? (prev === 'asc' ? 'desc' : 'asc') : 'desc'))
+    setSortField(field)
+  }, [sortField])
+
+  const sortedMeetings = useMemo(() => {
+    if (viewMode !== 'list') return meetings
+    return [...meetings].sort((a, b) => {
+      const dir = sortDirection === 'asc' ? 1 : -1
+      if (sortField === 'title') return dir * a.title.localeCompare(b.title, 'ko')
+      return dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    })
+  }, [meetings, viewMode, sortField, sortDirection])
+
   const meetingTypeList = usePromptTemplateStore((s) => s.meetingTypeList)
   const meetingTypeMap = usePromptTemplateStore((s) => s.meetingTypeMap)
 
@@ -564,7 +598,31 @@ export default function MeetingsPage() {
         ))}
       </div>
 
-      {/* 필터 영역 */}
+      {/* 뷰 모드 토글 + 필터 영역 */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
+          <button
+            onClick={() => handleViewModeChange('card')}
+            className={`p-1.5 rounded transition-colors ${
+              viewMode === 'card' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+            }`}
+            title="카드 뷰"
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => handleViewModeChange('list')}
+            className={`p-1.5 rounded transition-colors ${
+              viewMode === 'list' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+            }`}
+            title="리스트 뷰"
+          >
+            <List className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* 검색 + 날짜 필터 */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <input
           type="text"
@@ -603,7 +661,8 @@ export default function MeetingsPage() {
         <MeetingsGridSkeleton />
       ) : childFolders.length === 0 && meetings.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground">회의가 없습니다.</div>
-      ) : (
+      ) : viewMode === 'card' ? (
+        /* ─── 카드 뷰 ─── */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {/* 폴더 카드 */}
           {childFolders.map((child) => (
@@ -734,6 +793,166 @@ export default function MeetingsPage() {
               </div>
             </div>
           ))}
+        </div>
+      ) : (
+        /* ─── 리스트 뷰 ─── */
+        <div className="rounded-lg border bg-card overflow-hidden">
+          {/* 폴더 리스트 */}
+          {childFolders.length > 0 && (
+            <div className="border-b">
+              {childFolders.map((child, idx) => (
+                <div
+                  key={`folder-${child.id}`}
+                  data-drop-folder-id={child.id}
+                  onPointerDown={(e) => initDrag('folder', child.id, child.name, e)}
+                  onClick={() => {
+                    useFolderStore.getState().setSelectedFolder(child.id)
+                    useMeetingStore.getState().setFolderId(child.id)
+                    fetchMeetings(1)
+                  }}
+                  className={`group flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors ${
+                    idx < childFolders.length - 1 ? 'border-b border-border/50' : ''
+                  }`}
+                >
+                  <FolderClosed className="w-4 h-4 text-primary/70 shrink-0" />
+                  <span className="font-medium text-sm truncate">{child.name}</span>
+                  {child.tags?.length > 0 && (
+                    <div className="flex gap-1">
+                      {child.tags.map((tag) => (
+                        <span
+                          key={tag.id}
+                          className="text-[10px] px-1.5 py-0.5 rounded-full text-white"
+                          style={{ backgroundColor: tag.color }}
+                        >
+                          {tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
+                    회의 {child.meeting_count}개
+                    {child.children.length > 0 && ` · 하위 ${child.children.length}개`}
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 회의 테이블 헤더 */}
+          {sortedMeetings.length > 0 && (
+            <>
+              <div className="grid grid-cols-[1fr_120px_100px_120px_auto] gap-2 px-4 py-2 text-xs font-medium text-muted-foreground border-b bg-muted/20">
+                <button
+                  onClick={() => handleSort('title')}
+                  className="flex items-center gap-1 hover:text-foreground transition-colors text-left"
+                >
+                  제목
+                  {sortField === 'title' ? (
+                    sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                  ) : (
+                    <ArrowUpDown className="w-3 h-3 opacity-50" />
+                  )}
+                </button>
+                <button
+                  onClick={() => handleSort('created_at')}
+                  className="flex items-center gap-1 hover:text-foreground transition-colors text-left"
+                >
+                  날짜
+                  {sortField === 'created_at' ? (
+                    sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                  ) : (
+                    <ArrowUpDown className="w-3 h-3 opacity-50" />
+                  )}
+                </button>
+                <span>상태</span>
+                <span>유형</span>
+                <span className="text-right">작업</span>
+              </div>
+
+              {/* 회의 리스트 행 */}
+              {sortedMeetings.map((meeting, idx) => (
+                <div
+                  key={meeting.id}
+                  onPointerDown={(e) => initDrag('meeting', meeting.id, meeting.title, e)}
+                  onClick={() => navigate(`/meetings/${meeting.id}`)}
+                  className={`group grid grid-cols-[1fr_120px_100px_120px_auto] gap-2 items-center px-4 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors ${
+                    idx < sortedMeetings.length - 1 ? 'border-b border-border/50' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm font-medium truncate">{meeting.title}</span>
+                    {meeting.folder_id && selectedFolderId === 'all' && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-0.5 shrink-0">
+                        <FolderClosed className="w-2.5 h-2.5" />
+                        {folderName(folders, meeting.folder_id) ?? '폴더'}
+                      </span>
+                    )}
+                    {meeting.tags?.map((tag) => (
+                      <span
+                        key={tag.id}
+                        className="text-[10px] px-1.5 py-0.5 rounded-full text-white shrink-0"
+                        style={{ backgroundColor: tag.color }}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                  <span className="text-xs text-muted-foreground">{formatDate(meeting.created_at)}</span>
+                  <StatusBadge status={meeting.status} />
+                  <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
+                  <div className="flex items-center justify-end gap-1">
+                    {meeting.status === 'recording' && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          await stopMeeting(meeting.id)
+                          fetchMeetings(currentPage)
+                        }}
+                        className="px-2 py-0.5 rounded-md text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
+                      >
+                        종료
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setEditingMeeting(meeting)
+                      }}
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
+                      title="정보 수정"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setMovingMeeting(meeting)
+                      }}
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
+                      title="폴더로 이동"
+                    >
+                      <FolderInput className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation()
+                        const { confirm } = await import('@tauri-apps/plugin-dialog')
+                        const ok = await confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`, { title: '회의 삭제', kind: 'warning' })
+                        if (!ok) return
+                        await deleteMeeting(meeting.id)
+                        fetchMeetings(currentPage)
+                      }}
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 hover:bg-red-50 transition-opacity"
+                      title="삭제"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       )}
 

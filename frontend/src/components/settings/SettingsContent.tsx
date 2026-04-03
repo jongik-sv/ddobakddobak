@@ -3,7 +3,7 @@ import { HTTPError } from 'ky'
 import { getSttSettings, updateSttEngine, getLlmSettings, updateLlmSettings, getHfSettings, updateHfToken, testLlmConnection, fetchOllamaModels } from '../../api/settings'
 import type { SttSettings, LlmSettings, LlmPreset, HfSettings } from '../../api/settings'
 import { useAppSettingsStore, AUDIO_DEFAULTS, DIARIZATION_DEFAULTS } from '../../stores/appSettingsStore'
-import { ENGINE_LABELS, SUMMARY_INTERVAL_OPTIONS, AUDIO, DIARIZATION, LANGUAGES } from '../../config'
+import { ENGINE_LABELS, AUDIO, DIARIZATION, LANGUAGES } from '../../config'
 import PromptTemplateManager from '../PromptTemplateManager'
 import UserLlmSettings from './UserLlmSettings'
 
@@ -277,9 +277,6 @@ export default function SettingsContent() {
       setHfSaving(false)
     }
   }
-
-  const summaryIntervalSec = useAppSettingsStore((s) => s.summaryIntervalSec)
-  const setSummaryIntervalSec = useAppSettingsStore((s) => s.setSummaryIntervalSec)
 
   const selectedLanguages = useAppSettingsStore((s) => s.selectedLanguages)
   const toggleLanguage = useAppSettingsStore((s) => s.toggleLanguage)
@@ -580,41 +577,6 @@ export default function SettingsContent() {
             <p className="text-sm text-yellow-600">Sidecar 연결 불가 — 오프라인 상태</p>
           )}
         </div>
-      </div>
-
-      {/* AI 회의록 적용 주기 설정 */}
-      <div className="rounded-lg border bg-card p-6">
-        <h2 className="text-lg font-semibold mb-1">AI 회의록 적용 주기</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          라이브 기록을 AI 회의록에 반영하는 간격을 설정합니다.
-        </p>
-
-        <div className="flex flex-wrap gap-2">
-          {SUMMARY_INTERVAL_OPTIONS.map((opt) => {
-            const selected = summaryIntervalSec === opt.value
-            return (
-              <button
-                key={opt.value}
-                onClick={() => setSummaryIntervalSec(opt.value)}
-                className={`
-                  px-4 py-2 rounded-full text-sm font-medium border transition-all
-                  ${selected
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:text-blue-600'
-                  }
-                `}
-              >
-                {opt.label}
-              </button>
-            )
-          })}
-        </div>
-
-        <p className="mt-3 text-xs text-muted-foreground">
-          {summaryIntervalSec === 0
-            ? '"안함" 선택 시 녹음 중 실시간 요약 없이, 회의 종료 시 한 번만 정리합니다.'
-            : '주기가 짧을수록 회의록이 자주 갱신되지만, AI 처리 부하가 높아질 수 있습니다.'}
-        </p>
       </div>
 
       {/* 회의록 양식 관리 */}

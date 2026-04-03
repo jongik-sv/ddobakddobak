@@ -28,7 +28,7 @@ except Exception:
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import CLI_LLM_PROVIDERS, settings
 from app.llm.summarizer import LLMSummarizer
@@ -965,31 +965,32 @@ async def build_prompt(request: BuildPromptRequest) -> BuildPromptResponse:
     return BuildPromptResponse(prompt_text=result)
 
 
-class FeedbackNotesRequest(BaseModel):
-    """POST /feedback-notes 요청 스키마."""
+class TermCorrection(BaseModel):
+    """용어 수정 쌍 (from → to)."""
+    from_term: str = Field(..., alias="from")
+    to_term: str = Field(..., alias="to")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CorrectTermsRequest(BaseModel):
+    """POST /feedback-notes 요청 스키마 — 용어 치환."""
     current_notes: str = ""
-    feedback: str
-    meeting_title: str = ""
+    corrections: list[TermCorrection]
 
 
-class FeedbackNotesResponse(BaseModel):
+class CorrectTermsResponse(BaseModel):
     """POST /feedback-notes 응답 스키마."""
     notes_markdown: str
 
 
-@app.post("/feedback-notes", response_model=FeedbackNotesResponse)
-async def feedback_notes(request: FeedbackNotesRequest) -> FeedbackNotesResponse:
-    """사용자 피드백을 반영하여 회의록을 수정하는 엔드포인트."""
-    t0 = time.monotonic()
-    logger.info("[LLM] /feedback-notes 요청 (model=%s, title=%s, feedback=%d자)", settings.LLM_MODEL, request.meeting_title, len(request.feedback))
-    summarizer: LLMSummarizer = app.state.summarizer
-    result = await summarizer.apply_feedback(
-        current_notes=request.current_notes,
-        feedback=request.feedback,
-        meeting_title=request.meeting_title,
-    )
-    logger.info("[LLM] /feedback-notes 완료 (%.1f초, 출력=%d자)", time.monotonic() - t0, len(result))
-    return FeedbackNotesResponse(notes_markdown=result)
+@app.post("/feedback-notes", response_model=CorrectTermsResponse)
+async def correct_terms(request: CorrectTermsRequest) -> CorrectTermsResponse:
+    """등록된 용어 매핑을 기반으로 회의록 텍스트를 일괄 치환하는 엔드포인트."""
+    result = request.current_notes
+    for c in request.corrections:
+        result = result.replace(c.from_term, c.to_term)
+    return CorrectTermsResponse(notes_markdown=result)
 
 
 @app.post("/summarize/action-items", response_model=ActionItemsResponse)

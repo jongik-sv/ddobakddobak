@@ -170,7 +170,7 @@ describe('MeetingViewerPage', () => {
       expect(screen.getByText('회의 참여 중')).toBeInTheDocument()
     })
     expect(screen.queryByText('메모')).not.toBeInTheDocument()
-    expect(screen.queryByText('AI 피드백')).not.toBeInTheDocument()
+    expect(screen.queryByText('오타 수정')).not.toBeInTheDocument()
     expect(screen.queryByText('내보내기')).not.toBeInTheDocument()
     expect(screen.queryByText('공유')).not.toBeInTheDocument()
   })

@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import {
-  DEFAULT_SUMMARY_INTERVAL_SEC,
   AUDIO,
   AUDIO_DEFAULTS,
   DIARIZATION_DEFAULTS,
@@ -24,10 +23,6 @@ type AudioOverrides = Partial<{
 type DiarizationOverrides = Partial<DiarizationConfig>
 
 interface AppSettingsState {
-  /** AI 회의록 적용 주기 (초) */
-  summaryIntervalSec: number
-  setSummaryIntervalSec: (sec: number) => void
-
   /** 오디오 청킹 오버라이드 (빈 객체 = config.yaml 기본값 사용) */
   audioOverrides: AudioOverrides
   setAudioOverride: (key: keyof AudioOverrides, value: number) => void
@@ -55,7 +50,6 @@ function debouncedSave() {
   saveTimer = setTimeout(() => {
     const s = useAppSettingsStore.getState()
     const payload: Partial<AppSettings> = {
-      summary_interval_sec: s.summaryIntervalSec,
       diarization_enabled: s.diarizationEnabled,
       selected_languages: s.selectedLanguages,
     }
@@ -87,9 +81,6 @@ function debouncedSave() {
 
 export const useAppSettingsStore = create<AppSettingsState>()(
   (set) => ({
-    summaryIntervalSec: DEFAULT_SUMMARY_INTERVAL_SEC,
-    setSummaryIntervalSec: (sec) => { set({ summaryIntervalSec: sec }); debouncedSave() },
-
     audioOverrides: {},
     setAudioOverride: (key, value) => {
       set((s) => ({ audioOverrides: { ...s.audioOverrides, [key]: value } }))
@@ -128,7 +119,6 @@ export async function loadAppSettings() {
     const saved = await getAppSettings()
     const updates: Partial<AppSettingsState> = {}
 
-    if (saved.summary_interval_sec != null) updates.summaryIntervalSec = saved.summary_interval_sec
     if (saved.diarization_enabled != null) updates.diarizationEnabled = saved.diarization_enabled
     if (saved.selected_languages?.length) updates.selectedLanguages = saved.selected_languages
 
