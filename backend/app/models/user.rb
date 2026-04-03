@@ -8,6 +8,7 @@ class User < ApplicationRecord
   has_many :team_memberships, dependent: :destroy
   has_many :teams, through: :team_memberships
   has_many :meeting_participants, dependent: :destroy
+  has_many :meeting_templates, dependent: :destroy
 
   validates :name, presence: true
 

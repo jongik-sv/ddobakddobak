@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Settings, Monitor, Mic, ArrowLeft, StickyNote, Paperclip } from 'lucide-react'
+import { Settings, Monitor, Mic, ArrowLeft, StickyNote, Paperclip, Bookmark, Save } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
 import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
@@ -25,6 +25,9 @@ import { ShareButton } from '../components/meeting/ShareButton'
 import { ParticipantList } from '../components/meeting/ParticipantList'
 import { HostTransferDialog } from '../components/meeting/HostTransferDialog'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
+import { createBookmark } from '../api/bookmarks'
+import { useMeetingTemplateStore } from '../stores/meetingTemplateStore'
+import SaveTemplateDialog from '../components/meeting/SaveTemplateDialog'
 
 type MeetingStatus = 'idle' | 'recording' | 'stopped'
 
@@ -55,12 +58,21 @@ export default function MeetingLivePage() {
   // 호스트 위임 다이얼로그
   const [transferTarget, setTransferTarget] = useState<Participant | null>(null)
 
+  // 템플릿 저장 다이얼로그
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
+  const addTemplate = useMeetingTemplateStore((s) => s.add)
+
   // 초기화 확인 다이얼로그
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const statusTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  // 북마크 팝오버
+  const [showBookmarkPopover, setShowBookmarkPopover] = useState(false)
+  const [bookmarkLabel, setBookmarkLabel] = useState('')
+  const bookmarkTimestampRef = useRef<number>(0)
 
   // 경과 시간
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
@@ -318,6 +330,40 @@ export default function MeetingLivePage() {
     }
   }
 
+  // 북마크 추가
+  const handleOpenBookmark = useCallback(() => {
+    bookmarkTimestampRef.current = elapsedSeconds * 1000
+    setBookmarkLabel('')
+    setShowBookmarkPopover(true)
+  }, [elapsedSeconds])
+
+  const handleSaveBookmark = async () => {
+    setShowBookmarkPopover(false)
+    try {
+      await createBookmark(meetingId, {
+        timestamp_ms: bookmarkTimestampRef.current,
+        label: bookmarkLabel.trim() || undefined,
+      })
+      showStatus('북마크가 추가되었습니다')
+    } catch {
+      showStatus('북마크 추가에 실패했습니다')
+    }
+  }
+
+  // Ctrl+B 단축키로 북마크 추가
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault()
+        if (isActive) {
+          handleOpenBookmark()
+        }
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [isActive, handleOpenBookmark])
+
   // 사용자가 AI 회의록을 직접 편집 시 백엔드에 저장
   const handleNotesChange = useCallback(
     (markdown: string) => {
@@ -524,6 +570,13 @@ export default function MeetingLivePage() {
           >
             <Settings className="w-4 h-4" />
           </button>
+          <button
+            onClick={() => setShowSaveTemplate(true)}
+            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title="현재 설정을 템플릿으로 저장"
+          >
+            <Save className="w-4 h-4" />
+          </button>
         </div>
 
         {/* 중앙: 녹음 상태 인디케이터 */}
@@ -579,6 +632,17 @@ export default function MeetingLivePage() {
         <div className="flex items-center gap-2">
           {(error || systemAudioError) && (
             <span className="text-sm text-red-500">{error || systemAudioError}</span>
+          )}
+
+          {/* 북마크 추가 버튼 (녹음 중만 표시) */}
+          {isActive && (
+            <button
+              onClick={handleOpenBookmark}
+              className="p-1.5 rounded-md text-amber-500 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+              title="북마크 추가 (Ctrl+B)"
+            >
+              <Bookmark className="w-4 h-4" />
+            </button>
           )}
 
           {/* 공유 버튼 */}
@@ -764,6 +828,20 @@ export default function MeetingLivePage() {
         </div>
       </div>
 
+      {/* 템플릿 저장 다이얼로그 */}
+      {showSaveTemplate && (
+        <SaveTemplateDialog
+          onSave={async (name) => {
+            await addTemplate({
+              name,
+              meeting_type: meetingApiStatus ? undefined : 'general',
+            })
+            showStatus('템플릿이 저장되었습니다')
+          }}
+          onClose={() => setShowSaveTemplate(false)}
+        />
+      )}
+
       {/* 녹음 중 뒤로가기 차단 다이얼로그 */}
       {showLeaveBlock && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -804,6 +882,44 @@ export default function MeetingLivePage() {
                 className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors"
               >
                 초기화
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 북마크 추가 팝오버 */}
+      {showBookmarkPopover && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-lg p-5 max-w-xs w-full mx-4">
+            <h3 className="text-base font-semibold text-gray-900 mb-1">북마크 추가</h3>
+            <p className="text-xs text-gray-400 mb-3">
+              {formatElapsed(Math.floor(bookmarkTimestampRef.current / 1000))} 지점
+            </p>
+            <input
+              type="text"
+              value={bookmarkLabel}
+              onChange={(e) => setBookmarkLabel(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveBookmark()
+                if (e.key === 'Escape') setShowBookmarkPopover(false)
+              }}
+              placeholder="라벨 (선택사항)"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent mb-3"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowBookmarkPopover(false)}
+                className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSaveBookmark}
+                className="px-3 py-1.5 text-sm rounded-md bg-amber-500 text-white hover:bg-amber-600"
+              >
+                추가
               </button>
             </div>
           </div>

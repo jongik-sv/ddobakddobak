@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Pencil, ArrowLeft, StickyNote, Paperclip } from 'lucide-react'
+import { Pencil, ArrowLeft, StickyNote, Paperclip, Bookmark, Trash2 } from 'lucide-react'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
@@ -20,6 +20,8 @@ import { MeetingEditor } from '../components/editor/MeetingEditor'
 import { useUiStore } from '../stores/uiStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
+import { getBookmarks, deleteBookmark } from '../api/bookmarks'
+import type { Bookmark as BookmarkType } from '../api/bookmarks'
 
 // ──────────────────────────────────────────────
 // 회의 상세 페이지
@@ -137,11 +139,40 @@ export default function MeetingPage() {
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [transcripts, setTranscripts] = useState<Transcript[]>([])
 
+  // 북마크 상태
+  const [bookmarks, setBookmarks] = useState<BookmarkType[]>([])
+  const bookmarksVisible = useUiStore((s) => s.bookmarksVisible)
+  const toggleBookmarks = useUiStore((s) => s.toggleBookmarks)
+
   // meeting 상태가 completed로 바뀌면 트랜스크립트도 리로드 (파일 업로드 완료 시)
   useEffect(() => {
     if (meeting?.status === 'transcribing') return
     getTranscripts(meetingId).then(setTranscripts)
   }, [meetingId, meeting?.status])
+
+  // 북마크 로드
+  useEffect(() => {
+    getBookmarks(meetingId).then(setBookmarks).catch(() => {})
+  }, [meetingId])
+
+  async function handleDeleteBookmark(bookmarkId: number) {
+    try {
+      await deleteBookmark(meetingId, bookmarkId)
+      setBookmarks((prev) => prev.filter((b) => b.id !== bookmarkId))
+    } catch {
+      // ignore
+    }
+  }
+
+  function formatMs(ms: number) {
+    const totalSec = Math.floor(ms / 1000)
+    const h = Math.floor(totalSec / 3600)
+    const m = Math.floor((totalSec % 3600) / 60)
+    const s = totalSec % 60
+    return h > 0
+      ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+      : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  }
 
   function handleSeek(ms: number) {
     setSeekMs(ms)
@@ -274,6 +305,13 @@ export default function MeetingPage() {
         >
           <StickyNote className="w-4 h-4" />
         </button>
+        <button
+          onClick={toggleBookmarks}
+          className={`p-1.5 rounded-md transition-colors ${bookmarksVisible ? 'text-amber-600 bg-amber-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+          title={bookmarksVisible ? '북마크 숨기기' : '북마크 보기'}
+        >
+          <Bookmark className="w-4 h-4" />
+        </button>
       </div>
 
       {/* 오디오 플레이어 */}
@@ -401,14 +439,53 @@ export default function MeetingPage() {
 
       {/* 3패널 리사이즈 레이아웃 */}
       <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden min-h-0">
-        {/* 트랜스크립트 패널 — 기본 25% */}
+        {/* 트랜스크립트 + 북마크 패널 — 기본 25% */}
         <Panel defaultSize={25} minSize={15}>
-          <div className="h-full overflow-y-auto">
-            <TranscriptPanel
-              transcripts={transcripts}
-              currentTimeMs={currentTimeMs}
-              onSeek={handleSeek}
-            />
+          <div className="h-full flex flex-col overflow-hidden">
+            {/* 북마크 섹션 */}
+            {bookmarksVisible && bookmarks.length > 0 && (
+              <div className="border-b shrink-0 max-h-48 overflow-y-auto">
+                <div className="px-3 py-2 bg-amber-50 border-b">
+                  <h3 className="text-xs font-semibold text-amber-700 flex items-center gap-1">
+                    <Bookmark className="w-3 h-3" />
+                    북마크 ({bookmarks.length})
+                  </h3>
+                </div>
+                <ul className="divide-y divide-gray-100">
+                  {bookmarks.map((b) => (
+                    <li
+                      key={b.id}
+                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-amber-50 cursor-pointer group"
+                      onClick={() => handleSeek(b.timestamp_ms)}
+                    >
+                      <span className="text-xs font-mono text-amber-600 shrink-0">
+                        {formatMs(b.timestamp_ms)}
+                      </span>
+                      <span className="text-xs text-gray-700 truncate flex-1">
+                        {b.label || '(라벨 없음)'}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteBookmark(b.id)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all"
+                        title="삭제"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="flex-1 overflow-y-auto">
+              <TranscriptPanel
+                transcripts={transcripts}
+                currentTimeMs={currentTimeMs}
+                onSeek={handleSeek}
+              />
+            </div>
           </div>
         </Panel>
 

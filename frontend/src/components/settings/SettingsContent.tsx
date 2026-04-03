@@ -5,6 +5,7 @@ import type { SttSettings, LlmSettings, LlmPreset, HfSettings } from '../../api/
 import { useAppSettingsStore, AUDIO_DEFAULTS, DIARIZATION_DEFAULTS } from '../../stores/appSettingsStore'
 import { ENGINE_LABELS, SUMMARY_INTERVAL_OPTIONS, AUDIO, DIARIZATION, LANGUAGES } from '../../config'
 import PromptTemplateManager from '../PromptTemplateManager'
+import MeetingTemplateManager from './MeetingTemplateManager'
 import UserLlmSettings from './UserLlmSettings'
 
 const SERVICE_PRESETS = [
@@ -615,6 +616,15 @@ export default function SettingsContent() {
             ? '"안함" 선택 시 녹음 중 실시간 요약 없이, 회의 종료 시 한 번만 정리합니다.'
             : '주기가 짧을수록 회의록이 자주 갱신되지만, AI 처리 부하가 높아질 수 있습니다.'}
         </p>
+      </div>
+
+      {/* 회의 템플릿 관리 */}
+      <div className="rounded-lg border bg-card p-6">
+        <h2 className="text-lg font-semibold mb-1">회의 템플릿</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          반복 회의(스탠드업, 주간회의 등) 설정을 템플릿으로 저장하고 재사용합니다.
+        </p>
+        <MeetingTemplateManager />
       </div>
 
       {/* 회의록 양식 관리 */}

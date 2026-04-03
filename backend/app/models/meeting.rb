@@ -9,6 +9,7 @@ class Meeting < ApplicationRecord
   has_many :action_items, dependent: :destroy
   has_many :blocks, dependent: :destroy
   has_many :meeting_attachments, dependent: :destroy
+  has_many :meeting_bookmarks, dependent: :destroy
   has_many :meeting_participants, dependent: :destroy
   has_many :active_participants, -> { where(left_at: nil) }, class_name: "MeetingParticipant"
 
