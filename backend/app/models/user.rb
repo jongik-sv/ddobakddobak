@@ -9,9 +9,20 @@ class User < ApplicationRecord
   has_many :teams, through: :team_memberships
   has_many :meeting_participants, dependent: :destroy
 
+  ROLES = %w[admin member].freeze
+
   validates :name, presence: true
+  validates :role, inclusion: { in: ROLES }
 
   encrypts :llm_api_key
+
+  def admin?
+    role == "admin"
+  end
+
+  def member?
+    role == "member"
+  end
 
   def llm_configured?
     llm_provider.present? && llm_api_key.present?

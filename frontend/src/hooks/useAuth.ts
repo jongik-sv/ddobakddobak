@@ -18,11 +18,13 @@ export function useAuth() {
     refreshToken,
     isAuthenticated,
     isLoading,
+    user,
     setTokens,
     setAccessToken,
     markAuthenticated,
     clearAuth,
     setLoading,
+    setUser,
   } = useAuthStore()
 
   // 딥링크 리스너 등록
@@ -31,7 +33,13 @@ export function useAuth() {
   // ── 앱 시작 시 토큰 검증 ──
   useEffect(() => {
     if (getMode() !== 'server') {
-      setLoading(false)
+      // 로컬 모드: 서버에서 사용자 정보 가져오기
+      validateToken('')
+        .then((res) => {
+          if (res.user) setUser(res.user)
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false))
       return
     }
 
@@ -41,7 +49,8 @@ export function useAuth() {
     }
 
     validateToken(accessToken)
-      .then(() => {
+      .then((res) => {
+        if (res.user) setUser(res.user)
         setTokens(accessToken, refreshToken || '')
         setLoading(false)
       })
@@ -51,6 +60,11 @@ export function useAuth() {
             const { access_token } = await refreshAccessToken(refreshToken)
             setAccessToken(access_token)
             markAuthenticated()
+            // 새 토큰으로 사용자 정보 조회
+            try {
+              const res = await validateToken(access_token)
+              if (res.user) setUser(res.user)
+            } catch {}
             setLoading(false)
           } catch {
             clearAuth()
@@ -83,6 +97,7 @@ export function useAuth() {
   return {
     isAuthenticated,
     isLoading,
+    user,
     login,
     logout,
   }

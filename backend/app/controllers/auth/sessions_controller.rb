@@ -12,7 +12,7 @@ class Auth::SessionsController < Devise::SessionsController
     render json: {
       access_token: request.env["warden-jwt_auth.token"],
       refresh_token: refresh_token,
-      user: { id: resource.id, email: resource.email, name: resource.name }
+      user: { id: resource.id, email: resource.email, name: resource.name, role: resource.role }
     }
   end
 

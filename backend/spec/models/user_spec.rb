@@ -13,6 +13,54 @@ RSpec.describe User, type: :model do
 
   describe "validations" do
     it { is_expected.to validate_presence_of(:name) }
+    it { is_expected.to validate_inclusion_of(:role).in_array(%w[admin member]) }
+  end
+
+  describe "role" do
+    it "defaults to member" do
+      user = create(:user)
+      expect(user.role).to eq("member")
+    end
+
+    it "rejects invalid role values" do
+      user = build(:user, role: "superuser")
+      expect(user).not_to be_valid
+      expect(user.errors[:role]).to be_present
+    end
+
+    it "accepts admin role" do
+      user = create(:user, role: "admin")
+      expect(user.role).to eq("admin")
+    end
+
+    it "accepts member role" do
+      user = create(:user, role: "member")
+      expect(user.role).to eq("member")
+    end
+  end
+
+  describe "#admin?" do
+    it "returns true for admin users" do
+      user = build(:user, role: "admin")
+      expect(user.admin?).to be true
+    end
+
+    it "returns false for member users" do
+      user = build(:user, role: "member")
+      expect(user.admin?).to be false
+    end
+  end
+
+  describe "#member?" do
+    it "returns true for member users" do
+      user = build(:user, role: "member")
+      expect(user.member?).to be true
+    end
+
+    it "returns false for admin users" do
+      user = build(:user, role: "admin")
+      expect(user.member?).to be false
+    end
   end
 
   describe "JTIMatcher jti initialization" do

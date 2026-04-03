@@ -10,6 +10,7 @@ describe('authStore', () => {
       refreshToken: null,
       isAuthenticated: false,
       isLoading: true,
+      user: null,
     })
   })
 
@@ -120,6 +121,28 @@ describe('authStore', () => {
       useAuthStore.getState().setLoading(false)
       useAuthStore.getState().setLoading(true)
       expect(useAuthStore.getState().isLoading).toBe(true)
+    })
+  })
+
+  describe('setUser', () => {
+    it('사용자 정보를 설정한다', () => {
+      const user = { id: 1, email: 'test@test.com', name: 'Test', role: 'admin' as const }
+      useAuthStore.getState().setUser(user)
+      expect(useAuthStore.getState().user).toEqual(user)
+    })
+
+    it('localStorage에 사용자 정보를 저장한다', () => {
+      const user = { id: 1, email: 'test@test.com', name: 'Test', role: 'member' as const }
+      useAuthStore.getState().setUser(user)
+      expect(JSON.parse(localStorage.getItem('auth_user')!)).toEqual(user)
+    })
+
+    it('clearAuth 시 사용자 정보가 삭제된다', () => {
+      const user = { id: 1, email: 'test@test.com', name: 'Test', role: 'admin' as const }
+      useAuthStore.getState().setUser(user)
+      useAuthStore.getState().clearAuth()
+      expect(useAuthStore.getState().user).toBeNull()
+      expect(localStorage.getItem('auth_user')).toBeNull()
     })
   })
 

@@ -4,6 +4,10 @@ FactoryBot.define do
     name { "Test User" }
     password { "password123" }
 
+    trait :admin do
+      role { "admin" }
+    end
+
     trait :with_llm_config do
       llm_provider { "anthropic" }
       llm_api_key { "sk-ant-test-key-12345" }
