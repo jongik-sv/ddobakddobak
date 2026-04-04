@@ -21,3 +21,15 @@ export function base64ToInt16Array(base64: string): Int16Array {
   }
   return new Int16Array(bytes.buffer)
 }
+
+/** 밀리초를 MM:SS 또는 H:MM:SS 형식 문자열로 변환한다. */
+export function formatTime(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '00:00'
+  const totalSeconds = Math.floor(ms / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  const mm = String(minutes).padStart(2, '0')
+  const ss = String(seconds).padStart(2, '0')
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`
+}
