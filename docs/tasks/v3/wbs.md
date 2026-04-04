@@ -157,7 +157,7 @@
 ### TSK-01-03: AppLayout 반응형 재구성
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - schedule: 2026-04-10 ~ 2026-04-11
