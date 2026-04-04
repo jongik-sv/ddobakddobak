@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Settings, Monitor, Mic, ArrowLeft, StickyNote, Paperclip, Bookmark, Save, Timer } from 'lucide-react'
+import { Settings, Monitor, Mic, ArrowLeft, StickyNote, Paperclip, Bookmark, Save, Timer, FileText, Bot, PenLine } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
 import { Tooltip } from '../components/ui/Tooltip'
 import { useUiStore } from '../stores/uiStore'
@@ -25,11 +25,110 @@ import { ShareButton } from '../components/meeting/ShareButton'
 import { ParticipantList } from '../components/meeting/ParticipantList'
 import { HostTransferDialog } from '../components/meeting/HostTransferDialog'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
+import { formatElapsedSeconds } from '../lib/audioUtils'
 import { createBookmark } from '../api/bookmarks'
 import { useMeetingTemplateStore } from '../stores/meetingTemplateStore'
 import SaveTemplateDialog from '../components/meeting/SaveTemplateDialog'
+import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
+import MobileTabLayout from '../components/layout/MobileTabLayout'
+import type { Tab } from '../components/layout/MobileTabLayout'
+import { MobileRecordControls } from '../components/meeting/MobileRecordControls'
 
 type MeetingStatus = 'idle' | 'recording' | 'stopped'
+
+/** 오타 수정 섹션 — 모바일/데스크톱 양쪽에서 재사용 */
+function CorrectionsSection({
+  corrections,
+  isApplyingCorrections,
+  onUpdate,
+  onAdd,
+  onRemove,
+  onApply,
+}: {
+  corrections: TermCorrection[]
+  isApplyingCorrections: boolean
+  onUpdate: (index: number, field: 'from' | 'to', value: string) => void
+  onAdd: () => void
+  onRemove: (index: number) => void
+  onApply: () => void
+}) {
+  return (
+    <>
+      <h2 className="px-4 py-2 text-sm font-semibold text-gray-500 border-b bg-gray-50 shrink-0">
+        오타 수정
+      </h2>
+      <div className="flex-1 flex flex-col p-3 gap-2 overflow-auto">
+        <p className="text-xs text-gray-400 shrink-0">
+          잘못된 용어를 올바른 용어로 일괄 치환합니다
+        </p>
+        {corrections.map((c, i) => (
+          <div key={i} className="flex items-center gap-1 shrink-0">
+            <input
+              type="text"
+              value={c.from}
+              onChange={(e) => onUpdate(i, 'from', e.target.value)}
+              placeholder="잘못된 용어"
+              className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+              disabled={isApplyingCorrections}
+            />
+            <span className="text-gray-400 text-xs shrink-0">&rarr;</span>
+            <input
+              type="text"
+              value={c.to}
+              onChange={(e) => onUpdate(i, 'to', e.target.value)}
+              placeholder="올바른 용어"
+              className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+              disabled={isApplyingCorrections}
+            />
+            <button
+              onClick={() => onRemove(i)}
+              className="shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 text-sm"
+              title="삭제"
+            >
+              &times;
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={onAdd}
+          disabled={isApplyingCorrections}
+          className="shrink-0 text-xs text-blue-500 hover:text-blue-700 self-start"
+        >
+          + 용어 추가
+        </button>
+        <button
+          onClick={onApply}
+          disabled={!corrections.some((c) => c.from.trim() && c.to.trim()) || isApplyingCorrections}
+          className="shrink-0 px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {isApplyingCorrections ? '반영 중...' : '오타 수정 적용'}
+        </button>
+      </div>
+    </>
+  )
+}
+
+/** 메모 저장 헤더 바 — 모바일/데스크톱 양쪽에서 재사용 */
+function MemoHeader({
+  onSave,
+  isSaving,
+}: {
+  onSave: () => void
+  isSaving: boolean
+}) {
+  return (
+    <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
+      <h2 className="text-sm font-semibold text-gray-500">메모</h2>
+      <button
+        onClick={onSave}
+        disabled={isSaving}
+        className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        {isSaving ? '저장 중...' : '저장'}
+      </button>
+    </div>
+  )
+}
 
 export default function MeetingLivePage() {
   const { id } = useParams<{ id: string }>()
@@ -288,8 +387,6 @@ export default function MeetingLivePage() {
       reset()
       // 메모 에디터 초기화
       memoEditorRef.current?.replaceBlocks(memoEditorRef.current.document, [])
-      // 피드백 텍스트 초기화
-      setFeedbackText('')
       // 로컬 상태 초기화
       setStatus('idle')
       setMeetingApiStatus('pending')
@@ -395,6 +492,9 @@ export default function MeetingLivePage() {
   const memoVisible = useUiStore((s) => s.memoVisible)
   const toggleMemo = useUiStore((s) => s.toggleMemo)
 
+  // 데스크톱/모바일 분기
+  const isDesktop = useMediaQuery(BREAKPOINTS.lg)
+
   // 첨부 토글
   const attachmentsVisible = useUiStore((s) => s.attachmentsVisible)
   const toggleAttachments = useUiStore((s) => s.toggleAttachments)
@@ -405,15 +505,6 @@ export default function MeetingLivePage() {
     setRecordingActive(isActive)
     return () => setRecordingActive(false)
   }, [isActive, setRecordingActive])
-
-  const formatElapsed = (totalSec: number) => {
-    const h = Math.floor(totalSec / 3600)
-    const m = Math.floor((totalSec % 3600) / 60)
-    const s = totalSec % 60
-    return h > 0
-      ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-      : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  }
 
   // 경과 시간 타이머
   useEffect(() => {
@@ -536,6 +627,76 @@ export default function MeetingLivePage() {
     return () => clearInterval(interval)
   }, [isActive, isPaused, isApplyingCorrections, meetingId, summaryIntervalSec])
 
+  // 모바일 탭 정의
+  const mobileTabs: Tab[] = useMemo(() => [
+    {
+      id: 'transcript',
+      label: '전사',
+      icon: FileText,
+      content: (
+        <div className="h-full flex flex-col">
+          {/* 화자 관리 accordion (기본 닫힘) */}
+          <details className="border-b">
+            <summary className="px-4 py-2 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-50">
+              화자 관리
+            </summary>
+            <div className="px-2 pb-2">
+              <SpeakerPanel meetingId={meetingId} isRecording={isActive} />
+              {isSharing && (
+                <div className="border-t mt-2 pt-2">
+                  <ParticipantList
+                    isHost={isHost}
+                    currentUserId={currentUserId}
+                    onTransferRequest={(p) => setTransferTarget(p)}
+                  />
+                </div>
+              )}
+            </div>
+          </details>
+          <div className="flex-1 overflow-hidden">
+            <RecordTabPanel
+              meetingId={meetingId}
+              currentTimeMs={0}
+              onApply={() => triggerRealtimeSummary(meetingId)}
+            />
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'summary',
+      label: '요약',
+      icon: Bot,
+      content: (
+        <AiSummaryPanel meetingId={meetingId} isRecording={isActive} onNotesChange={handleNotesChange} />
+      ),
+    },
+    {
+      id: 'memo',
+      label: '메모',
+      icon: PenLine,
+      content: (
+        <div className="h-full flex flex-col overflow-hidden">
+          <MemoHeader onSave={handleSaveMemo} isSaving={isSavingMemo} />
+          <div className="flex-1 overflow-auto">
+            <MeetingEditor editorRef={memoEditorRef} />
+          </div>
+          {/* 오타 수정 영역 */}
+          <div className="flex flex-col border-t shrink-0" style={{ maxHeight: '40%' }}>
+            <CorrectionsSection
+              corrections={corrections}
+              isApplyingCorrections={isApplyingCorrections}
+              onUpdate={updateCorrection}
+              onAdd={addCorrectionRow}
+              onRemove={removeCorrectionRow}
+              onApply={handleApplyCorrections}
+            />
+          </div>
+        </div>
+      ),
+    },
+  ], [meetingId, isActive, isSharing, isHost, currentUserId, handleNotesChange, handleSaveMemo, isSavingMemo, corrections, isApplyingCorrections])
+
   return (
     <div className="flex flex-col h-full">
 
@@ -615,7 +776,7 @@ export default function MeetingLivePage() {
 
             {/* 경과 시간 */}
             <span className="font-mono text-sm font-semibold text-gray-700 tabular-nums tracking-wide">
-              {formatElapsed(elapsedSeconds)}
+              {formatElapsedSeconds(elapsedSeconds)}
             </span>
 
             {/* 원형 카운트다운 타이머 */}
@@ -736,128 +897,135 @@ export default function MeetingLivePage() {
       {/* 첨부 파일/링크 섹션 */}
       {attachmentsVisible && <AttachmentSection meetingId={meetingId} />}
 
-      {/* 3영역 리사이즈 레이아웃 */}
-      <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden">
-        {/* 기록 + 화자 영역 — 기본 20% */}
-        <Panel defaultSize={20} minSize={15}>
-          <section className="h-full border-r overflow-hidden flex flex-col">
-            <div className="flex-1 overflow-hidden">
-              <RecordTabPanel
-                meetingId={meetingId}
-                currentTimeMs={0}
-                onApply={() => triggerRealtimeSummary(meetingId)}
-              />
-            </div>
-            <div className="border-t shrink-0">
-              <SpeakerPanel meetingId={meetingId} isRecording={isActive} />
-            </div>
-            {isSharing && (
+      {/* 데스크톱: 3영역 리사이즈 레이아웃 / 모바일: 탭 레이아웃 */}
+      {isDesktop ? (
+        <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden">
+          {/* 기록 + 화자 영역 — 기본 20% */}
+          <Panel defaultSize={20} minSize={15}>
+            <section className="h-full border-r overflow-hidden flex flex-col">
+              <div className="flex-1 overflow-hidden">
+                <RecordTabPanel
+                  meetingId={meetingId}
+                  currentTimeMs={0}
+                  onApply={() => triggerRealtimeSummary(meetingId)}
+                />
+              </div>
               <div className="border-t shrink-0">
-                <ParticipantList
-                  isHost={isHost}
-                  currentUserId={currentUserId}
-                  onTransferRequest={(p) => setTransferTarget(p)}
+                <SpeakerPanel meetingId={meetingId} isRecording={isActive} />
+              </div>
+              {isSharing && (
+                <div className="border-t shrink-0">
+                  <ParticipantList
+                    isHost={isHost}
+                    currentUserId={currentUserId}
+                    onTransferRequest={(p) => setTransferTarget(p)}
+                  />
+                </div>
+              )}
+            </section>
+          </Panel>
+
+          <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
+
+          {/* AI 회의록 영역 — 기본 50% */}
+          <Panel defaultSize={50} minSize={20}>
+            <section
+              data-testid="ai-minutes"
+              className="h-full border-r overflow-hidden flex flex-col"
+            >
+              <AiSummaryPanel meetingId={meetingId} isRecording={isActive} onNotesChange={handleNotesChange} />
+            </section>
+          </Panel>
+
+          {memoVisible && (
+            <>
+              <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
+
+              {/* 메모 + 피드백 영역 — 나머지 30% */}
+              <Panel defaultSize={30} minSize={15}>
+                <section
+                  data-testid="memo-editor"
+                  className="h-full flex flex-col overflow-hidden"
+                >
+                  {/* ���모 영역 (60%) */}
+                  <MemoHeader onSave={handleSaveMemo} isSaving={isSavingMemo} />
+                  <div className="overflow-auto" style={{ flex: '0 0 60%' }}>
+                    <MeetingEditor editorRef={memoEditorRef} />
+                  </div>
+
+                  {/* 오타 수정 영역 (40%) */}
+                  <div className="flex flex-col border-t" style={{ flex: '0 0 40%' }}>
+                    <CorrectionsSection
+                      corrections={corrections}
+                      isApplyingCorrections={isApplyingCorrections}
+                      onUpdate={updateCorrection}
+                      onAdd={addCorrectionRow}
+                      onRemove={removeCorrectionRow}
+                      onApply={handleApplyCorrections}
+                    />
+                  </div>
+                </section>
+              </Panel>
+            </>
+          )}
+        </PanelGroup>
+      ) : (
+        <>
+          <MobileRecordControls
+            title="회의실"
+            isRecording={isActive}
+            isPaused={isPaused}
+            elapsedSeconds={elapsedSeconds}
+            onBack={handleNavigateBack}
+            onPause={handlePause}
+            onResume={handleResume}
+            onStop={handleStop}
+            isStopping={isStopping}
+          >
+            {/* 더보기 바텀 시트 추가 옵션 */}
+            <ShareButton meetingId={meetingId} />
+            {IS_TAURI && (
+              <div className="flex items-center justify-between py-2">
+                <div className="flex items-center gap-2">
+                  <Monitor className="w-4 h-4 text-gray-600" />
+                  <span className="text-sm text-gray-700">시스템 오디오</span>
+                </div>
+                <Switch
+                  checked={systemAudioEnabled}
+                  onChange={handleToggleSystemAudio}
                 />
               </div>
             )}
-          </section>
-        </Panel>
-
-        <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
-
-        {/* AI 회의록 영역 — 기본 50% */}
-        <Panel defaultSize={50} minSize={20}>
-          <section
-            data-testid="ai-minutes"
-            className="h-full border-r overflow-hidden flex flex-col"
-          >
-            <AiSummaryPanel meetingId={meetingId} isRecording={isActive} onNotesChange={handleNotesChange} />
-          </section>
-        </Panel>
-
-        {memoVisible && (
-          <>
-            <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
-
-            {/* 메모 + 피드백 영역 — 나머지 30% */}
-            <Panel defaultSize={30} minSize={15}>
-              <section
-                data-testid="memo-editor"
-                className="h-full flex flex-col overflow-hidden"
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <Timer className="w-4 h-4 text-gray-600" />
+                <span className="text-sm text-gray-700">AI 적용 주기</span>
+              </div>
+              <select
+                value={summaryIntervalSec}
+                onChange={(e) => setSummaryIntervalSec(Number(e.target.value))}
+                disabled={isActive}
+                className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-700 disabled:opacity-60"
               >
-                {/* 메모 영역 (60%) */}
-                <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
-                  <h2 className="text-sm font-semibold text-gray-500">메모</h2>
-                  <button
-                    onClick={handleSaveMemo}
-                    disabled={isSavingMemo}
-                    className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isSavingMemo ? '저장 중...' : '저장'}
-                  </button>
-                </div>
-                <div className="overflow-auto" style={{ flex: '0 0 60%' }}>
-                  <MeetingEditor editorRef={memoEditorRef} />
-                </div>
-
-                {/* 오타 수정 영역 (40%) */}
-                <div className="flex flex-col border-t" style={{ flex: '0 0 40%' }}>
-                  <h2 className="px-4 py-2 text-sm font-semibold text-gray-500 border-b bg-gray-50 shrink-0">
-                    오타 수정
-                  </h2>
-                  <div className="flex-1 flex flex-col p-3 gap-2 overflow-auto">
-                    <p className="text-xs text-gray-400 shrink-0">
-                      잘못된 용어를 올바른 용어로 일괄 치환합니다
-                    </p>
-                    {corrections.map((c, i) => (
-                      <div key={i} className="flex items-center gap-1 shrink-0">
-                        <input
-                          type="text"
-                          value={c.from}
-                          onChange={(e) => updateCorrection(i, 'from', e.target.value)}
-                          placeholder="잘못된 용어"
-                          className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-                          disabled={isApplyingCorrections}
-                        />
-                        <span className="text-gray-400 text-xs shrink-0">&rarr;</span>
-                        <input
-                          type="text"
-                          value={c.to}
-                          onChange={(e) => updateCorrection(i, 'to', e.target.value)}
-                          placeholder="올바른 용어"
-                          className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-                          disabled={isApplyingCorrections}
-                        />
-                        <button
-                          onClick={() => removeCorrectionRow(i)}
-                          className="shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 text-sm"
-                          title="삭제"
-                        >
-                          &times;
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      onClick={addCorrectionRow}
-                      disabled={isApplyingCorrections}
-                      className="shrink-0 text-xs text-blue-500 hover:text-blue-700 self-start"
-                    >
-                      + 용어 추가
-                    </button>
-                    <button
-                      onClick={handleApplyCorrections}
-                      disabled={!corrections.some((c) => c.from.trim() && c.to.trim()) || isApplyingCorrections}
-                      className="shrink-0 px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {isApplyingCorrections ? '반영 중...' : '오타 수정 적용'}
-                    </button>
-                  </div>
-                </div>
-              </section>
-            </Panel>
-          </>
-        )}
-      </PanelGroup>
+                {SUMMARY_INTERVAL_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={useUiStore.getState().openSettings}
+              className="flex items-center gap-2 py-2 text-sm text-gray-700 hover:text-gray-900"
+            >
+              <Settings className="w-4 h-4" />
+              설정
+            </button>
+          </MobileRecordControls>
+          <MobileTabLayout
+            tabs={mobileTabs}
+            defaultTab="transcript"
+          />
+        </>
+      )}
 
       {/* 하단 상태바 */}
       <div className="flex items-center justify-between px-4 h-7 border-t bg-gray-50 text-[11px] text-gray-500 shrink-0 select-none">
@@ -954,7 +1122,7 @@ export default function MeetingLivePage() {
           <div className="bg-white rounded-xl shadow-lg p-5 max-w-xs w-full mx-4">
             <h3 className="text-base font-semibold text-gray-900 mb-1">북마크 추가</h3>
             <p className="text-xs text-gray-400 mb-3">
-              {formatElapsed(Math.floor(bookmarkTimestampRef.current / 1000))} 지점
+              {formatElapsedSeconds(Math.floor(bookmarkTimestampRef.current / 1000))} 지점
             </p>
             <input
               type="text"

@@ -227,7 +227,7 @@
 ### TSK-02-01: MobileTabLayout 공용 컴포넌트
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - schedule: 2026-04-11 ~ 2026-04-14
@@ -295,7 +295,7 @@
 ### TSK-02-03: MiniAudioPlayer 컴포넌트
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: high
 - assignee: -
 - schedule: 2026-04-15 ~ 2026-04-16
@@ -329,7 +329,7 @@
 ### TSK-02-04: MeetingLivePage 패널/탭 분기
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - schedule: 2026-04-16 ~ 2026-04-17
@@ -362,7 +362,7 @@
 ### TSK-02-05: MobileRecordControls 컴포넌트
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: high
 - assignee: -
 - schedule: 2026-04-17 ~ 2026-04-18

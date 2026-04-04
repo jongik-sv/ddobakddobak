@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Pencil, ArrowLeft, StickyNote, Paperclip, Bookmark, Trash2 } from 'lucide-react'
+import { Pencil, ArrowLeft, StickyNote, Paperclip, Bookmark, Trash2, FileText, Bot } from 'lucide-react'
 import { Tooltip } from '../components/ui/Tooltip'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMeeting } from '../hooks/useMeeting'
@@ -13,7 +13,9 @@ import { createAuthenticatedConsumer } from '../lib/actionCableAuth'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { MeetingPageSkeleton } from '../components/ui/Skeleton'
 import { useTranscriptStore } from '../stores/transcriptStore'
+import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { AudioPlayer } from '../components/meeting/AudioPlayer'
+import { MiniAudioPlayer } from '../components/meeting/MiniAudioPlayer'
 import { TranscriptPanel } from '../components/meeting/TranscriptPanel'
 import { ExportButton } from '../components/meeting/ExportButton'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
@@ -24,6 +26,8 @@ import { AttachmentSection } from '../components/meeting/AttachmentSection'
 import { getBookmarks, deleteBookmark } from '../api/bookmarks'
 import type { Bookmark as BookmarkType } from '../api/bookmarks'
 import { DecisionList } from '../components/decision/DecisionList'
+import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
+import MobileTabLayout from '../components/layout/MobileTabLayout'
 
 // ──────────────────────────────────────────────
 // 회의 상세 페이지
@@ -36,6 +40,7 @@ export default function MeetingPage() {
   const { id } = useParams<{ id: string }>()
   const meetingId = Number(id)
   const navigate = useNavigate()
+  const isDesktop = useMediaQuery(BREAKPOINTS.lg)
 
   const { isLoading: accessLoading, error: accessError } = useMeetingAccess(meetingId)
 
@@ -183,9 +188,11 @@ export default function MeetingPage() {
     [meetingId]
   )
 
-  // 오디오 seek 상태 (AudioPlayer ↔ TranscriptPanel 공유)
+  // 오디오 상태 (AudioPlayer ↔ MiniAudioPlayer ↔ TranscriptPanel 공유)
+  const audio = useAudioPlayer(meetingId)
   const [seekMs, setSeekMs] = useState<number | null>(null)
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
+  const [showFullPlayer, setShowFullPlayer] = useState(false)
   const [transcripts, setTranscripts] = useState<Transcript[]>([])
 
   // 북마크 상태
@@ -328,10 +335,101 @@ export default function MeetingPage() {
     )
   }
 
+  // 모바일 탭 정의
+  const mobileTabs = [
+      {
+        id: 'transcript',
+        label: '전사',
+        icon: FileText,
+        content: (
+          <div className="h-full flex flex-col overflow-hidden">
+            {bookmarksVisible && bookmarks.length > 0 && (
+              <div className="border-b shrink-0 max-h-48 overflow-y-auto">
+                <div className="px-3 py-2 bg-amber-50 border-b">
+                  <h3 className="text-xs font-semibold text-amber-700 flex items-center gap-1">
+                    <Bookmark className="w-3 h-3" />
+                    북마크 ({bookmarks.length})
+                  </h3>
+                </div>
+                <ul className="divide-y divide-gray-100">
+                  {bookmarks.map((b) => (
+                    <li
+                      key={b.id}
+                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-amber-50 cursor-pointer group"
+                      onClick={() => handleSeek(b.timestamp_ms)}
+                    >
+                      <span className="text-xs font-mono text-amber-600 shrink-0">
+                        {formatMs(b.timestamp_ms)}
+                      </span>
+                      <span className="text-xs text-gray-700 truncate flex-1">
+                        {b.label || '(라벨 없음)'}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteBookmark(b.id)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all"
+                        title="삭제"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="flex-1 overflow-y-auto">
+              <TranscriptPanel
+                transcripts={transcripts}
+                currentTimeMs={currentTimeMs}
+                onSeek={handleSeek}
+              />
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: 'summary',
+        label: '요약',
+        icon: Bot,
+        content: (
+          <div className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
+            <AiSummaryPanel meetingId={meetingId} isRecording={false} onNotesChange={handleNotesChange} />
+            <div className="border-t shrink-0 overflow-y-auto max-h-[40%]">
+              <DecisionList meetingId={meetingId} />
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: 'memo',
+        label: '메모',
+        icon: StickyNote,
+        content: (
+          <section data-testid="memo-editor" className="h-full flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
+              <h2 className="text-sm font-semibold text-gray-500">메모</h2>
+              <button
+                onClick={handleSaveMemo}
+                disabled={isSavingMemo}
+                className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSavingMemo ? '저장 중...' : '저장'}
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto">
+              <MeetingEditor editorRef={memoEditorRef} />
+            </div>
+          </section>
+        ),
+      },
+  ]
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* 페이지 제목 */}
-      <div className="px-6 py-4 bg-white border-b shrink-0 flex items-center gap-3">
+      <div className={`bg-white border-b shrink-0 flex items-center ${isDesktop ? 'px-6 py-4 gap-3' : 'px-3 py-2 gap-2'}`}>
         <Tooltip text="목록으로 돌아가기">
           <button
             onClick={() => navigate('/')}
@@ -340,7 +438,7 @@ export default function MeetingPage() {
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
         </Tooltip>
-        <h1 className="text-xl font-bold text-gray-900">회의 미리보기</h1>
+        <h1 className={`font-bold text-gray-900 ${isDesktop ? 'text-xl' : 'text-lg'}`}>회의 미리보기</h1>
         <Tooltip text={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}>
           <button
             onClick={toggleAttachments}
@@ -367,17 +465,47 @@ export default function MeetingPage() {
         </Tooltip>
       </div>
 
-      {/* 오디오 플레이어 */}
-      <AudioPlayer
-        meetingId={meetingId}
-        onTimeUpdate={setCurrentTimeMs}
-        seekMs={seekMs}
-        autoPlayOnSeek
-      />
+      {/* 오디오 플레이어 (데스크톱) */}
+      <div className="hidden lg:block">
+        <AudioPlayer
+          audio={audio}
+          onTimeUpdate={setCurrentTimeMs}
+          seekMs={seekMs}
+          autoPlayOnSeek
+        />
+      </div>
+
+      {/* 풀사이즈 플레이어 바텀 시트 (모바일) */}
+      {showFullPlayer && (
+        <div className="fixed inset-0 z-50 lg:hidden" onClick={() => setShowFullPlayer(false)}>
+          <div className="absolute inset-0 bg-black/30" />
+          <div className="absolute bottom-14 left-0 right-0 bg-white border-t shadow-lg rounded-t-xl p-3" onClick={(e) => e.stopPropagation()}>
+            <AudioPlayer
+              audio={audio}
+              onTimeUpdate={setCurrentTimeMs}
+              seekMs={seekMs}
+              autoPlayOnSeek
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 미니 오디오 플레이어 (모바일) */}
+      {audio.hasAudio && audio.isReady && (
+        <MiniAudioPlayer
+          isPlaying={audio.isPlaying}
+          currentTimeMs={audio.currentTimeMs}
+          durationMs={audio.durationMs}
+          onPlay={audio.play}
+          onPause={audio.pause}
+          onSeek={audio.seekTo}
+          onExpand={() => setShowFullPlayer(true)}
+        />
+      )}
 
       {/* 헤더 */}
-      <div className="flex items-center justify-between px-6 py-3 border-b bg-white shrink-0">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
+      <div className={`flex items-center justify-between border-b bg-white shrink-0 ${isDesktop ? 'px-6 py-3' : 'px-3 py-2'}`}>
+        <div className={`flex items-center flex-1 min-w-0 ${isDesktop ? 'gap-3' : 'gap-2'}`}>
           {isEditingTitle ? (
             <input
               type="text"
@@ -427,7 +555,7 @@ export default function MeetingPage() {
             </Tooltip>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className={`flex items-center shrink-0 ${isDesktop ? 'gap-2' : 'gap-1'}`}>
           {meeting?.status === 'completed' && (
             <>
               {meeting.has_audio_file && (
@@ -491,95 +619,101 @@ export default function MeetingPage() {
       {/* 첨부 파일/링크 섹션 */}
       {attachmentsVisible && <AttachmentSection meetingId={meetingId} />}
 
-      {/* 3패널 리사이즈 레이아웃 */}
-      <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden min-h-0">
-        {/* 트랜스크립트 + 북마크 패널 — 기본 25% */}
-        <Panel defaultSize={25} minSize={15}>
-          <div className="h-full flex flex-col overflow-hidden">
-            {/* 북마크 섹션 */}
-            {bookmarksVisible && bookmarks.length > 0 && (
-              <div className="border-b shrink-0 max-h-48 overflow-y-auto">
-                <div className="px-3 py-2 bg-amber-50 border-b">
-                  <h3 className="text-xs font-semibold text-amber-700 flex items-center gap-1">
-                    <Bookmark className="w-3 h-3" />
-                    북마크 ({bookmarks.length})
-                  </h3>
-                </div>
-                <ul className="divide-y divide-gray-100">
-                  {bookmarks.map((b) => (
-                    <li
-                      key={b.id}
-                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-amber-50 cursor-pointer group"
-                      onClick={() => handleSeek(b.timestamp_ms)}
-                    >
-                      <span className="text-xs font-mono text-amber-600 shrink-0">
-                        {formatMs(b.timestamp_ms)}
-                      </span>
-                      <span className="text-xs text-gray-700 truncate flex-1">
-                        {b.label || '(라벨 없음)'}
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDeleteBookmark(b.id)
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all"
-                        title="삭제"
+      {/* 패널 레이아웃: 데스크톱(PanelGroup) / 모바일(MobileTabLayout) */}
+      {isDesktop ? (
+        <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden min-h-0">
+          {/* 트랜스크립트 + 북마크 패널 — 기본 25% */}
+          <Panel defaultSize={25} minSize={15}>
+            <div className="h-full flex flex-col overflow-hidden">
+              {/* 북마크 섹션 */}
+              {bookmarksVisible && bookmarks.length > 0 && (
+                <div className="border-b shrink-0 max-h-48 overflow-y-auto">
+                  <div className="px-3 py-2 bg-amber-50 border-b">
+                    <h3 className="text-xs font-semibold text-amber-700 flex items-center gap-1">
+                      <Bookmark className="w-3 h-3" />
+                      북마크 ({bookmarks.length})
+                    </h3>
+                  </div>
+                  <ul className="divide-y divide-gray-100">
+                    {bookmarks.map((b) => (
+                      <li
+                        key={b.id}
+                        className="flex items-center gap-2 px-3 py-1.5 hover:bg-amber-50 cursor-pointer group"
+                        onClick={() => handleSeek(b.timestamp_ms)}
                       >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                        <span className="text-xs font-mono text-amber-600 shrink-0">
+                          {formatMs(b.timestamp_ms)}
+                        </span>
+                        <span className="text-xs text-gray-700 truncate flex-1">
+                          {b.label || '(라벨 없음)'}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteBookmark(b.id)
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all"
+                          title="삭제"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="flex-1 overflow-y-auto">
+                <TranscriptPanel
+                  transcripts={transcripts}
+                  currentTimeMs={currentTimeMs}
+                  onSeek={handleSeek}
+                />
               </div>
-            )}
-            <div className="flex-1 overflow-y-auto">
-              <TranscriptPanel
-                transcripts={transcripts}
-                currentTimeMs={currentTimeMs}
-                onSeek={handleSeek}
-              />
             </div>
-          </div>
-        </Panel>
+          </Panel>
 
-        <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
+          <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-        {/* AI 회의록 + Decision Log — 기본 45% */}
-        <Panel defaultSize={45} minSize={20}>
-          <div className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
-            <AiSummaryPanel meetingId={meetingId} isRecording={false} onNotesChange={handleNotesChange} />
-            <div className="border-t shrink-0 overflow-y-auto max-h-[40%]">
-              <DecisionList meetingId={meetingId} />
+          {/* AI 회의록 + Decision Log — 기본 45% */}
+          <Panel defaultSize={45} minSize={20}>
+            <div className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
+              <AiSummaryPanel meetingId={meetingId} isRecording={false} onNotesChange={handleNotesChange} />
+              <div className="border-t shrink-0 overflow-y-auto max-h-[40%]">
+                <DecisionList meetingId={meetingId} />
+              </div>
             </div>
-          </div>
-        </Panel>
+          </Panel>
 
-        {memoVisible && (
-          <>
-            <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
+          {memoVisible && (
+            <>
+              <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-            {/* 메모 — 기본 30% */}
-            <Panel defaultSize={30} minSize={15}>
-              <section data-testid="memo-editor" className="h-full flex flex-col overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
-                  <h2 className="text-sm font-semibold text-gray-500">메모</h2>
-                  <button
-                    onClick={handleSaveMemo}
-                    disabled={isSavingMemo}
-                    className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isSavingMemo ? '저장 중...' : '저장'}
-                  </button>
-                </div>
-                <div className="flex-1 overflow-auto">
-                  <MeetingEditor editorRef={memoEditorRef} />
-                </div>
-              </section>
-            </Panel>
-          </>
-        )}
-      </PanelGroup>
+              {/* 메모 — 기본 30% */}
+              <Panel defaultSize={30} minSize={15}>
+                <section data-testid="memo-editor" className="h-full flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
+                    <h2 className="text-sm font-semibold text-gray-500">메모</h2>
+                    <button
+                      onClick={handleSaveMemo}
+                      disabled={isSavingMemo}
+                      className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isSavingMemo ? '저장 중...' : '저장'}
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-auto">
+                    <MeetingEditor editorRef={memoEditorRef} />
+                  </div>
+                </section>
+              </Panel>
+            </>
+          )}
+        </PanelGroup>
+      ) : (
+        <MobileTabLayout
+          tabs={mobileTabs}
+        />
+      )}
 
       {/* 오타 수정 섹션 */}
       {meeting?.status === 'completed' && (
