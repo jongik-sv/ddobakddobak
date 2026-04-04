@@ -469,7 +469,7 @@
 ### TSK-03-03: DashboardPage 반응형 패딩
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: medium
 - assignee: -
 - schedule: 2026-04-22 ~ 2026-04-22
