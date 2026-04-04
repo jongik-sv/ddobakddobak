@@ -11,8 +11,8 @@ export function AudioRecorder({ onChunk, onStop }: AudioRecorderCallbacks) {
         onClick={isRecording ? stop : () => start()}
         className={
           isRecording
-            ? 'px-4 py-2 rounded-md font-medium bg-red-500 text-white hover:bg-red-600 transition-colors'
-            : 'px-4 py-2 rounded-md font-medium bg-blue-500 text-white hover:bg-blue-600 transition-colors'
+            ? 'px-4 py-2 min-h-[44px] rounded-md font-medium bg-red-500 text-white hover:bg-red-600 transition-colors'
+            : 'px-4 py-2 min-h-[44px] rounded-md font-medium bg-blue-500 text-white hover:bg-blue-600 transition-colors'
         }
       >
         {isRecording ? '녹음 중지' : '녹음 시작'}

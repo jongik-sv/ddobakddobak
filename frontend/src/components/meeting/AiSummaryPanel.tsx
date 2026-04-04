@@ -134,7 +134,7 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
             <button
               onClick={handleManualSave}
               disabled={!isDirty || isSaving}
-              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+              className={`px-2 py-0.5 min-h-[44px] flex items-center rounded text-[11px] font-medium transition-colors ${
                 isDirty
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'bg-gray-100 text-gray-400 cursor-default'
@@ -145,7 +145,7 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
           )
         )}
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto select-text">
         {editable ? (
           <BlockNoteView
             editor={editor}

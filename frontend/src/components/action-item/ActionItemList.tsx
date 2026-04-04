@@ -61,7 +61,7 @@ export function ActionItemList({ meetingId, teamMembers }: ActionItemListProps) 
         {!showForm && !editingItem && (
           <button
             onClick={() => setShowForm(true)}
-            className="text-xs text-blue-600 hover:text-blue-800"
+            className="text-xs text-blue-600 hover:text-blue-800 min-h-[44px] flex items-center"
           >
             + 추가
           </button>
@@ -113,13 +113,13 @@ export function ActionItemList({ meetingId, teamMembers }: ActionItemListProps) 
                 )}
                 <button
                   onClick={() => setEditingItem(item)}
-                  className="shrink-0 text-xs text-gray-400 hover:text-gray-600"
+                  className="shrink-0 text-xs text-gray-400 hover:text-gray-600 min-h-[44px] flex items-center"
                 >
                   수정
                 </button>
                 <button
                   onClick={() => handleDelete(item.id)}
-                  className="shrink-0 text-xs text-red-400 hover:text-red-600"
+                  className="shrink-0 text-xs text-red-400 hover:text-red-600 min-h-[44px] flex items-center"
                   aria-label="삭제"
                 >
                   삭제

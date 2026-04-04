@@ -20,7 +20,7 @@ export function RecordTabPanel({ meetingId, currentTimeMs = 0, onSeek, onApply }
       <div className="flex border-b bg-gray-50 shrink-0">
         <button
           onClick={() => setTab('live')}
-          className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+          className={`flex-1 px-3 py-2 min-h-[44px] text-xs font-medium transition-colors ${
             tab === 'live'
               ? 'text-blue-600 border-b-2 border-blue-600 bg-white'
               : 'text-gray-500 hover:text-gray-700'
@@ -30,7 +30,7 @@ export function RecordTabPanel({ meetingId, currentTimeMs = 0, onSeek, onApply }
         </button>
         <button
           onClick={() => setTab('all')}
-          className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+          className={`flex-1 px-3 py-2 min-h-[44px] text-xs font-medium transition-colors ${
             tab === 'all'
               ? 'text-blue-600 border-b-2 border-blue-600 bg-white'
               : 'text-gray-500 hover:text-gray-700'

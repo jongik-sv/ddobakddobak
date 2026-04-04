@@ -101,14 +101,14 @@ export function ActionItemForm({
         <button
           type="button"
           onClick={onCancel}
-          className="text-xs px-3 py-1 rounded border text-gray-600 hover:bg-gray-100"
+          className="text-xs px-3 py-1 min-h-[44px] rounded border text-gray-600 hover:bg-gray-100"
         >
           취소
         </button>
         <button
           type="submit"
           disabled={submitting}
-          className="text-xs px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          className="text-xs px-3 py-1 min-h-[44px] rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {isEditMode ? '저장' : '추가'}
         </button>

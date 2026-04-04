@@ -6,7 +6,7 @@ import { useMeetingStore } from '../../stores/meetingStore'
 import FolderTree from '../folder/FolderTree'
 
 function navLinkClass({ isActive }: { isActive: boolean }) {
-  const base = 'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors'
+  const base = 'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors'
   const active = 'bg-primary text-primary-foreground'
   const inactive = 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
   return `${base} ${isActive ? active : inactive}`
@@ -36,7 +36,7 @@ export default function Sidebar() {
         <span className="text-lg font-bold text-foreground">또박또박</span>
         <button
           onClick={toggleSidebar}
-          className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          className="p-2.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
           title="사이드바 닫기"
         >
           <PanelLeftClose className="w-4 h-4" />
@@ -60,7 +60,7 @@ export default function Sidebar() {
         </div>
         <button
           onClick={openSettings}
-          className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
         >
           <Settings className="w-4 h-4" />
           설정

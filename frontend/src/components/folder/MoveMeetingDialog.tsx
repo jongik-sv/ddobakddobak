@@ -28,7 +28,7 @@ function FolderOption({
     <>
       <div
         onClick={() => onSelect(folder.id)}
-        className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${
+        className={`flex items-center gap-1.5 px-2 py-1.5 min-h-[44px] rounded-md text-sm cursor-pointer transition-colors ${
           selected === folder.id ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted'
         }`}
         style={{ paddingLeft: `${depth * 20 + 8}px` }}
@@ -79,7 +79,7 @@ export default function MoveMeetingDialog({ meetingTitle, currentFolderId, onCon
         <div className="max-h-60 overflow-y-auto border rounded-md p-2 space-y-0.5 mb-4">
           <div
             onClick={() => setSelected(null)}
-            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${
+            className={`flex items-center gap-1.5 px-2 py-1.5 min-h-[44px] rounded-md text-sm cursor-pointer transition-colors ${
               selected === null ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted'
             }`}
           >

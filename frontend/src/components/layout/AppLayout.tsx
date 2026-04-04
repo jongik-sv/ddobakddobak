@@ -25,7 +25,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           <div className="flex flex-col items-center w-10 border-r border-border bg-sidebar shrink-0 pt-3 h-full">
             <button
               onClick={toggleSidebar}
-              className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+              className="p-2.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
               title="사이드바 열기"
             >
               <PanelLeft className="w-4 h-4" />
@@ -38,7 +38,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       <header className="flex lg:hidden items-center h-12 px-4 border-b border-border bg-background shrink-0">
         <button
           onClick={() => setMobileMenuOpen(true)}
-          className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          className="p-2.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
           aria-label="메뉴 열기"
         >
           <Menu className="w-5 h-5" />

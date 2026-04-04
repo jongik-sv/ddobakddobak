@@ -19,7 +19,7 @@ export function ViewerHeader({
         <div className="flex items-center gap-2">
           <button
             onClick={onLeave}
-            className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
+            className="p-2.5 rounded-md hover:bg-gray-100 transition-colors"
             title="나가기"
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
@@ -50,7 +50,7 @@ export function ViewerHeader({
 
         <button
           onClick={onLeave}
-          className="px-3 py-1.5 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors"
+          className="px-3 py-2 min-h-[44px] rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors"
         >
           나가기
         </button>

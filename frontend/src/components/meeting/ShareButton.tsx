@@ -55,7 +55,7 @@ export function ShareButton({ meetingId }: ShareButtonProps) {
       <button
         onClick={handleShare}
         disabled={isLoading}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+        className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-sm font-medium text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
       >
         <Share2 className="w-4 h-4" />
         공유
@@ -64,13 +64,13 @@ export function ShareButton({ meetingId }: ShareButtonProps) {
   }
 
   return (
-    <div className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-md">
+    <div className="flex items-center gap-2 px-3 py-2 min-h-[44px] text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-md">
       <Share2 className="w-4 h-4" />
       <span className="font-mono tracking-wider">{shareCode}</span>
       <button
         onClick={handleCopy}
         title={copied ? '복사됨' : '공유 코드 복사'}
-        className="p-0.5 rounded hover:bg-green-100 transition-colors"
+        className="p-2 rounded hover:bg-green-100 transition-colors"
       >
         {copied ? (
           <Check className="w-3.5 h-3.5 text-green-600" />
@@ -81,7 +81,7 @@ export function ShareButton({ meetingId }: ShareButtonProps) {
       <button
         onClick={handleStop}
         title="공유 중지"
-        className="p-0.5 rounded text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors"
+        className="p-2 rounded text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors"
       >
         <X className="w-3.5 h-3.5" />
       </button>

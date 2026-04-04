@@ -54,7 +54,7 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
           <button
             onClick={isPlaying ? pause : play}
             disabled={!audioLoaded}
-            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="shrink-0 w-11 h-11 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
           </button>
@@ -68,14 +68,14 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
           <div
             ref={progressRef}
             onClick={handleProgressClick}
-            className="flex-1 h-1.5 bg-gray-200 rounded-full cursor-pointer relative group"
+            className="flex-1 h-2 bg-gray-200 rounded-full cursor-pointer relative group py-4 box-content"
           >
             <div
               className="h-full bg-indigo-600 rounded-full transition-[width] duration-100"
               style={{ width: `${progress}%` }}
             />
             <div
-              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-indigo-600 rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-indigo-600 rounded-full shadow hover-hide hover-show-parent transition-opacity"
               style={{ left: `calc(${progress}% - 6px)` }}
             />
           </div>
@@ -88,7 +88,7 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
           {/* 배속 */}
           <button
             onClick={cycleSpeed}
-            className="shrink-0 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 tabular-nums"
+            className="shrink-0 px-3 py-1.5 min-h-[44px] rounded text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 tabular-nums flex items-center"
           >
             {playbackRate}x
           </button>
@@ -97,7 +97,7 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
           <button
             onClick={() => download()}
             disabled={!audioLoaded}
-            className="shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="shrink-0 p-2.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             title="다운로드"
           >
             <Download className="w-4 h-4" />

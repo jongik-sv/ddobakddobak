@@ -91,19 +91,19 @@ export function AttachmentCard({ attachment, meetingId, onDelete }: AttachmentCa
       <p className="text-[10px] text-gray-400">{formatDate(attachment.created_at)}</p>
 
       {/* hover 시 액션 버튼 */}
-      <div className="absolute top-1.5 right-1.5 hidden group-hover:flex items-center gap-0.5">
+      <div className="absolute top-1.5 right-1.5 hidden hover-show-flex-parent items-center gap-2">
         {showConfirm ? (
           <>
             <button
               onClick={handleDelete}
-              className="p-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors"
+              className="p-2 rounded bg-red-500 text-white hover:bg-red-600 transition-colors"
               title="삭제 확인"
             >
               <Trash2 className="w-3 h-3" />
             </button>
             <button
               onClick={handleCancelDelete}
-              className="p-1 rounded bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors text-[10px] px-1.5"
+              className="p-2 rounded bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors text-[10px] px-2"
             >
               취소
             </button>
@@ -115,14 +115,14 @@ export function AttachmentCard({ attachment, meetingId, onDelete }: AttachmentCa
                 e.stopPropagation()
                 handleClick()
               }}
-              className="p-1 rounded bg-white/90 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shadow-sm border"
+              className="p-2 rounded bg-white/90 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shadow-sm border"
               title={isFile ? '다운로드' : '열기'}
             >
               {isFile ? <Download className="w-3 h-3" /> : <ExternalLink className="w-3 h-3" />}
             </button>
             <button
               onClick={handleDelete}
-              className="p-1 rounded bg-white/90 text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors shadow-sm border"
+              className="p-2 rounded bg-white/90 text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors shadow-sm border"
               title="삭제"
             >
               <Trash2 className="w-3 h-3" />

@@ -140,7 +140,7 @@ export default function DashboardPage() {
           <h2 className="text-lg font-semibold">최근 회의</h2>
           <button
             onClick={() => navigate('/meetings')}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors min-h-[44px] inline-flex items-center"
           >
             전체 보기 &rarr;
           </button>

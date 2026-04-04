@@ -158,3 +158,60 @@ body[data-dragging="true"] * {
 @utility animate-slide-in-bottom {
   animation: slide-in-bottom 250ms ease-out;
 }
+
+/* ── v3 터치 최적화 유틸리티 ── */
+
+@utility hover-hide {
+  @media (hover: hover) {
+    opacity: 0;
+  }
+}
+
+@utility hover-show-parent {
+  @media (hover: hover) {
+    .group:hover & {
+      opacity: 1;
+    }
+  }
+}
+
+@utility hover-hide-parent {
+  @media (hover: hover) {
+    .group:hover & {
+      display: none;
+    }
+  }
+}
+
+@utility hover-show-block-parent {
+  @media (hover: hover) {
+    .group:hover & {
+      display: block;
+    }
+  }
+}
+
+@utility hover-show-flex-parent {
+  @media (hover: hover) {
+    .group:hover & {
+      display: flex;
+    }
+  }
+}
+
+@utility hover-tooltip {
+  @media (hover: hover) {
+    .group\/tooltip:hover & {
+      opacity: 1;
+      visibility: visible;
+    }
+  }
+  @media (hover: none) {
+    display: none;
+  }
+}
+
+.select-text {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}

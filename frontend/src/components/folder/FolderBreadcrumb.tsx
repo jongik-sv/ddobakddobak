@@ -46,7 +46,7 @@ export default function FolderBreadcrumb() {
     <nav className="flex items-center gap-1 text-sm text-muted-foreground mb-3">
       <button
         onClick={() => handleNavigate('all')}
-        className="hover:text-foreground transition-colors"
+        className="hover:text-foreground transition-colors min-h-[44px] inline-flex items-center"
       >
         전체 회의
       </button>
@@ -64,7 +64,7 @@ export default function FolderBreadcrumb() {
           ) : (
             <button
               onClick={() => handleNavigate(segment.id)}
-              className="hover:text-foreground transition-colors"
+              className="hover:text-foreground transition-colors min-h-[44px] inline-flex items-center"
             >
               {segment.name}
             </button>

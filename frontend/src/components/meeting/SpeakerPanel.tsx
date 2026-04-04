@@ -86,7 +86,7 @@ export function SpeakerPanel({ meetingId, isRecording }: SpeakerPanelProps) {
         <span className="text-xs font-semibold text-gray-500">화자 목록</span>
         <button
           onClick={handleReset}
-          className="text-xs text-red-400 hover:text-red-600"
+          className="text-xs text-red-400 hover:text-red-600 min-h-[44px] flex items-center"
           title="화자 DB 초기화"
         >
           초기화
@@ -94,7 +94,7 @@ export function SpeakerPanel({ meetingId, isRecording }: SpeakerPanelProps) {
       </div>
 
       {visibleSpeakers.map((speaker) => (
-        <div key={speaker.id} className="flex items-center gap-2">
+        <div key={speaker.id} className="flex items-center gap-2 min-h-[44px]">
           <span
             className={`shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold ${speakerColor(speaker.id)}`}
           >
