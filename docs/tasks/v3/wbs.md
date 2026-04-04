@@ -122,7 +122,7 @@
 ### TSK-01-02: MobileSidebarOverlay 컴포넌트
 - category: development
 - domain: frontend
-- status: [dd]
+- status: [xx]
 - priority: high
 - assignee: -
 - schedule: 2026-04-09 ~ 2026-04-10

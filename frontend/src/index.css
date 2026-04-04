@@ -105,3 +105,12 @@ body[data-dragging="true"] * {
 .page-enter {
   animation: page-fade-in 150ms ease-out;
 }
+
+/* 모바일 사이드바 슬라이드 인 */
+@keyframes slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+.animate-slide-in-left {
+  animation: slide-in-left 200ms ease-out;
+}
