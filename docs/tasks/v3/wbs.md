@@ -362,7 +362,7 @@
 ### TSK-02-05: MobileRecordControls 컴포넌트
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: high
 - assignee: -
 - schedule: 2026-04-17 ~ 2026-04-18

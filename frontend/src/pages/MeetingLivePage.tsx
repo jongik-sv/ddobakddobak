@@ -25,12 +25,14 @@ import { ShareButton } from '../components/meeting/ShareButton'
 import { ParticipantList } from '../components/meeting/ParticipantList'
 import { HostTransferDialog } from '../components/meeting/HostTransferDialog'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
+import { formatElapsedSeconds } from '../lib/audioUtils'
 import { createBookmark } from '../api/bookmarks'
 import { useMeetingTemplateStore } from '../stores/meetingTemplateStore'
 import SaveTemplateDialog from '../components/meeting/SaveTemplateDialog'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
 import MobileTabLayout from '../components/layout/MobileTabLayout'
 import type { Tab } from '../components/layout/MobileTabLayout'
+import { MobileRecordControls } from '../components/meeting/MobileRecordControls'
 
 type MeetingStatus = 'idle' | 'recording' | 'stopped'
 
@@ -504,15 +506,6 @@ export default function MeetingLivePage() {
     return () => setRecordingActive(false)
   }, [isActive, setRecordingActive])
 
-  const formatElapsed = (totalSec: number) => {
-    const h = Math.floor(totalSec / 3600)
-    const m = Math.floor((totalSec % 3600) / 60)
-    const s = totalSec % 60
-    return h > 0
-      ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-      : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  }
-
   // 경과 시간 타이머
   useEffect(() => {
     if (isActive && !isPaused) {
@@ -783,7 +776,7 @@ export default function MeetingLivePage() {
 
             {/* 경과 시간 */}
             <span className="font-mono text-sm font-semibold text-gray-700 tabular-nums tracking-wide">
-              {formatElapsed(elapsedSeconds)}
+              {formatElapsedSeconds(elapsedSeconds)}
             </span>
 
             {/* 원형 카운트다운 타이머 */}
@@ -977,10 +970,61 @@ export default function MeetingLivePage() {
           )}
         </PanelGroup>
       ) : (
-        <MobileTabLayout
-          tabs={mobileTabs}
-          defaultTab="transcript"
-        />
+        <>
+          <MobileRecordControls
+            title="회의실"
+            isRecording={isActive}
+            isPaused={isPaused}
+            elapsedSeconds={elapsedSeconds}
+            onBack={handleNavigateBack}
+            onPause={handlePause}
+            onResume={handleResume}
+            onStop={handleStop}
+            isStopping={isStopping}
+          >
+            {/* 더보기 바텀 시트 추가 옵션 */}
+            <ShareButton meetingId={meetingId} />
+            {IS_TAURI && (
+              <div className="flex items-center justify-between py-2">
+                <div className="flex items-center gap-2">
+                  <Monitor className="w-4 h-4 text-gray-600" />
+                  <span className="text-sm text-gray-700">시스템 오디오</span>
+                </div>
+                <Switch
+                  checked={systemAudioEnabled}
+                  onChange={handleToggleSystemAudio}
+                />
+              </div>
+            )}
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <Timer className="w-4 h-4 text-gray-600" />
+                <span className="text-sm text-gray-700">AI 적용 주기</span>
+              </div>
+              <select
+                value={summaryIntervalSec}
+                onChange={(e) => setSummaryIntervalSec(Number(e.target.value))}
+                disabled={isActive}
+                className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-700 disabled:opacity-60"
+              >
+                {SUMMARY_INTERVAL_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={useUiStore.getState().openSettings}
+              className="flex items-center gap-2 py-2 text-sm text-gray-700 hover:text-gray-900"
+            >
+              <Settings className="w-4 h-4" />
+              설정
+            </button>
+          </MobileRecordControls>
+          <MobileTabLayout
+            tabs={mobileTabs}
+            defaultTab="transcript"
+          />
+        </>
       )}
 
       {/* 하단 상태바 */}
@@ -1078,7 +1122,7 @@ export default function MeetingLivePage() {
           <div className="bg-white rounded-xl shadow-lg p-5 max-w-xs w-full mx-4">
             <h3 className="text-base font-semibold text-gray-900 mb-1">북마크 추가</h3>
             <p className="text-xs text-gray-400 mb-3">
-              {formatElapsed(Math.floor(bookmarkTimestampRef.current / 1000))} 지점
+              {formatElapsedSeconds(Math.floor(bookmarkTimestampRef.current / 1000))} 지점
             </p>
             <input
               type="text"

@@ -293,5 +293,32 @@ describe('MeetingLivePage', () => {
       const resizeHandles = container.querySelectorAll('[data-panel-resize-handle-id]')
       expect(resizeHandles.length).toBe(0)
     })
+
+    // ── MobileRecordControls 통합 테스트 ──
+
+    it('녹음 중이 아닐 때 MobileRecordControls가 표시되지 않음', () => {
+      renderPage()
+      expect(screen.queryByTestId('mobile-record-controls')).not.toBeInTheDocument()
+    })
+
+    it('녹음 중일 때 MobileRecordControls가 표시됨', async () => {
+      vi.mocked(useAudioRecorderModule.useAudioRecorder).mockReturnValue({
+        isRecording: true,
+        isPaused: false,
+        error: null,
+        start: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn(),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        feedSystemAudio: vi.fn(),
+      })
+      renderPage()
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /회의 시작/i }))
+      })
+      await waitFor(() => {
+        expect(screen.getByTestId('mobile-record-controls')).toBeInTheDocument()
+      })
+    })
   })
 })

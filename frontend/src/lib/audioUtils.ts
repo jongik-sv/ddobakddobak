@@ -33,3 +33,13 @@ export function formatTime(ms: number): string {
   const ss = String(seconds).padStart(2, '0')
   return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`
 }
+
+/** 경과 시간(초)을 MM:SS 또는 HH:MM:SS 형식 문자열로 변환한다. */
+export function formatElapsedSeconds(totalSec: number): string {
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  return h > 0
+    ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
