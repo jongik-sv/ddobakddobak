@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Pencil, ArrowLeft, StickyNote, Paperclip, Bookmark, Trash2 } from 'lucide-react'
+import { Tooltip } from '../components/ui/Tooltip'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
@@ -331,35 +332,39 @@ export default function MeetingPage() {
     <div className="flex flex-col flex-1 min-h-0">
       {/* 페이지 제목 */}
       <div className="px-6 py-4 bg-white border-b shrink-0 flex items-center gap-3">
-        <button
-          onClick={() => navigate('/')}
-          className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
-          title="목록으로 돌아가기"
-        >
-          <ArrowLeft className="w-5 h-5 text-gray-600" />
-        </button>
+        <Tooltip text="목록으로 돌아가기">
+          <button
+            onClick={() => navigate('/')}
+            className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
+        </Tooltip>
         <h1 className="text-xl font-bold text-gray-900">회의 미리보기</h1>
-        <button
-          onClick={toggleAttachments}
-          className={`p-1.5 rounded-md transition-colors ${attachmentsVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-          title={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}
-        >
-          <Paperclip className="w-4 h-4" />
-        </button>
-        <button
-          onClick={toggleMemo}
-          className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-          title={memoVisible ? '메모 숨기기' : '메모 보기'}
-        >
-          <StickyNote className="w-4 h-4" />
-        </button>
-        <button
-          onClick={toggleBookmarks}
-          className={`p-1.5 rounded-md transition-colors ${bookmarksVisible ? 'text-amber-600 bg-amber-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-          title={bookmarksVisible ? '북마크 숨기기' : '북마크 보기'}
-        >
-          <Bookmark className="w-4 h-4" />
-        </button>
+        <Tooltip text={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}>
+          <button
+            onClick={toggleAttachments}
+            className={`p-1.5 rounded-md transition-colors ${attachmentsVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
+        </Tooltip>
+        <Tooltip text={memoVisible ? '메모 숨기기' : '메모 보기'}>
+          <button
+            onClick={toggleMemo}
+            className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+          >
+            <StickyNote className="w-4 h-4" />
+          </button>
+        </Tooltip>
+        <Tooltip text={bookmarksVisible ? '북마크 숨기기' : '북마크 보기'}>
+          <button
+            onClick={toggleBookmarks}
+            className={`p-1.5 rounded-md transition-colors ${bookmarksVisible ? 'text-amber-600 bg-amber-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+          >
+            <Bookmark className="w-4 h-4" />
+          </button>
+        </Tooltip>
       </div>
 
       {/* 오디오 플레이어 */}
@@ -412,13 +417,14 @@ export default function MeetingPage() {
             </span>
           ))}
           {meeting && (
-            <button
-              onClick={() => setShowEditDialog(true)}
-              className="shrink-0 p-1 rounded hover:bg-gray-100 transition-colors"
-              title="회의 정보 수정"
-            >
-              <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
+            <Tooltip text="회의 정보 수정">
+              <button
+                onClick={() => setShowEditDialog(true)}
+                className="shrink-0 p-1 rounded hover:bg-gray-100 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
+            </Tooltip>
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">

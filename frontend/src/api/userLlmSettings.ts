@@ -7,6 +7,8 @@ export interface UserLlmSettingsResponse {
     model: string | null
     base_url: string | null
     configured: boolean
+    enabled: boolean
+    has_settings: boolean
   }
   server_default: {
     provider: string | null
@@ -52,4 +54,8 @@ export async function testUserLlmConnection(
   params: UserLlmTestParams
 ): Promise<UserLlmTestResult> {
   return apiClient.post('user/llm_settings/test', { json: params }).json()
+}
+
+export async function toggleUserLlm(): Promise<UserLlmSettingsResponse> {
+  return apiClient.patch('user/llm_settings/toggle', { json: {} }).json()
 }

@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Settings, Monitor, Mic, ArrowLeft, StickyNote, Paperclip, Bookmark, Save, Timer } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
+import { Tooltip } from '../components/ui/Tooltip'
 import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
@@ -337,6 +338,8 @@ export default function MeetingLivePage() {
     setCorrections((prev) => (prev.length <= 1 ? [{ from: '', to: '' }] : prev.filter((_, i) => i !== index)))
   }
 
+  const isActive = status === 'recording'
+
   // 북마크 추가
   const handleOpenBookmark = useCallback(() => {
     bookmarkTimestampRef.current = elapsedSeconds * 1000
@@ -387,8 +390,6 @@ export default function MeetingLivePage() {
     }
     navigate(`/meetings/${meetingId}`)
   }
-
-  const isActive = status === 'recording'
 
   // 메모 토글
   const memoVisible = useUiStore((s) => s.memoVisible)
@@ -504,8 +505,8 @@ export default function MeetingLivePage() {
       return
     }
 
-    // AI 피드백 반영 중이면 타이머 일시정지 (카운트다운 값 유지)
-    if (isSendingFeedback) {
+    // 오타 수정 반영 중이면 타이머 일시정지 (카운트다운 값 유지)
+    if (isApplyingCorrections) {
       return
     }
 
@@ -533,7 +534,7 @@ export default function MeetingLivePage() {
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [isActive, isPaused, isSendingFeedback, meetingId, summaryIntervalSec])
+  }, [isActive, isPaused, isApplyingCorrections, meetingId, summaryIntervalSec])
 
   return (
     <div className="flex flex-col h-full">
@@ -548,42 +549,47 @@ export default function MeetingLivePage() {
       }`}>
         {/* 좌측: 네비게이션 */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleNavigateBack}
-            className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
-            title="미리보기로"
-          >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
-          </button>
+          <Tooltip text="미리보기로">
+            <button
+              onClick={handleNavigateBack}
+              className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+          </Tooltip>
           <h1 className="text-lg font-semibold text-gray-900">회의실</h1>
-          <button
-            onClick={toggleAttachments}
-            className={`p-1.5 rounded-md transition-colors ${attachmentsVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-            title={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}
-          >
-            <Paperclip className="w-4 h-4" />
-          </button>
-          <button
-            onClick={toggleMemo}
-            className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-            title={memoVisible ? '메모 숨기기' : '메모 보기'}
-          >
-            <StickyNote className="w-4 h-4" />
-          </button>
-          <button
-            onClick={useUiStore.getState().openSettings}
-            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            title="설정"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setShowSaveTemplate(true)}
-            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            title="현재 설정을 템플릿으로 저장"
-          >
-            <Save className="w-4 h-4" />
-          </button>
+          <Tooltip text={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}>
+            <button
+              onClick={toggleAttachments}
+              className={`p-1.5 rounded-md transition-colors ${attachmentsVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+            >
+              <Paperclip className="w-4 h-4" />
+            </button>
+          </Tooltip>
+          <Tooltip text={memoVisible ? '메모 숨기기' : '메모 보기'}>
+            <button
+              onClick={toggleMemo}
+              className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+            >
+              <StickyNote className="w-4 h-4" />
+            </button>
+          </Tooltip>
+          <Tooltip text="설정">
+            <button
+              onClick={useUiStore.getState().openSettings}
+              className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          </Tooltip>
+          <Tooltip text="템플릿으로 저장">
+            <button
+              onClick={() => setShowSaveTemplate(true)}
+              className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <Save className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
 
         {/* 중앙: 녹음 상태 인디케이터 */}
@@ -643,13 +649,14 @@ export default function MeetingLivePage() {
 
           {/* 북마크 추가 버튼 (녹음 중만 표시) */}
           {isActive && (
-            <button
-              onClick={handleOpenBookmark}
-              className="p-1.5 rounded-md text-amber-500 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-              title="북마크 추가 (Ctrl+B)"
-            >
-              <Bookmark className="w-4 h-4" />
-            </button>
+            <Tooltip text="북마크 추가 (Ctrl+B)">
+              <button
+                onClick={handleOpenBookmark}
+                className="p-1.5 rounded-md text-amber-500 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+              >
+                <Bookmark className="w-4 h-4" />
+              </button>
+            </Tooltip>
           )}
 
           {/* 공유 버튼 */}
@@ -657,17 +664,20 @@ export default function MeetingLivePage() {
 
           {/* 시스템 오디오 토글 (Tauri 데스크톱 앱에서만 표시) */}
           {IS_TAURI && (
-            <div className="flex items-center gap-1.5" title="시스템 오디오 캡처 (온라인 회의 상대방 음성)">
-              <Monitor className={`w-3.5 h-3.5 ${systemAudioEnabled ? 'text-purple-600' : 'text-gray-400'}`} />
-              <Switch
-                checked={systemAudioEnabled}
-                onChange={handleToggleSystemAudio}
-              />
-            </div>
+            <Tooltip text="시스템 오디오 캡처">
+              <div className="flex items-center gap-1.5">
+                <Monitor className={`w-3.5 h-3.5 ${systemAudioEnabled ? 'text-purple-600' : 'text-gray-400'}`} />
+                <Switch
+                  checked={systemAudioEnabled}
+                  onChange={handleToggleSystemAudio}
+                />
+              </div>
+            </Tooltip>
           )}
 
           {/* 적용주기 선택 */}
-          <div className="flex items-center gap-1.5" title="AI 회의록 적용 주기">
+          <Tooltip text="AI 회의록 적용 주기">
+          <div className="flex items-center gap-1.5">
             <Timer className="w-3.5 h-3.5 text-gray-500" />
             <select
               value={summaryIntervalSec}
@@ -680,6 +690,7 @@ export default function MeetingLivePage() {
               ))}
             </select>
           </div>
+          </Tooltip>
 
           {!isActive && (
             <button

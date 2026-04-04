@@ -3,6 +3,7 @@ import {
   getUserLlmSettings,
   updateUserLlmSettings,
   testUserLlmConnection,
+  toggleUserLlm,
 } from '../../api/userLlmSettings'
 import type {
   UserLlmSettingsResponse,
@@ -28,6 +29,14 @@ const PROVIDER_OPTIONS: readonly ProviderOption[] = [
     actualProvider: 'anthropic',
   },
   {
+    id: 'anthropic_custom',
+    name: 'Anthropic 호환',
+    description: 'Z.AI 등 커스텀 엔드포인트',
+    suggestedModels: [],
+    isCustom: true,
+    actualProvider: 'anthropic',
+  },
+  {
     id: 'openai',
     name: 'OpenAI',
     description: 'GPT 시리즈',
@@ -37,8 +46,8 @@ const PROVIDER_OPTIONS: readonly ProviderOption[] = [
   },
   {
     id: 'openai_custom',
-    name: '커스텀',
-    description: 'Ollama, vLLM 등 OpenAI 호환',
+    name: 'OpenAI 호환',
+    description: 'Ollama, vLLM 등',
     suggestedModels: [],
     isCustom: true,
     actualProvider: 'openai',
@@ -57,15 +66,18 @@ export default function UserLlmSettings() {
 
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [toggling, setToggling] = useState(false)
   const [testResult, setTestResult] = useState<UserLlmTestResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
   const initFormFromSettings = useCallback((data: UserLlmSettingsResponse) => {
     const ls = data.llm_settings
-    if (ls.configured && ls.provider) {
+    if (ls.has_settings && ls.provider) {
       if (ls.provider === 'openai' && ls.base_url) {
         setProvider('openai_custom')
+      } else if (ls.provider === 'anthropic' && ls.base_url) {
+        setProvider('anthropic_custom')
       } else {
         setProvider(ls.provider)
       }
@@ -166,15 +178,60 @@ export default function UserLlmSettings() {
     }
   }
 
+  const handleToggle = async () => {
+    setToggling(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const result = await toggleUserLlm()
+      setSettings(result)
+    } catch {
+      setError('전환에 실패했습니다.')
+    } finally {
+      setToggling(false)
+    }
+  }
+
   const modelOptions = currentProviderOption?.suggestedModels ?? []
   const showModelSelect = modelOptions.length > 0 && !useCustomModel
-  const showBaseUrl = provider === 'openai_custom'
+  const showBaseUrl = provider === 'openai_custom' || provider === 'anthropic_custom'
+
+  const hasSettings = settings?.llm_settings.has_settings ?? false
+  const isEnabled = settings?.llm_settings.enabled ?? true
+  // 토글 OFF이고 설정이 있으면 폼을 숨긴다 (배너만 표시)
+  const showForm = !hasSettings || isEnabled
 
   return (
     <div className="rounded-lg border bg-card p-6">
-      <h2 className="text-lg font-semibold mb-1">내 LLM 설정</h2>
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-lg font-semibold">내 LLM 설정</h2>
+        {hasSettings && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isEnabled}
+            aria-label="내 LLM 활성화"
+            disabled={toggling}
+            onClick={handleToggle}
+            className={`
+              relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent
+              transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
+              disabled:opacity-50
+              ${isEnabled ? 'bg-blue-600' : 'bg-gray-300'}
+            `}
+          >
+            <span
+              className={`
+                pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0
+                transition duration-200 ease-in-out
+                ${isEnabled ? 'translate-x-5' : 'translate-x-0'}
+              `}
+            />
+          </button>
+        )}
+      </div>
       <p className="text-sm text-muted-foreground mb-4">
-        개인 LLM을 설정하여 회의 요약에 사용합니다.
+        개인 LLM을 설정하면 내 회의 요약에 사용됩니다. 비활성화 시 서버 기본 LLM을 사용합니다.
       </p>
 
       {loading && (
@@ -187,24 +244,48 @@ export default function UserLlmSettings() {
 
       {!loading && settings && (
         <div className="space-y-4">
-          {!settings.llm_settings.configured && (
-            <div className="border border-amber-200 bg-amber-50 rounded-md p-4" role="status">
-              <p className="font-medium">서버 기본값 사용 중</p>
-              <p className="text-sm text-muted-foreground">
+          {/* 상태 배너 */}
+          {hasSettings && isEnabled && (
+            <div className="border border-blue-200 bg-blue-50 rounded-md p-3" role="status">
+              <p className="text-sm font-medium text-blue-800">
+                내 LLM 사용 중 — {settings.llm_settings.provider} / {settings.llm_settings.model}
+              </p>
+              <p className="text-xs text-blue-600 mt-0.5">
+                내가 생성한 회의의 AI 요약에 이 LLM이 사용됩니다.
+              </p>
+            </div>
+          )}
+
+          {hasSettings && !isEnabled && (
+            <div className="border border-gray-200 bg-gray-50 rounded-md p-3" role="status">
+              <p className="text-sm font-medium text-gray-600">
+                내 LLM 비활성 — 서버 기본값 ({settings.server_default.provider} / {settings.server_default.model}) 사용 중
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                토글을 켜면 내 LLM ({settings.llm_settings.provider} / {settings.llm_settings.model})으로 전환됩니다.
+              </p>
+            </div>
+          )}
+
+          {!hasSettings && (
+            <div className="border border-amber-200 bg-amber-50 rounded-md p-3" role="status">
+              <p className="text-sm font-medium">서버 기본값 사용 중</p>
+              <p className="text-xs text-muted-foreground">
                 서버 기본 LLM ({settings.server_default.provider} / {settings.server_default.model})을 사용합니다.
-                개인 LLM을 설정하면 회의 요약에 해당 LLM이 사용됩니다.
+                아래에서 개인 LLM을 설정하면 내 회의 요약에 사용됩니다.
               </p>
               {!settings.server_default.has_key && (
-                <p className="text-sm text-red-600 mt-1" role="alert">
+                <p className="text-xs text-red-600 mt-1" role="alert">
                   서버에 기본 LLM이 설정되어 있지 않습니다. 개인 LLM을 설정해야 요약 기능을 사용할 수 있습니다.
                 </p>
               )}
             </div>
           )}
 
+          {showForm && (<>
           <fieldset>
             <legend className="block text-sm font-medium mb-2">Provider 선택</legend>
-            <div className="grid grid-cols-3 gap-2" role="radiogroup">
+            <div className="grid grid-cols-2 gap-2" role="radiogroup">
               {PROVIDER_OPTIONS.map((opt) => (
                 <button
                   key={opt.id}
@@ -254,7 +335,7 @@ export default function UserLlmSettings() {
                 type="text"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="http://localhost:11434/v1"
+                placeholder={provider === 'anthropic_custom' ? 'https://api.z.ai/api/anthropic' : 'http://localhost:11434/v1'}
                 className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
               />
             </div>
@@ -316,7 +397,7 @@ export default function UserLlmSettings() {
               >
                 {saving ? '저장 중...' : '저장'}
               </button>
-              {settings.llm_settings.configured && (
+              {hasSettings && (
                 <button
                   type="button"
                   onClick={handleReset}
@@ -346,6 +427,8 @@ export default function UserLlmSettings() {
           {success && (
             <p className="text-sm text-green-600" role="status">{success}</p>
           )}
+          </>)}
+
           {error && settings && (
             <p className="text-sm text-red-600" role="alert">{error}</p>
           )}

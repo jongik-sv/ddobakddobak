@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FolderClosed, FolderInput, Pencil, Trash2, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight } from 'lucide-react'
+import { Tooltip } from '../components/ui/Tooltip'
 import { createMeeting, deleteMeeting, stopMeeting, updateMeeting, uploadAudioFile } from '../api/meetings'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
@@ -631,24 +632,26 @@ export default function MeetingsPage() {
       {/* 뷰 모드 토글 + 필터 영역 */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
-          <button
-            onClick={() => handleViewModeChange('card')}
-            className={`p-1.5 rounded transition-colors ${
-              viewMode === 'card' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
-            title="카드 뷰"
-          >
-            <LayoutGrid className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleViewModeChange('list')}
-            className={`p-1.5 rounded transition-colors ${
-              viewMode === 'list' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
-            title="리스트 뷰"
-          >
-            <List className="w-4 h-4" />
-          </button>
+          <Tooltip text="카드 뷰">
+            <button
+              onClick={() => handleViewModeChange('card')}
+              className={`p-1.5 rounded transition-colors ${
+                viewMode === 'card' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </Tooltip>
+          <Tooltip text="리스트 뷰">
+            <button
+              onClick={() => handleViewModeChange('list')}
+              className={`p-1.5 rounded transition-colors ${
+                viewMode === 'list' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <List className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -658,7 +661,7 @@ export default function MeetingsPage() {
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="제목 검색"
+          placeholder="회의 검색"
           className="flex-1 min-w-[200px] rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
         />
         <div className="flex items-center gap-2">
@@ -694,8 +697,8 @@ export default function MeetingsPage() {
       ) : viewMode === 'card' ? (
         /* ─── 카드 뷰 ─── */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {/* 폴더 카드 */}
-          {childFolders.map((child) => (
+          {/* 폴더 카드 (검색 중에는 숨김) */}
+          {!searchQuery && childFolders.map((child) => (
             <div
               key={`folder-${child.id}`}
               data-drop-folder-id={child.id}
@@ -785,40 +788,43 @@ export default function MeetingsPage() {
                       종료
                     </button>
                   )}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setEditingMeeting(meeting)
-                    }}
-                    className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
-                    title="정보 수정"
-                  >
-                    <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setMovingMeeting(meeting)
-                    }}
-                    className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
-                    title="폴더로 이동"
-                  >
-                    <FolderInput className="w-4 h-4 text-muted-foreground" />
-                  </button>
-                  <button
-                    onClick={async (e) => {
-                      e.stopPropagation()
-                      const { confirm } = await import('@tauri-apps/plugin-dialog')
-                      const ok = await confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`, { title: '회의 삭제', kind: 'warning' })
-                      if (!ok) return
-                      await deleteMeeting(meeting.id)
-                      fetchMeetings(currentPage)
-                    }}
-                    className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 hover:bg-red-50 transition-opacity"
-                    title="삭제"
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
-                  </button>
+                  <Tooltip text="정보 수정">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setEditingMeeting(meeting)
+                      }}
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip text="폴더로 이동">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setMovingMeeting(meeting)
+                      }}
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
+                    >
+                      <FolderInput className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip text="삭제">
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation()
+                        const { confirm } = await import('@tauri-apps/plugin-dialog')
+                        const ok = await confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`, { title: '회의 삭제', kind: 'warning' })
+                        if (!ok) return
+                        await deleteMeeting(meeting.id)
+                        fetchMeetings(currentPage)
+                      }}
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 hover:bg-red-50 transition-opacity"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
             </div>
@@ -827,8 +833,8 @@ export default function MeetingsPage() {
       ) : (
         /* ─── 리스트 뷰 ─── */
         <div className="rounded-lg border bg-card overflow-hidden">
-          {/* 폴더 리스트 */}
-          {childFolders.length > 0 && (
+          {/* 폴더 리스트 (검색 중에는 숨김) */}
+          {!searchQuery && childFolders.length > 0 && (
             <div className="border-b">
               {childFolders.map((child, idx) => (
                 <div
@@ -872,7 +878,7 @@ export default function MeetingsPage() {
           {/* 회의 테이블 헤더 */}
           {sortedMeetings.length > 0 && (
             <>
-              <div className="grid grid-cols-[1fr_120px_100px_120px_auto] gap-2 px-4 py-2 text-xs font-medium text-muted-foreground border-b bg-muted/20">
+              <div className="grid grid-cols-[1fr_120px_80px_100px_140px] gap-2 px-4 py-2 text-xs font-medium text-muted-foreground border-b bg-muted/20">
                 <button
                   onClick={() => handleSort('title')}
                   className="flex items-center gap-1 hover:text-foreground transition-colors text-left"
@@ -906,27 +912,32 @@ export default function MeetingsPage() {
                   key={meeting.id}
                   onPointerDown={(e) => initDrag('meeting', meeting.id, meeting.title, e)}
                   onClick={() => navigate(`/meetings/${meeting.id}`)}
-                  className={`group grid grid-cols-[1fr_120px_100px_120px_auto] gap-2 items-center px-4 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors ${
+                  className={`group grid grid-cols-[1fr_120px_80px_100px_140px] gap-2 items-center px-4 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors ${
                     idx < sortedMeetings.length - 1 ? 'border-b border-border/50' : ''
                   }`}
                 >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-medium truncate">{meeting.title}</span>
-                    {meeting.folder_id && selectedFolderId === 'all' && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-0.5 shrink-0">
-                        <FolderClosed className="w-2.5 h-2.5" />
-                        {folderName(folders, meeting.folder_id) ?? '폴더'}
-                      </span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium truncate">{meeting.title}</span>
+                      {meeting.folder_id && selectedFolderId === 'all' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-0.5 shrink-0">
+                          <FolderClosed className="w-2.5 h-2.5" />
+                          {folderName(folders, meeting.folder_id) ?? '폴더'}
+                        </span>
+                      )}
+                      {meeting.tags?.map((tag) => (
+                        <span
+                          key={tag.id}
+                          className="text-[10px] px-1.5 py-0.5 rounded-full text-white shrink-0"
+                          style={{ backgroundColor: tag.color }}
+                        >
+                          {tag.name}
+                        </span>
+                      ))}
+                    </div>
+                    {meeting.brief_summary && (
+                      <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{meeting.brief_summary}</p>
                     )}
-                    {meeting.tags?.map((tag) => (
-                      <span
-                        key={tag.id}
-                        className="text-[10px] px-1.5 py-0.5 rounded-full text-white shrink-0"
-                        style={{ backgroundColor: tag.color }}
-                      >
-                        {tag.name}
-                      </span>
-                    ))}
                   </div>
                   <span className="text-xs text-muted-foreground">{formatDate(meeting.created_at)}</span>
                   <StatusBadge status={meeting.status} />
@@ -944,40 +955,43 @@ export default function MeetingsPage() {
                         종료
                       </button>
                     )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setEditingMeeting(meeting)
-                      }}
-                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
-                      title="정보 수정"
-                    >
-                      <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setMovingMeeting(meeting)
-                      }}
-                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
-                      title="폴더로 이동"
-                    >
-                      <FolderInput className="w-4 h-4 text-muted-foreground" />
-                    </button>
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation()
-                        const { confirm } = await import('@tauri-apps/plugin-dialog')
-                        const ok = await confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`, { title: '회의 삭제', kind: 'warning' })
-                        if (!ok) return
-                        await deleteMeeting(meeting.id)
-                        fetchMeetings(currentPage)
-                      }}
-                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 hover:bg-red-50 transition-opacity"
-                      title="삭제"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
-                    </button>
+                    <Tooltip text="정보 수정">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setEditingMeeting(meeting)
+                        }}
+                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
+                      >
+                        <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                      </button>
+                    </Tooltip>
+                    <Tooltip text="폴더로 이동">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setMovingMeeting(meeting)
+                        }}
+                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
+                      >
+                        <FolderInput className="w-4 h-4 text-muted-foreground" />
+                      </button>
+                    </Tooltip>
+                    <Tooltip text="삭제">
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          const { confirm } = await import('@tauri-apps/plugin-dialog')
+                          const ok = await confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`, { title: '회의 삭제', kind: 'warning' })
+                          if (!ok) return
+                          await deleteMeeting(meeting.id)
+                          fetchMeetings(currentPage)
+                        }}
+                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 hover:bg-red-50 transition-opacity"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
               ))}

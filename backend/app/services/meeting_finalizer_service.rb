@@ -9,13 +9,14 @@ class MeetingFinalizerService
     return if transcripts.empty?
 
     payload = Transcript.to_sidecar_payload(transcripts)
+    llm_cfg = @meeting.creator&.sidecar_llm_config
 
     # Action Items 추출 (structured JSON)
-    items_result = @client.summarize_action_items(payload)
+    items_result = @client.summarize_action_items(payload, llm_config: llm_cfg)
     save_action_items(items_result["action_items"] || [])
 
     # Decisions 추출 (summarize 엔드포인트에서 decisions 가져오기)
-    summary_result = @client.summarize(payload, type: "final")
+    summary_result = @client.summarize(payload, type: "final", llm_config: llm_cfg)
     save_decisions(summary_result["decisions"] || [])
   rescue SidecarClient::SidecarError => e
     Rails.logger.error "[MeetingFinalizerService] meeting=#{@meeting.id} error=#{e.message}"

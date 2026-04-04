@@ -21,7 +21,7 @@
 - **#subscribed**: 소유자/viewer/host 구독 허용, 비참여자·퇴장자·잘못된 ID·nil ID 거부 (7)
 - **#audio_chunk**: owner·host 오디오 전송 허용, viewer 차단 (3)
 - **#unsubscribed**: 스트림 정리 (1)
-- **기본 동작**: sequence 기본값 0 처리 (1)
+- **기본 동작rr**: sequence 기본값 0 처리 (1)
 
 ### MeetingParticipant (11 tests)
 - **associations**: meeting, user belongs_to (2)

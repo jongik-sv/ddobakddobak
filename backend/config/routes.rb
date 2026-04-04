@@ -127,6 +127,7 @@ Rails.application.routes.draw do
       namespace :user do
         resource :llm_settings, only: [:show, :update] do
           post :test, on: :collection
+          patch :toggle, on: :collection
         end
       end
 

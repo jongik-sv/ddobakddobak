@@ -23,7 +23,8 @@ module Api
               llm_provider: nil,
               llm_api_key: nil,
               llm_model: nil,
-              llm_base_url: nil
+              llm_base_url: nil,
+              llm_enabled: true
             )
             return render json: build_response
           end
@@ -40,13 +41,19 @@ module Api
                  status: :unprocessable_entity
         end
 
+        # PATCH /api/v1/user/llm_settings/toggle
+        def toggle
+          current_user.update!(llm_enabled: !current_user.llm_enabled)
+          render json: build_response
+        end
+
         # POST /api/v1/user/llm_settings/test
         def test
           provider = params.require(:provider)
           model = params.require(:model)
 
           api_key = params[:api_key].presence || current_user.llm_api_key
-          base_url = params[:base_url].presence
+          base_url = params[:base_url].presence || current_user.llm_base_url
 
           test_params = {
             provider: provider,
@@ -92,7 +99,9 @@ module Api
               api_key_masked: mask_token(current_user.llm_api_key),
               model: current_user.llm_model,
               base_url: current_user.llm_base_url,
-              configured: current_user.llm_configured?
+              configured: current_user.llm_configured?,
+              enabled: current_user.llm_enabled?,
+              has_settings: current_user.llm_has_settings?
             },
             server_default: {
               provider: server_default[:provider],

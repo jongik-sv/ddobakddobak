@@ -24,7 +24,8 @@ RSpec.describe MeetingFinalizerService do
   describe "#call" do
     it "calls SidecarClient#summarize_action_items with transcript payload" do
       expect(client_double).to receive(:summarize_action_items).with(
-        array_including(hash_including(speaker: anything, text: anything, started_at_ms: anything))
+        array_including(hash_including(speaker: anything, text: anything, started_at_ms: anything)),
+        llm_config: anything
       )
       described_class.new(meeting).call
     end
@@ -95,7 +96,8 @@ RSpec.describe MeetingFinalizerService do
     it "calls SidecarClient#summarize to extract decisions" do
       expect(client_double).to receive(:summarize).with(
         array_including(hash_including(speaker: anything, text: anything, started_at_ms: anything)),
-        type: "final"
+        type: "final",
+        llm_config: anything
       )
       described_class.new(meeting).call
     end

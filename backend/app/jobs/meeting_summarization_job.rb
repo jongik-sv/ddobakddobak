@@ -15,6 +15,10 @@ class MeetingSummarizationJob < ApplicationJob
 
   private
 
+  def llm_config_for(meeting)
+    meeting.creator&.sidecar_llm_config
+  end
+
   def generate_minutes_realtime(meeting)
     return if meeting.completed?
 
@@ -33,7 +37,8 @@ class MeetingSummarizationJob < ApplicationJob
       current_notes, payload,
       meeting_title: meeting.title,
       meeting_type: meeting.meeting_type,
-      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type)
+      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
+      llm_config: llm_config_for(meeting)
     )
     notes_markdown = result["notes_markdown"]
 
@@ -69,7 +74,8 @@ class MeetingSummarizationJob < ApplicationJob
       current_notes, payload,
       meeting_title: meeting.title,
       meeting_type: meeting.meeting_type,
-      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type)
+      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
+      llm_config: llm_config_for(meeting)
     )
     notes_markdown = result["notes_markdown"]
     return if notes_markdown.blank?

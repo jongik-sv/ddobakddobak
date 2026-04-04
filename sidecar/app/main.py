@@ -145,13 +145,13 @@ class TranscribeRequest(BaseModel):
     @field_validator("audio")
     @classmethod
     def validate_base64(cls, v: str) -> str:
+        if not v:
+            raise ValueError("audio 필드가 비어있습니다")
         # base64 alphabet만 검증 (전체 디코딩은 transcribe()에서 1회만 수행)
         try:
             binascii.a2b_base64(v[:32] if len(v) > 32 else v, strict_mode=True)
         except binascii.Error as e:
             raise ValueError(f"audio 필드가 유효한 base64가 아닙니다: {e}") from e
-        if not v:
-            raise ValueError("audio 필드가 비어있습니다")
         return v
 
 
@@ -606,11 +606,36 @@ class ActionItemResult(BaseModel):
     due_date_hint: str | None = None
 
 
+class LlmConfigOverride(BaseModel):
+    """사용자별 LLM 설정 오버라이드. 요청에 포함되면 서버 기본값 대신 이 설정을 사용한다."""
+    provider: str  # "anthropic" | "openai"
+    auth_token: str
+    model: str
+    base_url: str | None = None
+
+
+def _get_summarizer(llm_config: LlmConfigOverride | None) -> LLMSummarizer:
+    """llm_config가 있으면 임시 LLMSummarizer를 생성하고, 없으면 기본 인스턴스를 반환한다."""
+    if llm_config is None:
+        return app.state.summarizer
+    override = settings.model_copy()
+    override.LLM_PROVIDER = llm_config.provider
+    override.LLM_MODEL = llm_config.model
+    if llm_config.provider == "openai":
+        override.OPENAI_API_KEY = llm_config.auth_token
+        override.OPENAI_BASE_URL = llm_config.base_url or ""
+    else:
+        override.ANTHROPIC_AUTH_TOKEN = llm_config.auth_token
+        override.ANTHROPIC_BASE_URL = llm_config.base_url or ""
+    return LLMSummarizer(settings_override=override)
+
+
 class SummarizeRequest(BaseModel):
     """POST /summarize 요청 스키마."""
     transcripts: list[TranscriptItem]
     type: str = "final"  # "realtime" | "final"
     context: str | None = None
+    llm_config: LlmConfigOverride | None = None
 
 
 class SummarizeResponse(BaseModel):
@@ -624,6 +649,7 @@ class SummarizeResponse(BaseModel):
 class ActionItemsRequest(BaseModel):
     """POST /summarize/action-items 요청 스키마."""
     transcripts: list[TranscriptItem]
+    llm_config: LlmConfigOverride | None = None
 
 
 class ActionItemsResponse(BaseModel):
@@ -771,26 +797,18 @@ class TestLlmRequest(BaseModel):
 @app.post("/settings/llm/test")
 async def test_llm_connection(request: TestLlmRequest) -> dict:
     """LLM 연결을 테스트한다. 격리된 설정 복사본을 사용하여 글로벌 상태를 변경하지 않는다."""
-    from app.config import Settings
-    test_settings = settings.model_copy()
-    test_settings.LLM_PROVIDER = request.provider
-    test_settings.LLM_MODEL = request.model
-    if request.provider not in CLI_LLM_PROVIDERS:
-        if request.provider == "openai":
-            if request.auth_token:
-                test_settings.OPENAI_API_KEY = request.auth_token
-            if request.base_url is not None:
-                test_settings.OPENAI_BASE_URL = request.base_url
-        else:
-            if request.auth_token:
-                test_settings.ANTHROPIC_AUTH_TOKEN = request.auth_token
-            if request.base_url is not None:
-                test_settings.ANTHROPIC_BASE_URL = request.base_url
-
     try:
-        test_summarizer = LLMSummarizer(settings_override=test_settings)
+        override = LlmConfigOverride(
+            provider=request.provider,
+            auth_token=request.auth_token or "",
+            model=request.model,
+            base_url=request.base_url,
+        )
+        test_summarizer = _get_summarizer(override)
+        t0 = time.monotonic()
         await test_summarizer._call_llm_raw("You are a test.", "Hi", max_tokens=5)
-        return {"success": True}
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        return {"success": True, "response_time_ms": elapsed_ms}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -869,8 +887,9 @@ async def summarize(request: SummarizeRequest) -> SummarizeResponse:
         { key_points, decisions, discussion_details, action_items }
     """
     t0 = time.monotonic()
-    logger.info("[LLM] /summarize 요청 (model=%s, type=%s, transcripts=%d건)", settings.LLM_MODEL, request.type, len(request.transcripts))
-    summarizer: LLMSummarizer = app.state.summarizer
+    summarizer = _get_summarizer(request.llm_config)
+    model_name = request.llm_config.model if request.llm_config else settings.LLM_MODEL
+    logger.info("[LLM] /summarize 요청 (model=%s, type=%s, transcripts=%d건)", model_name, request.type, len(request.transcripts))
     transcripts_dicts = [item.model_dump() for item in request.transcripts]
     result = await summarizer.summarize(
         transcripts_dicts,
@@ -893,6 +912,7 @@ class RefineNotesRequest(BaseModel):
     meeting_title: str = ""
     meeting_type: str = "general"
     sections_prompt: str | None = None
+    llm_config: LlmConfigOverride | None = None
 
 
 class RefineNotesResponse(BaseModel):
@@ -919,9 +939,10 @@ async def refine_notes(request: RefineNotesRequest) -> RefineNotesResponse:
 
     async with lock:
         t0 = time.monotonic()
+        summarizer = _get_summarizer(request.llm_config)
+        model_name = request.llm_config.model if request.llm_config else settings.LLM_MODEL
         logger.info("[LLM] /refine-notes 요청 (model=%s, title=%s, transcripts=%d건, notes=%d자)",
-                    settings.LLM_MODEL, request.meeting_title, len(request.transcripts), len(request.current_notes))
-        summarizer: LLMSummarizer = app.state.summarizer
+                    model_name, request.meeting_title, len(request.transcripts), len(request.current_notes))
         transcripts_dicts = [item.model_dump() for item in request.transcripts]
         result = await summarizer.refine_notes(
             current_notes=request.current_notes,
@@ -1003,7 +1024,7 @@ async def summarize_action_items(request: ActionItemsRequest) -> ActionItemsResp
     Returns:
         { action_items: [{ content, assignee_hint, due_date_hint }] }
     """
-    summarizer: LLMSummarizer = app.state.summarizer
+    summarizer = _get_summarizer(request.llm_config)
     transcripts_dicts = [item.model_dump() for item in request.transcripts]
     items = await summarizer.extract_action_items(transcripts_dicts)
     return ActionItemsResponse(

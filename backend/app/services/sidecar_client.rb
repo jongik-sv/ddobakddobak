@@ -41,17 +41,20 @@ class SidecarClient
     post("/transcribe-file", body, timeout: 1800)
   end
 
-  def summarize(transcripts, type: "realtime", context: nil)
+  def summarize(transcripts, type: "realtime", context: nil, llm_config: nil)
     body = { transcripts: transcripts, type: type }
     body[:context] = context if context
+    body[:llm_config] = llm_config if llm_config
     post("/summarize", body, timeout: 300)
   end
 
-  def summarize_action_items(transcripts)
-    post("/summarize/action-items", { transcripts: transcripts }, timeout: 300)
+  def summarize_action_items(transcripts, llm_config: nil)
+    body = { transcripts: transcripts }
+    body[:llm_config] = llm_config if llm_config
+    post("/summarize/action-items", body, timeout: 300)
   end
 
-  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil)
+  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, llm_config: nil)
     body = {
       current_notes: current_notes,
       transcripts: transcripts,
@@ -59,6 +62,7 @@ class SidecarClient
       meeting_type: meeting_type
     }
     body[:sections_prompt] = sections_prompt if sections_prompt.present?
+    body[:llm_config] = llm_config if llm_config
     post("/refine-notes", body, timeout: 300)
   end
 

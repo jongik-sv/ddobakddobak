@@ -8,13 +8,15 @@ vi.mock('../../api/userLlmSettings', () => ({
   getUserLlmSettings: vi.fn(),
   updateUserLlmSettings: vi.fn(),
   testUserLlmConnection: vi.fn(),
+  toggleUserLlm: vi.fn(),
 }))
 
-import { getUserLlmSettings, updateUserLlmSettings, testUserLlmConnection } from '../../api/userLlmSettings'
+import { getUserLlmSettings, updateUserLlmSettings, testUserLlmConnection, toggleUserLlm } from '../../api/userLlmSettings'
 
 const mockGetUserLlmSettings = vi.mocked(getUserLlmSettings)
 const mockUpdateUserLlmSettings = vi.mocked(updateUserLlmSettings)
 const mockTestUserLlmConnection = vi.mocked(testUserLlmConnection)
+const mockToggleUserLlm = vi.mocked(toggleUserLlm)
 
 // 테스트용 응답 데이터
 const configuredResponse: UserLlmSettingsResponse = {
@@ -24,6 +26,8 @@ const configuredResponse: UserLlmSettingsResponse = {
     model: 'claude-sonnet-4-6',
     base_url: null,
     configured: true,
+    enabled: true,
+    has_settings: true,
   },
   server_default: {
     provider: 'anthropic',
@@ -39,6 +43,8 @@ const unconfiguredResponse: UserLlmSettingsResponse = {
     model: null,
     base_url: null,
     configured: false,
+    enabled: true,
+    has_settings: false,
   },
   server_default: {
     provider: 'anthropic',

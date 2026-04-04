@@ -22,6 +22,12 @@ class Meeting < ApplicationRecord
   enum :status, { pending: "pending", recording: "recording", transcribing: "transcribing", completed: "completed" }
 
   scope :search, ->(q) { where("title LIKE ?", "%#{sanitize_sql_like(q)}%") if q.present? }
+  scope :search_with_summary, ->(q) {
+    if q.present?
+      pattern = "%#{sanitize_sql_like(q)}%"
+      where("title LIKE :q OR brief_summary LIKE :q", q: pattern)
+    end
+  }
   scope :created_after, ->(date) { where("created_at >= ?", date) if date.present? }
   scope :created_before, ->(date) { where("created_at <= ?", Date.parse(date).end_of_day) if date.present? }
   scope :by_status, ->(status) { where(status: status) if status.present? }

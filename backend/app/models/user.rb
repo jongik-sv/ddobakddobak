@@ -26,6 +26,11 @@ class User < ApplicationRecord
   end
 
   def llm_configured?
+    llm_provider.present? && llm_api_key.present? && llm_enabled?
+  end
+
+  # 설정 자체가 존재하는지 (활성 여부와 무관)
+  def llm_has_settings?
     llm_provider.present? && llm_api_key.present?
   end
 
@@ -40,6 +45,19 @@ class User < ApplicationRecord
     else
       self.class.server_default_llm_config
     end
+  end
+
+  # 사용자 개인 LLM 설정을 sidecar llm_config 형식으로 반환한다.
+  # 개인 설정이 없으면 nil을 반환하여 sidecar가 서버 기본값을 사용하도록 한다.
+  def sidecar_llm_config
+    return nil unless llm_configured?
+
+    {
+      provider: llm_provider,
+      auth_token: llm_api_key,
+      model: llm_model,
+      base_url: llm_base_url
+    }.compact
   end
 
   def self.server_default_llm_config
