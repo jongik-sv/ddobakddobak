@@ -88,7 +88,7 @@
 ### TSK-01-01: BottomNavigation 컴포넌트
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - schedule: 2026-04-08 ~ 2026-04-09
@@ -122,7 +122,7 @@
 ### TSK-01-02: MobileSidebarOverlay 컴포넌트
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [dd]
 - priority: high
 - assignee: -
 - schedule: 2026-04-09 ~ 2026-04-10
