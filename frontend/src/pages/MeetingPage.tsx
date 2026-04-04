@@ -13,7 +13,9 @@ import { createAuthenticatedConsumer } from '../lib/actionCableAuth'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { MeetingPageSkeleton } from '../components/ui/Skeleton'
 import { useTranscriptStore } from '../stores/transcriptStore'
+import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { AudioPlayer } from '../components/meeting/AudioPlayer'
+import { MiniAudioPlayer } from '../components/meeting/MiniAudioPlayer'
 import { TranscriptPanel } from '../components/meeting/TranscriptPanel'
 import { ExportButton } from '../components/meeting/ExportButton'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
@@ -183,9 +185,11 @@ export default function MeetingPage() {
     [meetingId]
   )
 
-  // 오디오 seek 상태 (AudioPlayer ↔ TranscriptPanel 공유)
+  // 오디오 상태 (AudioPlayer ↔ MiniAudioPlayer ↔ TranscriptPanel 공유)
+  const audio = useAudioPlayer(meetingId)
   const [seekMs, setSeekMs] = useState<number | null>(null)
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
+  const [showFullPlayer, setShowFullPlayer] = useState(false)
   const [transcripts, setTranscripts] = useState<Transcript[]>([])
 
   // 북마크 상태
@@ -367,13 +371,43 @@ export default function MeetingPage() {
         </Tooltip>
       </div>
 
-      {/* 오디오 플레이어 */}
-      <AudioPlayer
-        meetingId={meetingId}
-        onTimeUpdate={setCurrentTimeMs}
-        seekMs={seekMs}
-        autoPlayOnSeek
-      />
+      {/* 오디오 플레이어 (데스크톱) */}
+      <div className="hidden lg:block">
+        <AudioPlayer
+          audio={audio}
+          onTimeUpdate={setCurrentTimeMs}
+          seekMs={seekMs}
+          autoPlayOnSeek
+        />
+      </div>
+
+      {/* 풀사이즈 플레이어 바텀 시트 (모바일) */}
+      {showFullPlayer && (
+        <div className="fixed inset-0 z-50 lg:hidden" onClick={() => setShowFullPlayer(false)}>
+          <div className="absolute inset-0 bg-black/30" />
+          <div className="absolute bottom-14 left-0 right-0 bg-white border-t shadow-lg rounded-t-xl p-3" onClick={(e) => e.stopPropagation()}>
+            <AudioPlayer
+              audio={audio}
+              onTimeUpdate={setCurrentTimeMs}
+              seekMs={seekMs}
+              autoPlayOnSeek
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 미니 오디오 플레이어 (모바일) */}
+      {audio.hasAudio && audio.isReady && (
+        <MiniAudioPlayer
+          isPlaying={audio.isPlaying}
+          currentTimeMs={audio.currentTimeMs}
+          durationMs={audio.durationMs}
+          onPlay={audio.play}
+          onPause={audio.pause}
+          onSeek={audio.seekTo}
+          onExpand={() => setShowFullPlayer(true)}
+        />
+      )}
 
       {/* 헤더 */}
       <div className="flex items-center justify-between px-6 py-3 border-b bg-white shrink-0">

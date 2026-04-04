@@ -1,9 +1,9 @@
 import { useRef, useEffect } from 'react'
 import { Play, Pause, Download } from 'lucide-react'
-import { useAudioPlayer } from '../../hooks/useAudioPlayer'
+import type { AudioPlayerResult } from '../../hooks/useAudioPlayer'
 
 interface AudioPlayerProps {
-  meetingId: number
+  audio: AudioPlayerResult
   onTimeUpdate: (ms: number) => void
   seekMs: number | null
   autoPlayOnSeek?: boolean
@@ -20,9 +20,9 @@ function formatTime(ms: number): string {
   return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`
 }
 
-export function AudioPlayer({ meetingId, onTimeUpdate, seekMs, autoPlayOnSeek = false }: AudioPlayerProps) {
+export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = false }: AudioPlayerProps) {
   const progressRef = useRef<HTMLDivElement>(null)
-  const { isReady, isPlaying, hasAudio, audioLoaded, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download } = useAudioPlayer(meetingId)
+  const { isReady, isPlaying, hasAudio, audioLoaded, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download } = audio
 
   const SPEED_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2]
   const cycleSpeed = () => {

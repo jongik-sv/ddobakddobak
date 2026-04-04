@@ -86,12 +86,42 @@ vi.mock('../components/editor/MeetingEditor', () => ({
   customSchema: { blockSpecs: {} },
 }))
 
+vi.mock('../hooks/useAudioPlayer', () => ({
+  useAudioPlayer: vi.fn(() => ({
+    isReady: true,
+    isPlaying: false,
+    hasAudio: true,
+    audioLoaded: true,
+    currentTimeMs: 0,
+    durationMs: 60000,
+    playbackRate: 1,
+    play: vi.fn(),
+    pause: vi.fn(),
+    seekTo: vi.fn(),
+    setPlaybackRate: vi.fn(),
+    download: vi.fn(),
+  })),
+}))
+
 vi.mock('../components/meeting/AudioPlayer', () => ({
   AudioPlayer: () => <div data-testid="audio-player" />,
 }))
 
+vi.mock('../components/meeting/MiniAudioPlayer', () => ({
+  MiniAudioPlayer: () => <div data-testid="mini-audio-player" />,
+}))
+
 vi.mock('../components/meeting/TranscriptPanel', () => ({
   TranscriptPanel: () => <div data-testid="transcript-panel" />,
+}))
+
+vi.mock('../components/decision/DecisionList', () => ({
+  DecisionList: () => <div data-testid="decision-list" />,
+}))
+
+vi.mock('../api/bookmarks', () => ({
+  getBookmarks: vi.fn().mockResolvedValue([]),
+  deleteBookmark: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('../components/meeting/ShareLinkButton', () => ({
