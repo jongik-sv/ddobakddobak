@@ -436,7 +436,7 @@
 ### TSK-03-02: MeetingsPage 툴바 모바일 대응
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: high
 - assignee: -
 - schedule: 2026-04-21 ~ 2026-04-22

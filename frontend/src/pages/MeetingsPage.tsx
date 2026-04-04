@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FolderClosed, FolderInput, Pencil, Trash2, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight } from 'lucide-react'
+import { FolderClosed, FolderInput, Pencil, Trash2, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Search, X, Filter, Plus } from 'lucide-react'
 import { Tooltip } from '../components/ui/Tooltip'
 import { createMeeting, deleteMeeting, stopMeeting, updateMeeting, uploadAudioFile } from '../api/meetings'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { useMeetingTemplateStore } from '../stores/meetingTemplateStore'
-import { IS_TAURI } from '../config'
+import { IS_TAURI, BREAKPOINTS } from '../config'
+import { useMediaQuery } from '../hooks/useMediaQuery'
+import { BottomSheet } from '../components/ui/BottomSheet'
 import type { Meeting } from '../api/meetings'
 import type { FolderNode } from '../api/folders'
 import FolderBreadcrumb from '../components/folder/FolderBreadcrumb'
@@ -22,6 +24,13 @@ type SortField = 'created_at' | 'title'
 type SortDirection = 'asc' | 'desc'
 
 const VIEW_MODE_KEY = 'meetings-view-mode'
+
+const STATUS_FILTER_TABS = [
+  { value: '', label: '전체' },
+  { value: 'recording', label: '녹음중' },
+  { value: 'completed', label: '완료' },
+  { value: 'pending', label: '대기중' },
+] as const
 
 function getStoredViewMode(): ViewMode {
   const stored = localStorage.getItem(VIEW_MODE_KEY)
@@ -64,6 +73,137 @@ function MeetingTypeBadge({ type, typeMap }: { type: string; typeMap: Record<str
     <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200">
       {typeMap[type] ?? type}
     </span>
+  )
+}
+
+function MeetingTypeSelector({
+  meetingTypeList,
+  selected,
+  onSelect,
+}: {
+  meetingTypeList: { value: string; label: string }[]
+  selected: string
+  onSelect: (value: string) => void
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {meetingTypeList.map((t) => (
+        <button
+          key={t.value}
+          type="button"
+          onClick={() => onSelect(t.value)}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+            selected === t.value
+              ? 'bg-blue-600 text-white border-blue-600'
+              : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function StatusFilterTabs({
+  statusFilter,
+  onSelect,
+}: {
+  statusFilter: string
+  onSelect: (value: string) => void
+}) {
+  return (
+    <>
+      {STATUS_FILTER_TABS.map((tab) => (
+        <button
+          key={tab.value}
+          onClick={() => onSelect(tab.value)}
+          className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            statusFilter === tab.value
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:bg-muted'
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </>
+  )
+}
+
+interface MeetingActionButtonsProps {
+  meeting: Meeting
+  isDesktop: boolean
+  onEdit: (meeting: Meeting) => void
+  onMove: (meeting: Meeting) => void
+  onDelete: (meeting: Meeting) => void
+  onStop: (meeting: Meeting) => void
+  /** list view always uses hover-based opacity; card view uses isDesktop toggle */
+  forceHoverOpacity?: boolean
+}
+
+function MeetingActionButtons({
+  meeting,
+  isDesktop,
+  onEdit,
+  onMove,
+  onDelete,
+  onStop,
+  forceHoverOpacity = false,
+}: MeetingActionButtonsProps) {
+  const opacityClass = forceHoverOpacity
+    ? 'opacity-0 group-hover:opacity-100'
+    : isDesktop
+      ? 'opacity-0 group-hover:opacity-100'
+      : 'opacity-100'
+
+  return (
+    <>
+      {meeting.status === 'recording' && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onStop(meeting)
+          }}
+          className="px-2 py-0.5 rounded-md text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
+        >
+          종료
+        </button>
+      )}
+      <Tooltip text="정보 수정">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onEdit(meeting)
+          }}
+          className={`p-1 rounded hover:bg-black/5 transition-opacity ${opacityClass}`}
+        >
+          <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
+      </Tooltip>
+      <Tooltip text="폴더로 이동">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onMove(meeting)
+          }}
+          className={`p-1 rounded hover:bg-black/5 transition-opacity ${opacityClass}`}
+        >
+          <FolderInput className="w-4 h-4 text-muted-foreground" />
+        </button>
+      </Tooltip>
+      <Tooltip text="삭제">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete(meeting)
+          }}
+          className={`p-1 rounded hover:bg-black/5 hover:bg-red-50 transition-opacity ${opacityClass}`}
+        >
+          <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
+        </button>
+      </Tooltip>
+    </>
   )
 }
 
@@ -170,22 +310,11 @@ function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreated }: C
 
           <div>
             <label className="block text-sm font-medium mb-2">회의 유형</label>
-            <div className="flex flex-wrap gap-2">
-              {meetingTypeList.map((t) => (
-                <button
-                  key={t.value}
-                  type="button"
-                  onClick={() => setMeetingType(t.value)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    meetingType === t.value
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            <MeetingTypeSelector
+              meetingTypeList={meetingTypeList}
+              selected={meetingType}
+              onSelect={setMeetingType}
+            />
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
@@ -380,22 +509,11 @@ function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated }: Upl
           {/* 회의 유형 */}
           <div>
             <label className="block text-sm font-medium mb-2">회의 유형</label>
-            <div className="flex flex-wrap gap-2">
-              {meetingTypeList.map((t) => (
-                <button
-                  key={t.value}
-                  type="button"
-                  onClick={() => setMeetingType(t.value)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    meetingType === t.value
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            <MeetingTypeSelector
+              meetingTypeList={meetingTypeList}
+              selected={meetingType}
+              onSelect={setMeetingType}
+            />
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
@@ -432,6 +550,7 @@ function folderName(folders: FolderNode[], id: number): string | null {
 export default function MeetingsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const isDesktop = useMediaQuery(BREAKPOINTS.lg)
   const {
     meetings,
     meta,
@@ -455,6 +574,8 @@ export default function MeetingsPage() {
   const [showModal, setShowModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [showJoinDialog, setShowJoinDialog] = useState(false)
+  const [searchExpanded, setSearchExpanded] = useState(false)
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [movingMeeting, setMovingMeeting] = useState<Meeting | null>(null)
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
@@ -492,15 +613,7 @@ export default function MeetingsPage() {
   const pageTitle = useMemo(() => {
     if (selectedFolderId === 'all') return '전체 회의'
     if (selectedFolderId === null) return '폴더'
-    const find = (nodes: FolderNode[]): string | null => {
-      for (const f of nodes) {
-        if (f.id === selectedFolderId) return f.name
-        const found = find(f.children)
-        if (found) return found
-      }
-      return null
-    }
-    return find(folders) ?? '회의 목록'
+    return folderName(folders, selectedFolderId) ?? '회의 목록'
   }, [folders, selectedFolderId])
 
   // 하위 폴더 목록: '전체'/'폴더(null)'면 루트 폴더, 특정 폴더면 하위 폴더
@@ -565,33 +678,94 @@ export default function MeetingsPage() {
     fetchMeetings(currentPage)
   }
 
+  const handleStatusFilterSelect = useCallback((value: string) => {
+    setStatusFilter(value)
+    setSearchParams(value ? { status: value } : {}, { replace: true })
+  }, [setStatusFilter, setSearchParams])
+
+  const handleStopMeeting = useCallback(async (meeting: Meeting) => {
+    await stopMeeting(meeting.id)
+    fetchMeetings(currentPage)
+  }, [fetchMeetings, currentPage])
+
+  const handleDeleteMeeting = useCallback(async (meeting: Meeting) => {
+    const { confirm } = await import('@tauri-apps/plugin-dialog')
+    const ok = await confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`, { title: '회의 삭제', kind: 'warning' })
+    if (!ok) return
+    await deleteMeeting(meeting.id)
+    fetchMeetings(currentPage)
+  }, [fetchMeetings, currentPage])
+
   const totalPages = meta ? Math.ceil(meta.total / meta.per) : 0
 
   return (
-    <div className="min-h-screen bg-background p-8">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">{pageTitle}</h1>
-        <div className="flex items-center gap-2">
+    <div className={`min-h-screen bg-background ${isDesktop ? 'p-8' : 'p-4'}`}>
+      {/* 모바일 검색 바 확장 */}
+      {!isDesktop && searchExpanded ? (
+        <div className="flex items-center gap-2 mb-4">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="회의 검색"
+            className="flex-1 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            autoFocus
+          />
           <button
-            onClick={() => setShowJoinDialog(true)}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+            data-testid="mobile-search-close"
+            onClick={() => { setSearchExpanded(false); setSearchQuery('') }}
+            className="p-2 rounded-md hover:bg-muted transition-colors"
           >
-            회의 참여
-          </button>
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="rounded-md border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
-          >
-            오디오 업로드
-          </button>
-          <button
-            onClick={() => setShowModal(true)}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
-          >
-            새 회의
+            <X className="w-5 h-5" />
           </button>
         </div>
-      </div>
+      ) : (
+        <div className="flex items-center justify-between mb-4">
+          <h1 className={`${isDesktop ? 'text-2xl' : 'text-xl'} font-bold`}>{pageTitle}</h1>
+          <div className="flex items-center gap-2">
+            {!isDesktop && (
+              <>
+                <button
+                  data-testid="mobile-search-toggle"
+                  onClick={() => setSearchExpanded(true)}
+                  className="p-2 rounded-md hover:bg-muted transition-colors"
+                >
+                  <Search className="w-5 h-5" />
+                </button>
+                <button
+                  data-testid="mobile-filter-toggle"
+                  onClick={() => setFilterSheetOpen(true)}
+                  className="p-2 rounded-md hover:bg-muted transition-colors"
+                >
+                  <Filter className="w-5 h-5" />
+                </button>
+              </>
+            )}
+            {isDesktop && (
+              <>
+                <button
+                  onClick={() => setShowJoinDialog(true)}
+                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  회의 참여
+                </button>
+                <button
+                  onClick={() => setShowUploadModal(true)}
+                  className="rounded-md border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+                >
+                  오디오 업로드
+                </button>
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
+                >
+                  새 회의
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 폴더 경로 */}
       <FolderBreadcrumb />
@@ -604,30 +778,12 @@ export default function MeetingsPage() {
 
       {/* 하위 폴더 — 회의 카드와 같은 그리드에 표시되도록 아래 그리드에 통합 */}
 
-      {/* 상태 필터 탭 */}
-      <div className="flex items-center gap-1 mb-4">
-        {([
-          { value: '', label: '전체' },
-          { value: 'recording', label: '녹음중' },
-          { value: 'completed', label: '완료' },
-          { value: 'pending', label: '대기중' },
-        ] as const).map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => {
-              setStatusFilter(tab.value)
-              setSearchParams(tab.value ? { status: tab.value } : {}, { replace: true })
-            }}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              statusFilter === tab.value
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'text-muted-foreground hover:bg-muted'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {/* 상태 필터 탭 (데스크톱만) */}
+      {isDesktop && (
+        <div className="flex items-center gap-1 mb-4">
+          <StatusFilterTabs statusFilter={statusFilter} onSelect={handleStatusFilterSelect} />
+        </div>
+      )}
 
       {/* 뷰 모드 토글 + 필터 영역 */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
@@ -655,39 +811,89 @@ export default function MeetingsPage() {
         </div>
       </div>
 
-      {/* 검색 + 날짜 필터 */}
-      <div className="flex flex-wrap items-center gap-3 mb-6">
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="회의 검색"
-          className="flex-1 min-w-[200px] rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-        />
-        <div className="flex items-center gap-2">
+      {/* 검색 + 날짜 필터 (데스크톱만) */}
+      {isDesktop && (
+        <div className="flex flex-wrap items-center gap-3 mb-6">
           <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="회의 검색"
+            className="flex-1 min-w-[200px] rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
-          <span className="text-sm text-muted-foreground">~</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+            <span className="text-sm text-muted-foreground">~</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          {(dateFrom || dateTo) && (
+            <button
+              onClick={() => { setDateFrom(''); setDateTo('') }}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              날짜 초기화
+            </button>
+          )}
         </div>
-        {(dateFrom || dateTo) && (
-          <button
-            onClick={() => { setDateFrom(''); setDateTo('') }}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            날짜 초기화
-          </button>
-        )}
-      </div>
+      )}
+
+      {/* 모바일 필터 BottomSheet */}
+      {!isDesktop && (
+        <BottomSheet open={filterSheetOpen} onClose={() => setFilterSheetOpen(false)} title="필터">
+          <div className="space-y-4">
+            {/* 상태 필터 */}
+            <div>
+              <h3 className="text-sm font-medium mb-2">상태</h3>
+              <div className="flex flex-wrap gap-2">
+                <StatusFilterTabs statusFilter={statusFilter} onSelect={handleStatusFilterSelect} />
+              </div>
+            </div>
+
+            {/* 날짜 필터 */}
+            <div>
+              <h3 className="text-sm font-medium mb-2">날짜</h3>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="flex-1 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                <span className="text-sm text-muted-foreground">~</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="flex-1 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            </div>
+
+            {/* 초기화 버튼 */}
+            <button
+              onClick={() => {
+                setStatusFilter('')
+                setDateFrom('')
+                setDateTo('')
+                setSearchParams({}, { replace: true })
+              }}
+              className="w-full rounded-md border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
+            >
+              초기화
+            </button>
+          </div>
+        </BottomSheet>
+      )}
 
       {/* 폴더 + 회의 목록 */}
       {isLoading && meetings.length === 0 ? (
@@ -766,7 +972,7 @@ export default function MeetingsPage() {
                   ))}
                 </div>
                 {meeting.brief_summary && (
-                  <p className="text-xs text-muted-foreground line-clamp-5 mb-2 leading-relaxed">
+                  <p className={`text-xs text-muted-foreground ${isDesktop ? 'line-clamp-5' : 'line-clamp-1'} mb-2 leading-relaxed`}>
                     {meeting.brief_summary}
                   </p>
                 )}
@@ -775,56 +981,15 @@ export default function MeetingsPage() {
                 <p className="text-xs text-muted-foreground">
                   {formatDate(meeting.created_at)}
                 </p>
-                <div className="flex items-center gap-1">
-                  {meeting.status === 'recording' && (
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation()
-                        await stopMeeting(meeting.id)
-                        fetchMeetings(currentPage)
-                      }}
-                      className="px-2 py-0.5 rounded-md text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
-                    >
-                      종료
-                    </button>
-                  )}
-                  <Tooltip text="정보 수정">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setEditingMeeting(meeting)
-                      }}
-                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
-                    >
-                      <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-                    </button>
-                  </Tooltip>
-                  <Tooltip text="폴더로 이동">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setMovingMeeting(meeting)
-                      }}
-                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
-                    >
-                      <FolderInput className="w-4 h-4 text-muted-foreground" />
-                    </button>
-                  </Tooltip>
-                  <Tooltip text="삭제">
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation()
-                        const { confirm } = await import('@tauri-apps/plugin-dialog')
-                        const ok = await confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`, { title: '회의 삭제', kind: 'warning' })
-                        if (!ok) return
-                        await deleteMeeting(meeting.id)
-                        fetchMeetings(currentPage)
-                      }}
-                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 hover:bg-red-50 transition-opacity"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
-                    </button>
-                  </Tooltip>
+                <div className="flex items-center gap-1" data-testid="card-actions">
+                  <MeetingActionButtons
+                    meeting={meeting}
+                    isDesktop={isDesktop}
+                    onEdit={setEditingMeeting}
+                    onMove={setMovingMeeting}
+                    onDelete={handleDeleteMeeting}
+                    onStop={handleStopMeeting}
+                  />
                 </div>
               </div>
             </div>
@@ -943,55 +1108,15 @@ export default function MeetingsPage() {
                   <StatusBadge status={meeting.status} />
                   <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
                   <div className="flex items-center justify-end gap-1">
-                    {meeting.status === 'recording' && (
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation()
-                          await stopMeeting(meeting.id)
-                          fetchMeetings(currentPage)
-                        }}
-                        className="px-2 py-0.5 rounded-md text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
-                      >
-                        종료
-                      </button>
-                    )}
-                    <Tooltip text="정보 수정">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setEditingMeeting(meeting)
-                        }}
-                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
-                      >
-                        <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-                      </button>
-                    </Tooltip>
-                    <Tooltip text="폴더로 이동">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setMovingMeeting(meeting)
-                        }}
-                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
-                      >
-                        <FolderInput className="w-4 h-4 text-muted-foreground" />
-                      </button>
-                    </Tooltip>
-                    <Tooltip text="삭제">
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation()
-                          const { confirm } = await import('@tauri-apps/plugin-dialog')
-                          const ok = await confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`, { title: '회의 삭제', kind: 'warning' })
-                          if (!ok) return
-                          await deleteMeeting(meeting.id)
-                          fetchMeetings(currentPage)
-                        }}
-                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 hover:bg-red-50 transition-opacity"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
-                      </button>
-                    </Tooltip>
+                    <MeetingActionButtons
+                      meeting={meeting}
+                      isDesktop={isDesktop}
+                      onEdit={setEditingMeeting}
+                      onMove={setMovingMeeting}
+                      onDelete={handleDeleteMeeting}
+                      onStop={handleStopMeeting}
+                      forceHoverOpacity
+                    />
                   </div>
                 </div>
               ))}
@@ -1074,6 +1199,18 @@ export default function MeetingsPage() {
         open={showJoinDialog}
         onClose={() => setShowJoinDialog(false)}
       />
+
+      {/* 모바일 FAB (새 회의) */}
+      {!isDesktop && (
+        <button
+          data-testid="fab-new-meeting"
+          onClick={() => setShowModal(true)}
+          className="fixed right-4 bottom-20 z-40 rounded-full bg-primary p-4 text-primary-foreground shadow-lg hover:bg-primary/90 transition-colors"
+          aria-label="새 회의"
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+      )}
     </div>
   )
 }
