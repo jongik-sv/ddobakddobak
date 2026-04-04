@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Mic, CheckCircle2, Clock, FileText } from 'lucide-react'
+import { Mic, CheckCircle2, Clock, FileText, type LucideIcon } from 'lucide-react'
 import { getMeetings } from '../api/meetings'
 import type { Meeting } from '../api/meetings'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
@@ -14,6 +14,64 @@ function formatDate(dateStr: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+/* ── 통계 카드 ── */
+interface StatCardProps {
+  icon: LucideIcon
+  iconBg: string
+  iconColor: string
+  label: string
+  value: number
+  onClick: () => void
+}
+
+function StatCard({ icon: Icon, iconBg, iconColor, label, value, onClick }: StatCardProps) {
+  return (
+    <div
+      onClick={onClick}
+      className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 transition-colors"
+    >
+      <div className="flex items-center gap-3 mb-2">
+        <div className={`rounded-md ${iconBg} p-2`}>
+          <Icon className={`w-5 h-5 ${iconColor}`} />
+        </div>
+        <span className="text-sm font-medium text-muted-foreground">{label}</span>
+      </div>
+      <p className="text-3xl font-bold">{value}</p>
+    </div>
+  )
+}
+
+/* ── 상태 뱃지 ── */
+const STATUS_BADGE: Record<string, { bg: string; text: string; label: string; pulse?: boolean }> = {
+  recording: { bg: 'bg-red-100', text: 'text-red-700', label: '녹음중', pulse: true },
+  completed: { bg: 'bg-green-100', text: 'text-green-700', label: '완료' },
+  pending:   { bg: 'bg-gray-100', text: 'text-gray-500', label: '대기중' },
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const cfg = STATUS_BADGE[status]
+  if (!cfg) return null
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text} flex items-center gap-1`}>
+      {cfg.pulse && (
+        <span className="inline-block w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+      )}
+      {cfg.label}
+    </span>
+  )
+}
+
+/* ── 상태별 카운트를 한 번의 순회로 계산 ── */
+function countByStatus(meetings: Meeting[]) {
+  let recording = 0
+  let completed = 0
+  for (const m of meetings) {
+    if (m.status === 'recording') recording++
+    else if (m.status === 'completed') completed++
+  }
+  return { recording, completed }
 }
 
 // 모듈 레벨 캐시 — 페이지 전환 시 이전 데이터 즉시 표시
@@ -38,77 +96,41 @@ export default function DashboardPage() {
       .finally(() => setIsLoading(false))
   }, [])
 
-  const recordingCount = meetings.filter((m) => m.status === 'recording').length
-  const completedCount = meetings.filter((m) => m.status === 'completed').length
+  const { recording: recordingCount, completed: completedCount } = useMemo(
+    () => countByStatus(meetings),
+    [meetings],
+  )
+  const pendingCount = totalCount - recordingCount - completedCount
   const recentMeetings = meetings.slice(0, 5)
+  const showSkeleton = isLoading && meetings.length === 0
+
+  const statCards: Omit<StatCardProps, 'onClick'>[] = [
+    { icon: FileText,    iconBg: 'bg-blue-50',  iconColor: 'text-blue-600',  label: '전체 회의', value: totalCount },
+    { icon: Mic,         iconBg: 'bg-red-50',   iconColor: 'text-red-500',   label: '녹음중',    value: recordingCount },
+    { icon: CheckCircle2,iconBg: 'bg-green-50', iconColor: 'text-green-600', label: '완료',      value: completedCount },
+    { icon: Clock,       iconBg: 'bg-amber-50', iconColor: 'text-amber-600', label: '대기중',    value: pendingCount },
+  ]
+  const statLinks = ['/meetings', '/meetings?status=recording', '/meetings?status=completed', '/meetings?status=pending']
 
   return (
-    <div className="min-h-screen bg-background p-8">
+    <div className="min-h-screen bg-background p-4 md:p-6 lg:p-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold">
+        <h1 className="text-xl md:text-2xl font-bold">
           안녕하세요
         </h1>
         <p className="text-muted-foreground mt-1">회의 현황을 한눈에 확인하세요.</p>
       </div>
 
       {/* 통계 카드 */}
-      {isLoading && meetings.length === 0 ? (
+      {showSkeleton ? (
         <DashboardStatsSkeleton />
       ) : (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div
-          onClick={() => navigate('/meetings')}
-          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 transition-colors"
-        >
-          <div className="flex items-center gap-3 mb-2">
-            <div className="rounded-md bg-blue-50 p-2">
-              <FileText className="w-5 h-5 text-blue-600" />
-            </div>
-            <span className="text-sm font-medium text-muted-foreground">전체 회의</span>
-          </div>
-          <p className="text-3xl font-bold">{totalCount}</p>
-        </div>
-
-        <div
-          onClick={() => navigate('/meetings?status=recording')}
-          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 transition-colors"
-        >
-          <div className="flex items-center gap-3 mb-2">
-            <div className="rounded-md bg-red-50 p-2">
-              <Mic className="w-5 h-5 text-red-500" />
-            </div>
-            <span className="text-sm font-medium text-muted-foreground">녹음중</span>
-          </div>
-          <p className="text-3xl font-bold">{recordingCount}</p>
-        </div>
-
-        <div
-          onClick={() => navigate('/meetings?status=completed')}
-          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 transition-colors"
-        >
-          <div className="flex items-center gap-3 mb-2">
-            <div className="rounded-md bg-green-50 p-2">
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
-            </div>
-            <span className="text-sm font-medium text-muted-foreground">완료</span>
-          </div>
-          <p className="text-3xl font-bold">{completedCount}</p>
-        </div>
-
-        <div
-          onClick={() => navigate('/meetings?status=pending')}
-          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 transition-colors"
-        >
-          <div className="flex items-center gap-3 mb-2">
-            <div className="rounded-md bg-amber-50 p-2">
-              <Clock className="w-5 h-5 text-amber-600" />
-            </div>
-            <span className="text-sm font-medium text-muted-foreground">대기중</span>
-          </div>
-          <p className="text-3xl font-bold">
-            {totalCount - recordingCount - completedCount}
-          </p>
-        </div>
+      <div className="overflow-x-auto mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+        {statCards.map((card, i) => (
+          <StatCard key={card.label} {...card} onClick={() => navigate(statLinks[i])} />
+        ))}
+      </div>
       </div>
       )}
 
@@ -124,7 +146,7 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        {isLoading && meetings.length === 0 ? (
+        {showSkeleton ? (
           <DashboardMeetingsSkeleton />
         ) : recentMeetings.length === 0 ? (
           <div className="rounded-lg border bg-card p-8 text-center">
@@ -152,22 +174,7 @@ export default function DashboardPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    {meeting.status === 'recording' && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 flex items-center gap-1">
-                        <span className="inline-block w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-                        녹음중
-                      </span>
-                    )}
-                    {meeting.status === 'completed' && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                        완료
-                      </span>
-                    )}
-                    {meeting.status === 'pending' && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
-                        대기중
-                      </span>
-                    )}
+                    <StatusBadge status={meeting.status} />
                     <span className="text-xs text-muted-foreground">
                       {formatDate(meeting.created_at)}
                     </span>

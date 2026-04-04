@@ -317,7 +317,7 @@ export default function UserLlmSettings() {
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={settings.llm_settings.api_key_masked || 'API 키를 입력하세요'}
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
               />
               {settings.llm_settings.api_key_masked && !apiKey && (
                 <p className="text-xs text-muted-foreground mt-1">
@@ -336,7 +336,7 @@ export default function UserLlmSettings() {
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder={provider === 'anthropic_custom' ? 'https://api.z.ai/api/anthropic' : 'http://localhost:11434/v1'}
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
               />
             </div>
           )}
@@ -360,7 +360,7 @@ export default function UserLlmSettings() {
                   id="user-llm-model"
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
-                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
                 >
                   {modelOptions.map((m) => (
                     <option key={m} value={m}>{m}</option>
@@ -373,7 +373,7 @@ export default function UserLlmSettings() {
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
                   placeholder="모델명을 입력하세요"
-                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
                 />
               )}
             </div>
@@ -385,7 +385,7 @@ export default function UserLlmSettings() {
                 type="button"
                 onClick={handleTest}
                 disabled={testing || !model}
-                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors min-h-[44px]"
               >
                 {testing ? '테스트 중...' : '연결 테스트'}
               </button>
@@ -393,7 +393,7 @@ export default function UserLlmSettings() {
                 type="button"
                 onClick={handleSave}
                 disabled={saving || !model}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors min-h-[44px]"
               >
                 {saving ? '저장 중...' : '저장'}
               </button>
@@ -402,7 +402,7 @@ export default function UserLlmSettings() {
                   type="button"
                   onClick={handleReset}
                   disabled={saving}
-                  className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                  className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors min-h-[44px]"
                 >
                   설정 초기화
                 </button>

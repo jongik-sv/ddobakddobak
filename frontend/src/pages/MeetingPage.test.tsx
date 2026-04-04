@@ -111,6 +111,20 @@ vi.mock('../components/meeting/AttachmentSection', () => ({
   AttachmentSection: () => <div data-testid="attachment-section" />,
 }))
 
+vi.mock('../api/bookmarks', () => ({
+  getBookmarks: vi.fn().mockResolvedValue([]),
+  deleteBookmark: vi.fn().mockResolvedValue(undefined),
+  createBookmark: vi.fn(),
+}))
+
+vi.mock('../api/decisions', () => ({
+  getDecisions: vi.fn().mockResolvedValue([]),
+  createDecision: vi.fn(),
+  updateDecision: vi.fn(),
+  deleteDecision: vi.fn(),
+  getDecisionTimeline: vi.fn().mockResolvedValue([]),
+}))
+
 vi.mock('../components/decision/DecisionList', () => ({
   DecisionList: () => <div data-testid="decision-list" />,
 }))

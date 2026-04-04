@@ -149,3 +149,12 @@ body[data-dragging="true"] * {
 .animate-slide-in-left {
   animation: slide-in-left 200ms ease-out;
 }
+
+/* BottomSheet 슬라이드 업 애니메이션 */
+@keyframes slide-in-bottom {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@utility animate-slide-in-bottom {
+  animation: slide-in-bottom 250ms ease-out;
+}

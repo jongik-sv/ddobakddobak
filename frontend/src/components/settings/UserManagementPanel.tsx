@@ -72,7 +72,7 @@ function CreateUserDialog({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="user@example.com"
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
             />
           </div>
           <div>
@@ -83,7 +83,7 @@ function CreateUserDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="홍길동"
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
             />
           </div>
           <div>
@@ -95,7 +95,7 @@ function CreateUserDialog({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="6자 이상"
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
             />
           </div>
           <div>
@@ -103,7 +103,7 @@ function CreateUserDialog({
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as 'admin' | 'member')}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white min-h-[44px]"
             >
               <option value="member">Member</option>
               <option value="admin">Admin</option>
@@ -117,14 +117,14 @@ function CreateUserDialog({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors min-h-[44px]"
           >
             취소
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors min-h-[44px]"
           >
             {saving ? '생성 중...' : '생성'}
           </button>
@@ -165,14 +165,14 @@ function DeleteConfirmDialog({
         <div className="flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors min-h-[44px]"
           >
             취소
           </button>
           <button
             onClick={handleDelete}
             disabled={deleting}
-            className="px-4 py-2 rounded-md text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+            className="px-4 py-2 rounded-md text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors min-h-[44px]"
           >
             {deleting ? '삭제 중...' : '삭제'}
           </button>
@@ -249,7 +249,7 @@ export default function UserManagementPanel() {
           </div>
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors min-h-[44px]"
           >
             <Plus className="w-4 h-4" />
             사용자 추가
