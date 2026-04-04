@@ -446,7 +446,7 @@ export default function SettingsContent() {
                 value={currentForm.base_url}
                 onChange={(e) => updateCurrentForm({ base_url: e.target.value })}
                 placeholder={currentPreset.defaultBaseUrl || 'https://api.anthropic.com'}
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
               />
             </div>
           )}
@@ -463,7 +463,7 @@ export default function SettingsContent() {
                   value={currentForm.auth_token}
                   onChange={(e) => updateCurrentForm({ auth_token: e.target.value })}
                   placeholder={tokenMasked || '토큰을 입력하세요'}
-                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
                 />
                 {tokenMasked && !currentForm.auth_token && (
                   <p className="text-xs text-muted-foreground mt-1">현재: {tokenMasked}</p>
@@ -498,7 +498,7 @@ export default function SettingsContent() {
               <select
                 value={currentForm.model}
                 onChange={(e) => updateCurrentForm({ model: e.target.value })}
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono bg-white"
+                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono bg-white min-h-[44px]"
               >
                 {modelOptions.map((m) => (
                   <option key={m} value={m}>{m}</option>
@@ -510,7 +510,7 @@ export default function SettingsContent() {
                 value={currentForm.model}
                 onChange={(e) => updateCurrentForm({ model: e.target.value })}
                 placeholder="모델명을 입력하세요"
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
               />
             )}
             {selectedPreset === 'ollama' && ollamaError && (
@@ -530,7 +530,7 @@ export default function SettingsContent() {
                 value={currentForm.max_input_tokens}
                 onChange={(e) => updateCurrentForm({ max_input_tokens: parseInt(e.target.value) || 0 })}
                 placeholder="200000"
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
               />
               <p className="text-xs text-muted-foreground mt-1">기본: 200,000</p>
             </div>
@@ -541,7 +541,7 @@ export default function SettingsContent() {
                 value={currentForm.max_output_tokens}
                 onChange={(e) => updateCurrentForm({ max_output_tokens: parseInt(e.target.value) || 0 })}
                 placeholder="32768"
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
               />
               <p className="text-xs text-muted-foreground mt-1">기본: 32,768 (회의록이 길면 늘리세요)</p>
             </div>
@@ -555,14 +555,14 @@ export default function SettingsContent() {
             <button
               onClick={handleLlmTest}
               disabled={llmTesting || !currentForm.model}
-              className="px-4 py-2 rounded-md text-sm font-medium border border-blue-600 text-blue-600 hover:bg-blue-50 disabled:opacity-50 transition-colors"
+              className="px-4 py-2 rounded-md text-sm font-medium border border-blue-600 text-blue-600 hover:bg-blue-50 disabled:opacity-50 transition-colors min-h-[44px]"
             >
               {llmTesting ? '테스트 중...' : '연결 테스트'}
             </button>
             <button
               onClick={handleLlmSave}
               disabled={llmSaving}
-              className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors min-h-[44px]"
             >
               {llmSaving ? '저장 중...' : '저장'}
             </button>
@@ -698,7 +698,7 @@ export default function SettingsContent() {
               value={hfToken}
               onChange={(e) => setHfToken(e.target.value)}
               placeholder={hfSettings?.hf_token_masked || 'hf_...'}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
             />
             {hfSettings?.has_token && !hfToken && (
               <p className="text-xs text-muted-foreground mt-1">현재: {hfSettings.hf_token_masked}</p>
@@ -710,7 +710,7 @@ export default function SettingsContent() {
           <button
             onClick={handleHfSave}
             disabled={hfSaving || !hfToken.trim()}
-            className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors min-h-[44px]"
           >
             {hfSaving ? '저장 중...' : '저장'}
           </button>

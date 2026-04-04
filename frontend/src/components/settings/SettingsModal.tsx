@@ -2,16 +2,26 @@ import { useEffect, useState } from 'react'
 import { X, Settings, Users } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
+import { BREAKPOINTS } from '../../config'
 import SettingsContent from './SettingsContent'
 import UserManagementPanel from './UserManagementPanel'
 
 type SettingsTab = 'general' | 'users'
+
+const CONTAINER_DESKTOP =
+  'relative w-full max-w-3xl max-h-[90vh] rounded-xl bg-white shadow-2xl border border-gray-100 flex flex-col mx-4'
+const CONTAINER_MOBILE = 'fixed inset-0 w-full h-dvh bg-white flex flex-col'
+
+const CLOSE_BTN =
+  'p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors'
 
 export default function SettingsModal() {
   const settingsOpen = useUiStore((s) => s.settingsOpen)
   const closeSettings = useUiStore((s) => s.closeSettings)
   const user = useAuthStore((s) => s.user)
   const isAdmin = user?.role === 'admin'
+  const isDesktop = useMediaQuery(BREAKPOINTS.lg)
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
 
@@ -43,6 +53,12 @@ export default function SettingsModal() {
       : []),
   ]
 
+  const closeButton = (
+    <button onClick={closeSettings} className={CLOSE_BTN} aria-label="닫기">
+      <X className="w-5 h-5" />
+    </button>
+  )
+
   return (
     <div
       role="dialog"
@@ -50,30 +66,32 @@ export default function SettingsModal() {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="relative w-full max-w-3xl max-h-[90vh] rounded-xl bg-white shadow-2xl border border-gray-100 flex flex-col mx-4">
-        {/* 헤더 */}
+      <div className={isDesktop ? CONTAINER_DESKTOP : CONTAINER_MOBILE}>
+        {/* 헤더: 모바일=좌측 X, 데스크톱=우측 X */}
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
+          {!isDesktop && closeButton}
           <h2 className="text-lg font-semibold text-gray-900">설정</h2>
-          <button
-            onClick={closeSettings}
-            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {isDesktop && closeButton}
         </div>
 
         {/* 탭 바 (admin인 경우에만 표시) */}
         {tabs.length > 1 && (
-          <div className="flex border-b px-6 shrink-0">
+          <div
+            role="tablist"
+            className={`flex border-b px-6 shrink-0 ${!isDesktop ? 'overflow-x-auto' : ''}`}
+          >
             {tabs.map((tab) => {
               const Icon = tab.icon
               const active = activeTab === tab.id
               return (
                 <button
                   key={tab.id}
+                  role="tab"
+                  aria-selected={active}
                   onClick={() => setActiveTab(tab.id)}
                   className={`
-                    flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
+                    flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap
+                    ${!isDesktop ? 'min-h-[44px]' : ''}
                     ${active
                       ? 'border-blue-600 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'

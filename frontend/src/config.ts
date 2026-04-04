@@ -121,3 +121,11 @@ export const MEETING_TYPES = cfg.meeting_types
 // ── AI 회의록 ─────────────────────────────────
 export const SUMMARY_INTERVAL_OPTIONS = cfg.summary.interval_options
 export const DEFAULT_SUMMARY_INTERVAL_SEC = cfg.summary.default_interval_sec
+
+// ── 반응형 브레이크포인트 ─────────────────────────
+export const BREAKPOINTS = {
+  sm: '(min-width: 640px)',
+  md: '(min-width: 768px)',
+  lg: '(min-width: 1024px)',
+  xl: '(min-width: 1280px)',
+} as const

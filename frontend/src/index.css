@@ -105,3 +105,12 @@ body[data-dragging="true"] * {
 .page-enter {
   animation: page-fade-in 150ms ease-out;
 }
+
+/* BottomSheet 슬라이드 업 애니메이션 */
+@keyframes slide-in-bottom {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@utility animate-slide-in-bottom {
+  animation: slide-in-bottom 250ms ease-out;
+}

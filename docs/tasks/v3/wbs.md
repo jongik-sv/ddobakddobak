@@ -401,7 +401,7 @@
 ### TSK-03-01: BottomSheet 공용 UI 컴포넌트
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [dd]
 - priority: high
 - assignee: -
 - schedule: 2026-04-18 ~ 2026-04-21
@@ -502,7 +502,7 @@
 ### TSK-03-04: 설정 모달 모바일 풀스크린
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: medium
 - assignee: -
 - schedule: 2026-04-22 ~ 2026-04-23
