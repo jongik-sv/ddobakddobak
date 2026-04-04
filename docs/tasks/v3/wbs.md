@@ -329,7 +329,7 @@
 ### TSK-02-04: MeetingLivePage 패널/탭 분기
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - schedule: 2026-04-16 ~ 2026-04-17
