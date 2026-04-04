@@ -62,6 +62,7 @@ vi.mock('../api/meetings', () => ({
   regenerateStt: vi.fn().mockResolvedValue(mockMeetingBase),
   regenerateNotes: vi.fn().mockResolvedValue(undefined),
   updateNotes: vi.fn().mockResolvedValue(undefined),
+  correctTerms: vi.fn().mockResolvedValue({ corrected_transcripts: 0 }),
 }))
 
 vi.mock('../api/actionItems', () => ({
@@ -108,6 +109,10 @@ vi.mock('../components/meeting/AiSummaryPanel', () => ({
 
 vi.mock('../components/meeting/AttachmentSection', () => ({
   AttachmentSection: () => <div data-testid="attachment-section" />,
+}))
+
+vi.mock('../components/decision/DecisionList', () => ({
+  DecisionList: () => <div data-testid="decision-list" />,
 }))
 
 vi.mock('../components/meeting/EditMeetingDialog', () => ({
@@ -227,7 +232,7 @@ describe('MeetingPage', () => {
       expect(screen.getByText('테스트 회의')).toBeInTheDocument()
     })
     fireEvent.click(screen.getByText('테스트 회의'))
-    expect(screen.getByRole('textbox')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('테스트 회의')).toBeInTheDocument()
   })
 
   it('제목 편집 후 Enter 키 입력 시 updateMeeting API가 호출된다', async () => {
@@ -236,7 +241,7 @@ describe('MeetingPage', () => {
       expect(screen.getByText('테스트 회의')).toBeInTheDocument()
     })
     fireEvent.click(screen.getByText('테스트 회의'))
-    const input = screen.getByRole('textbox')
+    const input = screen.getByDisplayValue('테스트 회의')
     fireEvent.change(input, { target: { value: '수정된 회의 제목' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     await waitFor(() => {

@@ -16,7 +16,7 @@
 ### TSK-00-01: viewport meta 및 CSS 유틸리티 추가
 - category: infrastructure
 - domain: frontend
-- status: [ ]
+- status: [im]
 - priority: critical
 - assignee: -
 - schedule: 2026-04-07 ~ 2026-04-07
@@ -50,7 +50,7 @@
 ### TSK-00-02: useMediaQuery 훅 및 브레이크포인트 상수
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [xx]
 - priority: critical
 - assignee: -
 - schedule: 2026-04-07 ~ 2026-04-08
