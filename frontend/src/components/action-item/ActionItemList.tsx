@@ -61,7 +61,7 @@ export function ActionItemList({ meetingId, teamMembers }: ActionItemListProps) 
         {!showForm && !editingItem && (
           <button
             onClick={() => setShowForm(true)}
-            className="text-xs text-blue-600 hover:text-blue-800"
+            className="text-xs text-blue-600 hover:text-blue-800 min-h-[44px] flex items-center"
           >
             + 추가
           </button>

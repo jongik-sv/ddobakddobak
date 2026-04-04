@@ -314,7 +314,7 @@ export default function UserManagementPanel() {
                         {!isSelf && (
                           <button
                             onClick={() => setDeleteTarget(user)}
-                            className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+                            className="p-2.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 hover-hide hover-show-parent transition-all"
                             title="사용자 삭제"
                           >
                             <Trash2 className="w-4 h-4" />

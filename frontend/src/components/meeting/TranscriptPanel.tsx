@@ -44,10 +44,10 @@ export function TranscriptPanel({ transcripts, currentTimeMs, onSeek }: Transcri
             key={transcript.id}
             ref={isHighlighted ? highlightedRef : null}
             data-highlighted={isHighlighted ? 'true' : 'false'}
-            className={`p-2 rounded cursor-pointer transition-colors ${
+            className={`p-3 min-h-[44px] rounded cursor-pointer transition-colors ${
               isHighlighted
                 ? 'bg-indigo-100 border-l-4 border-indigo-500'
-                : 'hover:bg-gray-100'
+                : 'hover:bg-gray-100 active:bg-gray-100'
             }`}
             onClick={() => onSeek(transcript.started_at_ms)}
           >
@@ -59,7 +59,7 @@ export function TranscriptPanel({ transcripts, currentTimeMs, onSeek }: Transcri
                 {formatTimestamp(transcript.started_at_ms)}
               </span>
             </div>
-            <span className="text-sm text-gray-800">{transcript.content}</span>
+            <span className="text-sm text-gray-800 select-text">{transcript.content}</span>
           </div>
         )
       })}

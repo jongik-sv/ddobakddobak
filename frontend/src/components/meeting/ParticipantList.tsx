@@ -22,7 +22,7 @@ export function ParticipantList({
       </h3>
       <ul>
         {participants.map((p) => (
-          <li key={p.user_id} className="flex items-center gap-2 py-1 text-sm">
+          <li key={p.user_id} className="flex items-center gap-2 py-1 min-h-[44px] text-sm">
             {p.role === 'host' ? (
               <Crown className="text-amber-500 w-4 h-4 shrink-0" />
             ) : (
@@ -40,7 +40,7 @@ export function ParticipantList({
             {isHost && p.role === 'viewer' && (
               <button
                 onClick={() => onTransferRequest?.(p)}
-                className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                className="text-xs text-blue-600 hover:text-blue-800 hover:underline min-h-[44px] flex items-center"
               >
                 넘기기
               </button>

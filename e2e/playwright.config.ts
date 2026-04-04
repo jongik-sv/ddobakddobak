@@ -27,9 +27,32 @@ export default defineConfig({
     navigationTimeout: 20_000,
   },
   projects: [
+    // --- 데스크톱 (기존) ---
     {
-      name: 'chromium',
+      name: 'desktop-chromium',
       use: { ...devices['Desktop Chrome'] },
+      testIgnore: ['**/mobile/**'],
+    },
+
+    // --- 모바일: Android ---
+    {
+      name: 'mobile-chrome',
+      use: { ...devices['Pixel 7'] },
+      testDir: './tests/mobile',
+    },
+
+    // --- 모바일: iOS ---
+    {
+      name: 'mobile-safari',
+      use: { ...devices['iPhone 14'] },
+      testDir: './tests/mobile',
+    },
+
+    // --- 태블릿: iPad ---
+    {
+      name: 'tablet-safari',
+      use: { ...devices['iPad (gen 7)'] },
+      testDir: './tests/mobile',
     },
   ],
   globalSetup: './global-setup.ts',

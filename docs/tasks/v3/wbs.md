@@ -575,7 +575,7 @@
 ### TSK-04-02: Playwright 모바일 뷰포트 E2E 테스트
 - category: development
 - domain: test
-- status: [ ]
+- status: [im]
 - priority: high
 - assignee: -
 - schedule: 2026-04-24 ~ 2026-04-25

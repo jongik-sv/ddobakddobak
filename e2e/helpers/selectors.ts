@@ -40,6 +40,8 @@ export const Selectors = {
     stopButton: 'button:has-text("회의 종료")',
     /** 실시간 녹음 중 인디케이터 */
     recordingIndicator: '[data-testid="recording-indicator"]',
+    /** 회의 카드 (목록 페이지) */
+    card: '[data-testid="meeting-card"]',
   },
 
   /** AI 요약 패널 (AiSummaryPanel) */
@@ -64,6 +66,41 @@ export const Selectors = {
   /** 내보내기 버튼 (export UI 구현 후 사용) */
   export: {
     markdownButton: '[data-testid="export-markdown-btn"]',
+  },
+
+  /** 모바일 내비게이션 */
+  mobile: {
+    /** 바텀 내비게이션 바 */
+    bottomNav: '[data-testid="bottom-navigation"]',
+    /** 바텀 내비 항목 (role="link") */
+    bottomNavItem: (label: string) =>
+      `[data-testid="bottom-navigation"] a:has-text("${label}")`,
+    /** 사이드바 오버레이 백드롭 */
+    sidebarOverlayBackdrop: '[data-testid="sidebar-overlay-backdrop"]',
+    /** 사이드바 오버레이 컨테이너 */
+    sidebarOverlay: '[data-testid="sidebar-overlay"]',
+    /** 모바일 메뉴 열기 버튼 (햄버거) */
+    menuButton: 'button[aria-label="메뉴"]',
+  },
+
+  /** 모바일 탭 레이아웃 (MobileTabLayout) */
+  mobileTabs: {
+    /** 탭 바 컨테이너 */
+    tabBar: '[data-testid="mobile-tab-bar"]',
+    /** 개별 탭 버튼 */
+    tab: (label: string) =>
+      `[data-testid="mobile-tab-bar"] button:has-text("${label}")`,
+    /** 활성 탭 (aria-selected="true") */
+    activeTab: '[data-testid="mobile-tab-bar"] button[aria-selected="true"]',
+    /** 탭 콘텐츠 영역 */
+    tabContent: '[data-testid="mobile-tab-content"]',
+  },
+
+  /** 설정 모달 */
+  settings: {
+    modal: '[role="dialog"]',
+    /** 설정 모달 풀스크린 확인 (모바일) */
+    fullscreenModal: '[role="dialog"][data-fullscreen="true"]',
   },
 } as const;
 

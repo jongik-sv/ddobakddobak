@@ -91,7 +91,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
       <div
         data-drop-folder-id={folder.id}
         onPointerDown={(e) => initDrag('folder', folder.id, folder.name, e)}
-        className={`group flex items-center gap-1 px-2 py-1 rounded-md text-sm transition-colors ${
+        className={`group flex items-center gap-1 px-2 py-2 min-h-[44px] rounded-md text-sm transition-colors ${
           isRecordingActive
             ? 'opacity-50 cursor-not-allowed'
             : isSelected
@@ -118,16 +118,16 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
           <FolderClosed className="w-4 h-4 shrink-0" />
         )}
         <span className="truncate flex-1">{folder.name}</span>
-        <span className="text-xs text-muted-foreground tabular-nums group-hover:hidden ml-auto">
+        <span className="text-xs text-muted-foreground tabular-nums hover-hide-parent ml-auto">
           {folder.meeting_count}
         </span>
-        <div className="relative hidden group-hover:block ml-auto" ref={menuRef}>
+        <div className="relative hidden hover-show-block-parent ml-auto" ref={menuRef}>
           <button
             onClick={(e) => {
               e.stopPropagation()
               setShowMenu(!showMenu)
             }}
-            className="p-0.5 rounded hover:bg-black/5"
+            className="p-2 rounded hover:bg-black/5"
           >
             <MoreHorizontal className="w-3.5 h-3.5" />
           </button>
@@ -139,7 +139,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
                   setShowMenu(false)
                   setShowRenameDialog(true)
                 }}
-                className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-muted transition-colors"
+                className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm hover:bg-muted transition-colors"
               >
                 <Pencil className="w-3.5 h-3.5" /> 이름 변경
               </button>
@@ -149,7 +149,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
                   setShowMenu(false)
                   setShowSubfolderDialog(true)
                 }}
-                className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-muted transition-colors"
+                className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm hover:bg-muted transition-colors"
               >
                 <FolderPlus className="w-3.5 h-3.5" /> 하위 폴더
               </button>
@@ -158,7 +158,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
                   e.stopPropagation()
                   handleDelete()
                 }}
-                className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm text-red-600 hover:bg-red-50 transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" /> 삭제
               </button>
@@ -233,7 +233,7 @@ export default function FolderTree() {
   const totalFolders = countAllFolders(folders)
 
   const itemClass = (active: boolean) =>
-    `flex items-center gap-2 px-2 py-1 rounded-md text-sm transition-colors ${
+    `flex items-center gap-2 px-2 py-2 min-h-[44px] rounded-md text-sm transition-colors ${
       isRecordingActive
         ? 'opacity-50 cursor-not-allowed'
         : active
@@ -268,13 +268,13 @@ export default function FolderTree() {
           <FolderClosed className="w-4 h-4 shrink-0" />
         )}
         <span className="truncate flex-1">폴더</span>
-        <span className="text-xs text-muted-foreground tabular-nums group-hover:hidden ml-auto">{totalFolders}</span>
+        <span className="text-xs text-muted-foreground tabular-nums hover-hide-parent ml-auto">{totalFolders}</span>
         <button
           onClick={(e) => {
             e.stopPropagation()
             setShowCreateDialog(true)
           }}
-          className="hidden group-hover:block p-0.5 rounded hover:bg-black/5 text-muted-foreground hover:text-accent-foreground transition-colors ml-auto"
+          className="hidden hover-show-block-parent p-2 rounded hover:bg-black/5 text-muted-foreground hover:text-accent-foreground transition-colors ml-auto"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>

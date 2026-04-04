@@ -94,7 +94,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
       {/* 트리거 버튼 */}
       <button
         onClick={() => setIsOpen((o) => !o)}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+        className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
         aria-label="내보내기"
       >
         <span>↓</span>
@@ -112,7 +112,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
               <button
                 key={f}
                 onClick={() => setFormat(f)}
-                className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                className={`flex-1 px-2 py-1.5 min-h-[44px] text-xs font-medium rounded-md border transition-colors ${
                   format === f
                     ? 'bg-blue-600 text-white border-blue-600'
                     : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
@@ -125,7 +125,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
 
           {format !== 'prompt' && (
             <>
-              <label className="flex items-center gap-2 text-sm text-gray-700 mb-2 cursor-pointer">
+              <label className="flex items-center gap-2 text-sm text-gray-700 mb-2 cursor-pointer min-h-[44px]">
                 <input
                   type="checkbox"
                   checked={includeSummary}
@@ -136,7 +136,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
                 AI 요약 포함
               </label>
 
-              <label className="flex items-center gap-2 text-sm text-gray-700 mb-2 cursor-pointer">
+              <label className="flex items-center gap-2 text-sm text-gray-700 mb-2 cursor-pointer min-h-[44px]">
                 <input
                   type="checkbox"
                   checked={includeMemo}
@@ -147,7 +147,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
                 메모 포함
               </label>
 
-              <label className="flex items-center gap-2 text-sm text-gray-700 mb-4 cursor-pointer">
+              <label className="flex items-center gap-2 text-sm text-gray-700 mb-4 cursor-pointer min-h-[44px]">
                 <input
                   type="checkbox"
                   checked={includeTranscript}
@@ -174,7 +174,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
           <div className="flex gap-2">
             <button
               onClick={() => setIsOpen(false)}
-              className="flex-1 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50"
+              className="flex-1 px-3 py-2 min-h-[44px] text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50"
             >
               취소
             </button>
@@ -182,7 +182,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
               onClick={handleDownload}
               disabled={isDownloading}
               aria-label={isDownloading ? '다운로드 중...' : downloadLabel}
-              className="flex-1 px-3 py-1.5 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+              className="flex-1 px-3 py-2 min-h-[44px] text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
               {isDownloading ? '다운로드 중...' : downloadLabel}
             </button>

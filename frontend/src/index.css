@@ -105,3 +105,67 @@ body[data-dragging="true"] * {
 .page-enter {
   animation: page-fade-in 150ms ease-out;
 }
+
+/* ── v3 터치 최적화 유틸리티 ── */
+
+/* hover 가능 기기에서만 요소를 숨기고, group hover 시 표시 */
+@utility hover-hide {
+  @media (hover: hover) {
+    opacity: 0;
+  }
+}
+
+/* group hover 시 opacity 복원 (hover 기기 전용) */
+@utility hover-show-parent {
+  @media (hover: hover) {
+    .group:hover & {
+      opacity: 1;
+    }
+  }
+}
+
+/* group hover 시 display: none (hover 기기 전용) */
+@utility hover-hide-parent {
+  @media (hover: hover) {
+    .group:hover & {
+      display: none;
+    }
+  }
+}
+
+/* group hover 시 display: block (hover 기기 전용) */
+@utility hover-show-block-parent {
+  @media (hover: hover) {
+    .group:hover & {
+      display: block;
+    }
+  }
+}
+
+/* group hover 시 display: flex (hover 기기 전용) */
+@utility hover-show-flex-parent {
+  @media (hover: hover) {
+    .group:hover & {
+      display: flex;
+    }
+  }
+}
+
+/* Tooltip — hover 기기에서만 표시 */
+@utility hover-tooltip {
+  @media (hover: hover) {
+    .group\/tooltip:hover & {
+      opacity: 1;
+      visibility: visible;
+    }
+  }
+  @media (hover: none) {
+    display: none;
+  }
+}
+
+/* 터치 기기에서 텍스트 선택 보장 */
+.select-text {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}

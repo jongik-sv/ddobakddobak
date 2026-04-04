@@ -6,7 +6,7 @@ import { RoutePatterns } from './selectors';
  * cable 연결을 차단하지 않고 그대로 통과시켜 앱 초기화가 정상 진행되도록 한다.
  *
  * 여러 테스트에서 반복되는 아래 패턴을 대체한다:
- *   await page.route('**/cable', async (route) => { await route.continue(); });
+ *   await page.route(RoutePatterns.cable, async (route) => { await route.continue(); });
  */
 export async function allowCableConnection(page: Page): Promise<void> {
   await page.route(RoutePatterns.cable, async (route) => {

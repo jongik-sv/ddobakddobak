@@ -25,7 +25,7 @@ export function ShareLinkButton({ meetingId }: ShareLinkButtonProps) {
   return (
     <button
       onClick={handleCopy}
-      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+      className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
     >
       {copied ? (
         <>
