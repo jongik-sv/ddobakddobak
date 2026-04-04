@@ -45,11 +45,12 @@
     --input: 240 3.7% 15.9%;
     --ring: 240 4.9% 83.9%;
   }
-}
 
-@layer base {
   * {
     border-color: hsl(var(--border));
+  }
+  html, body {
+    overscroll-behavior: none;
   }
   body {
     background-color: hsl(var(--background));
@@ -60,10 +61,44 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     margin: 0;
-    min-height: 100vh;
+    min-height: 100dvh;
   }
   #root {
-    min-height: 100vh;
+    min-height: 100dvh;
+  }
+}
+
+/* ── 모바일 반응형 유틸리티 (Tailwind v4 @utility) ── */
+
+@utility h-dvh {
+  height: 100dvh;
+}
+
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+@utility animate-slide-in-left {
+  animation: slide-in-left 200ms ease-out;
+}
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* 호버 가능 디바이스에서만 호버 효과 적용 */
+@media (hover: hover) {
+  .hover-highlight:hover {
+    background-color: hsl(var(--accent));
   }
 }
 
@@ -80,10 +115,10 @@ body[data-dragging="true"] * {
 .drag-ghost {
   position: fixed;
   padding: 4px 12px;
-  background: white;
+  background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 12px hsl(var(--foreground) / 0.12);
   font-size: 13px;
   font-weight: 500;
   pointer-events: none;
