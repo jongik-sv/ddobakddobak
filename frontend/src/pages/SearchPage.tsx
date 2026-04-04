@@ -107,14 +107,14 @@ export default function SearchPage() {
           </div>
           <button
             type="submit"
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+            className="px-4 py-2 min-h-[44px] bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
           >
             검색
           </button>
           <button
             type="button"
             onClick={() => setShowFilters(!showFilters)}
-            className={`p-2 rounded-lg border transition-colors ${showFilters ? 'bg-accent text-accent-foreground border-accent' : 'border-input text-muted-foreground hover:bg-accent'}`}
+            className={`p-2.5 min-h-[44px] min-w-[44px] rounded-lg border transition-colors ${showFilters ? 'bg-accent text-accent-foreground border-accent' : 'border-input text-muted-foreground hover:bg-accent'}`}
             title="필터"
           >
             <Filter className="w-4 h-4" />
@@ -180,7 +180,7 @@ export default function SearchPage() {
                 <button
                   key={`${result.meeting_id}-${result.type}-${idx}`}
                   onClick={() => navigate(`/meetings/${result.meeting_id}`)}
-                  className="w-full text-left p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
+                  className="w-full text-left p-4 rounded-lg border border-border bg-card hover:bg-accent/50 active:bg-accent/50 transition-colors"
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <TypeBadge type={result.type} />
@@ -207,7 +207,7 @@ export default function SearchPage() {
                 <button
                   onClick={() => doSearch(query, page - 1)}
                   disabled={page <= 1}
-                  className="p-1.5 rounded-md hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="p-2.5 min-h-[44px] min-w-[44px] rounded-md hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
@@ -217,7 +217,7 @@ export default function SearchPage() {
                 <button
                   onClick={() => doSearch(query, page + 1)}
                   disabled={page >= totalPages}
-                  className="p-1.5 rounded-md hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="p-2.5 min-h-[44px] min-w-[44px] rounded-md hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>

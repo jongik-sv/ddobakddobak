@@ -58,7 +58,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div
           onClick={() => navigate('/meetings')}
-          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 transition-colors"
+          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 active:bg-muted/50 transition-colors"
         >
           <div className="flex items-center gap-3 mb-2">
             <div className="rounded-md bg-blue-50 p-2">
@@ -71,7 +71,7 @@ export default function DashboardPage() {
 
         <div
           onClick={() => navigate('/meetings?status=recording')}
-          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 transition-colors"
+          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 active:bg-muted/50 transition-colors"
         >
           <div className="flex items-center gap-3 mb-2">
             <div className="rounded-md bg-red-50 p-2">
@@ -84,7 +84,7 @@ export default function DashboardPage() {
 
         <div
           onClick={() => navigate('/meetings?status=completed')}
-          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 transition-colors"
+          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 active:bg-muted/50 transition-colors"
         >
           <div className="flex items-center gap-3 mb-2">
             <div className="rounded-md bg-green-50 p-2">
@@ -97,7 +97,7 @@ export default function DashboardPage() {
 
         <div
           onClick={() => navigate('/meetings?status=pending')}
-          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 transition-colors"
+          className="rounded-lg border bg-card p-5 cursor-pointer hover:bg-muted/50 active:bg-muted/50 transition-colors"
         >
           <div className="flex items-center gap-3 mb-2">
             <div className="rounded-md bg-amber-50 p-2">
@@ -118,7 +118,7 @@ export default function DashboardPage() {
           <h2 className="text-lg font-semibold">최근 회의</h2>
           <button
             onClick={() => navigate('/meetings')}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors min-h-[44px] inline-flex items-center"
           >
             전체 보기 &rarr;
           </button>

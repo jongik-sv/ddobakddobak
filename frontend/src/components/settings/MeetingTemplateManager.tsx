@@ -51,10 +51,10 @@ export default function MeetingTemplateManager() {
                 className="flex-1 rounded border px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring"
                 autoFocus
               />
-              <button onClick={saveEdit} className="p-1 text-green-600 hover:bg-green-50 rounded">
+              <button onClick={saveEdit} className="p-2.5 text-green-600 hover:bg-green-50 rounded">
                 <Check className="w-4 h-4" />
               </button>
-              <button onClick={cancelEdit} className="p-1 text-gray-400 hover:bg-gray-100 rounded">
+              <button onClick={cancelEdit} className="p-2.5 text-gray-400 hover:bg-gray-100 rounded">
                 <X className="w-4 h-4" />
               </button>
             </>
@@ -66,10 +66,10 @@ export default function MeetingTemplateManager() {
                   {t.meeting_type}
                 </span>
               )}
-              <button onClick={() => startEdit(t.id, t.name)} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded">
+              <button onClick={() => startEdit(t.id, t.name)} className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded">
                 <Pencil className="w-3.5 h-3.5" />
               </button>
-              <button onClick={() => handleDelete(t.id)} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded">
+              <button onClick={() => handleDelete(t.id)} className="p-2.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </>

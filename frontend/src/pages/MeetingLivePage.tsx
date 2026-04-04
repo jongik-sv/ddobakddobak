@@ -552,7 +552,7 @@ export default function MeetingLivePage() {
           <Tooltip text="미리보기로">
             <button
               onClick={handleNavigateBack}
-              className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
+              className="p-2.5 rounded-md hover:bg-gray-100 transition-colors"
             >
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
@@ -561,7 +561,7 @@ export default function MeetingLivePage() {
           <Tooltip text={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}>
             <button
               onClick={toggleAttachments}
-              className={`p-1.5 rounded-md transition-colors ${attachmentsVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+              className={`p-2.5 rounded-md transition-colors ${attachmentsVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
             >
               <Paperclip className="w-4 h-4" />
             </button>
@@ -569,7 +569,7 @@ export default function MeetingLivePage() {
           <Tooltip text={memoVisible ? '메모 숨기기' : '메모 보기'}>
             <button
               onClick={toggleMemo}
-              className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+              className={`p-2.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
             >
               <StickyNote className="w-4 h-4" />
             </button>
@@ -577,7 +577,7 @@ export default function MeetingLivePage() {
           <Tooltip text="설정">
             <button
               onClick={useUiStore.getState().openSettings}
-              className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              className="p-2.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
             >
               <Settings className="w-4 h-4" />
             </button>
@@ -585,7 +585,7 @@ export default function MeetingLivePage() {
           <Tooltip text="템플릿으로 저장">
             <button
               onClick={() => setShowSaveTemplate(true)}
-              className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              className="p-2.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
             >
               <Save className="w-4 h-4" />
             </button>
@@ -652,7 +652,7 @@ export default function MeetingLivePage() {
             <Tooltip text="북마크 추가 (Ctrl+B)">
               <button
                 onClick={handleOpenBookmark}
-                className="p-1.5 rounded-md text-amber-500 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                className="p-2.5 rounded-md text-amber-500 hover:text-amber-600 hover:bg-amber-50 transition-colors"
               >
                 <Bookmark className="w-4 h-4" />
               </button>
@@ -696,7 +696,7 @@ export default function MeetingLivePage() {
             <button
               onClick={handleResetClick}
               disabled={isResetting}
-              className="px-3 py-1.5 rounded-md text-sm font-medium bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors disabled:opacity-50"
+              className="px-3 py-2 min-h-[44px] rounded-md text-sm font-medium bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors disabled:opacity-50"
             >
               {isResetting ? '초기화 중...' : '회의 초기화'}
             </button>
@@ -705,7 +705,7 @@ export default function MeetingLivePage() {
           {!isActive ? (
             <button
               onClick={handleStart}
-              className="px-3 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              className="px-3 py-2 min-h-[44px] rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
             >
               회의 시작
             </button>
@@ -713,7 +713,7 @@ export default function MeetingLivePage() {
             <>
               <button
                 onClick={isPaused ? handleResume : handlePause}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium text-white transition-colors ${
+                className={`px-3 py-2 min-h-[44px] rounded-md text-sm font-medium text-white transition-colors ${
                   isPaused
                     ? 'bg-green-500 hover:bg-green-600'
                     : 'bg-yellow-500 hover:bg-yellow-600'
@@ -724,7 +724,7 @@ export default function MeetingLivePage() {
               <button
                 onClick={handleStop}
                 disabled={isStopping}
-                className="px-3 py-1.5 rounded-md text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+                className="px-3 py-2 min-h-[44px] rounded-md text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
               >
                 {isStopping ? '종료 중...' : '회의 종료'}
               </button>
@@ -830,7 +830,7 @@ export default function MeetingLivePage() {
                         />
                         <button
                           onClick={() => removeCorrectionRow(i)}
-                          className="shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 text-sm"
+                          className="shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-400 hover:text-red-500 text-sm"
                           title="삭제"
                         >
                           &times;

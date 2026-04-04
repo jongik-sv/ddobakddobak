@@ -574,19 +574,19 @@ export default function MeetingsPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowJoinDialog(true)}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+            className="rounded-md border border-gray-300 px-4 py-2 min-h-[44px] text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
           >
             회의 참여
           </button>
           <button
             onClick={() => setShowUploadModal(true)}
-            className="rounded-md border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+            className="rounded-md border border-primary px-4 py-2 min-h-[44px] text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
           >
             오디오 업로드
           </button>
           <button
             onClick={() => setShowModal(true)}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
+            className="rounded-md bg-primary px-4 py-2 min-h-[44px] text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
           >
             새 회의
           </button>
@@ -635,7 +635,7 @@ export default function MeetingsPage() {
           <Tooltip text="카드 뷰">
             <button
               onClick={() => handleViewModeChange('card')}
-              className={`p-1.5 rounded transition-colors ${
+              className={`p-2.5 rounded transition-colors ${
                 viewMode === 'card' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -645,7 +645,7 @@ export default function MeetingsPage() {
           <Tooltip text="리스트 뷰">
             <button
               onClick={() => handleViewModeChange('list')}
-              className={`p-1.5 rounded transition-colors ${
+              className={`p-2.5 rounded transition-colors ${
                 viewMode === 'list' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -740,7 +740,7 @@ export default function MeetingsPage() {
               key={meeting.id}
               onPointerDown={(e) => initDrag('meeting', meeting.id, meeting.title, e)}
               onClick={() => navigate(`/meetings/${meeting.id}`)}
-              className="group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 hover:shadow-sm transition-all flex flex-col min-h-[180px]"
+              className="group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 active:bg-muted/50 hover:shadow-sm transition-all flex flex-col min-h-[180px]"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2 mb-1">
@@ -794,7 +794,7 @@ export default function MeetingsPage() {
                         e.stopPropagation()
                         setEditingMeeting(meeting)
                       }}
-                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
+                      className="p-2.5 rounded hover-hide hover-show-parent hover:bg-black/5 transition-opacity"
                     >
                       <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
                     </button>
@@ -805,7 +805,7 @@ export default function MeetingsPage() {
                         e.stopPropagation()
                         setMovingMeeting(meeting)
                       }}
-                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
+                      className="p-2.5 rounded hover-hide hover-show-parent hover:bg-black/5 transition-opacity"
                     >
                       <FolderInput className="w-4 h-4 text-muted-foreground" />
                     </button>
@@ -820,7 +820,7 @@ export default function MeetingsPage() {
                         await deleteMeeting(meeting.id)
                         fetchMeetings(currentPage)
                       }}
-                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 hover:bg-red-50 transition-opacity"
+                      className="p-2.5 rounded hover-hide hover-show-parent hover:bg-red-50 transition-opacity"
                     >
                       <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
                     </button>
@@ -961,7 +961,7 @@ export default function MeetingsPage() {
                           e.stopPropagation()
                           setEditingMeeting(meeting)
                         }}
-                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
+                        className="p-2.5 rounded hover-hide hover-show-parent hover:bg-black/5 transition-opacity"
                       >
                         <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
                       </button>
@@ -972,7 +972,7 @@ export default function MeetingsPage() {
                           e.stopPropagation()
                           setMovingMeeting(meeting)
                         }}
-                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-opacity"
+                        className="p-2.5 rounded hover-hide hover-show-parent hover:bg-black/5 transition-opacity"
                       >
                         <FolderInput className="w-4 h-4 text-muted-foreground" />
                       </button>
@@ -987,7 +987,7 @@ export default function MeetingsPage() {
                           await deleteMeeting(meeting.id)
                           fetchMeetings(currentPage)
                         }}
-                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-black/5 hover:bg-red-50 transition-opacity"
+                        className="p-2.5 rounded hover-hide hover-show-parent hover:bg-red-50 transition-opacity"
                       >
                         <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
                       </button>
@@ -1006,7 +1006,7 @@ export default function MeetingsPage() {
           <button
             onClick={handlePrevPage}
             disabled={currentPage <= 1}
-            className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+            className="rounded-md border px-4 py-2 min-h-[44px] text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
           >
             이전
           </button>
@@ -1016,7 +1016,7 @@ export default function MeetingsPage() {
           <button
             onClick={handleNextPage}
             disabled={currentPage >= totalPages}
-            className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+            className="rounded-md border px-4 py-2 min-h-[44px] text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
           >
             다음
           </button>

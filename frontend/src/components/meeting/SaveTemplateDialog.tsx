@@ -32,7 +32,7 @@ export default function SaveTemplateDialog({ onSave, onClose }: SaveTemplateDial
       <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">템플릿으로 저장</h2>
-          <button onClick={onClose} className="p-1 rounded hover:bg-muted transition-colors">
+          <button onClick={onClose} className="p-2.5 rounded hover:bg-muted transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>

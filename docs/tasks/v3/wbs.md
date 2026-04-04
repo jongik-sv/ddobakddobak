@@ -542,7 +542,7 @@
 ### TSK-04-01: 터치 타겟 및 호버 미디어 쿼리 적용
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [im]
 - priority: high
 - assignee: -
 - schedule: 2026-04-23 ~ 2026-04-24
