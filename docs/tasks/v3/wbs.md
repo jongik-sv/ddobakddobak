@@ -401,7 +401,7 @@
 ### TSK-03-01: BottomSheet 공용 UI 컴포넌트
 - category: development
 - domain: frontend
-- status: [dd]
+- status: [xx]
 - priority: high
 - assignee: -
 - schedule: 2026-04-18 ~ 2026-04-21
