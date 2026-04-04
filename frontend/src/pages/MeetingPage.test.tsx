@@ -161,6 +161,16 @@ vi.mock('../hooks/useMemoEditor', () => ({
   }),
 }))
 
+vi.mock('../hooks/useMediaQuery', () => ({
+  useMediaQuery: vi.fn(() => true), // 데스크톱 모드 고정
+  BREAKPOINTS: {
+    sm: '(min-width: 640px)',
+    md: '(min-width: 768px)',
+    lg: '(min-width: 1024px)',
+    xl: '(min-width: 1280px)',
+  },
+}))
+
 vi.mock('@rails/actioncable', () => ({
   createConsumer: vi.fn(() => ({
     subscriptions: {
