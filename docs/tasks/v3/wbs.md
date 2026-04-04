@@ -189,7 +189,7 @@
 ### TSK-01-04: uiStore 모바일 상태 확장
 - category: development
 - domain: frontend
-- status: [ ]
+- status: [x]
 - priority: high
 - assignee: -
 - schedule: 2026-04-10 ~ 2026-04-10

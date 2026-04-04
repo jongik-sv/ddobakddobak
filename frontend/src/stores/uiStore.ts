@@ -1,5 +1,8 @@
 import { create } from 'zustand'
 
+export type MeetingTab = 'transcript' | 'summary' | 'memo'
+export type LiveTab = 'transcript' | 'summary' | 'memo'
+
 interface UiState {
   settingsOpen: boolean
   openSettings: () => void
@@ -14,6 +17,12 @@ interface UiState {
   toggleBookmarks: () => void
   isRecordingActive: boolean
   setRecordingActive: (active: boolean) => void
+  mobileMenuOpen: boolean
+  setMobileMenuOpen: (open: boolean) => void
+  meetingActiveTab: MeetingTab
+  setMeetingActiveTab: (tab: MeetingTab) => void
+  liveActiveTab: LiveTab
+  setLiveActiveTab: (tab: LiveTab) => void
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -30,4 +39,10 @@ export const useUiStore = create<UiState>((set) => ({
   toggleBookmarks: () => set((s) => ({ bookmarksVisible: !s.bookmarksVisible })),
   isRecordingActive: false,
   setRecordingActive: (active) => set({ isRecordingActive: active }),
+  mobileMenuOpen: false,
+  setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
+  meetingActiveTab: 'transcript',
+  setMeetingActiveTab: (tab) => set({ meetingActiveTab: tab }),
+  liveActiveTab: 'transcript',
+  setLiveActiveTab: (tab) => set({ liveActiveTab: tab }),
 }))
