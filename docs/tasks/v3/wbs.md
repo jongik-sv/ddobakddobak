@@ -16,7 +16,7 @@
 ### TSK-00-01: viewport meta 및 CSS 유틸리티 추가
 - category: infrastructure
 - domain: frontend
-- status: [im]
+- status: [xx]
 - priority: critical
 - assignee: -
 - schedule: 2026-04-07 ~ 2026-04-07

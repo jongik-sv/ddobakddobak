@@ -45,11 +45,12 @@
     --input: 240 3.7% 15.9%;
     --ring: 240 4.9% 83.9%;
   }
-}
 
-@layer base {
   * {
     border-color: hsl(var(--border));
+  }
+  html, body {
+    overscroll-behavior: none;
   }
   body {
     background-color: hsl(var(--background));
@@ -61,7 +62,6 @@
     -moz-osx-font-smoothing: grayscale;
     margin: 0;
     min-height: 100dvh;
-    overscroll-behavior: none;
   }
   #root {
     min-height: 100dvh;
@@ -115,10 +115,10 @@ body[data-dragging="true"] * {
 .drag-ghost {
   position: fixed;
   padding: 4px 12px;
-  background: white;
+  background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 12px hsl(var(--foreground) / 0.12);
   font-size: 13px;
   font-weight: 500;
   pointer-events: none;
