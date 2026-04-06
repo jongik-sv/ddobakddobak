@@ -634,3 +634,66 @@
 - tech-spec:
   - 기존 Playwright 테스트 스위트 실행
   - 뷰포트: 1280×800 (기존 설정)
+
+---
+
+## WP-05: 검색 UX 개선
+- status: planned
+- priority: high
+- progress: 0%
+- note: 검색 결과 UX 개선
+
+### TSK-05-01: 검색 결과 회의별 그룹핑
+- category: enhancement
+- domain: frontend
+- status: [xx]
+- priority: high
+- assignee: -
+- tags: search, ux, grouping
+- depends: -
+- note: 동일 회의의 검색 결과를 하나의 그룹으로 묶어 표시
+
+#### 요구사항
+- requirements:
+  - 검색 결과를 meeting_id 기준으로 그룹핑하여 렌더링
+  - 회의 헤더: 제목 + 날짜 + 매칭 건수 요약 (요약 N건, 전사 N건)
+  - 하위 결과: 헤더 아래에 개별 snippet 카드 (TypeBadge + 화자 + snippet)
+  - 기본 펼침 상태, 접기/펼치기 토글 가능 (ChevronDown/ChevronUp)
+  - 회의 헤더 클릭 시 해당 회의 페이지로 이동
+  - 백엔드 변경 없이 프론트엔드에서 그룹핑 처리
+- acceptance:
+  - 같은 회의의 결과가 하나의 카드로 묶여서 표시됨
+  - 각 그룹의 접기/펼치기 동작 정상
+  - 그룹 헤더에 매칭 건수(요약/전사 구분) 표시됨
+  - 기존 필터, 페이지네이션 정상 동작
+
+---
+
+## WP-06: Tauri 서버 모드 연결
+- status: planned
+- priority: high
+- progress: 0%
+- note: ServerSetup 컴포넌트를 앱 플로우에 통합하여 로컬/서버 모드 선택 가능하게 함
+
+### TSK-06-01: SetupGate에 ServerSetup 모드 선택 통합
+- category: feature
+- domain: frontend
+- status: [xx]
+- priority: high
+- assignee: -
+- tags: tauri, setup, server-mode
+- depends: -
+- note: 기존 ServerSetup 컴포넌트가 앱 플로우에 연결되어 있지 않은 문제 해결
+
+#### 요구사항
+- requirements:
+  - SetupGate에서 모드 미설정 시 ServerSetup 화면 먼저 표시
+  - "로컬 실행" 선택 → 기존 SetupPage 환경 체크 플로우
+  - "서버 연결" 선택 → URL 입력 + 헬스체크 → AuthGuard → 로그인
+  - localStorage에 mode/server_url 저장 후 이후 실행 시 자동 진입
+  - 설정 화면에서 모드 변경 가능 (재설정)
+- acceptance:
+  - 첫 실행 시 로컬/서버 모드 선택 화면 표시
+  - 서버 모드에서 URL 입력 및 헬스체크 정상 동작
+  - 선택한 모드가 localStorage에 저장되어 재실행 시 유지
+  - 설정에서 모드 전환 가능

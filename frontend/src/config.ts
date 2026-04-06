@@ -64,6 +64,17 @@ export function getMode(): 'local' | 'server' {
   return mode === 'server' ? 'server' : 'local'
 }
 
+/** localStorage에 mode 키가 존재하는지 (한 번이라도 모드를 선택했는지) */
+export function hasMode(): boolean {
+  return localStorage.getItem('mode') !== null
+}
+
+/** 모드 설정을 초기화한다 (재설정 시 사용). */
+export function clearMode(): void {
+  localStorage.removeItem('mode')
+  localStorage.removeItem('server_url')
+}
+
 export function getServerUrl(): string {
   return localStorage.getItem('server_url') || ''
 }

@@ -1,8 +1,110 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, Filter, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react'
 import { searchMeetings } from '../api/search'
 import type { SearchResult, SearchResponse } from '../api/search'
+
+interface MeetingGroup {
+  meeting_id: number
+  meeting_title: string
+  created_at: string
+  transcriptCount: number
+  summaryCount: number
+  results: SearchResult[]
+}
+
+function groupByMeeting(results: SearchResult[]): MeetingGroup[] {
+  const map = new Map<number, MeetingGroup>()
+  for (const r of results) {
+    let group = map.get(r.meeting_id)
+    if (!group) {
+      group = {
+        meeting_id: r.meeting_id,
+        meeting_title: r.meeting_title,
+        created_at: r.created_at,
+        transcriptCount: 0,
+        summaryCount: 0,
+        results: [],
+      }
+      map.set(r.meeting_id, group)
+    }
+    if (r.type === 'transcript') group.transcriptCount++
+    else group.summaryCount++
+    if (r.created_at > group.created_at) group.created_at = r.created_at
+    group.results.push(r)
+  }
+  return Array.from(map.values())
+}
+
+interface MeetingResultGroupProps {
+  group: MeetingGroup
+  onNavigate: (meetingId: number) => void
+}
+
+function MeetingResultGroup({ group, onNavigate }: MeetingResultGroupProps) {
+  const [expanded, setExpanded] = useState(true)
+
+  return (
+    <div data-testid="meeting-group" className="border rounded-lg bg-card overflow-hidden">
+      {/* 그룹 헤더 */}
+      <div className="flex items-center gap-2 px-4 py-3 bg-muted/30">
+        <button
+          type="button"
+          onClick={() => setExpanded(prev => !prev)}
+          aria-expanded={expanded}
+          aria-label={expanded ? '접기' : '펼치기'}
+          className="p-0.5 rounded hover:bg-accent transition-colors shrink-0"
+        >
+          {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onNavigate(group.meeting_id)}
+          className="font-medium text-sm text-foreground truncate hover:underline text-left"
+        >
+          {group.meeting_title}
+        </button>
+
+        <span className="text-xs text-muted-foreground shrink-0">
+          {new Date(group.created_at).toLocaleDateString('ko-KR')}
+        </span>
+
+        <div className="ml-auto flex gap-1.5 shrink-0">
+          {group.summaryCount > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+              요약 {group.summaryCount}건
+            </span>
+          )}
+          {group.transcriptCount > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+              전사 {group.transcriptCount}건
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* 하위 snippet 카드 목록 */}
+      {expanded && (
+        <div role="region" aria-label={`${group.meeting_title} 검색 결과`} className="divide-y divide-border">
+          {group.results.map((result, idx) => (
+            <div key={`${result.type}-${idx}`} className="px-4 py-3">
+              <div className="flex items-center gap-2 mb-1">
+                <TypeBadge type={result.type} />
+                {result.speaker && (
+                  <span className="text-xs text-muted-foreground">
+                    {result.speaker}
+                  </span>
+                )}
+              </div>
+              <HighlightSnippet html={result.snippet} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function TypeBadge({ type }: { type: SearchResult['type'] }) {
   if (type === 'transcript') {
@@ -87,6 +189,7 @@ export default function SearchPage() {
     doSearch(query, 1)
   }
 
+  const groups = useMemo(() => groupByMeeting(results), [results])
   const totalPages = Math.ceil(total / perPage)
 
   return (
@@ -175,29 +278,13 @@ export default function SearchPage() {
             <p className="text-sm text-muted-foreground mb-4">
               총 {total}건의 결과
             </p>
-            <div className="space-y-2">
-              {results.map((result, idx) => (
-                <button
-                  key={`${result.meeting_id}-${result.type}-${idx}`}
-                  onClick={() => navigate(`/meetings/${result.meeting_id}`)}
-                  className="w-full text-left p-4 rounded-lg border border-border bg-card hover:bg-accent/50 active:bg-accent/50 transition-colors"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <TypeBadge type={result.type} />
-                    <span className="text-sm font-medium text-foreground truncate">
-                      {result.meeting_title}
-                    </span>
-                    {result.speaker && (
-                      <span className="text-xs text-muted-foreground">
-                        {result.speaker}
-                      </span>
-                    )}
-                    <span className="text-xs text-muted-foreground ml-auto shrink-0">
-                      {new Date(result.created_at).toLocaleDateString('ko-KR')}
-                    </span>
-                  </div>
-                  <HighlightSnippet html={result.snippet} />
-                </button>
+            <div className="space-y-3">
+              {groups.map(group => (
+                <MeetingResultGroup
+                  key={group.meeting_id}
+                  group={group}
+                  onNavigate={(id) => navigate(`/meetings/${id}`)}
+                />
               ))}
             </div>
 

@@ -3,7 +3,7 @@ import { HTTPError } from 'ky'
 import { getSttSettings, updateSttEngine, getLlmSettings, updateLlmSettings, getHfSettings, updateHfToken, testLlmConnection, fetchOllamaModels } from '../../api/settings'
 import type { SttSettings, LlmSettings, LlmPreset, HfSettings } from '../../api/settings'
 import { useAppSettingsStore, AUDIO_DEFAULTS, DIARIZATION_DEFAULTS } from '../../stores/appSettingsStore'
-import { ENGINE_LABELS, AUDIO, DIARIZATION, LANGUAGES } from '../../config'
+import { ENGINE_LABELS, AUDIO, DIARIZATION, LANGUAGES, IS_TAURI, getMode, getServerUrl, clearMode } from '../../config'
 import PromptTemplateManager from '../PromptTemplateManager'
 import MeetingTemplateManager from './MeetingTemplateManager'
 import UserLlmSettings from './UserLlmSettings'
@@ -302,6 +302,45 @@ export default function SettingsContent() {
 
   return (
     <div className="max-w-2xl space-y-6">
+      {/* 실행 모드 (Tauri에서만 표시) */}
+      {IS_TAURI && (
+        <section className="space-y-3 mb-8">
+          <h3 className="text-sm font-semibold text-gray-800">실행 모드</h3>
+          <div className="flex items-center justify-between py-3 px-4 bg-slate-50 rounded-lg">
+            <div>
+              {(() => {
+                const isServer = getMode() === 'server'
+                return (
+                  <>
+                    <p className="text-sm font-medium text-gray-700">
+                      {isServer ? '서버 연결 모드' : '로컬 실행 모드'}
+                    </p>
+                    {isServer && (
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {getServerUrl()}
+                      </p>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                clearMode()
+                window.location.reload()
+              }}
+              className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-md hover:bg-red-50 transition-colors"
+            >
+              모드 재설정
+            </button>
+          </div>
+          <p className="text-xs text-gray-400">
+            재설정 시 앱이 다시 시작되며 모드 선택 화면이 표시됩니다.
+          </p>
+        </section>
+      )}
+
       {/* STT 모델 설정 */}
       <div className="rounded-lg border bg-card p-6">
         <h2 className="text-lg font-semibold mb-1">STT 모델</h2>

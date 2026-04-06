@@ -1,8 +1,8 @@
-# WBS - 또박또박 v2 (서버 배포 + 사용자 인증)
+# WBS - 또박또박 v3 (서버 배포 + 사용자 인증)
 
-> version: 2.1
+> version: 3.0
 > depth: 3
-> updated: 2026-04-02
+> updated: 2026-04-05
 
 ---
 
@@ -667,9 +667,9 @@
 ---
 
 ## WP-08: 검색 & 분석
-- status: done
+- status: in-progress
 - priority: high
-- progress: 100%
+- progress: 66%
 - note: 회의 데이터의 검색성과 의사결정 추적 강화
 
 ### TSK-08-01: 전문 검색 (Full-Text Search)
@@ -720,6 +720,32 @@
   - 회의 요약 생성 시 결정사항이 자동 추출됨
   - 회의별/폴더별 결정사항 목록 조회 가능
   - 수동으로 결정사항 추가/수정 가능
+
+---
+
+### TSK-08-03: 검색 결과 회의별 그룹핑
+- category: enhancement
+- domain: frontend
+- status: [ ]
+- priority: high
+- assignee: -
+- tags: search, ux, grouping
+- depends: TSK-08-01
+- note: 동일 회의의 검색 결과를 하나의 그룹으로 묶어 표시
+
+#### 요구사항
+- requirements:
+  - 검색 결과를 meeting_id 기준으로 그룹핑하여 렌더링
+  - 회의 헤더: 제목 + 날짜 + 매칭 건수 요약 (요약 N건, 전사 N건)
+  - 하위 결과: 헤더 아래에 개별 snippet 카드 (TypeBadge + 화자 + snippet)
+  - 기본 펼침 상태, 접기/펼치기 토글 가능 (ChevronDown/ChevronUp)
+  - 회의 헤더 클릭 시 해당 회의 페이지로 이동
+  - 백엔드 변경 없이 프론트엔드에서 그룹핑 처리
+- acceptance:
+  - 같은 회의의 결과가 하나의 카드로 묶여서 표시됨
+  - 각 그룹의 접기/펼치기 동작 정상
+  - 그룹 헤더에 매칭 건수(요약/전사 구분) 표시됨
+  - 기존 필터, 페이지네이션 정상 동작
 
 ---
 

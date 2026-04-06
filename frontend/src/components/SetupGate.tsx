@@ -1,20 +1,43 @@
 import { useState } from 'react'
-import { IS_TAURI, getMode } from '../config'
+import { IS_TAURI, getMode, hasMode } from '../config'
 import SetupPage from '../pages/SetupPage'
+import { ServerSetup } from './auth/ServerSetup'
+
+type Gate = 'mode_select' | 'local_setup' | 'ready'
 
 /**
- * Tauri 프로덕션 환경에서만 SetupPage를 표시하는 게이트 컴포넌트.
+ * Tauri 프로덕션 환경에서 모드 선택 → 로컬 환경 체크 게이트 컴포넌트.
  * 웹 모드 및 tauri dev 모드에서는 children을 즉시 렌더링한다.
  */
 export default function SetupGate({ children }: { children: React.ReactNode }) {
-  // tauri dev: 개발자가 서비스를 직접 관리하므로 건너뜀
-  // 서버 모드: 원격 서버에 연결하므로 로컬 환경 셋업 불필요
-  const isServerMode = getMode() === 'server'
-  const needsSetup = IS_TAURI && !import.meta.env.DEV && !isServerMode
-  const [ready, setReady] = useState(!needsSetup)
+  const skipGate = !IS_TAURI || import.meta.env.DEV
 
-  if (!ready) {
-    return <SetupPage onReady={() => setReady(true)} />
+  const initialGate = (): Gate => {
+    if (skipGate) return 'ready'
+    if (!hasMode()) return 'mode_select'          // 첫 실행: 모드 선택
+    if (getMode() === 'server') return 'ready'     // 서버 모드: AuthGuard가 처리
+    return 'local_setup'                            // 로컬 모드: 환경 체크
+  }
+
+  const [gate, setGate] = useState<Gate>(initialGate)
+
+  if (gate === 'mode_select') {
+    return (
+      <ServerSetup
+        onComplete={() => {
+          // ServerSetup이 localStorage에 mode/server_url을 이미 저장한 상태
+          if (getMode() === 'server') {
+            setGate('ready')
+          } else {
+            setGate('local_setup')
+          }
+        }}
+      />
+    )
+  }
+
+  if (gate === 'local_setup') {
+    return <SetupPage onReady={() => setGate('ready')} />
   }
 
   return <>{children}</>
