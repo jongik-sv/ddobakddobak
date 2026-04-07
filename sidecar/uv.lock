@@ -3569,6 +3569,7 @@ dependencies = [
     { name = "numpy" },
     { name = "openai" },
     { name = "pydantic-settings" },
+    { name = "pywhispercpp" },
     { name = "pyyaml" },
     { name = "uvicorn" },
 ]
@@ -3614,6 +3615,7 @@ requires-dist = [
     { name = "pyannote-audio", marker = "extra == 'cuda'", specifier = ">=4.0.4" },
     { name = "pyannote-audio", marker = "extra == 'macos'", specifier = ">=4.0.4" },
     { name = "pydantic-settings", specifier = ">=2.13.1" },
+    { name = "pywhispercpp", specifier = ">=1.4.1" },
     { name = "pywhispercpp", marker = "extra == 'cpu'", specifier = ">=1.4.1" },
     { name = "pywhispercpp", marker = "extra == 'macos'", specifier = ">=1.4.1" },
     { name = "pyyaml", specifier = ">=6.0" },
