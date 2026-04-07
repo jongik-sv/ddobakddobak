@@ -53,3 +53,6 @@ e2e/test-results/
 # Claude Code 작업 관리
 .task-prompts/
 .signals/
+
+# 작업 문서 (로컬 전용)
+docs/tasks/
