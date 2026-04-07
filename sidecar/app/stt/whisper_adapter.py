@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import asyncio
+import os
+from pathlib import Path
 from typing import AsyncIterator
 
 from app.stt.audio_utils import is_hallucination, pcm_bytes_to_float32
 from app.stt.base import SttAdapter, TranscriptSegment
 
 _MODEL_NAME = "large-v3-turbo"
+# 모델 캐시 위치: 환경변수 WHISPER_MODELS_DIR 우선, 없으면 사전 다운로드된 사용자 프로필 경로 사용.
+# (서비스가 SYSTEM 계정으로 실행될 경우 기본 캐시 경로가 systemprofile로 잡혀 다운로드가 실패하므로 명시 지정)
+_DEFAULT_MODELS_DIR = Path(r"C:\Users\USER\AppData\Local\pywhispercpp\pywhispercpp\models")
 _SAMPLE_RATE = 16000
 _BYTES_PER_SAMPLE = 2  # Int16
 # pywhispercpp 타임스탬프 단위: 10ms
@@ -39,9 +44,10 @@ class WhisperAdapter(SttAdapter):
         loop = asyncio.get_running_loop()
         from pywhispercpp.model import Model
 
+        models_dir = os.environ.get("WHISPER_MODELS_DIR") or str(_DEFAULT_MODELS_DIR)
         self._model = await loop.run_in_executor(
             None,
-            lambda: Model(self._model_name),
+            lambda: Model(self._model_name, models_dir=models_dir),
         )
         self._is_loaded = True
 
