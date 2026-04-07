@@ -41,6 +41,24 @@ export async function logout(accessToken: string): Promise<void> {
   })
 }
 
+export interface LoginResponse {
+  access_token: string
+  refresh_token: string
+  user: { id: number; email: string; name: string; role: string }
+}
+
+export async function loginWithCredentials(
+  email: string,
+  password: string,
+): Promise<LoginResponse> {
+  return ky
+    .post('auth/login', {
+      prefixUrl: getServerRootUrl(),
+      json: { user: { email, password } },
+    })
+    .json<LoginResponse>()
+}
+
 export async function validateToken(
   accessToken: string,
 ): Promise<ValidateResponse> {

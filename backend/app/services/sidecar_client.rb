@@ -1,5 +1,8 @@
 require "net/http"
 
+# STT 서버(Sidecar)와의 통신 클라이언트.
+# STT(음성인식), 화자분리, 스피커 관리, HF 설정 전용.
+# LLM 요약 기능은 LlmService로 이전됨.
 class SidecarClient
   class SidecarError < StandardError; end
   class TimeoutError < SidecarError; end
@@ -15,6 +18,8 @@ class SidecarClient
   def health
     get("/health")
   end
+
+  # ── STT ──
 
   def stt_engine_info
     get("/settings/stt-engine")
@@ -41,67 +46,7 @@ class SidecarClient
     post("/transcribe-file", body, timeout: 1800)
   end
 
-  def summarize(transcripts, type: "realtime", context: nil, llm_config: nil)
-    body = { transcripts: transcripts, type: type }
-    body[:context] = context if context
-    body[:llm_config] = llm_config if llm_config
-    post("/summarize", body, timeout: 300)
-  end
-
-  def summarize_action_items(transcripts, llm_config: nil)
-    body = { transcripts: transcripts }
-    body[:llm_config] = llm_config if llm_config
-    post("/summarize/action-items", body, timeout: 300)
-  end
-
-  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, llm_config: nil)
-    body = {
-      current_notes: current_notes,
-      transcripts: transcripts,
-      meeting_title: meeting_title,
-      meeting_type: meeting_type
-    }
-    body[:sections_prompt] = sections_prompt if sections_prompt.present?
-    body[:llm_config] = llm_config if llm_config
-    post("/refine-notes", body, timeout: 300)
-  end
-
-  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil)
-    body = {
-      current_notes: current_notes,
-      transcripts: transcripts,
-      meeting_title: meeting_title
-    }
-    body[:sections_prompt] = sections_prompt if sections_prompt.present?
-    post("/build-prompt", body)
-  end
-
-  def correct_terms(current_notes, corrections)
-    post("/feedback-notes", {
-      current_notes: current_notes,
-      corrections: corrections.map { |c| { from: c[:from], to: c[:to] } }
-    }, timeout: 30)
-  end
-
-  def get_llm_settings
-    get("/settings/llm")
-  end
-
-  def update_llm_settings(params)
-    put("/settings/llm", params)
-  end
-
-  def test_llm_connection(params)
-    post("/settings/llm/test", params, timeout: 15)
-  end
-
-  def get_hf_settings
-    get("/settings/hf")
-  end
-
-  def update_hf_settings(hf_token)
-    put("/settings/hf", { hf_token: hf_token })
-  end
+  # ── Speakers ──
 
   def get_speakers(meeting_id)
     get("/speakers?meeting_id=#{meeting_id}")
@@ -114,6 +59,16 @@ class SidecarClient
 
   def reset_speakers(meeting_id)
     delete("/speakers?meeting_id=#{meeting_id}")
+  end
+
+  # ── HuggingFace ──
+
+  def get_hf_settings
+    get("/settings/hf")
+  end
+
+  def update_hf_settings(hf_token)
+    put("/settings/hf", { hf_token: hf_token })
   end
 
   private

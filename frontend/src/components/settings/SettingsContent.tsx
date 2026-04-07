@@ -4,6 +4,7 @@ import { getSttSettings, updateSttEngine, getLlmSettings, updateLlmSettings, get
 import type { SttSettings, LlmSettings, LlmPreset, HfSettings } from '../../api/settings'
 import { useAppSettingsStore, AUDIO_DEFAULTS, DIARIZATION_DEFAULTS } from '../../stores/appSettingsStore'
 import { ENGINE_LABELS, AUDIO, DIARIZATION, LANGUAGES, IS_TAURI, getMode, getServerUrl, clearMode } from '../../config'
+import { useAuthStore } from '../../stores/authStore'
 import PromptTemplateManager from '../PromptTemplateManager'
 import MeetingTemplateManager from './MeetingTemplateManager'
 import UserLlmSettings from './UserLlmSettings'
@@ -70,6 +71,11 @@ function SettingSlider({
 }
 
 export default function SettingsContent() {
+  const user = useAuthStore((s) => s.user)
+  const isLocalMode = getMode() === 'local'
+  const isAdmin = user?.role === 'admin'
+  const showAdminSettings = isAdmin || isLocalMode
+
   const [settings, setSettings] = useState<SttSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -341,7 +347,8 @@ export default function SettingsContent() {
         </section>
       )}
 
-      {/* STT 모델 설정 */}
+      {/* STT 모델 설정 (관리자 전용) */}
+      {showAdminSettings && (
       <div className="rounded-lg border bg-card p-6">
         <h2 className="text-lg font-semibold mb-1">STT 모델</h2>
         <p className="text-sm text-muted-foreground mb-4">음성 인식에 사용할 엔진을 선택합니다. 파일 업로드 시에는 Whisper가 자동 선택됩니다.</p>
@@ -389,6 +396,7 @@ export default function SettingsContent() {
           <p className="mt-3 text-sm text-green-600">{success}</p>
         )}
       </div>
+      )}
 
       {/* 회의 언어 설정 */}
       <div className="rounded-lg border bg-card p-6">
@@ -428,7 +436,8 @@ export default function SettingsContent() {
       {/* 내 LLM 설정 (사용자 개인) */}
       <UserLlmSettings />
 
-      {/* AI (LLM) 설정 */}
+      {/* AI (LLM) 설정 (관리자 전용) */}
+      {showAdminSettings && (
       <div className="rounded-lg border bg-card p-6">
         <h2 className="text-lg font-semibold mb-1">AI 요약 모델</h2>
         <p className="text-sm text-muted-foreground mb-4">
@@ -618,6 +627,7 @@ export default function SettingsContent() {
           )}
         </div>
       </div>
+      )}
 
       {/* 회의 템플릿 관리 */}
       <div className="rounded-lg border bg-card p-6">
@@ -631,7 +641,8 @@ export default function SettingsContent() {
       {/* 회의록 양식 관리 */}
       <PromptTemplateManager />
 
-      {/* 음성 청킹 설정 */}
+      {/* 음성 청킹 설정 (관리자 전용) */}
+      {showAdminSettings && (
       <div className="rounded-lg border bg-card p-6">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-lg font-semibold">음성 청킹 설정</h2>
@@ -721,8 +732,10 @@ export default function SettingsContent() {
           />
         </div>
       </div>
+      )}
 
-      {/* HuggingFace 설정 */}
+      {/* HuggingFace 설정 (관리자 전용) */}
+      {showAdminSettings && (
       <div className="rounded-lg border bg-card p-6">
         <h2 className="text-lg font-semibold mb-1">HuggingFace</h2>
         <p className="text-sm text-muted-foreground mb-4">
@@ -760,8 +773,10 @@ export default function SettingsContent() {
           )}
         </div>
       </div>
+      )}
 
-      {/* 화자 분리 설정 */}
+      {/* 화자 분리 설정 (관리자 전용) */}
+      {showAdminSettings && (
       <div className="rounded-lg border bg-card p-6">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-lg font-semibold">화자 분리 설정</h2>
@@ -838,6 +853,7 @@ export default function SettingsContent() {
           />
         </div>
       </div>
+      )}
     </div>
   )
 }

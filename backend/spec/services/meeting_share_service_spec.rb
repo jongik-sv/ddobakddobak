@@ -238,4 +238,125 @@ RSpec.describe MeetingShareService do
       expect(host_transferred[:payload][:new_host_name]).to eq(other_user.name)
     end
   end
+
+  # ============================================================
+  # #claim_host
+  # ============================================================
+  describe "#claim_host" do
+    let(:disconnected_time) { Time.current }
+
+    before do
+      service.generate_share_code(meeting, user)
+      service.join_meeting(meeting.share_code, other_user)
+    end
+
+    context "when host is disconnected" do
+      before do
+        meeting.host_participant.update!(host_disconnected_at: disconnected_time)
+      end
+
+      it "promotes the viewer to host" do
+        allow(ActionCable.server).to receive(:broadcast)
+
+        service.claim_host(meeting, other_user)
+
+        new_host = meeting.active_participants.reload.find_by(role: "host")
+        expect(new_host.user).to eq(other_user)
+      end
+
+      it "marks old disconnected host as left (left_at set)" do
+        allow(ActionCable.server).to receive(:broadcast)
+
+        service.claim_host(meeting, other_user)
+
+        old_host = meeting.meeting_participants.find_by(user: user, role: "host")
+        expect(old_host.left_at).to be_present
+      end
+
+      it "broadcasts host_transferred with the new host info" do
+        broadcasts = []
+        allow(ActionCable.server).to receive(:broadcast) do |stream, payload|
+          broadcasts << { stream: stream, payload: payload }
+        end
+
+        service.claim_host(meeting, other_user)
+
+        host_transferred = broadcasts.find { |b| b[:payload][:type] == "host_transferred" }
+        expect(host_transferred).to be_present
+        expect(host_transferred[:payload][:new_host_id]).to eq(other_user.id)
+        expect(host_transferred[:payload][:new_host_name]).to eq(other_user.name)
+      end
+    end
+
+    context "when host is still connected (host_disconnected_at nil)" do
+      it "raises NotHostError" do
+        expect {
+          service.claim_host(meeting, other_user)
+        }.to raise_error(MeetingShareService::NotHostError)
+      end
+    end
+
+    context "when claimer is not an active viewer" do
+      before do
+        meeting.host_participant.update!(host_disconnected_at: disconnected_time)
+      end
+
+      it "raises InvalidTargetError for non-participant user" do
+        non_participant = create(:user)
+
+        expect {
+          service.claim_host(meeting, non_participant)
+        }.to raise_error(MeetingShareService::InvalidTargetError)
+      end
+
+      it "raises InvalidTargetError if claimer is the host (not a viewer)" do
+        expect {
+          service.claim_host(meeting, user)
+        }.to raise_error(MeetingShareService::InvalidTargetError)
+      end
+    end
+  end
+
+  # ============================================================
+  # #join_meeting — host auto-promotion
+  # ============================================================
+  describe "#join_meeting host auto-promotion" do
+    before { service.generate_share_code(meeting, user) }
+
+    context "when no active host exists" do
+      before do
+        # Host leaves so there is no active host
+        meeting.host_participant.update!(left_at: Time.current)
+      end
+
+      it "auto-promotes the joining user to host" do
+        allow(ActionCable.server).to receive(:broadcast)
+
+        result = service.join_meeting(meeting.share_code, other_user)
+
+        expect(result[:participant].role).to eq("host")
+      end
+
+      it "broadcasts host_transferred for the auto-promoted host" do
+        broadcasts = []
+        allow(ActionCable.server).to receive(:broadcast) do |stream, payload|
+          broadcasts << { stream: stream, payload: payload }
+        end
+
+        service.join_meeting(meeting.share_code, other_user)
+
+        host_transferred = broadcasts.find { |b| b[:payload][:type] == "host_transferred" }
+        expect(host_transferred).to be_present
+        expect(host_transferred[:payload][:new_host_id]).to eq(other_user.id)
+      end
+    end
+
+    context "when active host exists" do
+      it "does NOT promote the joining user (stays viewer)" do
+        result = service.join_meeting(meeting.share_code, other_user)
+
+        expect(result[:participant].role).to eq("viewer")
+      end
+    end
+  end
 end

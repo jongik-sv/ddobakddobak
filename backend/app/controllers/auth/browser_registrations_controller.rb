@@ -1,5 +1,4 @@
-class Auth::BrowserSessionsController < ApplicationController
-  # Skip JWT authentication — this controller serves unauthenticated browser users
+class Auth::BrowserRegistrationsController < ApplicationController
   skip_before_action :verify_authenticity_token, raise: false
 
   before_action :set_callback
@@ -9,22 +8,32 @@ class Auth::BrowserSessionsController < ApplicationController
   ALLOWED_CALLBACK_SCHEMES = %w[ddobak].freeze
   CSRF_TOKEN_VALIDITY = 1.hour.to_i
 
-  # GET /auth/web_login?callback=ddobak://
+  # GET /auth/web_register?callback=ddobak://
   def new
     @error = params[:error]
-    render_login_form
+    render_register_form
   end
 
-  # POST /auth/web_login
+  # POST /auth/web_register
   def create
-    user = User.find_by(email: params[:email])
+    user = User.new(
+      email: params[:email],
+      password: params[:password],
+      name: params[:name]
+    )
 
-    if user&.valid_password?(params[:password])
-      render_success_page(build_callback_url_with_tokens(user), message: "로그인 성공!")
+    # 첫 번째 사용자는 admin
+    user.role = "admin" if User.count.zero?
+
+    if user.save
+      render_success_page(build_callback_url_with_tokens(user), message: "회원가입이 완료되었습니다!")
     else
-      @error = "이메일 또는 비밀번호가 올바르지 않습니다."
-      render_login_form(status: :unauthorized)
+      @error = user.errors.full_messages.join(", ")
+      render_register_form(status: :unprocessable_content)
     end
+  rescue ActiveRecord::RecordNotUnique
+    @error = "이미 사용 중인 이메일입니다."
+    render_register_form(status: :unprocessable_content)
   end
 
   private
@@ -97,12 +106,12 @@ class Auth::BrowserSessionsController < ApplicationController
       status: :unprocessable_content)
   end
 
-  def render_login_form(status: :ok)
-    html = LoginFormTemplate.render(
+  def render_register_form(status: :ok)
+    html = RegisterFormTemplate.render(
       callback: @callback,
       error: @error,
       csrf_token: generate_csrf_token,
-      action_url: "/auth/web_login"
+      action_url: "/auth/web_register"
     )
     render html: html.html_safe, status: status
   end

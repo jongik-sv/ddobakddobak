@@ -357,19 +357,18 @@ module Api
         payload = Transcript.to_sidecar_payload(transcripts)
         sections_prompt = PromptTemplate.sections_prompt_for(@meeting.meeting_type)
 
-        result = SidecarClient.new.build_prompt(
+        llm = LlmService.new(llm_config: current_user.effective_llm_config)
+        result = llm.build_prompt(
           current_notes, payload,
           meeting_title: @meeting.title,
           sections_prompt: sections_prompt
         )
 
         filename = "prompt_#{@meeting.id}_#{Date.today}.txt"
-        send_data result["prompt_text"],
+        send_data result["prompt"],
           type:        "text/plain; charset=utf-8",
           disposition: "attachment",
           filename:    filename
-      rescue SidecarClient::SidecarError => e
-        render json: { error: e.message }, status: :service_unavailable
       end
 
       private

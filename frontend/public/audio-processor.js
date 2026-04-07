@@ -16,6 +16,9 @@ let MIN_CHUNK_SAMPLES = 32000  // 2s
 let PREROLL_SAMPLES = 6400     // 400ms
 let OVERLAP_SAMPLES = 4800     // 300ms
 
+// 시스템 오디오 링버퍼 크기: 500ms 분량 (지연 흡수용)
+const SYS_RING_SIZE = 8000
+
 class AudioProcessor extends AudioWorkletProcessor {
   constructor() {
     super()
@@ -30,10 +33,11 @@ class AudioProcessor extends AudioWorkletProcessor {
 
     this._paused = false
 
-    // 시스템 오디오 직접 주입 큐 (injector worklet 경유 제거)
-    this._sysQueue = []
-    this._sysCurrent = null
-    this._sysOffset = 0
+    // 시스템 오디오 링버퍼 (큐 대신 연속 버퍼 사용 — 타이밍 흡수)
+    this._sysRing = new Float32Array(SYS_RING_SIZE)
+    this._sysWritePos = 0  // 다음 쓰기 위치
+    this._sysReadPos = 0   // 다음 읽기 위치
+    this._sysAvail = 0     // 읽을 수 있는 샘플 수
 
     // 샘플 기반 타임스탬프: Date.now() 대신 실제 오디오 샘플 수로 정확한 위치 추적
     this._totalSamplesIn = 0
@@ -45,14 +49,21 @@ class AudioProcessor extends AudioWorkletProcessor {
 
     this.port.onmessage = (event) => {
       if (event.data?.type === 'system-audio') {
-        // 시스템 오디오 PCM (Int16Array) → Float32 변환 후 큐에 추가
+        // 시스템 오디오 PCM (Int16Array) → Float32 변환 후 링버퍼에 쓰기
         const pcm = event.data.pcm
         if (pcm && pcm.length > 0) {
-          const f32 = new Float32Array(pcm.length)
-          for (let i = 0; i < pcm.length; i++) {
-            f32[i] = pcm[i] / 32768.0
+          const len = pcm.length
+          // 오버플로우 방지: 버퍼가 가득 차면 오래된 데이터 버림 (읽기 포인터 전진)
+          if (this._sysAvail + len > SYS_RING_SIZE) {
+            const overflow = (this._sysAvail + len) - SYS_RING_SIZE
+            this._sysReadPos = (this._sysReadPos + overflow) % SYS_RING_SIZE
+            this._sysAvail -= overflow
           }
-          this._sysQueue.push(f32)
+          for (let i = 0; i < len; i++) {
+            this._sysRing[this._sysWritePos] = pcm[i] / 32768.0
+            this._sysWritePos = (this._sysWritePos + 1) % SYS_RING_SIZE
+          }
+          this._sysAvail += len
         }
       } else if (event.data?.type === 'pause') {
         // 일시정지: 진행 중인 음성이 있으면 전송 후 리셋
@@ -66,10 +77,10 @@ class AudioProcessor extends AudioWorkletProcessor {
         this._paused = true
       } else if (event.data?.type === 'resume') {
         this._paused = false
-        // 일시정지 중 쌓인 stale 시스템 오디오 큐 클리어
-        this._sysQueue = []
-        this._sysCurrent = null
-        this._sysOffset = 0
+        // 일시정지 중 쌓인 stale 시스템 오디오 클리어
+        this._sysReadPos = 0
+        this._sysWritePos = 0
+        this._sysAvail = 0
       } else if (event.data?.type === 'init') {
         const c = event.data.config
         if (c) {
@@ -105,25 +116,21 @@ class AudioProcessor extends AudioWorkletProcessor {
 
     const mic = input[0]
 
-    // 마이크 + 시스템 오디오 믹싱 (시스템 오디오는 postMessage로 직접 수신)
+    // 마이크 + 시스템 오디오 믹싱
     if (!this._mixBuf || this._mixBuf.length < mic.length) {
       this._mixBuf = new Float32Array(mic.length)
     }
     const channel = this._mixBuf
+
     for (let i = 0; i < mic.length; i++) {
-      let sys = 0
-      if (!this._sysCurrent || this._sysOffset >= this._sysCurrent.length) {
-        if (this._sysQueue.length > 0) {
-          this._sysCurrent = this._sysQueue.shift()
-          this._sysOffset = 0
-        } else {
-          this._sysCurrent = null
-        }
+      if (this._sysAvail > 0) {
+        const sys = this._sysRing[this._sysReadPos]
+        this._sysReadPos = (this._sysReadPos + 1) % SYS_RING_SIZE
+        this._sysAvail--
+        channel[i] = mic[i] * 0.7 + sys * 0.7
+      } else {
+        channel[i] = mic[i]
       }
-      if (this._sysCurrent) {
-        sys = this._sysCurrent[this._sysOffset++]
-      }
-      channel[i] = mic[i] + sys
     }
 
     // 녹음용: 믹싱된 PCM을 배치로 메인 스레드에 전달
@@ -144,11 +151,12 @@ class AudioProcessor extends AudioWorkletProcessor {
 
     this._totalSamplesIn += channel.length
 
+    // VAD는 마이크 신호만으로 판단 (시스템 오디오는 별도 SystemAudioVAD에서 처리)
     let sumSq = 0
-    for (let i = 0; i < channel.length; i++) {
-      sumSq += channel[i] * channel[i]
+    for (let i = 0; i < mic.length; i++) {
+      sumSq += mic[i] * mic[i]
     }
-    const rms = Math.sqrt(sumSq / channel.length)
+    const rms = Math.sqrt(sumSq / mic.length)
 
     if (this._state === 'SILENCE') {
       for (let i = 0; i < channel.length; i++) {

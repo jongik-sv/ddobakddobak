@@ -978,9 +978,12 @@ export default function MeetingsPage() {
                 )}
               </div>
               <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/50">
-                <p className="text-xs text-muted-foreground">
-                  {formatDate(meeting.created_at)}
-                </p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>{formatDate(meeting.created_at)}</span>
+                  {meeting.created_by?.name && (
+                    <span className="truncate max-w-[100px]">{meeting.created_by.name}</span>
+                  )}
+                </div>
                 <div className="flex items-center gap-1" data-testid="card-actions">
                   <MeetingActionButtons
                     meeting={meeting}
@@ -1043,7 +1046,7 @@ export default function MeetingsPage() {
           {/* 회의 테이블 헤더 */}
           {sortedMeetings.length > 0 && (
             <>
-              <div className="grid grid-cols-[1fr_120px_80px_100px_140px] gap-2 px-4 py-2 text-xs font-medium text-muted-foreground border-b bg-muted/20">
+              <div className="grid grid-cols-[1fr_80px_120px_80px_100px_140px] gap-2 px-4 py-2 text-xs font-medium text-muted-foreground border-b bg-muted/20">
                 <button
                   onClick={() => handleSort('title')}
                   className="flex items-center gap-1 hover:text-foreground transition-colors text-left"
@@ -1055,6 +1058,7 @@ export default function MeetingsPage() {
                     <ArrowUpDown className="w-3 h-3 opacity-50" />
                   )}
                 </button>
+                <span>호스트</span>
                 <button
                   onClick={() => handleSort('created_at')}
                   className="flex items-center gap-1 hover:text-foreground transition-colors text-left"
@@ -1077,7 +1081,7 @@ export default function MeetingsPage() {
                   key={meeting.id}
                   onPointerDown={(e) => initDrag('meeting', meeting.id, meeting.title, e)}
                   onClick={() => navigate(`/meetings/${meeting.id}`)}
-                  className={`group grid grid-cols-[1fr_120px_80px_100px_140px] gap-2 items-center px-4 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors ${
+                  className={`group grid grid-cols-[1fr_80px_120px_80px_100px_140px] gap-2 items-center px-4 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors ${
                     idx < sortedMeetings.length - 1 ? 'border-b border-border/50' : ''
                   }`}
                 >
@@ -1104,6 +1108,7 @@ export default function MeetingsPage() {
                       <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{meeting.brief_summary}</p>
                     )}
                   </div>
+                  <span className="text-xs text-muted-foreground truncate">{meeting.created_by?.name || '-'}</span>
                   <span className="text-xs text-muted-foreground">{formatDate(meeting.created_at)}</span>
                   <StatusBadge status={meeting.status} />
                   <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />

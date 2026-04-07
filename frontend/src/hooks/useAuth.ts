@@ -6,6 +6,7 @@ import {
   refreshAccessToken,
   logout as logoutApi,
   validateToken,
+  loginWithCredentials,
 } from '../api/auth'
 import { getMode, getServerUrl } from '../config'
 
@@ -82,6 +83,13 @@ export function useAuth() {
     open(loginUrl)
   }, [])
 
+  // ── 직접 로그인 (이메일/비밀번호) ──
+  const loginDirect = useCallback(async (email: string, password: string) => {
+    const res = await loginWithCredentials(email, password)
+    setTokens(res.access_token, res.refresh_token)
+    if (res.user) setUser(res.user as Parameters<typeof setUser>[0])
+  }, [setTokens, setUser])
+
   // ── 로그아웃 ──
   const logout = useCallback(async () => {
     if (accessToken) {
@@ -99,6 +107,7 @@ export function useAuth() {
     isLoading,
     user,
     login,
+    loginDirect,
     logout,
   }
 }

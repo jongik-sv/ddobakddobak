@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Settings, Monitor, Mic, ArrowLeft, StickyNote, Paperclip, Bookmark, Save, Timer, FileText, Bot, PenLine } from 'lucide-react'
+import { Settings, Monitor, Mic, ArrowLeft, StickyNote, Paperclip, Bookmark, Save, Timer, FileText, Bot, PenLine, Pencil } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
 import { Tooltip } from '../components/ui/Tooltip'
 import { useUiStore } from '../stores/uiStore'
@@ -14,8 +14,8 @@ import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
-import { getMeeting, startMeeting, stopMeeting, reopenMeeting, uploadAudio, triggerRealtimeSummary, getTranscripts, getSummary, resetMeetingContent, correctTerms, updateNotes, getParticipants } from '../api/meetings'
-import type { Participant, TermCorrection } from '../api/meetings'
+import { getMeeting, updateMeeting, startMeeting, stopMeeting, reopenMeeting, uploadAudio, triggerRealtimeSummary, getTranscripts, getSummary, resetMeetingContent, correctTerms, updateNotes, getParticipants } from '../api/meetings'
+import type { Meeting, Participant, TermCorrection, UpdateMeetingParams } from '../api/meetings'
 import { getSttSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useSharingStore } from '../stores/sharingStore'
@@ -24,11 +24,15 @@ import { AttachmentSection } from '../components/meeting/AttachmentSection'
 import { ShareButton } from '../components/meeting/ShareButton'
 import { ParticipantList } from '../components/meeting/ParticipantList'
 import { HostTransferDialog } from '../components/meeting/HostTransferDialog'
+import HostDisconnectedBanner from '../components/meeting/HostDisconnectedBanner'
+import { useAuthStore } from '../stores/authStore'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 import { formatElapsedSeconds } from '../lib/audioUtils'
 import { createBookmark } from '../api/bookmarks'
 import { useMeetingTemplateStore } from '../stores/meetingTemplateStore'
 import SaveTemplateDialog from '../components/meeting/SaveTemplateDialog'
+import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
+import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
 import MobileTabLayout from '../components/layout/MobileTabLayout'
 import type { Tab } from '../components/layout/MobileTabLayout'
@@ -161,6 +165,11 @@ export default function MeetingLivePage() {
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const addTemplate = useMeetingTemplateStore((s) => s.add)
 
+  // 회의 정보 수정 다이얼로그
+  const [meeting, setMeeting] = useState<Meeting | null>(null)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const meetingTypeList = usePromptTemplateStore((s) => s.meetingTypeList)
+
   // 초기화 확인 다이얼로그
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
@@ -223,10 +232,13 @@ export default function MeetingLivePage() {
   }, [meetingId, reset, loadFinals, setMeetingNotes])
 
   const [systemAudioEnabled, setSystemAudioEnabled] = useState(false)
-  const { sendChunk } = useTranscription(meetingId)
+  const { sendChunk, sendSystemChunk } = useTranscription(meetingId)
 
   const onChunkRef = useRef(sendChunk)
   onChunkRef.current = sendChunk
+
+  const systemChunkRef = useRef(sendSystemChunk)
+  systemChunkRef.current = sendSystemChunk
 
   type ChunkMeta = { sequence: number; offsetMs: number }
 
@@ -271,8 +283,8 @@ export default function MeetingLivePage() {
     start: startSystemCapture,
     stop: stopSystemCapture,
   } = useSystemAudioCapture({
-    // STT는 마이크와 믹싱 후 처리 — 별도 VAD 청크 전송 안 함
-    onChunk: () => {},
+    // 시스템 오디오 VAD 청크 → 별도 STT 스트림으로 전송
+    onChunk: (pcm: Int16Array, meta: ChunkMeta) => systemChunkRef.current(pcm, meta),
     // 원본 PCM을 마이크 캡처에 전달하여 믹싱 후 STT
     onRawAudio: (pcm: Int16Array) => feedSystemAudioRef.current(pcm),
   })
@@ -532,6 +544,39 @@ export default function MeetingLivePage() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [isActive])
 
+  // 녹음 중 Option+←/→ (히스토리 뒤로/앞으로) 키보드 단축키 차단
+  useEffect(() => {
+    if (!isActive) return
+    const handler = (e: KeyboardEvent) => {
+      // Option+← 또는 Option+→ (macOS 브라우저 뒤로/앞으로)
+      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault()
+        setShowLeaveBlock(true)
+      }
+      // Cmd+[ 또는 Cmd+] (macOS 뒤로/앞으로)
+      if (e.metaKey && (e.key === '[' || e.key === ']')) {
+        e.preventDefault()
+        setShowLeaveBlock(true)
+      }
+    }
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [isActive])
+
+  // 녹음 중 popstate (브라우저 뒤로/앞으로 버튼) 차단
+  useEffect(() => {
+    if (!isActive) return
+    const handler = () => {
+      // 뒤로가기가 발생하면 원래 위치로 되돌리고 경고 표시
+      window.history.pushState(null, '', window.location.href)
+      setShowLeaveBlock(true)
+    }
+    // 현재 위치를 히스토리에 한 번 더 push (popstate 감지용)
+    window.history.pushState(null, '', window.location.href)
+    window.addEventListener('popstate', handler)
+    return () => window.removeEventListener('popstate', handler)
+  }, [isActive])
+
   const handleToggleSystemAudio = async (next: boolean) => {
     setSystemAudioEnabled(next)
 
@@ -552,12 +597,14 @@ export default function MeetingLivePage() {
   useEffect(() => {
     getMeeting(meetingId)
       .then((m) => {
+        setMeeting(m)
         setMeetingApiStatus(m.status as 'pending' | 'recording' | 'completed')
         setAudioDurationMs(m.audio_duration_ms ?? 0)
         setLastSeqNum(m.last_sequence_number ?? 0)
         if (m.memo) setMeetingMemo(m.memo)
-        // 현재 사용자 ID 저장 (호스트 여부 판별용)
-        setCurrentUserId(m.created_by.id)
+        // 현재 사용자 ID 저장 (호스트 여부 판별용) - 인증된 유저 우선
+        const authUser = useAuthStore.getState().user
+        setCurrentUserId(authUser?.id ?? m.created_by.id)
         // 공유 상태 초기화: share_code가 있으면 참여자 로드
         if (m.share_code) {
           getParticipants(meetingId)
@@ -718,7 +765,17 @@ export default function MeetingLivePage() {
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
           </Tooltip>
-          <h1 className="text-lg font-semibold text-gray-900">회의실</h1>
+          <h1 className="text-lg font-semibold text-gray-900 truncate max-w-[200px]">
+            {meeting?.title || '회의실'}
+          </h1>
+          <Tooltip text="회의 정보 수정">
+            <button
+              onClick={() => setShowEditDialog(true)}
+              className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+          </Tooltip>
           <Tooltip text={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}>
             <button
               onClick={toggleAttachments}
@@ -843,8 +900,7 @@ export default function MeetingLivePage() {
             <select
               value={summaryIntervalSec}
               onChange={(e) => setSummaryIntervalSec(Number(e.target.value))}
-              disabled={isActive}
-              className="text-xs border border-gray-300 rounded-md px-1.5 py-1 bg-white text-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="text-xs border border-gray-300 rounded-md px-1.5 py-1 bg-white text-gray-700"
             >
               {SUMMARY_INTERVAL_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -1004,8 +1060,7 @@ export default function MeetingLivePage() {
               <select
                 value={summaryIntervalSec}
                 onChange={(e) => setSummaryIntervalSec(Number(e.target.value))}
-                disabled={isActive}
-                className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-700 disabled:opacity-60"
+                className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-700"
               >
                 {SUMMARY_INTERVAL_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -1057,6 +1112,21 @@ export default function MeetingLivePage() {
       </div>
 
       {/* 템플릿 저장 다이얼로그 */}
+      {/* 회의 정보 수정 다이얼로그 */}
+      {showEditDialog && meeting && (
+        <EditMeetingDialog
+          meeting={meeting}
+          meetingTypeList={meetingTypeList}
+          onConfirm={async (data: UpdateMeetingParams) => {
+            const updated = await updateMeeting(meetingId, data)
+            setMeeting(updated)
+            setShowEditDialog(false)
+            showStatus('회의 정보가 수정되었습니다')
+          }}
+          onClose={() => setShowEditDialog(false)}
+        />
+      )}
+
       {showSaveTemplate && (
         <SaveTemplateDialog
           onSave={async (name) => {
@@ -1153,6 +1223,9 @@ export default function MeetingLivePage() {
           </div>
         </div>
       )}
+
+      {/* 호스트 연결 끊김 배너 */}
+      <HostDisconnectedBanner meetingId={meetingId} />
 
       {/* 호스트 위임 다이얼로그 */}
       <HostTransferDialog

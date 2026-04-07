@@ -53,9 +53,16 @@ export function useSystemAudioCapture(
       baseOffsetMsRef.current = baseOffsetMs
       chunkSeqRef.current = baseSeq
 
-      // VAD 초기화
+      // VAD 초기화 — 시스템 오디오는 마이크보다 볼륨이 낮으므로 임계값을 낮춤
       const audioConfig = getEffectiveAudioConfig()
-      vadRef.current = new SystemAudioVAD(audioConfig, (pcm: Int16Array, startSample: number) => {
+      const sysAudioConfig = {
+        ...audioConfig,
+        silence_threshold: Math.min(audioConfig.silence_threshold, 0.015),
+        speech_threshold: Math.min(audioConfig.speech_threshold, 0.02),
+        silence_duration_ms: 1500,  // 시스템 오디오는 자연스러운 끊김을 위해 긴 무음 허용
+        min_chunk_sec: 1,           // 짧은 청크도 버리지 않음
+      }
+      vadRef.current = new SystemAudioVAD(sysAudioConfig, (pcm: Int16Array, startSample: number) => {
         const seq = chunkSeqRef.current++
         // 샘플 카운트 기반 오프셋: 실제 오디오 타임라인과 정확히 동기화
         const offsetMs = Math.round(baseOffsetMsRef.current + (startSample / AUDIO.sample_rate) * 1000)

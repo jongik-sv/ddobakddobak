@@ -356,6 +356,11 @@ export async function transferHost(meetingId: number, targetUserId: number): Pro
   return res.participants
 }
 
+export async function claimHost(meetingId: number): Promise<Participant[]> {
+  const res = await apiClient.post(`meetings/${meetingId}/claim_host`).json<{ participants: Participant[] }>()
+  return res.participants
+}
+
 export async function exportMeetingData(
   meetingId: number,
   options: ExportOptions,

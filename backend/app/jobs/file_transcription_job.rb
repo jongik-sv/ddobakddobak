@@ -106,12 +106,12 @@ class FileTranscriptionJob < ApplicationJob
 
     payload = Transcript.to_sidecar_payload(transcripts)
 
-    result = SidecarClient.new.refine_notes(
+    llm = LlmService.new(llm_config: meeting.creator&.effective_llm_config)
+    result = llm.refine_notes(
       "", payload,
       meeting_title: meeting.title,
       meeting_type: meeting.meeting_type,
-      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
-      llm_config: meeting.creator&.sidecar_llm_config
+      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type)
     )
     notes_markdown = result["notes_markdown"]
 

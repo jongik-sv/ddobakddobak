@@ -1,6 +1,8 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Mic, Search, Settings, PanelLeftClose } from 'lucide-react'
+import { LayoutDashboard, Mic, Search, Settings, PanelLeftClose, LogOut } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
+import { useAuth } from '../../hooks/useAuth'
+import { getMode } from '../../config'
 import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
 import FolderTree from '../folder/FolderTree'
@@ -16,6 +18,8 @@ export default function Sidebar() {
   const openSettings = useUiStore((s) => s.openSettings)
   const sidebarOpen = useUiStore((s) => s.sidebarOpen)
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
+  const { logout, user } = useAuth()
+  const isServerMode = getMode() === 'server'
   const navigate = useNavigate()
   const location = useLocation()
   const isMeetingsPage = location.pathname.startsWith('/meetings')
@@ -66,6 +70,20 @@ export default function Sidebar() {
           설정
         </button>
       </nav>
+      {isServerMode && (
+        <div className="px-3 py-3 border-t border-border shrink-0">
+          {user && (
+            <p className="px-3 mb-2 text-xs text-muted-foreground truncate">{user.name || user.email}</p>
+          )}
+          <button
+            onClick={logout}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
+          >
+            <LogOut className="w-4 h-4" />
+            로그아웃
+          </button>
+        </div>
+      )}
     </aside>
   )
 }

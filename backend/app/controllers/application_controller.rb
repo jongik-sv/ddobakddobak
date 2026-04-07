@@ -5,6 +5,15 @@ class ApplicationController < ActionController::API
   rescue_from ActiveRecord::RecordNotFound, with: :record_not_found
   rescue_from ActionController::ParameterMissing, with: :parameter_missing
 
+  protected
+
+  def require_admin!
+    return true unless server_mode?
+    unless current_user&.admin?
+      render json: { error: "Forbidden" }, status: :forbidden
+    end
+  end
+
   private
 
   def authenticate_user!

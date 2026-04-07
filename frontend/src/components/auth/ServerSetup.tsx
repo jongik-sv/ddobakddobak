@@ -8,16 +8,27 @@ function isValidMode(value: string | null): value is Mode {
   return value === 'local' || value === 'server'
 }
 
-/** 후행 슬래시를 제거한 URL을 반환한다. */
+const DEFAULT_PORT = '13323'
+
+/** URL을 정규화한다: 스킴 없으면 http 추가, 포트 없으면 기본 포트 추가, 후행 슬래시 제거. */
 function normalizeUrl(url: string): string {
-  return url.replace(/\/+$/, '')
+  let u = url.trim()
+  if (!/^https?:\/\//i.test(u)) u = `http://${u}`
+  try {
+    const parsed = new URL(u)
+    if (!parsed.port) parsed.port = DEFAULT_PORT
+    return parsed.origin
+  } catch {
+    return u.replace(/\/+$/, '')
+  }
 }
 
 interface ServerSetupProps {
   onComplete: () => void
+  onCancel?: () => void
 }
 
-export function ServerSetup({ onComplete }: ServerSetupProps) {
+export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
   const [mode, setMode] = useState<Mode | null>(null)
   const [serverUrl, setServerUrl] = useState('')
   const [healthStatus, setHealthStatus] = useState<HealthStatus>('idle')
@@ -143,7 +154,7 @@ export function ServerSetup({ onComplete }: ServerSetupProps) {
                   type="url"
                   value={serverUrl}
                   onChange={(e) => handleUrlChange(e.target.value)}
-                  placeholder="https://api.example.com"
+                  placeholder="192.168.0.10 또는 http://example.com:13323"
                   className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
                 <button
@@ -195,6 +206,16 @@ export function ServerSetup({ onComplete }: ServerSetupProps) {
         >
           시작하기
         </button>
+
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="w-full mt-3 py-2 text-sm text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+          >
+            취소
+          </button>
+        )}
       </div>
     </div>
   )

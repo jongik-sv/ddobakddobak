@@ -8,6 +8,7 @@ import type { ChunkMeta } from './useAudioRecorder'
 
 export interface UseTranscriptionResult {
   sendChunk: (pcm: Int16Array, meta?: ChunkMeta) => void
+  sendSystemChunk: (pcm: Int16Array, meta?: ChunkMeta) => void
 }
 
 /** appSettingsStore 상태에서 diarization 설정 객체를 생성한다. */
@@ -54,11 +55,14 @@ export function useTranscription(meetingId: number): UseTranscriptionResult {
     }
   }, [meetingId])
 
-  const sendChunk = useCallback((pcm: Int16Array, meta?: ChunkMeta) => {
+  const send = useCallback((source: 'mic' | 'system', pcm: Int16Array, meta?: ChunkMeta) => {
     if (subscriptionRef.current) {
-      sendAudioChunk(subscriptionRef.current, pcm, meta, diarizationConfigRef.current, languagesRef.current, 'mic')
+      sendAudioChunk(subscriptionRef.current, pcm, meta, diarizationConfigRef.current, languagesRef.current, source)
     }
   }, [])
 
-  return { sendChunk }
+  const sendChunk = useCallback((pcm: Int16Array, meta?: ChunkMeta) => send('mic', pcm, meta), [send])
+  const sendSystemChunk = useCallback((pcm: Int16Array, meta?: ChunkMeta) => send('system', pcm, meta), [send])
+
+  return { sendChunk, sendSystemChunk }
 }

@@ -1,7 +1,7 @@
 class MeetingFinalizerService
   def initialize(meeting)
     @meeting = meeting
-    @client  = SidecarClient.new
+    @llm = LlmService.new(llm_config: meeting.creator&.effective_llm_config)
   end
 
   def call
@@ -9,16 +9,15 @@ class MeetingFinalizerService
     return if transcripts.empty?
 
     payload = Transcript.to_sidecar_payload(transcripts)
-    llm_cfg = @meeting.creator&.sidecar_llm_config
 
     # Action Items 추출 (structured JSON)
-    items_result = @client.summarize_action_items(payload, llm_config: llm_cfg)
+    items_result = @llm.summarize_action_items(payload)
     save_action_items(items_result["action_items"] || [])
 
-    # Decisions 추출 (summarize 엔드포인트에서 decisions 가져오기)
-    summary_result = @client.summarize(payload, type: "final", llm_config: llm_cfg)
+    # Decisions 추출 (summarize에서 decisions 가져오기)
+    summary_result = @llm.summarize(payload, type: "final")
     save_decisions(summary_result["decisions"] || [])
-  rescue SidecarClient::SidecarError => e
+  rescue => e
     Rails.logger.error "[MeetingFinalizerService] meeting=#{@meeting.id} error=#{e.message}"
   end
 

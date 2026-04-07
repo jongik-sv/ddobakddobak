@@ -6,6 +6,10 @@ interface SharingState {
   participants: Participant[]
   isLoading: boolean
   recordingStopped: boolean
+  hostDisconnected: boolean
+  hostDisconnectedUserId: number | null
+  hostClaimable: boolean
+  gracePeriodEndsAt: number | null
 
   setParticipants: (participants: Participant[]) => void
   addParticipant: (participant: Participant) => void
@@ -15,6 +19,9 @@ interface SharingState {
   stopSharing: () => void
   setLoading: (loading: boolean) => void
   setRecordingStopped: (stopped: boolean) => void
+  setHostDisconnected: (userId: number, graceSeconds: number) => void
+  clearHostDisconnected: () => void
+  setHostClaimable: (claimable: boolean) => void
   reset: () => void
 }
 
@@ -31,6 +38,10 @@ const initialState = {
   participants: [] as Participant[],
   isLoading: false,
   recordingStopped: false,
+  hostDisconnected: false,
+  hostDisconnectedUserId: null as number | null,
+  hostClaimable: false,
+  gracePeriodEndsAt: null as number | null,
 }
 
 export const useSharingStore = create<SharingState>()((set) => ({
@@ -60,7 +71,13 @@ export const useSharingStore = create<SharingState>()((set) => ({
         if (p.role === 'host') return { ...p, role: 'viewer' as const }
         return p
       })
-      return { participants: sortParticipants(updated) }
+      return {
+        participants: sortParticipants(updated),
+        hostDisconnected: false,
+        hostDisconnectedUserId: null,
+        hostClaimable: false,
+        gracePeriodEndsAt: null,
+      }
     }),
 
   startSharing: (code, participants) =>
@@ -74,11 +91,33 @@ export const useSharingStore = create<SharingState>()((set) => ({
       shareCode: null,
       participants: [],
       recordingStopped: false,
+      hostDisconnected: false,
+      hostDisconnectedUserId: null,
+      hostClaimable: false,
+      gracePeriodEndsAt: null,
     }),
 
   setLoading: (loading) => set({ isLoading: loading }),
 
   setRecordingStopped: (stopped) => set({ recordingStopped: stopped }),
+
+  setHostDisconnected: (userId, graceSeconds) =>
+    set({
+      hostDisconnected: true,
+      hostDisconnectedUserId: userId,
+      hostClaimable: false,
+      gracePeriodEndsAt: Date.now() + graceSeconds * 1000,
+    }),
+
+  clearHostDisconnected: () =>
+    set({
+      hostDisconnected: false,
+      hostDisconnectedUserId: null,
+      hostClaimable: false,
+      gracePeriodEndsAt: null,
+    }),
+
+  setHostClaimable: (claimable) => set({ hostClaimable: claimable }),
 
   reset: () => set(initialState),
 }))

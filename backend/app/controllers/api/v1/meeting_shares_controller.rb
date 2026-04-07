@@ -2,7 +2,7 @@ module Api
   module V1
     class MeetingSharesController < ApplicationController
       before_action :authenticate_user!
-      before_action :set_meeting, only: %i[create_share destroy_share participants transfer_host]
+      before_action :set_meeting, only: %i[create_share destroy_share participants transfer_host claim_host]
 
       rescue_from MeetingShareService::NotHostError, with: :render_forbidden
       rescue_from MeetingShareService::InvalidShareCodeError, with: :render_not_found
@@ -37,6 +37,12 @@ module Api
         end
 
         render json: { participants: service.serialize_active_participants(@meeting) }
+      end
+
+      # POST /api/v1/meetings/:id/claim_host
+      def claim_host
+        result = service.claim_host(@meeting, current_user)
+        render json: { participants: result[:participants] }
       end
 
       # POST /api/v1/meetings/:id/transfer_host

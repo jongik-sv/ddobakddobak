@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useTranscription } from '../hooks/useTranscription'
@@ -11,6 +11,8 @@ import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { ParticipantList } from '../components/meeting/ParticipantList'
 import { ViewerHeader } from '../components/meeting/ViewerHeader'
+import HostDisconnectedBanner from '../components/meeting/HostDisconnectedBanner'
+import { useAuthStore } from '../stores/authStore'
 
 export default function MeetingViewerPage() {
   const { id } = useParams<{ id: string }>()
@@ -19,6 +21,12 @@ export default function MeetingViewerPage() {
 
   const recordingStopped = useSharingStore((s) => s.recordingStopped)
   const participantCount = useSharingStore((s) => s.participants.length)
+  const sharingParticipants = useSharingStore((s) => s.participants)
+  const authUser = useAuthStore((s) => s.user)
+  const isHost = useMemo(() => {
+    const host = sharingParticipants.find((p) => p.role === 'host')
+    return host?.user_id === authUser?.id && !!authUser?.id
+  }, [sharingParticipants, authUser?.id])
 
   useEffect(() => {
     useUiStore.setState({ sidebarOpen: false })
@@ -34,6 +42,11 @@ export default function MeetingViewerPage() {
       useSharingStore.getState().reset()
     }
   }, [])
+
+  // viewer가 host로 승격되면 live 페이지로 이동
+  useEffect(() => {
+    if (isHost) navigate(`/meetings/${meetingId}`)
+  }, [isHost, meetingId, navigate])
 
   const handleLeave = () => {
     navigate('/meetings')
@@ -63,6 +76,7 @@ export default function MeetingViewerPage() {
         isRecordingStopped={recordingStopped}
         onLeave={handleLeave}
       />
+      <HostDisconnectedBanner meetingId={meetingId} />
 
       <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden">
         <Panel defaultSize={30} minSize={15}>

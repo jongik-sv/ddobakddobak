@@ -55,21 +55,18 @@ module Api
           api_key = params[:api_key].presence || current_user.llm_api_key
           base_url = params[:base_url].presence || current_user.llm_base_url
 
-          test_params = {
+          llm_config = {
             provider: provider,
             model: model,
             auth_token: api_key,
             base_url: base_url
           }.compact
 
-          result = SidecarClient.new.test_llm_connection(test_params)
+          result = LlmService.new(llm_config: llm_config).test_connection
           render json: result
         rescue ActionController::ParameterMissing => e
           render json: { success: false, error: "#{e.param}은(는) 필수입니다" },
                  status: :bad_request
-        rescue SidecarClient::SidecarError => e
-          render json: { success: false, error: e.message },
-                 status: :service_unavailable
         end
 
         private

@@ -1,7 +1,7 @@
-class LoginFormTemplate
+class RegisterFormTemplate
   class << self
     def render(callback:, error:, csrf_token:, action_url:)
-      register_url = "/auth/web_register?callback=#{ERB::Util.url_encode(callback.to_s)}"
+      login_url = "/auth/web_login?callback=#{ERB::Util.url_encode(callback.to_s)}"
 
       <<~HTML
         <!DOCTYPE html>
@@ -9,7 +9,7 @@ class LoginFormTemplate
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>또박또박 - 로그인</title>
+          <title>또박또박 - 회원가입</title>
           <script src="https://cdn.tailwindcss.com"></script>
           <script>
             tailwind.config = {
@@ -31,15 +31,34 @@ class LoginFormTemplate
               <p class="mt-2 text-gray-600">회의록 자동 작성 서비스</p>
             </div>
 
-            <!-- 로그인 카드 -->
+            <!-- 회원가입 카드 -->
             <div class="bg-white rounded-2xl shadow-lg p-8">
-              <h2 class="text-xl font-semibold text-gray-800 mb-6">로그인</h2>
+              <h2 class="text-xl font-semibold text-gray-800 mb-6">회원가입</h2>
 
               #{error_html(error)}
 
               <form action="#{escape(action_url)}" method="post" class="space-y-5">
                 <input type="hidden" name="authenticity_token" value="#{escape(csrf_token)}">
                 <input type="hidden" name="callback" value="#{escape(callback)}">
+
+                <!-- 이름 -->
+                <div>
+                  <label for="name" class="block text-sm font-medium text-gray-700 mb-1">
+                    이름
+                  </label>
+                  <input
+                    type="text"
+                    id="name"
+                    name="name"
+                    required
+                    autocomplete="name"
+                    autofocus
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg
+                           focus:ring-2 focus:ring-primary-500 focus:border-primary-500
+                           transition-colors text-gray-900 placeholder-gray-400"
+                    placeholder="이름"
+                  >
+                </div>
 
                 <!-- 이메일 -->
                 <div>
@@ -52,7 +71,6 @@ class LoginFormTemplate
                     name="email"
                     required
                     autocomplete="email"
-                    autofocus
                     class="w-full px-4 py-3 border border-gray-300 rounded-lg
                            focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                            transition-colors text-gray-900 placeholder-gray-400"
@@ -70,11 +88,12 @@ class LoginFormTemplate
                     id="password"
                     name="password"
                     required
-                    autocomplete="current-password"
+                    autocomplete="new-password"
+                    minlength="6"
                     class="w-full px-4 py-3 border border-gray-300 rounded-lg
                            focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                            transition-colors text-gray-900 placeholder-gray-400"
-                    placeholder="비밀번호 입력"
+                    placeholder="6자 이상"
                   >
                 </div>
 
@@ -85,87 +104,21 @@ class LoginFormTemplate
                          text-white font-medium rounded-lg transition-colors
                          focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
                 >
-                  로그인
+                  회원가입
                 </button>
               </form>
 
-              <!-- 회원가입 링크 -->
+              <!-- 로그인 링크 -->
               <p class="mt-4 text-center text-sm text-gray-500">
-                계정이 없으신가요?
-                <a href="#{escape(register_url)}" class="text-primary-600 hover:text-primary-700 font-medium">회원가입</a>
+                이미 계정이 있으신가요?
+                <a href="#{escape(login_url)}" class="text-primary-600 hover:text-primary-700 font-medium">로그인</a>
               </p>
             </div>
 
             <!-- 하단 안내 -->
             <p class="mt-6 text-center text-sm text-gray-500">
-              로그인 후 또박또박 앱으로 자동 이동합니다.
+              가입 후 또박또박 앱으로 자동 이동합니다.
             </p>
-          </div>
-        </body>
-        </html>
-      HTML
-    end
-
-    def render_success(callback_url:, message: "완료되었습니다.")
-      <<~HTML
-        <!DOCTYPE html>
-        <html lang="ko">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>또박또박 - 완료</title>
-          <script src="https://cdn.tailwindcss.com"></script>
-          <script>
-            tailwind.config = {
-              theme: {
-                extend: {
-                  colors: {
-                    primary: { 50: '#eff6ff', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' }
-                  }
-                }
-              }
-            }
-          </script>
-        </head>
-        <body class="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-          <div class="w-full max-w-md text-center">
-            <div class="bg-white rounded-2xl shadow-lg p-8">
-              <div class="text-green-500 text-5xl mb-4">&#10003;</div>
-              <h1 class="text-xl font-semibold text-gray-800 mb-2">#{escape(message)}</h1>
-              <p class="text-gray-600 mb-6">또박또박 앱으로 이동합니다...</p>
-              <a href="#{escape(callback_url)}"
-                 class="inline-block w-full py-3 px-4 bg-primary-600 hover:bg-primary-700
-                        text-white font-medium rounded-lg transition-colors text-center">
-                앱으로 이동
-              </a>
-              <p class="mt-4 text-sm text-gray-400">자동으로 이동하지 않으면 버튼을 눌러주세요.</p>
-            </div>
-          </div>
-          <script>
-            setTimeout(function() { window.location.href = "#{escape(callback_url)}"; }, 500);
-          </script>
-        </body>
-        </html>
-      HTML
-    end
-
-    def render_error(message:)
-      <<~HTML
-        <!DOCTYPE html>
-        <html lang="ko">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>또박또박 - 오류</title>
-          <script src="https://cdn.tailwindcss.com"></script>
-        </head>
-        <body class="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-          <div class="w-full max-w-md text-center">
-            <div class="bg-white rounded-2xl shadow-lg p-8">
-              <div class="text-red-500 text-5xl mb-4">&#9888;</div>
-              <h1 class="text-xl font-semibold text-gray-800 mb-2">오류</h1>
-              <p class="text-gray-600">#{escape(message)}</p>
-            </div>
           </div>
         </body>
         </html>

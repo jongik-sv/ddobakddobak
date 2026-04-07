@@ -26,7 +26,8 @@ class MeetingParticipant < ApplicationRecord
       user_id: user_id,
       user_name: user.name,
       role: role,
-      joined_at: joined_at
+      joined_at: joined_at,
+      host_disconnected_at: host_disconnected_at
     }
   end
 

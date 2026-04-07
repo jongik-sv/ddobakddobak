@@ -15,8 +15,9 @@ class MeetingSummarizationJob < ApplicationJob
 
   private
 
-  def llm_config_for(meeting)
-    meeting.creator&.sidecar_llm_config
+  def llm_service_for(meeting)
+    llm_config = meeting.creator&.effective_llm_config
+    LlmService.new(llm_config: llm_config)
   end
 
   def generate_minutes_realtime(meeting)
@@ -33,12 +34,11 @@ class MeetingSummarizationJob < ApplicationJob
     current_notes = meeting.current_notes_markdown
     payload = Transcript.to_sidecar_payload(new_transcripts)
 
-    result = SidecarClient.new.refine_notes(
+    result = llm_service_for(meeting).refine_notes(
       current_notes, payload,
       meeting_title: meeting.title,
       meeting_type: meeting.meeting_type,
-      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
-      llm_config: llm_config_for(meeting)
+      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type)
     )
     notes_markdown = result["notes_markdown"]
 
@@ -59,7 +59,7 @@ class MeetingSummarizationJob < ApplicationJob
         ids: applied_ids
       })
     end
-  rescue SidecarClient::SidecarError => e
+  rescue LlmService::LlmError, StandardError => e
     Rails.logger.error "[MeetingSummarizationJob] realtime meeting=#{meeting.id} error=#{e.message}"
   end
 
@@ -70,12 +70,11 @@ class MeetingSummarizationJob < ApplicationJob
     current_notes = meeting.current_notes_markdown
     payload = Transcript.to_sidecar_payload(transcripts)
 
-    result = SidecarClient.new.refine_notes(
+    result = llm_service_for(meeting).refine_notes(
       current_notes, payload,
       meeting_title: meeting.title,
       meeting_type: meeting.meeting_type,
-      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
-      llm_config: llm_config_for(meeting)
+      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type)
     )
     notes_markdown = result["notes_markdown"]
     return if notes_markdown.blank?
@@ -90,7 +89,7 @@ class MeetingSummarizationJob < ApplicationJob
       meeting.transcription_stream,
       { type: "meeting_notes_update", notes_markdown: notes_markdown, is_final: true }
     )
-  rescue SidecarClient::SidecarError => e
+  rescue LlmService::LlmError, StandardError => e
     Rails.logger.error "[MeetingSummarizationJob] final meeting=#{meeting.id} error=#{e.message}"
   end
 

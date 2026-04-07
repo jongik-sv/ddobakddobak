@@ -56,11 +56,16 @@ class MeetingShareService
         raise ParticipantLimitError, "Maximum #{MAX_PARTICIPANTS} participants allowed"
       end
 
+      # 활성 호스트가 없으면 입장자를 host로 승격
+      role = meeting.host_participant.nil? ? MeetingParticipant::ROLE_HOST : MeetingParticipant::ROLE_VIEWER
+
       participant = meeting.meeting_participants.create!(
         user: user,
-        role: MeetingParticipant::ROLE_VIEWER,
+        role: role,
         joined_at: Time.current
       )
+
+      broadcast_host_transferred(meeting, user) if role == MeetingParticipant::ROLE_HOST
 
       { meeting: meeting, participant: participant }
     end
@@ -81,6 +86,25 @@ class MeetingShareService
     broadcast_host_transferred(meeting, target_participant.user)
 
     { participants: serialize_active_participants(meeting) }
+  end
+
+  # viewer가 호스트를 요청 (호스트 끊김 상태에서만 가능)
+  def claim_host(meeting, user)
+    meeting.with_lock do
+      current_host = meeting.host_participant
+      raise NotHostError, "Host is still connected" if current_host && current_host.host_disconnected_at.nil?
+
+      claimer = meeting.active_participants.find_by(user_id: user.id, role: MeetingParticipant::ROLE_VIEWER)
+      raise InvalidTargetError, "User is not an active viewer" unless claimer
+
+      ActiveRecord::Base.transaction do
+        current_host&.update!(left_at: Time.current)
+        claimer.update!(role: MeetingParticipant::ROLE_HOST)
+      end
+
+      broadcast_host_transferred(meeting, claimer.user)
+      { participants: serialize_active_participants(meeting) }
+    end
   end
 
   # 회의 나가기 — left_at 설정, 호스트가 나가면 자동 위임

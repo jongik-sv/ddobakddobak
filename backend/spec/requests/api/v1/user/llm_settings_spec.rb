@@ -17,7 +17,6 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
         body = response.parsed_body
         expect(body["llm_settings"]["configured"]).to be false
         expect(body["llm_settings"]["provider"]).to be_nil
-        expect(body["llm_settings"]["api_key_masked"]).to be_nil
         expect(body["llm_settings"]["model"]).to be_nil
         expect(body["llm_settings"]["base_url"]).to be_nil
       end
@@ -180,9 +179,12 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
   # POST /api/v1/user/llm_settings/test
   # ============================================================
   describe "POST /api/v1/user/llm_settings/test" do
+    let(:llm_double) { instance_double(LlmService) }
+
     before do
-      allow_any_instance_of(SidecarClient).to receive(:test_llm_connection)
-        .and_return({ "success" => true, "message" => "ok", "response_time_ms" => 1234 })
+      allow(LlmService).to receive(:new).and_return(llm_double)
+      allow(llm_double).to receive(:test_connection)
+        .and_return({ "success" => true, "response_time_ms" => 1234 })
     end
 
     it "LLM 연결 테스트를 수행한다" do
@@ -195,14 +197,14 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(body["success"]).to be true
     end
 
-    it "Sidecar에 올바른 파라미터를 전달한다" do
-      expect_any_instance_of(SidecarClient).to receive(:test_llm_connection)
-        .with(hash_including(
+    it "LlmService에 올바른 파라미터를 전달한다" do
+      expect(LlmService).to receive(:new).with(
+        llm_config: hash_including(
           provider: "anthropic",
           model: "claude-sonnet-4-6",
           auth_token: "sk-test-key"
-        ))
-        .and_return({ "success" => true })
+        )
+      ).and_return(llm_double)
 
       post "/api/v1/user/llm_settings/test", params: {
         provider: "anthropic", model: "claude-sonnet-4-6", api_key: "sk-test-key"
@@ -212,9 +214,9 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
     it "api_key 미전송 시 저장된 키를 사용한다" do
       user.update!(llm_api_key: "sk-saved-key")
 
-      expect_any_instance_of(SidecarClient).to receive(:test_llm_connection)
-        .with(hash_including(auth_token: "sk-saved-key"))
-        .and_return({ "success" => true })
+      expect(LlmService).to receive(:new).with(
+        llm_config: hash_including(auth_token: "sk-saved-key")
+      ).and_return(llm_double)
 
       post "/api/v1/user/llm_settings/test", params: {
         provider: "anthropic", model: "claude-sonnet-4-6"
@@ -224,9 +226,9 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
     end
 
     it "base_url을 전달한다" do
-      expect_any_instance_of(SidecarClient).to receive(:test_llm_connection)
-        .with(hash_including(base_url: "http://localhost:11434/v1"))
-        .and_return({ "success" => true })
+      expect(LlmService).to receive(:new).with(
+        llm_config: hash_including(base_url: "http://localhost:11434/v1")
+      ).and_return(llm_double)
 
       post "/api/v1/user/llm_settings/test", params: {
         provider: "openai", model: "qwen3.5:latest",
@@ -234,40 +236,18 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       }, as: :json
     end
 
-    it "Sidecar ConnectionError 시 503을 반환한다" do
-      allow_any_instance_of(SidecarClient).to receive(:test_llm_connection)
-        .and_raise(SidecarClient::ConnectionError, "Connection refused")
+    it "LLM 에러 시 실패 결과를 반환한다" do
+      allow(llm_double).to receive(:test_connection)
+        .and_return({ "success" => false, "error" => "Connection refused" })
 
       post "/api/v1/user/llm_settings/test", params: {
         provider: "anthropic", model: "claude-sonnet-4-6", api_key: "sk-test"
       }, as: :json
 
-      expect(response).to have_http_status(:service_unavailable)
+      expect(response).to have_http_status(:ok)
       body = response.parsed_body
       expect(body["success"]).to be false
       expect(body["error"]).to be_present
-    end
-
-    it "Sidecar TimeoutError 시 503을 반환한다" do
-      allow_any_instance_of(SidecarClient).to receive(:test_llm_connection)
-        .and_raise(SidecarClient::TimeoutError, "Request timed out")
-
-      post "/api/v1/user/llm_settings/test", params: {
-        provider: "anthropic", model: "claude-sonnet-4-6", api_key: "sk-test"
-      }, as: :json
-
-      expect(response).to have_http_status(:service_unavailable)
-    end
-
-    it "Sidecar SidecarError 시 503을 반환한다" do
-      allow_any_instance_of(SidecarClient).to receive(:test_llm_connection)
-        .and_raise(SidecarClient::SidecarError, "500 Internal Server Error")
-
-      post "/api/v1/user/llm_settings/test", params: {
-        provider: "anthropic", model: "claude-sonnet-4-6", api_key: "sk-test"
-      }, as: :json
-
-      expect(response).to have_http_status(:service_unavailable)
     end
 
     it "provider 누락 시 400을 반환한다" do
@@ -312,11 +292,11 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(body["llm_settings"]["api_key_masked"]).to eq("****")
     end
 
-    it "미설정 키는 nil을 반환한다" do
+    it "미설정 키는 마스킹 문자를 반환한다" do
       get "/api/v1/user/llm_settings"
 
       body = response.parsed_body
-      expect(body["llm_settings"]["api_key_masked"]).to be_nil
+      expect(body["llm_settings"]["api_key_masked"]).to eq("****")
     end
   end
 

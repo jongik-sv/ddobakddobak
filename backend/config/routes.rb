@@ -13,10 +13,12 @@ Rails.application.routes.draw do
     post "auth/refresh", to: "auth/sessions#refresh"
   end
 
-  # ── Browser Login (서버 렌더링 HTML) ──
+  # ── Browser Login / Register (서버 렌더링 HTML) ──
   scope "auth" do
     get  "web_login", to: "auth/browser_sessions#new",    as: :browser_login
     post "web_login", to: "auth/browser_sessions#create",  as: :browser_login_submit
+    get  "web_register", to: "auth/browser_registrations#new",    as: :browser_register
+    post "web_register", to: "auth/browser_registrations#create",  as: :browser_register_submit
   end
 
   # ── API v1 ──
@@ -53,6 +55,7 @@ Rails.application.routes.draw do
           delete :share, to: "meeting_shares#destroy_share"
           get :participants, to: "meeting_shares#participants"
           post :transfer_host, to: "meeting_shares#transfer_host"
+          post :claim_host, to: "meeting_shares#claim_host"
         end
         resources :action_items,
           only: %i[index create],

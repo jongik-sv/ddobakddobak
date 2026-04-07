@@ -6,6 +6,7 @@ module Api
       include TokenMasking
 
       before_action :authenticate_user!
+      before_action :require_admin!, only: %i[update_stt update_llm test_llm update_hf]
 
       SETTINGS_PATH = Rails.root.join("..", "settings.yaml").to_s.freeze
 
@@ -59,20 +60,10 @@ module Api
           ).except("auth_token")
         end
 
-        begin
-          sidecar_result = SidecarClient.new.get_llm_settings
-          render json: {
-            active_preset: active,
-            presets: masked_presets,
-            sidecar: sidecar_result
-          }
-        rescue SidecarClient::SidecarError, SidecarClient::ConnectionError, SidecarClient::TimeoutError
-          render json: {
-            active_preset: active,
-            presets: masked_presets,
-            offline: true
-          }
-        end
+        render json: {
+          active_preset: active,
+          presets: masked_presets
+        }
       end
 
       def update_llm
@@ -103,30 +94,19 @@ module Api
         save_settings(cfg)
         sync_active_llm_to_env
 
-        # sidecar에도 반영 시도
-        active_preset = llm_cfg["presets"][llm_cfg["active_preset"]] || {}
-        llm_params = build_sidecar_llm_params(active_preset, llm_cfg)
-        begin
-          SidecarClient.new.update_llm_settings(llm_params)
-        rescue SidecarClient::SidecarError, SidecarClient::ConnectionError, SidecarClient::TimeoutError
-          # 무시 — settings.yaml에는 저장됨
-        end
-
         llm  # 저장 후 최신 상태 반환
       end
 
       def test_llm
-        test_params = {
+        llm_config = {
           provider: params.require(:provider),
-          model: params.require(:model)
-        }
-        test_params[:auth_token] = params[:auth_token] if params[:auth_token].present?
-        test_params[:base_url] = params[:base_url] if params[:base_url].present?
+          model: params.require(:model),
+          auth_token: params[:auth_token],
+          base_url: params[:base_url]
+        }.compact
 
-        result = SidecarClient.new.test_llm_connection(test_params)
+        result = LlmService.new(llm_config: llm_config).test_connection
         render json: result
-      rescue SidecarClient::SidecarError, SidecarClient::ConnectionError, SidecarClient::TimeoutError => e
-        render json: { success: false, error: e.message }, status: :service_unavailable
       end
 
       # ── HuggingFace ──
@@ -301,16 +281,6 @@ module Api
             ENV["AUDIO_#{k.upcase}"] = audio[k].to_s if audio[k]
           end
         end
-      end
-
-      def build_sidecar_llm_params(preset, _llm_cfg)
-        params = { provider: preset["provider"] }
-        params[:auth_token] = preset["auth_token"] if preset["auth_token"].present?
-        params[:base_url] = preset["base_url"] if preset["base_url"].present?
-        params[:model] = preset["model"] if preset["model"].present?
-        params[:max_input_tokens] = preset["max_input_tokens"] if preset["max_input_tokens"]
-        params[:max_output_tokens] = preset["max_output_tokens"] if preset["max_output_tokens"]
-        params
       end
 
     end

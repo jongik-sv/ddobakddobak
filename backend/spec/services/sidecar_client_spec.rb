@@ -64,26 +64,6 @@ RSpec.describe SidecarClient, type: :service do
     end
   end
 
-  describe "#summarize" do
-    it "posts transcript_id and returns summary" do
-      response = stub_response({ "summary" => "Meeting summary text" })
-      allow(mock_http).to receive(:request).with(instance_of(Net::HTTP::Post)).and_return(response)
-
-      result = client.summarize(42)
-      expect(result["summary"]).to eq("Meeting summary text")
-    end
-  end
-
-  describe "#summarize_action_items" do
-    it "posts transcript_id and returns action items" do
-      response = stub_response({ "action_items" => [ "Follow up with team" ] })
-      allow(mock_http).to receive(:request).with(instance_of(Net::HTTP::Post)).and_return(response)
-
-      result = client.summarize_action_items(42)
-      expect(result["action_items"]).to eq([ "Follow up with team" ])
-    end
-  end
-
   describe "error handling" do
     it "raises TimeoutError on Net::ReadTimeout" do
       allow(mock_http).to receive(:start).and_raise(Net::ReadTimeout)

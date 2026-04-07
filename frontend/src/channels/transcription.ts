@@ -54,6 +54,8 @@ type BackendMessage = {
   new_host_id?: number
   new_host_name?: string
   meeting_id?: number
+  grace_period_seconds?: number
+  disconnected_host_id?: number
 }
 
 export function createTranscriptionChannel(
@@ -128,6 +130,18 @@ export function createTranscriptionChannel(
             break
           case 'recording_stopped':
             useSharingStore.getState().setRecordingStopped(true)
+            break
+          case 'host_disconnected':
+            useSharingStore.getState().setHostDisconnected(
+              raw.user_id ?? 0,
+              raw.grace_period_seconds ?? 10,
+            )
+            break
+          case 'host_reconnected':
+            useSharingStore.getState().clearHostDisconnected()
+            break
+          case 'host_claimable':
+            useSharingStore.getState().setHostClaimable(true)
             break
           case 'sharing_stopped':
             useSharingStore.getState().stopSharing()

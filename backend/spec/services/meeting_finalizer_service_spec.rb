@@ -4,7 +4,7 @@ RSpec.describe MeetingFinalizerService do
   let(:user) { create(:user) }
   let(:team) { create(:team, creator: user) }
   let(:meeting) { create(:meeting, team: team, creator: user, status: "completed") }
-  let(:client_double) { instance_double(SidecarClient) }
+  let(:llm_double) { instance_double(LlmService) }
 
   let(:action_items_result) do
     { "action_items" => [{ "content" => "item1" }, { "content" => "item2" }] }
@@ -15,17 +15,16 @@ RSpec.describe MeetingFinalizerService do
   end
 
   before do
-    allow(SidecarClient).to receive(:new).and_return(client_double)
-    allow(client_double).to receive(:summarize_action_items).and_return(action_items_result)
-    allow(client_double).to receive(:summarize).and_return(summarize_result)
+    allow(LlmService).to receive(:new).and_return(llm_double)
+    allow(llm_double).to receive(:summarize_action_items).and_return(action_items_result)
+    allow(llm_double).to receive(:summarize).and_return(summarize_result)
     create(:transcript, meeting: meeting)
   end
 
   describe "#call" do
-    it "calls SidecarClient#summarize_action_items with transcript payload" do
-      expect(client_double).to receive(:summarize_action_items).with(
-        array_including(hash_including(speaker: anything, text: anything, started_at_ms: anything)),
-        llm_config: anything
+    it "calls LlmService#summarize_action_items with transcript payload" do
+      expect(llm_double).to receive(:summarize_action_items).with(
+        array_including(hash_including(speaker: anything, text: anything, started_at_ms: anything))
       )
       described_class.new(meeting).call
     end
@@ -53,14 +52,14 @@ RSpec.describe MeetingFinalizerService do
       let(:meeting_no_transcripts) { create(:meeting, team: team, creator: user, status: "completed") }
 
       it "does not call summarize_action_items" do
-        expect(client_double).not_to receive(:summarize_action_items)
+        expect(llm_double).not_to receive(:summarize_action_items)
         described_class.new(meeting_no_transcripts).call
       end
     end
 
-    context "when SidecarClient raises SidecarError" do
+    context "when LlmService raises an error" do
       before do
-        allow(client_double).to receive(:summarize_action_items).and_raise(SidecarClient::SidecarError, "Connection error")
+        allow(llm_double).to receive(:summarize_action_items).and_raise(StandardError, "Connection error")
         allow(Rails.logger).to receive(:error)
       end
 
@@ -82,7 +81,7 @@ RSpec.describe MeetingFinalizerService do
 
     context "when action_items result is empty" do
       before do
-        allow(client_double).to receive(:summarize_action_items).and_return({ "action_items" => [] })
+        allow(llm_double).to receive(:summarize_action_items).and_return({ "action_items" => [] })
       end
 
       it "creates no action items" do
@@ -93,11 +92,10 @@ RSpec.describe MeetingFinalizerService do
     end
 
     # Decision 추출 테스트
-    it "calls SidecarClient#summarize to extract decisions" do
-      expect(client_double).to receive(:summarize).with(
+    it "calls LlmService#summarize to extract decisions" do
+      expect(llm_double).to receive(:summarize).with(
         array_including(hash_including(speaker: anything, text: anything, started_at_ms: anything)),
-        type: "final",
-        llm_config: anything
+        type: "final"
       )
       described_class.new(meeting).call
     end
@@ -123,7 +121,7 @@ RSpec.describe MeetingFinalizerService do
 
     context "when decisions result is empty" do
       before do
-        allow(client_double).to receive(:summarize).and_return({ "decisions" => [] })
+        allow(llm_double).to receive(:summarize).and_return({ "decisions" => [] })
       end
 
       it "creates no decisions" do
