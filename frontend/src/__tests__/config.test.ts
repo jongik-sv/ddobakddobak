@@ -36,9 +36,10 @@ describe('config 동적 함수', () => {
   })
 
   describe('getServerUrl', () => {
-    it('localStorage에 server_url이 없으면 빈 문자열을 반환한다', async () => {
-      const { getServerUrl } = await import('../config')
-      expect(getServerUrl()).toBe('')
+    it('localStorage에 server_url이 없으면 config.yaml의 default_server_url로 폴백한다', async () => {
+      const { getServerUrl, getDefaultServerUrl } = await import('../config')
+      // config.yaml에 default_server_url이 있으면 그 값을, 없으면 빈 문자열
+      expect(getServerUrl()).toBe(getDefaultServerUrl())
     })
 
     it('localStorage에 server_url이 있으면 해당 값을 반환한다', async () => {
@@ -64,10 +65,17 @@ describe('config 동적 함수', () => {
       expect(getApiBaseUrl()).toBe('https://api.example.com/api/v1')
     })
 
-    it('서버 모드 + server_url 미설정 시 기본 localhost URL을 반환한다', async () => {
+    it('서버 모드 + server_url 미설정 시 config 기본값 기반 API URL을 반환한다', async () => {
       localStorage.setItem('mode', 'server')
-      const { getApiBaseUrl } = await import('../config')
-      expect(getApiBaseUrl()).toBe('http://127.0.0.1:13323/api/v1')
+      const { getApiBaseUrl, getDefaultServerUrl } = await import('../config')
+      const defaultUrl = getDefaultServerUrl()
+      if (defaultUrl) {
+        // config.yaml에 default_server_url이 있으면 그 값을 사용
+        expect(getApiBaseUrl()).toBe(`${defaultUrl}/api/v1`)
+      } else {
+        // 기본값도 없으면 빈 문자열 (localhost로 silent fallback 하지 않는다)
+        expect(getApiBaseUrl()).toBe('')
+      }
     })
   })
 
@@ -86,11 +94,15 @@ describe('config 동적 함수', () => {
       expect(getWsUrl()).toBe('ws://192.168.1.100:3000/cable')
     })
 
-    it('서버 모드 + server_url 미설정 시 기본 localhost WS URL을 반환한다', async () => {
+    it('서버 모드 + server_url 미설정 시 config 기본값 기반 WS URL을 반환한다', async () => {
       localStorage.setItem('mode', 'server')
-      const { getWsUrl } = await import('../config')
-      // server_url이 없으면 기존 fallback 로직
-      expect(getWsUrl()).toContain('/cable')
+      const { getWsUrl, getDefaultServerUrl } = await import('../config')
+      const defaultUrl = getDefaultServerUrl()
+      if (defaultUrl) {
+        expect(getWsUrl()).toContain('/cable')
+      } else {
+        expect(getWsUrl()).toBe('')
+      }
     })
   })
 })

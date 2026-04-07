@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Monitor, Globe, CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import { getDefaultServerUrl } from '../../config'
 
 type Mode = 'local' | 'server'
 type HealthStatus = 'idle' | 'checking' | 'success' | 'error'
@@ -30,15 +31,16 @@ interface ServerSetupProps {
 
 export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
   const [mode, setMode] = useState<Mode | null>(null)
-  const [serverUrl, setServerUrl] = useState('')
+  // 저장된 값이 있으면 그 값, 없으면 config.yaml의 default_server_url을 초기값으로 채운다.
+  const [serverUrl, setServerUrl] = useState(() => {
+    return localStorage.getItem('server_url') || getDefaultServerUrl()
+  })
   const [healthStatus, setHealthStatus] = useState<HealthStatus>('idle')
   const [healthError, setHealthError] = useState<string | null>(null)
 
   useEffect(() => {
     const savedMode = localStorage.getItem('mode')
-    const savedUrl = localStorage.getItem('server_url')
     if (isValidMode(savedMode)) setMode(savedMode)
-    if (savedUrl) setServerUrl(savedUrl)
   }, [])
 
   const handleUrlChange = (value: string) => {

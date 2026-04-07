@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
 // ── Mocks ──
-const { mockGetMode, mockHasMode } = vi.hoisted(() => ({
+const { mockGetMode, mockHasMode, mockGetServerUrl } = vi.hoisted(() => ({
   mockGetMode: vi.fn(() => 'local' as 'local' | 'server'),
   mockHasMode: vi.fn(() => true),
+  // 서버 모드 테스트에서 server_url이 설정되어 있다고 간주하기 위한 기본값
+  mockGetServerUrl: vi.fn(() => 'http://test.server:13323'),
 }))
 
 let mockIsTauri = true
@@ -15,6 +17,7 @@ vi.mock('../../config', () => ({
   },
   getMode: mockGetMode,
   hasMode: mockHasMode,
+  getServerUrl: mockGetServerUrl,
 }))
 
 // SetupPage를 단순한 컴포넌트로 모킹 (Tauri invoke 호출 방지)

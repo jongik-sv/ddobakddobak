@@ -35,7 +35,7 @@ interface LabelValue {
 }
 
 interface AppConfig {
-  api: { base_url: string; ws_url: string }
+  api: { base_url: string; ws_url: string; default_server_url?: string }
   sidecar: { host: string; port: number; timeout_sec: number }
   stt_engines: Record<string, SttEngine>
   audio: AudioConfig
@@ -75,15 +75,27 @@ export function clearMode(): void {
   localStorage.removeItem('server_url')
 }
 
+/** config.yaml에 지정된 서버 모드 기본 URL (없으면 빈 문자열). */
+export function getDefaultServerUrl(): string {
+  return cfg.api.default_server_url || ''
+}
+
+/**
+ * 사용자가 저장한 서버 URL을 반환한다.
+ * 저장값이 없으면 config.yaml의 기본값(`default_server_url`)으로 폴백한다.
+ */
 export function getServerUrl(): string {
-  return localStorage.getItem('server_url') || ''
+  return localStorage.getItem('server_url') || getDefaultServerUrl()
 }
 
 // ── API / WebSocket URL 동적 결정 ────────────────
 export function getApiBaseUrl(): string {
   if (getMode() === 'server') {
+    // 서버 모드에서는 절대 localhost로 silent fallback 하지 않는다.
+    // server_url이 없으면 config.yaml의 기본값을 사용하며, 그것도 없으면 빈 문자열을
+    // 반환해서 호출부가 에러를 드러내도록 한다.
     const serverUrl = getServerUrl()
-    return serverUrl ? `${serverUrl}/api/v1` : 'http://127.0.0.1:13323/api/v1'
+    return serverUrl ? `${serverUrl}/api/v1` : ''
   }
   // 로컬 모드: Tauri는 항상 13323, 웹 dev는 환경변수 또는 config.yaml
   return IS_TAURI
@@ -99,6 +111,7 @@ export function getWsUrl(): string {
         .replace(/^https:\/\//, 'wss://')
         .replace(/^http:\/\//, 'ws://') + '/cable'
     }
+    return ''
   }
   return IS_TAURI
     ? 'ws://127.0.0.1:13323/cable'

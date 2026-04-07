@@ -434,6 +434,12 @@ describe('ServerSetup', () => {
         fireEvent.click(serverCard)
       })
 
+      // config.yaml의 default_server_url로 입력창이 pre-fill 될 수 있으므로 명시적으로 비운다.
+      const urlInput = screen.getByLabelText('서버 URL')
+      await act(async () => {
+        fireEvent.change(urlInput, { target: { value: '' } })
+      })
+
       const checkButton = screen.getByRole('button', { name: /연결 확인/ })
       expect(checkButton).toBeDisabled()
     })
