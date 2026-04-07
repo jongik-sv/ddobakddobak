@@ -84,4 +84,18 @@ Rails.application.configure do
   #
   # Skip DNS rebinding protection for the default health check endpoint.
   # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+
+  # ── ActionCable origin 허용 목록 ─────────────────────────────
+  # production 기본값은 동일 호스트만 허용해서 Tauri WebView/내부망 브라우저가 차단된다.
+  # Tauri v2 WebView origin과 내부망 IP/HTTPS 접근을 허용한다.
+  # 추가 origin이 필요하면 환경변수 ALLOWED_CABLE_ORIGINS에 콤마로 구분해 지정.
+  config.action_cable.allowed_request_origins = [
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+    %r{^https?://localhost(:\d+)?$},
+    %r{^https?://127\.0\.0\.1(:\d+)?$},
+    %r{^https?://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$},
+    *ENV.fetch("ALLOWED_CABLE_ORIGINS", "").split(",").map(&:strip).reject(&:empty?)
+  ]
 end
