@@ -5,7 +5,10 @@ Rails.application.routes.draw do
   # ── Authentication (Devise + JWT) ──
   devise_for :users, path: "auth",
     path_names: { sign_in: "login", sign_out: "logout" },
-    controllers: { sessions: "auth/sessions" },
+    controllers: {
+      sessions: "auth/sessions",
+      registrations: "auth/registrations"
+    },
     defaults: { format: :json }
 
   # Refresh Token endpoint (inside devise_scope for mapping)
