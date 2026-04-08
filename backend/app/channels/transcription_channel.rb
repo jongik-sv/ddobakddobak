@@ -44,7 +44,10 @@ class TranscriptionChannel < ApplicationCable::Channel
   private
 
   # 구독 권한 결정: owner / host / viewer / nil(거부)
+  # admin 유저는 모든 회의에 owner 권한으로 접근 가능 (관리/모니터링 목적)
   def determine_role(meeting)
+    return "owner" if current_user.respond_to?(:admin?) && current_user.admin?
+
     if meeting.owner?(current_user)
       "owner"
     else
