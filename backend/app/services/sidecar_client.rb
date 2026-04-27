@@ -43,7 +43,7 @@ class SidecarClient
     body[:diarization_config] = diarization_config if diarization_config
     body[:languages] = languages if languages
     body[:file_chunk_sec] = file_chunk_sec if file_chunk_sec
-    post("/transcribe-file", body, timeout: 1800)
+    post("/transcribe-file", body, timeout: ENV.fetch("SIDECAR_TRANSCRIBE_FILE_TIMEOUT", "21600").to_i)
   end
 
   # ── Speakers ──
