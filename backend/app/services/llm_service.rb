@@ -1,11 +1,15 @@
 # LLM 기반 회의 요약 서비스.
 #
 # Sidecar(Python)의 summarizer.py를 Rails로 이전한 것.
-# Anthropic/OpenAI API를 직접 호출하여 회의록 요약, 정제, Action Item 추출을 수행한다.
+# Anthropic/OpenAI API를 직접 호출하거나, 로컬 CLI(claude/gemini/codex) 를 실행하여
+# 회의록 요약, 정제, Action Item 추출을 수행한다.
 class LlmService
   class LlmError < StandardError; end
 
   TIMEOUT = 300 # seconds
+  CLI_TIMEOUT = 180 # seconds — Claude/Gemini/Codex CLI 실행 제한
+
+  CLI_PROVIDERS = %w[claude_cli gemini_cli codex_cli].freeze
 
   SUMMARIZE_SYSTEM_PROMPT = <<~PROMPT.freeze
     당신은 회의 내용을 분석하여 구조화된 요약을 제공하는 전문가입니다.
@@ -299,6 +303,8 @@ class LlmService
         access_token: @config[:auth_token],
         uri_base: @config[:base_url].presence
       )
+    when *CLI_PROVIDERS
+      nil # CLI 프로바이더는 SDK 클라이언트 불필요 — 실행 시점에 Open3 로 호출
     else # anthropic (default)
       kwargs = { api_key: @config[:auth_token] }
       kwargs[:base_url] = @config[:base_url] if @config[:base_url].present?
@@ -314,6 +320,12 @@ class LlmService
     result = case @config[:provider]
     when "openai"
       call_openai(system, user_content, max_tokens)
+    when "claude_cli"
+      call_claude_cli(system, user_content)
+    when "gemini_cli"
+      call_gemini_cli(system, user_content)
+    when "codex_cli"
+      call_codex_cli(system, user_content)
     else
       call_anthropic(system, user_content, max_tokens)
     end
@@ -344,6 +356,77 @@ class LlmService
     }
     response = @client.chat(parameters: params)
     response.dig("choices", 0, "message", "content") || ""
+  end
+
+  # ── 로컬 CLI 실행 (Claude Code / Gemini / Codex) ──
+
+  def call_claude_cli(system, user_content)
+    cli = ENV.fetch("CLAUDE_CLI_PATH", "claude")
+    ensure_cli!(cli, "Claude Code CLI", "npm install -g @anthropic-ai/claude-code")
+    cmd = [cli, "-p", "--output-format", "text", "--system-prompt", system]
+    cmd.push("--model", @config[:model].to_s) if @config[:model].present?
+    run_cli(cmd, user_content)
+  end
+
+  def call_gemini_cli(system, user_content)
+    cli = ENV.fetch("GEMINI_CLI_PATH", "gemini")
+    ensure_cli!(cli, "Gemini CLI", "npm install -g @google/gemini-cli")
+    merged = "[시스템 지시]\n#{system}\n\n[사용자 입력]\n#{user_content}"
+    cmd = [cli, "-p", merged, "--output-format", "text"]
+    cmd.push("--model", @config[:model].to_s) if @config[:model].present?
+    run_cli(cmd, "")
+  end
+
+  def call_codex_cli(system, user_content)
+    cli = ENV.fetch("CODEX_CLI_PATH", "codex")
+    ensure_cli!(cli, "Codex CLI", "npm install -g @openai/codex")
+    cmd = [cli, "exec", "-"]
+    cmd.push("--model", @config[:model].to_s) if @config[:model].present?
+    merged = "[시스템 지시]\n#{system}\n\n[사용자 입력]\n#{user_content}"
+    run_cli(cmd, merged)
+  end
+
+  def ensure_cli!(cli, display_name, install_hint)
+    return if cli.include?("/") && File.executable?(cli)
+    return if system_which(cli)
+    raise LlmError, "#{display_name}를 찾을 수 없습니다: '#{cli}'. #{install_hint}"
+  end
+
+  def system_which(bin)
+    ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).any? do |dir|
+      path = File.join(dir, bin)
+      File.executable?(path) && !File.directory?(path)
+    end
+  end
+
+  def run_cli(cmd, stdin_text)
+    require "open3"
+    Rails.logger.info "[LlmService] CLI exec: #{cmd.first} (#{stdin_text.length}자 stdin)"
+
+    stdout_str = nil
+    stderr_str = nil
+    status = nil
+
+    Open3.popen3(*cmd) do |stdin, stdout, stderr, wait_thr|
+      stdin.write(stdin_text) unless stdin_text.to_s.empty?
+      stdin.close
+
+      unless wait_thr.join(CLI_TIMEOUT)
+        Process.kill("KILL", wait_thr.pid) rescue nil
+        wait_thr.join
+        raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{cmd.first}"
+      end
+
+      stdout_str = stdout.read.to_s
+      stderr_str = stderr.read.to_s
+      status = wait_thr.value
+    end
+
+    unless status&.success?
+      err = stderr_str.to_s.strip
+      raise LlmError, "CLI 오류 (코드 #{status&.exitstatus}): #{err.presence || '원인 불명'}"
+    end
+    stdout_str.strip
   end
 
   def call_llm_json(system, user_content)

@@ -97,11 +97,28 @@ module Api
         llm  # 저장 후 최신 상태 반환
       end
 
+      CLI_PROVIDERS = %w[claude_cli gemini_cli codex_cli].freeze
+
       def test_llm
+        provider = params.require(:provider)
+
+        # CLI 프로바이더는 API 연결 테스트 불필요
+        if CLI_PROVIDERS.include?(provider)
+          render json: { "success" => true, "note" => "CLI 프로바이더는 별도 연결 테스트가 필요 없습니다." }
+          return
+        end
+
+        # 토큰이 없으면 저장된 프리셋에서 가져옴
+        auth_token = params[:auth_token]
+        if auth_token.blank? && params[:preset_id].present?
+          stored = load_settings.dig("llm", "presets", params[:preset_id])
+          auth_token = stored&.dig("auth_token")
+        end
+
         llm_config = {
-          provider: params.require(:provider),
+          provider: provider,
           model: params.require(:model),
-          auth_token: params[:auth_token],
+          auth_token: auth_token,
           base_url: params[:base_url]
         }.compact
 
@@ -259,10 +276,18 @@ module Api
 
         if provider == "openai"
           ENV["OPENAI_API_KEY"] = preset["auth_token"].to_s
-          ENV["OPENAI_BASE_URL"] = preset["base_url"].to_s
+          if preset["base_url"].present?
+            ENV["OPENAI_BASE_URL"] = preset["base_url"]
+          else
+            ENV.delete("OPENAI_BASE_URL")
+          end
         else
           ENV["ANTHROPIC_AUTH_TOKEN"] = preset["auth_token"].to_s
-          ENV["ANTHROPIC_BASE_URL"] = preset["base_url"].to_s
+          if preset["base_url"].present?
+            ENV["ANTHROPIC_BASE_URL"] = preset["base_url"]
+          else
+            ENV.delete("ANTHROPIC_BASE_URL")
+          end
         end
 
         # app settings

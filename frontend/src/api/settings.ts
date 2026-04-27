@@ -55,6 +55,7 @@ export async function testLlmConnection(params: {
   auth_token?: string
   base_url?: string
   model: string
+  preset_id?: string
 }): Promise<{ success: boolean; error?: string }> {
   return apiClient.post('settings/llm/test', { json: params }).json()
 }

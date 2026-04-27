@@ -215,9 +215,10 @@ export default function SettingsContent() {
     setLlmTesting(true)
     setLlmTestResult(null)
     try {
-      const testParams: { provider: string; model: string; auth_token?: string; base_url?: string } = {
+      const testParams: { provider: string; model: string; preset_id: string; auth_token?: string; base_url?: string } = {
         provider: currentPreset.provider,
         model: currentForm.model,
+        preset_id: selectedPreset,
       }
       if (currentForm.auth_token) testParams.auth_token = currentForm.auth_token
       if (currentForm.base_url) testParams.base_url = currentForm.base_url

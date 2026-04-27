@@ -38,7 +38,7 @@ class User < ApplicationRecord
     if llm_configured?
       {
         provider: llm_provider,
-        api_key: llm_api_key,
+        auth_token: llm_api_key,
         model: llm_model,
         base_url: llm_base_url
       }.compact
@@ -64,7 +64,7 @@ class User < ApplicationRecord
     provider = ENV.fetch("LLM_PROVIDER", "anthropic")
     {
       provider: provider,
-      api_key: provider == "openai" ? ENV["OPENAI_API_KEY"] : ENV["ANTHROPIC_AUTH_TOKEN"],
+      auth_token: provider == "openai" ? ENV["OPENAI_API_KEY"] : ENV["ANTHROPIC_AUTH_TOKEN"],
       model: ENV["LLM_MODEL"],
       base_url: provider == "openai" ? ENV["OPENAI_BASE_URL"] : ENV["ANTHROPIC_BASE_URL"]
     }.compact

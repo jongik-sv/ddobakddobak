@@ -65,7 +65,7 @@ RSpec.describe User, "LLM settings", type: :model do
         )
         config = user.effective_llm_config
         expect(config[:provider]).to eq("openai")
-        expect(config[:api_key]).to eq("sk-user-key")
+        expect(config[:auth_token]).to eq("sk-user-key")
         expect(config[:model]).to eq("gpt-4o")
         expect(config).not_to have_key(:base_url)
       end
@@ -94,7 +94,7 @@ RSpec.describe User, "LLM settings", type: :model do
 
         config = user.effective_llm_config
         expect(config[:provider]).to eq("anthropic")
-        expect(config[:api_key]).to eq("sk-server-key")
+        expect(config[:auth_token]).to eq("sk-server-key")
         expect(config[:model]).to eq("claude-sonnet-4-6")
       end
     end
@@ -115,7 +115,7 @@ RSpec.describe User, "LLM settings", type: :model do
 
         config = User.server_default_llm_config
         expect(config[:provider]).to eq("anthropic")
-        expect(config[:api_key]).to eq("sk-ant-key")
+        expect(config[:auth_token]).to eq("sk-ant-key")
         expect(config[:model]).to eq("claude-sonnet-4-6")
         expect(config).not_to have_key(:base_url)
       end
@@ -130,7 +130,7 @@ RSpec.describe User, "LLM settings", type: :model do
 
         config = User.server_default_llm_config
         expect(config[:provider]).to eq("openai")
-        expect(config[:api_key]).to eq("sk-openai-key")
+        expect(config[:auth_token]).to eq("sk-openai-key")
         expect(config[:model]).to eq("gpt-4o")
         expect(config[:base_url]).to eq("https://api.openai.com/v1")
       end
@@ -145,7 +145,7 @@ RSpec.describe User, "LLM settings", type: :model do
 
         config = User.server_default_llm_config
         expect(config[:provider]).to eq("anthropic")
-        expect(config).not_to have_key(:api_key)
+        expect(config).not_to have_key(:auth_token)
         expect(config).not_to have_key(:model)
       end
     end
