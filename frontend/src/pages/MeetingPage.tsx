@@ -396,9 +396,6 @@ export default function MeetingPage() {
         content: (
           <div className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
             <AiSummaryPanel meetingId={meetingId} isRecording={false} onNotesChange={handleNotesChange} />
-            <div className="border-t shrink-0 overflow-y-auto max-h-[40%]">
-              <DecisionList meetingId={meetingId} />
-            </div>
           </div>
         ),
       },
@@ -420,6 +417,9 @@ export default function MeetingPage() {
             </div>
             <div className="flex-1 overflow-auto">
               <MeetingEditor editorRef={memoEditorRef} />
+            </div>
+            <div className="border-t shrink-0 overflow-y-auto max-h-[40%]">
+              <DecisionList meetingId={meetingId} />
             </div>
           </section>
         ),
@@ -674,13 +674,10 @@ export default function MeetingPage() {
 
           <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-          {/* AI 회의록 + Decision Log — 기본 45% */}
+          {/* AI 회의록 — 기본 45% */}
           <Panel defaultSize={45} minSize={20}>
             <div className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
               <AiSummaryPanel meetingId={meetingId} isRecording={false} onNotesChange={handleNotesChange} />
-              <div className="border-t shrink-0 overflow-y-auto max-h-[40%]">
-                <DecisionList meetingId={meetingId} />
-              </div>
             </div>
           </Panel>
 
@@ -688,7 +685,7 @@ export default function MeetingPage() {
             <>
               <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-              {/* 메모 — 기본 30% */}
+              {/* 메모 + Decision Log — 기본 30% */}
               <Panel defaultSize={30} minSize={15}>
                 <section data-testid="memo-editor" className="h-full flex flex-col overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
@@ -703,6 +700,9 @@ export default function MeetingPage() {
                   </div>
                   <div className="flex-1 overflow-auto">
                     <MeetingEditor editorRef={memoEditorRef} />
+                  </div>
+                  <div className="border-t shrink-0 overflow-y-auto max-h-[40%]">
+                    <DecisionList meetingId={meetingId} />
                   </div>
                 </section>
               </Panel>

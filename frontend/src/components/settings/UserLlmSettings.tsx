@@ -21,6 +21,14 @@ interface ProviderOption {
 
 const PROVIDER_OPTIONS: readonly ProviderOption[] = [
   {
+    id: 'none',
+    name: '선택 안함',
+    description: '서버 기본 LLM 사용',
+    suggestedModels: [],
+    isCustom: false,
+    actualProvider: '',
+  },
+  {
     id: 'anthropic',
     name: 'Anthropic',
     description: 'Claude 시리즈',
@@ -123,6 +131,13 @@ export default function UserLlmSettings() {
     setError(null)
     setSuccess(null)
     try {
+      if (provider === 'none') {
+        const result = await updateUserLlmSettings({ llm_settings: { provider: '' } })
+        setSettings(result)
+        initFormFromSettings(result)
+        setSuccess('서버 기본 LLM을 사용합니다.')
+        return
+      }
       const result = await updateUserLlmSettings({
         llm_settings: {
           provider: actualProvider,
@@ -308,7 +323,7 @@ export default function UserLlmSettings() {
             </div>
           </fieldset>
 
-          {provider && (
+          {provider && provider !== 'none' && (
             <div>
               <label htmlFor="user-llm-api-key" className="block text-sm font-medium mb-1">API Key</label>
               <input
@@ -341,7 +356,7 @@ export default function UserLlmSettings() {
             </div>
           )}
 
-          {provider && (
+          {provider && provider !== 'none' && (
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label htmlFor="user-llm-model" className="block text-sm font-medium">모델명</label>
@@ -379,7 +394,20 @@ export default function UserLlmSettings() {
             </div>
           )}
 
-          {provider && (
+          {provider === 'none' && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors min-h-[44px]"
+              >
+                {saving ? '저장 중...' : '저장'}
+              </button>
+            </div>
+          )}
+
+          {provider && provider !== 'none' && (
             <div className="flex items-center gap-2">
               <button
                 type="button"

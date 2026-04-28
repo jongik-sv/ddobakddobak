@@ -58,6 +58,8 @@ class LlmService
 
     ## 핵심 규칙
 
+    0. **문서 제목**: 본문 맨 첫 줄에 `# {회의 제목}` 형식의 H1 헤더를 작성하세요. 회의 제목은 사용자가 제공한 값을 그대로 사용합니다. 회의 제목이 비어 있으면 이 줄을 생략하세요.
+
     1. **오타 교정**: 음성 인식(STT) 자막에는 오타가 많습니다. 문맥을 파악하여 반드시 오타를 교정하세요.
        - 예: "개발 환영" → "개발 환경", "테스크" → "태스크", "디플로이" → "배포"
        - 한국어와 영어가 섞인 기술 용어에 특히 주의하세요.
@@ -152,12 +154,13 @@ class LlmService
   end
 
   # 회의록 정제: 기존 노트 + 새 자막 → 통합 회의록
-  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil)
+  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil)
     transcript_text = format_transcripts(transcripts)
     return { "notes_markdown" => current_notes } if transcript_text.blank?
 
     parts = []
     parts << "회의 제목: #{meeting_title}" if meeting_title.present?
+    parts << "참석자: #{attendees}" if attendees.present?
     if current_notes.present?
       parts << "현재 회의록:\n#{current_notes}"
     else
@@ -216,9 +219,10 @@ class LlmService
   end
 
   # 사용자 피드백 반영
-  def apply_feedback(current_notes, feedback, meeting_title: "")
+  def apply_feedback(current_notes, feedback, meeting_title: "", attendees: nil)
     parts = []
     parts << "회의 제목: #{meeting_title}" if meeting_title.present?
+    parts << "참석자: #{attendees}" if attendees.present?
     if current_notes.present?
       parts << "현재 회의록:\n#{current_notes}"
     else
@@ -234,7 +238,7 @@ class LlmService
   end
 
   # 외부 LLM용 프롬프트 조립 (LLM 호출 없음)
-  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil)
+  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil, attendees: nil)
     system_prompt = if sections_prompt.present?
       REFINE_NOTES_SYSTEM_PROMPT.sub(DEFAULT_SECTION_STRUCTURE, sections_prompt)
     else
@@ -244,6 +248,7 @@ class LlmService
     transcript_text = format_transcripts(transcripts)
     parts = []
     parts << "회의 제목: #{meeting_title}" if meeting_title.present?
+    parts << "참석자: #{attendees}" if attendees.present?
     parts << (current_notes.present? ? "현재 회의록:\n#{current_notes}" : "현재 회의록: (아직 없음 — 새로 작성해주세요)")
     parts << "새로운 자막:\n#{transcript_text}" if transcript_text.present?
     user_content = parts.join("\n\n")

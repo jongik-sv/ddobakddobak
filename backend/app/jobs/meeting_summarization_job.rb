@@ -38,7 +38,8 @@ class MeetingSummarizationJob < ApplicationJob
       current_notes, payload,
       meeting_title: meeting.title,
       meeting_type: meeting.meeting_type,
-      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type)
+      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
+      attendees: meeting.attendees
     )
     notes_markdown = result["notes_markdown"]
 
@@ -74,7 +75,8 @@ class MeetingSummarizationJob < ApplicationJob
       current_notes, payload,
       meeting_title: meeting.title,
       meeting_type: meeting.meeting_type,
-      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type)
+      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
+      attendees: meeting.attendees
     )
     notes_markdown = result["notes_markdown"]
     return if notes_markdown.blank?

@@ -7,7 +7,7 @@ import { getTags, createTag } from '../../api/tags'
 interface EditMeetingDialogProps {
   meeting: Meeting
   meetingTypeList: { value: string; label: string }[]
-  onConfirm: (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null }) => void
+  onConfirm: (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null; attendees: string | null }) => void
   onClose: () => void
 }
 
@@ -19,6 +19,7 @@ export default function EditMeetingDialog({
 }: EditMeetingDialogProps) {
   const [title, setTitle] = useState(meeting.title)
   const [briefSummary, setBriefSummary] = useState(meeting.brief_summary ?? '')
+  const [attendees, setAttendees] = useState(meeting.attendees ?? '')
   const [meetingType, setMeetingType] = useState(meeting.meeting_type)
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>(meeting.tags?.map((t) => t.id) ?? [])
   const [allTags, setAllTags] = useState<Tag[]>([])
@@ -32,7 +33,13 @@ export default function EditMeetingDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
-    onConfirm({ title: title.trim(), meeting_type: meetingType, tag_ids: selectedTagIds, brief_summary: briefSummary.trim() || null })
+    onConfirm({
+      title: title.trim(),
+      meeting_type: meetingType,
+      tag_ids: selectedTagIds,
+      brief_summary: briefSummary.trim() || null,
+      attendees: attendees.trim() || null,
+    })
   }
 
   const toggleTag = (tagId: number) => {
@@ -88,6 +95,18 @@ export default function EditMeetingDialog({
               onChange={(e) => setBriefSummary(e.target.value)}
               rows={3}
               placeholder="회의 요약을 입력하세요"
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring resize-none"
+            />
+          </div>
+
+          {/* 참석자 */}
+          <div>
+            <label className="block text-sm font-medium mb-1">참석자</label>
+            <textarea
+              value={attendees}
+              onChange={(e) => setAttendees(e.target.value)}
+              rows={2}
+              placeholder="쉼표 또는 줄바꿈으로 구분 (예: 홍길동, 김영희)"
               className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring resize-none"
             />
           </div>

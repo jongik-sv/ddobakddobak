@@ -48,6 +48,7 @@ export interface Meeting {
   last_transcript_end_ms: number
   last_sequence_number: number
   memo: string | null
+  attendees: string | null
   tags?: { id: number; name: string; color: string }[]
   share_code?: string | null
   started_at: string | null
@@ -199,6 +200,7 @@ export interface UpdateMeetingParams {
   meeting_type?: string
   tag_ids?: number[]
   brief_summary?: string | null
+  attendees?: string | null
 }
 
 export async function updateMeeting(id: number, params: UpdateMeetingParams): Promise<Meeting> {

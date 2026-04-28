@@ -58,7 +58,7 @@ function MermaidRenderer({ code }: { code: string }) {
     return null
   }
 
-  return <div ref={containerRef} className="[&>svg]:max-w-full [&>svg]:h-auto" />
+  return <div ref={containerRef} className="[&>svg]:min-w-[480px] [&>svg]:h-auto" />
 }
 
 // ── BlockNote 커스텀 블록 ─────────────────────────

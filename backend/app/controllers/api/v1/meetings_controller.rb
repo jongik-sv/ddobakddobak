@@ -109,6 +109,7 @@ module Api
         attrs[:meeting_type] = params[:meeting_type] if params.key?(:meeting_type)
         attrs[:memo] = params[:memo] if params.key?(:memo)
         attrs[:brief_summary] = params[:brief_summary] if params.key?(:brief_summary)
+        attrs[:attendees] = params[:attendees] if params.key?(:attendees)
 
         if params.key?(:tag_ids)
           tag_ids = Array(params[:tag_ids]).map(&:to_i)
@@ -361,7 +362,8 @@ module Api
         result = llm.build_prompt(
           current_notes, payload,
           meeting_title: @meeting.title,
-          sections_prompt: sections_prompt
+          sections_prompt: sections_prompt,
+          attendees: @meeting.attendees
         )
 
         filename = "prompt_#{@meeting.id}_#{Date.today}.txt"
@@ -421,6 +423,7 @@ module Api
           has_audio_file: meeting.audio_file_path.present?,
           folder_id: meeting.folder_id,
           memo: meeting.memo,
+          attendees: meeting.attendees,
           tags: meeting.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
           attachment_counts: {
             agenda: attachment_counts["agenda"] || 0,
