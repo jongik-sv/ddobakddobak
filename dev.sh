@@ -39,8 +39,11 @@ start_backend() {
   fi
 
   echo "[info] tmux 세션 '$SESSION' 생성"
-  tmux new-session -d -s "$SESSION" -n rails -c "$PROJECT_ROOT/backend" "$RAILS_CMD"
-  tmux new-window  -t "$SESSION" -n sidecar -c "$PROJECT_ROOT/sidecar" "$SIDECAR_CMD"
+  tmux new-session -d -s "$SESSION" -n rails -c "$PROJECT_ROOT/backend"
+  tmux send-keys -t "$SESSION:rails" "$RAILS_CMD" Enter
+
+  tmux new-window -t "$SESSION" -n sidecar -c "$PROJECT_ROOT/sidecar"
+  tmux send-keys -t "$SESSION:sidecar" "$SIDECAR_CMD" Enter
 
   echo "[info]   - rails   : http://localhost:${RAILS_PORT}"
   echo "[info]   - sidecar : http://localhost:${SIDECAR_PORT}"
