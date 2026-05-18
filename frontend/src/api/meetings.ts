@@ -138,6 +138,20 @@ export async function deleteTranscripts(meetingId: number, ids: number[]): Promi
   return apiClient.delete(`meetings/${meetingId}/transcripts/destroy_batch`, { json: { ids } }).json()
 }
 
+export async function updateTranscript(
+  meetingId: number,
+  transcriptId: number,
+  content: string,
+  clientId?: string,
+): Promise<Transcript> {
+  const res = await apiClient
+    .patch(`meetings/${meetingId}/transcripts/${transcriptId}/update_content`, {
+      json: { content, client_id: clientId },
+    })
+    .json<{ transcript: Transcript }>()
+  return res.transcript
+}
+
 export async function uploadAudio(id: number, blob: Blob): Promise<void> {
   const formData = new FormData()
   const ext = blob.type.includes('wav') ? 'wav' : 'webm'
@@ -221,8 +235,10 @@ export async function correctTerms(meetingId: number, corrections: TermCorrectio
   return apiClient.post(`meetings/${meetingId}/feedback`, { json: { corrections }, timeout: 60000 }).json()
 }
 
-export async function updateNotes(meetingId: number, notesMarkdown: string): Promise<void> {
-  await apiClient.patch(`meetings/${meetingId}/update_notes`, { json: { notes_markdown: notesMarkdown } })
+export async function updateNotes(meetingId: number, notesMarkdown: string, clientId?: string): Promise<void> {
+  await apiClient.patch(`meetings/${meetingId}/update_notes`, {
+    json: { notes_markdown: notesMarkdown, client_id: clientId },
+  })
 }
 
 export async function updateMemo(meetingId: number, memo: string): Promise<void> {
