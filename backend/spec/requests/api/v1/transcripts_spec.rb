@@ -68,4 +68,94 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
       end
     end
   end
+
+  # ─────────────────────────────────────────────────────────
+  # PATCH /api/v1/meetings/:meeting_id/transcripts/:id/update_content
+  # ─────────────────────────────────────────────────────────
+  describe "PATCH /api/v1/meetings/:meeting_id/transcripts/:id/update_content" do
+    let!(:transcript) do
+      create(:transcript, meeting: meeting, sequence_number: 1,
+             content: "원본 텍스트", speaker_label: "SPEAKER_00",
+             started_at_ms: 0, ended_at_ms: 3000)
+    end
+
+    context "정상 요청" do
+      it "200 OK, content 갱신" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_content",
+              params: { content: "수정된 텍스트", client_id: "abc-123" }
+
+        expect(response).to have_http_status(:ok)
+        json = response.parsed_body
+        expect(json["transcript"]["content"]).to eq("수정된 텍스트")
+        expect(transcript.reload.content).to eq("수정된 텍스트")
+      end
+
+      it "meeting.last_user_edit_at 갱신" do
+        freeze_time = Time.zone.parse("2026-05-18 10:00:00")
+        travel_to(freeze_time) do
+          patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_content",
+                params: { content: "수정", client_id: "c1" }
+        end
+        expect(meeting.reload.last_user_edit_at).to be_within(1.second).of(freeze_time)
+      end
+
+      it "ActionCable broadcast 발행" do
+        expect(ActionCable.server).to receive(:broadcast).with(
+          meeting.transcription_stream,
+          hash_including(
+            type: "transcript_updated",
+            id: transcript.id,
+            content: "수정",
+            client_id: "c1"
+          )
+        )
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_content",
+              params: { content: "수정", client_id: "c1" }
+      end
+    end
+
+    context "공백만 들어온 경우" do
+      it "422 반환, content 그대로" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_content",
+              params: { content: "   " }
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(transcript.reload.content).to eq("원본 텍스트")
+      end
+    end
+
+    context "길이 상한(5000자) 초과" do
+      it "422 반환" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_content",
+              params: { content: "x" * 5001 }
+
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+    end
+
+    context "다른 회의의 transcript id" do
+      let(:other_meeting) { create(:meeting, team: team, creator: user) }
+      let!(:other_transcript) do
+        create(:transcript, meeting: other_meeting, sequence_number: 1,
+               content: "다른 회의", speaker_label: "SPEAKER_00",
+               started_at_ms: 0, ended_at_ms: 1000)
+      end
+
+      it "404 Not Found" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{other_transcript.id}/update_content",
+              params: { content: "해킹 시도" }
+
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    context "존재하지 않는 transcript" do
+      it "404 Not Found" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/999999/update_content",
+              params: { content: "x" }
+
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+  end
 end

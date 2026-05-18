@@ -21,6 +21,35 @@ module Api
         render json: { deleted: deleted_count }
       end
 
+      def update_content
+        content = params[:content].to_s
+        trimmed = content.strip
+        if trimmed.empty?
+          return render json: { error: "content blank" }, status: :unprocessable_entity
+        end
+        if content.length > 5000
+          return render json: { error: "content too long" }, status: :unprocessable_entity
+        end
+
+        transcript = @meeting.transcripts.find_by(id: params[:id])
+        return render json: { error: "Transcript not found" }, status: :not_found unless transcript
+
+        transcript.update!(content: content)
+        @meeting.update!(last_user_edit_at: Time.current)
+
+        ActionCable.server.broadcast(
+          @meeting.transcription_stream,
+          {
+            type: "transcript_updated",
+            id: transcript.id,
+            content: transcript.content,
+            client_id: params[:client_id]
+          }
+        )
+
+        render json: { transcript: transcript_json(transcript) }
+      end
+
       private
 
       def transcript_json(t)

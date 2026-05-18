@@ -67,6 +67,9 @@ Rails.application.routes.draw do
           only: %i[index create],
           controller: "meeting_decisions"
         resources :transcripts, only: [] do
+          member do
+            patch :update_content
+          end
           collection do
             delete :destroy_batch
           end
