@@ -42,9 +42,16 @@ type BackendMessage = {
   id?: number
   created_at?: string
   notes_markdown?: string
+  content?: string
   is_final?: boolean
   ids?: number[]
   audio_source?: 'mic' | 'system'
+  // notes update extras
+  source?: string
+  client_id?: string
+  // summarization progress
+  summary_type?: 'realtime' | 'final'
+  ok?: boolean
   // sharing events
   participant_id?: number
   user_id?: number
@@ -105,13 +112,46 @@ export function createTranscriptionChannel(
               started_at_ms: raw.started_at_ms ?? 0,
             })
             break
-          case 'meeting_notes_update':
+          case 'meeting_notes_update': {
+            // Echo 가드: 내 PATCH가 만든 broadcast면 무시 (이미 로컬 반영됨)
+            if (raw.source === 'user' && raw.client_id && raw.client_id === store.clientId) {
+              break
+            }
+            // Reset 가드: 최근 reset 직후의 잔여 broadcast는 무시
+            if (Date.now() - store.lastResetAt < 5000) {
+              break
+            }
             store.setMeetingNotes(raw.notes_markdown ?? '')
             break
+          }
           case 'transcripts_applied':
             if (raw.ids && raw.ids.length > 0) {
               store.markApplied(raw.ids)
             }
+            break
+          case 'transcript_updated': {
+            // Echo 가드: 내 PATCH 응답으로 이미 store가 갱신됨
+            if (raw.client_id && raw.client_id === store.clientId) {
+              break
+            }
+            // Reset 가드: 최근 reset 직후의 잔여 broadcast 무시
+            if (Date.now() - store.lastResetAt < 5000) {
+              break
+            }
+            if (typeof raw.id === 'number' && typeof raw.content === 'string') {
+              store.updateFinal(raw.id, raw.content)
+            }
+            break
+          }
+          case 'meeting_reset':
+            store.markReset()
+            store.reset()
+            break
+          case 'summarization_started':
+            store.setSummarizing(raw.summary_type ?? 'realtime')
+            break
+          case 'summarization_finished':
+            store.setSummarizing(null)
             break
           case 'participant_joined':
             useSharingStore.getState().addParticipant({
