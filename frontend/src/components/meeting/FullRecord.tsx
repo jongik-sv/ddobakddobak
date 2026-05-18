@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 import { SpeakerLabel } from './SpeakerLabel'
+import { EditableTranscriptText } from './EditableTranscriptText'
 import { deleteTranscripts } from '../../api/meetings'
 
 function formatElapsed(ms: number): string {
@@ -104,7 +105,13 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek }: FullRecordP
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-gray-900 leading-relaxed mt-0.5">{item.content}</p>
+                <EditableTranscriptText
+                  transcriptId={item.id}
+                  meetingId={meetingId}
+                  content={item.content}
+                  editable
+                  className="text-sm text-gray-900 leading-relaxed mt-0.5"
+                />
               </div>
             </div>
           )
