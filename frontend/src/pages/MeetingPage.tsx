@@ -67,6 +67,8 @@ export default function MeetingPage() {
   // 기존 AI 회의록을 transcriptStore에 로드 (AiSummaryPanel이 읽음)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const resetTranscriptStore = useTranscriptStore((s) => s.reset)
+  const markUserEdit = useTranscriptStore((s) => s.markUserEdit)
+  const clientId = useTranscriptStore((s) => s.clientId)
   useEffect(() => {
     resetTranscriptStore()
   }, [meetingId, resetTranscriptStore])
@@ -183,9 +185,10 @@ export default function MeetingPage() {
 
   const handleNotesChange = useCallback(
     (markdown: string) => {
-      updateNotes(meetingId, markdown).catch((e) => console.error('[updateNotes] 저장 실패:', e))
+      markUserEdit()
+      updateNotes(meetingId, markdown, clientId).catch((e) => console.error('[updateNotes] 저장 실패:', e))
     },
-    [meetingId]
+    [meetingId, clientId, markUserEdit]
   )
 
   // 오디오 상태 (AudioPlayer ↔ MiniAudioPlayer ↔ TranscriptPanel 공유)
@@ -381,6 +384,7 @@ export default function MeetingPage() {
             )}
             <div className="flex-1 overflow-y-auto">
               <TranscriptPanel
+                meetingId={meetingId}
                 transcripts={transcripts}
                 currentTimeMs={currentTimeMs}
                 onSeek={handleSeek}
@@ -664,6 +668,7 @@ export default function MeetingPage() {
               )}
               <div className="flex-1 overflow-y-auto">
                 <TranscriptPanel
+                  meetingId={meetingId}
                   transcripts={transcripts}
                   currentTimeMs={currentTimeMs}
                   onSeek={handleSeek}

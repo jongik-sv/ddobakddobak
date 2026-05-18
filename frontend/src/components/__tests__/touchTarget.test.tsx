@@ -88,6 +88,7 @@ describe('TranscriptPanel 터치 최적화', () => {
   it('전사 텍스트에 select-text 클래스가 적용되어 있다', () => {
     render(
       <TranscriptPanel
+        meetingId={1}
         transcripts={mockTranscripts}
         currentTimeMs={0}
         onSeek={vi.fn()}
@@ -100,6 +101,7 @@ describe('TranscriptPanel 터치 최적화', () => {
   it('전사 항목에 min-h-[44px] 클래스가 적용되어 있다', () => {
     render(
       <TranscriptPanel
+        meetingId={1}
         transcripts={mockTranscripts}
         currentTimeMs={0}
         onSeek={vi.fn()}

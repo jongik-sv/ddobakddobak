@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react'
 import type { Transcript } from '../../api/meetings'
+import { EditableTranscriptText } from './EditableTranscriptText'
 
 interface TranscriptPanelProps {
+  meetingId: number
   transcripts: Transcript[]
   currentTimeMs: number
   onSeek: (ms: number) => void
@@ -14,7 +16,7 @@ function formatTimestamp(ms: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-export function TranscriptPanel({ transcripts, currentTimeMs, onSeek }: TranscriptPanelProps) {
+export function TranscriptPanel({ meetingId, transcripts, currentTimeMs, onSeek }: TranscriptPanelProps) {
   const highlightedRef = useRef<HTMLDivElement | null>(null)
 
   const highlightedIndex = transcripts.findIndex(
@@ -59,7 +61,13 @@ export function TranscriptPanel({ transcripts, currentTimeMs, onSeek }: Transcri
                 {formatTimestamp(transcript.started_at_ms)}
               </span>
             </div>
-            <span className="text-sm text-gray-800 select-text">{transcript.content}</span>
+            <EditableTranscriptText
+              transcriptId={transcript.id}
+              meetingId={meetingId}
+              content={transcript.content}
+              editable
+              className="text-sm text-gray-800 select-text"
+            />
           </div>
         )
       })}

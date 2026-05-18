@@ -33,6 +33,7 @@ describe('TranscriptPanel', () => {
   it('트랜스크립트 목록을 렌더링한다', () => {
     render(
       <TranscriptPanel
+        meetingId={1}
         transcripts={mockTranscripts}
         currentTimeMs={0}
         onSeek={vi.fn()}
@@ -47,6 +48,7 @@ describe('TranscriptPanel', () => {
   it('화자 레이블을 표시한다', () => {
     render(
       <TranscriptPanel
+        meetingId={1}
         transcripts={mockTranscripts}
         currentTimeMs={0}
         onSeek={vi.fn()}
@@ -60,6 +62,7 @@ describe('TranscriptPanel', () => {
   it('currentTimeMs가 started_at_ms~ended_at_ms 범위인 세그먼트를 하이라이트한다', () => {
     render(
       <TranscriptPanel
+        meetingId={1}
         transcripts={mockTranscripts}
         currentTimeMs={1500}
         onSeek={vi.fn()}
@@ -73,6 +76,7 @@ describe('TranscriptPanel', () => {
   it('currentTimeMs 범위 밖의 세그먼트는 하이라이트되지 않는다', () => {
     render(
       <TranscriptPanel
+        meetingId={1}
         transcripts={mockTranscripts}
         currentTimeMs={1500}
         onSeek={vi.fn()}
@@ -87,6 +91,7 @@ describe('TranscriptPanel', () => {
     const onSeek = vi.fn()
     render(
       <TranscriptPanel
+        meetingId={1}
         transcripts={mockTranscripts}
         currentTimeMs={0}
         onSeek={onSeek}
@@ -100,6 +105,7 @@ describe('TranscriptPanel', () => {
   it('빈 트랜스크립트 배열에서도 렌더링된다', () => {
     const { container } = render(
       <TranscriptPanel
+        meetingId={1}
         transcripts={[]}
         currentTimeMs={0}
         onSeek={vi.fn()}
@@ -112,6 +118,7 @@ describe('TranscriptPanel', () => {
   it('트랜스크립트가 없을 때 빈 상태 메시지를 표시한다', () => {
     render(
       <TranscriptPanel
+        meetingId={1}
         transcripts={[]}
         currentTimeMs={0}
         onSeek={vi.fn()}
