@@ -11,15 +11,33 @@ interface TranscriptState {
   appliedIds: Set<number>
   meetingNotes: string | null
   currentSpeaker: string | null
+  isSummarizing: boolean
+  summarizationKind: 'realtime' | 'final' | null
+  lastUserEditAt: number
+  lastResetAt: number
+  clientId: string
 
   setPartial: (data: TranscriptPartialData) => void
   addFinal: (data: TranscriptFinalData) => void
   loadFinals: (data: TranscriptFinalData[]) => void
   setSpeaker: (data: SpeakerChangeData) => void
-  setMeetingNotes: (markdown: string) => void
+  setMeetingNotes: (markdown: string | null) => void
   markApplied: (ids: number[]) => void
   removeFinals: (ids: number[]) => void
+  updateFinal: (id: number, content: string) => void
+  setSummarizing: (kind: 'realtime' | 'final' | null) => void
+  markUserEdit: () => void
+  markReset: () => void
   reset: () => void
+}
+
+const generateClientId = (): string => {
+  try {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID()
+    }
+  } catch { /* ignore */ }
+  return `c-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 const initialState = {
@@ -28,10 +46,15 @@ const initialState = {
   appliedIds: new Set<number>(),
   meetingNotes: null,
   currentSpeaker: null,
+  isSummarizing: false,
+  summarizationKind: null as 'realtime' | 'final' | null,
+  lastUserEditAt: 0,
+  lastResetAt: 0,
 }
 
 export const useTranscriptStore = create<TranscriptState>()((set) => ({
   ...initialState,
+  clientId: generateClientId(),
 
   setPartial: (data) =>
     set((state) =>
@@ -88,5 +111,27 @@ export const useTranscriptStore = create<TranscriptState>()((set) => ({
       return { finals: state.finals.filter((f) => !idSet.has(f.id)) }
     }),
 
-  reset: () => set(initialState),
+  updateFinal: (id, content) =>
+    set((state) => {
+      const idx = state.finals.findIndex((f) => f.id === id)
+      if (idx === -1) return state
+      if (state.finals[idx].content === content) return state
+      const updated = [...state.finals]
+      updated[idx] = { ...updated[idx], content }
+      return { finals: updated }
+    }),
+
+  setSummarizing: (kind) =>
+    set({ isSummarizing: kind !== null, summarizationKind: kind }),
+
+  markUserEdit: () => set({ lastUserEditAt: Date.now() }),
+
+  markReset: () => set({ lastResetAt: Date.now() }),
+
+  reset: () =>
+    set((state) => ({
+      ...initialState,
+      clientId: state.clientId,
+      lastResetAt: state.lastResetAt,
+    })),
 }))

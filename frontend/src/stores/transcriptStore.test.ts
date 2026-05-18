@@ -103,3 +103,49 @@ describe('transcriptStore', () => {
     expect(finals[2].content).toBe('발화 3')
   })
 })
+
+describe('updateFinal', () => {
+  beforeEach(() => {
+    useTranscriptStore.setState({
+      partial: null,
+      finals: [],
+      appliedIds: new Set<number>(),
+      meetingNotes: null,
+      currentSpeaker: null,
+      isSummarizing: false,
+      summarizationKind: null,
+      lastUserEditAt: 0,
+      lastResetAt: 0,
+    })
+  })
+
+  it('일치하는 final의 content만 교체한다', () => {
+    useTranscriptStore.getState().loadFinals([
+      { id: 1, content: '원본 1', speaker_label: 'A', started_at_ms: 0, ended_at_ms: 1000, sequence_number: 1, applied: false },
+      { id: 2, content: '원본 2', speaker_label: 'B', started_at_ms: 1000, ended_at_ms: 2000, sequence_number: 2, applied: true },
+    ])
+
+    useTranscriptStore.getState().updateFinal(1, '수정됨')
+
+    const finals = useTranscriptStore.getState().finals
+    expect(finals.find((f) => f.id === 1)?.content).toBe('수정됨')
+    expect(finals.find((f) => f.id === 2)?.content).toBe('원본 2')
+  })
+
+  it('applied 플래그를 보존한다', () => {
+    useTranscriptStore.getState().loadFinals([
+      { id: 5, content: 'x', speaker_label: 'A', started_at_ms: 0, ended_at_ms: 1000, sequence_number: 1, applied: true },
+    ])
+    useTranscriptStore.getState().updateFinal(5, 'y')
+    expect(useTranscriptStore.getState().finals[0].applied).toBe(true)
+  })
+
+  it('일치하는 id가 없으면 no-op', () => {
+    useTranscriptStore.getState().loadFinals([
+      { id: 1, content: 'a', speaker_label: 'A', started_at_ms: 0, ended_at_ms: 1000, sequence_number: 1, applied: false },
+    ])
+    const before = useTranscriptStore.getState().finals
+    useTranscriptStore.getState().updateFinal(999, 'z')
+    expect(useTranscriptStore.getState().finals).toBe(before)
+  })
+})
