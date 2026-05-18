@@ -9,7 +9,7 @@ describe('LiveRecord', () => {
   })
 
   it('빈 상태에서 빈 컨테이너 렌더', () => {
-    const { container } = render(<LiveRecord />)
+    const { container } = render(<LiveRecord meetingId={1} />)
     expect(container.firstChild).toBeInTheDocument()
   })
 
@@ -23,7 +23,7 @@ describe('LiveRecord', () => {
       sequence_number: 1,
       applied: false,
     })
-    render(<LiveRecord />)
+    render(<LiveRecord meetingId={1} />)
     expect(screen.getByText('안녕하세요')).toBeInTheDocument()
   })
 
@@ -46,7 +46,7 @@ describe('LiveRecord', () => {
       sequence_number: 2,
       applied: false,
     })
-    render(<LiveRecord />)
+    render(<LiveRecord meetingId={1} />)
     expect(screen.getByText('첫 번째 발화')).toBeInTheDocument()
     expect(screen.getByText('두 번째 발화')).toBeInTheDocument()
   })
@@ -55,7 +55,7 @@ describe('LiveRecord', () => {
     useTranscriptStore.setState({
       partial: { content: '현재 발화 중...', speaker_label: 'SPEAKER_00', started_at_ms: 6000 },
     })
-    render(<LiveRecord />)
+    render(<LiveRecord meetingId={1} />)
     expect(screen.getByText('현재 발화 중...')).toBeInTheDocument()
   })
 
@@ -63,7 +63,7 @@ describe('LiveRecord', () => {
     useTranscriptStore.setState({
       partial: { content: '현재 발화 중...', speaker_label: 'SPEAKER_00', started_at_ms: 0 },
     })
-    render(<LiveRecord />)
+    render(<LiveRecord meetingId={1} />)
     expect(screen.getByTestId('partial-text')).toBeInTheDocument()
   })
 
@@ -77,7 +77,7 @@ describe('LiveRecord', () => {
       sequence_number: 1,
       applied: false,
     })
-    render(<LiveRecord />)
+    render(<LiveRecord meetingId={1} />)
     const finalEl = screen.getByText('확정 발화')
     // partial은 italic 스타일이 있어야 하지만 final은 없어야 함
     expect(finalEl.className).not.toContain('italic')
@@ -93,7 +93,7 @@ describe('LiveRecord', () => {
       sequence_number: 1,
       applied: false,
     })
-    render(<LiveRecord />)
+    render(<LiveRecord meetingId={1} />)
     expect(screen.getByText('SPEAKER_00')).toBeInTheDocument()
   })
 })

@@ -43,7 +43,7 @@ export function RecordTabPanel({ meetingId, currentTimeMs = 0, onSeek, onApply }
       {/* 탭 콘텐츠 */}
       <div className="flex-1 overflow-hidden">
         {tab === 'live' ? (
-          <LiveRecord currentTimeMs={currentTimeMs} onSeek={onSeek} onApply={onApply} />
+          <LiveRecord meetingId={meetingId} currentTimeMs={currentTimeMs} onSeek={onSeek} onApply={onApply} />
         ) : (
           <FullRecord meetingId={meetingId} currentTimeMs={currentTimeMs} onSeek={onSeek} />
         )}

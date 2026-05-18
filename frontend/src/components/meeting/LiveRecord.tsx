@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 import { SpeakerLabel } from './SpeakerLabel'
+import { EditableTranscriptText } from './EditableTranscriptText'
 
 /** 녹음 시작으로부터의 경과 시간(ms)을 MM:SS 형식으로 변환 */
 function formatElapsed(ms: number): string {
@@ -12,12 +13,13 @@ function formatElapsed(ms: number): string {
 }
 
 interface LiveRecordProps {
+  meetingId: number
   currentTimeMs?: number
   onSeek?: (ms: number) => void
   onApply?: () => Promise<void>
 }
 
-export function LiveRecord({ currentTimeMs = 0, onSeek, onApply }: LiveRecordProps) {
+export function LiveRecord({ meetingId, currentTimeMs = 0, onSeek, onApply }: LiveRecordProps) {
   const finals = useTranscriptStore((s) => s.finals)
   const partial = useTranscriptStore((s) => s.partial)
   // 라이브 기록 = AI 회의록에 아직 적용되지 않은 버퍼 기록
@@ -88,7 +90,13 @@ export function LiveRecord({ currentTimeMs = 0, onSeek, onApply }: LiveRecordPro
               <SpeakerLabel speakerLabel={item.speaker_label} />
               <span className="text-xs text-gray-400">{formatElapsed(item.started_at_ms)}</span>
             </div>
-            <p className="text-sm text-gray-900 leading-relaxed">{item.content}</p>
+            <EditableTranscriptText
+              transcriptId={item.id}
+              meetingId={meetingId}
+              content={item.content}
+              editable
+              className="text-sm text-gray-900 leading-relaxed"
+            />
           </div>
         )
       })}
