@@ -27,10 +27,21 @@ export function EditableTranscriptText({
   const clientId = useTranscriptStore((s) => s.clientId)
   const updateFinal = useTranscriptStore((s) => s.updateFinal)
 
+  // contentEditable 요소는 React가 children을 관리하면 사용자 입력이 리렌더로 덮어써진다.
+  // 따라서 텍스트는 JSX children이 아니라 ref로만 동기화한다.
+  // - 비편집 모드: 외부 content가 바뀔 때마다 DOM textContent를 갱신
+  // - 편집 모드 진입: 시작 시점의 content로 DOM 초기화 (그 이후 입력은 DOM이 권위)
+  useEffect(() => {
+    if (!isEditing && spanRef.current && spanRef.current.textContent !== content) {
+      spanRef.current.textContent = content
+    }
+  }, [content, isEditing])
+
   // 편집 진입 시 텍스트 select-all + focus
   useEffect(() => {
     if (isEditing && spanRef.current) {
       const el = spanRef.current
+      if (el.textContent !== content) el.textContent = content
       el.focus()
       const range = document.createRange()
       range.selectNodeContents(el)
@@ -38,14 +49,9 @@ export function EditableTranscriptText({
       sel?.removeAllRanges()
       sel?.addRange(range)
     }
+    // content는 의도적으로 deps에서 제외: 편집 시작 시점의 값으로만 초기화.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditing])
-
-  // 외부 content 변경(다른 사용자 broadcast 등)이 들어오면 편집 중이 아닐 때만 반영
-  useEffect(() => {
-    if (!isEditing && spanRef.current) {
-      spanRef.current.textContent = content
-    }
-  }, [content, isEditing])
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -139,8 +145,6 @@ export function EditableTranscriptText({
         ' ' +
         (saving ? 'opacity-60' : '')
       }
-    >
-      {content}
-    </span>
+    />
   )
 }
