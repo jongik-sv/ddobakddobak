@@ -69,6 +69,7 @@ export default function MeetingPage() {
   const resetTranscriptStore = useTranscriptStore((s) => s.reset)
   const markUserEdit = useTranscriptStore((s) => s.markUserEdit)
   const clientId = useTranscriptStore((s) => s.clientId)
+  const loadFinals = useTranscriptStore((s) => s.loadFinals)
   useEffect(() => {
     resetTranscriptStore()
   }, [meetingId, resetTranscriptStore])
@@ -206,8 +207,23 @@ export default function MeetingPage() {
   // meeting 상태가 completed로 바뀌면 트랜스크립트도 리로드 (파일 업로드 완료 시)
   useEffect(() => {
     if (meeting?.status === 'transcribing') return
-    getTranscripts(meetingId).then(setTranscripts)
-  }, [meetingId, meeting?.status])
+    getTranscripts(meetingId).then((data) => {
+      setTranscripts(data)
+      // EditableTranscriptText의 낙관적 갱신이 즉시 화면에 반영되도록 store에도 적재.
+      // TranscriptPanel은 store.finals를 override로 우선 조회한다.
+      loadFinals(
+        data.map((t) => ({
+          id: t.id,
+          content: t.content,
+          speaker_label: t.speaker_label,
+          started_at_ms: t.started_at_ms,
+          ended_at_ms: t.ended_at_ms,
+          sequence_number: t.sequence_number,
+          applied: t.applied_to_minutes ?? true,
+        })),
+      )
+    })
+  }, [meetingId, meeting?.status, loadFinals])
 
   // 북마크 로드
   useEffect(() => {
