@@ -188,8 +188,14 @@ module Api
           ended_at: nil,
           last_refined_seq: 0,
           audio_file_path: nil,
-          brief_summary: nil
+          brief_summary: nil,
+          last_reset_at: Time.current,
+          last_user_edit_at: nil
         )
+
+        ActionCable.server.broadcast(@meeting.transcription_stream, {
+          type: "meeting_reset"
+        })
 
         render json: { meeting: meeting_json(@meeting) }
       end
@@ -267,6 +273,7 @@ module Api
         if corrected_notes != current_notes && corrected_notes.present?
           summary = find_or_create_active_summary
           summary.update!(notes_markdown: corrected_notes, generated_at: Time.current)
+          @meeting.update!(last_user_edit_at: Time.current)
           @meeting.refresh_brief_summary!(corrected_notes)
 
           ActionCable.server.broadcast(@meeting.transcription_stream, {
@@ -293,9 +300,19 @@ module Api
         notes_markdown = params[:notes_markdown]
         return render json: { error: "notes_markdown is required" }, status: :unprocessable_entity if notes_markdown.nil?
 
+        client_id = params[:client_id].presence
+
         summary = find_or_create_active_summary
         summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
+        @meeting.update!(last_user_edit_at: Time.current)
         @meeting.refresh_brief_summary!(notes_markdown)
+
+        ActionCable.server.broadcast(@meeting.transcription_stream, {
+          type: "meeting_notes_update",
+          notes_markdown: notes_markdown,
+          source: "user",
+          client_id: client_id
+        })
 
         render json: { notes_markdown: notes_markdown }
       end

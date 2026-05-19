@@ -195,6 +195,9 @@ export default function MeetingLivePage() {
   const reset = useTranscriptStore((s) => s.reset)
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
+  const markUserEdit = useTranscriptStore((s) => s.markUserEdit)
+  const markReset = useTranscriptStore((s) => s.markReset)
+  const clientId = useTranscriptStore((s) => s.clientId)
   const [summaryIntervalSec, setSummaryIntervalSec] = useState(DEFAULT_SUMMARY_INTERVAL_SEC)
 
   // 공유 상태
@@ -395,8 +398,12 @@ export default function MeetingLivePage() {
     setIsResetting(true)
     try {
       await resetMeetingContent(meetingId)
+      // reset 시각 기록 → 잔여 broadcast 무시
+      markReset()
       // 기록 + 회의록 스토어 초기화
       reset()
+      // 회의록 명시 초기화 (broadcast 의존 제거)
+      setMeetingNotes(null)
       // 메모 에디터 초기화
       memoEditorRef.current?.replaceBlocks(memoEditorRef.current.document, [])
       // 로컬 상태 초기화
@@ -486,9 +493,10 @@ export default function MeetingLivePage() {
   // 사용자가 AI 회의록을 직접 편집 시 백엔드에 저장
   const handleNotesChange = useCallback(
     (markdown: string) => {
-      updateNotes(meetingId, markdown).catch((e) => console.error('[updateNotes] 저장 실패:', e))
+      markUserEdit()
+      updateNotes(meetingId, markdown, clientId).catch((e) => console.error('[updateNotes] 저장 실패:', e))
     },
-    [meetingId]
+    [meetingId, clientId, markUserEdit]
   )
 
   // 뒤로가기 (미리보기로)

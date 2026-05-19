@@ -16,6 +16,8 @@ interface AiSummaryPanelProps {
 export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, editable = true, onNotesChange }: AiSummaryPanelProps) {
   const meetingNotes = useTranscriptStore((s) => s.meetingNotes)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
+  const isSummarizing = useTranscriptStore((s) => s.isSummarizing)
+  const summarizationKind = useTranscriptStore((s) => s.summarizationKind)
   const prevMarkdownRef = useRef<string>('')
   const isUserEditingRef = useRef(false)
   const isProgrammaticRef = useRef(false)
@@ -38,7 +40,7 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
     }
     if (meetingNotes === prevMarkdownRef.current) return () => { cancelled = true }
     if (isUserEditingRef.current) {
-      prevMarkdownRef.current = meetingNotes
+      prevMarkdownRef.current = meetingNotes ?? ''
       return () => { cancelled = true }
     }
     async function updateBlocks() {
@@ -48,7 +50,7 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
         if (cancelled) return
         const converted = codeBlocksToMermaid(blocks as any[])
         editor.replaceBlocks(editor.document, converted as any)
-        prevMarkdownRef.current = meetingNotes
+        prevMarkdownRef.current = meetingNotes ?? ''
       } catch { /* ignore */ } finally {
         if (!cancelled) {
           requestAnimationFrame(() => { isProgrammaticRef.current = false })
@@ -105,11 +107,9 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
     if (isProgrammaticRef.current) return
     isUserEditingRef.current = true
     setIsDirty(true)
-    if (isRecording) {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-      debounceTimerRef.current = setTimeout(saveNow, 2000)
-    }
-  }, [isRecording, saveNow])
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    debounceTimerRef.current = setTimeout(saveNow, 2000)
+  }, [saveNow])
 
   const handleManualSave = useCallback(async () => {
     setIsSaving(true)
@@ -124,7 +124,29 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
   return (
     <>
       <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
-        <h2 className="text-sm font-semibold text-gray-500">AI 회의록</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-gray-500">AI 회의록</h2>
+          {isSummarizing && (
+            <span
+              className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700"
+              role="status"
+              aria-live="polite"
+              title={summarizationKind === 'final' ? '최종 요약 생성 중' : '요약 갱신 중'}
+            >
+              <svg
+                className="w-3 h-3 animate-spin text-blue-600"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="4" />
+                <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+              </svg>
+              {summarizationKind === 'final' ? '최종 요약 중...' : '요약 중...'}
+            </span>
+          )}
+        </div>
         {editable && (
           isRecording ? (
             <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-green-100 text-green-600">
