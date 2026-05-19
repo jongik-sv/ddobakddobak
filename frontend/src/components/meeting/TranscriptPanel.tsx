@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { Transcript } from '../../api/meetings'
 import { EditableTranscriptText } from './EditableTranscriptText'
+import { useTranscriptStore } from '../../stores/transcriptStore'
 
 interface TranscriptPanelProps {
   meetingId: number
@@ -18,6 +19,16 @@ function formatTimestamp(ms: number): string {
 
 export function TranscriptPanel({ meetingId, transcripts, currentTimeMs, onSeek }: TranscriptPanelProps) {
   const highlightedRef = useRef<HTMLDivElement | null>(null)
+
+  // EditableTranscriptText의 낙관적 갱신은 transcriptStore.finals에 들어간다.
+  // MeetingPage는 transcripts를 자체 useState로 관리하므로, 갱신된 content를
+  // 화면에 반영하려면 store에서 우선 조회한다.
+  const storeFinals = useTranscriptStore((s) => s.finals)
+  const contentOverrides = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const f of storeFinals) map.set(f.id, f.content)
+    return map
+  }, [storeFinals])
 
   const highlightedIndex = transcripts.findIndex(
     (t) => currentTimeMs >= t.started_at_ms && currentTimeMs < t.ended_at_ms
@@ -64,7 +75,7 @@ export function TranscriptPanel({ meetingId, transcripts, currentTimeMs, onSeek 
             <EditableTranscriptText
               transcriptId={transcript.id}
               meetingId={meetingId}
-              content={transcript.content}
+              content={contentOverrides.get(transcript.id) ?? transcript.content}
               editable
               className="text-sm text-gray-800 select-text"
             />
