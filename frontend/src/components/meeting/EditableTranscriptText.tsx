@@ -104,6 +104,17 @@ export function EditableTranscriptText({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLSpanElement>) => {
+      // 비편집 상태에서 Enter → 편집 진입
+      if (!isEditing) {
+        if (editable && e.key === 'Enter') {
+          e.preventDefault()
+          e.stopPropagation()
+          prevContentRef.current = content
+          setIsEditing(true)
+        }
+        return
+      }
+      // 편집 상태에서 Enter → 저장, Esc → 취소
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         void save()
@@ -114,7 +125,7 @@ export function EditableTranscriptText({
         cancel()
       }
     },
-    [save, cancel],
+    [isEditing, editable, content, save, cancel],
   )
 
   const handleBlur = useCallback(() => {
@@ -132,6 +143,7 @@ export function EditableTranscriptText({
       ref={spanRef}
       contentEditable={isEditing}
       suppressContentEditableWarning
+      tabIndex={editable ? 0 : -1}
       onDoubleClick={handleDoubleClick}
       onKeyDown={handleKeyDown}
       onBlur={handleBlur}
@@ -141,7 +153,9 @@ export function EditableTranscriptText({
         ' ' +
         (isEditing
           ? 'outline-none border-l-2 border-blue-500 pl-1 bg-blue-50'
-          : '') +
+          : editable
+            ? 'focus:outline focus:outline-1 focus:outline-blue-400 focus:bg-blue-50/40 rounded-sm'
+            : '') +
         ' ' +
         (saving ? 'opacity-60' : '')
       }

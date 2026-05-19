@@ -43,6 +43,32 @@ describe('EditableTranscriptText', () => {
     expect(span.getAttribute('contenteditable')).not.toBe('true')
   })
 
+  it('포커스된 상태에서 Enter → 편집 진입', () => {
+    render(
+      <EditableTranscriptText transcriptId={1} meetingId={10} content="원본" editable />,
+    )
+    const span = screen.getByText('원본')
+    fireEvent.keyDown(span, { key: 'Enter' })
+    expect(span.getAttribute('contenteditable')).toBe('true')
+  })
+
+  it('editable=false면 Enter 눌러도 편집 진입하지 않는다', () => {
+    render(
+      <EditableTranscriptText transcriptId={1} meetingId={10} content="원본" editable={false} />,
+    )
+    const span = screen.getByText('원본')
+    fireEvent.keyDown(span, { key: 'Enter' })
+    expect(span.getAttribute('contenteditable')).not.toBe('true')
+  })
+
+  it('editable이면 tabIndex=0 (키보드 포커스 가능)', () => {
+    render(
+      <EditableTranscriptText transcriptId={1} meetingId={10} content="원본" editable />,
+    )
+    const span = screen.getByText('원본')
+    expect(span.getAttribute('tabindex')).toBe('0')
+  })
+
   it('더블클릭 → 편집 진입, 상위 onClick은 호출되지 않는다', () => {
     const onParentClick = vi.fn()
     render(
