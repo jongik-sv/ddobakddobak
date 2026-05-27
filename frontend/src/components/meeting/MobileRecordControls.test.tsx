@@ -19,11 +19,18 @@ describe('MobileRecordControls', () => {
     vi.clearAllMocks()
   })
 
-  // ─── 렌더링: 녹음 중이 아닐 때는 표시되지 않음 ───
+  // ─── 대기(녹음 전) 상태: "회의 시작" 바 표시 ───
 
-  it('녹음 중이 아닐 때는 렌더링되지 않음', () => {
-    const { container } = render(<MobileRecordControls {...defaultProps} isRecording={false} />)
-    expect(container.firstChild).toBeNull()
+  it('녹음 중이 아닐 때 "회의 시작" 버튼이 표시됨', () => {
+    render(<MobileRecordControls {...defaultProps} isRecording={false} />)
+    expect(screen.getByRole('button', { name: '회의 시작' })).toBeInTheDocument()
+  })
+
+  it('"회의 시작" 클릭 시 onStart 호출', () => {
+    const onStart = vi.fn()
+    render(<MobileRecordControls {...defaultProps} isRecording={false} onStart={onStart} />)
+    fireEvent.click(screen.getByRole('button', { name: '회의 시작' }))
+    expect(onStart).toHaveBeenCalledOnce()
   })
 
   // ─── 상단 고정 바 ───

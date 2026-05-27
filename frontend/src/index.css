@@ -96,7 +96,7 @@
 }
 
 /* 호버 가능 디바이스에서만 호버 효과 적용 */
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .hover-highlight:hover {
     background-color: hsl(var(--accent));
   }
@@ -111,19 +111,6 @@
 body[data-dragging="true"] * {
   cursor: grabbing !important;
   user-select: none !important;
-}
-.drag-ghost {
-  position: fixed;
-  padding: 4px 12px;
-  background: hsl(var(--background));
-  border: 1px solid hsl(var(--border));
-  border-radius: 6px;
-  box-shadow: 0 4px 12px hsl(var(--foreground) / 0.12);
-  font-size: 13px;
-  font-weight: 500;
-  pointer-events: none;
-  z-index: 9999;
-  white-space: nowrap;
 }
 
 /* 녹음 인디케이터 블링크 */
@@ -162,13 +149,13 @@ body[data-dragging="true"] * {
 /* ── v3 터치 최적화 유틸리티 ── */
 
 @utility hover-hide {
-  @media (hover: hover) {
+  @media (hover: hover) and (pointer: fine) {
     opacity: 0;
   }
 }
 
 @utility hover-show-parent {
-  @media (hover: hover) {
+  @media (hover: hover) and (pointer: fine) {
     .group:hover & {
       opacity: 1;
     }
@@ -176,7 +163,7 @@ body[data-dragging="true"] * {
 }
 
 @utility hover-hide-parent {
-  @media (hover: hover) {
+  @media (hover: hover) and (pointer: fine) {
     .group:hover & {
       display: none;
     }
@@ -184,7 +171,7 @@ body[data-dragging="true"] * {
 }
 
 @utility hover-show-block-parent {
-  @media (hover: hover) {
+  @media (hover: hover) and (pointer: fine) {
     .group:hover & {
       display: block;
     }
@@ -192,7 +179,7 @@ body[data-dragging="true"] * {
 }
 
 @utility hover-show-flex-parent {
-  @media (hover: hover) {
+  @media (hover: hover) and (pointer: fine) {
     .group:hover & {
       display: flex;
     }
@@ -200,7 +187,7 @@ body[data-dragging="true"] * {
 }
 
 @utility hover-tooltip {
-  @media (hover: hover) {
+  @media (hover: hover) and (pointer: fine) {
     .group\/tooltip:hover & {
       opacity: 1;
       visibility: visible;

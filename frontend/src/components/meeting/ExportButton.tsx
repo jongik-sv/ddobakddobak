@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { Download } from 'lucide-react'
 import { exportMeeting, exportMeetingData, exportPrompt } from '../../api/meetings'
 import { downloadMarkdown } from '../../lib/markdown'
 import { downloadBlob, downloadText } from '../../lib/download'
@@ -97,8 +98,8 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
         className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
         aria-label="내보내기"
       >
-        <span>↓</span>
-        <span>내보내기</span>
+        <Download className="w-4 h-4" />
+        <span className="hidden lg:inline">내보내기</span>
       </button>
 
       {/* 옵션 패널 */}

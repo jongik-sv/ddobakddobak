@@ -14,12 +14,12 @@ import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
-import { getMeeting, updateMeeting, startMeeting, stopMeeting, reopenMeeting, uploadAudio, triggerRealtimeSummary, getTranscripts, getSummary, resetMeetingContent, correctTerms, updateNotes, getParticipants } from '../api/meetings'
+import { getMeeting, updateMeeting, startMeeting, stopMeeting, reopenMeeting, uploadAudio, uploadAudioChunk, finalizeAudio, triggerRealtimeSummary, getTranscripts, getSummary, resetMeetingContent, correctTerms, updateNotes, getParticipants } from '../api/meetings'
 import type { Meeting, Participant, TermCorrection, UpdateMeetingParams } from '../api/meetings'
 import { getSttSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useSharingStore } from '../stores/sharingStore'
-import { ENGINE_LABELS_SHORT, IS_TAURI, SUMMARY_INTERVAL_OPTIONS, DEFAULT_SUMMARY_INTERVAL_SEC } from '../config'
+import { ENGINE_LABELS_SHORT, IS_TAURI, IS_MOBILE, SUMMARY_INTERVAL_OPTIONS, DEFAULT_SUMMARY_INTERVAL_SEC } from '../config'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
 import { ShareButton } from '../components/meeting/ShareButton'
 import { ParticipantList } from '../components/meeting/ParticipantList'
@@ -263,6 +263,12 @@ export default function MeetingLivePage() {
   const { isRecording, isPaused, error, start, stop, pause, resume, feedSystemAudio } = useAudioRecorder({
     onChunk: (pcm: Int16Array, meta: ChunkMeta) => onChunkRef.current(pcm, meta),
     onStop,
+    // 모바일 청크 레코더: 녹음 중 압축 청크 연속 업로드 + 종료 시 서버 합치기/변환
+    onAudioChunk: (blob, seq) => uploadAudioChunk(meetingId, blob, seq),
+    onFinalize: () => {
+      uploadPromiseRef.current = finalizeAudio(meetingId)
+      return uploadPromiseRef.current
+    },
   })
 
   // Tauri 네이티브 마이크 캡처 (STT용) — 시스템 오디오도 여기서 믹싱하여 하나의 STT 스트림으로 처리
@@ -686,7 +692,7 @@ export default function MeetingLivePage() {
   const mobileTabs: Tab[] = useMemo(() => [
     {
       id: 'transcript',
-      label: '전사',
+      label: '기록',
       icon: FileText,
       content: (
         <div className="h-full flex flex-col">
@@ -755,8 +761,8 @@ export default function MeetingLivePage() {
   return (
     <div className="flex flex-col h-full">
 
-      {/* 헤더 컨트롤 바 */}
-      <div className={`flex items-center justify-between px-4 py-2 shadow-sm shrink-0 transition-colors duration-300 ${
+      {/* 헤더 컨트롤 바 (데스크톱 전용 — 모바일은 MobileRecordControls 사용) */}
+      <div className={`hidden lg:flex items-center justify-between px-4 py-2 shadow-sm shrink-0 transition-colors duration-300 ${
         isActive && !isPaused
           ? 'bg-red-50 border-b-2 border-red-400'
           : isActive && isPaused
@@ -1036,11 +1042,12 @@ export default function MeetingLivePage() {
       ) : (
         <>
           <MobileRecordControls
-            title="회의실"
+            title={meeting?.title || '회의실'}
             isRecording={isActive}
             isPaused={isPaused}
             elapsedSeconds={elapsedSeconds}
             onBack={handleNavigateBack}
+            onStart={handleStart}
             onPause={handlePause}
             onResume={handleResume}
             onStop={handleStop}
@@ -1075,13 +1082,16 @@ export default function MeetingLivePage() {
                 ))}
               </select>
             </div>
-            <button
-              onClick={useUiStore.getState().openSettings}
-              className="flex items-center gap-2 py-2 text-sm text-gray-700 hover:text-gray-900"
-            >
-              <Settings className="w-4 h-4" />
-              설정
-            </button>
+            {/* 설정 변경은 PC/서버에서만 — 모바일에서는 숨김 */}
+            {!IS_MOBILE && (
+              <button
+                onClick={useUiStore.getState().openSettings}
+                className="flex items-center gap-2 py-2 text-sm text-gray-700 hover:text-gray-900"
+              >
+                <Settings className="w-4 h-4" />
+                설정
+              </button>
+            )}
           </MobileRecordControls>
           <MobileTabLayout
             tabs={mobileTabs}

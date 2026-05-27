@@ -320,3 +320,18 @@ Phase 2~3과의 연계:
 - 프론트 dedup wrapper(in-flight 요약 합치기) — 추후 검토.
 - `handlePause`의 `triggerRealtimeSummary`, RecordTabPanel `onApply` — 명시 트리거라 유지.
 - 근본 리팩토링(트리거 단일화, idempotent 잡, 자원 생명주기 재설계, cron 간격/LLM timeout 정책 재검토) — 별도 PR로 분리.
+
+
+
+## 수정요청
+1. 사이드바의 배경이 투명이라 배경과 겹쳐서 잘 안보임
+2. 햄버거 버튼이 너무 위에 있어서 휴대폰 날짜와 겹침 
+3. 회의 미리보기에서 recording, 일반 회의 등 글자가 자리를 많이 차지함
+4. recording, 일반 회의, 수정아이콘 과  회의진행, 내보내기, 삭제 버튼 이 한 줄에 나오지 않음, 회의진행, 내보내기, 삭제 버튼은 아이콘 버튼으로 변경 필요
+5. 회의 미리보기 옆 파일첨부, 메모, 책갈피 아이콘에서 메모, 책갈피는 의미를 잘 모르겠음
+6. 회의 시작 옆 ... 버튼을 누르면 추가 옵션이 나오는데 공유, 시스템 오디오 가 있고 그 밑에는 뭐가 있는지 홈, 회의, 검색 바에 가려져서 안보임
+7. 회의 페이지에서는 요약 주기 설정하는 콤보가 없어졌는데 필요한 기능
+
+- 키스토어: frontend/src-tauri/ddobak-release.jks
+- 비번: store/key ddobak2026!, alias ddobak
+- (둘 다 .gitignore 처리해서 커밋 안 됨)

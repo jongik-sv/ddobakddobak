@@ -405,7 +405,7 @@ function renderTranscripts(transcripts: MeetingExportData['transcripts']): strin
     )
     .join('\n')
 
-  return `<h2>전사 기록</h2>\n${entries}`
+  return `<h2>기록</h2>\n${entries}`
 }
 
 // ── Markdown → HTML 변환기 ──────────────────────

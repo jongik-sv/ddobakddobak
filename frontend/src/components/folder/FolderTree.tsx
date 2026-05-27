@@ -60,7 +60,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
   const handleSelect = () => {
     if (isRecordingActive) return
     onSelectFolder(folder.id)
-    if (hasChildren && !isExpanded) {
+    if (hasChildren) {
       toggleExpanded(folder.id)
     }
   }
@@ -90,7 +90,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
     <>
       <div
         data-drop-folder-id={folder.id}
-        onPointerDown={(e) => initDrag('folder', folder.id, folder.name, e)}
+        onPointerDown={(e) => initDrag('folder', folder.id, e)}
         className={`group flex items-center gap-1 px-2 py-2 min-h-[44px] rounded-md text-sm transition-colors ${
           isRecordingActive
             ? 'opacity-50 cursor-not-allowed'
@@ -222,7 +222,7 @@ export default function FolderTree() {
   const handleSelectRoot = () => {
     if (isRecordingActive) return
     handleSelectFolder(null)
-    if (!rootExpanded) setRootExpanded(true)
+    setRootExpanded((v) => !v)
   }
 
   const handleCreate = async (name: string) => {

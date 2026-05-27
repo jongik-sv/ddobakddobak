@@ -1,7 +1,12 @@
 # 환경 변수 / 사용자 설정
 .env
 *.env
+.env.local
+frontend/.env.local
 settings.yaml
+
+# LAN HTTPS 인증서 (mkcert) — 키 유출 방지
+certs/
 
 # OS 파일
 .DS_Store
@@ -57,3 +62,16 @@ e2e/test-results/
 
 # 작업 문서 (로컬 전용)
 docs/tasks/
+
+# Android 릴리즈 서명 (비밀 — 커밋 금지, 별도 안전 보관)
+frontend/src-tauri/*.jks
+frontend/src-tauri/gen/android/keystore.properties
+
+# Tauri Android 생성 프로젝트 — 빌드 산출물/머신 의존 파일 (소스는 커밋)
+frontend/src-tauri/gen/android/app/build/
+frontend/src-tauri/gen/android/build/
+frontend/src-tauri/gen/android/.gradle/
+frontend/src-tauri/gen/android/local.properties
+frontend/src-tauri/gen/android/.tauri/
+frontend/src-tauri/gen/android/app/src/main/assets/backend/
+frontend/src-tauri/gen/android/app/src/main/assets/sidecar/

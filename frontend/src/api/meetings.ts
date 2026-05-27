@@ -166,6 +166,27 @@ export async function uploadAudio(id: number, blob: Blob): Promise<void> {
   })
 }
 
+/** 녹음 중 압축 오디오 청크를 seq 순서대로 연속 업로드 (모바일) */
+export async function uploadAudioChunk(id: number, blob: Blob, sequence: number): Promise<void> {
+  const formData = new FormData()
+  formData.append('chunk', blob, `chunk-${sequence}.webm`)
+  formData.append('sequence', String(sequence))
+
+  await fetch(`${getApiBaseUrl()}/meetings/${id}/audio_chunk`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: formData,
+  })
+}
+
+/** 녹음 종료: 업로드된 청크들을 서버에서 이어붙여 mp3로 변환 */
+export async function finalizeAudio(id: number): Promise<void> {
+  await fetch(`${getApiBaseUrl()}/meetings/${id}/audio_finalize`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  })
+}
+
 export async function uploadAudioFile(data: {
   title: string
   meeting_type?: string

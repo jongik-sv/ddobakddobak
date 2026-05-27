@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Pencil, ArrowLeft, StickyNote, Paperclip, Bookmark, Trash2, FileText, Bot } from 'lucide-react'
+import { Pencil, ArrowLeft, StickyNote, Paperclip, Bookmark, Trash2, FileText, Bot, Play, RefreshCw } from 'lucide-react'
 import { Tooltip } from '../components/ui/Tooltip'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMeeting } from '../hooks/useMeeting'
@@ -32,6 +32,13 @@ import MobileTabLayout from '../components/layout/MobileTabLayout'
 // ──────────────────────────────────────────────
 // 회의 상세 페이지
 // ──────────────────────────────────────────────
+
+// 모바일에서 상태 배지를 짧게 표시 (PC는 원문 그대로 유지)
+const STATUS_SHORT_LABEL: Record<string, string> = {
+  recording: '녹음',
+  completed: '완료',
+  pending: '대기',
+}
 
 /**
  * 회의 상세 페이지 — 2컬럼 레이아웃 (에디터 + AI요약 + ActionItems)
@@ -358,7 +365,7 @@ export default function MeetingPage() {
   const mobileTabs = [
       {
         id: 'transcript',
-        label: '전사',
+        label: '기록',
         icon: FileText,
         content: (
           <div className="h-full flex flex-col overflow-hidden">
@@ -398,7 +405,7 @@ export default function MeetingPage() {
                 </ul>
               </div>
             )}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               <TranscriptPanel
                 meetingId={meetingId}
                 transcripts={transcripts}
@@ -467,22 +474,37 @@ export default function MeetingPage() {
             <Paperclip className="w-4 h-4" />
           </button>
         </Tooltip>
-        <Tooltip text={memoVisible ? '메모 숨기기' : '메모 보기'}>
-          <button
-            onClick={toggleMemo}
-            className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-          >
-            <StickyNote className="w-4 h-4" />
-          </button>
-        </Tooltip>
-        <Tooltip text={bookmarksVisible ? '북마크 숨기기' : '북마크 보기'}>
-          <button
-            onClick={toggleBookmarks}
-            className={`p-1.5 rounded-md transition-colors ${bookmarksVisible ? 'text-amber-600 bg-amber-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-          >
-            <Bookmark className="w-4 h-4" />
-          </button>
-        </Tooltip>
+        {meeting && (
+          <Tooltip text="회의 정보 수정">
+            <button
+              onClick={() => setShowEditDialog(true)}
+              className="shrink-0 p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+          </Tooltip>
+        )}
+        {/* 메모·북마크 토글은 데스크톱 패널 표시 전용 — 모바일은 탭으로 접근하므로 숨김 */}
+        {isDesktop && (
+          <>
+            <Tooltip text={memoVisible ? '메모 숨기기' : '메모 보기'}>
+              <button
+                onClick={toggleMemo}
+                className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+              >
+                <StickyNote className="w-4 h-4" />
+              </button>
+            </Tooltip>
+            <Tooltip text={bookmarksVisible ? '북마크 숨기기' : '북마크 보기'}>
+              <button
+                onClick={toggleBookmarks}
+                className={`p-1.5 rounded-md transition-colors ${bookmarksVisible ? 'text-amber-600 bg-amber-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+              >
+                <Bookmark className="w-4 h-4" />
+              </button>
+            </Tooltip>
+          </>
+        )}
       </div>
 
       {/* 오디오 플레이어 (데스크톱) */}
@@ -546,16 +568,16 @@ export default function MeetingPage() {
             </h1>
           )}
           {meeting?.status && (
-            <span className="shrink-0 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-              {meeting.status}
+            <span className={`shrink-0 rounded-full bg-gray-100 text-gray-600 ${isDesktop ? 'px-2 py-0.5 text-xs' : 'px-1.5 py-0 text-[10px]'}`}>
+              {isDesktop ? meeting.status : (STATUS_SHORT_LABEL[meeting.status] ?? meeting.status)}
             </span>
           )}
           {meetingTypeLabel && (
-            <span className="shrink-0 px-2 py-0.5 text-xs rounded-full bg-blue-50 text-blue-600 border border-blue-200">
+            <span className={`shrink-0 rounded-full bg-blue-50 text-blue-600 border border-blue-200 ${isDesktop ? 'px-2 py-0.5 text-xs' : 'px-1.5 py-0 text-[10px]'}`}>
               {meetingTypeLabel}
             </span>
           )}
-          {meeting?.tags?.map((tag) => (
+          {isDesktop && meeting?.tags?.map((tag) => (
             <span
               key={tag.id}
               className="shrink-0 px-2 py-0.5 text-xs rounded-full text-white"
@@ -564,16 +586,6 @@ export default function MeetingPage() {
               {tag.name}
             </span>
           ))}
-          {meeting && (
-            <Tooltip text="회의 정보 수정">
-              <button
-                onClick={() => setShowEditDialog(true)}
-                className="shrink-0 p-1 rounded hover:bg-gray-100 transition-colors"
-              >
-                <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-              </button>
-            </Tooltip>
-          )}
         </div>
         <div className={`flex items-center shrink-0 ${isDesktop ? 'gap-2' : 'gap-1'}`}>
           {meeting?.status === 'completed' && (
@@ -581,15 +593,17 @@ export default function MeetingPage() {
               {meeting.has_audio_file && (
                 <button
                   onClick={() => setShowSttConfirm(true)}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                  aria-label="STT 재생성"
+                  className="rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-3 py-1.5"
                 >
-                  STT 재생성
+                  {isDesktop ? 'STT 재생성' : <RefreshCw className="w-4 h-4" />}
                 </button>
               )}
               {transcripts.length > 0 && (
                 <button
                   onClick={() => setShowNotesConfirm(true)}
                   disabled={isRegeneratingNotes}
+                  aria-label="회의록 재생성"
                   className="px-3 py-1.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isRegeneratingNotes ? (
@@ -598,9 +612,9 @@ export default function MeetingPage() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
-                      재생성 중...
+                      {isDesktop && '재생성 중...'}
                     </span>
-                  ) : '회의록 재생성'}
+                  ) : (isDesktop ? '회의록 재생성' : <Bot className="w-4 h-4" />)}
                 </button>
               )}
               <button
@@ -608,18 +622,20 @@ export default function MeetingPage() {
                   await reopenMeeting(meetingId)
                   navigate(`/meetings/${meetingId}/live`)
                 }}
+                aria-label="회의 재개"
                 className="px-3 py-1.5 rounded-md text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition-colors"
               >
-                회의 재개
+                {isDesktop ? '회의 재개' : <Play className="w-4 h-4" />}
               </button>
             </>
           )}
           {(meeting?.status === 'pending' || meeting?.status === 'recording') && (
             <button
               onClick={() => navigate(`/meetings/${meetingId}/live`)}
+              aria-label="회의 진행"
               className="px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
             >
-              회의 진행
+              {isDesktop ? '회의 진행' : <Play className="w-4 h-4" />}
             </button>
           )}
           <ExportButton
@@ -629,9 +645,10 @@ export default function MeetingPage() {
           />
           <button
             onClick={deleteMeeting}
+            aria-label="삭제"
             className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50"
           >
-            삭제
+            {isDesktop ? '삭제' : <Trash2 className="w-4 h-4" />}
           </button>
         </div>
       </div>

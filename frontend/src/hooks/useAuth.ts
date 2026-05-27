@@ -49,24 +49,22 @@ export function useAuth() {
       return
     }
 
+    // 저장된 토큰이 있으면 즉시 진입시키고(앱 시작 시 '인증 확인 중' 대기 제거),
+    // 토큰 검증은 백그라운드에서 수행한다. 실패 시 refresh, 그래도 실패면 로그아웃.
+    markAuthenticated()
+    setLoading(false)
+
     validateToken(accessToken)
       .then((res) => {
         if (res.user) setUser(res.user)
-        setTokens(accessToken, refreshToken || '')
-        setLoading(false)
       })
       .catch(async () => {
         if (refreshToken) {
           try {
             const { access_token } = await refreshAccessToken(refreshToken)
             setAccessToken(access_token)
-            markAuthenticated()
-            // 새 토큰으로 사용자 정보 조회
-            try {
-              const res = await validateToken(access_token)
-              if (res.user) setUser(res.user)
-            } catch {}
-            setLoading(false)
+            const res = await validateToken(access_token)
+            if (res.user) setUser(res.user)
           } catch {
             clearAuth()
           }

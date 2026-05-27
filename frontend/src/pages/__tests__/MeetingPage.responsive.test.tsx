@@ -256,7 +256,7 @@ describe('MeetingPage 반응형 분기', () => {
       await waitFor(() => {
         expect(screen.getByText('반응형 테스트 회의')).toBeInTheDocument()
       })
-      expect(screen.getByRole('tab', { name: /전사/ })).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: /기록/ })).toBeInTheDocument()
       expect(screen.getByRole('tab', { name: /요약/ })).toBeInTheDocument()
       expect(screen.getByRole('tab', { name: /메모/ })).toBeInTheDocument()
     })

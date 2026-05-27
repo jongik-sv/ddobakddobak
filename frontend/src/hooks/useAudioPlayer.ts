@@ -81,15 +81,28 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
     if (getMode() === 'server') {
       fetch(audioUrl, { headers: getAuthHeaders() })
         .then((res) => {
-          if (cancelled || !res.ok) return null
+          if (cancelled) return null
+          // 오디오 없음(404 등) → src를 설정하지 않으면 audio가 error 이벤트도 안 쏴서
+          // 로딩 스피너가 영영 안 사라진다. 여기서 직접 로딩을 종료시킨다.
+          if (!res.ok) {
+            setIsReady(true)
+            return null
+          }
           return res.blob()
         })
         .then((blob) => {
           if (cancelled || !blob) return
+          // 빈 파일(0바이트)도 재생 불가 → 로딩 종료
+          if (blob.size === 0) {
+            setIsReady(true)
+            return
+          }
           blobUrl = URL.createObjectURL(blob)
           audio.src = blobUrl
         })
-        .catch(() => {})
+        .catch(() => {
+          if (!cancelled) setIsReady(true)
+        })
     } else {
       audio.src = audioUrl
     }

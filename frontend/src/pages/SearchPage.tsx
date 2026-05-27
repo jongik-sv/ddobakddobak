@@ -78,7 +78,7 @@ function MeetingResultGroup({ group, onNavigate }: MeetingResultGroupProps) {
           )}
           {group.transcriptCount > 0 && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-              전사 {group.transcriptCount}건
+              기록 {group.transcriptCount}건
             </span>
           )}
         </div>
@@ -110,7 +110,7 @@ function TypeBadge({ type }: { type: SearchResult['type'] }) {
   if (type === 'transcript') {
     return (
       <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-        전사
+        기록
       </span>
     )
   }
@@ -203,7 +203,7 @@ export default function SearchPage() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="회의록, 전사 내용 검색..."
+              placeholder="회의록, 기록 내용 검색..."
               className="w-full pl-10 pr-4 py-2 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               autoFocus
             />

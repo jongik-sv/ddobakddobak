@@ -1,11 +1,15 @@
+#[cfg(desktop)]
 mod audio;
 
 use serde::Serialize;
-use std::net::SocketAddr;
-use std::net::TcpStream;
+use std::collections::BTreeSet;
+use std::io::{Read, Write};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::mpsc;
 use std::sync::Mutex;
+use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -726,48 +730,150 @@ fn check_health() -> HealthStatus {
     }
 }
 
+/// 모든 비루프백 사설 IPv4 인터페이스의 /24 대역(앞 3옥텟)을 수집한다.
+/// 기본 경로가 셀룰러로 잡혀도 Wi-Fi LAN 대역을 놓치지 않도록 전 인터페이스를 본다.
+fn candidate_subnets() -> Vec<[u8; 3]> {
+    let mut set: BTreeSet<[u8; 3]> = BTreeSet::new();
+    if let Ok(ifaces) = if_addrs::get_if_addrs() {
+        for iface in ifaces {
+            if iface.is_loopback() {
+                continue;
+            }
+            if let IpAddr::V4(v4) = iface.ip() {
+                let o = v4.octets();
+                let is_private = o[0] == 10
+                    || (o[0] == 172 && (16..=31).contains(&o[1]))
+                    || (o[0] == 192 && o[1] == 168);
+                if is_private {
+                    set.insert([o[0], o[1], o[2]]);
+                }
+            }
+        }
+    }
+    set.into_iter().collect()
+}
+
+/// 해당 host:port가 또박또박 서버인지 /api/v1/health 응답(HTTP 200)으로 확인한다.
+fn probe_health(ip: Ipv4Addr, port: u16) -> bool {
+    let addr = SocketAddr::from((ip, port));
+    let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(700)) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(700)));
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(700)));
+    let req =
+        format!("GET /api/v1/health HTTP/1.0\r\nHost: {ip}:{port}\r\nConnection: close\r\n\r\n");
+    if stream.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buf = [0u8; 256];
+    match stream.read(&mut buf) {
+        Ok(n) if n > 0 => {
+            let head = String::from_utf8_lossy(&buf[..n]);
+            head.starts_with("HTTP/") && head.contains(" 200")
+        }
+        _ => false,
+    }
+}
+
+/// 사설 /24 대역들에서 또박또박 서버를 스캔해 접속 가능한 URL 목록을 반환한다.
+#[tauri::command]
+fn scan_lan_servers(port: Option<u16>) -> Vec<String> {
+    let port = port.unwrap_or(13323);
+    let mut found: Vec<String> = Vec::new();
+    // 동시 연결 폭주로 SYN 드롭이 나지 않도록 64개씩 끊어서 스캔한다.
+    const BATCH: u16 = 64;
+    for sub in candidate_subnets() {
+        let mut host: u16 = 1;
+        while host <= 254 {
+            let end = (host + BATCH - 1).min(254);
+            let (tx, rx) = mpsc::channel::<String>();
+            for h in host..=end {
+                let ip = Ipv4Addr::new(sub[0], sub[1], sub[2], h as u8);
+                let tx = tx.clone();
+                thread::spawn(move || {
+                    if probe_health(ip, port) {
+                        let _ = tx.send(format!("http://{ip}:{port}"));
+                    }
+                });
+            }
+            drop(tx); // 원본 송신자를 닫아야 배치 스레드 종료 시 rx.iter()가 끝난다.
+            for url in rx.iter() {
+                found.push(url);
+            }
+            host = end + 1;
+        }
+    }
+    found.sort();
+    found.dedup();
+    found
+}
+
 // ── App Entry ───────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let project_dir = detect_project_dir();
-    let shell_path = resolve_shell_path();
-    let tool_paths = discover_tools(&shell_path);
-
-    log::info!("project_dir={}", project_dir.display());
-    log::info!("초기 도구 경로: ruby={:?} bundle={:?} uv={:?}", tool_paths.ruby, tool_paths.bundle, tool_paths.uv);
-
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_dialog::init())
-        .manage(AppState {
-            backend_process: Mutex::new(None),
-            sidecar_process: Mutex::new(None),
-            project_dir,
-            shell_path: Mutex::new(shell_path),
-            tool_paths: Mutex::new(tool_paths),
-        })
-        .manage(audio::AudioCaptureState::default())
-        .manage(audio::RecorderState::default())
-        .invoke_handler(tauri::generate_handler![
-            check_environment,
-            install_dependencies,
-            check_first_run,
-            run_initial_setup,
-            start_services,
-            stop_services,
-            check_health,
-            audio::start_system_audio_capture,
-            audio::stop_system_audio_capture,
-            audio::is_system_audio_capturing,
-            audio::start_recording,
-            audio::stop_recording,
-            audio::pause_recording,
-            audio::resume_recording,
-            audio::feed_recorder_mic,
-        ])
+        .plugin(tauri_plugin_dialog::init());
+
+    // ── 데스크톱 전용: 프로세스 오케스트레이션 + 네이티브 오디오 ──
+    #[cfg(desktop)]
+    let builder = {
+        let project_dir = detect_project_dir();
+        let shell_path = resolve_shell_path();
+        let tool_paths = discover_tools(&shell_path);
+
+        log::info!("project_dir={}", project_dir.display());
+        log::info!(
+            "초기 도구 경로: ruby={:?} bundle={:?} uv={:?}",
+            tool_paths.ruby, tool_paths.bundle, tool_paths.uv
+        );
+
+        builder
+            .manage(AppState {
+                backend_process: Mutex::new(None),
+                sidecar_process: Mutex::new(None),
+                project_dir,
+                shell_path: Mutex::new(shell_path),
+                tool_paths: Mutex::new(tool_paths),
+            })
+            .manage(audio::AudioCaptureState::default())
+            .manage(audio::RecorderState::default())
+            .invoke_handler(tauri::generate_handler![
+                check_environment,
+                install_dependencies,
+                check_first_run,
+                run_initial_setup,
+                start_services,
+                stop_services,
+                check_health,
+                scan_lan_servers,
+                audio::start_system_audio_capture,
+                audio::stop_system_audio_capture,
+                audio::is_system_audio_capturing,
+                audio::start_recording,
+                audio::stop_recording,
+                audio::pause_recording,
+                audio::resume_recording,
+                audio::feed_recorder_mic,
+            ])
+            .on_window_event(|window, event| {
+                if let tauri::WindowEvent::Destroyed = event {
+                    let state = window.state::<AppState>();
+                    kill_child(&state.backend_process);
+                    kill_child(&state.sidecar_process);
+                }
+            })
+    };
+
+    // ── 모바일 전용: 서버모드 클라이언트 (로컬 서비스/오디오 없음) ──
+    #[cfg(mobile)]
+    let builder = builder.invoke_handler(tauri::generate_handler![check_health, scan_lan_servers]);
+
+    builder
         .setup(|app| {
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
@@ -775,13 +881,6 @@ pub fn run() {
                     .build(),
             )?;
             Ok(())
-        })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                let state = window.state::<AppState>();
-                kill_child(&state.backend_process);
-                kill_child(&state.sidecar_process);
-            }
         })
         .run(tauri::generate_context!())
         .expect("Tauri 앱 실행 실패");

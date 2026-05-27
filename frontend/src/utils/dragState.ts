@@ -25,7 +25,6 @@ export function clearDrag() {
 
 let currentHighlight: HTMLElement | null = null
 let expandTimer: ReturnType<typeof setTimeout> | null = null
-let ghostEl: HTMLElement | null = null
 
 // --- 유틸리티 ---
 
@@ -61,10 +60,6 @@ function cleanupVisuals() {
     clearTimeout(expandTimer)
     expandTimer = null
   }
-  if (ghostEl) {
-    ghostEl.remove()
-    ghostEl = null
-  }
   document.body.removeAttribute('data-dragging')
 }
 
@@ -73,7 +68,6 @@ function cleanupVisuals() {
 export function initDrag(
   type: 'folder' | 'meeting',
   id: number,
-  label: string,
   e: React.PointerEvent,
 ) {
   // 버튼/인풋 위에서 시작하면 무시
@@ -93,18 +87,6 @@ export function initDrag(
       dragState.id = id
       dragState.active = true
       document.body.setAttribute('data-dragging', 'true')
-
-      // 고스트 생성
-      ghostEl = document.createElement('div')
-      ghostEl.className = 'drag-ghost'
-      ghostEl.textContent = label
-      document.body.appendChild(ghostEl)
-    }
-
-    // 고스트 위치 업데이트
-    if (ghostEl) {
-      ghostEl.style.left = `${me.clientX + 14}px`
-      ghostEl.style.top = `${me.clientY - 14}px`
     }
 
     // 드롭 타겟 하이라이트
@@ -132,9 +114,22 @@ export function initDrag(
     }
   }
 
-  const onUp = async (me: PointerEvent) => {
+  const teardown = () => {
     document.removeEventListener('pointermove', onMove)
     document.removeEventListener('pointerup', onUp)
+    document.removeEventListener('pointercancel', onCancel)
+  }
+
+  // 터치 스크롤 전환 등으로 브라우저가 포인터를 취소하면 pointerup이 오지 않는다.
+  // 이 경우에도 리스너/하이라이트/드래그 상태를 정리해 잔여물이 남지 않게 한다.
+  const onCancel = () => {
+    teardown()
+    cleanupVisuals()
+    clearDrag()
+  }
+
+  const onUp = async (me: PointerEvent) => {
+    teardown()
 
     if (!started) return
 
@@ -176,4 +171,5 @@ export function initDrag(
 
   document.addEventListener('pointermove', onMove)
   document.addEventListener('pointerup', onUp)
+  document.addEventListener('pointercancel', onCancel)
 }

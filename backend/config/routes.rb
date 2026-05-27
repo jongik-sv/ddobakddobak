@@ -48,6 +48,8 @@ Rails.application.routes.draw do
           post :feedback
           patch :update_notes
           post :audio, to: "meetings_audio#create"
+          post :audio_chunk, to: "meetings_audio#chunk"
+          post :audio_finalize, to: "meetings_audio#finalize"
           get  :audio, to: "meetings_audio#show"
           get  :peaks, to: "meetings_audio#peaks"
           get  :export

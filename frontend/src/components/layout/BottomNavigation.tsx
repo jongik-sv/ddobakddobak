@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, FileText, Search, Settings, type LucideIcon } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
 import { cn } from '../../lib/utils'
+import { IS_MOBILE } from '../../config'
 
 interface NavItem {
   icon: LucideIcon
@@ -49,7 +50,8 @@ export default function BottomNavigation({ className }: BottomNavigationProps) {
       aria-label="모바일 내비게이션"
     >
       <div className="flex items-center justify-around h-full max-w-lg mx-auto">
-        {NAV_ITEMS.map((item) => {
+        {/* 모바일에서는 설정 진입을 숨긴다 (설정 변경은 PC/서버에서만) */}
+        {(IS_MOBILE ? NAV_ITEMS.filter((i) => i.path !== '/settings') : NAV_ITEMS).map((item) => {
           const active = isActive(item.path, location.pathname)
           return (
             <button

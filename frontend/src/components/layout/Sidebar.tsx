@@ -36,7 +36,7 @@ export default function Sidebar() {
 
   return (
     <aside className="flex flex-col w-60 min-h-0 h-full bg-sidebar border-r border-border shrink-0">
-      <div className="flex items-center justify-between h-14 px-4 border-b border-border shrink-0">
+      <div className="flex items-center justify-between min-h-14 px-4 border-b border-border shrink-0 pt-safe">
         <span className="text-lg font-bold text-foreground">또박또박</span>
         <button
           onClick={toggleSidebar}

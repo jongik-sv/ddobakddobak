@@ -58,8 +58,16 @@ const cfg = parse(configYaml) as AppConfig
 export const IS_TAURI =
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
+// ── 모바일 환경 감지 (Tauri Android/iOS + 모바일 웹/PWA) ──
+// 모바일에서는 설정 변경 불가(설정 진입 숨김), 항상 서버모드 등 제한 동작에 사용
+export const IS_MOBILE =
+  typeof navigator !== 'undefined' &&
+  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+
 // ── 모드 / 서버 URL ─────────────────────────────
 export function getMode(): 'local' | 'server' {
+  // 모바일(Android/iOS Tauri·PWA)은 로컬 사이드카가 없으므로 항상 서버 모드로 동작한다.
+  if (IS_MOBILE) return 'server'
   const mode = localStorage.getItem('mode')
   return mode === 'server' ? 'server' : 'local'
 }

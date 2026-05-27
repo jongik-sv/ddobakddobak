@@ -243,7 +243,7 @@ describe('MeetingLivePage', () => {
 
     it('전사/요약/메모 3개 탭이 존재함', () => {
       renderPage()
-      expect(screen.getByRole('tab', { name: /전사/i })).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: /기록/i })).toBeInTheDocument()
       expect(screen.getByRole('tab', { name: /요약/i })).toBeInTheDocument()
       expect(screen.getByRole('tab', { name: /메모/i })).toBeInTheDocument()
     })

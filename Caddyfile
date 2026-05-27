@@ -1,0 +1,20 @@
+{
+	# mkcert 수동 인증서 사용 → Let's Encrypt 자동발급 비활성
+	auto_https off
+}
+
+# LAN HTTPS 단일 진입점 (폰에서 https://<mac-ip>:13443 접속)
+https://10.110.14.219:13443, https://jangjong-ig-ui-MacBookAir.local:13443 {
+	tls /Users/jji/project/ddobakddobak/certs/10.110.14.219+3.pem /Users/jji/project/ddobakddobak/certs/10.110.14.219+3-key.pem
+
+	# /api/* 와 /cable(WebSocket) → Rails. WS 업그레이드는 Caddy가 자동 처리.
+	@backend path /api/* /cable*
+	handle @backend {
+		reverse_proxy localhost:13323
+	}
+
+	# 그 외 모든 요청 → Vite dev 서버 (프론트엔드)
+	handle {
+		reverse_proxy localhost:13325
+	}
+}

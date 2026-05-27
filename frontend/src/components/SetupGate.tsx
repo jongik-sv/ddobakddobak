@@ -32,7 +32,9 @@ export default function SetupGate({ children }: { children: React.ReactNode }) {
         onComplete={() => {
           sessionStorage.removeItem('reselect_mode')
           if (getMode() === 'server') {
-            setGate('ready')
+            // apiClient의 prefixUrl은 모듈 로드 시점에 고정되므로,
+            // 변경된 서버 URL을 반영하려면 전체 리로드로 재초기화한다.
+            window.location.reload()
           } else {
             setGate('local_setup')
           }

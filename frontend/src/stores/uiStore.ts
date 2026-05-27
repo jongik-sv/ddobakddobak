@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { IS_MOBILE } from '../config'
 
 export type MeetingTab = 'transcript' | 'summary' | 'memo'
 export type LiveTab = 'transcript' | 'summary' | 'memo'
@@ -27,7 +28,8 @@ interface UiState {
 
 export const useUiStore = create<UiState>((set) => ({
   settingsOpen: false,
-  openSettings: () => set({ settingsOpen: true }),
+  // 모바일에서는 설정 변경 불가 — 설정 모달 진입 자체를 차단 (딥링크 /settings 포함)
+  openSettings: () => { if (IS_MOBILE) return; set({ settingsOpen: true }) },
   closeSettings: () => set({ settingsOpen: false }),
   sidebarOpen: true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),

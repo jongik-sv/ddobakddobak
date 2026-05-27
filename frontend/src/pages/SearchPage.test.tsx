@@ -102,7 +102,7 @@ describe('SearchPage', () => {
       expect(screen.getByText('주간 회의')).toBeInTheDocument()
       expect(screen.getByText('월간 리뷰')).toBeInTheDocument()
       // 각 그룹 내부에 TypeBadge 존재
-      expect(screen.getByText('전사')).toBeInTheDocument()
+      expect(screen.getByText('기록')).toBeInTheDocument()
       // '요약' 배지가 존재하는지 확인 (snippet에도 '요약'이 포함되므로 getAllByText 사용)
       expect(screen.getAllByText(/요약/).length).toBeGreaterThanOrEqual(1)
       expect(screen.getByText('총 2건의 결과')).toBeInTheDocument()
@@ -189,7 +189,7 @@ describe('SearchPage', () => {
       const titleElements = screen.getAllByText('기획 회의')
       expect(titleElements).toHaveLength(1)
       // 하위 snippet 카드는 2개 표시
-      expect(screen.getByText('전사')).toBeInTheDocument()
+      expect(screen.getByText('기록')).toBeInTheDocument()
     })
   })
 
@@ -230,7 +230,7 @@ describe('SearchPage', () => {
     await performSearch('검색')
 
     await waitFor(() => {
-      expect(screen.getByText('전사 2건')).toBeInTheDocument()
+      expect(screen.getByText('기록 2건')).toBeInTheDocument()
       expect(screen.getByText('요약 1건')).toBeInTheDocument()
     })
   })
@@ -353,7 +353,7 @@ describe('SearchPage', () => {
 
       // 회의 A 그룹 내에 2건 (전사 1건, 요약 1건)
       const groupA = groups[0]
-      expect(within(groupA).getByText('전사 1건')).toBeInTheDocument()
+      expect(within(groupA).getByText('기록 1건')).toBeInTheDocument()
       expect(within(groupA).getByText('요약 1건')).toBeInTheDocument()
 
       // 회의 B 그룹 내에 1건 (요약 1건)

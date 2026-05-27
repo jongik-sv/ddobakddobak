@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { LogIn } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import { getServerUrl, IS_MOBILE } from '../../config'
 
 export function LoginPage() {
   const { login, loginDirect } = useAuth()
@@ -28,6 +29,9 @@ export function LoginPage() {
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-slate-800 mb-2">또박또박</h1>
           <p className="text-slate-500">AI 회의록 - 로그인이 필요합니다</p>
+          {getServerUrl() && (
+            <p className="mt-2 text-xs text-slate-400 break-all">서버: {getServerUrl()}</p>
+          )}
         </div>
 
         {error && (
@@ -110,7 +114,7 @@ export function LoginPage() {
           onClick={() => { sessionStorage.setItem('reselect_mode', '1'); window.location.reload() }}
           className="w-full mt-4 py-2 text-sm text-slate-500 hover:text-slate-700 transition-colors"
         >
-          모드 선택으로 돌아가기
+          {IS_MOBILE ? '서버 주소 변경' : '모드 선택으로 돌아가기'}
         </button>
       </div>
     </div>

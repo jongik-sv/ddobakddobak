@@ -908,7 +908,7 @@ export default function MeetingsPage() {
             <div
               key={`folder-${child.id}`}
               data-drop-folder-id={child.id}
-              onPointerDown={(e) => initDrag('folder', child.id, child.name, e)}
+              onPointerDown={(e) => initDrag('folder', child.id, e)}
               onClick={() => {
                 useFolderStore.getState().setSelectedFolder(child.id)
                 useMeetingStore.getState().setFolderId(child.id)
@@ -944,7 +944,7 @@ export default function MeetingsPage() {
           {meetings.map((meeting) => (
             <div
               key={meeting.id}
-              onPointerDown={(e) => initDrag('meeting', meeting.id, meeting.title, e)}
+              onPointerDown={(e) => initDrag('meeting', meeting.id, e)}
               onClick={() => navigate(`/meetings/${meeting.id}`)}
               className="group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 hover:shadow-sm transition-all flex flex-col min-h-[180px]"
             >
@@ -1008,7 +1008,7 @@ export default function MeetingsPage() {
                 <div
                   key={`folder-${child.id}`}
                   data-drop-folder-id={child.id}
-                  onPointerDown={(e) => initDrag('folder', child.id, child.name, e)}
+                  onPointerDown={(e) => initDrag('folder', child.id, e)}
                   onClick={() => {
                     useFolderStore.getState().setSelectedFolder(child.id)
                     useMeetingStore.getState().setFolderId(child.id)
@@ -1079,7 +1079,7 @@ export default function MeetingsPage() {
               {sortedMeetings.map((meeting, idx) => (
                 <div
                   key={meeting.id}
-                  onPointerDown={(e) => initDrag('meeting', meeting.id, meeting.title, e)}
+                  onPointerDown={(e) => initDrag('meeting', meeting.id, e)}
                   onClick={() => navigate(`/meetings/${meeting.id}`)}
                   className={`group grid grid-cols-[1fr_80px_120px_80px_100px_140px] gap-2 items-center px-4 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors ${
                     idx < sortedMeetings.length - 1 ? 'border-b border-border/50' : ''

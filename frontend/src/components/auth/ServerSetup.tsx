@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Monitor, Globe, CheckCircle, XCircle, Loader2 } from 'lucide-react'
-import { getDefaultServerUrl } from '../../config'
+import { invoke } from '@tauri-apps/api/core'
+import { Monitor, Globe, CheckCircle, XCircle, Loader2, Search } from 'lucide-react'
+import { getDefaultServerUrl, IS_MOBILE, IS_TAURI } from '../../config'
 
 type Mode = 'local' | 'server'
 type HealthStatus = 'idle' | 'checking' | 'success' | 'error'
@@ -24,21 +25,47 @@ function normalizeUrl(url: string): string {
   }
 }
 
+const RECENT_SERVERS_KEY = 'recent_servers'
+const MAX_RECENT = 5
+
+/** 최근 접속한 서버 URL 목록을 불러온다. */
+function loadRecentServers(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_SERVERS_KEY)
+    const arr = raw ? JSON.parse(raw) : []
+    return Array.isArray(arr) ? arr.filter((s): s is string => typeof s === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/** 최근 서버 목록 맨 앞에 url을 추가한다 (중복 제거, 최대 MAX_RECENT개). */
+function pushRecentServer(url: string): void {
+  const next = [url, ...loadRecentServers().filter((u) => u !== url)].slice(0, MAX_RECENT)
+  localStorage.setItem(RECENT_SERVERS_KEY, JSON.stringify(next))
+}
+
 interface ServerSetupProps {
   onComplete: () => void
   onCancel?: () => void
 }
 
 export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
-  const [mode, setMode] = useState<Mode | null>(null)
+  // 모바일은 항상 서버 모드 — 로컬/서버 선택 없이 서버 URL 입력만 받는다.
+  const [mode, setMode] = useState<Mode | null>(IS_MOBILE ? 'server' : null)
   // 저장된 값이 있으면 그 값, 없으면 config.yaml의 default_server_url을 초기값으로 채운다.
   const [serverUrl, setServerUrl] = useState(() => {
     return localStorage.getItem('server_url') || getDefaultServerUrl()
   })
   const [healthStatus, setHealthStatus] = useState<HealthStatus>('idle')
   const [healthError, setHealthError] = useState<string | null>(null)
+  const [recentServers] = useState<string[]>(loadRecentServers)
+  const [foundServers, setFoundServers] = useState<string[]>([])
+  const [scanning, setScanning] = useState(false)
+  const [scanned, setScanned] = useState(false)
 
   useEffect(() => {
+    if (IS_MOBILE) { setMode('server'); return }
     const savedMode = localStorage.getItem('mode')
     if (isValidMode(savedMode)) setMode(savedMode)
   }, [])
@@ -51,12 +78,12 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
     }
   }
 
-  const checkHealth = async () => {
+  const checkHealthFor = async (url: string) => {
     setHealthStatus('checking')
     setHealthError(null)
 
     try {
-      const normalizedUrl = normalizeUrl(serverUrl)
+      const normalizedUrl = normalizeUrl(url)
 
       const response = await fetch(`${normalizedUrl}/api/v1/health`, {
         method: 'GET',
@@ -79,13 +106,38 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
     }
   }
 
+  const checkHealth = () => checkHealthFor(serverUrl)
+
+  /** 스캔/최근 목록에서 서버 선택 → URL 채우고 즉시 연결 확인 */
+  const pickServer = (url: string) => {
+    setServerUrl(url)
+    void checkHealthFor(url)
+  }
+
+  /** 같은 Wi-Fi(/24) 대역에서 또박또박 서버를 스캔한다 (Tauri 전용). */
+  const handleScan = async () => {
+    setScanning(true)
+    setScanned(false)
+    try {
+      const list = await invoke<string[]>('scan_lan_servers', {})
+      setFoundServers(list)
+    } catch {
+      setFoundServers([])
+    } finally {
+      setScanning(false)
+      setScanned(true)
+    }
+  }
+
   const handleComplete = () => {
     if (mode === 'local') {
       localStorage.setItem('mode', 'local')
       localStorage.removeItem('server_url')
     } else if (mode === 'server') {
+      const normalized = normalizeUrl(serverUrl)
       localStorage.setItem('mode', 'server')
-      localStorage.setItem('server_url', normalizeUrl(serverUrl))
+      localStorage.setItem('server_url', normalized)
+      pushRecentServer(normalized)
     }
     onComplete()
   }
@@ -98,9 +150,10 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
       <div className="w-full max-w-lg bg-white rounded-2xl shadow-lg p-8">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-slate-800 mb-2">또박또박</h1>
-          <p className="text-slate-500">AI 회의록 - 실행 모드를 선택하세요</p>
+          <p className="text-slate-500">{IS_MOBILE ? 'AI 회의록 - 서버 주소를 입력하세요' : 'AI 회의록 - 실행 모드를 선택하세요'}</p>
         </div>
 
+        {!IS_MOBILE && (
         <div className="grid grid-cols-2 gap-4 mb-6">
           <button
             type="button"
@@ -140,9 +193,59 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
             </span>
           </button>
         </div>
+        )}
 
         {mode === 'server' && (
           <div className="mb-6 space-y-4">
+            {IS_TAURI && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={handleScan}
+                  disabled={scanning}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {scanning ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> 서버 검색 중...</>
+                  ) : (
+                    <><Search className="w-4 h-4" /> 같은 Wi-Fi에서 서버 찾기</>
+                  )}
+                </button>
+                {foundServers.map((url) => (
+                  <button
+                    key={url}
+                    type="button"
+                    onClick={() => pickServer(url)}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-blue-400 hover:bg-blue-50 transition-colors break-all text-left"
+                  >
+                    <Globe className="w-4 h-4 shrink-0 text-slate-500" />
+                    <span className="truncate">{url}</span>
+                  </button>
+                ))}
+                {scanned && !scanning && foundServers.length === 0 && (
+                  <p className="text-xs text-slate-400">
+                    같은 Wi-Fi에서 서버를 찾지 못했어요. 아래에 주소를 직접 입력하세요.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {recentServers.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-slate-500">최근 서버</p>
+                {recentServers.map((url) => (
+                  <button
+                    key={url}
+                    type="button"
+                    onClick={() => pickServer(url)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:border-blue-400 hover:bg-blue-50 transition-colors break-all text-left"
+                  >
+                    {url}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div>
               <label
                 htmlFor="server-url"

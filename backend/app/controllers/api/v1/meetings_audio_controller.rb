@@ -25,6 +25,47 @@ module Api
         render json: { audio_available: true }, status: :created
       end
 
+      # 녹음 중 연속 청크 업로드: seq별 part 파일로 저장 (중간에 죽어도 직전까지 보존)
+      def chunk
+        chunk_file = params.require(:chunk)
+        sequence   = params.require(:sequence).to_i
+
+        unless valid_audio_content_type?(chunk_file.content_type)
+          render json: { error: "Invalid chunk type." }, status: :unprocessable_entity
+          return
+        end
+
+        dir = parts_dir(@meeting.id)
+        FileUtils.mkdir_p(dir)
+        FileUtils.cp(chunk_file.tempfile.path, File.join(dir, "#{sequence}.part"))
+
+        render json: { received: sequence }, status: :ok
+      end
+
+      # 녹음 종료: part들을 seq 순서로 이어붙여 webm 생성 → mp3 변환 잡 트리거
+      def finalize
+        dir = parts_dir(@meeting.id)
+        parts = Dir.glob(File.join(dir, "*.part"))
+                   .sort_by { |p| File.basename(p, ".part").to_i }
+
+        if parts.empty?
+          render json: { error: "No audio chunks" }, status: :unprocessable_entity
+          return
+        end
+
+        FileUtils.mkdir_p(audio_dir)
+        dest = File.join(audio_dir, "#{@meeting.id}.webm")
+        File.open(dest, "wb") do |out|
+          parts.each { |p| out.write(File.binread(p)) }
+        end
+
+        @meeting.update!(audio_file_path: dest)
+        AudioUploadJob.perform_later(meeting_id: @meeting.id)
+        FileUtils.rm_rf(dir)
+
+        render json: { audio_available: true }, status: :ok
+      end
+
       def show
         path = @meeting.audio_file_path
 
@@ -71,6 +112,10 @@ module Api
 
       def audio_dest_path(meeting_id)
         File.join(audio_dir, "#{meeting_id}.webm")
+      end
+
+      def parts_dir(meeting_id)
+        File.join(audio_dir, "#{meeting_id}_parts")
       end
 
       # 기존 오디오가 있으면 ffmpeg로 병합, 없으면 단순 저장
