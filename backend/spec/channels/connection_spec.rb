@@ -25,8 +25,14 @@ RSpec.describe ApplicationCable::Connection, type: :channel do
       expect(connection.current_user).to eq(user)
     end
 
-    it "rejects connection without token" do
-      expect { connect }.to have_rejected_connection
+    it "rejects remote connection without token" do
+      expect { connect env: { "REMOTE_ADDR" => "192.168.1.50" } }.to have_rejected_connection
+    end
+
+    it "accepts loopback connection without token (Mac 본체 → desktop@local admin)" do
+      connect env: { "REMOTE_ADDR" => "127.0.0.1" }
+      expect(connection.current_user.email).to eq("desktop@local")
+      expect(connection.current_user.role).to eq("admin")
     end
 
     it "rejects connection with invalid token" do

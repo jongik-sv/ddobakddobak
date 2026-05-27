@@ -6,6 +6,7 @@ interface SharingState {
   participants: Participant[]
   isLoading: boolean
   recordingStopped: boolean
+  recordingDenied: boolean
   hostDisconnected: boolean
   hostDisconnectedUserId: number | null
   hostClaimable: boolean
@@ -19,6 +20,7 @@ interface SharingState {
   stopSharing: () => void
   setLoading: (loading: boolean) => void
   setRecordingStopped: (stopped: boolean) => void
+  setRecordingDenied: (denied: boolean) => void
   setHostDisconnected: (userId: number, graceSeconds: number) => void
   clearHostDisconnected: () => void
   setHostClaimable: (claimable: boolean) => void
@@ -38,6 +40,7 @@ const initialState = {
   participants: [] as Participant[],
   isLoading: false,
   recordingStopped: false,
+  recordingDenied: false,
   hostDisconnected: false,
   hostDisconnectedUserId: null as number | null,
   hostClaimable: false,
@@ -91,6 +94,7 @@ export const useSharingStore = create<SharingState>()((set) => ({
       shareCode: null,
       participants: [],
       recordingStopped: false,
+      recordingDenied: false,
       hostDisconnected: false,
       hostDisconnectedUserId: null,
       hostClaimable: false,
@@ -100,6 +104,8 @@ export const useSharingStore = create<SharingState>()((set) => ({
   setLoading: (loading) => set({ isLoading: loading }),
 
   setRecordingStopped: (stopped) => set({ recordingStopped: stopped }),
+
+  setRecordingDenied: (denied) => set({ recordingDenied: denied }),
 
   setHostDisconnected: (userId, graceSeconds) =>
     set({

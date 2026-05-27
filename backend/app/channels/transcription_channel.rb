@@ -10,16 +10,19 @@ class TranscriptionChannel < ApplicationCable::Channel
 
     @meeting_id = meeting.id
     @role = determine_role(meeting)
+    @lock_token = SecureRandom.hex(16)
 
     if @role
       stream_from meeting.transcription_stream
       handle_host_reconnection(meeting)
+      notify_if_recording_in_progress(meeting)
     else
       reject
     end
   end
 
   def unsubscribed
+    RecordingLock.release(@meeting_id, @lock_token) if @meeting_id && @lock_token
     stop_all_streams
     handle_host_disconnection if @meeting_id
   end
@@ -29,6 +32,17 @@ class TranscriptionChannel < ApplicationCable::Channel
 
     # viewer는 오디오 전송 차단 (owner 또는 host만 허용)
     return if @role == MeetingParticipant::ROLE_VIEWER
+
+    # 녹음 중인 회의에만 오디오 허용 (멈춘/완료된 회의로의 스트리밍 차단)
+    meeting = Meeting.find_by(id: @meeting_id)
+    return unless meeting&.recording?
+
+    # 회의당 단일 녹음 스트림만 허용. 다른 기기가 이미 녹음 중이면
+    # 이 커넥션을 viewer로 강등하고 1회 알림 후 무시한다.
+    unless RecordingLock.acquire(@meeting_id, @lock_token)
+      deny_recording
+      return
+    end
 
     TranscriptionJob.perform_later(
       meeting_id: @meeting_id,
@@ -42,6 +56,24 @@ class TranscriptionChannel < ApplicationCable::Channel
   end
 
   private
+
+  # 새로 구독한 세션에게, 이미 다른 세션이 녹음(락 보유) 중이면 알림.
+  # 프론트는 이 신호를 받으면 라이브페이지 대신 읽기전용 뷰어로 라우팅한다.
+  def notify_if_recording_in_progress(meeting)
+    return unless meeting.recording?
+    return if RecordingLock.holder(@meeting_id).nil?
+
+    transmit({ "type" => "recording_in_progress", "meeting_id" => @meeting_id })
+  end
+
+  # 다른 기기가 이미 녹음 중일 때: viewer로 강등하고 1회만 거부 알림.
+  def deny_recording
+    @role = MeetingParticipant::ROLE_VIEWER
+    return if @recording_denied_notified
+
+    @recording_denied_notified = true
+    transmit({ "type" => "recording_denied", "meeting_id" => @meeting_id })
+  end
 
   # 구독 권한 결정: owner / host / viewer / nil(거부)
   # admin 유저는 모든 회의에 owner 권한으로 접근 가능 (관리/모니터링 목적)

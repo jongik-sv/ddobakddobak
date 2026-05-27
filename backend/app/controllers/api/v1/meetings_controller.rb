@@ -154,6 +154,9 @@ module Api
 
         @meeting.update!(status: :completed, ended_at: Time.current)
 
+        # 녹음 단일성 락 해제 (재시작/reopen 시 stale 락 방지)
+        RecordingLock.clear(@meeting.id)
+
         # 참여자에게 녹음 종료 브로드캐스트
         ActionCable.server.broadcast(
           @meeting.transcription_stream,

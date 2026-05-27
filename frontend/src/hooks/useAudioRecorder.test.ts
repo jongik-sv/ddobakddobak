@@ -181,6 +181,29 @@ describe('useAudioRecorder', () => {
     expect(result.current.isRecording).toBe(false)
   })
 
+  describe('discard()', () => {
+    it('discard() 후 isRecording=false', async () => {
+      const { result } = renderHook(() => useAudioRecorder(callbacks))
+      await act(async () => { await result.current.start() })
+      act(() => { result.current.discard() })
+      expect(result.current.isRecording).toBe(false)
+    })
+
+    it('discard()는 onStop을 호출하지 않는다 (오디오 업로드 폐기)', async () => {
+      const { result } = renderHook(() => useAudioRecorder(callbacks))
+      await act(async () => { await result.current.start() })
+      act(() => { result.current.discard() })
+      expect(callbacks.onStop).not.toHaveBeenCalled()
+    })
+
+    it('discard()는 마이크 트랙을 중지한다', async () => {
+      const { result } = renderHook(() => useAudioRecorder(callbacks))
+      await act(async () => { await result.current.start() })
+      act(() => { result.current.discard() })
+      expect(mockTrack.stop).toHaveBeenCalled()
+    })
+  })
+
   it('worklet 메시지 수신 시 onChunk 콜백 호출', async () => {
     const { result } = renderHook(() => useAudioRecorder(callbacks))
     await act(async () => { await result.current.start() })

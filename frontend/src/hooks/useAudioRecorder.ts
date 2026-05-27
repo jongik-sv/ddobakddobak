@@ -23,6 +23,8 @@ export interface AudioRecorderResult {
   error: string | null
   start: (baseOffsetMs?: number, baseSeq?: number) => Promise<void>
   stop: () => void
+  /** 녹음을 중지하되 오디오를 업로드하지 않고 폐기한다(onStop/onFinalize 호출 안 함). */
+  discard: () => void
   pause: () => void
   resume: () => void
   /** 브라우저 모드 전용: 시스템 오디오 PCM을 녹음 믹스에 주입 */
@@ -76,6 +78,18 @@ function useNativeRecorder(callbacks: AudioRecorderCallbacks): AudioRecorderResu
     setIsPaused(false)
   }, [])
 
+  const discard = useCallback(async () => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      // Rust 녹음기를 중지해 마이크를 해제하되, 반환된 WAV는 폐기(업로드 안 함)
+      await invoke('stop_recording')
+    } catch (err) {
+      console.warn('[NativeRecorder] discard 실패:', err)
+    }
+    setIsRecording(false)
+    setIsPaused(false)
+  }, [])
+
   const pause = useCallback(() => {
     // pause_mic_capture가 녹음기도 함께 일시정지
     setIsPaused(true)
@@ -89,7 +103,7 @@ function useNativeRecorder(callbacks: AudioRecorderCallbacks): AudioRecorderResu
     // Tauri 모드에서는 Rust 녹음기가 직접 시스템 오디오를 받으므로 no-op
   }, [])
 
-  return { isRecording, isPaused, error, start, stop, pause, resume, feedSystemAudio }
+  return { isRecording, isPaused, error, start, stop, discard, pause, resume, feedSystemAudio }
 }
 
 // ── 브라우저 MediaRecorder 녹음 (기존 fallback) ────────
@@ -225,13 +239,34 @@ function useBrowserRecorder(callbacks: AudioRecorderCallbacks): AudioRecorderRes
     setIsPaused(false)
   }, [])
 
+  const discard = useCallback(() => {
+    pausedRef.current = false
+    workletNodeRef.current?.disconnect()
+    systemInjectorRef.current?.disconnect()
+    systemInjectorRef.current = null
+    audioContextRef.current?.close()
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+
+    // onStop을 부르지 않고 MediaRecorder만 정지(오디오 폐기)
+    const mediaRecorder = mediaRecorderRef.current
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.ondataavailable = null
+      mediaRecorder.onstop = null
+      mediaRecorder.stop()
+    }
+    chunksRef.current = []
+
+    setIsRecording(false)
+    setIsPaused(false)
+  }, [])
+
   const feedSystemAudio = useCallback((pcm: Int16Array) => {
     if (pausedRef.current) return
     systemInjectorRef.current?.port.postMessage(pcm)
     workletNodeRef.current?.port.postMessage({ type: 'system-audio', pcm })
   }, [])
 
-  return { isRecording, isPaused, error, start, stop, pause, resume, feedSystemAudio }
+  return { isRecording, isPaused, error, start, stop, discard, pause, resume, feedSystemAudio }
 }
 
 // ── 모바일 청크 녹음 (MediaRecorder Opus + 연속 업로드) ─────────────────
@@ -311,6 +346,21 @@ function useChunkedRecorder(callbacks: AudioRecorderCallbacks): AudioRecorderRes
     mr.stop()
   }, [])
 
+  const discard = useCallback(() => {
+    const mr = mrRef.current
+    setIsRecording(false)
+    setIsPaused(false)
+    // finalize/업로드 없이 중지 + 마이크 해제. 남은 청크는 폐기.
+    if (mr && mr.state !== 'inactive') {
+      mr.ondataavailable = null
+      mr.onstop = null
+      mr.stop()
+    }
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    mrRef.current = null
+  }, [])
+
   const pause = useCallback(() => {
     if (mrRef.current?.state === 'recording') mrRef.current.pause()
     setIsPaused(true)
@@ -325,7 +375,7 @@ function useChunkedRecorder(callbacks: AudioRecorderCallbacks): AudioRecorderRes
     // 모바일은 시스템 오디오 캡처 없음 (no-op)
   }, [])
 
-  return { isRecording, isPaused, error, start, stop, pause, resume, feedSystemAudio }
+  return { isRecording, isPaused, error, start, stop, discard, pause, resume, feedSystemAudio }
 }
 
 // ── 공개 훅: 환경에 따라 자동 분기 ─────────────────

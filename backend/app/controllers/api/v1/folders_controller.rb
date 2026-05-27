@@ -9,7 +9,7 @@ module Api
           folders = Folder.ordered
           render json: { folders: folders.map { |f| folder_json(f) } }
         else
-          tree = Folder.tree
+          tree = Folder.tree(current_user)
           render json: { folders: tree }
         end
       end
@@ -70,7 +70,7 @@ module Api
           name: folder.name,
           parent_id: folder.parent_id,
           position: folder.position,
-          meeting_count: folder.meetings.count,
+          meeting_count: folder.meetings.accessible_by(current_user).count,
           children_count: folder.children.count,
           tags: folder.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
           ancestors: folder.ancestors,

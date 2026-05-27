@@ -1,0 +1,39 @@
+require "rails_helper"
+
+RSpec.describe "Api::V1::Folders", type: :request do
+  let(:user) { create(:user) }
+  let(:other) { create(:user) }
+  let(:admin) { create(:user, :admin) }
+  let!(:folder) { create(:folder) }
+
+  before do
+    create(:meeting, creator: other, folder_id: folder.id)  # 남의 회의
+    create(:meeting, creator: user,  folder_id: folder.id)  # 내 회의
+  end
+
+  # 사이드바 폴더 트리/플랫의 meeting_count는 접근 가능한 회의만 세야 한다 (누수 방지).
+  describe "GET /api/v1/folders — meeting_count 스코프" do
+    def folder_count(parsed)
+      parsed["folders"].find { |f| f["id"] == folder.id }["meeting_count"]
+    end
+
+    it "non-admin은 본인 소유 회의만 카운트한다 (tree)" do
+      login_as(user)
+      get "/api/v1/folders"
+      expect(response).to have_http_status(:ok)
+      expect(folder_count(response.parsed_body)).to eq(1)
+    end
+
+    it "admin은 전체를 카운트한다 (tree)" do
+      login_as(admin)
+      get "/api/v1/folders"
+      expect(folder_count(response.parsed_body)).to eq(2)
+    end
+
+    it "flat 모드 meeting_count도 스코프된다" do
+      login_as(user)
+      get "/api/v1/folders", params: { flat: "true" }
+      expect(folder_count(response.parsed_body)).to eq(1)
+    end
+  end
+end

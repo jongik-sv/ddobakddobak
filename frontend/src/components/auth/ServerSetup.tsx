@@ -63,6 +63,8 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
   const [foundServers, setFoundServers] = useState<string[]>([])
   const [scanning, setScanning] = useState(false)
   const [scanned, setScanned] = useState(false)
+  // 스캔/최근 목록에서 마지막으로 누른 서버 — 선택 표시 + 인라인 상태 아이콘용
+  const [selectedUrl, setSelectedUrl] = useState<string | null>(null)
 
   useEffect(() => {
     if (IS_MOBILE) { setMode('server'); return }
@@ -108,10 +110,23 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
 
   const checkHealth = () => checkHealthFor(serverUrl)
 
-  /** 스캔/최근 목록에서 서버 선택 → URL 채우고 즉시 연결 확인 */
+  /** 스캔/최근 목록에서 서버 선택 → 선택 표시 + URL 채우고 즉시 연결 확인 */
   const pickServer = (url: string) => {
+    setSelectedUrl(url)
     setServerUrl(url)
     void checkHealthFor(url)
+  }
+
+  /** 선택된 서버 줄에 표시할 인라인 상태 아이콘 (진행/성공/실패). */
+  const renderRowStatus = (url: string) => {
+    if (selectedUrl !== url) return null
+    if (healthStatus === 'checking')
+      return <Loader2 className="w-4 h-4 shrink-0 animate-spin text-blue-500" />
+    if (healthStatus === 'success')
+      return <CheckCircle className="w-4 h-4 shrink-0 text-green-600" />
+    if (healthStatus === 'error')
+      return <XCircle className="w-4 h-4 shrink-0 text-red-500" />
+    return null
   }
 
   /** 같은 Wi-Fi(/24) 대역에서 또박또박 서버를 스캔한다 (Tauri 전용). */
@@ -203,7 +218,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                   type="button"
                   onClick={handleScan}
                   disabled={scanning}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
                   {scanning ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> 서버 검색 중...</>
@@ -211,17 +226,25 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                     <><Search className="w-4 h-4" /> 같은 Wi-Fi에서 서버 찾기</>
                   )}
                 </button>
-                {foundServers.map((url) => (
-                  <button
-                    key={url}
-                    type="button"
-                    onClick={() => pickServer(url)}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-blue-400 hover:bg-blue-50 transition-colors break-all text-left"
-                  >
-                    <Globe className="w-4 h-4 shrink-0 text-slate-500" />
-                    <span className="truncate">{url}</span>
-                  </button>
-                ))}
+                {foundServers.map((url) => {
+                  const isSelected = selectedUrl === url
+                  return (
+                    <button
+                      key={url}
+                      type="button"
+                      onClick={() => pickServer(url)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-sm break-all text-left transition-all active:scale-[0.99] ${
+                        isSelected
+                          ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500 text-blue-700 font-medium'
+                          : 'border-slate-200 text-slate-700 hover:border-blue-400 hover:bg-blue-50 active:bg-blue-100'
+                      }`}
+                    >
+                      <Globe className={`w-4 h-4 shrink-0 ${isSelected ? 'text-blue-500' : 'text-slate-500'}`} />
+                      <span className="truncate flex-1">{url}</span>
+                      {renderRowStatus(url)}
+                    </button>
+                  )
+                })}
                 {scanned && !scanning && foundServers.length === 0 && (
                   <p className="text-xs text-slate-400">
                     같은 Wi-Fi에서 서버를 찾지 못했어요. 아래에 주소를 직접 입력하세요.
@@ -233,16 +256,24 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
             {recentServers.length > 0 && (
               <div className="space-y-1">
                 <p className="text-xs font-medium text-slate-500">최근 서버</p>
-                {recentServers.map((url) => (
-                  <button
-                    key={url}
-                    type="button"
-                    onClick={() => pickServer(url)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:border-blue-400 hover:bg-blue-50 transition-colors break-all text-left"
-                  >
-                    {url}
-                  </button>
-                ))}
+                {recentServers.map((url) => {
+                  const isSelected = selectedUrl === url
+                  return (
+                    <button
+                      key={url}
+                      type="button"
+                      onClick={() => pickServer(url)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-sm break-all text-left transition-all active:scale-[0.99] ${
+                        isSelected
+                          ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500 text-blue-700 font-medium'
+                          : 'border-slate-200 text-slate-600 hover:border-blue-400 hover:bg-blue-50 active:bg-blue-100'
+                      }`}
+                    >
+                      <span className="truncate flex-1">{url}</span>
+                      {renderRowStatus(url)}
+                    </button>
+                  )
+                })}
               </div>
             )}
 

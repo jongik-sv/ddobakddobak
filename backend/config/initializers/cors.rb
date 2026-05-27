@@ -11,6 +11,7 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
     allowed_origins = [
       "http://localhost:13325",
       "tauri://localhost",
+      "http://tauri.localhost",
       "https://tauri.localhost"
     ]
 

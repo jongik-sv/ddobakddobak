@@ -79,6 +79,27 @@ RSpec.describe TranscriptionChannel, type: :channel do
       end
     end
 
+    context "when recording is already in progress by another session" do
+      before do
+        meeting.update!(status: "recording")
+        RecordingLock.acquire(meeting.id, "other-device-token")
+      end
+
+      it "transmits recording_in_progress to the newly subscribing session" do
+        subscribe(meeting_id: meeting.id)
+        expect(transmissions.last).to include("type" => "recording_in_progress")
+      end
+    end
+
+    context "when meeting is recording but no active recorder holds the lock" do
+      before { meeting.update!(status: "recording") }
+
+      it "does NOT transmit recording_in_progress" do
+        subscribe(meeting_id: meeting.id)
+        expect(transmissions.map { |t| t["type"] }).not_to include("recording_in_progress")
+      end
+    end
+
     context "with an invalid meeting_id" do
       it "rejects the subscription" do
         subscribe(meeting_id: 99999)
@@ -97,8 +118,11 @@ RSpec.describe TranscriptionChannel, type: :channel do
   end
 
   describe "#audio_chunk" do
-    context "when subscribed as owner" do
-      before { subscribe(meeting_id: meeting.id) }
+    context "when subscribed as owner and meeting is recording" do
+      before do
+        meeting.update!(status: "recording")
+        subscribe(meeting_id: meeting.id)
+      end
 
       it "enqueues a TranscriptionJob with the correct arguments" do
         expect {
@@ -123,12 +147,28 @@ RSpec.describe TranscriptionChannel, type: :channel do
           )
         )
       end
+
+      it "claims the recording lock" do
+        perform(:audio_chunk, { "data" => "base64audio==", "sequence" => 1 })
+        expect(RecordingLock.holder(meeting.id)).to be_present
+      end
     end
 
-    context "when subscribed as host participant" do
+    context "when meeting is NOT in recording status" do
+      before { subscribe(meeting_id: meeting.id) } # 기본 status: pending
+
+      it "does NOT enqueue a TranscriptionJob" do
+        expect {
+          perform(:audio_chunk, { "data" => "base64audio==", "sequence" => 1 })
+        }.not_to have_enqueued_job(TranscriptionJob)
+      end
+    end
+
+    context "when subscribed as host participant and meeting is recording" do
       let(:host_user) { create(:user) }
 
       before do
+        meeting.update!(status: "recording")
         create(:meeting_participant, meeting: meeting, user: host_user, role: "host", joined_at: Time.current)
         stub_connection current_user: host_user
         subscribe(meeting_id: meeting.id)
@@ -145,6 +185,7 @@ RSpec.describe TranscriptionChannel, type: :channel do
       let(:viewer) { create(:user) }
 
       before do
+        meeting.update!(status: "recording")
         create(:meeting_participant, meeting: meeting, user: viewer, role: "viewer", joined_at: Time.current)
         stub_connection current_user: viewer
         subscribe(meeting_id: meeting.id)
@@ -153,6 +194,33 @@ RSpec.describe TranscriptionChannel, type: :channel do
       it "does NOT enqueue a TranscriptionJob (audio blocked)" do
         expect {
           perform(:audio_chunk, { "data" => "base64audio==", "sequence" => 1 })
+        }.not_to have_enqueued_job(TranscriptionJob)
+      end
+    end
+
+    context "when another device already holds the recording lock" do
+      before do
+        meeting.update!(status: "recording")
+        RecordingLock.acquire(meeting.id, "other-device-token")
+        subscribe(meeting_id: meeting.id)
+      end
+
+      it "does NOT enqueue a TranscriptionJob (single-recorder lock)" do
+        expect {
+          perform(:audio_chunk, { "data" => "base64audio==", "sequence" => 1 })
+        }.not_to have_enqueued_job(TranscriptionJob)
+      end
+
+      it "transmits a recording_denied notice" do
+        perform(:audio_chunk, { "data" => "base64audio==", "sequence" => 1 })
+        expect(transmissions.last).to include("type" => "recording_denied")
+      end
+
+      it "stays denied (demoted) even after the other holder releases" do
+        perform(:audio_chunk, { "data" => "base64audio==", "sequence" => 1 })
+        RecordingLock.clear(meeting.id)
+        expect {
+          perform(:audio_chunk, { "data" => "base64audio==", "sequence" => 2 })
         }.not_to have_enqueued_job(TranscriptionJob)
       end
     end
@@ -165,6 +233,16 @@ RSpec.describe TranscriptionChannel, type: :channel do
 
       unsubscribe
       expect(subscription).not_to have_streams
+    end
+
+    it "releases the recording lock it held" do
+      meeting.update!(status: "recording")
+      subscribe(meeting_id: meeting.id)
+      perform(:audio_chunk, { "data" => "base64audio==", "sequence" => 1 })
+      expect(RecordingLock.holder(meeting.id)).to be_present
+
+      unsubscribe
+      expect(RecordingLock.holder(meeting.id)).to be_nil
     end
   end
 end

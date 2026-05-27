@@ -141,9 +141,10 @@ export default function MeetingLivePage() {
   const meetingId = Number(id)
   const navigate = useNavigate()
 
-  // 회의실 진입 시 사이드바 닫기
+  // 회의실 진입 시 사이드바 닫기 + 이전 거부 플래그 초기화
   useEffect(() => {
     useUiStore.setState({ sidebarOpen: false })
+    useSharingStore.getState().setRecordingDenied(false)
   }, [])
 
   const [status, setStatus] = useState<MeetingStatus>('idle')
@@ -205,6 +206,8 @@ export default function MeetingLivePage() {
   // 공유 상태
   const isSharing = useSharingStore((s) => s.shareCode !== null)
   const sharingParticipants = useSharingStore((s) => s.participants)
+  // 다른 세션이 이미 녹음 중 → 읽기전용 뷰어로 라우팅 (단일 녹음 세션 보장)
+  const recordingDenied = useSharingStore((s) => s.recordingDenied)
   const [currentUserId, setCurrentUserId] = useState<number>(0)
   const isHost = useMemo(() => {
     const host = sharingParticipants.find((p) => p.role === 'host')
@@ -262,7 +265,7 @@ export default function MeetingLivePage() {
     [meetingId]
   )
 
-  const { isRecording, isPaused, error, start, stop, pause, resume, feedSystemAudio } = useAudioRecorder({
+  const { isRecording, isPaused, error, start, stop, discard, pause, resume, feedSystemAudio } = useAudioRecorder({
     onChunk: (pcm: Int16Array, meta: ChunkMeta) => onChunkRef.current(pcm, meta),
     onStop,
     // 모바일 청크 레코더: 녹음 중 압축 청크 연속 업로드 + 종료 시 서버 합치기/변환
@@ -299,6 +302,16 @@ export default function MeetingLivePage() {
     // 원본 PCM을 마이크 캡처에 전달하여 믹싱 후 STT
     onRawAudio: (pcm: Int16Array) => feedSystemAudioRef.current(pcm),
   })
+
+  // 다른 세션이 이미 녹음 중이면(백엔드 recording_in_progress/recording_denied):
+  // 진행 중인 로컬 캡처는 폐기(업로드 안 함)하고 읽기전용 뷰어로 이동한다.
+  useEffect(() => {
+    if (!recordingDenied) return
+    if (IS_TAURI) stopMicCapture()
+    stopSystemCapture()
+    if (isRecording) discard()
+    navigate(`/meetings/${meetingId}/viewer`, { replace: true })
+  }, [recordingDenied, isRecording, meetingId, navigate, discard, stopMicCapture, stopSystemCapture])
 
   const handleStart = async () => {
     // 이전 세션 오디오 업로드 완료 대기 (중단→재시작 싱크 보장)

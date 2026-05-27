@@ -372,6 +372,16 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
         post "/api/v1/meetings/#{meeting.id}/stop"
       end
+
+      it "clears the recording lock for the meeting" do
+        allow(MeetingFinalizerJob).to receive(:perform_later)
+        allow(MeetingSummarizationJob).to receive(:perform_later)
+        RecordingLock.acquire(meeting.id, "device-token")
+
+        post "/api/v1/meetings/#{meeting.id}/stop"
+
+        expect(RecordingLock.holder(meeting.id)).to be_nil
+      end
     end
 
     context "when meeting is not recording" do

@@ -1,5 +1,44 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useTranscriptStore } from '../stores/transcriptStore'
+import { createTranscriptionChannel } from './transcription'
+import { useSharingStore } from '../stores/sharingStore'
+
+type ReceivedFn = (raw: Record<string, unknown>) => void
+
+// 실제 createTranscriptionChannel의 received 핸들러를 가짜 consumer로 캡처한다.
+function captureReceived(): ReceivedFn {
+  let received: ReceivedFn | undefined
+  const consumer = {
+    subscriptions: {
+      create: (_params: unknown, handlers: { received: ReceivedFn }) => {
+        received = handlers.received.bind(handlers)
+        return { unsubscribe() {}, perform() {} }
+      },
+    },
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  createTranscriptionChannel(1, consumer as any)
+  if (!received) throw new Error('received handler not captured')
+  return received
+}
+
+describe('received 라우팅: recording_denied', () => {
+  beforeEach(() => {
+    useSharingStore.getState().reset()
+  })
+
+  it('recording_denied 메시지가 sharingStore.recordingDenied를 true로 설정한다', () => {
+    const received = captureReceived()
+    received({ type: 'recording_denied', meeting_id: 1 })
+    expect(useSharingStore.getState().recordingDenied).toBe(true)
+  })
+
+  it('recording_in_progress 메시지도 recordingDenied를 true로 설정한다(뷰어 라우팅 트리거)', () => {
+    const received = captureReceived()
+    received({ type: 'recording_in_progress', meeting_id: 1 })
+    expect(useSharingStore.getState().recordingDenied).toBe(true)
+  })
+})
 
 describe('transcript_updated 처리 로직', () => {
   beforeEach(() => {

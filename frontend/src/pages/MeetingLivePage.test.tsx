@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import MeetingLivePage from './MeetingLivePage'
+import { useSharingStore } from '../stores/sharingStore'
 
 // ────────────────���─────────────────────────────
 // Mocks
@@ -117,6 +118,7 @@ function renderPage(meetingId = '1') {
     <MemoryRouter initialEntries={[`/meetings/${meetingId}/live`]}>
       <Routes>
         <Route path="/meetings/:id/live" element={<MeetingLivePage />} />
+        <Route path="/meetings/:id/viewer" element={<div data-testid="viewer-route">VIEWER</div>} />
       </Routes>
     </MemoryRouter>
   )
@@ -125,6 +127,7 @@ function renderPage(meetingId = '1') {
 describe('MeetingLivePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useSharingStore.getState().reset()
     // 기본: 데스크톱 모드
     setDesktopMode(true)
     vi.mocked(useAudioRecorderModule.useAudioRecorder).mockReturnValue({
@@ -133,6 +136,7 @@ describe('MeetingLivePage', () => {
       error: null,
       start: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn(),
+      discard: vi.fn(),
       pause: vi.fn(),
       resume: vi.fn(),
       feedSystemAudio: vi.fn(),
@@ -140,6 +144,16 @@ describe('MeetingLivePage', () => {
     vi.mocked(meetingsApi.startMeeting).mockResolvedValue({ id: 1, status: 'recording', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' } as any)
     vi.mocked(meetingsApi.stopMeeting).mockResolvedValue({ id: 1, status: 'completed', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' } as any)
     vi.mocked(meetingsApi.uploadAudio).mockResolvedValue(undefined)
+  })
+
+  it('다른 세션이 녹음 중이면(recordingDenied) 읽기전용 뷰어로 라우팅한다', async () => {
+    renderPage()
+    act(() => {
+      useSharingStore.getState().setRecordingDenied(true)
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('viewer-route')).toBeInTheDocument()
+    })
   })
 
   it('"회의 시작" 버튼 렌더', () => {

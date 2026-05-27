@@ -36,6 +36,26 @@ describe('sharingStore', () => {
     expect(state.shareCode).toBeNull()
     expect(state.participants).toEqual([])
     expect(state.isLoading).toBe(false)
+    expect(state.recordingDenied).toBe(false)
+  })
+
+  describe('recordingDenied', () => {
+    it('setRecordingDenied가 플래그를 설정한다', () => {
+      useSharingStore.getState().setRecordingDenied(true)
+      expect(useSharingStore.getState().recordingDenied).toBe(true)
+    })
+
+    it('reset이 recordingDenied를 초기화한다', () => {
+      useSharingStore.getState().setRecordingDenied(true)
+      useSharingStore.getState().reset()
+      expect(useSharingStore.getState().recordingDenied).toBe(false)
+    })
+
+    it('stopSharing이 recordingDenied를 초기화한다', () => {
+      useSharingStore.getState().setRecordingDenied(true)
+      useSharingStore.getState().stopSharing()
+      expect(useSharingStore.getState().recordingDenied).toBe(false)
+    })
   })
 
   it('setParticipants: 참여자 목록 설정 (host 우선 정렬)', () => {

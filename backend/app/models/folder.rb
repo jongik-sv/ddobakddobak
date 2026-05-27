@@ -22,10 +22,13 @@ class Folder < ApplicationRecord
     path
   end
 
-  def self.tree
+  # user를 주면 그 사용자가 접근 가능한 회의만 카운트 (admin/loopback은 전체).
+  # user가 nil이면 전체 카운트(하위 호환).
+  def self.tree(user = nil)
     all_folders = ordered.includes(:tags).to_a
-    meeting_counts = Meeting.where(folder_id: all_folders.map(&:id))
-                            .group(:folder_id).count
+    scope = user ? Meeting.accessible_by(user) : Meeting.all
+    meeting_counts = scope.where(folder_id: all_folders.map(&:id))
+                          .group(:folder_id).count
     children_by_parent = all_folders.group_by(&:parent_id)
     roots = children_by_parent[nil] || []
     build_tree(roots, children_by_parent, meeting_counts)

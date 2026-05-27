@@ -75,6 +75,9 @@ RSpec.configure do |config|
   # FactoryBot methods
   config.include FactoryBot::Syntax::Methods
 
+  # 인프로세스 녹음 락이 예제 간에 누수되지 않도록 초기화
+  config.after { RecordingLock.reset! if defined?(RecordingLock) }
+
   # ActiveSupport time helpers (travel_to, freeze_time, etc.)
   config.include ActiveSupport::Testing::TimeHelpers
 

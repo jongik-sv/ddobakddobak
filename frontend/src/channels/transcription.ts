@@ -171,6 +171,11 @@ export function createTranscriptionChannel(
           case 'recording_stopped':
             useSharingStore.getState().setRecordingStopped(true)
             break
+          case 'recording_denied':
+          case 'recording_in_progress':
+            // 다른 세션이 이미 녹음 중 — 이 세션은 녹음 불가(읽기전용 뷰어로 라우팅)
+            useSharingStore.getState().setRecordingDenied(true)
+            break
           case 'host_disconnected':
             useSharingStore.getState().setHostDisconnected(
               raw.user_id ?? 0,
