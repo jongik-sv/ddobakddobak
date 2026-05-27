@@ -173,7 +173,7 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body["temp_password"]).to be_present
-      expect(response.parsed_body["temp_password"].length).to be >= 12
+      expect(response.parsed_body["temp_password"].length).to eq(12)
 
       get "/api/v1/meetings",
         headers: remote.merge("Authorization" => "Bearer #{member_token}"), as: :json
@@ -200,6 +200,16 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
 
       post "/api/v1/admin/users/#{target.id}/reset_password",
         headers: remote.merge("Authorization" => "Bearer #{member_token}"), as: :json
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "refuses to reset the local account password" do
+      admin_pw = create(:user, :admin, password: "password123")
+      local = ::User.find_or_create_by!(email: ::User::LOCAL_EMAIL) { |u| u.name = "사용자"; u.role = "admin" }
+      admin_token = login(admin_pw)
+
+      post "/api/v1/admin/users/#{local.id}/reset_password",
+        headers: remote.merge("Authorization" => "Bearer #{admin_token}"), as: :json
       expect(response).to have_http_status(:forbidden)
     end
   end

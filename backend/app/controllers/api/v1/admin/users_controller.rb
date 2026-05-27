@@ -52,6 +52,10 @@ module Api
         end
 
         def reset_password
+          if @user.local_account?
+            return render json: { error: "로컬 계정의 비밀번호는 초기화할 수 없습니다." }, status: :forbidden
+          end
+
           temp_password = SecureRandom.alphanumeric(12)
           @user.update!(password: temp_password)
           @user.invalidate_all_sessions!
