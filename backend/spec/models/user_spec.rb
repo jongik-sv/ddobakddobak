@@ -135,4 +135,28 @@ RSpec.describe User, type: :model do
       expect(user.valid_password?("wrongpass")).to be false
     end
   end
+
+  describe "#local_account?" do
+    it "is true for desktop@local" do
+      expect(build(:user, email: "desktop@local").local_account?).to be true
+    end
+
+    it "is false for a normal account" do
+      expect(build(:user, email: "alice@example.com").local_account?).to be false
+    end
+  end
+
+  describe "#invalidate_all_sessions!" do
+    it "rotates jti and clears refresh_token_jti" do
+      user = create(:user)
+      user.update!(refresh_token_jti: "old-refresh-jti")
+      old_jti = user.jti
+
+      user.invalidate_all_sessions!
+
+      expect(user.reload.jti).not_to eq(old_jti)
+      expect(user.jti).to be_present
+      expect(user.refresh_token_jti).to be_nil
+    end
+  end
 end

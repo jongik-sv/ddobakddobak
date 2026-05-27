@@ -20,7 +20,7 @@ module DefaultUserLookup
   # 로컬(데스크톱 단독) 사용자는 admin 권한 — 자기 머신의 모든 회의를 보고 제어할 수 있어야 함.
   # Callers must check server_mode? before invoking this method.
   def local_default_user
-    User.find_or_create_by!(email: "desktop@local") do |u|
+    User.find_or_create_by!(email: User::LOCAL_EMAIL) do |u|
       u.name = "사용자"
       u.role = "admin"
     end

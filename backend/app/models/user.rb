@@ -11,6 +11,7 @@ class User < ApplicationRecord
   has_many :meeting_templates, dependent: :destroy
 
   ROLES = %w[admin member].freeze
+  LOCAL_EMAIL = "desktop@local".freeze
 
   validates :name, presence: true
   validates :role, inclusion: { in: ROLES }
@@ -23,6 +24,11 @@ class User < ApplicationRecord
 
   def member?
     role == "member"
+  end
+
+  # 로컬 자동로그인 계정(desktop@local) 여부
+  def local_account?
+    email == LOCAL_EMAIL
   end
 
   def llm_configured?
@@ -78,5 +84,10 @@ class User < ApplicationRecord
 
   def revoke_refresh_token!
     update!(refresh_token_jti: nil)
+  end
+
+  # 모든 세션 무효화: jti 회전 → 기존 access token 거부, refresh_token_jti 제거 → refresh 거부
+  def invalidate_all_sessions!
+    update!(jti: SecureRandom.uuid, refresh_token_jti: nil)
   end
 end
