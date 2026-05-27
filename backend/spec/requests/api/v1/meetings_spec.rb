@@ -386,6 +386,45 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   end
 
   # ============================================================
+  # 제어 액션 인가
+  # ============================================================
+  describe "제어 액션 인가" do
+    let(:foreign) { create(:meeting, team: team, creator: other_user, status: "pending") }
+
+    it "viewer 참여자는 회의를 제어(start)할 수 없다(403)" do
+      create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
+      post "/api/v1/meetings/#{foreign.id}/start"
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "viewer 참여자는 update할 수 없다(403)" do
+      create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
+      patch "/api/v1/meetings/#{foreign.id}", params: { title: "해킹" }
+      expect(response).to have_http_status(:forbidden)
+      expect(foreign.reload.title).not_to eq("해킹")
+    end
+  end
+
+  # ============================================================
+  # POST /api/v1/meetings/move_to_folder
+  # ============================================================
+  describe "POST /api/v1/meetings/move_to_folder" do
+    let(:folder) { create(:folder, team: team) }
+
+    it "남의 회의는 폴더 이동되지 않는다" do
+      foreign = create(:meeting, team: team, creator: other_user, folder_id: nil)
+      post "/api/v1/meetings/move_to_folder", params: { meeting_ids: [foreign.id], folder_id: folder.id }
+      expect(foreign.reload.folder_id).to be_nil
+    end
+
+    it "내 회의는 폴더 이동된다" do
+      mine = create(:meeting, team: team, creator: user, folder_id: nil)
+      post "/api/v1/meetings/move_to_folder", params: { meeting_ids: [mine.id], folder_id: folder.id }
+      expect(mine.reload.folder_id).to eq(folder.id)
+    end
+  end
+
+  # ============================================================
   # GET /api/v1/meetings/:id/audio
   # ============================================================
   describe "GET /api/v1/meetings/:id/audio" do

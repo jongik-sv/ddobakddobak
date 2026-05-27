@@ -5,6 +5,7 @@ module Api
 
       before_action :authenticate_user!
       before_action :set_meeting, only: %i[show update destroy start stop reopen reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes]
+      before_action :authorize_meeting_control!, only: %i[update destroy start stop reopen reset_content summarize update_notes regenerate_stt regenerate_notes]
 
       def index
         base = current_user.admin? ? Meeting.all : Meeting.where(created_by_id: current_user.id)
@@ -128,7 +129,8 @@ module Api
         meeting_ids = params[:meeting_ids]
         return render json: { error: "meeting_ids is required" }, status: :unprocessable_entity if meeting_ids.blank?
 
-        meetings = Meeting.where(id: meeting_ids)
+        base = current_user.admin? ? Meeting.all : Meeting.where(created_by_id: current_user.id)
+        meetings = base.where(id: meeting_ids)
         meetings.update_all(folder_id: params[:folder_id])
         render json: { updated: meetings.count }
       end
