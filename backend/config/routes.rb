@@ -142,6 +142,7 @@ Rails.application.routes.draw do
           post :test, on: :collection
           patch :toggle, on: :collection
         end
+        resource :password, only: [:update]
       end
 
       # Settings
