@@ -21,6 +21,10 @@ module Api
         end
 
         def update
+          if @user.local_account? && update_params[:role].present? && update_params[:role] != "admin"
+            return render json: { error: "로컬 계정의 역할은 변경할 수 없습니다." }, status: :forbidden
+          end
+
           if @user.update(update_params)
             render json: { user: user_json(@user) }
           else
@@ -31,6 +35,11 @@ module Api
         def destroy
           if @user == current_user
             render json: { error: "Cannot delete yourself" }, status: :forbidden
+            return
+          end
+
+          if @user.local_account?
+            render json: { error: "로컬 계정은 삭제할 수 없습니다." }, status: :forbidden
             return
           end
 
@@ -53,7 +62,7 @@ module Api
         end
 
         def update_params
-          params.permit(:name, :role)
+          params.permit(:name, :role, :email)
         end
 
         def user_json(user)

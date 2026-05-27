@@ -67,6 +67,21 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
         put "/api/v1/admin/users/999999", params: { name: "X" }, as: :json
         expect(response).to have_http_status(:not_found)
       end
+
+      it "updates email" do
+        put "/api/v1/admin/users/#{member.id}", params: { email: "renamed@example.com" }, as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body["user"]["email"]).to eq("renamed@example.com")
+      end
+
+      it "refuses to demote the local account" do
+        local = User.find_or_create_by!(email: User::LOCAL_EMAIL) { |u| u.name = "사용자"; u.role = "admin" }
+        put "/api/v1/admin/users/#{local.id}", params: { role: "member" }, as: :json
+
+        expect(response).to have_http_status(:forbidden)
+        expect(local.reload.role).to eq("admin")
+      end
     end
 
     describe "DELETE /api/v1/admin/users/:id" do
@@ -89,6 +104,15 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
       it "returns 404 for non-existent user" do
         delete "/api/v1/admin/users/999999"
         expect(response).to have_http_status(:not_found)
+      end
+
+      it "refuses to delete the local account" do
+        local = User.find_or_create_by!(email: User::LOCAL_EMAIL) { |u| u.name = "사용자"; u.role = "admin" }
+        expect {
+          delete "/api/v1/admin/users/#{local.id}"
+        }.not_to change(User, :count)
+
+        expect(response).to have_http_status(:forbidden)
       end
     end
   end
