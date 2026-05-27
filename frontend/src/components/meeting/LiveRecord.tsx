@@ -36,7 +36,7 @@ export function LiveRecord({ meetingId, currentTimeMs = 0, onSeek, onApply }: Li
     if (highlightedIndex >= 0 && highlightedRef.current) {
       highlightedRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     } else {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
     }
   }, [unapplied.length, partial, highlightedIndex])
 

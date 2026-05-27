@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Menu, PanelLeft } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
 import Sidebar from './Sidebar'
@@ -14,6 +15,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
   const mobileMenuOpen = useUiStore((s) => s.mobileMenuOpen)
   const setMobileMenuOpen = useUiStore((s) => s.setMobileMenuOpen)
+
+  // 특정 회의 안쪽 화면(녹음/뷰어/상세)에서는 하단 내비를 숨긴다 — 자체 헤더/뒤로가기가 있는 몰입 화면
+  const location = useLocation()
+  const hideBottomNav = /^\/meetings\/\d+/.test(location.pathname)
 
   return (
     <div className="flex flex-col lg:flex-row h-dvh bg-background overflow-hidden">
@@ -47,7 +52,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       </header>
 
       {/* 메인 콘텐츠 */}
-      <main className="flex-1 overflow-auto flex flex-col min-h-0 min-w-0 pb-14 lg:pb-0">
+      <main className={`flex-1 overflow-auto flex flex-col min-h-0 min-w-0 lg:pb-0 ${hideBottomNav ? '' : 'pb-14'}`}>
         {children}
       </main>
 
@@ -56,8 +61,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
         <MobileSidebarOverlay onClose={() => setMobileMenuOpen(false)} />
       )}
 
-      {/* 모바일 바텀 내비 - 데스크톱에서 hidden */}
-      <BottomNavigation className="lg:hidden" />
+      {/* 모바일 바텀 내비 - 데스크톱에서 hidden, 회의 안쪽 화면에서는 숨김 */}
+      {!hideBottomNav && <BottomNavigation className="lg:hidden" />}
     </div>
   )
 }

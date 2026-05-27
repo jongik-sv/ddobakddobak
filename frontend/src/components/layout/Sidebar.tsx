@@ -14,7 +14,14 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
   return `${base} ${isActive ? active : inactive}`
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  /** 모바일 오버레이로 렌더링 — 데스크톱 접힘 상태(sidebarOpen)와 무관하게 항상 표시 */
+  mobile?: boolean
+  /** 모바일 오버레이 닫기 콜백 (닫기 버튼/내비 이동 시 호출) */
+  onClose?: () => void
+}
+
+export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) {
   const openSettings = useUiStore((s) => s.openSettings)
   const sidebarOpen = useUiStore((s) => s.sidebarOpen)
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
@@ -24,22 +31,29 @@ export default function Sidebar() {
   const location = useLocation()
   const isMeetingsPage = location.pathname.startsWith('/meetings')
 
+  // 모바일 오버레이에서 내비 이동/액션 시 오버레이를 닫는다
+  const closeIfMobile = () => {
+    if (mobile) onClose?.()
+  }
+
   const handleMeetingsClick = (e: React.MouseEvent) => {
     e.preventDefault()
     useFolderStore.getState().setSelectedFolder('all')
     useMeetingStore.getState().setFolderId('all')
     useMeetingStore.getState().fetchMeetings(1)
     navigate('/meetings')
+    closeIfMobile()
   }
 
-  if (!sidebarOpen) return null
+  // 데스크톱: 접힘 상태면 렌더 안 함. 모바일 오버레이는 항상 표시.
+  if (!mobile && !sidebarOpen) return null
 
   return (
     <aside className="flex flex-col w-60 min-h-0 h-full bg-sidebar border-r border-border shrink-0">
       <div className="flex items-center justify-between min-h-14 px-4 border-b border-border shrink-0 pt-safe">
         <span className="text-lg font-bold text-foreground">또박또박</span>
         <button
-          onClick={toggleSidebar}
+          onClick={() => (mobile ? onClose?.() : toggleSidebar())}
           className="p-2.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
           title="사이드바 닫기"
         >
@@ -47,7 +61,7 @@ export default function Sidebar() {
         </button>
       </div>
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        <NavLink to="/dashboard" className={navLinkClass}>
+        <NavLink to="/dashboard" className={navLinkClass} onClick={closeIfMobile}>
           <LayoutDashboard className="w-4 h-4" />
           대시보드
         </NavLink>
@@ -55,7 +69,7 @@ export default function Sidebar() {
           <Mic className="w-4 h-4" />
           회의 목록
         </NavLink>
-        <NavLink to="/search" className={navLinkClass}>
+        <NavLink to="/search" className={navLinkClass} onClick={closeIfMobile}>
           <Search className="w-4 h-4" />
           검색
         </NavLink>
@@ -63,7 +77,7 @@ export default function Sidebar() {
           <FolderTree />
         </div>
         <button
-          onClick={openSettings}
+          onClick={() => { openSettings(); closeIfMobile() }}
           className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
         >
           <Settings className="w-4 h-4" />

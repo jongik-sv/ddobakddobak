@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FolderClosed, FolderInput, Pencil, Trash2, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Search, X, Filter, Plus } from 'lucide-react'
+import { FolderClosed, FolderInput, Pencil, Trash2, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Search, X, Filter, Plus, UserPlus } from 'lucide-react'
 import { Tooltip } from '../components/ui/Tooltip'
 import { createMeeting, deleteMeeting, stopMeeting, updateMeeting, uploadAudioFile } from '../api/meetings'
 import { useMeetingStore } from '../stores/meetingStore'
@@ -738,6 +738,15 @@ export default function MeetingsPage() {
                   className="p-2 rounded-md hover:bg-muted transition-colors"
                 >
                   <Filter className="w-5 h-5" />
+                </button>
+                <button
+                  data-testid="mobile-join-meeting"
+                  onClick={() => setShowJoinDialog(true)}
+                  className="p-2 rounded-md hover:bg-muted transition-colors"
+                  title="회의 참여 (공유 코드)"
+                  aria-label="회의 참여"
+                >
+                  <UserPlus className="w-5 h-5" />
                 </button>
               </>
             )}

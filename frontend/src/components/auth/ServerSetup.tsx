@@ -260,7 +260,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                   value={serverUrl}
                   onChange={(e) => handleUrlChange(e.target.value)}
                   placeholder="192.168.0.10 또는 http://example.com:13323"
-                  className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className="flex-1 min-w-0 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
                 <button
                   type="button"
