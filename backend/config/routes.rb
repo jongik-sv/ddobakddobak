@@ -5,9 +5,9 @@ Rails.application.routes.draw do
   # ── Authentication (Devise + JWT) ──
   devise_for :users, path: "auth",
     path_names: { sign_in: "login", sign_out: "logout" },
+    skip: [:registrations],
     controllers: {
-      sessions: "auth/sessions",
-      registrations: "auth/registrations"
+      sessions: "auth/sessions"
     },
     defaults: { format: :json }
 
@@ -20,8 +20,6 @@ Rails.application.routes.draw do
   scope "auth" do
     get  "web_login", to: "auth/browser_sessions#new",    as: :browser_login
     post "web_login", to: "auth/browser_sessions#create",  as: :browser_login_submit
-    get  "web_register", to: "auth/browser_registrations#new",    as: :browser_register
-    post "web_register", to: "auth/browser_registrations#create",  as: :browser_register_submit
   end
 
   # ── API v1 ──

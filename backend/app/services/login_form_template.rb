@@ -1,8 +1,6 @@
 class LoginFormTemplate
   class << self
     def render(callback:, error:, csrf_token:, action_url:)
-      register_url = "/auth/web_register?callback=#{ERB::Util.url_encode(callback.to_s)}"
-
       <<~HTML
         <!DOCTYPE html>
         <html lang="ko">
@@ -89,11 +87,6 @@ class LoginFormTemplate
                 </button>
               </form>
 
-              <!-- 회원가입 링크 -->
-              <p class="mt-4 text-center text-sm text-gray-500">
-                계정이 없으신가요?
-                <a href="#{escape(register_url)}" class="text-primary-600 hover:text-primary-700 font-medium">회원가입</a>
-              </p>
             </div>
 
             <!-- 하단 안내 -->
