@@ -13,6 +13,8 @@ import { ParticipantList } from '../components/meeting/ParticipantList'
 import { ViewerHeader } from '../components/meeting/ViewerHeader'
 import HostDisconnectedBanner from '../components/meeting/HostDisconnectedBanner'
 import { useAuthStore } from '../stores/authStore'
+import { useMeetingAccess } from '../hooks/useMeetingAccess'
+import { MeetingAccessFallback } from '../components/meeting/MeetingAccessFallback'
 
 export default function MeetingViewerPage() {
   const { id } = useParams<{ id: string }>()
@@ -33,6 +35,7 @@ export default function MeetingViewerPage() {
   }, [])
 
   const { meetingTitle, isLoaded, error } = useViewerData(meetingId)
+  const { isLoading: accessLoading, error: accessError } = useMeetingAccess(meetingId)
 
   useTranscription(meetingId)
 
@@ -50,6 +53,10 @@ export default function MeetingViewerPage() {
 
   const handleLeave = () => {
     navigate('/meetings')
+  }
+
+  if (!accessLoading && (accessError === 'forbidden' || accessError === 'not_found')) {
+    return <MeetingAccessFallback error={accessError} />
   }
 
   if (error) {

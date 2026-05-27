@@ -35,6 +35,7 @@ import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
+import { MeetingAccessFallback } from '../components/meeting/MeetingAccessFallback'
 import MobileTabLayout from '../components/layout/MobileTabLayout'
 import type { Tab } from '../components/layout/MobileTabLayout'
 import { MobileRecordControls } from '../components/meeting/MobileRecordControls'
@@ -764,21 +765,7 @@ export default function MeetingLivePage() {
 
   // 403/404 접근 가드 — 모든 hook 호출 이후에 위치
   if (!accessLoading && (accessError === 'forbidden' || accessError === 'not_found')) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
-        <p className="text-sm text-gray-600">
-          {accessError === 'forbidden'
-            ? '이 회의에 접근 권한이 없습니다. 공유 코드로 참여하세요.'
-            : '회의를 찾을 수 없습니다.'}
-        </p>
-        <button
-          onClick={() => navigate('/meetings')}
-          className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700"
-        >
-          회의 목록으로
-        </button>
-      </div>
-    )
+    return <MeetingAccessFallback error={accessError} />
   }
 
   return (
