@@ -34,6 +34,7 @@ import SaveTemplateDialog from '../components/meeting/SaveTemplateDialog'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
+import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import MobileTabLayout from '../components/layout/MobileTabLayout'
 import type { Tab } from '../components/layout/MobileTabLayout'
 import { MobileRecordControls } from '../components/meeting/MobileRecordControls'
@@ -518,6 +519,9 @@ export default function MeetingLivePage() {
   const memoVisible = useUiStore((s) => s.memoVisible)
   const toggleMemo = useUiStore((s) => s.toggleMemo)
 
+  // 접근 권한 확인
+  const { isLoading: accessLoading, error: accessError } = useMeetingAccess(meetingId)
+
   // 데스크톱/모바일 분기
   const isDesktop = useMediaQuery(BREAKPOINTS.lg)
 
@@ -757,6 +761,25 @@ export default function MeetingLivePage() {
       ),
     },
   ], [meetingId, isActive, isSharing, isHost, currentUserId, handleNotesChange, handleSaveMemo, isSavingMemo, corrections, isApplyingCorrections])
+
+  // 403/404 접근 가드 — 모든 hook 호출 이후에 위치
+  if (!accessLoading && (accessError === 'forbidden' || accessError === 'not_found')) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
+        <p className="text-sm text-gray-600">
+          {accessError === 'forbidden'
+            ? '이 회의에 접근 권한이 없습니다. 공유 코드로 참여하세요.'
+            : '회의를 찾을 수 없습니다.'}
+        </p>
+        <button
+          onClick={() => navigate('/meetings')}
+          className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700"
+        >
+          회의 목록으로
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -1054,6 +1077,13 @@ export default function MeetingLivePage() {
             isStopping={isStopping}
           >
             {/* 더보기 바텀 시트 추가 옵션 */}
+            <button
+              onClick={() => setShowEditDialog(true)}
+              className="flex items-center gap-2 py-2 text-sm text-gray-700 hover:text-gray-900"
+            >
+              <Pencil className="w-4 h-4" />
+              회의 정보 수정
+            </button>
             <ShareButton meetingId={meetingId} />
             {IS_TAURI && (
               <div className="flex items-center justify-between py-2">
@@ -1093,10 +1123,12 @@ export default function MeetingLivePage() {
               </button>
             )}
           </MobileRecordControls>
-          <MobileTabLayout
-            tabs={mobileTabs}
-            defaultTab="transcript"
-          />
+          <div className="flex-1 min-h-0">
+            <MobileTabLayout
+              tabs={mobileTabs}
+              defaultTab="transcript"
+            />
+          </div>
         </>
       )}
 
