@@ -25,6 +25,10 @@ module Api
             return render json: { error: "로컬 계정의 역할은 변경할 수 없습니다." }, status: :forbidden
           end
 
+          if @user.local_account? && update_params[:email].present? && update_params[:email] != ::User::LOCAL_EMAIL
+            return render json: { error: "로컬 계정의 이메일은 변경할 수 없습니다." }, status: :forbidden
+          end
+
           if @user.update(update_params)
             render json: { user: user_json(@user) }
           else

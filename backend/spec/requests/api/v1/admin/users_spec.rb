@@ -82,6 +82,14 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
         expect(response).to have_http_status(:forbidden)
         expect(local.reload.role).to eq("admin")
       end
+
+      it "refuses to change the local account email" do
+        local = User.find_or_create_by!(email: User::LOCAL_EMAIL) { |u| u.name = "사용자"; u.role = "admin" }
+        put "/api/v1/admin/users/#{local.id}", params: { email: "x@example.com" }, as: :json
+
+        expect(response).to have_http_status(:forbidden)
+        expect(local.reload.email).to eq(User::LOCAL_EMAIL)
+      end
     end
 
     describe "DELETE /api/v1/admin/users/:id" do
