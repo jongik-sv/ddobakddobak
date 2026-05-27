@@ -62,6 +62,28 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(json["meetings"]).to eq([])
         expect(json["meta"]["total"]).to eq(0)
       end
+
+      it "다른 사용자가 만든 회의는 목록에 포함되지 않는다" do
+        create(:meeting, team: team, creator: user, title: "내 회의")
+        create(:meeting, team: team, creator: other_user, title: "남의 회의")
+
+        get "/api/v1/meetings"
+
+        titles = response.parsed_body["meetings"].map { |m| m["title"] }
+        expect(titles).to include("내 회의")
+        expect(titles).not_to include("남의 회의")
+      end
+
+      it "admin은 모든 사용자의 회의를 본다" do
+        admin = create(:user, role: "admin")
+        create(:meeting, team: team, creator: other_user, title: "남의 회의")
+        login_as(admin)
+
+        get "/api/v1/meetings"
+
+        titles = response.parsed_body["meetings"].map { |m| m["title"] }
+        expect(titles).to include("남의 회의")
+      end
     end
 
   end

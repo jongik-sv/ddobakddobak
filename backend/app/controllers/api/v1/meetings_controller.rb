@@ -7,10 +7,11 @@ module Api
       before_action :set_meeting, only: %i[show update destroy start stop reopen reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes]
 
       def index
-        meetings = Meeting.search_with_summary(params[:q])
-                          .by_status(params[:status])
-                          .created_after(params[:date_from])
-                          .created_before(params[:date_to])
+        base = current_user.admin? ? Meeting.all : Meeting.where(created_by_id: current_user.id)
+        meetings = base.search_with_summary(params[:q])
+                       .by_status(params[:status])
+                       .created_after(params[:date_from])
+                       .created_before(params[:date_to])
 
         if params.key?(:folder_id)
           if params[:folder_id] == "null"
