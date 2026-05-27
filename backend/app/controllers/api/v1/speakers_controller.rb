@@ -1,21 +1,22 @@
 module Api
   module V1
     class SpeakersController < ApplicationController
+      include MeetingLookup
+
       before_action :authenticate_user!
+      before_action :set_meeting
 
       def index
-        meeting_id = params.require(:meeting_id)
-        result = SidecarClient.new.get_speakers(meeting_id)
+        result = SidecarClient.new.get_speakers(@meeting.id)
         render json: result
       rescue SidecarClient::ConnectionError, SidecarClient::TimeoutError
         render json: { speakers: [] }
       end
 
       def update
-        meeting_id = params.require(:meeting_id)
         speaker_id = params[:id]
         name = params.require(:name)
-        result = SidecarClient.new.rename_speaker(speaker_id, name, meeting_id)
+        result = SidecarClient.new.rename_speaker(speaker_id, name, @meeting.id)
         render json: result
       rescue SidecarClient::SidecarError => e
         render json: { error: e.message }, status: :not_found
@@ -24,8 +25,7 @@ module Api
       end
 
       def destroy_all
-        meeting_id = params.require(:meeting_id)
-        SidecarClient.new.reset_speakers(meeting_id)
+        SidecarClient.new.reset_speakers(@meeting.id)
         render json: { ok: true }
       rescue SidecarClient::ConnectionError, SidecarClient::TimeoutError
         render json: { ok: true }

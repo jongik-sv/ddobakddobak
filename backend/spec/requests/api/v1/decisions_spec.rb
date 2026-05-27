@@ -2,6 +2,7 @@ require "rails_helper"
 
 RSpec.describe "Api::V1::Decisions", type: :request do
   let(:user)       { create(:user) }
+  let(:other_user) { create(:user) }
   let(:team)       { create(:team, creator: user) }
   let!(:membership) { create(:team_membership, user: user, team: team, role: "member") }
   let(:meeting)    { create(:meeting, team: team, creator: user) }
@@ -34,6 +35,19 @@ RSpec.describe "Api::V1::Decisions", type: :request do
       expect(json.length).to eq(1)
       expect(json.first["content"]).to eq("폴더 내 결정")
     end
+  end
+
+  it "다른 사용자 회의의 decision은 목록에 포함되지 않는다" do
+    mine    = create(:meeting, creator: user)
+    foreign = create(:meeting, creator: other_user)
+    create(:decision, meeting: mine,    content: "내 결정")
+    create(:decision, meeting: foreign, content: "남의 결정")
+
+    get "/api/v1/decisions"
+
+    contents = response.parsed_body.map { |d| d["content"] }
+    expect(contents).to include("내 결정")
+    expect(contents).not_to include("남의 결정")
   end
 
   describe "PATCH /api/v1/decisions/:id" do

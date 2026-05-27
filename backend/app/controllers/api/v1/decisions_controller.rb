@@ -8,7 +8,7 @@ module Api
 
       # GET /api/v1/decisions?folder_id=N
       def index
-        meetings = Meeting.all
+        meetings = Meeting.accessible_by(current_user)
         meetings = meetings.where(folder_id: params[:folder_id]) if params[:folder_id].present?
         decisions = Decision.where(meeting_id: meetings.select(:id)).order(created_at: :desc)
         render json: decisions.map { |d| serialize_decision(d) }
