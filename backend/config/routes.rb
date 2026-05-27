@@ -129,7 +129,11 @@ Rails.application.routes.draw do
 
       # Admin
       namespace :admin do
-        resources :users, only: %i[index create update destroy]
+        resources :users, only: %i[index create update destroy] do
+          member do
+            post :reset_password
+          end
+        end
       end
 
       # User-scoped settings

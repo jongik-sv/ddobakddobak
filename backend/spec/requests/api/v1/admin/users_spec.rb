@@ -152,4 +152,55 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
   end
+
+  describe "POST /api/v1/admin/users/:id/reset_password" do
+    include_context "server mode"
+    let(:remote) { { "REMOTE_ADDR" => "192.168.1.50" } }
+
+    def login(user, password = "password123")
+      post "/auth/login", params: { user: { email: user.email, password: password } }, as: :json
+      response.parsed_body["access_token"]
+    end
+
+    it "resets password, returns temp, and invalidates the target's sessions" do
+      admin_pw = create(:user, :admin, password: "password123")
+      member_pw = create(:user, password: "password123")
+      member_token = login(member_pw)
+      admin_token = login(admin_pw)
+
+      post "/api/v1/admin/users/#{member_pw.id}/reset_password",
+        headers: remote.merge("Authorization" => "Bearer #{admin_token}"), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["temp_password"]).to be_present
+      expect(response.parsed_body["temp_password"].length).to be >= 12
+
+      get "/api/v1/meetings",
+        headers: remote.merge("Authorization" => "Bearer #{member_token}"), as: :json
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "lets the target log in with the temp password" do
+      admin_pw = create(:user, :admin, password: "password123")
+      member_pw = create(:user, password: "password123")
+      admin_token = login(admin_pw)
+
+      post "/api/v1/admin/users/#{member_pw.id}/reset_password",
+        headers: remote.merge("Authorization" => "Bearer #{admin_token}"), as: :json
+      temp = response.parsed_body["temp_password"]
+
+      post "/auth/login", params: { user: { email: member_pw.email, password: temp } }, as: :json
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "returns 403 for a member caller" do
+      member_pw = create(:user, password: "password123")
+      target = create(:user)
+      member_token = login(member_pw)
+
+      post "/api/v1/admin/users/#{target.id}/reset_password",
+        headers: remote.merge("Authorization" => "Bearer #{member_token}"), as: :json
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
 end

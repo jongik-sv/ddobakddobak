@@ -4,7 +4,7 @@ module Api
       class UsersController < ApplicationController
         before_action :authenticate_user!
         before_action :require_admin!
-        before_action :set_user, only: %i[update destroy]
+        before_action :set_user, only: %i[update destroy reset_password]
 
         def index
           users = ::User.all.order(created_at: :desc)
@@ -49,6 +49,13 @@ module Api
 
           @user.destroy
           head :no_content
+        end
+
+        def reset_password
+          temp_password = SecureRandom.alphanumeric(12)
+          @user.update!(password: temp_password)
+          @user.invalidate_all_sessions!
+          render json: { temp_password: temp_password }
         end
 
         private
