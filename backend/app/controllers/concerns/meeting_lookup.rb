@@ -5,15 +5,17 @@ module MeetingLookup
 
   def set_meeting
     @meeting = Meeting.find(params[:meeting_id] || params[:id])
-    authorize_meeting_read!
   rescue ActiveRecord::RecordNotFound
     render json: { error: "Meeting not found" }, status: :not_found
+  else
+    authorize_meeting_read!
   end
 
   # 읽기 인가: admin / 소유자 / active participant 만 허용
   def authorize_meeting_read!
     return if meeting_admin?
     return if @meeting.owner?(current_user)
+    # 떠난 참여자(left_at 설정)는 제외 — 재접근하려면 공유코드로 다시 참여해야 함
     return if @meeting.active_participants.exists?(user_id: current_user.id)
 
     render json: { error: "이 회의에 접근할 권한이 없습니다" }, status: :forbidden

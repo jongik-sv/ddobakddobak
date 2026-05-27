@@ -242,6 +242,19 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         get "/api/v1/meetings/#{foreign.id}"
         expect(response).to have_http_status(:ok)
       end
+
+      it "회의를 떠난(left_at 설정) 참여자는 더 이상 접근할 수 없다(403)" do
+        foreign = create(:meeting, team: team, creator: other_user)
+        create(:meeting_participant, meeting: foreign, user: user, role: "viewer", left_at: Time.current)
+        get "/api/v1/meetings/#{foreign.id}"
+        expect(response).to have_http_status(:forbidden)
+      end
+
+      it "소유자는 자신의 회의에 접근 가능(200)" do
+        mine = create(:meeting, team: team, creator: user)
+        get "/api/v1/meetings/#{mine.id}"
+        expect(response).to have_http_status(:ok)
+      end
     end
   end
 
