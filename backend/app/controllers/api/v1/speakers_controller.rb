@@ -5,6 +5,7 @@ module Api
 
       before_action :authenticate_user!
       before_action :set_meeting
+      before_action :authorize_meeting_control!, only: %i[update destroy_all]
 
       def index
         result = SidecarClient.new.get_speakers(@meeting.id)

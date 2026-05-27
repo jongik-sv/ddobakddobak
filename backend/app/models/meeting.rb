@@ -32,10 +32,9 @@ class Meeting < ApplicationRecord
   scope :created_before, ->(date) { where("created_at <= ?", Date.parse(date).end_of_day) if date.present? }
   scope :by_status, ->(status) { where(status: status) if status.present? }
 
-  # 접근 가능한 회의 범위: admin은 전체, 그 외는 본인 소유분
-  def self.accessible_by(user)
-    user.admin? ? all : where(created_by_id: user.id)
-  end
+  # 접근 가능한 회의 목록 범위: admin은 전체, 그 외는 본인 소유분.
+  # (개별 회의 접근은 MeetingLookup이 참여자까지 허용하므로 더 넓다 — 이 스코프는 목록 쿼리용)
+  scope :accessible_by, ->(user) { user.admin? ? all : where(created_by_id: user.id) }
 
   def sharing?
     share_code.present?
