@@ -48,6 +48,15 @@ RSpec.describe "Api::V1::User::Passwords", type: :request do
     expect(response).to have_http_status(:unprocessable_entity)
   end
 
+  it "returns 422 with model errors when the new password is too short" do
+    token = login(member)
+    patch "/api/v1/user/password",
+      params: { current_password: "password123", new_password: "abc", new_password_confirmation: "abc" },
+      headers: remote.merge("Authorization" => "Bearer #{token}"), as: :json
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response.parsed_body["errors"]).to be_present
+  end
+
   it "returns 403 for the local account (loopback, no JWT)" do
     patch "/api/v1/user/password",
       params: { current_password: "x", new_password: "newpassword456", new_password_confirmation: "newpassword456" },

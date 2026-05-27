@@ -15,6 +15,7 @@ class User < ApplicationRecord
 
   validates :name, presence: true
   validates :role, inclusion: { in: ROLES }
+  validates :password, length: { minimum: 6 }, if: -> { password.present? }
 
   encrypts :llm_api_key
 

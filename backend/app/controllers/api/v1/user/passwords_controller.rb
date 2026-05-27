@@ -19,6 +19,7 @@ module Api
           end
 
           if current_user.update(password: params[:new_password])
+            # 전 세션 무효화(jti 회전 + refresh 제거) 후, 새 jti가 반영된 in-memory 레코드로 현재 클라이언트용 토큰쌍 재발급
             current_user.invalidate_all_sessions!
             new_refresh_jti = current_user.generate_refresh_token_jti!
             render json: {
