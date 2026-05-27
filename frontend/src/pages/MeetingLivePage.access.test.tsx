@@ -1,21 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { describe, it, expect, vi } from 'vitest'
-import * as meetingsApi from '../api/meetings'
+import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import MeetingLivePage from './MeetingLivePage'
 
 vi.mock('../hooks/useMeetingAccess', () => ({
-  useMeetingAccess: vi.fn().mockReturnValue({ meeting: null, isLoading: false, error: 'forbidden' }),
+  useMeetingAccess: vi.fn(),
 }))
-
-vi.mock('../api/meetings', async (orig) => ({
-  ...(await orig<typeof meetingsApi>()),
-  getMeetingDetail: vi.fn().mockResolvedValue({ meeting: null, error: 'forbidden' }),
-  getMeeting: vi.fn().mockRejectedValue(new Error('forbidden')),
-  getTranscripts: vi.fn().mockResolvedValue([]),
-  getSummary: vi.fn().mockResolvedValue(null),
-  getParticipants: vi.fn().mockResolvedValue([]),
-}))
+const mockedAccess = vi.mocked(useMeetingAccess)
 
 vi.mock('../hooks/useAudioRecorder', () => ({
   useAudioRecorder: vi.fn().mockReturnValue({
@@ -89,15 +81,30 @@ vi.mock('../components/meeting/AttachmentSection', () => ({
   AttachmentSection: () => <div data-testid="attachment-section" />,
 }))
 
+function renderPage() {
+  return render(
+    <MemoryRouter initialEntries={['/meetings/99/live']}>
+      <Routes>
+        <Route path="/meetings/:id/live" element={<MeetingLivePage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
 describe('MeetingLivePage 접근 제어', () => {
   it('forbidden이면 접근 권한 없음 안내를 보여준다', async () => {
-    render(
-      <MemoryRouter initialEntries={['/meetings/99/live']}>
-        <MeetingLivePage />
-      </MemoryRouter>,
-    )
+    mockedAccess.mockReturnValue({ meeting: null, isLoading: false, error: 'forbidden' })
+    renderPage()
     await waitFor(() => {
       expect(screen.getByText(/접근 권한이 없습니다/)).toBeInTheDocument()
+    })
+  })
+
+  it('not_found이면 회의를 찾을 수 없음 안내를 보여준다', async () => {
+    mockedAccess.mockReturnValue({ meeting: null, isLoading: false, error: 'not_found' })
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText(/회의를 찾을 수 없습니다/)).toBeInTheDocument()
     })
   })
 })
