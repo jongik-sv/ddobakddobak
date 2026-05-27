@@ -221,6 +221,28 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response.parsed_body["error"]).to eq("Meeting not found")
       end
     end
+
+    context "접근 권한" do
+      it "소유자가 아니고 참여자도 아니면 403" do
+        foreign = create(:meeting, team: team, creator: other_user)
+        get "/api/v1/meetings/#{foreign.id}"
+        expect(response).to have_http_status(:forbidden)
+      end
+
+      it "공유코드로 참여한 viewer는 조회 가능(200)" do
+        foreign = create(:meeting, team: team, creator: other_user)
+        create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
+        get "/api/v1/meetings/#{foreign.id}"
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "admin은 남의 회의도 조회 가능(200)" do
+        foreign = create(:meeting, team: team, creator: other_user)
+        login_as(create(:user, role: "admin"))
+        get "/api/v1/meetings/#{foreign.id}"
+        expect(response).to have_http_status(:ok)
+      end
+    end
   end
 
   # ============================================================

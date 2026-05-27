@@ -67,6 +67,21 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         expect(response).to have_http_status(:not_found)
       end
     end
+
+    context "접근 권한" do
+      let(:foreign) { create(:meeting, creator: other_user) }
+
+      it "비참여자는 남의 회의 transcripts에 접근할 수 없다(403)" do
+        get "/api/v1/meetings/#{foreign.id}/transcripts"
+        expect(response).to have_http_status(:forbidden)
+      end
+
+      it "viewer 참여자는 transcripts 조회 가능(200)" do
+        create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
+        get "/api/v1/meetings/#{foreign.id}/transcripts"
+        expect(response).to have_http_status(:ok)
+      end
+    end
   end
 
   # ─────────────────────────────────────────────────────────
