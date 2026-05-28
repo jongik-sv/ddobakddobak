@@ -43,3 +43,12 @@ export function formatElapsedSeconds(totalSec: number): string {
     ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
     : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
+
+/** 녹음 경과 시간(ms)을 항상 MM:SS 형식으로 변환한다(시 단위 미표시). */
+export function formatElapsedMs(ms: number): string {
+  if (ms <= 0) return '00:00'
+  const totalSec = Math.floor(ms / 1000)
+  const m = Math.floor(totalSec / 60).toString().padStart(2, '0')
+  const s = (totalSec % 60).toString().padStart(2, '0')
+  return `${m}:${s}`
+}

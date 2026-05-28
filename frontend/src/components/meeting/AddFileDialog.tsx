@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { createFileAttachment } from '../../api/attachments'
 import type { AttachmentCategory } from '../../api/attachments'
 import { IS_TAURI } from '../../config'
+import { errorToMessage } from '../../lib/errors'
+import { Dialog } from '../ui/Dialog'
 
 const ACCEPTED_FILE_TYPES = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.png,.jpg,.jpeg,.gif,.webp,.zip,.hwp'
 
@@ -96,7 +98,7 @@ export function AddFileDialog({ meetingId, defaultCategory, onClose, onUploaded 
         await createFileAttachment(meetingId, category, files[i].file)
         setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, status: 'done', progress: 100 } : f)))
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : '업로드 실패'
+        const msg = await errorToMessage(err, '업로드 실패')
         setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, status: 'error', error: msg } : f)))
       }
     }
@@ -107,13 +109,7 @@ export function AddFileDialog({ meetingId, defaultCategory, onClose, onUploaded 
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
+    <Dialog onClose={onClose}>
         <h2 className="text-lg font-semibold mb-4">파일 첨부</h2>
 
         {/* 카테고리 선택 */}
@@ -210,7 +206,6 @@ export function AddFileDialog({ meetingId, defaultCategory, onClose, onUploaded 
             {uploading ? '업로드 중...' : `업로드 (${files.length})`}
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }

@@ -2,15 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 import { SpeakerLabel } from './SpeakerLabel'
 import { EditableTranscriptText } from './EditableTranscriptText'
-
-/** 녹음 시작으로부터의 경과 시간(ms)을 MM:SS 형식으로 변환 */
-function formatElapsed(ms: number): string {
-  if (ms <= 0) return '00:00'
-  const totalSec = Math.floor(ms / 1000)
-  const m = Math.floor(totalSec / 60).toString().padStart(2, '0')
-  const s = (totalSec % 60).toString().padStart(2, '0')
-  return `${m}:${s}`
-}
+import { formatElapsedMs as formatElapsed } from '../../lib/audioUtils'
 
 interface LiveRecordProps {
   meetingId: number

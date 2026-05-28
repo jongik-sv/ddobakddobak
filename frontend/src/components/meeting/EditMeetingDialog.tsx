@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { X, Plus } from 'lucide-react'
+import { Dialog } from '../ui/Dialog'
 import type { Meeting } from '../../api/meetings'
 import type { Tag } from '../../api/tags'
 import { getTags, createTag } from '../../api/tags'
@@ -60,13 +61,7 @@ export default function EditMeetingDialog({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
+    <Dialog onClose={onClose} backdropClassName="bg-black/10 backdrop-blur-sm">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">회의 정보 수정</h2>
           <button onClick={onClose} className="p-2.5 rounded hover:bg-muted transition-colors">
@@ -213,7 +208,6 @@ export default function EditMeetingDialog({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Dialog>
   )
 }
