@@ -58,10 +58,29 @@ def _load_settings_yaml() -> dict:
     return {}
 
 
+def _load_min_chunk_sec() -> str | None:
+    """settings.yaml → config.yaml 순으로 audio.min_chunk_sec를 로드한다."""
+    for candidate in [
+        Path(__file__).resolve().parent.parent.parent / "settings.yaml",
+        Path(__file__).resolve().parent.parent.parent / "config.yaml",
+    ]:
+        if candidate.is_file():
+            try:
+                cfg = yaml.safe_load(candidate.read_text(encoding="utf-8")) or {}
+                val = (cfg.get("audio") or {}).get("min_chunk_sec")
+                if val is not None:
+                    return str(float(val))
+            except Exception:
+                continue
+    return None
+
+
 # settings.yaml 값을 os.environ에 사전 주입 (pydantic 로드 전)
 import os as _os
 
 _yaml_env = _load_settings_yaml()
+if (_min_chunk := _load_min_chunk_sec()) is not None:
+    _yaml_env.setdefault("MIN_CHUNK_SEC", _min_chunk)
 for _k, _v in _yaml_env.items():
     _os.environ.setdefault(_k, _v)
 
@@ -106,6 +125,9 @@ class Settings(BaseSettings):
     # [재시작 필요] 외부 경로 (Tauri 앱에서 환경변수로 설정)
     MODELS_DIR: str = ""
     SPEAKER_DBS_DIR: str = ""
+
+    # [재시작 필요] 오디오 최소 청크 길이 (초). 이보다 짧으면 환각 방지로 STT 스킵
+    MIN_CHUNK_SEC: float = 1.0
 
 
 settings = Settings()

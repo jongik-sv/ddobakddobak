@@ -36,28 +36,10 @@ from app.llm.summarizer import LLMSummarizer
 from app.stt import lang_utils
 from app.stt.factory import create_stt_adapter
 
-# settings.yaml에서 오디오 최소 청크 길이 로드
+# 오디오 최소 청크 길이 — settings.MIN_CHUNK_SEC(settings.yaml/config.yaml)에서 로드됨
 from app.audio_constants import SAMPLE_RATE as _SAMPLE_RATE, BYTES_PER_SAMPLE as _BYTES_PER_SAMPLE
 
-def _load_min_chunk_sec() -> float:
-    """settings.yaml → config.yaml 순으로 min_chunk_sec를 로드한다."""
-    import yaml
-    from pathlib import Path
-    for candidate in [
-        Path(__file__).resolve().parent.parent.parent / "settings.yaml",
-        Path(__file__).resolve().parent.parent.parent / "config.yaml",
-    ]:
-        if candidate.is_file():
-            try:
-                cfg = yaml.safe_load(candidate.read_text(encoding="utf-8")) or {}
-                val = (cfg.get("audio") or {}).get("min_chunk_sec")
-                if val is not None:
-                    return float(val)
-            except Exception:
-                continue
-    return 1.0  # 기본값 1초
-
-MIN_CHUNK_SEC = _load_min_chunk_sec()
+MIN_CHUNK_SEC = settings.MIN_CHUNK_SEC
 MIN_CHUNK_BYTES = int(MIN_CHUNK_SEC * _SAMPLE_RATE * _BYTES_PER_SAMPLE)
 
 
