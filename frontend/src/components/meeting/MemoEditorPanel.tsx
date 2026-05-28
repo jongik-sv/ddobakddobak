@@ -1,0 +1,39 @@
+import { MeetingEditor } from '../editor/MeetingEditor'
+import { DecisionList } from '../decision/DecisionList'
+import type { useMemoEditor } from '../../hooks/useMemoEditor'
+
+type MemoEditorRef = ReturnType<typeof useMemoEditor>['memoEditorRef']
+
+/** 메모 에디터 + Decision Log 패널 — 데스크톱 패널/모바일 탭 양쪽에서 재사용 */
+export function MemoEditorPanel({
+  meetingId,
+  editorRef,
+  onSave,
+  isSaving,
+}: {
+  meetingId: number
+  editorRef: MemoEditorRef
+  onSave: () => void
+  isSaving: boolean
+}) {
+  return (
+    <section data-testid="memo-editor" className="h-full flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
+        <h2 className="text-sm font-semibold text-gray-500">메모</h2>
+        <button
+          onClick={onSave}
+          disabled={isSaving}
+          className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {isSaving ? '저장 중...' : '저장'}
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto">
+        <MeetingEditor editorRef={editorRef} />
+      </div>
+      <div className="border-t shrink-0 overflow-y-auto max-h-[40%]">
+        <DecisionList meetingId={meetingId} />
+      </div>
+    </section>
+  )
+}

@@ -19,16 +19,18 @@ import { MiniAudioPlayer } from '../components/meeting/MiniAudioPlayer'
 import { TranscriptPanel } from '../components/meeting/TranscriptPanel'
 import { ExportButton } from '../components/meeting/ExportButton'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
-import { MeetingEditor } from '../components/editor/MeetingEditor'
 import { useUiStore } from '../stores/uiStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
 import { getBookmarks, deleteBookmark } from '../api/bookmarks'
 import type { Bookmark as BookmarkType } from '../api/bookmarks'
-import { DecisionList } from '../components/decision/DecisionList'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
 import MobileTabLayout from '../components/layout/MobileTabLayout'
+import { BookmarkList } from '../components/meeting/BookmarkList'
+import { MemoEditorPanel } from '../components/meeting/MemoEditorPanel'
+import { TranscribingProgress } from '../components/meeting/TranscribingProgress'
+import { TermCorrectionDetails } from '../components/meeting/TermCorrectionDetails'
 
 // ──────────────────────────────────────────────
 // 회의 상세 페이지
@@ -247,16 +249,6 @@ export default function MeetingPage() {
     }
   }
 
-  function formatMs(ms: number) {
-    const totalSec = Math.floor(ms / 1000)
-    const h = Math.floor(totalSec / 3600)
-    const m = Math.floor((totalSec % 3600) / 60)
-    const s = totalSec % 60
-    return h > 0
-      ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-      : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  }
-
   function handleSeek(ms: number) {
     setSeekMs(ms)
   }
@@ -331,34 +323,13 @@ export default function MeetingPage() {
     )
 
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 gap-6">
-        <div className="w-full max-w-sm">
-          <div className="flex flex-col items-center gap-4 p-8 rounded-xl bg-white border shadow-sm">
-            <svg className="w-12 h-12 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-            </svg>
-            <h2 className="text-lg font-semibold text-gray-900">
-              {meeting?.title ?? '오디오 파일 변환 중'}
-            </h2>
-            <p className="text-sm text-gray-500">{progressMessage}</p>
-
-            {/* 진행률 바 */}
-            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div
-                className="h-full bg-amber-500 rounded-full transition-all duration-500 ease-out"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-            <p className="text-xs text-gray-400">{progressPercent}%</p>
-
-            {fileProgress.status === 'error' && (
-              <div className="mt-2 p-3 rounded-md bg-red-50 text-sm text-red-600 w-full">
-                오류: {fileProgress.error}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <TranscribingProgress
+        title={meeting?.title ?? '오디오 파일 변환 중'}
+        progressPercent={progressPercent}
+        message={progressMessage}
+        isError={fileProgress.status === 'error'}
+        error={fileProgress.error}
+      />
     )
   }
 
@@ -370,41 +341,8 @@ export default function MeetingPage() {
         icon: FileText,
         content: (
           <div className="h-full flex flex-col overflow-hidden">
-            {bookmarksVisible && bookmarks.length > 0 && (
-              <div className="border-b shrink-0 max-h-48 overflow-y-auto">
-                <div className="px-3 py-2 bg-amber-50 border-b">
-                  <h3 className="text-xs font-semibold text-amber-700 flex items-center gap-1">
-                    <Bookmark className="w-3 h-3" />
-                    북마크 ({bookmarks.length})
-                  </h3>
-                </div>
-                <ul className="divide-y divide-gray-100">
-                  {bookmarks.map((b) => (
-                    <li
-                      key={b.id}
-                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-amber-50 cursor-pointer group"
-                      onClick={() => handleSeek(b.timestamp_ms)}
-                    >
-                      <span className="text-xs font-mono text-amber-600 shrink-0">
-                        {formatMs(b.timestamp_ms)}
-                      </span>
-                      <span className="text-xs text-gray-700 truncate flex-1">
-                        {b.label || '(라벨 없음)'}
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDeleteBookmark(b.id)
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all"
-                        title="삭제"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            {bookmarksVisible && (
+              <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} />
             )}
             <div className="flex-1 min-h-0 overflow-y-auto">
               <TranscriptPanel
@@ -432,24 +370,12 @@ export default function MeetingPage() {
         label: '메모',
         icon: StickyNote,
         content: (
-          <section data-testid="memo-editor" className="h-full flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
-              <h2 className="text-sm font-semibold text-gray-500">메모</h2>
-              <button
-                onClick={handleSaveMemo}
-                disabled={isSavingMemo}
-                className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isSavingMemo ? '저장 중...' : '저장'}
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto">
-              <MeetingEditor editorRef={memoEditorRef} />
-            </div>
-            <div className="border-t shrink-0 overflow-y-auto max-h-[40%]">
-              <DecisionList meetingId={meetingId} />
-            </div>
-          </section>
+          <MemoEditorPanel
+            meetingId={meetingId}
+            editorRef={memoEditorRef}
+            onSave={handleSaveMemo}
+            isSaving={isSavingMemo}
+          />
         ),
       },
   ]
@@ -663,42 +589,8 @@ export default function MeetingPage() {
           {/* 트랜스크립트 + 북마크 패널 — 기본 25% */}
           <Panel defaultSize={25} minSize={15}>
             <div className="h-full flex flex-col overflow-hidden">
-              {/* 북마크 섹션 */}
-              {bookmarksVisible && bookmarks.length > 0 && (
-                <div className="border-b shrink-0 max-h-48 overflow-y-auto">
-                  <div className="px-3 py-2 bg-amber-50 border-b">
-                    <h3 className="text-xs font-semibold text-amber-700 flex items-center gap-1">
-                      <Bookmark className="w-3 h-3" />
-                      북마크 ({bookmarks.length})
-                    </h3>
-                  </div>
-                  <ul className="divide-y divide-gray-100">
-                    {bookmarks.map((b) => (
-                      <li
-                        key={b.id}
-                        className="flex items-center gap-2 px-3 py-1.5 hover:bg-amber-50 cursor-pointer group"
-                        onClick={() => handleSeek(b.timestamp_ms)}
-                      >
-                        <span className="text-xs font-mono text-amber-600 shrink-0">
-                          {formatMs(b.timestamp_ms)}
-                        </span>
-                        <span className="text-xs text-gray-700 truncate flex-1">
-                          {b.label || '(라벨 없음)'}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteBookmark(b.id)
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all"
-                          title="삭제"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+              {bookmarksVisible && (
+                <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} />
               )}
               <div className="flex-1 overflow-y-auto">
                 <TranscriptPanel
@@ -726,24 +618,12 @@ export default function MeetingPage() {
 
               {/* 메모 + Decision Log — 기본 30% */}
               <Panel defaultSize={30} minSize={15}>
-                <section data-testid="memo-editor" className="h-full flex flex-col overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
-                    <h2 className="text-sm font-semibold text-gray-500">메모</h2>
-                    <button
-                      onClick={handleSaveMemo}
-                      disabled={isSavingMemo}
-                      className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {isSavingMemo ? '저장 중...' : '저장'}
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-auto">
-                    <MeetingEditor editorRef={memoEditorRef} />
-                  </div>
-                  <div className="border-t shrink-0 overflow-y-auto max-h-[40%]">
-                    <DecisionList meetingId={meetingId} />
-                  </div>
-                </section>
+                <MemoEditorPanel
+                  meetingId={meetingId}
+                  editorRef={memoEditorRef}
+                  onSave={handleSaveMemo}
+                  isSaving={isSavingMemo}
+                />
               </Panel>
             </>
           )}
@@ -756,66 +636,15 @@ export default function MeetingPage() {
 
       {/* 오타 수정 섹션 */}
       {meeting?.status === 'completed' && (
-        <div className="border-t bg-white px-6 py-3 shrink-0">
-          <details className="group">
-            <summary className="cursor-pointer text-sm font-semibold text-gray-500 select-none flex items-center gap-2">
-              <span className="transition-transform group-open:rotate-90">&rsaquo;</span>
-              오타 수정
-              {correctionStatus && (
-                <span className="text-xs font-normal text-blue-500 ml-2">{correctionStatus}</span>
-              )}
-            </summary>
-            <div className="mt-2 flex flex-col gap-2 max-w-2xl">
-              <p className="text-xs text-gray-400">
-                잘못된 용어를 올바른 용어로 일괄 치환합니다 (회의록 + 트랜스크립트)
-              </p>
-              {corrections.map((c, i) => (
-                <div key={i} className="flex items-center gap-1">
-                  <input
-                    type="text"
-                    value={c.from}
-                    onChange={(e) => updateCorrection(i, 'from', e.target.value)}
-                    placeholder="잘못된 용어"
-                    className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-                    disabled={isApplyingCorrections}
-                  />
-                  <span className="text-gray-400 text-xs shrink-0">&rarr;</span>
-                  <input
-                    type="text"
-                    value={c.to}
-                    onChange={(e) => updateCorrection(i, 'to', e.target.value)}
-                    placeholder="올바른 용어"
-                    className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-                    disabled={isApplyingCorrections}
-                  />
-                  <button
-                    onClick={() => removeCorrectionRow(i)}
-                    className="shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 text-sm"
-                    title="삭제"
-                  >
-                    &times;
-                  </button>
-                </div>
-              ))}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={addCorrectionRow}
-                  disabled={isApplyingCorrections}
-                  className="text-xs text-blue-500 hover:text-blue-700"
-                >
-                  + 용어 추가
-                </button>
-                <button
-                  onClick={handleApplyCorrections}
-                  disabled={!corrections.some((c) => c.from.trim() && c.to.trim()) || isApplyingCorrections}
-                  className="ml-auto px-4 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isApplyingCorrections ? '반영 중...' : '오타 수정 적용'}
-                </button>
-              </div>
-            </div>
-          </details>
-        </div>
+        <TermCorrectionDetails
+          corrections={corrections}
+          status={correctionStatus}
+          isApplying={isApplyingCorrections}
+          onUpdate={updateCorrection}
+          onAdd={addCorrectionRow}
+          onRemove={removeCorrectionRow}
+          onApply={handleApplyCorrections}
+        />
       )}
 
       {/* STT 재생성 확인 다이얼로그 */}
