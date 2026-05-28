@@ -21,7 +21,7 @@ module DefaultUserLookup
   # Callers must check server_mode? before invoking this method.
   def local_default_user
     User.find_or_create_by!(email: User::LOCAL_EMAIL) do |u|
-      u.name = "사용자"
+      u.name = "관리자"
       u.role = "admin"
     end
   end
