@@ -51,6 +51,7 @@ class TranscriptionChannel < ApplicationCable::Channel
       offset_ms: data["offset_ms"].to_i,
       diarization_config: data["diarization_config"],
       languages: data["languages"],
+      mode: data["mode"] || "single",
       audio_source: data["audio_source"] || "mic"
     )
   end

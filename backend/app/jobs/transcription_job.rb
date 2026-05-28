@@ -6,7 +6,7 @@ class TranscriptionJob < ApplicationJob
     구독과\ 좋아요 시청해\ 주셔서\ 감사합니다 MBC 뉴스 KBS 뉴스
   ].freeze
 
-  def perform(meeting_id:, audio_data:, sequence: 0, offset_ms: 0, diarization_config: nil, languages: nil, audio_source: "mic")
+  def perform(meeting_id:, audio_data:, sequence: 0, offset_ms: 0, diarization_config: nil, languages: nil, mode: "single", audio_source: "mic")
     meeting = Meeting.find(meeting_id)
     client = SidecarClient.new
 
@@ -14,7 +14,7 @@ class TranscriptionJob < ApplicationJob
     # segment.started_at_ms / ended_at_ms = 청크 내 상대 위치
     # → 합산하면 녹음 시작 기준 절대 시간
 
-    result = client.transcribe(audio_data, meeting_id: meeting_id, diarization_config: diarization_config, languages: languages, offset_ms: offset_ms)
+    result = client.transcribe(audio_data, meeting_id: meeting_id, diarization_config: diarization_config, languages: languages, mode: mode, offset_ms: offset_ms)
     segments = result["segments"] || []
 
     segments.each do |segment|
