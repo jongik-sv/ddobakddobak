@@ -1,4 +1,4 @@
-from app.main import _detect_available_engines
+from app.engines import _detect_available_engines
 
 
 def test_detect_returns_list_of_str():
