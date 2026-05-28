@@ -446,13 +446,15 @@ export default function UserManagementPanel() {
                       <td className="py-3 text-muted-foreground">{formatDate(user.created_at)}</td>
                       <td className="py-3">
                         <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => setEditTarget(user)}
-                            className="p-2.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
-                            title="이름/이메일 수정"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
+                          {!user.email.endsWith('@local') && (
+                            <button
+                              onClick={() => setEditTarget(user)}
+                              className="p-2.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                              title="이름/이메일 수정"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                          )}
                           {!user.email.endsWith('@local') && (
                             <button
                               onClick={() => setResetTarget(user)}
