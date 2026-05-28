@@ -97,13 +97,11 @@ module Api
         llm  # 저장 후 최신 상태 반환
       end
 
-      CLI_PROVIDERS = %w[claude_cli gemini_cli codex_cli].freeze
-
       def test_llm
         provider = params.require(:provider)
 
         # CLI 프로바이더는 API 연결 테스트 불필요
-        if CLI_PROVIDERS.include?(provider)
+        if LlmService::CLI_PROVIDERS.include?(provider)
           render json: { "success" => true, "note" => "CLI 프로바이더는 별도 연결 테스트가 필요 없습니다." }
           return
         end
@@ -303,7 +301,6 @@ module Api
           end
         end
       end
-
     end
   end
 end

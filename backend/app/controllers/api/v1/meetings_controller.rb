@@ -2,26 +2,32 @@ module Api
   module V1
     class MeetingsController < ApplicationController
       include MeetingLookup
+      include MeetingSerializable
+      include TranscriptSerializable
+      include AudioStorage
 
       before_action :authenticate_user!
       before_action :set_meeting, only: %i[show update destroy start stop reopen reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes]
       before_action :authorize_meeting_control!, only: %i[update destroy start stop reopen reset_content summarize update_notes regenerate_stt regenerate_notes]
 
       def index
-        meetings = Meeting.accessible_by(current_user)
-                          .search_with_summary(params[:q])
-                       .by_status(params[:status])
+        scope = Meeting.accessible_by(current_user)
+                       .search_with_summary(params[:q])
                        .created_after(params[:date_from])
                        .created_before(params[:date_to])
 
         if params.key?(:folder_id)
           if params[:folder_id] == "null"
-            meetings = meetings.where(folder_id: nil)
+            scope = scope.where(folder_id: nil)
           else
-            meetings = meetings.where(folder_id: params[:folder_id])
+            scope = scope.where(folder_id: params[:folder_id])
           end
         end
 
+        # 상태별 카운트는 status 필터 적용 전 스코프에서 계산 (탭 선택과 무관하게 정확)
+        status_counts = scope.group(:status).count
+
+        meetings = scope.by_status(params[:status])
         total    = meetings.count
         meetings = meetings.includes(:creator, :tags, :meeting_attachments)
                            .order(created_at: :desc)
@@ -30,7 +36,7 @@ module Api
 
         render json: {
           meetings: meetings.map { |m| meeting_json(m) },
-          meta: { total: total, page: pagination_page, per: pagination_per }
+          meta: { total: total, page: pagination_page, per: pagination_per, status_counts: status_counts }
         }
       end
 
@@ -49,13 +55,6 @@ module Api
         end
       end
 
-      ALLOWED_AUDIO_TYPES = %w[
-        audio/mpeg audio/mp3 audio/wav audio/x-wav audio/wave
-        audio/m4a audio/mp4 audio/x-m4a audio/aac
-        audio/webm audio/ogg video/webm
-        audio/flac audio/x-flac
-      ].freeze
-
       def upload_audio
         audio_file = params[:audio]
         return render json: { error: "오디오 파일이 필요합니다" }, status: :unprocessable_entity unless audio_file.is_a?(ActionDispatch::Http::UploadedFile)
@@ -73,8 +72,7 @@ module Api
           started_at: Time.current
         )
 
-        # 오디오 파일 저장 (AUDIO_DIR 환경변수로 외부 경로 지정 가능)
-        storage_dir = Pathname.new(ENV.fetch("AUDIO_DIR") { Rails.root.join("storage", "audio").to_s })
+        storage_dir = Pathname.new(audio_dir)
         FileUtils.mkdir_p(storage_dir)
         audio_path = storage_dir.join("#{meeting.id}#{ext}").to_s
 
@@ -178,12 +176,7 @@ module Api
       end
 
       def reset_content
-        @meeting.transcripts.destroy_all
-        @meeting.summaries.destroy_all
-        @meeting.action_items.destroy_all
-        @meeting.decisions.destroy_all
-        @meeting.blocks.destroy_all
-        @meeting.meeting_attachments.destroy_all
+        @meeting.purge_transcription_content!(include_attachments: true)
 
         FileUtils.rm_f(@meeting.audio_file_path) if @meeting.audio_file_path.present?
 
@@ -224,11 +217,7 @@ module Api
           return render json: { error: "오디오 파일이 없습니다" }, status: :unprocessable_entity
         end
 
-        @meeting.transcripts.destroy_all
-        @meeting.summaries.destroy_all
-        @meeting.action_items.destroy_all
-        @meeting.decisions.destroy_all
-        @meeting.blocks.destroy_all
+        @meeting.purge_transcription_content!
 
         @meeting.update!(status: :transcribing, transcription_progress: 0, last_refined_seq: 0)
         FileTranscriptionJob.perform_later(@meeting.id)
@@ -425,127 +414,10 @@ module Api
           @meeting.summaries.build(summary_type: latest_summary_type)
       end
 
-      def meeting_json(meeting, full: false)
-        attachment_counts = meeting.meeting_attachments.loaded? ?
-          meeting.meeting_attachments.group_by(&:category).transform_values(&:size) :
-          meeting.meeting_attachments.group(:category).count
-
-        json = {
-          id: meeting.id,
-          title: meeting.title,
-          status: meeting.status,
-          meeting_type: meeting.meeting_type,
-          started_at: meeting.started_at,
-          ended_at: meeting.ended_at,
-          created_by_id: meeting.created_by_id,
-          created_by: { id: meeting.created_by_id, name: meeting.creator&.name },
-          brief_summary: meeting.brief_summary,
-          source: meeting.source,
-          transcription_progress: meeting.transcription_progress,
-          has_audio_file: meeting.audio_file_path.present?,
-          folder_id: meeting.folder_id,
-          memo: meeting.memo,
-          attendees: meeting.attendees,
-          tags: meeting.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
-          attachment_counts: {
-            agenda: attachment_counts["agenda"] || 0,
-            reference: attachment_counts["reference"] || 0,
-            minutes: attachment_counts["minutes"] || 0
-          },
-          created_at: meeting.created_at,
-          updated_at: meeting.updated_at
-        }
-
-        if full
-          json[:audio_duration_ms] = audio_duration_ms(meeting)
-          json[:last_transcript_end_ms] = meeting.transcripts.maximum(:ended_at_ms).to_i
-          json[:last_sequence_number] = meeting.transcripts.maximum(:sequence_number).to_i
-          json[:transcripts]   = serialize_transcripts(meeting)
-          json[:summary]       = serialize_summary(meeting)
-          json[:action_items]  = serialize_action_items(meeting)
-        end
-
-        json
-      end
-
-      def serialize_transcripts(meeting)
-        meeting.transcripts.order(:started_at_ms).map do |t|
-          {
-            id: t.id,
-            content: t.content,
-            speaker_label: t.speaker_label,
-            sequence_number: t.sequence_number,
-            started_at_ms: t.started_at_ms,
-            ended_at_ms: t.ended_at_ms
-          }
-        end
-      end
-
-      def serialize_summary(meeting)
-        summary = meeting.active_summary
-        return nil unless summary
-
-        serialize_summary_hash(summary)
-      end
-
-      def serialize_summary_hash(summary)
-        {
-          id: summary.id,
-          summary_type: summary.summary_type,
-          key_points: parse_json_field(summary.key_points),
-          decisions: parse_json_field(summary.decisions),
-          discussion_details: parse_json_field(summary.discussion_details),
-          notes_markdown: summary.notes_markdown,
-          generated_at: summary.generated_at
-        }
-      end
-
-      def parse_json_field(value)
-        return [] if value.nil?
-        return value if value.is_a?(Array)
-        JSON.parse(value)
-      rescue JSON::ParserError
-        []
-      end
-
-      def serialize_action_items(meeting)
-        meeting.action_items.order(:created_at).map do |ai|
-          {
-            id: ai.id,
-            content: ai.content,
-            status: ai.status,
-            ai_generated: ai.ai_generated,
-            created_at: ai.created_at
-          }
-        end
-      end
-
       def apply_term_corrections(text, corrections)
         result = text
         corrections.each { |c| result = result.gsub(c[:from], c[:to]) }
         result
-      end
-
-      def transcript_json(transcript)
-        {
-          id: transcript.id,
-          content: transcript.content,
-          speaker_label: transcript.speaker_label,
-          started_at_ms: transcript.started_at_ms,
-          ended_at_ms: transcript.ended_at_ms,
-          sequence_number: transcript.sequence_number,
-          applied_to_minutes: transcript.applied_to_minutes
-        }
-      end
-
-      def audio_duration_ms(meeting)
-        path = meeting.audio_file_path
-        return 0 unless path.present? && File.exist?(path)
-
-        output = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 #{Shellwords.escape(path)}`.strip
-        (output.to_f * 1000).to_i
-      rescue StandardError
-        0
       end
     end
   end

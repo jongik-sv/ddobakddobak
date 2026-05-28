@@ -13,18 +13,18 @@ RSpec.describe AudioUploadJob, type: :job do
     data = ("\x00\x00".b * samples)
     File.open(path, "wb") do |f|
       f.write("RIFF")
-      f.write([36 + data.bytesize].pack("V"))
+      f.write([ 36 + data.bytesize ].pack("V"))
       f.write("WAVE")
       f.write("fmt ")
-      f.write([16].pack("V"))
-      f.write([1].pack("v"))       # PCM
-      f.write([1].pack("v"))       # mono
-      f.write([rate].pack("V"))
-      f.write([rate * 2].pack("V")) # byte rate
-      f.write([2].pack("v"))       # block align
-      f.write([16].pack("v"))      # bits per sample
+      f.write([ 16 ].pack("V"))
+      f.write([ 1 ].pack("v"))       # PCM
+      f.write([ 1 ].pack("v"))       # mono
+      f.write([ rate ].pack("V"))
+      f.write([ rate * 2 ].pack("V")) # byte rate
+      f.write([ 2 ].pack("v"))       # block align
+      f.write([ 16 ].pack("v"))      # bits per sample
       f.write("data")
-      f.write([data.bytesize].pack("V"))
+      f.write([ data.bytesize ].pack("V"))
       f.write(data)
     end
   end

@@ -13,10 +13,10 @@ Devise.setup do |config|
                  ENV.fetch("DEVISE_JWT_SECRET_KEY") { Rails.application.secret_key_base }
     jwt.expiration_time = 24.hours.to_i   # Access Token expiry: 24 hours
     jwt.dispatch_requests = [
-      ["POST", %r{^/auth/login$}]
+      [ "POST", %r{^/auth/login$} ]
     ]
     jwt.revocation_requests = [
-      ["DELETE", %r{^/auth/logout$}]
+      [ "DELETE", %r{^/auth/logout$} ]
     ]
   end
 end

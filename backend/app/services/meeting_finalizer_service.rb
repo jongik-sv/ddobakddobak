@@ -43,5 +43,4 @@ class MeetingFinalizerService
       )
     end
   end
-
 end

@@ -126,7 +126,7 @@ RSpec.describe TranscriptionJob, type: :job do
 
     context "when segment is missing optional fields" do
       let(:segments) do
-        [{ "text" => "Minimal segment" }]
+        [ { "text" => "Minimal segment" } ]
       end
 
       it "uses default values for missing fields" do

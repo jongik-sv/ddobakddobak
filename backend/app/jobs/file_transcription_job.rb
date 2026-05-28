@@ -27,7 +27,7 @@ class FileTranscriptionJob < ApplicationJob
         "enable" => diarization_enabled,
         "similarity_threshold" => ENV.fetch("DIARIZATION_SIMILARITY_THRESHOLD", "0.35").to_f,
         "merge_threshold" => ENV.fetch("DIARIZATION_MERGE_THRESHOLD", "0.50").to_f,
-        "max_embeddings_per_speaker" => ENV.fetch("DIARIZATION_MAX_EMBEDDINGS_PER_SPEAKER", "15").to_i,
+        "max_embeddings_per_speaker" => ENV.fetch("DIARIZATION_MAX_EMBEDDINGS_PER_SPEAKER", "15").to_i
       }
     )
     broadcast_progress(channel, 70, "음성 인식 완료")

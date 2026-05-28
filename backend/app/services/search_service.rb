@@ -8,8 +8,8 @@ class SearchService
     @user     = user
     @query    = query.to_s.strip
     @filters  = filters.symbolize_keys
-    @page     = [(page.presence || 1).to_i, 1].max
-    @per_page = [[(per_page.presence || PER_PAGE_DEFAULT).to_i, 1].max, PER_PAGE_MAX].min
+    @page     = [ (page.presence || 1).to_i, 1 ].max
+    @per_page = [ [ (per_page.presence || PER_PAGE_DEFAULT).to_i, 1 ].max, PER_PAGE_MAX ].min
   end
 
   def call
@@ -67,11 +67,11 @@ class SearchService
       ORDER BY rank
     SQL
 
-    binds = [fts_q] + accessible_meeting_ids
+    binds = [ fts_q ] + accessible_meeting_ids
     binds << @filters[:speaker] if @filters[:speaker].present?
 
     rows = ActiveRecord::Base.connection.select_all(
-      ActiveRecord::Base.sanitize_sql_array([sql] + binds)
+      ActiveRecord::Base.sanitize_sql_array([ sql ] + binds)
     )
 
     rows.map do |row|
@@ -104,10 +104,10 @@ class SearchService
       ORDER BY rank
     SQL
 
-    binds = [fts_q] + accessible_meeting_ids
+    binds = [ fts_q ] + accessible_meeting_ids
 
     rows = ActiveRecord::Base.connection.select_all(
-      ActiveRecord::Base.sanitize_sql_array([sql] + binds)
+      ActiveRecord::Base.sanitize_sql_array([ sql ] + binds)
     )
 
     rows.map do |row|

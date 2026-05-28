@@ -46,7 +46,7 @@ RSpec.describe MeetingParticipant, type: :model do
         active = create(:meeting_participant, meeting: meeting, user: user, role: "host", joined_at: Time.current)
         create(:meeting_participant, meeting: meeting, user: other_user, role: "viewer", joined_at: 1.hour.ago, left_at: Time.current)
 
-        expect(MeetingParticipant.active).to eq([active])
+        expect(MeetingParticipant.active).to eq([ active ])
       end
     end
 
@@ -55,7 +55,7 @@ RSpec.describe MeetingParticipant, type: :model do
         host = create(:meeting_participant, meeting: meeting, user: user, role: "host", joined_at: Time.current)
         create(:meeting_participant, meeting: meeting, user: other_user, role: "viewer", joined_at: Time.current)
 
-        expect(MeetingParticipant.host).to eq([host])
+        expect(MeetingParticipant.host).to eq([ host ])
       end
     end
   end

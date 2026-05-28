@@ -70,7 +70,6 @@ module Api
           render json: { error: "Forbidden" }, status: :forbidden
         end
       end
-
     end
   end
 end

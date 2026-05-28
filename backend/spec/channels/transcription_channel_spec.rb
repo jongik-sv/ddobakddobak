@@ -159,7 +159,7 @@ RSpec.describe TranscriptionChannel, type: :channel do
         expect {
           perform(:audio_chunk, {
             "data" => "base64audio==", "sequence" => 1,
-            "mode" => "single", "languages" => ["ja"]
+            "mode" => "single", "languages" => [ "ja" ]
           })
         }.to have_enqueued_job(TranscriptionJob).with(
           hash_including(mode: "multi", languages: %w[ko en])

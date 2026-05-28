@@ -31,7 +31,6 @@ RSpec.describe "Api::V1::Teams", type: :request do
         expect(response.parsed_body).to eq([])
       end
     end
-
   end
 
   describe "POST /api/v1/teams" do
@@ -57,7 +56,6 @@ RSpec.describe "Api::V1::Teams", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
-
   end
 
   describe "POST /api/v1/teams/:id/invite" do
@@ -96,7 +94,6 @@ RSpec.describe "Api::V1::Teams", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
-
   end
 
   describe "DELETE /api/v1/teams/:id/members/:user_id" do
@@ -118,6 +115,5 @@ RSpec.describe "Api::V1::Teams", type: :request do
         expect(response).to have_http_status(:not_found)
       end
     end
-
   end
 end

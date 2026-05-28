@@ -303,25 +303,29 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
   # ============================================================
   # 미인증 요청 (서버 모드)
   # ============================================================
-  context "미인증 요청 (서버 모드)" do
+  # 서버 모드에서 인증을 강제하는 경계는 "원격(비-loopback) 요청 + JWT 없음"이다.
+  # loopback 요청은 의도적으로 desktop@local admin으로 폴백되므로(하이브리드 인증)
+  # 미인증 401을 검증하려면 반드시 원격 IP를 흉내내야 한다.
+  context "미인증 요청 (서버 모드, 원격)" do
     include_context "server mode"
+    let(:remote) { { "REMOTE_ADDR" => "192.168.1.50" } }
 
     it "GET 시 401을 반환한다" do
-      get "/api/v1/user/llm_settings", as: :json
+      get "/api/v1/user/llm_settings", headers: remote, as: :json
       expect(response).to have_http_status(:unauthorized)
     end
 
     it "PUT 시 401을 반환한다" do
       put "/api/v1/user/llm_settings", params: {
         llm_settings: { provider: "anthropic" }
-      }, as: :json
+      }, headers: remote, as: :json
       expect(response).to have_http_status(:unauthorized)
     end
 
     it "POST test 시 401을 반환한다" do
       post "/api/v1/user/llm_settings/test", params: {
         provider: "anthropic", model: "claude-sonnet-4-6"
-      }, as: :json
+      }, headers: remote, as: :json
       expect(response).to have_http_status(:unauthorized)
     end
   end

@@ -61,6 +61,16 @@ class Meeting < ApplicationRecord
     active_summary&.notes_markdown.to_s
   end
 
+  # 트랜스크립트·요약·액션아이템·결정·블록(선택적으로 첨부)을 모두 삭제한다.
+  def purge_transcription_content!(include_attachments: false)
+    transcripts.destroy_all
+    summaries.destroy_all
+    action_items.destroy_all
+    decisions.destroy_all
+    blocks.destroy_all
+    meeting_attachments.destroy_all if include_attachments
+  end
+
   # notes_markdown에서 의미 있는 요약 텍스트를 추출하여 brief_summary 컬럼에 저장
   def refresh_brief_summary!(notes_markdown = nil)
     notes_markdown ||= (summaries.find_by(summary_type: "final") ||

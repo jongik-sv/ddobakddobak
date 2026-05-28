@@ -56,7 +56,6 @@ RSpec.describe "Api::V1::ActionItems", type: :request do
         expect(json["content"]).to eq("수정된 할 일")
       end
     end
-
   end
 
   describe "DELETE /api/v1/action_items/:id" do
@@ -71,6 +70,5 @@ RSpec.describe "Api::V1::ActionItems", type: :request do
         expect(response).to have_http_status(:no_content)
       end
     end
-
   end
 end

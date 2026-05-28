@@ -35,9 +35,9 @@ RSpec.describe MarkdownExporter do
     context "final 요약이 있을 때" do
       before do
         create(:summary, meeting: meeting, summary_type: "final",
-               key_points: ["핵심 1", "핵심 2"].to_json,
-               decisions:  ["결정 1"].to_json,
-               discussion_details: ["논의 1"].to_json)
+               key_points: [ "핵심 1", "핵심 2" ].to_json,
+               decisions:  [ "결정 1" ].to_json,
+               discussion_details: [ "논의 1" ].to_json)
       end
 
       it "## AI 요약 헤더를 포함한다" do

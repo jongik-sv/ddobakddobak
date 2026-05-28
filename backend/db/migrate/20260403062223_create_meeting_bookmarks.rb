@@ -8,6 +8,6 @@ class CreateMeetingBookmarks < ActiveRecord::Migration[8.0]
       t.timestamps
     end
 
-    add_index :meeting_bookmarks, [:meeting_id, :timestamp_ms]
+    add_index :meeting_bookmarks, [ :meeting_id, :timestamp_ms ]
   end
 end

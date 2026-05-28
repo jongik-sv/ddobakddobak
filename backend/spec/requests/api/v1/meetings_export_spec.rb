@@ -13,7 +13,7 @@ RSpec.describe "GET /api/v1/meetings/:id/export", type: :request do
       create(:transcript, meeting: meeting, speaker_label: "화자1",
              content: "테스트 발언", started_at_ms: 0, sequence_number: 1)
       create(:summary, meeting: meeting, summary_type: "final",
-             key_points: ["핵심 1"].to_json, decisions: [].to_json,
+             key_points: [ "핵심 1" ].to_json, decisions: [].to_json,
              discussion_details: [].to_json)
     end
 
@@ -58,5 +58,4 @@ RSpec.describe "GET /api/v1/meetings/:id/export", type: :request do
       expect(response.body).not_to include("## 원본 텍스트")
     end
   end
-
 end

@@ -85,7 +85,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(titles).to include("남의 회의")
       end
     end
-
   end
 
   # ============================================================
@@ -133,7 +132,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(json["meeting"]["title"]).to eq("New Meeting")
       end
     end
-
   end
 
   # ============================================================
@@ -284,7 +282,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
-
   end
 
   # ============================================================
@@ -302,7 +299,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:no_content)
       end
     end
-
   end
 
   # ============================================================
@@ -331,7 +327,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
-
   end
 
   # ============================================================
@@ -392,7 +387,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
-
   end
 
   # ============================================================
@@ -423,13 +417,13 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
     it "남의 회의는 폴더 이동되지 않는다" do
       foreign = create(:meeting, team: team, creator: other_user, folder_id: nil)
-      post "/api/v1/meetings/move_to_folder", params: { meeting_ids: [foreign.id], folder_id: folder.id }
+      post "/api/v1/meetings/move_to_folder", params: { meeting_ids: [ foreign.id ], folder_id: folder.id }
       expect(foreign.reload.folder_id).to be_nil
     end
 
     it "내 회의는 폴더 이동된다" do
       mine = create(:meeting, team: team, creator: user, folder_id: nil)
-      post "/api/v1/meetings/move_to_folder", params: { meeting_ids: [mine.id], folder_id: folder.id }
+      post "/api/v1/meetings/move_to_folder", params: { meeting_ids: [ mine.id ], folder_id: folder.id }
       expect(mine.reload.folder_id).to eq(folder.id)
     end
   end
@@ -466,6 +460,5 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:not_found)
       end
     end
-
   end
 end

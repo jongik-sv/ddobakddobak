@@ -1,7 +1,7 @@
 class MeetingParticipant < ApplicationRecord
   ROLE_HOST   = "host"
   ROLE_VIEWER = "viewer"
-  ROLES = [ROLE_HOST, ROLE_VIEWER].freeze
+  ROLES = [ ROLE_HOST, ROLE_VIEWER ].freeze
 
   belongs_to :meeting
   belongs_to :user

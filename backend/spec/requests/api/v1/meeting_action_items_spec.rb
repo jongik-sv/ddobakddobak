@@ -33,7 +33,6 @@ RSpec.describe "Api::V1::MeetingActionItems", type: :request do
         expect(response.parsed_body).to eq([])
       end
     end
-
   end
 
   describe "POST /api/v1/meetings/:meeting_id/action_items" do
@@ -75,6 +74,5 @@ RSpec.describe "Api::V1::MeetingActionItems", type: :request do
         expect(response.parsed_body["errors"]).to be_present
       end
     end
-
   end
 end

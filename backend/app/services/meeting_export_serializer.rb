@@ -85,9 +85,9 @@ class MeetingExportSerializer
   def parse_field(value)
     return [] if value.blank?
     parsed = JSON.parse(value)
-    parsed.is_a?(Array) ? parsed : [parsed.to_s]
+    parsed.is_a?(Array) ? parsed : [ parsed.to_s ]
   rescue JSON::ParserError
-    [value.to_s]
+    [ value.to_s ]
   end
 
   def format_timestamp_ms(ms)

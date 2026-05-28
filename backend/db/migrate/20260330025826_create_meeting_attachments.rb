@@ -21,7 +21,7 @@ class CreateMeetingAttachments < ActiveRecord::Migration[8.1]
     end
 
     add_index :meeting_attachments,
-              [:meeting_id, :category, :position],
+              [ :meeting_id, :category, :position ],
               name: "idx_attachments_meeting_cat_pos"
   end
 end

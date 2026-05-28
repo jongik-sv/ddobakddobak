@@ -75,24 +75,16 @@ RSpec.describe "Auth::BrowserSessions", type: :request do
       response.body.match(/name="authenticity_token" value="([^"]+)"/)[1]
     end
 
+    # 로그인 성공 시 HTTP 리다이렉트 대신 "로그인 성공" 인터스티셜 페이지(200)를 렌더한다.
+    # 페이지는 ddobak:// 딥링크(토큰 포함)를 <a href> 와 JS window.location.href 로 전달한다.
+    # (브라우저가 커스텀 스킴 302를 안정적으로 따라가지 못하는 문제를 회피하는 의도된 UX)
     context "with valid credentials" do
-      it "redirects to ddobak:// deep link with tokens" do
-        csrf_token = get_csrf_token
-
-        post "/auth/web_login", params: {
-          email: user.email,
-          password: password,
-          callback: "ddobak://",
-          authenticity_token: csrf_token
-        }
-
-        expect(response).to have_http_status(:redirect)
-        expect(response.location).to start_with("ddobak://")
-        expect(response.location).to include("access_token=")
-        expect(response.location).to include("refresh_token=")
+      # 성공 페이지의 JS 자동이동 라인에서 딥링크 URL을 추출 (HTML 이스케이프 해제)
+      def deep_link_from(body)
+        CGI.unescapeHTML(body[/window\.location\.href = "([^"]+)"/, 1])
       end
 
-      it "includes valid JWT access_token in redirect URL" do
+      it "renders success page with ddobak:// deep link and tokens" do
         csrf_token = get_csrf_token
 
         post "/auth/web_login", params: {
@@ -102,7 +94,23 @@ RSpec.describe "Auth::BrowserSessions", type: :request do
           authenticity_token: csrf_token
         }
 
-        uri = URI.parse(response.location)
+        expect(response).to have_http_status(:ok)
+        expect(response.body).to include("ddobak://")
+        expect(response.body).to include("access_token=")
+        expect(response.body).to include("refresh_token=")
+      end
+
+      it "embeds a valid JWT access_token in the success page deep link" do
+        csrf_token = get_csrf_token
+
+        post "/auth/web_login", params: {
+          email: user.email,
+          password: password,
+          callback: "ddobak://",
+          authenticity_token: csrf_token
+        }
+
+        uri = URI.parse(deep_link_from(response.body))
         params = URI.decode_www_form(uri.query).to_h
 
         secret = Devise::JWT.config.secret
@@ -123,7 +131,7 @@ RSpec.describe "Auth::BrowserSessions", type: :request do
         }.to change { user.reload.refresh_token_jti }.from(nil)
       end
 
-      it "redirects to callback with custom path" do
+      it "renders success page with custom callback path" do
         csrf_token = get_csrf_token
 
         post "/auth/web_login", params: {
@@ -133,8 +141,8 @@ RSpec.describe "Auth::BrowserSessions", type: :request do
           authenticity_token: csrf_token
         }
 
-        expect(response).to have_http_status(:redirect)
-        expect(response.location).to start_with("ddobak://auth-complete?")
+        expect(response).to have_http_status(:ok)
+        expect(response.body).to include("ddobak://auth-complete?")
       end
     end
 

@@ -33,7 +33,7 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
 
         json = response.parsed_body
         contents = json["transcripts"].map { |t| t["content"] }
-        expect(contents).to eq(["첫 번째", "두 번째"])
+        expect(contents).to eq([ "첫 번째", "두 번째" ])
       end
 
       it "각 트랜스크립트에 필수 필드 포함" do

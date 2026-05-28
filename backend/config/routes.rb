@@ -5,7 +5,7 @@ Rails.application.routes.draw do
   # ── Authentication (Devise + JWT) ──
   devise_for :users, path: "auth",
     path_names: { sign_in: "login", sign_out: "logout" },
-    skip: [:registrations],
+    skip: [ :registrations ],
     controllers: {
       sessions: "auth/sessions"
     },
@@ -138,12 +138,12 @@ Rails.application.routes.draw do
 
       # User-scoped settings
       namespace :user do
-        resource :llm_settings, only: [:show, :update] do
+        resource :llm_settings, only: [ :show, :update ] do
           post :test, on: :collection
           patch :toggle, on: :collection
         end
-        resource :language_settings, only: [:show, :update]
-        resource :password, only: [:update]
+        resource :language_settings, only: [ :show, :update ]
+        resource :password, only: [ :update ]
       end
 
       # Settings
@@ -156,7 +156,6 @@ Rails.application.routes.draw do
       put  "settings/hf", to: "settings#update_hf"
       get  "settings/app", to: "settings#app_settings"
       put  "settings/app", to: "settings#update_app_settings"
-
     end
   end
 end

@@ -7,11 +7,11 @@ RSpec.describe MeetingFinalizerService do
   let(:llm_double) { instance_double(LlmService) }
 
   let(:action_items_result) do
-    { "action_items" => [{ "content" => "item1" }, { "content" => "item2" }] }
+    { "action_items" => [ { "content" => "item1" }, { "content" => "item2" } ] }
   end
 
   let(:summarize_result) do
-    { "decisions" => ["결정사항 1", "결정사항 2"], "key_points" => [], "discussion_details" => [], "action_items" => [] }
+    { "decisions" => [ "결정사항 1", "결정사항 2" ], "key_points" => [], "discussion_details" => [], "action_items" => [] }
   end
 
   before do

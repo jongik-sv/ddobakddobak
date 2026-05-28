@@ -2,6 +2,7 @@ module Api
   module V1
     class TranscriptsController < ApplicationController
       include MeetingLookup
+      include TranscriptSerializable
 
       before_action :authenticate_user!
       before_action :set_meeting
@@ -48,20 +49,6 @@ module Api
         )
 
         render json: { transcript: transcript_json(transcript) }
-      end
-
-      private
-
-      def transcript_json(t)
-        {
-          id: t.id,
-          speaker_label: t.speaker_label,
-          content: t.content,
-          started_at_ms: t.started_at_ms,
-          ended_at_ms: t.ended_at_ms,
-          sequence_number: t.sequence_number,
-          applied_to_minutes: t.applied_to_minutes
-        }
       end
     end
   end

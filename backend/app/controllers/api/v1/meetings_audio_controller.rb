@@ -2,6 +2,7 @@ module Api
   module V1
     class MeetingsAudioController < ApplicationController
       include MeetingLookup
+      include AudioStorage
 
       ALLOWED_AUDIO_CONTENT_TYPES = %w[audio/webm audio/ogg video/webm audio/mp4 audio/wav audio/x-wav audio/wave].freeze
       AUDIO_MIME_OVERRIDES = { ".m4a" => "audio/mp4", ".aac" => "audio/aac" }.freeze
@@ -106,14 +107,6 @@ module Api
         ALLOWED_AUDIO_CONTENT_TYPES.include?(base_type)
       end
 
-      def audio_dir
-        ENV.fetch("AUDIO_DIR") { Rails.root.join("storage", "audio").to_s }
-      end
-
-      def audio_dest_path(meeting_id)
-        File.join(audio_dir, "#{meeting_id}.webm")
-      end
-
       def parts_dir(meeting_id)
         File.join(audio_dir, "#{meeting_id}_parts")
       end
@@ -164,19 +157,19 @@ module Api
         duration = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 #{Shellwords.escape(audio_path)}`.strip.to_f
 
         raw = IO.popen(
-          ["ffmpeg", "-i", audio_path, "-ac", "1", "-ar", "100", "-f", "f32le", "-acodec", "pcm_f32le", "pipe:1"],
+          [ "ffmpeg", "-i", audio_path, "-ac", "1", "-ar", "100", "-f", "f32le", "-acodec", "pcm_f32le", "pipe:1" ],
           "rb", err: File::NULL
         ) { |io| io.read }
 
         samples = raw.unpack("e*")
         target = 800
-        chunk_size = [(samples.length / target.to_f).ceil, 1].max
+        chunk_size = [ (samples.length / target.to_f).ceil, 1 ].max
         peaks_data = samples.each_slice(chunk_size).map { |c| c.map(&:abs).max || 0.0 }
 
         max_val = peaks_data.max || 1.0
         peaks_data = peaks_data.map { |p| (p / max_val).round(4) } if max_val > 0
 
-        File.write(peaks_path, JSON.generate({ peaks: [peaks_data], duration: duration }))
+        File.write(peaks_path, JSON.generate({ peaks: [ peaks_data ], duration: duration }))
       end
     end
   end
