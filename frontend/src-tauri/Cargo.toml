@@ -29,6 +29,15 @@ dirs = "6"
 base64 = "0.22"
 if-addrs = "0.13"
 
+# 인앱 루프백 리버스 프록시(모바일 브릿지) — 모든 타겟에서 컴파일 (호스트 유닛테스트 포함)
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "sync"] }
+axum = { version = "0.7", features = ["ws"] }
+tokio-tungstenite = "0.24"
+# 평문 HTTP 전용 — native-tls/openssl 회피(안드로이드 안전).
+# reqwest 0.12는 HTTP/1을 항상 포함하므로 별도 feature 불필요 (http2만 opt-in).
+reqwest = { version = "0.12", default-features = false, features = ["stream"] }
+futures-util = "0.3"
+
 # 데스크톱 전용: GUI PATH 보정 + 네이티브 오디오 캡처 (모바일은 webview getUserMedia 사용)
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }

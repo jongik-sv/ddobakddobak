@@ -1,6 +1,8 @@
 #[cfg(desktop)]
 mod audio;
 
+mod bridge;
+
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::io::{Read, Write};
@@ -870,9 +872,16 @@ pub fn run() {
             })
     };
 
-    // ── 모바일 전용: 서버모드 클라이언트 (로컬 서비스/오디오 없음) ──
+    // ── 모바일 전용: 서버모드 클라이언트 (로컬 서비스/오디오 없음) + 인앱 루프백 브릿지 ──
     #[cfg(mobile)]
-    let builder = builder.invoke_handler(tauri::generate_handler![check_health, scan_lan_servers]);
+    let builder = builder
+        .manage(std::sync::Arc::new(bridge::BridgeState::default()))
+        .invoke_handler(tauri::generate_handler![
+            check_health,
+            scan_lan_servers,
+            bridge::bridge_port,
+            bridge::set_bridge_target,
+        ]);
 
     builder
         .setup(|app| {
@@ -881,6 +890,17 @@ pub fn run() {
                     .level(log::LevelFilter::Info)
                     .build(),
             )?;
+
+            // 모바일: 인앱 루프백 리버스 프록시 브릿지 기동.
+            #[cfg(mobile)]
+            {
+                let state = app
+                    .state::<std::sync::Arc<bridge::BridgeState>>()
+                    .inner()
+                    .clone();
+                tauri::async_runtime::spawn(bridge::serve(state));
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())
