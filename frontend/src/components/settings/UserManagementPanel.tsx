@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react'
 import { HTTPError } from 'ky'
-import { Trash2, Plus, UserPlus, KeyRound, Pencil } from 'lucide-react'
+import { Trash2, Plus, KeyRound, Pencil } from 'lucide-react'
 import {
   getAdminUsers,
-  createAdminUser,
   updateAdminUser,
   deleteAdminUser,
-  resetAdminUserPassword,
 } from '../../api/adminUsers'
 import type { AdminUser } from '../../api/adminUsers'
 import { useAuthStore } from '../../stores/authStore'
+import { CreateUserDialog } from './CreateUserDialog'
+import { DeleteConfirmDialog } from './DeleteConfirmDialog'
+import { ResetPasswordDialog } from './ResetPasswordDialog'
+import { EditUserDialog } from './EditUserDialog'
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('ko-KR', {
@@ -17,301 +19,6 @@ function formatDate(iso: string): string {
     month: '2-digit',
     day: '2-digit',
   })
-}
-
-// ── 사용자 생성 다이얼로그 ──
-function CreateUserDialog({
-  onClose,
-  onCreated,
-}: {
-  onClose: () => void
-  onCreated: (user: AdminUser) => void
-}) {
-  const [email, setEmail] = useState('')
-  const [name, setName] = useState('')
-  const [password, setPassword] = useState('')
-  const [role, setRole] = useState<'member' | 'admin'>('member')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
-    try {
-      const user = await createAdminUser({ email, name, password, role })
-      onCreated(user)
-    } catch (err) {
-      if (err instanceof HTTPError) {
-        const body = await err.response.json().catch(() => ({})) as Record<string, string[]>
-        setError(body.errors?.join(', ') ?? '사용자 생성에 실패했습니다.')
-      } else {
-        setError('사용자 생성에 실패했습니다.')
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-md rounded-xl bg-white shadow-2xl border border-gray-100 p-6 mx-4"
-      >
-        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <UserPlus className="w-5 h-5" />
-          사용자 추가
-        </h3>
-
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">이메일</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="user@example.com"
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">이름</label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="홍길동"
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">비밀번호</label>
-            <input
-              type="password"
-              required
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="6자 이상"
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">역할</label>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as 'admin' | 'member')}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white min-h-[44px]"
-            >
-              <option value="member">Member</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-        </div>
-
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-
-        <div className="flex justify-end gap-2 mt-5">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors min-h-[44px]"
-          >
-            취소
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors min-h-[44px]"
-          >
-            {saving ? '생성 중...' : '생성'}
-          </button>
-        </div>
-      </form>
-    </div>
-  )
-}
-
-// ── 삭제 확인 다이얼로그 ──
-function DeleteConfirmDialog({
-  user,
-  onClose,
-  onConfirm,
-}: {
-  user: AdminUser
-  onClose: () => void
-  onConfirm: () => void
-}) {
-  const [deleting, setDeleting] = useState(false)
-
-  const handleDelete = async () => {
-    setDeleting(true)
-    await onConfirm()
-    setDeleting(false)
-  }
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl border border-gray-100 p-6 mx-4">
-        <h3 className="text-lg font-semibold mb-2">사용자 삭제</h3>
-        <p className="text-sm text-gray-600 mb-1">
-          <strong>{user.name}</strong> ({user.email})
-        </p>
-        <p className="text-sm text-gray-600 mb-4">
-          이 사용자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
-        </p>
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors min-h-[44px]"
-          >
-            취소
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="px-4 py-2 rounded-md text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors min-h-[44px]"
-          >
-            {deleting ? '삭제 중...' : '삭제'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── 비밀번호 초기화 다이얼로그 ──
-function ResetPasswordDialog({
-  user,
-  onClose,
-}: {
-  user: AdminUser
-  onClose: () => void
-}) {
-  const [working, setWorking] = useState(false)
-  const [temp, setTemp] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
-
-  const handleReset = async () => {
-    setWorking(true)
-    setError(null)
-    try {
-      const res = await resetAdminUserPassword(user.id)
-      setTemp(res.temp_password)
-    } catch {
-      setError('비밀번호 초기화에 실패했습니다.')
-    } finally {
-      setWorking(false)
-    }
-  }
-
-  const handleCopy = async () => {
-    if (!temp) return
-    await navigator.clipboard.writeText(temp)
-    setCopied(true)
-  }
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl border border-gray-100 p-6 mx-4">
-        <h3 className="text-lg font-semibold mb-2">비밀번호 초기화</h3>
-        {temp === null ? (
-          <>
-            <p className="text-sm text-gray-600 mb-4">
-              <strong>{user.name}</strong> ({user.email})의 비밀번호를 임시 비밀번호로 재설정합니다.
-              해당 사용자의 모든 세션이 만료됩니다.
-            </p>
-            {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-            <div className="flex justify-end gap-2">
-              <button onClick={onClose} className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 min-h-[44px]">취소</button>
-              <button onClick={handleReset} disabled={working} className="px-4 py-2 rounded-md text-sm font-medium bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 min-h-[44px]">
-                {working ? '처리 중...' : '초기화'}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-sm text-gray-600 mb-3">
-              임시 비밀번호입니다. 이 창을 닫으면 다시 볼 수 없으니 사용자에게 전달하세요.
-            </p>
-            <div className="flex items-center gap-2 mb-4">
-              <code className="flex-1 rounded-md bg-gray-100 px-3 py-2 text-sm font-mono break-all">{temp}</code>
-              <button onClick={handleCopy} className="px-3 py-2 rounded-md text-sm font-medium border border-gray-300 hover:bg-gray-50 min-h-[44px]">
-                {copied ? '복사됨' : '복사'}
-              </button>
-            </div>
-            <div className="flex justify-end">
-              <button onClick={onClose} className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 min-h-[44px]">닫기</button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ── 사용자 편집(이름/이메일) 다이얼로그 ──
-function EditUserDialog({
-  user,
-  onClose,
-  onUpdated,
-}: {
-  user: AdminUser
-  onClose: () => void
-  onUpdated: (u: AdminUser) => void
-}) {
-  const [name, setName] = useState(user.name)
-  const [email, setEmail] = useState(user.email)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
-    try {
-      const updated = await updateAdminUser(user.id, { name, email })
-      onUpdated(updated)
-    } catch (err) {
-      if (err instanceof HTTPError) {
-        const body = (await err.response.json().catch(() => ({}))) as { errors?: string[]; error?: string }
-        setError(body.errors?.join(', ') ?? body.error ?? '수정에 실패했습니다.')
-      } else {
-        setError('수정에 실패했습니다.')
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
-      <form onSubmit={handleSubmit} className="w-full max-w-md rounded-xl bg-white shadow-2xl border border-gray-100 p-6 mx-4">
-        <h3 className="text-lg font-semibold mb-4">사용자 수정</h3>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">이름</label>
-            <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">이메일</label>
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]" />
-          </div>
-        </div>
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-        <div className="flex justify-end gap-2 mt-5">
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 min-h-[44px]">취소</button>
-          <button type="submit" disabled={saving} className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 min-h-[44px]">
-            {saving ? '저장 중...' : '저장'}
-          </button>
-        </div>
-      </form>
-    </div>
-  )
 }
 
 // ── 메인 패널 ──
@@ -417,6 +124,8 @@ export default function UserManagementPanel() {
               <tbody className="divide-y">
                 {users.map((user) => {
                   const isSelf = currentUser?.id === user.id
+                  // 로컬 관리자 계정(desktop@local): 역할 admin 고정 + 수정/삭제 불가
+                  const isLocalAdmin = user.email.endsWith('@local')
                   return (
                     <tr key={user.id} className="group">
                       <td className="py-3 font-medium">
@@ -427,21 +136,32 @@ export default function UserManagementPanel() {
                       </td>
                       <td className="py-3 text-muted-foreground">{user.email}</td>
                       <td className="py-3">
-                        <button
-                          onClick={() => handleRoleChange(user)}
-                          disabled={isSelf || updatingId === user.id}
-                          className={`
-                            inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium transition-colors
-                            ${user.role === 'admin'
-                              ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            }
-                            ${isSelf ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                          `}
-                          title={isSelf ? '자신의 역할은 변경할 수 없습니다' : `클릭하여 ${user.role === 'admin' ? 'member' : 'admin'}로 변경`}
-                        >
-                          {updatingId === user.id ? '...' : user.role}
-                        </button>
+                        {(() => {
+                          const roleLocked = isSelf || isLocalAdmin
+                          return (
+                            <button
+                              onClick={() => handleRoleChange(user)}
+                              disabled={roleLocked || updatingId === user.id}
+                              className={`
+                                inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium transition-colors
+                                ${user.role === 'admin'
+                                  ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }
+                                ${roleLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                              `}
+                              title={
+                                isLocalAdmin
+                                  ? '관리자 계정의 역할은 변경할 수 없습니다'
+                                  : isSelf
+                                    ? '자신의 역할은 변경할 수 없습니다'
+                                    : `클릭하여 ${user.role === 'admin' ? 'member' : 'admin'}로 변경`
+                              }
+                            >
+                              {updatingId === user.id ? '...' : user.role}
+                            </button>
+                          )
+                        })()}
                       </td>
                       <td className="py-3 text-muted-foreground">{formatDate(user.created_at)}</td>
                       <td className="py-3">
