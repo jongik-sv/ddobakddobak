@@ -29,19 +29,21 @@ class SidecarClient
     put("/settings/stt-engine", { engine: engine })
   end
 
-  def transcribe(audio_base64, meeting_id: nil, diarization_config: nil, languages: nil, offset_ms: 0)
+  def transcribe(audio_base64, meeting_id: nil, diarization_config: nil, languages: nil, mode: "single", offset_ms: 0)
     body = { audio: audio_base64, offset_ms: offset_ms }
     body[:meeting_id] = meeting_id if meeting_id
     body[:diarization_config] = diarization_config if diarization_config
     body[:languages] = languages if languages
+    body[:mode] = mode if mode
     post("/transcribe", body)
   end
 
-  def transcribe_file(file_path, meeting_id: nil, diarization_config: nil, languages: nil, file_chunk_sec: nil)
+  def transcribe_file(file_path, meeting_id: nil, diarization_config: nil, languages: nil, mode: "single", file_chunk_sec: nil)
     body = { file_path: file_path }
     body[:meeting_id] = meeting_id if meeting_id
     body[:diarization_config] = diarization_config if diarization_config
     body[:languages] = languages if languages
+    body[:mode] = mode if mode
     body[:file_chunk_sec] = file_chunk_sec if file_chunk_sec
     post("/transcribe-file", body, timeout: ENV.fetch("SIDECAR_TRANSCRIBE_FILE_TIMEOUT", "21600").to_i)
   end
