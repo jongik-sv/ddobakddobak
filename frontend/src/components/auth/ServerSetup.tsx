@@ -13,6 +13,13 @@ import {
 } from '../../lib/savedServers'
 import { ServerRow } from './ServerRow'
 import { ServerModeSelector } from './ServerModeSelector'
+import { mdnsBrowse, probeUrl, setBridgeTarget } from '../../lib/bridge'
+
+/** 디스커버리/스캔으로 찾은 서버 한 건 (이름은 mDNS만 제공, IP 스캔은 없음). */
+interface FoundServer {
+  name?: string
+  url: string
+}
 
 type Mode = 'local' | 'server'
 type HealthStatus = 'idle' | 'checking' | 'success' | 'error'
@@ -54,7 +61,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
   const [editingUrl, setEditingUrl] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editLocation, setEditLocation] = useState('')
-  const [foundServers, setFoundServers] = useState<string[]>([])
+  const [foundServers, setFoundServers] = useState<FoundServer[]>([])
   const [scanning, setScanning] = useState(false)
   const [scanned, setScanned] = useState(false)
   // 스캔/최근 목록에서 마지막으로 누른 서버 — 선택 표시 + 인라인 상태 아이콘용
@@ -94,6 +101,19 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
     try {
       const normalizedUrl = normalizeUrl(url)
 
+      // 모바일(Tauri): webview에서 평문 http 호출은 mixed-content로 차단되므로
+      // 네이티브 probe_url로 도달 여부만 확인한다(HTTP 상태/타임아웃 구분 없음).
+      if (IS_TAURI && IS_MOBILE) {
+        const reachable = await probeUrl(normalizedUrl)
+        if (reachable) {
+          setHealthStatus('success')
+        } else {
+          setHealthStatus('error')
+          setHealthError('서버에 연결할 수 없습니다. URL을 확인해주세요.')
+        }
+        return
+      }
+
       const response = await fetch(`${normalizedUrl}/api/v1/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(5000),
@@ -119,6 +139,10 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
 
   /** 전역 상태/선택을 건드리지 않고 한 서버의 연결 가능 여부만 조용히 확인한다. */
   const probeHealth = async (url: string): Promise<HealthStatus> => {
+    // 모바일(Tauri): mixed-content 회피를 위해 네이티브 probe_url 사용.
+    if (IS_TAURI && IS_MOBILE) {
+      return (await probeUrl(normalizeUrl(url))) ? 'success' : 'error'
+    }
     try {
       const response = await fetch(`${normalizeUrl(url)}/api/v1/health`, {
         method: 'GET',
@@ -131,9 +155,17 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
   }
 
   /** 스캔/최근 목록에서 서버 선택 → 선택 표시 + URL 채우고 즉시 연결 확인 */
-  const pickServer = (url: string) => {
+  const pickServer = async (url: string) => {
     setSelectedUrl(url)
     setServerUrl(url)
+    // 모바일: 헬스 체크 전에 브릿지 전달 대상을 먼저 맞춰둔다(이후 실제 API 호출 대비).
+    if (IS_TAURI && IS_MOBILE) {
+      try {
+        await setBridgeTarget(normalizeUrl(url))
+      } catch {
+        /* ignore */
+      }
+    }
     void checkHealthFor(url)
   }
 
@@ -194,13 +226,22 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
       ? statusIcon(healthStatus)
       : statusIcon(savedHealth[url] ?? 'idle')
 
-  /** 같은 Wi-Fi(/24) 대역에서 또박또박 서버를 스캔한다 (Tauri 전용). */
+  /**
+   * 같은 Wi-Fi에서 또박또박 서버를 찾는다 (Tauri 전용).
+   * - 모바일: mDNS 브라우즈(이름 포함). webview IP 스캔은 mixed-content로 불가.
+   * - 데스크톱: 기존 /24 대역 IP 스캔(이름 없음).
+   */
   const handleScan = async () => {
     setScanning(true)
     setScanned(false)
     try {
-      const list = await invoke<string[]>('scan_lan_servers', {})
-      setFoundServers(list)
+      if (IS_MOBILE) {
+        const list = await mdnsBrowse()
+        setFoundServers(list)
+      } else {
+        const list = await invoke<string[]>('scan_lan_servers', {})
+        setFoundServers(list.map((url) => ({ url })))
+      }
     } catch {
       setFoundServers([])
     } finally {
@@ -218,6 +259,10 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
       localStorage.setItem('mode', 'server')
       localStorage.setItem('server_url', normalized)
       setSavedServers(upsertOnConnect(normalized))
+      // 모바일: 앱 세션 동안 브릿지가 최종 선택 서버를 가리키도록 한다.
+      if (IS_TAURI && IS_MOBILE) {
+        void setBridgeTarget(normalized)
+      }
     }
     onComplete()
   }
@@ -226,7 +271,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
     mode === 'local' || (mode === 'server' && healthStatus === 'success')
 
   // 스캔 줄에 저장된 이름/위치를 함께 보여주고, 같은 서버가 "저장된 서버" 목록에 중복되지 않게 한다.
-  const foundNormalized = new Set(foundServers.map(normalizeUrl))
+  const foundNormalized = new Set(foundServers.map((s) => normalizeUrl(s.url)))
   const savedByUrl = new Map(savedServers.map((s) => [s.url, s]))
   const savedOnly = savedServers.filter((s) => !foundNormalized.has(s.url))
 
@@ -269,20 +314,26 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                 {scanning && (
                   <p className="text-xs text-slate-400 text-center">같은 네트워크를 살펴보는 중… 수 초 걸려요</p>
                 )}
-                {foundServers.map((url) => {
+                {foundServers.map((found) => {
+                  const url = found.url
                   const nurl = normalizeUrl(url)
                   const meta = savedByUrl.get(nurl)
-                  const sub = [meta?.name, meta?.location].filter(Boolean).join(' · ')
+                  // 표시 이름: 저장된 이름 > mDNS 이름 > URL. 이름이 있으면 URL을 보조 줄에 둔다.
+                  const primary = meta?.name || found.name || url
+                  const hasName = primary !== url
+                  const sub = [hasName ? url : null, meta?.location]
+                    .filter(Boolean)
+                    .join(' · ')
                   return (
                     <ServerRow
                       key={url}
                       selected={selectedUrl === url}
-                      displayText={url}
-                      displayClassName="break-all"
+                      displayText={primary}
+                      displayClassName={hasName ? 'truncate' : 'break-all'}
                       sub={sub || null}
                       statusNode={renderRowStatus(url)}
                       onPick={() => pickServer(url)}
-                      onEdit={() => startEdit(nurl, meta?.name, meta?.location)}
+                      onEdit={() => startEdit(nurl, meta?.name ?? found.name, meta?.location)}
                       editForm={renderEditForm(nurl)}
                     />
                   )

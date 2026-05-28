@@ -1,6 +1,7 @@
 /** 프로젝트 루트 config.yaml에서 설정을 로드한다. */
 import { parse } from 'yaml'
 import configYaml from '../../config.yaml?raw'
+import { ensureBridgePort, getCachedBridgePort, setBridgeTarget } from './lib/bridge'
 
 interface SttEngine {
   label: string
@@ -110,13 +111,38 @@ export function getServerKey(): string {
   return getServerUrl()
 }
 
+// ── 모바일 루프백 브릿지 초기화 ───────────────────
+// 안드로이드 WebView는 secure origin(https://tauri.localhost)이라 평문 http 서버를
+// 직접 호출하면 mixed-content로 차단된다. 그래서 앱 내부 루프백 브릿지(127.0.0.1:<port>)로
+// API/WS를 보내고, 브릿지가 선택된 서버로 전달한다. 부팅 시 1회 호출해 포트를 캐시하고
+// 저장된 서버를 브릿지 전달 대상으로 설정한다. getApiBaseUrl()/getWsUrl()이 동기 함수이므로
+// 캐시된 포트가 준비된 뒤에 앱 코드가 import/실행되도록 main.tsx에서 먼저 await 한다.
+export async function initMobileBridge(): Promise<void> {
+  if (!(IS_TAURI && IS_MOBILE)) return
+  await ensureBridgePort()
+  const saved = getServerUrl()
+  if (saved) {
+    try {
+      await setBridgeTarget(saved)
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 // ── API / WebSocket URL 동적 결정 ────────────────
 export function getApiBaseUrl(): string {
   if (getMode() === 'server') {
     // 웹 브라우저: 페이지와 동일 origin을 사용한다. Caddy가 프론트와 /api·/auth·/cable을
     // 한 origin으로 묶으므로 IP 입력·CORS가 필요 없고, 접속 호스트가 바뀌어도 자동 추종한다.
     if (!IS_TAURI) return `${window.location.origin}/api/v1`
-    // 모바일 앱(Tauri Android): 사용자가 입력한 서버 주소. silent localhost fallback 금지.
+    // 모바일 앱(Tauri Android): 루프백 브릿지를 경유한다(mixed-content 회피).
+    // 브릿지 포트가 준비되어 있으면 그 포트로, 아니면 빈 문자열(silent fallback 금지).
+    if (IS_MOBILE) {
+      const port = getCachedBridgePort()
+      return port != null ? `http://127.0.0.1:${port}/api/v1` : ''
+    }
+    // 데스크톱 서버 모드(맥 앱): 사용자가 입력한 서버 주소. silent localhost fallback 금지.
     const serverUrl = getServerUrl()
     return serverUrl ? `${serverUrl}/api/v1` : ''
   }
@@ -128,7 +154,12 @@ export function getWsUrl(): string {
   if (getMode() === 'server') {
     // 웹 브라우저: 페이지와 동일 origin (http→ws / https→wss).
     if (!IS_TAURI) return window.location.origin.replace(/^http/, 'ws') + '/cable'
-    // 모바일 앱(Tauri Android): 사용자가 입력한 서버 주소.
+    // 모바일 앱(Tauri Android): 루프백 브릿지를 경유한다.
+    if (IS_MOBILE) {
+      const port = getCachedBridgePort()
+      return port != null ? `ws://127.0.0.1:${port}/cable` : ''
+    }
+    // 데스크톱 서버 모드(맥 앱): 사용자가 입력한 서버 주소.
     const serverUrl = getServerUrl()
     if (serverUrl) {
       return serverUrl

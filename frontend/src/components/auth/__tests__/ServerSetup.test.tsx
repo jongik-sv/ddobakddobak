@@ -4,9 +4,19 @@ import { invoke } from '@tauri-apps/api/core'
 import { ServerSetup } from '../ServerSetup'
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
+
+// IS_MOBILE은 테스트별로 토글한다. jsdom 기본은 false(웹/데스크톱 fetch 경로),
+// mDNS/브릿지 테스트에서만 true로 켠다(getter 패턴 — SetupGate.test 참고).
+let mockIsMobile = false
 vi.mock('../../../config', async (orig) => {
   const actual = await orig<typeof import('../../../config')>()
-  return { ...actual, IS_TAURI: true }
+  return {
+    ...actual,
+    IS_TAURI: true,
+    get IS_MOBILE() {
+      return mockIsMobile
+    },
+  }
 })
 
 describe('ServerSetup', () => {
@@ -15,6 +25,7 @@ describe('ServerSetup', () => {
   beforeEach(() => {
     localStorage.clear()
     onComplete.mockClear()
+    mockIsMobile = false
     vi.restoreAllMocks()
   })
 
@@ -637,6 +648,90 @@ describe('ServerSetup', () => {
 
       // 저장 섹션 헤더 자체가 없거나, 있어도 중복서버는 스캔 줄에만 표시
       expect(screen.queryByText('저장된 서버')).not.toBeInTheDocument()
+    })
+  })
+
+  // 모바일(Tauri): mDNS 디스커버리 + 루프백 브릿지 경유.
+  // webview fetch 대신 네이티브 invoke(mdns_browse / probe_url / set_bridge_target)를 쓴다.
+  describe('모바일 mDNS + 브릿지', () => {
+    /** command 이름별로 응답을 갈라주는 invoke 모킹. */
+    function mockInvokeByCommand(handlers: Record<string, unknown>) {
+      ;(invoke as Mock).mockImplementation((cmd: string) => {
+        if (cmd in handlers) return Promise.resolve(handlers[cmd])
+        return Promise.resolve(undefined)
+      })
+    }
+
+    // 모바일은 마운트 시 자동으로 서버 모드라 모드 선택 카드가 없다 — 별도 진입 불필요.
+
+    it('서버 찾기 시 mdns_browse 결과(이름)를 목록에 렌더한다', async () => {
+      mockIsMobile = true
+      mockInvokeByCommand({
+        mdns_browse: [{ name: 'office', url: 'http://192.168.0.10:13323' }],
+      })
+
+      render(<ServerSetup onComplete={onComplete} />)
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /서버 찾기/ }))
+      })
+
+      await waitFor(() => expect(screen.getByText('office')).toBeInTheDocument())
+      // 이름이 있으면 URL은 보조 줄에 표시된다.
+      expect(screen.getByText('http://192.168.0.10:13323')).toBeInTheDocument()
+      expect(invoke).toHaveBeenCalledWith('mdns_browse')
+    })
+
+    it('발견된 서버 선택 시 set_bridge_target을 호출하고 probe_url로 확인한다', async () => {
+      mockIsMobile = true
+      mockInvokeByCommand({
+        mdns_browse: [{ name: 'office', url: 'http://192.168.0.10:13323' }],
+        probe_url: true,
+      })
+
+      render(<ServerSetup onComplete={onComplete} />)
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /서버 찾기/ }))
+      })
+      await waitFor(() => expect(screen.getByText('office')).toBeInTheDocument())
+
+      // 발견된 서버 줄 선택
+      await act(async () => {
+        fireEvent.click(screen.getByText('office'))
+      })
+
+      await waitFor(() =>
+        expect(invoke).toHaveBeenCalledWith('set_bridge_target', {
+          url: 'http://192.168.0.10:13323',
+        }),
+      )
+      // 선택 시 네이티브 probe_url로 도달 확인 → 연결 성공 표시
+      await waitFor(() => expect(screen.getByText('서버 연결 성공')).toBeInTheDocument())
+      expect(invoke).toHaveBeenCalledWith('probe_url', {
+        url: 'http://192.168.0.10:13323',
+      })
+    })
+
+    it('수동 URL "연결 확인"도 네이티브 probe_url을 쓴다(webview fetch 미사용)', async () => {
+      mockIsMobile = true
+      const fetchMock = vi.fn()
+      vi.stubGlobal('fetch', fetchMock)
+      mockInvokeByCommand({ probe_url: true })
+
+      render(<ServerSetup onComplete={onComplete} />)
+
+      const urlInput = screen.getByLabelText('서버 URL')
+      await act(async () => {
+        fireEvent.change(urlInput, { target: { value: 'http://192.168.0.20:13323' } })
+      })
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /연결 확인/ }))
+      })
+
+      await waitFor(() => expect(screen.getByText('서버 연결 성공')).toBeInTheDocument())
+      expect(invoke).toHaveBeenCalledWith('probe_url', {
+        url: 'http://192.168.0.20:13323',
+      })
+      expect(fetchMock).not.toHaveBeenCalled()
     })
   })
 })

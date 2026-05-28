@@ -49,6 +49,23 @@ pub fn set_bridge_target(url: String, state: tauri::State<'_, Arc<BridgeState>>)
     *state.target.lock().unwrap() = Some(normalized);
 }
 
+/// 대상 서버가 또박또박 서버인지 네이티브로 확인(webview mixed-content 회피). http(s) 모두 가능.
+#[tauri::command]
+pub async fn probe_url(url: String) -> bool {
+    let base = url.trim().trim_end_matches('/');
+    let target = format!("{base}/api/v1/health");
+    let client = shared_client();
+    match client
+        .get(&target)
+        .timeout(std::time::Duration::from_secs(4))
+        .send()
+        .await
+    {
+        Ok(r) => r.status().is_success(),
+        Err(_) => false,
+    }
+}
+
 // ── Hop-by-hop 헤더 ─────────────────────────────────
 
 /// 프록시가 전달하지 않아야 하는 hop-by-hop 헤더들.

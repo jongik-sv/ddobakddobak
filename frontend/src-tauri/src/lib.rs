@@ -882,6 +882,7 @@ pub fn run() {
             scan_lan_servers,
             bridge::bridge_port,
             bridge::set_bridge_target,
+            bridge::probe_url,
             mdns::mdns_browse,
         ]);
 
