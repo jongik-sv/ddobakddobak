@@ -335,3 +335,5 @@ Phase 2~3과의 연계:
 - 키스토어: frontend/src-tauri/ddobak-release.jks
 - 비번: store/key ddobak2026!, alias ddobak
 - (둘 다 .gitignore 처리해서 커밋 안 됨)
+
+유저로 회의 소유자를 결정하는데 만약 같은 유저ID로 다른 디바이스에서 둘다 회의에 들어갈 수 있어? 들어간다면 둘다 회의 시작을 동시에 할 수 있겠네.
