@@ -88,6 +88,7 @@ export interface AppSettings {
   summary_interval_sec?: number
   diarization_enabled?: boolean
   selected_languages?: string[]
+  language_mode?: 'single' | 'multi'
   audio_silence_threshold?: number
   audio_speech_threshold?: number
   audio_silence_duration_ms?: number
