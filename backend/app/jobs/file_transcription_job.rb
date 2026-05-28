@@ -13,12 +13,14 @@ class FileTranscriptionJob < ApplicationJob
 
     # 2. Sidecar /transcribe-file 호출 (설정된 언어 목록 + 청크 분할 시간 전달)
     languages = ENV.fetch("SELECTED_LANGUAGES", "ko").split(",").map(&:strip).reject(&:empty?)
+    mode = ENV.fetch("LANGUAGE_MODE", "single")
     file_chunk_sec = ENV.fetch("AUDIO_FILE_CHUNK_SEC", "30").to_i
     diarization_enabled = ENV.fetch("DIARIZATION_ENABLED", "true") == "true"
     result = SidecarClient.new.transcribe_file(
       pcm_path,
       meeting_id: meeting.id,
       languages: languages,
+      mode: mode,
       file_chunk_sec: file_chunk_sec,
       diarization_config: {
         "enable" => diarization_enabled,
