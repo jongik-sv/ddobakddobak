@@ -32,6 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import CLI_LLM_PROVIDERS, settings
 from app.llm.summarizer import LLMSummarizer
+from app.stt import lang_utils
 from app.stt.factory import create_stt_adapter
 
 # settings.yaml에서 오디오 최소 청크 길이 로드
@@ -141,6 +142,7 @@ class TranscribeRequest(BaseModel):
     diarization_config: dict | None = None  # optional: {enable, similarity_threshold, merge_threshold, max_embeddings_per_speaker}
     languages: list[str] | None = None  # 인식 대상 언어 코드 목록 (예: ["ko", "en"])
     offset_ms: int = 0  # 청크의 녹음 시작 기준 절대 시작 시각 (스트리밍 화자 분리에 사용)
+    mode: str = "single"  # "single"=언어 강제 / "multi"=자동감지+감지언어 필터
 
     @field_validator("audio")
     @classmethod
@@ -177,6 +179,7 @@ class TranscribeFileRequest(BaseModel):
     diarization_config: dict | None = None
     languages: list[str] | None = None  # 인식 대상 언어 코드 목록 (예: ["ko", "ja"])
     file_chunk_sec: int = 30  # 청크 분할 시간 (초). 0이면 분할 안 함 (Whisper 내부 윈도우 사용)
+    mode: str = "single"  # "single"=언어 강제 / "multi"=자동감지+감지언어 필터
 
 
 class TranscribeFileResponse(BaseModel):
@@ -365,8 +368,11 @@ async def transcribe(request: TranscribeRequest) -> TranscribeResponse:
     # Metal GPU 동시 접근 방지 — STT(MLX)와 화자분리(MPS) 직렬화
     diarizer = _get_meeting_diarizer(request.meeting_id, request.diarization_config)
     langs = request.languages
+    mode = request.mode
     async with app.state.gpu_lock:
-        segments = await adapter.transcribe(audio_bytes, languages=langs)
+        segments = await adapter.transcribe(audio_bytes, languages=langs, mode=mode)
+        if mode == "multi":
+            segments = lang_utils.filter_segments(segments, langs)
         if diarizer and segments:
             try:
                 diarization_result = await diarizer.diarize(audio_bytes, offset_ms=request.offset_ms)
@@ -428,16 +434,24 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
                 file_adapter, audio_bytes,
                 chunk_sec=chunk_sec, overlap_sec=2,
                 languages=request.languages,
+                mode=request.mode,
             )
         else:
             # 분할 없이 Whisper 내부 윈도우(~30초)로 처리
-            segments = await file_adapter.transcribe(audio_bytes, languages=request.languages)
+            segments = await file_adapter.transcribe(
+                audio_bytes, languages=request.languages, mode=request.mode
+            )
     finally:
         if _whisper_loaded_here:
             del file_adapter
             import gc; gc.collect()
 
     print(f"[transcribe-file] STT 세그먼트 {len(segments)}개", flush=True)
+
+    # multi 모드: 감지언어가 허용 목록 밖인 세그먼트 제거
+    if request.mode == "multi":
+        segments = lang_utils.filter_segments(segments, request.languages)
+        print(f"[transcribe-file] 언어 필터 후 {len(segments)}개", flush=True)
 
     # 3. 화자 분리 — WhisperX(ASR+alignment+diarization) 시도, 실패 시 pyannote 배치 폴백
     enable_diarization = (request.diarization_config or {}).get("enable", False)
@@ -508,6 +522,7 @@ async def _chunked_transcribe(
     chunk_sec: int = 15,
     overlap_sec: int = 2,
     languages: list[str] | None = None,
+    mode: str = "single",
 ) -> list:
     """Qwen3 등 내부 분할이 없는 엔진을 위해 오디오를 청크로 나눠 처리한다.
 
@@ -533,7 +548,7 @@ async def _chunked_transcribe(
             break
 
         offset_ms = int(offset / bytes_per_sec * 1000)
-        segments = await adapter.transcribe(chunk, languages=languages)
+        segments = await adapter.transcribe(chunk, languages=languages, mode=mode)
 
         for seg in segments:
             seg.started_at_ms += offset_ms
