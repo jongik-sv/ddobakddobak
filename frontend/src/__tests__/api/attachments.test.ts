@@ -59,13 +59,11 @@ describe('attachments API — fetch 호출 JWT 헤더', () => {
   })
 
   it('getAttachmentDownloadUrl: 동적으로 API URL을 사용한다', async () => {
-    localStorage.setItem('mode', 'server')
-    localStorage.setItem('server_url', 'https://api.example.com')
     const { getAttachmentDownloadUrl } = await import('../../api/attachments')
 
     const url = getAttachmentDownloadUrl(42, 7)
     expect(url).toContain('/meetings/42/attachments/7/download')
-    // 동적 URL 사용 확인: getApiBaseUrl()을 매번 호출하므로 서버 URL이 반영됨
-    expect(url).toContain('api.example.com')
+    // 웹(server 모드)은 동일 origin을 사용하므로 getApiBaseUrl()이 페이지 origin을 반영한다.
+    expect(url).toContain(window.location.origin)
   })
 })

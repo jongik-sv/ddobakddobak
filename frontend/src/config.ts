@@ -66,8 +66,10 @@ export const IS_MOBILE =
 
 // ── 모드 / 서버 URL ─────────────────────────────
 export function getMode(): 'local' | 'server' {
-  // 모바일(Android/iOS Tauri·PWA)은 로컬 사이드카가 없으므로 항상 서버 모드로 동작한다.
-  if (IS_MOBILE) return 'server'
+  // 플랫폼이 모드를 결정한다.
+  // - 웹 브라우저(데스크톱·모바일) + 모든 모바일 → 항상 server (로컬 사이드카 없음).
+  // - 맥 데스크톱 앱(Tauri desktop)만 localStorage 선택(로컬/원격서버)을 따른다.
+  if (!IS_TAURI || IS_MOBILE) return 'server'
   const mode = localStorage.getItem('mode')
   return mode === 'server' ? 'server' : 'local'
 }
@@ -99,20 +101,22 @@ export function getServerUrl(): string {
 // ── API / WebSocket URL 동적 결정 ────────────────
 export function getApiBaseUrl(): string {
   if (getMode() === 'server') {
-    // 서버 모드에서는 절대 localhost로 silent fallback 하지 않는다.
-    // server_url이 없으면 config.yaml의 기본값을 사용하며, 그것도 없으면 빈 문자열을
-    // 반환해서 호출부가 에러를 드러내도록 한다.
+    // 웹 브라우저: 페이지와 동일 origin을 사용한다. Caddy가 프론트와 /api·/auth·/cable을
+    // 한 origin으로 묶으므로 IP 입력·CORS가 필요 없고, 접속 호스트가 바뀌어도 자동 추종한다.
+    if (!IS_TAURI) return `${window.location.origin}/api/v1`
+    // 모바일 앱(Tauri Android): 사용자가 입력한 서버 주소. silent localhost fallback 금지.
     const serverUrl = getServerUrl()
     return serverUrl ? `${serverUrl}/api/v1` : ''
   }
-  // 로컬 모드: Tauri는 항상 13323, 웹 dev는 환경변수 또는 config.yaml
-  return IS_TAURI
-    ? 'http://127.0.0.1:13323/api/v1'
-    : import.meta.env.VITE_API_BASE_URL || cfg.api.base_url
+  // 로컬 모드(맥 데스크톱 앱): 항상 127.0.0.1:13323
+  return 'http://127.0.0.1:13323/api/v1'
 }
 
 export function getWsUrl(): string {
   if (getMode() === 'server') {
+    // 웹 브라우저: 페이지와 동일 origin (http→ws / https→wss).
+    if (!IS_TAURI) return window.location.origin.replace(/^http/, 'ws') + '/cable'
+    // 모바일 앱(Tauri Android): 사용자가 입력한 서버 주소.
     const serverUrl = getServerUrl()
     if (serverUrl) {
       return serverUrl
@@ -121,9 +125,8 @@ export function getWsUrl(): string {
     }
     return ''
   }
-  return IS_TAURI
-    ? 'ws://127.0.0.1:13323/cable'
-    : import.meta.env.VITE_WS_URL || cfg.api.ws_url
+  // 로컬 모드(맥 데스크톱 앱): 항상 127.0.0.1:13323
+  return 'ws://127.0.0.1:13323/cable'
 }
 
 // ── STT 엔진 라벨 ─────────────────────────────

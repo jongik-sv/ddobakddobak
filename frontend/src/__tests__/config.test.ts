@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest'
 
 // config.ts는 모듈 로드 시 config.yaml을 파싱하므로,
 // 테스트에서는 동적 함수만 테스트한다 (getMode, getServerUrl, getApiBaseUrl, getWsUrl).
-// 모듈을 매 테스트마다 재로드하면 config.yaml mock이 필요해지므로,
-// 함수들을 직접 import하여 localStorage 기반 분기를 검증한다.
+// 모드는 플랫폼이 결정한다: jsdom 환경은 웹 브라우저(IS_TAURI=false, IS_MOBILE=false)이므로
+// getMode()는 localStorage와 무관하게 항상 'server'이고, API/WS는 동일 origin을 쓴다.
 
 describe('config 동적 함수', () => {
   beforeEach(() => {
@@ -11,34 +11,21 @@ describe('config 동적 함수', () => {
   })
 
   describe('getMode', () => {
-    it('localStorage에 mode가 없으면 "local"을 반환한다', async () => {
-      const { getMode } = await import('../config')
-      expect(getMode()).toBe('local')
-    })
-
-    it('localStorage에 mode=server이면 "server"를 반환한다', async () => {
-      localStorage.setItem('mode', 'server')
+    it('웹 환경에서는 localStorage와 무관하게 "server"를 반환한다', async () => {
       const { getMode } = await import('../config')
       expect(getMode()).toBe('server')
     })
 
-    it('localStorage에 mode=local이면 "local"을 반환한다', async () => {
+    it('웹 환경에서는 localStorage에 mode=local이어도 "server"를 반환한다', async () => {
       localStorage.setItem('mode', 'local')
       const { getMode } = await import('../config')
-      expect(getMode()).toBe('local')
-    })
-
-    it('localStorage에 유효하지 않은 mode값이면 "local"을 반환한다', async () => {
-      localStorage.setItem('mode', 'invalid')
-      const { getMode } = await import('../config')
-      expect(getMode()).toBe('local')
+      expect(getMode()).toBe('server')
     })
   })
 
   describe('getServerUrl', () => {
     it('localStorage에 server_url이 없으면 config.yaml의 default_server_url로 폴백한다', async () => {
       const { getServerUrl, getDefaultServerUrl } = await import('../config')
-      // config.yaml에 default_server_url이 있으면 그 값을, 없으면 빈 문자열
       expect(getServerUrl()).toBe(getDefaultServerUrl())
     })
 
@@ -50,59 +37,30 @@ describe('config 동적 함수', () => {
   })
 
   describe('getApiBaseUrl', () => {
-    it('로컬 모드일 때 기존 로직의 URL을 반환한다', async () => {
-      localStorage.setItem('mode', 'local')
+    it('웹(server 모드)에서는 페이지와 동일 origin의 /api/v1을 반환한다', async () => {
       const { getApiBaseUrl } = await import('../config')
-      const url = getApiBaseUrl()
-      // 로컬 모드: IS_TAURI가 false(jsdom 환경)이므로 env 또는 config.yaml의 base_url
-      expect(url).toContain('/api/v1')
+      expect(getApiBaseUrl()).toBe(`${window.location.origin}/api/v1`)
     })
 
-    it('서버 모드 + server_url 설정 시 server_url 기반 API URL을 반환한다', async () => {
-      localStorage.setItem('mode', 'server')
+    it('웹에서는 server_url을 설정해도 동일 origin을 사용한다(서버주소 무시)', async () => {
       localStorage.setItem('server_url', 'https://api.example.com')
       const { getApiBaseUrl } = await import('../config')
-      expect(getApiBaseUrl()).toBe('https://api.example.com/api/v1')
-    })
-
-    it('서버 모드 + server_url 미설정 시 config 기본값 기반 API URL을 반환한다', async () => {
-      localStorage.setItem('mode', 'server')
-      const { getApiBaseUrl, getDefaultServerUrl } = await import('../config')
-      const defaultUrl = getDefaultServerUrl()
-      if (defaultUrl) {
-        // config.yaml에 default_server_url이 있으면 그 값을 사용
-        expect(getApiBaseUrl()).toBe(`${defaultUrl}/api/v1`)
-      } else {
-        // 기본값도 없으면 빈 문자열 (localhost로 silent fallback 하지 않는다)
-        expect(getApiBaseUrl()).toBe('')
-      }
+      expect(getApiBaseUrl()).toBe(`${window.location.origin}/api/v1`)
     })
   })
 
   describe('getWsUrl', () => {
-    it('서버 모드 + https URL 시 wss 프로토콜 + /cable 경로를 반환한다', async () => {
-      localStorage.setItem('mode', 'server')
+    it('웹(server 모드)에서는 동일 origin 기반 ws(s) + /cable을 반환한다', async () => {
+      const { getWsUrl } = await import('../config')
+      const expected = window.location.origin.replace(/^http/, 'ws') + '/cable'
+      expect(getWsUrl()).toBe(expected)
+    })
+
+    it('웹에서는 server_url을 설정해도 동일 origin 기반 WS를 사용한다', async () => {
       localStorage.setItem('server_url', 'https://api.example.com')
       const { getWsUrl } = await import('../config')
-      expect(getWsUrl()).toBe('wss://api.example.com/cable')
-    })
-
-    it('서버 모드 + http URL 시 ws 프로토콜 + /cable 경로를 반환한다', async () => {
-      localStorage.setItem('mode', 'server')
-      localStorage.setItem('server_url', 'http://192.168.1.100:3000')
-      const { getWsUrl } = await import('../config')
-      expect(getWsUrl()).toBe('ws://192.168.1.100:3000/cable')
-    })
-
-    it('서버 모드 + server_url 미설정 시 config 기본값 기반 WS URL을 반환한다', async () => {
-      localStorage.setItem('mode', 'server')
-      const { getWsUrl, getDefaultServerUrl } = await import('../config')
-      const defaultUrl = getDefaultServerUrl()
-      if (defaultUrl) {
-        expect(getWsUrl()).toContain('/cable')
-      } else {
-        expect(getWsUrl()).toBe('')
-      }
+      const expected = window.location.origin.replace(/^http/, 'ws') + '/cable'
+      expect(getWsUrl()).toBe(expected)
     })
   })
 })

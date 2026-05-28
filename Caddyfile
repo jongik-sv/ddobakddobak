@@ -7,8 +7,9 @@
 https://10.110.14.219:13443, https://jangjong-ig-ui-MacBookAir.local:13443 {
 	tls /Users/jji/project/ddobakddobak/certs/10.110.14.219+3.pem /Users/jji/project/ddobakddobak/certs/10.110.14.219+3-key.pem
 
-	# /api/* 와 /cable(WebSocket) → Rails. WS 업그레이드는 Caddy가 자동 처리.
-	@backend path /api/* /cable*
+	# /api/* · /auth/* · /cable(WebSocket) → Rails. WS 업그레이드는 Caddy가 자동 처리.
+	# /auth/* = 로그인/리프레시/로그아웃(devise_for path:"auth"). 빠지면 /auth/login이 Vite로 가 404.
+	@backend path /api/* /auth/* /cable*
 	handle @backend {
 		reverse_proxy localhost:13323
 	}
