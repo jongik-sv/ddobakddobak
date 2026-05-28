@@ -169,6 +169,7 @@ module Api
 
         # languages
         result["selected_languages"] = cfg.dig("languages", "selected") if cfg.dig("languages", "selected")
+        result["language_mode"] = cfg.dig("languages", "mode") if cfg.dig("languages", "mode")
 
         # diarization
         if (diar = cfg["diarization"])
@@ -202,6 +203,11 @@ module Api
           cfg["languages"] ||= {}
           langs = params[:selected_languages]
           cfg["languages"]["selected"] = langs.is_a?(Array) ? langs.map(&:to_s) : langs.to_s.split(",")
+        end
+        if params.key?(:language_mode)
+          cfg["languages"] ||= {}
+          mode = params[:language_mode].to_s
+          cfg["languages"]["mode"] = %w[single multi].include?(mode) ? mode : "single"
         end
 
         # diarization
@@ -294,6 +300,9 @@ module Api
         ENV["SUMMARY_INTERVAL_SEC"] = cfg.dig("summary", "interval_sec").to_s if cfg.dig("summary", "interval_sec")
         if (langs = cfg.dig("languages", "selected"))
           ENV["SELECTED_LANGUAGES"] = langs.join(",")
+        end
+        if (mode = cfg.dig("languages", "mode"))
+          ENV["LANGUAGE_MODE"] = mode.to_s
         end
         if (diar = cfg["diarization"])
           ENV["DIARIZATION_ENABLED"] = diar["enabled"].to_s unless diar["enabled"].nil?
