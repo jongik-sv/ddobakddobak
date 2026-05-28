@@ -6,6 +6,7 @@ from typing import AsyncIterator
 
 import numpy as np
 
+from app.stt import lang_utils
 from app.stt.audio_utils import is_hallucination, pcm_bytes_to_float32
 from app.stt.base import SttAdapter, TranscriptSegment
 
@@ -41,15 +42,13 @@ class Qwen3Adapter(SttAdapter):
         )
         self._is_loaded = True
 
-    async def transcribe(self, audio_chunk: bytes, languages: list[str] | None = None) -> list[TranscriptSegment]:
+    async def transcribe(
+        self, audio_chunk: bytes, languages: list[str] | None = None, mode: str = "single"
+    ) -> list[TranscriptSegment]:
         """PCM 오디오 청크를 텍스트 세그먼트로 변환한다.
 
-        Args:
-            audio_chunk: PCM 16kHz mono Int16 바이너리
-            languages: 인식 대상 언어 코드 목록 (Qwen3는 자동 감지)
-
-        Returns:
-            TranscriptSegment 리스트
+        single 모드: languages[0]을 Qwen 풀네임으로 변환하여 인식 언어 강제.
+        multi 모드: 자동감지(language=None) 후 감지언어를 세그먼트에 기록(필터는 main에서).
         """
         if not self._is_loaded:
             raise RuntimeError(
@@ -61,31 +60,45 @@ class Qwen3Adapter(SttAdapter):
             return []
 
         chunk_duration_ms = int(len(audio_array) / _SAMPLE_RATE * 1000)
+        engine_lang = lang_utils.qwen_force_lang(languages, mode)  # 풀네임 or None
 
-        lang = (languages[0] if languages else "ko")
-        text = await self._run_inference(audio_array, lang)
+        text, detected = await self._run_inference(audio_array, engine_lang)
         if not text or not text.strip() or is_hallucination(text, languages):
             return []
+
+        # single이면 강제 언어(ISO), multi면 감지언어(ISO 정규화)
+        seg_lang = (
+            lang_utils.normalize_to_iso(detected)
+            if mode == "multi"
+            else (languages[0] if languages else "ko")
+        )
 
         return [
             TranscriptSegment(
                 text=text.strip(),
                 started_at_ms=0,
                 ended_at_ms=max(chunk_duration_ms, 1000),
-                language=lang,
+                language=seg_lang,
                 confidence=0.9,
             )
         ]
 
-    async def _run_inference(self, audio_array: np.ndarray, language: str = "ko") -> str:
-        """mlx-audio 추론 실행 (blocking → executor 비동기화)."""
+    async def _run_inference(self, audio_array: np.ndarray, language: str | None) -> tuple[str, str | None]:
+        """mlx-audio 추론 실행. (text, 감지언어) 반환."""
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._infer, audio_array, language)
 
-    def _infer(self, audio_array: np.ndarray, language: str = "ko") -> str:
-        """동기 mlx-audio 추론."""
+    def _infer(self, audio_array: np.ndarray, language: str | None) -> tuple[str, str | None]:
+        """동기 mlx-audio 추론. result.language(리스트/문자열)에서 감지언어 추출."""
         result = self._model.generate(audio_array, language=language)
-        return result.text if hasattr(result, "text") else str(result)
+        text = result.text if hasattr(result, "text") else str(result)
+        detected = None
+        lang_attr = getattr(result, "language", None)
+        if isinstance(lang_attr, list) and lang_attr:
+            detected = lang_attr[0]
+        elif isinstance(lang_attr, str):
+            detected = lang_attr
+        return text, detected
 
     async def transcribe_stream(
         self, audio_stream
