@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import AsyncIterator
 
+from app.stt import lang_utils
 from app.stt.audio_utils import is_hallucination, pcm_bytes_to_float32
 from app.stt.base import SttAdapter, TranscriptSegment
 
@@ -51,30 +52,45 @@ class WhisperAdapter(SttAdapter):
         )
         self._is_loaded = True
 
-    async def transcribe(self, audio_chunk: bytes, languages: list[str] | None = None) -> list[TranscriptSegment]:
+    async def transcribe(
+        self, audio_chunk: bytes, languages: list[str] | None = None, mode: str = "single"
+    ) -> list[TranscriptSegment]:
         """PCM 오디오 청크를 텍스트 세그먼트로 변환한다.
 
-        Args:
-            audio_chunk: PCM 16kHz mono Int16 바이너리
-            languages: 인식 대상 언어 코드 목록. 단일 언어면 해당 언어로 고정, 다국어면 자동 감지.
-
-        Returns:
-            TranscriptSegment 리스트
+        single 모드: languages[0]을 ISO 코드로 인식 언어 강제.
+        multi 모드: 자동감지(language=auto) 후 감지언어를 세그먼트에 기록(필터는 main에서).
         """
         if not self._is_loaded:
             raise RuntimeError(
                 "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
             )
 
-        # 단일 언어면 해당 언어로 고정, 다국어면 자동 감지
-        language = languages[0] if languages and len(languages) == 1 else None
+        engine_lang = lang_utils.iso_force_lang(languages, mode)  # ISO or None
         audio_array = pcm_bytes_to_float32(audio_chunk)
-        raw_segments = await self._run_inference(audio_array, language=language)
+
+        # multi 모드: 자동감지 + 청크 감지언어 추출
+        detected = None
+        if mode == "multi":
+            detected = await self._detect_language(audio_array)
+
+        raw_segments = await self._run_inference(audio_array, language=engine_lang)
+        seg_lang = detected if mode == "multi" else (languages[0] if languages else "ko")
         return [
-            _to_transcript_segment(seg, language=language)
+            _to_transcript_segment(seg, language=seg_lang)
             for seg in raw_segments
             if seg.text.strip() and not is_hallucination(seg.text, languages)
         ]
+
+    async def _detect_language(self, audio_array) -> str | None:
+        """whisper.cpp 언어 자동감지 (ISO 코드 반환). 실패 시 None."""
+        loop = asyncio.get_running_loop()
+        try:
+            (lang, _prob), _all = await loop.run_in_executor(
+                None, lambda: self._model.auto_detect_language(audio_array)
+            )
+            return lang
+        except Exception:
+            return None
 
     async def _run_inference(self, audio_array, language: str | None = None) -> list:
         """pywhispercpp 추론 실행 (blocking → executor 비동기화)."""
