@@ -72,14 +72,17 @@ def _is_model_cached(model_id: str) -> bool:
         return False
 
 
+def _has_module(name: str) -> bool:
+    """패키지가 import 가능한지 (실행하지 않고) 확인한다."""
+    import importlib.util
+    return importlib.util.find_spec(name) is not None
+
+
 def _detect_available_engines() -> list[str]:
     """설치된 패키지 및 다운로드된 모델 기준으로 사용 가능한 STT 엔진 목록을 반환한다."""
     available = []
-    try:
-        import pywhispercpp  # noqa: F401
+    if _has_module("pywhispercpp"):
         available.append("whisper_cpp")
-    except ImportError:
-        pass
     try:
         import mlx_audio  # noqa: F401
         # Qwen3-ASR 1.7B 양자화 모델 — 캐시에 있는 것만 표시
@@ -90,12 +93,9 @@ def _detect_available_engines() -> list[str]:
     except ImportError:
         pass
     # faster-whisper (CUDA GPU 또는 CPU 폴백)
-    try:
-        import faster_whisper  # noqa: F401
+    if _has_module("faster_whisper"):
         available.append("faster_whisper")
         available.append("faster_whisper_cpu")
-    except ImportError:
-        pass
     # Qwen3-ASR (qwen-asr 패키지 + NVIDIA CUDA GPU 필수)
     try:
         import torch  # noqa: F401
