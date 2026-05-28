@@ -58,17 +58,19 @@ export function upsertOnConnect(url: string): SavedServer[] {
   return save([{ url, lastConnectedAt: now }, ...list])
 }
 
-/** url 항목의 이름/위치를 갱신한다. 빈 문자열은 제거(undefined). */
-export function updateSavedServer(
+/**
+ * url 항목의 이름/위치를 저장한다. 빈 문자열은 제거(undefined).
+ * 없는 url 이면 미접속(lastConnectedAt=0) 항목으로 새로 만든다 — 스캔 직후 연결 전 편집 지원.
+ */
+export function upsertServerMeta(
   url: string,
   patch: { name?: string; location?: string },
 ): SavedServer[] {
   const list = loadSavedServers()
-  const target = list.find((s) => s.url === url)
-  if (target) {
-    if (patch.name !== undefined) target.name = patch.name.trim() || undefined
-    if (patch.location !== undefined) target.location = patch.location.trim() || undefined
-  }
+  const target = list.find((s) => s.url === url) ?? { url, lastConnectedAt: 0 }
+  if (patch.name !== undefined) target.name = patch.name.trim() || undefined
+  if (patch.location !== undefined) target.location = patch.location.trim() || undefined
+  if (!list.includes(target)) list.unshift(target)
   return save(list)
 }
 

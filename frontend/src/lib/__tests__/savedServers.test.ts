@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   loadSavedServers,
   upsertOnConnect,
-  updateSavedServer,
+  upsertServerMeta,
   removeSavedServer,
   displayHost,
   displayPort,
@@ -83,20 +83,40 @@ describe('upsertOnConnect', () => {
   })
 })
 
-describe('updateSavedServer', () => {
+describe('upsertServerMeta', () => {
   beforeEach(() => localStorage.clear())
 
-  it('이름/위치를 갱신한다', () => {
+  it('기존 항목의 이름/위치를 갱신한다', () => {
     upsertOnConnect('http://a:13323')
-    const list = updateSavedServer('http://a:13323', { name: '집', location: '서재' })
+    const list = upsertServerMeta('http://a:13323', { name: '집', location: '서재' })
     expect(list[0]).toMatchObject({ name: '집', location: '서재' })
   })
 
   it('빈 문자열 patch 는 undefined 로 정리한다', () => {
     localStorage.setItem(KEY, JSON.stringify([{ url: 'http://a:13323', name: 'x', lastConnectedAt: 1 }]))
-    const list = updateSavedServer('http://a:13323', { name: '', location: '' })
+    const list = upsertServerMeta('http://a:13323', { name: '', location: '' })
     expect(list[0].name).toBeUndefined()
     expect(list[0].location).toBeUndefined()
+  })
+
+  it('없는 url 이면 미접속(lastConnectedAt=0) 항목으로 새로 만든다', () => {
+    const list = upsertServerMeta('http://new:13323', { name: '신규', location: '창고' })
+    expect(list).toHaveLength(1)
+    expect(list[0]).toMatchObject({ url: 'http://new:13323', name: '신규', location: '창고', lastConnectedAt: 0 })
+  })
+
+  it('새 항목에 빈 메타만 주면 name/location 은 undefined', () => {
+    const list = upsertServerMeta('http://new:13323', { name: '', location: '' })
+    expect(list[0]).toMatchObject({ url: 'http://new:13323', lastConnectedAt: 0 })
+    expect(list[0].name).toBeUndefined()
+    expect(list[0].location).toBeUndefined()
+  })
+
+  it('새로 만든 미접속 항목은 접속 시 lastConnectedAt 이 갱신되며 메타 보존', () => {
+    upsertServerMeta('http://a:13323', { name: '집' })
+    const list = upsertOnConnect('http://a:13323')
+    expect(list[0].name).toBe('집')
+    expect(list[0].lastConnectedAt).toBeGreaterThan(0)
   })
 })
 

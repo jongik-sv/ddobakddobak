@@ -6,7 +6,7 @@ import {
   type SavedServer,
   loadSavedServers,
   upsertOnConnect,
-  updateSavedServer,
+  upsertServerMeta,
   removeSavedServer,
   displayHost,
   displayPort,
@@ -109,16 +109,41 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
     void checkHealthFor(url)
   }
 
-  const startEdit = (srv: SavedServer) => {
-    setEditingUrl(srv.url)
-    setEditName(srv.name ?? '')
-    setEditLocation(srv.location ?? '')
+  const startEdit = (url: string, name?: string, location?: string) => {
+    setEditingUrl(url)
+    setEditName(name ?? '')
+    setEditLocation(location ?? '')
   }
   const cancelEdit = () => setEditingUrl(null)
   const saveEdit = (url: string) => {
-    setSavedServers(updateSavedServer(url, { name: editName, location: editLocation }))
+    setSavedServers(upsertServerMeta(url, { name: editName, location: editLocation }))
     setEditingUrl(null)
   }
+
+  /** 이름/위치 인라인 편집 폼 — 저장된 서버 / 스캔 서버 양쪽에서 재사용. */
+  const renderEditForm = (url: string) =>
+    editingUrl === url ? (
+      <div className="px-3 pb-3 pt-1 space-y-2 border-t border-slate-100">
+        <input
+          aria-label="서버 이름"
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+          placeholder="이름 (예: 사무실 서버)"
+          className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <input
+          aria-label="서버 위치"
+          value={editLocation}
+          onChange={(e) => setEditLocation(e.target.value)}
+          placeholder="위치 (예: 회의실 A)"
+          className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={cancelEdit} className="px-3 py-1 text-sm text-slate-500 hover:text-slate-700">취소</button>
+          <button type="button" onClick={() => saveEdit(url)} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
+        </div>
+      </div>
+    ) : null
 
   /** 선택된 서버 줄에 표시할 인라인 상태 아이콘 (진행/성공/실패). */
   const renderRowStatus = (url: string) => {
@@ -162,6 +187,11 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
 
   const isStartEnabled =
     mode === 'local' || (mode === 'server' && healthStatus === 'success')
+
+  // 스캔 줄에 저장된 이름/위치를 함께 보여주고, 같은 서버가 "저장된 서버" 목록에 중복되지 않게 한다.
+  const foundNormalized = new Set(foundServers.map(normalizeUrl))
+  const savedByUrl = new Map(savedServers.map((s) => [s.url, s]))
+  const savedOnly = savedServers.filter((s) => !foundNormalized.has(s.url))
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
@@ -234,21 +264,42 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                 )}
                 {foundServers.map((url) => {
                   const isSelected = selectedUrl === url
+                  const nurl = normalizeUrl(url)
+                  const meta = savedByUrl.get(nurl)
+                  const sub = [meta?.name, meta?.location].filter(Boolean).join(' · ')
                   return (
-                    <button
+                    <div
                       key={url}
-                      type="button"
-                      onClick={() => pickServer(url)}
-                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-sm break-all text-left transition-all active:scale-[0.99] ${
+                      className={`rounded-lg border transition-all ${
                         isSelected
-                          ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500 text-blue-700 font-medium'
-                          : 'border-slate-200 text-slate-700 hover:border-blue-400 hover:bg-blue-50 active:bg-blue-100'
+                          ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                          : 'border-slate-200 hover:border-blue-400'
                       }`}
                     >
-                      <Globe className={`w-4 h-4 shrink-0 ${isSelected ? 'text-blue-500' : 'text-slate-500'}`} />
-                      <span className="truncate flex-1">{url}</span>
-                      {renderRowStatus(url)}
-                    </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => pickServer(url)}
+                          className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 text-sm text-left rounded-lg active:scale-[0.99] transition-transform"
+                        >
+                          <Globe className={`w-4 h-4 shrink-0 ${isSelected ? 'text-blue-500' : 'text-slate-500'}`} />
+                          <span className="min-w-0 flex-1">
+                            <span className={`block break-all ${isSelected ? 'text-blue-700 font-medium' : 'text-slate-700'}`}>{url}</span>
+                            {sub && <span className="block truncate text-xs text-slate-400">{sub}</span>}
+                          </span>
+                          {renderRowStatus(url)}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="편집"
+                          onClick={(e) => { e.stopPropagation(); startEdit(nurl, meta?.name, meta?.location) }}
+                          className="p-2 mr-1 text-slate-400 hover:text-slate-600 active:scale-90 transition-transform"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      </div>
+                      {renderEditForm(nurl)}
+                    </div>
                   )
                 })}
                 {scanned && !scanning && foundServers.length === 0 && (
@@ -259,10 +310,10 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
               </div>
             )}
 
-            {savedServers.length > 0 && (
+            {savedOnly.length > 0 && (
               <div className="space-y-1">
                 <p className="text-xs font-medium text-slate-500">저장된 서버</p>
-                {savedServers.map((srv) => {
+                {savedOnly.map((srv) => {
                   const isSelected = selectedUrl === srv.url
                   const port = displayPort(srv.url)
                   const host = displayHost(srv.url)
@@ -299,7 +350,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                         <button
                           type="button"
                           aria-label="편집"
-                          onClick={(e) => { e.stopPropagation(); startEdit(srv) }}
+                          onClick={(e) => { e.stopPropagation(); startEdit(srv.url, srv.name, srv.location) }}
                           className="p-2 text-slate-400 hover:text-slate-600 active:scale-90 transition-transform"
                         >
                           <Pencil className="w-4 h-4" />
@@ -313,28 +364,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
-                      {editingUrl === srv.url && (
-                        <div className="px-3 pb-3 pt-1 space-y-2 border-t border-slate-100">
-                          <input
-                            aria-label="서버 이름"
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            placeholder="이름 (예: 사무실 서버)"
-                            className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <input
-                            aria-label="서버 위치"
-                            value={editLocation}
-                            onChange={(e) => setEditLocation(e.target.value)}
-                            placeholder="위치 (예: 회의실 A)"
-                            className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <div className="flex justify-end gap-2">
-                            <button type="button" onClick={cancelEdit} className="px-3 py-1 text-sm text-slate-500 hover:text-slate-700">취소</button>
-                            <button type="button" onClick={() => saveEdit(srv.url)} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
-                          </div>
-                        </div>
-                      )}
+                      {renderEditForm(srv.url)}
                     </div>
                   )
                 })}

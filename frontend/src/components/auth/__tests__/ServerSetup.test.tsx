@@ -1,6 +1,13 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { invoke } from '@tauri-apps/api/core'
 import { ServerSetup } from '../ServerSetup'
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
+vi.mock('../../../config', async (orig) => {
+  const actual = await orig<typeof import('../../../config')>()
+  return { ...actual, IS_TAURI: true }
+})
 
 describe('ServerSetup', () => {
   const onComplete = vi.fn()
@@ -536,6 +543,71 @@ describe('ServerSetup', () => {
       expect(screen.getByText('삭제대상')).toBeInTheDocument()
       await act(async () => { fireEvent.click(screen.getByLabelText('삭제')) })
       expect(screen.queryByText('삭제대상')).not.toBeInTheDocument()
+    })
+  })
+
+  // 스캔으로 찾은 서버: 연결 전에도 이름/위치 편집 가능
+  describe('스캔 서버 편집', () => {
+    function enterServerMode() {
+      const serverCard = screen.getByText('서버 연결').closest('button')!
+      fireEvent.click(serverCard)
+    }
+
+    async function scan() {
+      ;(invoke as Mock).mockResolvedValue(['http://192.168.0.50:13323'])
+      render(<ServerSetup onComplete={onComplete} />)
+      await act(async () => { enterServerMode() })
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: /서버 찾기/ })) })
+      await waitFor(() => expect(screen.getByText('http://192.168.0.50:13323')).toBeInTheDocument())
+    }
+
+    it('찾은 서버 줄에 편집 버튼이 있다', async () => {
+      await scan()
+      expect(screen.getByLabelText('편집')).toBeInTheDocument()
+    })
+
+    it('연결 전 편집·저장 시 이름이 localStorage 에 미접속 항목으로 저장된다', async () => {
+      await scan()
+
+      await act(async () => { fireEvent.click(screen.getByLabelText('편집')) })
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('서버 이름'), { target: { value: '회의실 서버' } })
+      })
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('서버 위치'), { target: { value: '3층' } })
+      })
+      await act(async () => { fireEvent.click(screen.getByText('저장')) })
+
+      const stored = JSON.parse(localStorage.getItem('recent_servers')!)
+      expect(stored).toHaveLength(1)
+      expect(stored[0]).toMatchObject({
+        url: 'http://192.168.0.50:13323',
+        name: '회의실 서버',
+        location: '3층',
+        lastConnectedAt: 0,
+      })
+    })
+
+    it('편집 후 찾은 서버 줄에 저장한 이름이 표시된다', async () => {
+      await scan()
+
+      await act(async () => { fireEvent.click(screen.getByLabelText('편집')) })
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('서버 이름'), { target: { value: '회의실 서버' } })
+      })
+      await act(async () => { fireEvent.click(screen.getByText('저장')) })
+
+      expect(screen.getByText('회의실 서버')).toBeInTheDocument()
+    })
+
+    it('스캔에 뜬 서버는 "저장된 서버" 목록에 중복 표시되지 않는다', async () => {
+      localStorage.setItem('recent_servers', JSON.stringify([
+        { url: 'http://192.168.0.50:13323', name: '중복서버', lastConnectedAt: 100 },
+      ]))
+      await scan()
+
+      // 저장 섹션 헤더 자체가 없거나, 있어도 중복서버는 스캔 줄에만 표시
+      expect(screen.queryByText('저장된 서버')).not.toBeInTheDocument()
     })
   })
 })
