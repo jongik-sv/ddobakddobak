@@ -167,9 +167,8 @@ module Api
         # summary
         result["summary_interval_sec"] = cfg.dig("summary", "interval_sec") if cfg.dig("summary", "interval_sec")
 
-        # languages
-        result["selected_languages"] = cfg.dig("languages", "selected") if cfg.dig("languages", "selected")
-        result["language_mode"] = cfg.dig("languages", "mode") if cfg.dig("languages", "mode")
+        # NOTE: 회의 언어는 사용자별 설정(User#language_*)으로 이전됨.
+        #       /api/v1/user/language_settings 사용. 여기(전역 config.yaml)서는 다루지 않음.
 
         # diarization
         if (diar = cfg["diarization"])
@@ -198,17 +197,8 @@ module Api
           cfg["summary"]["interval_sec"] = params[:summary_interval_sec].to_i
         end
 
-        # languages
-        if params.key?(:selected_languages)
-          cfg["languages"] ||= {}
-          langs = params[:selected_languages]
-          cfg["languages"]["selected"] = langs.is_a?(Array) ? langs.map(&:to_s) : langs.to_s.split(",")
-        end
-        if params.key?(:language_mode)
-          cfg["languages"] ||= {}
-          mode = params[:language_mode].to_s
-          cfg["languages"]["mode"] = %w[single multi].include?(mode) ? mode : "single"
-        end
+        # NOTE: 회의 언어는 사용자별 설정(User#language_*)으로 이전됨.
+        #       /api/v1/user/language_settings 사용. 전역 config.yaml에 저장하지 않음.
 
         # diarization
         if params.key?(:diarization_enabled)
@@ -298,12 +288,9 @@ module Api
 
         # app settings
         ENV["SUMMARY_INTERVAL_SEC"] = cfg.dig("summary", "interval_sec").to_s if cfg.dig("summary", "interval_sec")
-        if (langs = cfg.dig("languages", "selected"))
-          ENV["SELECTED_LANGUAGES"] = langs.join(",")
-        end
-        if (mode = cfg.dig("languages", "mode"))
-          ENV["LANGUAGE_MODE"] = mode.to_s
-        end
+        # NOTE: 회의 언어 ENV(SELECTED_LANGUAGES/LANGUAGE_MODE) 동기화 제거됨.
+        #       사용자별 설정(User#effective_language_config)이 권위 소스.
+        #       ENV는 User.server_default_language_config의 폴백 기본값으로만 사용.
         if (diar = cfg["diarization"])
           ENV["DIARIZATION_ENABLED"] = diar["enabled"].to_s unless diar["enabled"].nil?
           %w[similarity_threshold merge_threshold max_embeddings_per_speaker].each do |k|

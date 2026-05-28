@@ -44,14 +44,18 @@ class TranscriptionChannel < ApplicationCable::Channel
       return
     end
 
+    # 회의 언어는 클라이언트가 아니라 회의 생성자의 개인 설정에서 결정한다
+    # (viewer가 덮어쓰지 못하도록 서버 권위 소스 사용, 요약 LLM과 동일 패턴).
+    lang = meeting.creator&.effective_language_config || ::User.server_default_language_config
+
     TranscriptionJob.perform_later(
       meeting_id: @meeting_id,
       audio_data: data["data"].to_s,
       sequence: data["sequence"].to_i,
       offset_ms: data["offset_ms"].to_i,
       diarization_config: data["diarization_config"],
-      languages: data["languages"],
-      mode: data["mode"] || "single",
+      languages: lang[:languages],
+      mode: lang[:mode],
       audio_source: data["audio_source"] || "mic"
     )
   end

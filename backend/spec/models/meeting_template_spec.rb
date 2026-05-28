@@ -2,8 +2,8 @@ require "rails_helper"
 
 RSpec.describe MeetingTemplate, type: :model do
   describe "associations" do
-    it { is_expected.to belong_to(:user) }
     it { is_expected.to belong_to(:folder).optional }
+    it { is_expected.not_to respond_to(:user) }
   end
 
   describe "validations" do
@@ -11,12 +11,9 @@ RSpec.describe MeetingTemplate, type: :model do
     it { is_expected.to validate_length_of(:name).is_at_most(100) }
   end
 
-  describe "User#meeting_templates" do
-    let(:user) { create(:user) }
-
-    it "destroys templates when user is destroyed" do
-      create(:meeting_template, user: user)
-      expect { user.destroy }.to change(MeetingTemplate, :count).by(-1)
+  describe "global scope" do
+    it "creates a template without a user" do
+      expect { create(:meeting_template) }.to change(MeetingTemplate, :count).by(1)
     end
   end
 end

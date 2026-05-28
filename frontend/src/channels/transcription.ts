@@ -200,14 +200,13 @@ export function createTranscriptionChannel(
 /**
  * PCM Int16Array를 Base64로 인코딩하여 ActionCable로 전송
  */
+// 회의 언어(mode/languages)는 서버가 회의 생성자 설정에서 결정하므로 전송하지 않는다.
 export function sendAudioChunk(
   subscription: Subscription,
   pcm: Int16Array,
   meta?: { sequence: number; offsetMs: number },
   diarizationConfig?: Record<string, unknown>,
-  languages?: string[],
   audioSource?: 'mic' | 'system',
-  mode?: string,
 ): void {
   const bytes = new Uint8Array(pcm.buffer)
   const base64 = uint8ArrayToBase64(bytes)
@@ -219,14 +218,8 @@ export function sendAudioChunk(
   if (diarizationConfig) {
     payload.diarization_config = diarizationConfig
   }
-  if (languages && languages.length > 0) {
-    payload.languages = languages
-  }
   if (audioSource) {
     payload.audio_source = audioSource
-  }
-  if (mode) {
-    payload.mode = mode
   }
   subscription.perform('audio_chunk', payload)
 }

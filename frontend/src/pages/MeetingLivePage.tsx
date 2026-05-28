@@ -19,7 +19,7 @@ import type { Meeting, Participant, TermCorrection, UpdateMeetingParams } from '
 import { getSttSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useSharingStore } from '../stores/sharingStore'
-import { ENGINE_LABELS_SHORT, IS_TAURI, IS_MOBILE, SUMMARY_INTERVAL_OPTIONS, DEFAULT_SUMMARY_INTERVAL_SEC } from '../config'
+import { ENGINE_LABELS_SHORT, IS_TAURI, IS_MOBILE, SUMMARY_INTERVAL_OPTIONS, DEFAULT_SUMMARY_INTERVAL_SEC, getMode } from '../config'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
 import { ShareButton } from '../components/meeting/ShareButton'
 import { ParticipantList } from '../components/meeting/ParticipantList'
@@ -164,9 +164,11 @@ export default function MeetingLivePage() {
   // 호스트 위임 다이얼로그
   const [transferTarget, setTransferTarget] = useState<Participant | null>(null)
 
-  // 템플릿 저장 다이얼로그
+  // 템플릿 저장 다이얼로그 (회의 템플릿은 중앙 집중관리 — 관리자만 저장 가능)
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const addTemplate = useMeetingTemplateStore((s) => s.add)
+  const currentUser = useAuthStore((s) => s.user)
+  const canManageTemplates = currentUser?.role === 'admin' || getMode() === 'local'
 
   // 회의 정보 수정 다이얼로그
   const [meeting, setMeeting] = useState<Meeting | null>(null)
@@ -837,14 +839,16 @@ export default function MeetingLivePage() {
               <Settings className="w-4 h-4" />
             </button>
           </Tooltip>
-          <Tooltip text="템플릿으로 저장">
-            <button
-              onClick={() => setShowSaveTemplate(true)}
-              className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            >
-              <Save className="w-4 h-4" />
-            </button>
-          </Tooltip>
+          {canManageTemplates && (
+            <Tooltip text="템플릿으로 저장">
+              <button
+                onClick={() => setShowSaveTemplate(true)}
+                className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <Save className="w-4 h-4" />
+              </button>
+            </Tooltip>
+          )}
         </div>
 
         {/* 중앙: 녹음 상태 인디케이터 */}

@@ -8,7 +8,6 @@ class User < ApplicationRecord
   has_many :team_memberships, dependent: :destroy
   has_many :teams, through: :team_memberships
   has_many :meeting_participants, dependent: :destroy
-  has_many :meeting_templates, dependent: :destroy
 
   ROLES = %w[admin member].freeze
   LOCAL_EMAIL = "desktop@local".freeze
@@ -65,6 +64,32 @@ class User < ApplicationRecord
       model: llm_model,
       base_url: llm_base_url
     }.compact
+  end
+
+  # ── 회의 언어 설정 (사용자 개인) ──
+
+  def selected_languages_list
+    (selected_languages || "").split(",").map(&:strip).reject(&:blank?)
+  end
+
+  def language_configured?
+    selected_languages_list.any?
+  end
+
+  # 회의 언어 설정을 {mode:, languages:} 형식으로 반환한다.
+  # 개인 설정이 없으면 서버 기본값으로 폴백한다.
+  def effective_language_config
+    if language_configured?
+      { mode: language_mode.presence || "single", languages: selected_languages_list }
+    else
+      self.class.server_default_language_config
+    end
+  end
+
+  def self.server_default_language_config
+    langs = ENV.fetch("SELECTED_LANGUAGES", "ko").split(",").map(&:strip).reject(&:blank?)
+    langs = %w[ko] if langs.empty?
+    { mode: ENV.fetch("LANGUAGE_MODE", "single"), languages: langs }
   end
 
   def self.server_default_llm_config

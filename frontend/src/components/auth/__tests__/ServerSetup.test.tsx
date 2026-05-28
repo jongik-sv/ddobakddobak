@@ -516,6 +516,35 @@ describe('ServerSetup', () => {
       expect(screen.getByText(/집/)).toBeInTheDocument()
     })
 
+    it('마운트 시 저장된 서버 연결 가능 여부를 자동 확인해 성공 아이콘을 표시한다', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+      vi.stubGlobal('fetch', fetchMock)
+      localStorage.setItem('recent_servers', JSON.stringify([
+        { url: 'http://192.168.0.10:13323', name: '사무실', lastConnectedAt: 200 },
+      ]))
+      render(<ServerSetup onComplete={onComplete} />)
+      await act(async () => { enterServerMode() })
+
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith(
+          'http://192.168.0.10:13323/api/v1/health',
+          expect.objectContaining({ method: 'GET' }),
+        ),
+      )
+      await waitFor(() => expect(screen.getByLabelText('연결 가능')).toBeInTheDocument())
+    })
+
+    it('연결 불가 서버는 실패 아이콘을 표시한다', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+      localStorage.setItem('recent_servers', JSON.stringify([
+        { url: 'http://10.0.0.9:8080', name: '오프라인', lastConnectedAt: 100 },
+      ]))
+      render(<ServerSetup onComplete={onComplete} />)
+      await act(async () => { enterServerMode() })
+
+      await waitFor(() => expect(screen.getByLabelText('연결 불가')).toBeInTheDocument())
+    })
+
     it('편집 → 이름 저장 시 표시가 갱신되고 localStorage 에 반영된다', async () => {
       localStorage.setItem('recent_servers', JSON.stringify([
         { url: 'http://192.168.0.10:13323', lastConnectedAt: 200 },

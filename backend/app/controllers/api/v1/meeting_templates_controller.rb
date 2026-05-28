@@ -2,15 +2,17 @@ module Api
   module V1
     class MeetingTemplatesController < ApplicationController
       before_action :authenticate_user!
+      # 회의 템플릿은 중앙 집중관리 — 조회는 모두, 변경은 관리자 전용.
+      before_action :require_admin!, only: %i[create update destroy]
       before_action :set_template, only: %i[update destroy]
 
       def index
-        templates = current_user.meeting_templates.order(updated_at: :desc)
+        templates = MeetingTemplate.order(updated_at: :desc)
         render json: templates.map { |t| template_json(t) }
       end
 
       def create
-        template = current_user.meeting_templates.new(template_params)
+        template = MeetingTemplate.new(template_params)
         if template.save
           render json: template_json(template), status: :created
         else
@@ -34,7 +36,7 @@ module Api
       private
 
       def set_template
-        @template = current_user.meeting_templates.find(params[:id])
+        @template = MeetingTemplate.find(params[:id])
       end
 
       def template_params

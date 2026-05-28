@@ -57,11 +57,24 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
   const [scanned, setScanned] = useState(false)
   // 스캔/최근 목록에서 마지막으로 누른 서버 — 선택 표시 + 인라인 상태 아이콘용
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null)
+  // 저장된 서버별 연결 가능 여부 (url → 상태). 화면 진입 시 1회 자동 확인.
+  const [savedHealth, setSavedHealth] = useState<Record<string, HealthStatus>>({})
 
   useEffect(() => {
     if (IS_MOBILE) { setMode('server'); return }
     const savedMode = localStorage.getItem('mode')
     if (isValidMode(savedMode)) setMode(savedMode)
+  }, [])
+
+  // 저장된 서버 각각의 연결 가능 여부를 화면 진입 시 1회 병렬 확인한다.
+  useEffect(() => {
+    const servers = loadSavedServers()
+    if (servers.length === 0) return
+    setSavedHealth(Object.fromEntries(servers.map((s) => [s.url, 'checking' as HealthStatus])))
+    servers.forEach(async (s) => {
+      const status = await probeHealth(s.url)
+      setSavedHealth((prev) => ({ ...prev, [s.url]: status }))
+    })
   }, [])
 
   const handleUrlChange = (value: string) => {
@@ -101,6 +114,19 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
   }
 
   const checkHealth = () => checkHealthFor(serverUrl)
+
+  /** 전역 상태/선택을 건드리지 않고 한 서버의 연결 가능 여부만 조용히 확인한다. */
+  const probeHealth = async (url: string): Promise<HealthStatus> => {
+    try {
+      const response = await fetch(`${normalizeUrl(url)}/api/v1/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(4000),
+      })
+      return response.ok ? 'success' : 'error'
+    } catch {
+      return 'error'
+    }
+  }
 
   /** 스캔/최근 목록에서 서버 선택 → 선택 표시 + URL 채우고 즉시 연결 확인 */
   const pickServer = (url: string) => {
@@ -145,17 +171,26 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
       </div>
     ) : null
 
-  /** 선택된 서버 줄에 표시할 인라인 상태 아이콘 (진행/성공/실패). */
-  const renderRowStatus = (url: string) => {
-    if (selectedUrl !== url) return null
-    if (healthStatus === 'checking')
-      return <Loader2 className="w-4 h-4 shrink-0 animate-spin text-blue-500" />
-    if (healthStatus === 'success')
-      return <CheckCircle className="w-4 h-4 shrink-0 text-green-600" />
-    if (healthStatus === 'error')
-      return <XCircle className="w-4 h-4 shrink-0 text-red-500" />
+  /** 상태값 → 인라인 아이콘 (진행/성공/실패). */
+  const statusIcon = (status: HealthStatus) => {
+    if (status === 'checking')
+      return <Loader2 aria-label="연결 확인 중" className="w-4 h-4 shrink-0 animate-spin text-blue-500" />
+    if (status === 'success')
+      return <CheckCircle aria-label="연결 가능" className="w-4 h-4 shrink-0 text-green-600" />
+    if (status === 'error')
+      return <XCircle aria-label="연결 불가" className="w-4 h-4 shrink-0 text-red-500" />
     return null
   }
+
+  /** 선택된 서버 줄에 표시할 인라인 상태 아이콘 (진행/성공/실패). */
+  const renderRowStatus = (url: string) =>
+    selectedUrl === url ? statusIcon(healthStatus) : null
+
+  /** 저장된 서버 줄: 방금 선택해 확인 중이면 실시간 상태, 아니면 자동 확인 결과. */
+  const renderSavedStatus = (url: string) =>
+    selectedUrl === url && healthStatus !== 'idle'
+      ? statusIcon(healthStatus)
+      : statusIcon(savedHealth[url] ?? 'idle')
 
   /** 같은 Wi-Fi(/24) 대역에서 또박또박 서버를 스캔한다 (Tauri 전용). */
   const handleScan = async () => {
@@ -345,7 +380,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                               <span className="block truncate text-xs text-slate-400">{subParts.join(' · ')}</span>
                             )}
                           </span>
-                          {renderRowStatus(srv.url)}
+                          {renderSavedStatus(srv.url)}
                         </button>
                         <button
                           type="button"

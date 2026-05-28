@@ -3,7 +3,6 @@ import {
   AUDIO,
   AUDIO_DEFAULTS,
   DIARIZATION_DEFAULTS,
-  LANGUAGES,
 } from '../config'
 import type { DiarizationConfig } from '../config'
 import { getAppSettings, updateAppSettings } from '../api/settings'
@@ -37,14 +36,6 @@ interface AppSettingsState {
   setDiarizationOverride: (key: keyof DiarizationOverrides, value: number) => void
   resetDiarizationOverrides: () => void
 
-  /** 선택된 회의 언어 코드 목록 (예: ['ko', 'en']) */
-  selectedLanguages: string[]
-  toggleLanguage: (code: string) => void
-
-  /** 언어 인식 모드: single=단일 강제, multi=다국어 자동감지 */
-  languageMode: 'single' | 'multi'
-  setLanguageMode: (mode: 'single' | 'multi') => void
-  setSingleLanguage: (code: string) => void
 }
 
 // ── .env 동기화 (debounced) ────────────────────────
@@ -56,8 +47,6 @@ function debouncedSave() {
     const s = useAppSettingsStore.getState()
     const payload: Partial<AppSettings> = {
       diarization_enabled: s.diarizationEnabled,
-      selected_languages: s.selectedLanguages,
-      language_mode: s.languageMode,
     }
     // 오디오: 오버라이드된 값만 전송, 기본값이면 전송하지 않음
     const audioKeys = ['silence_threshold', 'speech_threshold', 'silence_duration_ms', 'max_chunk_sec', 'min_chunk_sec', 'preroll_ms', 'overlap_ms', 'file_chunk_sec'] as const
@@ -104,22 +93,6 @@ export const useAppSettingsStore = create<AppSettingsState>()(
     },
     resetDiarizationOverrides: () => { set({ diarizationOverrides: {} }); debouncedSave() },
 
-    selectedLanguages: [LANGUAGES[0]?.code ?? 'ko'],
-    toggleLanguage: (code) => {
-      set((s) => {
-        const current = s.selectedLanguages
-        if (current.includes(code)) {
-          if (current.length <= 1) return s
-          return { selectedLanguages: current.filter((c) => c !== code) }
-        }
-        return { selectedLanguages: [...current, code] }
-      })
-      debouncedSave()
-    },
-
-    languageMode: 'single',
-    setLanguageMode: (mode) => { set({ languageMode: mode }); debouncedSave() },
-    setSingleLanguage: (code) => { set({ selectedLanguages: [code] }); debouncedSave() },
   }),
 )
 
@@ -130,10 +103,6 @@ export async function loadAppSettings() {
     const updates: Partial<AppSettingsState> = {}
 
     if (saved.diarization_enabled != null) updates.diarizationEnabled = saved.diarization_enabled
-    if (saved.selected_languages?.length) updates.selectedLanguages = saved.selected_languages
-    if (saved.language_mode === 'single' || saved.language_mode === 'multi') {
-      updates.languageMode = saved.language_mode
-    }
 
     // 오디오 오버라이드: settings.yaml 값이 있으면 무조건 적용 (기본값 비교 없이)
     const audioOverrides: AudioOverrides = {}

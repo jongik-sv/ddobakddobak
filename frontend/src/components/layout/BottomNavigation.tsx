@@ -44,7 +44,7 @@ export default function BottomNavigation({ className }: BottomNavigationProps) {
   return (
     <nav
       className={cn(
-        'fixed bottom-0 w-full h-14 bg-background/95 backdrop-blur-sm border-t z-40 pb-safe',
+        'fixed bottom-0 w-full h-14 bg-background border-t z-40 pb-safe',
         className
       )}
       aria-label="모바일 내비게이션"

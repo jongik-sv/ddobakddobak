@@ -1,7 +1,7 @@
 # LLM 기반 회의 요약 서비스.
 #
 # Sidecar(Python)의 summarizer.py를 Rails로 이전한 것.
-# Anthropic/OpenAI API를 직접 호출하거나, 로컬 CLI(claude/gemini/codex) 를 실행하여
+# Anthropic/OpenAI API를 직접 호출하거나, 로컬 CLI(claude/agy/codex) 를 실행하여
 # 회의록 요약, 정제, Action Item 추출을 수행한다.
 class LlmService
   class LlmError < StandardError; end
@@ -373,12 +373,16 @@ class LlmService
     run_cli(cmd, user_content)
   end
 
+  # Gemini CLI는 2026-06-18 종료 → Antigravity CLI(agy)로 대체.
+  # agy v1.0.3 비대화형: `agy -p "<prompt>" --dangerously-skip-permissions`
+  #   - --output-format / --model 플래그 없음 (모델은 agy 설정/기본값 Gemini 3.5 Flash 사용)
+  #   - --dangerously-skip-permissions: 요약 작업은 비대화형이라 툴 권한 프롬프트로 멈추지 않게 함
+  # GEMINI_CLI_PATH 도 하위호환으로 인정. provider 이름은 gemini_cli 유지.
   def call_gemini_cli(system, user_content)
-    cli = ENV.fetch("GEMINI_CLI_PATH", "gemini")
-    ensure_cli!(cli, "Gemini CLI", "npm install -g @google/gemini-cli")
+    cli = ENV["AGY_CLI_PATH"].presence || ENV.fetch("GEMINI_CLI_PATH", "agy")
+    ensure_cli!(cli, "Antigravity CLI", "curl -fsSL https://antigravity.google/cli/install.sh | bash")
     merged = "[시스템 지시]\n#{system}\n\n[사용자 입력]\n#{user_content}"
-    cmd = [cli, "-p", merged, "--output-format", "text"]
-    cmd.push("--model", @config[:model].to_s) if @config[:model].present?
+    cmd = [cli, "-p", merged, "--dangerously-skip-permissions"]
     run_cli(cmd, "")
   end
 

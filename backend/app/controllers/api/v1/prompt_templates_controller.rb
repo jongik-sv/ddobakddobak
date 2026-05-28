@@ -2,6 +2,8 @@ module Api
   module V1
     class PromptTemplatesController < ApplicationController
       before_action :authenticate_user!
+      # 회의록 양식은 중앙 집중관리 — 조회는 모두 허용, 변경은 관리자 전용.
+      before_action :require_admin!, only: %i[create update destroy reset]
       before_action :set_template, only: %i[update destroy reset]
 
       def index

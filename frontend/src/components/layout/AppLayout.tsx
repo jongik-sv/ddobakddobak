@@ -52,8 +52,17 @@ export default function AppLayout({ children }: AppLayoutProps) {
       </header>
 
       {/* 메인 콘텐츠 */}
-      <main className={`flex-1 overflow-auto flex flex-col min-h-0 min-w-0 lg:pb-0 ${hideBottomNav ? '' : 'pb-14'}`}>
+      <main className="flex-1 overflow-auto flex flex-col min-h-0 min-w-0">
         {children}
+        {/* 바텀 내비 높이만큼 실제 스페이서 — 스크롤 컨테이너의 하단 padding은
+            일부 모바일 WebView에서 스크롤 영역에 포함되지 않아 마지막 콘텐츠가 가려진다 */}
+        {!hideBottomNav && (
+          <div
+            aria-hidden
+            data-testid="bottom-nav-spacer"
+            className="lg:hidden shrink-0 h-[calc(3.5rem+env(safe-area-inset-bottom))]"
+          />
+        )}
       </main>
 
       {/* 모바일 사이드바 오버레이 */}

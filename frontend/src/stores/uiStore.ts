@@ -31,8 +31,9 @@ interface UiState {
 
 export const useUiStore = create<UiState>((set) => ({
   settingsOpen: false,
-  // 모바일에서는 설정 변경 불가 — 설정 모달 진입 자체를 차단 (딥링크 /settings 포함)
-  openSettings: () => { if (IS_MOBILE) return; set({ settingsOpen: true }) },
+  // 모바일 포함 전 클라이언트에서 설정 진입 허용 (개인 LLM·회의 언어 등 사용자별 설정).
+  // 관리자 전용 섹션은 SettingsContent 내부에서 별도 게이팅된다.
+  openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
   userMgmtOpen: false,
   // 모바일 차단 — 설정 모달과 동일 정책

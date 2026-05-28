@@ -45,7 +45,6 @@ vi.mock('../stores/appSettingsStore', () => ({
       getState: vi.fn(() => ({
         diarizationEnabled: false,
         diarizationOverrides: {},
-        selectedLanguages: [],
       })),
     },
   ),

@@ -152,6 +152,19 @@ RSpec.describe TranscriptionChannel, type: :channel do
         perform(:audio_chunk, { "data" => "base64audio==", "sequence" => 1 })
         expect(RecordingLock.holder(meeting.id)).to be_present
       end
+
+      it "derives languages/mode from meeting.creator, ignoring client-sent values" do
+        user.update!(language_mode: "multi", selected_languages: "ko,en")
+
+        expect {
+          perform(:audio_chunk, {
+            "data" => "base64audio==", "sequence" => 1,
+            "mode" => "single", "languages" => ["ja"]
+          })
+        }.to have_enqueued_job(TranscriptionJob).with(
+          hash_including(mode: "multi", languages: %w[ko en])
+        )
+      end
     end
 
     context "when meeting is NOT in recording status" do

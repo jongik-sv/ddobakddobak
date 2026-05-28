@@ -142,6 +142,7 @@ Rails.application.routes.draw do
           post :test, on: :collection
           patch :toggle, on: :collection
         end
+        resource :language_settings, only: [:show, :update]
         resource :password, only: [:update]
       end
 

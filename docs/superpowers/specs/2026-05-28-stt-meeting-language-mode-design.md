@@ -3,6 +3,19 @@
 - 작성일: 2026-05-28
 - 상태: 설계 승인됨
 
+## 업데이트 2026-05-28 — 저장 범위 변경 (전역 → 사용자별)
+
+원래 "범위: 전역 설정 (회의별 아님)" / 비목표 "회의별 언어 저장(전역 유지)"였으나,
+멀티클라(웹/맥앱/안드)에서 전역 config.yaml+ENV가 last-writer-wins로 오염되는 문제로
+**사용자별 설정(User 컬럼)**으로 변경. 개인 LLM(`User#effective_llm_config`)과 동일 패턴.
+
+- `User#language_mode`, `User#selected_languages`(CSV) 컬럼 + `effective_language_config`.
+- 권위 소스 = `meeting.creator` (요약이 `meeting.creator.effective_llm_config` 쓰는 것과 동일).
+  실시간 채널/파일잡 모두 클라 전송값 무시하고 creator 설정 사용.
+- 엔드포인트 `GET/PUT /api/v1/user/language_settings`, 프론트 `UserLanguageSettings` 컴포넌트(전 사용자 노출).
+- `settings_controller`의 언어 config.yaml/ENV 쓰기 제거. ENV는 `server_default_language_config` 폴백 전용.
+- 클라는 청크에 mode/languages 더 이상 전송 안 함.
+
 ## 배경 / 문제
 
 한국어 회의인데도 트랜스크립트에 중국어·일본어·힌디어 등 엉뚱한 언어가 섞여 나옴.

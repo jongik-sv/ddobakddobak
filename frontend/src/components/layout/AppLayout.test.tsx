@@ -124,12 +124,23 @@ describe('AppLayout', () => {
 
   // --- 메인 콘텐츠 패딩 ---
 
-  it('main 영역에 pb-14 lg:pb-0 클래스가 적용됨', () => {
+  it('main 끝에 바텀 내비 높이+safe-area 만큼의 스페이서가 렌더링됨', () => {
     renderLayout()
-    const main = document.querySelector('main')
-    expect(main).toBeTruthy()
-    expect(main?.classList.contains('pb-14')).toBe(true)
-    expect(main?.classList.contains('lg:pb-0')).toBe(true)
+    // 하단 고정 내비(홈/회의/검색)와 겹치지 않도록 nav 높이(3.5rem)+safe-area 만큼
+    // 실제 스페이서 요소를 콘텐츠 끝에 둔다 (스크롤 영역에 포함되어 마지막 콘텐츠가 가려지지 않음)
+    const spacer = screen.getByTestId('bottom-nav-spacer')
+    expect(spacer).toBeTruthy()
+    expect(spacer.classList.contains('h-[calc(3.5rem+env(safe-area-inset-bottom))]')).toBe(true)
+    expect(spacer.classList.contains('lg:hidden')).toBe(true)
+  })
+
+  it('회의 안쪽 화면에서는 스페이서가 렌더링되지 않음', () => {
+    render(
+      <MemoryRouter initialEntries={['/meetings/123']}>
+        <AppLayout><div>상세</div></AppLayout>
+      </MemoryRouter>
+    )
+    expect(screen.queryByTestId('bottom-nav-spacer')).not.toBeInTheDocument()
   })
 
   // --- MobileSidebarOverlay 토글 ---

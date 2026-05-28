@@ -11,9 +11,10 @@ class FileTranscriptionJob < ApplicationJob
     pcm_path = convert_to_pcm(meeting)
     broadcast_progress(channel, 10, "음성 파일 변환 완료")
 
-    # 2. Sidecar /transcribe-file 호출 (설정된 언어 목록 + 청크 분할 시간 전달)
-    languages = ENV.fetch("SELECTED_LANGUAGES", "ko").split(",").map(&:strip).reject(&:empty?)
-    mode = ENV.fetch("LANGUAGE_MODE", "single")
+    # 2. Sidecar /transcribe-file 호출 (회의 생성자의 개인 언어 설정 + 청크 분할 시간 전달)
+    lang = meeting.creator&.effective_language_config || ::User.server_default_language_config
+    languages = lang[:languages]
+    mode = lang[:mode]
     file_chunk_sec = ENV.fetch("AUDIO_FILE_CHUNK_SEC", "30").to_i
     diarization_enabled = ENV.fetch("DIARIZATION_ENABLED", "true") == "true"
     result = SidecarClient.new.transcribe_file(
