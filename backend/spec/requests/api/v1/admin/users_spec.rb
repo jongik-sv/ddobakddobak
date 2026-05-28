@@ -67,6 +67,29 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
         put "/api/v1/admin/users/999999", params: { name: "X" }, as: :json
         expect(response).to have_http_status(:not_found)
       end
+
+      it "updates email" do
+        put "/api/v1/admin/users/#{member.id}", params: { email: "renamed@example.com" }, as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body["user"]["email"]).to eq("renamed@example.com")
+      end
+
+      it "refuses to demote the local account" do
+        local = User.find_or_create_by!(email: User::LOCAL_EMAIL) { |u| u.name = "사용자"; u.role = "admin" }
+        put "/api/v1/admin/users/#{local.id}", params: { role: "member" }, as: :json
+
+        expect(response).to have_http_status(:forbidden)
+        expect(local.reload.role).to eq("admin")
+      end
+
+      it "refuses to change the local account email" do
+        local = User.find_or_create_by!(email: User::LOCAL_EMAIL) { |u| u.name = "사용자"; u.role = "admin" }
+        put "/api/v1/admin/users/#{local.id}", params: { email: "x@example.com" }, as: :json
+
+        expect(response).to have_http_status(:forbidden)
+        expect(local.reload.email).to eq(User::LOCAL_EMAIL)
+      end
     end
 
     describe "DELETE /api/v1/admin/users/:id" do
@@ -89,6 +112,15 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
       it "returns 404 for non-existent user" do
         delete "/api/v1/admin/users/999999"
         expect(response).to have_http_status(:not_found)
+      end
+
+      it "refuses to delete the local account" do
+        local = User.find_or_create_by!(email: User::LOCAL_EMAIL) { |u| u.name = "사용자"; u.role = "admin" }
+        expect {
+          delete "/api/v1/admin/users/#{local.id}"
+        }.not_to change(User, :count)
+
+        expect(response).to have_http_status(:forbidden)
       end
     end
   end
@@ -117,6 +149,67 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
     it "returns 403 for destroy" do
       target = create(:user)
       delete "/api/v1/admin/users/#{target.id}"
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe "POST /api/v1/admin/users/:id/reset_password" do
+    include_context "server mode"
+    let(:remote) { { "REMOTE_ADDR" => "192.168.1.50" } }
+
+    def login(user, password = "password123")
+      post "/auth/login", params: { user: { email: user.email, password: password } }, as: :json
+      response.parsed_body["access_token"]
+    end
+
+    it "resets password, returns temp, and invalidates the target's sessions" do
+      admin_pw = create(:user, :admin, password: "password123")
+      member_pw = create(:user, password: "password123")
+      member_token = login(member_pw)
+      admin_token = login(admin_pw)
+
+      post "/api/v1/admin/users/#{member_pw.id}/reset_password",
+        headers: remote.merge("Authorization" => "Bearer #{admin_token}"), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["temp_password"]).to be_present
+      expect(response.parsed_body["temp_password"].length).to eq(12)
+
+      get "/api/v1/meetings",
+        headers: remote.merge("Authorization" => "Bearer #{member_token}"), as: :json
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "lets the target log in with the temp password" do
+      admin_pw = create(:user, :admin, password: "password123")
+      member_pw = create(:user, password: "password123")
+      admin_token = login(admin_pw)
+
+      post "/api/v1/admin/users/#{member_pw.id}/reset_password",
+        headers: remote.merge("Authorization" => "Bearer #{admin_token}"), as: :json
+      temp = response.parsed_body["temp_password"]
+
+      post "/auth/login", params: { user: { email: member_pw.email, password: temp } }, as: :json
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "returns 403 for a member caller" do
+      member_pw = create(:user, password: "password123")
+      target = create(:user)
+      member_token = login(member_pw)
+
+      post "/api/v1/admin/users/#{target.id}/reset_password",
+        headers: remote.merge("Authorization" => "Bearer #{member_token}"), as: :json
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "refuses to reset the local account password" do
+      admin_pw = create(:user, :admin, password: "password123")
+      local = ::User.find_or_create_by!(email: ::User::LOCAL_EMAIL) { |u| u.name = "사용자"; u.role = "admin" }
+      admin_token = login(admin_pw)
+
+      post "/api/v1/admin/users/#{local.id}/reset_password",
+        headers: remote.merge("Authorization" => "Bearer #{admin_token}"), as: :json
       expect(response).to have_http_status(:forbidden)
     end
   end

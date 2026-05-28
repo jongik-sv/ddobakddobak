@@ -8,6 +8,7 @@ import { useAuthStore } from '../../stores/authStore'
 import PromptTemplateManager from '../PromptTemplateManager'
 import MeetingTemplateManager from './MeetingTemplateManager'
 import UserLlmSettings from './UserLlmSettings'
+import PasswordChangeSection from './PasswordChangeSection'
 
 const SERVICE_PRESETS = [
   { id: 'claude_cli', name: 'Claude Code', provider: 'claude_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['sonnet', 'opus', 'haiku'], description: 'Claude Code CLI (키 불필요)' },
@@ -75,6 +76,8 @@ export default function SettingsContent() {
   const isLocalMode = getMode() === 'local'
   const isAdmin = user?.role === 'admin'
   const showAdminSettings = isAdmin || isLocalMode
+  // 로컬모드/로컬계정(desktop@local)은 자동 로그인이라 비밀번호 변경 불필요
+  const showPasswordSection = getMode() !== 'local' && user?.email !== 'desktop@local'
 
   const [settings, setSettings] = useState<SttSettings | null>(null)
   const [loading, setLoading] = useState(true)
@@ -433,6 +436,8 @@ export default function SettingsContent() {
           선택한 언어의 음성만 인식됩니다. 최소 1개 이상 선택해야 합니다.
         </p>
       </div>
+
+      {showPasswordSection && <PasswordChangeSection />}
 
       {/* 내 LLM 설정 (사용자 개인) */}
       <UserLlmSettings />
