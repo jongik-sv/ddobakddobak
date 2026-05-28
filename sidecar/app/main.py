@@ -514,8 +514,6 @@ async def _try_whisperx_batch(request: TranscribeFileRequest, audio_bytes: bytes
         return None
 
 
-# _SAMPLE_RATE, _BYTES_PER_SAMPLE는 파일 상단에서 정의됨
-
 
 async def _chunked_transcribe(
     adapter,
@@ -671,11 +669,6 @@ class ActionItemsRequest(BaseModel):
 class ActionItemsResponse(BaseModel):
     """POST /summarize/action-items 응답 스키마."""
     action_items: list[ActionItemResult]
-
-
-# ── LLM 요약 엔드포인트 ──────────────────────────────────────────────────────
-
-# ── 화자 관리 엔드포인트 ──────────────────────────────────────────────────────
 
 def _find_env_file() -> str | None:
     """pydantic-settings와 동일한 순서로 .env 파일을 탐색한다."""

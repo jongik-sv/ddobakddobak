@@ -42,24 +42,6 @@ def auto_select_engine() -> str:
     return "whisper_cpp"
 
 
-def should_enable_diarization() -> bool:
-    """화자 분리 사용 가능 여부를 판단한다.
-
-    - macOS → 항상 가능 (Metal/CPU)
-    - NVIDIA GPU (CUDA) → 가능
-    - Windows/Linux 내장 GPU → 비활성화 (pyannote CPU 모드 너무 느림)
-    """
-    if sys.platform == "darwin":
-        return True
-    try:
-        import torch
-        if torch.cuda.is_available():
-            return True
-    except ImportError:
-        pass
-    return False
-
-
 def create_stt_adapter(engine: str | None = None) -> SttAdapter:
     """STT 엔진 이름으로 적절한 Adapter 인스턴스를 반환한다."""
     if engine is None:

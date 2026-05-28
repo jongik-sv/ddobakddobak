@@ -6,7 +6,6 @@ Whisper STT 세그먼트를 한국어 문장 종결 패턴 기반으로
 from __future__ import annotations
 
 import re
-from copy import deepcopy
 
 from app.stt.base import TranscriptSegment
 
