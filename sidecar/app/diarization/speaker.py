@@ -8,13 +8,12 @@
 from __future__ import annotations
 
 import asyncio
-import base64
-import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.diarization.overlap import find_speaker_by_overlap
+from app.diarization.speaker_db import SpeakerDB, is_valid_embedding
 from app.stt.base import TranscriptSegment
 
 if TYPE_CHECKING:
@@ -71,6 +70,7 @@ class SpeakerDiarizer:
         self._speaker_names: dict[str, str] = {}
         self._next_num: int = 1
         self._db_path = Path(db_path) if db_path else None
+        self._db = SpeakerDB(self._db_path)
         if self._is_loaded and self._db_path:
             self._load_db()
 
@@ -127,70 +127,21 @@ class SpeakerDiarizer:
 
     # ── 화자 DB 영속화 ────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _is_valid_embedding(emb: Any) -> bool:
-        """NaN, Inf, 제로 벡터를 거른다."""
-        import numpy as np
-        if emb is None or not hasattr(emb, '__len__') or len(emb) == 0:
-            return False
-        if np.any(np.isnan(emb)) or np.any(np.isinf(emb)):
-            return False
-        if np.linalg.norm(emb) < 1e-6:
-            return False
-        return True
-
     def _load_db(self) -> None:
-        import numpy as np
-
-        if not self._db_path or not self._db_path.exists():
-            return
-        try:
-            with open(self._db_path, encoding="utf-8") as f:
-                data = json.load(f)
-            self._next_num = data.get("next_num", 1)
-            self._speaker_names = data.get("names", {})
-            for label, emb_list in data.get("speakers", {}).items():
-                if isinstance(emb_list, list):
-                    raw_embs = [
-                        np.frombuffer(base64.b64decode(b64), dtype=np.float32).copy()
-                        for b64 in emb_list
-                    ]
-                else:
-                    raw = base64.b64decode(emb_list)
-                    raw_embs = [np.frombuffer(raw, dtype=np.float32).copy()]
-                # 오염된 embedding 필터링
-                valid_embs = [e for e in raw_embs if self._is_valid_embedding(e)]
-                if valid_embs:
-                    self._speaker_embeddings[label] = valid_embs
-            # embedding이 없는 화자의 이름도 제거
-            valid_ids = set(self._speaker_embeddings.keys())
-            self._speaker_names = {k: v for k, v in self._speaker_names.items() if k in valid_ids}
-            logger.info(
-                f"[diarizer] 화자 DB 로드: {len(self._speaker_embeddings)}명 복원 ({self._db_path})"
-            )
-        except Exception as e:
-            logger.exception(f"[diarizer] 화자 DB 로드 실패 (빈 DB로 시작): {e}")
+        loaded = self._db.load()
+        if loaded is not None:
+            self._next_num, self._speaker_names, self._speaker_embeddings = loaded
 
     def _save_db(self) -> None:
-        if not self._db_path:
-            return
-        try:
-            self._db_path.parent.mkdir(parents=True, exist_ok=True)
-            speakers = {
-                label: [
-                    base64.b64encode(emb.astype("float32").tobytes()).decode()
-                    for emb in emb_list
-                ]
-                for label, emb_list in self._speaker_embeddings.items()
-            }
-            with open(self._db_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    {"next_num": self._next_num, "speakers": speakers, "names": self._speaker_names},
-                    f,
-                    ensure_ascii=False,
-                )
-        except Exception as e:
-            logger.exception(f"[diarizer] 화자 DB 저장 실패: {e}")
+        self._db.save(self._next_num, self._speaker_names, self._speaker_embeddings)
+
+    def _fallback_speaker(self) -> str:
+        """기존 화자가 있으면 마지막 화자를, 없으면 새 화자 번호를 발급한다."""
+        if self._speaker_embeddings:
+            return list(self._speaker_embeddings.keys())[-1]
+        new_id = f"화자 {self._next_num}"
+        self._next_num += 1
+        return new_id
 
     # ── 화자 이름 관리 ────────────────────────────────────────────────────────
 
@@ -211,8 +162,7 @@ class SpeakerDiarizer:
         self._speaker_embeddings.clear()
         self._speaker_names.clear()
         self._next_num = 1
-        if self._db_path and self._db_path.exists():
-            self._db_path.unlink()
+        self._db.delete()
         logger.info(f"[diarizer] 화자 DB 초기화 완료 ({self._db_path})")
 
     # ── 화자 분리 ─────────────────────────────────────────────────────────────
@@ -249,24 +199,16 @@ class SpeakerDiarizer:
         for i, label in enumerate(labels):
             if centroids is not None and i < len(centroids):
                 emb = centroids[i]
-                if not self._is_valid_embedding(emb):
+                if not is_valid_embedding(emb):
                     logger.warning(f"[diarizer] WARNING: invalid embedding for {label} — skip")
                     # 유효하지 않은 embedding → 가장 최근 화자 또는 "화자 1"
-                    if self._speaker_embeddings:
-                        meeting_id = list(self._speaker_embeddings.keys())[-1]
-                    else:
-                        meeting_id = f"화자 {self._next_num}"
-                        self._next_num += 1
+                    meeting_id = self._fallback_speaker()
                 else:
                     # force_match 제거: 단일 화자 청크에서도 새 화자 생성 허용
                     meeting_id = self._match_or_create(emb, force_match=False)
             else:
                 # centroids 없음 — 기존 화자가 있으면 마지막 화자, 없으면 새로 생성
-                if self._speaker_embeddings:
-                    meeting_id = list(self._speaker_embeddings.keys())[-1]
-                else:
-                    meeting_id = f"화자 {self._next_num}"
-                    self._next_num += 1
+                meeting_id = self._fallback_speaker()
             local_to_meeting[label] = meeting_id
 
         # 사후 병합: 유사한 화자 쌍을 하나로 합침
@@ -303,11 +245,7 @@ class SpeakerDiarizer:
         norm = np.linalg.norm(embedding)
         if norm < 1e-8:
             # 제로 벡터 — 매칭 불가, 기존 화자가 있으면 마지막 화자 반환
-            if self._speaker_embeddings:
-                return list(self._speaker_embeddings.keys())[-1]
-            new_id = f"화자 {self._next_num}"
-            self._next_num += 1
-            return new_id
+            return self._fallback_speaker()
         emb_norm = embedding / norm
 
         best_id: str | None = None
