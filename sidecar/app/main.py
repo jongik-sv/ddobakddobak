@@ -5,27 +5,15 @@ import binascii
 import dataclasses
 import gc
 import logging
-import multiprocessing
 import os
 import time
+from contextlib import asynccontextmanager
 from typing import Any
+
+import app.bootstrap  # noqa: F401  # 프로세스 시작 설정 — torch import보다 먼저 실행
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-from contextlib import asynccontextmanager
-
-# macOS 세마포어 누수 방지
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-if multiprocessing.get_start_method(allow_none=True) is None:
-    multiprocessing.set_start_method("spawn")
-# CPU 텐서 공유를 파일 기반으로 전환 → POSIX 세마포어 생성 방지
-try:
-    import torch.multiprocessing as _tmp
-    _tmp.set_sharing_strategy("file_system")
-    del _tmp
-except Exception:
-    pass
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
