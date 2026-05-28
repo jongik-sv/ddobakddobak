@@ -62,10 +62,11 @@ def _run_full_pipeline(
     pipeline: Any,
 ) -> dict[tuple[int, int], str]:
     """pyannote 파이프라인을 전체 오디오에 실행한다."""
-    import numpy as np
     import torch
 
-    audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+    from app.stt.audio_utils import pcm_bytes_to_float32
+
+    audio_array = pcm_bytes_to_float32(audio_bytes)
     duration_sec = len(audio_array) / _SAMPLE_RATE
     print(f"[batch-diarizer] 전체 오디오 처리: {duration_sec:.1f}초", flush=True)
 

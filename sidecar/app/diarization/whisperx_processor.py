@@ -133,9 +133,9 @@ class WhisperXBatchProcessor:
         audio_bytes: bytes,
         languages: list[str] | None = None,
     ) -> list[TranscriptSegment]:
-        import numpy as np
-        # PCM Int16 → float32 [-1, 1]
-        audio = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        from app.stt.audio_utils import pcm_bytes_to_float32
+
+        audio = pcm_bytes_to_float32(audio_bytes)
         return self._process_audio(audio, languages)
 
     def _process_file_sync(
@@ -143,12 +143,12 @@ class WhisperXBatchProcessor:
         file_path: str,
         languages: list[str] | None = None,
     ) -> list[TranscriptSegment]:
-        import numpy as np
-
         # PCM raw 파일 (확장자 .raw) → 직접 읽기
         if file_path.endswith(".raw"):
+            from app.stt.audio_utils import pcm_bytes_to_float32
+
             with open(file_path, "rb") as f:
-                audio = np.frombuffer(f.read(), dtype=np.int16).astype(np.float32) / 32768.0
+                audio = pcm_bytes_to_float32(f.read())
         else:
             # 일반 오디오 파일 → whisperx의 load_audio 사용
             import whisperx

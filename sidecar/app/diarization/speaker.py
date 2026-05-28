@@ -224,10 +224,11 @@ class SpeakerDiarizer:
         return await loop.run_in_executor(None, self._run_pipeline, audio_bytes)
 
     def _run_pipeline(self, audio_bytes: bytes) -> dict[tuple[int, int], str]:
-        import numpy as np
         import torch
 
-        audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        from app.stt.audio_utils import pcm_bytes_to_float32
+
+        audio_array = pcm_bytes_to_float32(audio_bytes)
         waveform = torch.from_numpy(audio_array).unsqueeze(0)
         audio_input = {"waveform": waveform, "sample_rate": _SAMPLE_RATE}
 
