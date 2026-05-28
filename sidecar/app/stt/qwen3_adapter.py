@@ -61,6 +61,10 @@ class Qwen3Adapter(SttAdapter):
 
         chunk_duration_ms = int(len(audio_array) / _SAMPLE_RATE * 1000)
         engine_lang = lang_utils.qwen_force_lang(languages, mode)  # 풀네임 or None
+        # single 모드인데 languages가 비어 있으면 한국어로 강제(안전 기본값).
+        # 자동감지로 두면 엉뚱한 언어로 환각할 수 있어 주 사용 언어인 한국어를 우선한다.
+        if mode == "single" and engine_lang is None:
+            engine_lang = "Korean"
 
         text, detected = await self._run_inference(audio_array, engine_lang)
         if not text or not text.strip() or is_hallucination(text, languages):
