@@ -8,6 +8,9 @@ interface UiState {
   settingsOpen: boolean
   openSettings: () => void
   closeSettings: () => void
+  userMgmtOpen: boolean
+  openUserMgmt: () => void
+  closeUserMgmt: () => void
   sidebarOpen: boolean
   toggleSidebar: () => void
   memoVisible: boolean
@@ -31,6 +34,10 @@ export const useUiStore = create<UiState>((set) => ({
   // 모바일에서는 설정 변경 불가 — 설정 모달 진입 자체를 차단 (딥링크 /settings 포함)
   openSettings: () => { if (IS_MOBILE) return; set({ settingsOpen: true }) },
   closeSettings: () => set({ settingsOpen: false }),
+  userMgmtOpen: false,
+  // 모바일 차단 — 설정 모달과 동일 정책
+  openUserMgmt: () => { if (IS_MOBILE) return; set({ userMgmtOpen: true }) },
+  closeUserMgmt: () => set({ userMgmtOpen: false }),
   sidebarOpen: true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   memoVisible: true,

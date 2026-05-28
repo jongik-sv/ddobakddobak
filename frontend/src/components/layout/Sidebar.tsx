@@ -1,8 +1,8 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Mic, Search, Settings, PanelLeftClose, LogOut } from 'lucide-react'
+import { LayoutDashboard, Mic, Search, Settings, Users, PanelLeftClose, LogOut } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
 import { useAuth } from '../../hooks/useAuth'
-import { getMode } from '../../config'
+import { getMode, IS_MOBILE } from '../../config'
 import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
 import FolderTree from '../folder/FolderTree'
@@ -23,6 +23,7 @@ interface SidebarProps {
 
 export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) {
   const openSettings = useUiStore((s) => s.openSettings)
+  const openUserMgmt = useUiStore((s) => s.openUserMgmt)
   const sidebarOpen = useUiStore((s) => s.sidebarOpen)
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
   const { logout, user } = useAuth()
@@ -30,6 +31,8 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
   const navigate = useNavigate()
   const location = useLocation()
   const isMeetingsPage = location.pathname.startsWith('/meetings')
+  // 사용자 관리: 설정 모달과 동일 게이팅(admin 또는 local 모드), 모바일 미노출
+  const canManageUsers = (user?.role === 'admin' || getMode() === 'local') && !IS_MOBILE
 
   // 모바일 오버레이에서 내비 이동/액션 시 오버레이를 닫는다
   const closeIfMobile = () => {
@@ -83,6 +86,15 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
           <Settings className="w-4 h-4" />
           설정
         </button>
+        {canManageUsers && (
+          <button
+            onClick={() => { openUserMgmt(); closeIfMobile() }}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
+          >
+            <Users className="w-4 h-4" />
+            사용자 관리
+          </button>
+        )}
       </nav>
       {isServerMode && (
         <div className="px-3 py-3 border-t border-border shrink-0">

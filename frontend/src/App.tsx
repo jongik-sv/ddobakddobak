@@ -13,6 +13,7 @@ import AppLayout from './components/layout/AppLayout'
 import SetupGate from './components/SetupGate'
 import { AuthGuard } from './components/auth/AuthGuard'
 import SettingsModal from './components/settings/SettingsModal'
+import UserManagementModal from './components/settings/UserManagementModal'
 
 function SettingsRedirect() {
   const openSettings = useUiStore((s) => s.openSettings)
@@ -83,6 +84,7 @@ function App() {
       <Route path="*" element={<Navigate to="/meetings" replace />} />
     </Routes>
     <SettingsModal />
+    <UserManagementModal />
     </AuthGuard>
     </SetupGate>
   )

@@ -5,7 +5,6 @@ import SettingsModal from './SettingsModal'
 // ── Mock stores ──
 const mockCloseSettings = vi.fn()
 let mockSettingsOpen = true
-let mockUserRole = 'admin'
 
 vi.mock('../../stores/uiStore', () => ({
   useUiStore: (selector: (s: Record<string, unknown>) => unknown) =>
@@ -15,20 +14,9 @@ vi.mock('../../stores/uiStore', () => ({
     }),
 }))
 
-vi.mock('../../stores/authStore', () => ({
-  useAuthStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({
-      user: { id: 1, role: mockUserRole },
-    }),
-}))
-
 // ── Mock child components ──
 vi.mock('./SettingsContent', () => ({
   default: () => <div data-testid="settings-content">SettingsContent</div>,
-}))
-
-vi.mock('./UserManagementPanel', () => ({
-  default: () => <div data-testid="user-management">UserManagementPanel</div>,
 }))
 
 // ── Mock useMediaQuery ──
@@ -40,7 +28,6 @@ vi.mock('../../hooks/useMediaQuery', () => ({
 describe('SettingsModal responsive behavior', () => {
   beforeEach(() => {
     mockSettingsOpen = true
-    mockUserRole = 'admin'
     mockCloseSettings.mockClear()
     mockIsDesktop = true
   })
@@ -54,7 +41,7 @@ describe('SettingsModal responsive behavior', () => {
     it('renders centered modal with max-w-3xl', () => {
       render(<SettingsModal />)
       const modal = screen.getByRole('dialog')
-      const container = modal.querySelector('[data-testid="settings-container"]') || modal.firstElementChild
+      const container = modal.firstElementChild
       expect(container?.className).toContain('max-w-3xl')
       expect(container?.className).toContain('rounded-xl')
     })
@@ -63,9 +50,7 @@ describe('SettingsModal responsive behavior', () => {
       render(<SettingsModal />)
       const header = screen.getByText('설정').closest('div')
       const closeBtn = header?.querySelector('button')
-      // On desktop, close button is after the title
       expect(closeBtn).toBeTruthy()
-      // The header should have the title first, then the close button
       const h2 = header?.querySelector('h2')
       expect(h2).toBeTruthy()
     })
@@ -104,53 +89,21 @@ describe('SettingsModal responsive behavior', () => {
 
     it('renders close button (X) on the left side of header', () => {
       render(<SettingsModal />)
-      // Find the close button by its accessible pattern - it should be before the title
       const header = screen.getByText('설정').closest('div')!
       const buttons = header.querySelectorAll('button')
-      // On mobile, the close X button is on the left (first element)
       expect(buttons.length).toBeGreaterThanOrEqual(1)
-      // The first button should be the close button (left side)
+      // On mobile, the close X button is on the left (first element)
       fireEvent.click(buttons[0])
       expect(mockCloseSettings).toHaveBeenCalled()
     })
-
-    it('tab bar has overflow-x-auto for horizontal scroll', () => {
-      render(<SettingsModal />)
-      // Admin user sees tab bar
-      const tabBar = screen.getByRole('tablist') || screen.getByText('일반 설정').closest('div')
-      expect(tabBar?.className).toContain('overflow-x-auto')
-    })
   })
 
-  // ── Tab navigation tests ──
-  describe('tab navigation', () => {
-    it('tabs are scrollable on mobile', () => {
-      mockIsDesktop = false
+  // ── Content ──
+  describe('content', () => {
+    it('renders SettingsContent (no tab bar)', () => {
       render(<SettingsModal />)
-      // Find the tab container (the div wrapping tab buttons)
-      const generalTab = screen.getByText('일반 설정')
-      const tabContainer = generalTab.closest('div')
-      expect(tabContainer?.className).toContain('overflow-x-auto')
-    })
-
-    it('tabs are not scrollable on desktop', () => {
-      mockIsDesktop = true
-      render(<SettingsModal />)
-      const generalTab = screen.getByText('일반 설정')
-      const tabContainer = generalTab.closest('div')
-      expect(tabContainer?.className).not.toContain('overflow-x-auto')
-    })
-  })
-
-  // ── Form touch accessibility ──
-  describe('form touch targets', () => {
-    it('tab buttons have min-h-[44px] on mobile', () => {
-      mockIsDesktop = false
-      render(<SettingsModal />)
-      const tabButtons = screen.getAllByRole('tab')
-      tabButtons.forEach((btn) => {
-        expect(btn.className).toContain('min-h-[44px]')
-      })
+      expect(screen.getByTestId('settings-content')).toBeTruthy()
+      expect(screen.queryByRole('tablist')).toBeNull()
     })
   })
 

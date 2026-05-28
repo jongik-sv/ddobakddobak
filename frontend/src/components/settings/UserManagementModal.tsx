@@ -3,7 +3,7 @@ import { X } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { BREAKPOINTS } from '../../config'
-import SettingsContent from './SettingsContent'
+import UserManagementPanel from './UserManagementPanel'
 
 const CONTAINER_DESKTOP =
   'relative w-full max-w-3xl max-h-[90vh] rounded-xl bg-white shadow-2xl border border-gray-100 flex flex-col mx-4'
@@ -12,24 +12,24 @@ const CONTAINER_MOBILE = 'fixed inset-0 w-full h-dvh bg-white flex flex-col'
 const CLOSE_BTN =
   'p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors'
 
-export default function SettingsModal() {
-  const settingsOpen = useUiStore((s) => s.settingsOpen)
-  const closeSettings = useUiStore((s) => s.closeSettings)
+export default function UserManagementModal() {
+  const userMgmtOpen = useUiStore((s) => s.userMgmtOpen)
+  const closeUserMgmt = useUiStore((s) => s.closeUserMgmt)
   const isDesktop = useMediaQuery(BREAKPOINTS.lg)
 
   useEffect(() => {
-    if (!settingsOpen) return
+    if (!userMgmtOpen) return
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeSettings()
+      if (e.key === 'Escape') closeUserMgmt()
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [settingsOpen, closeSettings])
+  }, [userMgmtOpen, closeUserMgmt])
 
-  if (!settingsOpen) return null
+  if (!userMgmtOpen) return null
 
   const closeButton = (
-    <button onClick={closeSettings} className={CLOSE_BTN} aria-label="닫기">
+    <button onClick={closeUserMgmt} className={CLOSE_BTN} aria-label="닫기">
       <X className="w-5 h-5" />
     </button>
   )
@@ -45,13 +45,13 @@ export default function SettingsModal() {
         {/* 헤더: 모바일=좌측 X, 데스크톱=우측 X */}
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
           {!isDesktop && closeButton}
-          <h2 className="text-lg font-semibold text-gray-900">설정</h2>
+          <h2 className="text-lg font-semibold text-gray-900">사용자 관리</h2>
           {isDesktop && closeButton}
         </div>
 
         {/* 스크롤 가능 본문 */}
         <div className="flex-1 overflow-y-auto p-6">
-          <SettingsContent />
+          <UserManagementPanel />
         </div>
       </div>
     </div>
