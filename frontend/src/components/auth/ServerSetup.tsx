@@ -1,7 +1,16 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Monitor, Globe, CheckCircle, XCircle, Loader2, Search } from 'lucide-react'
+import { Monitor, Globe, CheckCircle, XCircle, Loader2, Search, Pencil, Trash2 } from 'lucide-react'
 import { getDefaultServerUrl, IS_MOBILE, IS_TAURI } from '../../config'
+import {
+  type SavedServer,
+  loadSavedServers,
+  upsertOnConnect,
+  updateSavedServer,
+  removeSavedServer,
+  displayHost,
+  displayPort,
+} from '../../lib/savedServers'
 
 type Mode = 'local' | 'server'
 type HealthStatus = 'idle' | 'checking' | 'success' | 'error'
@@ -25,26 +34,6 @@ function normalizeUrl(url: string): string {
   }
 }
 
-const RECENT_SERVERS_KEY = 'recent_servers'
-const MAX_RECENT = 5
-
-/** 최근 접속한 서버 URL 목록을 불러온다. */
-function loadRecentServers(): string[] {
-  try {
-    const raw = localStorage.getItem(RECENT_SERVERS_KEY)
-    const arr = raw ? JSON.parse(raw) : []
-    return Array.isArray(arr) ? arr.filter((s): s is string => typeof s === 'string') : []
-  } catch {
-    return []
-  }
-}
-
-/** 최근 서버 목록 맨 앞에 url을 추가한다 (중복 제거, 최대 MAX_RECENT개). */
-function pushRecentServer(url: string): void {
-  const next = [url, ...loadRecentServers().filter((u) => u !== url)].slice(0, MAX_RECENT)
-  localStorage.setItem(RECENT_SERVERS_KEY, JSON.stringify(next))
-}
-
 interface ServerSetupProps {
   onComplete: () => void
   onCancel?: () => void
@@ -59,7 +48,10 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
   })
   const [healthStatus, setHealthStatus] = useState<HealthStatus>('idle')
   const [healthError, setHealthError] = useState<string | null>(null)
-  const [recentServers] = useState<string[]>(loadRecentServers)
+  const [savedServers, setSavedServers] = useState<SavedServer[]>(loadSavedServers)
+  const [editingUrl, setEditingUrl] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editLocation, setEditLocation] = useState('')
   const [foundServers, setFoundServers] = useState<string[]>([])
   const [scanning, setScanning] = useState(false)
   const [scanned, setScanned] = useState(false)
@@ -117,6 +109,17 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
     void checkHealthFor(url)
   }
 
+  const startEdit = (srv: SavedServer) => {
+    setEditingUrl(srv.url)
+    setEditName(srv.name ?? '')
+    setEditLocation(srv.location ?? '')
+  }
+  const cancelEdit = () => setEditingUrl(null)
+  const saveEdit = (url: string) => {
+    setSavedServers(updateSavedServer(url, { name: editName, location: editLocation }))
+    setEditingUrl(null)
+  }
+
   /** 선택된 서버 줄에 표시할 인라인 상태 아이콘 (진행/성공/실패). */
   const renderRowStatus = (url: string) => {
     if (selectedUrl !== url) return null
@@ -152,7 +155,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
       const normalized = normalizeUrl(serverUrl)
       localStorage.setItem('mode', 'server')
       localStorage.setItem('server_url', normalized)
-      pushRecentServer(normalized)
+      setSavedServers(upsertOnConnect(normalized))
     }
     onComplete()
   }
@@ -218,7 +221,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                   type="button"
                   onClick={handleScan}
                   disabled={scanning}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform"
                 >
                   {scanning ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> 서버 검색 중...</>
@@ -226,6 +229,9 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                     <><Search className="w-4 h-4" /> 같은 Wi-Fi에서 서버 찾기</>
                   )}
                 </button>
+                {scanning && (
+                  <p className="text-xs text-slate-400 text-center">같은 네트워크를 살펴보는 중… 수 초 걸려요</p>
+                )}
                 {foundServers.map((url) => {
                   const isSelected = selectedUrl === url
                   return (
@@ -253,25 +259,83 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
               </div>
             )}
 
-            {recentServers.length > 0 && (
+            {savedServers.length > 0 && (
               <div className="space-y-1">
-                <p className="text-xs font-medium text-slate-500">최근 서버</p>
-                {recentServers.map((url) => {
-                  const isSelected = selectedUrl === url
+                <p className="text-xs font-medium text-slate-500">저장된 서버</p>
+                {savedServers.map((srv) => {
+                  const isSelected = selectedUrl === srv.url
+                  const port = displayPort(srv.url)
+                  const host = displayHost(srv.url)
+                  const primary = srv.name || host
+                  const subParts = [
+                    srv.name ? host : null,
+                    port ? `포트 ${port}` : null,
+                    srv.location || null,
+                  ].filter(Boolean)
                   return (
-                    <button
-                      key={url}
-                      type="button"
-                      onClick={() => pickServer(url)}
-                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-sm break-all text-left transition-all active:scale-[0.99] ${
+                    <div
+                      key={srv.url}
+                      className={`rounded-lg border transition-all ${
                         isSelected
-                          ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500 text-blue-700 font-medium'
-                          : 'border-slate-200 text-slate-600 hover:border-blue-400 hover:bg-blue-50 active:bg-blue-100'
+                          ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                          : 'border-slate-200 hover:border-blue-400'
                       }`}
                     >
-                      <span className="truncate flex-1">{url}</span>
-                      {renderRowStatus(url)}
-                    </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => pickServer(srv.url)}
+                          className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 text-sm text-left rounded-lg active:scale-[0.99] transition-transform"
+                        >
+                          <Globe className={`w-4 h-4 shrink-0 ${isSelected ? 'text-blue-500' : 'text-slate-500'}`} />
+                          <span className="min-w-0 flex-1">
+                            <span className={`block truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-slate-700'}`}>{primary}</span>
+                            {subParts.length > 0 && (
+                              <span className="block truncate text-xs text-slate-400">{subParts.join(' · ')}</span>
+                            )}
+                          </span>
+                          {renderRowStatus(srv.url)}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="편집"
+                          onClick={(e) => { e.stopPropagation(); startEdit(srv) }}
+                          className="p-2 text-slate-400 hover:text-slate-600 active:scale-90 transition-transform"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="삭제"
+                          onClick={(e) => { e.stopPropagation(); setSavedServers(removeSavedServer(srv.url)) }}
+                          className="p-2 mr-1 text-slate-400 hover:text-red-500 active:scale-90 transition-transform"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      {editingUrl === srv.url && (
+                        <div className="px-3 pb-3 pt-1 space-y-2 border-t border-slate-100">
+                          <input
+                            aria-label="서버 이름"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            placeholder="이름 (예: 사무실 서버)"
+                            className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <input
+                            aria-label="서버 위치"
+                            value={editLocation}
+                            onChange={(e) => setEditLocation(e.target.value)}
+                            placeholder="위치 (예: 회의실 A)"
+                            className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button type="button" onClick={cancelEdit} className="px-3 py-1 text-sm text-slate-500 hover:text-slate-700">취소</button>
+                            <button type="button" onClick={() => saveEdit(srv.url)} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )
                 })}
               </div>

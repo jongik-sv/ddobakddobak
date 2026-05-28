@@ -48,7 +48,7 @@ describe('ServerSetup', () => {
         fireEvent.click(serverCard)
       })
 
-      expect(screen.getByPlaceholderText('https://api.example.com')).toBeInTheDocument()
+      expect(screen.getByLabelText('서버 URL')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /연결 확인/ })).toBeInTheDocument()
     })
 
@@ -75,7 +75,7 @@ describe('ServerSetup', () => {
         fireEvent.click(localCard)
       })
 
-      expect(screen.queryByPlaceholderText('https://api.example.com')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('서버 URL')).not.toBeInTheDocument()
     })
 
     it('로컬 모드 선택 시 시작하기 버튼이 활성화된다', async () => {
@@ -106,7 +106,7 @@ describe('ServerSetup', () => {
       })
 
       // URL 입력
-      const urlInput = screen.getByPlaceholderText('https://api.example.com')
+      const urlInput = screen.getByLabelText('서버 URL')
       await act(async () => {
         fireEvent.change(urlInput, { target: { value: 'https://api.example.com' } })
       })
@@ -122,7 +122,7 @@ describe('ServerSetup', () => {
       })
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://api.example.com/api/v1/health',
+        'https://api.example.com:13323/api/v1/health',
         expect.objectContaining({ method: 'GET' })
       )
     })
@@ -137,7 +137,7 @@ describe('ServerSetup', () => {
         fireEvent.click(serverCard)
       })
 
-      const urlInput = screen.getByPlaceholderText('https://api.example.com')
+      const urlInput = screen.getByLabelText('서버 URL')
       await act(async () => {
         fireEvent.change(urlInput, { target: { value: 'https://api.example.com' } })
       })
@@ -166,7 +166,7 @@ describe('ServerSetup', () => {
         fireEvent.click(serverCard)
       })
 
-      const urlInput = screen.getByPlaceholderText('https://api.example.com')
+      const urlInput = screen.getByLabelText('서버 URL')
       await act(async () => {
         fireEvent.change(urlInput, { target: { value: 'https://api.example.com' } })
       })
@@ -191,7 +191,7 @@ describe('ServerSetup', () => {
         fireEvent.click(serverCard)
       })
 
-      const urlInput = screen.getByPlaceholderText('https://api.example.com')
+      const urlInput = screen.getByLabelText('서버 URL')
       await act(async () => {
         fireEvent.change(urlInput, { target: { value: 'https://api.example.com' } })
       })
@@ -217,7 +217,7 @@ describe('ServerSetup', () => {
         fireEvent.click(serverCard)
       })
 
-      const urlInput = screen.getByPlaceholderText('https://api.example.com')
+      const urlInput = screen.getByLabelText('서버 URL')
       await act(async () => {
         fireEvent.change(urlInput, { target: { value: 'https://api.example.com' } })
       })
@@ -262,7 +262,7 @@ describe('ServerSetup', () => {
         fireEvent.click(serverCard)
       })
 
-      const urlInput = screen.getByPlaceholderText('https://api.example.com')
+      const urlInput = screen.getByLabelText('서버 URL')
       await act(async () => {
         fireEvent.change(urlInput, { target: { value: 'https://api.example.com' } })
       })
@@ -282,7 +282,7 @@ describe('ServerSetup', () => {
       })
 
       expect(localStorage.getItem('mode')).toBe('server')
-      expect(localStorage.getItem('server_url')).toBe('https://api.example.com')
+      expect(localStorage.getItem('server_url')).toBe('https://api.example.com:13323')
     })
   })
 
@@ -304,7 +304,7 @@ describe('ServerSetup', () => {
 
       render(<ServerSetup onComplete={onComplete} />)
 
-      const urlInput = screen.getByPlaceholderText('https://api.example.com') as HTMLInputElement
+      const urlInput = screen.getByLabelText('서버 URL') as HTMLInputElement
       expect(urlInput.value).toBe('https://saved.example.com')
     })
   })
@@ -322,7 +322,7 @@ describe('ServerSetup', () => {
         fireEvent.click(serverCard)
       })
 
-      const urlInput = screen.getByPlaceholderText('https://api.example.com')
+      const urlInput = screen.getByLabelText('서버 URL')
       await act(async () => {
         fireEvent.change(urlInput, { target: { value: 'https://api.example.com///' } })
       })
@@ -334,7 +334,7 @@ describe('ServerSetup', () => {
 
       await waitFor(() => {
         expect(fetchMock).toHaveBeenCalledWith(
-          'https://api.example.com/api/v1/health',
+          'https://api.example.com:13323/api/v1/health',
           expect.any(Object)
         )
       })
@@ -350,7 +350,7 @@ describe('ServerSetup', () => {
         fireEvent.click(serverCard)
       })
 
-      const urlInput = screen.getByPlaceholderText('https://api.example.com')
+      const urlInput = screen.getByLabelText('서버 URL')
       await act(async () => {
         fireEvent.change(urlInput, { target: { value: 'https://api.example.com/' } })
       })
@@ -369,7 +369,7 @@ describe('ServerSetup', () => {
         fireEvent.click(startButton)
       })
 
-      expect(localStorage.getItem('server_url')).toBe('https://api.example.com')
+      expect(localStorage.getItem('server_url')).toBe('https://api.example.com:13323')
     })
   })
 
@@ -401,7 +401,7 @@ describe('ServerSetup', () => {
         fireEvent.click(serverCard)
       })
 
-      const urlInput = screen.getByPlaceholderText('https://api.example.com')
+      const urlInput = screen.getByLabelText('서버 URL')
       await act(async () => {
         fireEvent.change(urlInput, { target: { value: 'https://api.example.com' } })
       })
@@ -457,7 +457,7 @@ describe('ServerSetup', () => {
         fireEvent.click(serverCard)
       })
 
-      const urlInput = screen.getByPlaceholderText('https://api.example.com')
+      const urlInput = screen.getByLabelText('서버 URL')
       await act(async () => {
         fireEvent.change(urlInput, { target: { value: 'https://api.example.com' } })
       })
@@ -482,6 +482,60 @@ describe('ServerSetup', () => {
       // 시작하기 버튼이 다시 비활성화
       const startButton = screen.getByRole('button', { name: /시작하기/ })
       expect(startButton).toBeDisabled()
+    })
+  })
+
+  // 저장된 서버 목록: 렌더 규칙 / 편집 / 삭제
+  describe('저장된 서버', () => {
+    function enterServerMode() {
+      const serverCard = screen.getByText('서버 연결').closest('button')!
+      fireEvent.click(serverCard)
+    }
+
+    it('저장된 서버가 이름/호스트/포트 규칙대로 렌더된다', async () => {
+      localStorage.setItem('recent_servers', JSON.stringify([
+        { url: 'http://192.168.0.10:13323', name: '사무실', lastConnectedAt: 200 },
+        { url: 'http://10.0.0.5:8080', location: '집', lastConnectedAt: 100 },
+      ]))
+      render(<ServerSetup onComplete={onComplete} />)
+      await act(async () => { enterServerMode() })
+
+      expect(screen.getByText('저장된 서버')).toBeInTheDocument()
+      // name 우선 표시, 기본포트(13323)는 숨김
+      expect(screen.getByText('사무실')).toBeInTheDocument()
+      expect(screen.queryByText(/포트 13323/)).not.toBeInTheDocument()
+      // 비기본포트는 표시, 위치도 표시
+      expect(screen.getByText(/포트 8080/)).toBeInTheDocument()
+      expect(screen.getByText(/집/)).toBeInTheDocument()
+    })
+
+    it('편집 → 이름 저장 시 표시가 갱신되고 localStorage 에 반영된다', async () => {
+      localStorage.setItem('recent_servers', JSON.stringify([
+        { url: 'http://192.168.0.10:13323', lastConnectedAt: 200 },
+      ]))
+      render(<ServerSetup onComplete={onComplete} />)
+      await act(async () => { enterServerMode() })
+
+      await act(async () => { fireEvent.click(screen.getByLabelText('편집')) })
+      const nameInput = screen.getByLabelText('서버 이름')
+      await act(async () => { fireEvent.change(nameInput, { target: { value: '사무실 서버' } }) })
+      await act(async () => { fireEvent.click(screen.getByText('저장')) })
+
+      expect(screen.getByText('사무실 서버')).toBeInTheDocument()
+      const stored = JSON.parse(localStorage.getItem('recent_servers')!)
+      expect(stored[0].name).toBe('사무실 서버')
+    })
+
+    it('삭제 시 행이 제거된다', async () => {
+      localStorage.setItem('recent_servers', JSON.stringify([
+        { url: 'http://192.168.0.10:13323', name: '삭제대상', lastConnectedAt: 200 },
+      ]))
+      render(<ServerSetup onComplete={onComplete} />)
+      await act(async () => { enterServerMode() })
+
+      expect(screen.getByText('삭제대상')).toBeInTheDocument()
+      await act(async () => { fireEvent.click(screen.getByLabelText('삭제')) })
+      expect(screen.queryByText('삭제대상')).not.toBeInTheDocument()
     })
   })
 })
