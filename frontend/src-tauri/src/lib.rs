@@ -653,6 +653,7 @@ fn start_services(app: AppHandle) -> Result<(), String> {
         let mut backend = tool_command(ruby_path, &path)
             .args(["bin/rails", "server", "-p", "13323", "-b", "0.0.0.0"])
             .current_dir(work.join("backend"))
+            .env("SERVER_MODE", "true")
             .env("RAILS_ENV", "production")
             .env("DB_PATH", db_path.to_str().unwrap_or_default())
             .env("AUDIO_DIR", audio_dir.to_str().unwrap_or_default())
