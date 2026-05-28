@@ -27,6 +27,7 @@ vi.mock('../../api/auth', () => ({
 vi.mock('../../config', () => ({
   getMode: vi.fn(() => 'server'),
   getServerUrl: vi.fn(() => 'https://api.example.com'),
+  getServerKey: vi.fn(() => 'https://api.example.com'),
 }))
 
 import { useAuth } from '../useAuth'

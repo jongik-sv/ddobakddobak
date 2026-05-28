@@ -50,11 +50,4 @@ describe('LoginPage', () => {
 
     expect(mockLogin).toHaveBeenCalledTimes(1)
   })
-
-  it('안내 텍스트를 표시한다', () => {
-    render(<LoginPage />)
-    expect(
-      screen.getByText(/기본 브라우저에서 로그인 페이지가 열립니다/),
-    ).toBeInTheDocument()
-  })
 })

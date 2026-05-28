@@ -2,15 +2,20 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 
 // apiClient mock
-vi.mock('../api/client', () => ({
-  apiClient: {
+vi.mock('../api/client', () => {
+  const apiClient = {
     get: vi.fn().mockReturnValue({
       json: vi.fn().mockResolvedValue({ duration: 10 }),
       blob: vi.fn().mockResolvedValue(new Blob(['fake audio'], { type: 'audio/webm' })),
       headers: { get: vi.fn() },
     }),
-  },
-}))
+  }
+  return {
+    apiClient,
+    default: apiClient,
+    getAuthHeaders: vi.fn().mockReturnValue({}),
+  }
+})
 
 vi.mock('../lib/download', () => ({
   downloadBlob: vi.fn(),
@@ -21,6 +26,10 @@ import { useAudioPlayer } from './useAudioPlayer'
 describe('useAudioPlayer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      blob: vi.fn().mockResolvedValue(new Blob(['fake audio'], { type: 'audio/webm' })),
+    }))
   })
 
   afterEach(() => {

@@ -32,6 +32,32 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(json["meta"]).to include("total", "page", "per")
       end
 
+      it "returns status_counts breakdown for the dashboard" do
+        create(:meeting, team: team, creator: user, status: "recording")
+        create_list(:meeting, 2, team: team, creator: user, status: "pending")
+        create(:meeting, team: team, creator: user, status: "completed")
+
+        get "/api/v1/meetings"
+
+        counts = response.parsed_body["meta"]["status_counts"]
+        expect(counts["recording"]).to eq(1)
+        expect(counts["pending"]).to eq(2)
+        expect(counts["completed"]).to eq(1)
+      end
+
+      it "status_counts gives the full breakdown even when filtered by status" do
+        create(:meeting, team: team, creator: user, status: "recording")
+        create_list(:meeting, 2, team: team, creator: user, status: "pending")
+
+        get "/api/v1/meetings", params: { status: "recording" }
+
+        json = response.parsed_body
+        expect(json["meetings"].length).to eq(1)
+        expect(json["meta"]["total"]).to eq(1)
+        expect(json["meta"]["status_counts"]["recording"]).to eq(1)
+        expect(json["meta"]["status_counts"]["pending"]).to eq(2)
+      end
+
       it "supports page and per params" do
         create_list(:meeting, 3, team: team, creator: user)
 
@@ -85,7 +111,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(titles).to include("남의 회의")
       end
     end
-
   end
 
   # ============================================================
@@ -133,7 +158,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(json["meeting"]["title"]).to eq("New Meeting")
       end
     end
-
   end
 
   # ============================================================
@@ -284,7 +308,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
-
   end
 
   # ============================================================
@@ -302,7 +325,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:no_content)
       end
     end
-
   end
 
   # ============================================================
@@ -331,7 +353,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
-
   end
 
   # ============================================================
@@ -392,7 +413,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
-
   end
 
   # ============================================================
@@ -423,13 +443,13 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
     it "남의 회의는 폴더 이동되지 않는다" do
       foreign = create(:meeting, team: team, creator: other_user, folder_id: nil)
-      post "/api/v1/meetings/move_to_folder", params: { meeting_ids: [foreign.id], folder_id: folder.id }
+      post "/api/v1/meetings/move_to_folder", params: { meeting_ids: [ foreign.id ], folder_id: folder.id }
       expect(foreign.reload.folder_id).to be_nil
     end
 
     it "내 회의는 폴더 이동된다" do
       mine = create(:meeting, team: team, creator: user, folder_id: nil)
-      post "/api/v1/meetings/move_to_folder", params: { meeting_ids: [mine.id], folder_id: folder.id }
+      post "/api/v1/meetings/move_to_folder", params: { meeting_ids: [ mine.id ], folder_id: folder.id }
       expect(mine.reload.folder_id).to eq(folder.id)
     end
   end
@@ -466,6 +486,5 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:not_found)
       end
     end
-
   end
 end

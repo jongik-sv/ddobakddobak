@@ -60,6 +60,7 @@ export interface MeetingListMeta {
   total: number
   page: number
   per: number
+  status_counts?: Partial<Record<Meeting['status'], number>>
 }
 
 export interface MeetingListResponse {

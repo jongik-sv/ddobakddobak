@@ -20,6 +20,7 @@ vi.mock('../api/meetings', () => ({
   getTranscripts: mockGetTranscripts,
   getSummary: mockGetSummary,
   getParticipants: mockGetParticipants,
+  getMeetingDetail: vi.fn().mockResolvedValue({ meeting: { id: 1, title: '테스트 회의', status: 'completed', started_at: null, ended_at: null, created_by_id: 1, created_at: '', updated_at: '' }, error: null }),
 }))
 
 vi.mock('../hooks/useTranscription', () => ({

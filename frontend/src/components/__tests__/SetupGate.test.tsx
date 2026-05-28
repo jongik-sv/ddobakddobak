@@ -164,10 +164,17 @@ describe('SetupGate', () => {
       expect(screen.queryByTestId('child')).not.toBeInTheDocument()
     })
 
-    it('ServerSetup 완료 후 서버 모드 선택 시 children으로 전환한다', () => {
+    it('ServerSetup 완료 후 서버 모드 선택 시 페이지를 리로드한다', () => {
+      // 서버 모드 완료 시 apiClient prefixUrl 재초기화를 위해 전체 리로드한다
       mockHasMode.mockReturnValue(false)
       mockIsTauri = true
       mockGetMode.mockReturnValue('server')
+
+      const reloadSpy = vi.fn()
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: { ...window.location, reload: reloadSpy },
+      })
 
       render(
         <SetupGate>
@@ -181,10 +188,8 @@ describe('SetupGate', () => {
       // Complete 버튼 클릭 (ServerSetup이 onComplete 호출)
       fireEvent.click(screen.getByText('Complete'))
 
-      // children으로 전환됨
-      expect(screen.getByTestId('child')).toBeInTheDocument()
-      expect(screen.queryByTestId('server-setup')).not.toBeInTheDocument()
-      expect(screen.queryByTestId('setup-page')).not.toBeInTheDocument()
+      // 서버 모드는 children 직접 전환 대신 리로드로 재초기화
+      expect(reloadSpy).toHaveBeenCalled()
     })
 
     it('웹 모드에서는 hasMode()=false여도 children을 바로 표시한다', () => {
@@ -202,7 +207,8 @@ describe('SetupGate', () => {
       expect(screen.queryByTestId('setup-page')).not.toBeInTheDocument()
     })
 
-    it('DEV=true에서는 hasMode()=false여도 children을 바로 표시한다', () => {
+    it('DEV=true여도 hasMode()=false 첫 실행이면 ServerSetup을 표시한다', () => {
+      // 첫 실행(모드 미설정)은 DEV 여부와 무관하게 모드 선택을 먼저 거친다
       mockHasMode.mockReturnValue(false)
       mockIsTauri = true
       vi.stubEnv('DEV', 'true')
@@ -213,8 +219,8 @@ describe('SetupGate', () => {
         </SetupGate>,
       )
 
-      expect(screen.getByTestId('child')).toBeInTheDocument()
-      expect(screen.queryByTestId('server-setup')).not.toBeInTheDocument()
+      expect(screen.getByTestId('server-setup')).toBeInTheDocument()
+      expect(screen.queryByTestId('child')).not.toBeInTheDocument()
     })
   })
 

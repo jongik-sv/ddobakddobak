@@ -1,6 +1,11 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { initDrag, dragState, clearDrag } from './dragState'
 
+// jsdom은 document.elementFromPoint를 구현하지 않음 → findDropTarget 호출 시 unhandled error 발생
+if (typeof document.elementFromPoint !== 'function') {
+  document.elementFromPoint = () => null
+}
+
 /** initDrag이 기대하는 최소한의 React.PointerEvent 형태 */
 function fakePointerDown() {
   const target = document.createElement('div')

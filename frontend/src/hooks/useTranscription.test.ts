@@ -54,6 +54,7 @@ vi.mock('../config', () => ({
   DIARIZATION: {},
   getWsUrl: () => 'ws://localhost/cable',
   getMode: () => 'local',
+  getServerKey: () => 'local',
 }))
 
 // ──────────────────────────────────────────────

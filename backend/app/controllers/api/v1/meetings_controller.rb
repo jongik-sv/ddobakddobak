@@ -8,20 +8,23 @@ module Api
       before_action :authorize_meeting_control!, only: %i[update destroy start stop reopen reset_content summarize update_notes regenerate_stt regenerate_notes]
 
       def index
-        meetings = Meeting.accessible_by(current_user)
-                          .search_with_summary(params[:q])
-                       .by_status(params[:status])
-                       .created_after(params[:date_from])
-                       .created_before(params[:date_to])
+        base = Meeting.accessible_by(current_user)
+                      .search_with_summary(params[:q])
+                      .created_after(params[:date_from])
+                      .created_before(params[:date_to])
 
         if params.key?(:folder_id)
-          if params[:folder_id] == "null"
-            meetings = meetings.where(folder_id: nil)
+          base = if params[:folder_id] == "null"
+            base.where(folder_id: nil)
           else
-            meetings = meetings.where(folder_id: params[:folder_id])
+            base.where(folder_id: params[:folder_id])
           end
         end
 
+        # status_counts는 status 필터와 무관한 전체 상태별 집계 (대시보드 카드용)
+        status_counts = base.group(:status).count
+
+        meetings = base.by_status(params[:status])
         total    = meetings.count
         meetings = meetings.includes(:creator, :tags, :meeting_attachments)
                            .order(created_at: :desc)
@@ -30,7 +33,7 @@ module Api
 
         render json: {
           meetings: meetings.map { |m| meeting_json(m) },
-          meta: { total: total, page: pagination_page, per: pagination_per }
+          meta: { total: total, page: pagination_page, per: pagination_per, status_counts: status_counts }
         }
       end
 

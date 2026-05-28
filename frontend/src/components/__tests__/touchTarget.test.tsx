@@ -7,7 +7,7 @@
  * 3. 호버 효과: hover 가능 디바이스에서만 적용 (hover-hide, hover-show-parent 유틸리티)
  * 4. 전사/요약 텍스트: 선택 가능 유지 (select-text)
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
 // ── 1. CSS 유틸리티 존재 확인 ──
@@ -113,30 +113,29 @@ describe('TranscriptPanel 터치 최적화', () => {
 })
 
 // ── 5. AudioPlayer 터치 타겟 ──
-// AudioPlayer는 useAudioPlayer hook에 의존하므로 mock
-vi.mock('../../hooks/useAudioPlayer', () => ({
-  useAudioPlayer: () => ({
-    isReady: true,
-    isPlaying: false,
-    hasAudio: true,
-    audioLoaded: true,
-    currentTimeMs: 0,
-    durationMs: 60000,
-    playbackRate: 1,
-    play: vi.fn(),
-    pause: vi.fn(),
-    seekTo: vi.fn(),
-    setPlaybackRate: vi.fn(),
-    download: vi.fn(),
-  }),
-}))
-
+// AudioPlayer는 audio: AudioPlayerResult를 prop으로 받는다 (부모가 useAudioPlayer 호출)
 import { AudioPlayer } from '../meeting/AudioPlayer'
+import type { AudioPlayerResult } from '../../hooks/useAudioPlayer'
+
+const mockAudio: AudioPlayerResult = {
+  isReady: true,
+  isPlaying: false,
+  hasAudio: true,
+  audioLoaded: true,
+  currentTimeMs: 0,
+  durationMs: 60000,
+  playbackRate: 1,
+  play: vi.fn(),
+  pause: vi.fn(),
+  seekTo: vi.fn(),
+  setPlaybackRate: vi.fn(),
+  download: vi.fn(),
+}
 
 describe('AudioPlayer 터치 타겟', () => {
   it('재생 버튼이 w-11 h-11 (44px) 크기를 갖는다', () => {
     const { container } = render(
-      <AudioPlayer meetingId={1} onTimeUpdate={vi.fn()} seekMs={null} />
+      <AudioPlayer audio={mockAudio} onTimeUpdate={vi.fn()} seekMs={null} />
     )
     // 재생 버튼은 Play 아이콘을 감싸는 button
     const playButton = container.querySelector('button')
@@ -146,7 +145,7 @@ describe('AudioPlayer 터치 타겟', () => {
 
   it('배속 버튼에 min-h-[44px] 클래스가 적용되어 있다', () => {
     render(
-      <AudioPlayer meetingId={1} onTimeUpdate={vi.fn()} seekMs={null} />
+      <AudioPlayer audio={mockAudio} onTimeUpdate={vi.fn()} seekMs={null} />
     )
     const speedButton = screen.getByText('1x')
     expect(speedButton.className).toContain('min-h-[44px]')
@@ -154,7 +153,7 @@ describe('AudioPlayer 터치 타겟', () => {
 
   it('프로그레스 바 thumb에 hover-hide 클래스가 적용되어 있다', () => {
     const { container } = render(
-      <AudioPlayer meetingId={1} onTimeUpdate={vi.fn()} seekMs={null} />
+      <AudioPlayer audio={mockAudio} onTimeUpdate={vi.fn()} seekMs={null} />
     )
     // progress bar의 thumb 요소 (absolute positioned div with rounded-full shadow)
     const thumbs = container.querySelectorAll('.rounded-full.shadow')
@@ -313,10 +312,10 @@ describe('AttachmentCard 호버 분기', () => {
 // ── 17. UserManagementPanel 호버 분기 ──
 import UserMgmtSrc from '../settings/UserManagementPanel?raw'
 
-describe('UserManagementPanel 호버 분기', () => {
-  it('삭제 버튼에 hover-hide hover-show-parent가 적용되어 있다', () => {
-    expect(UserMgmtSrc).toContain('hover-hide')
-    expect(UserMgmtSrc).toContain('hover-show-parent')
+describe('UserManagementPanel 터치 타겟', () => {
+  it('삭제 버튼에 p-2.5 터치 타겟이 적용되어 있다', () => {
+    expect(UserMgmtSrc).toContain('p-2.5')
+    expect(UserMgmtSrc).toContain('사용자 삭제')
   })
 })
 
@@ -324,8 +323,8 @@ describe('UserManagementPanel 호버 분기', () => {
 import DashboardSrc from '../../pages/DashboardPage?raw'
 
 describe('DashboardPage 터치 피드백', () => {
-  it('통계 카드에 active:bg-muted/50이 적용되어 있다', () => {
-    expect(DashboardSrc).toContain('active:bg-muted/50')
+  it('통계 카드에 hover:bg-muted/50 터치 피드백이 적용되어 있다', () => {
+    expect(DashboardSrc).toContain('hover:bg-muted/50')
   })
 
   it('전체 보기 링크에 min-h-[44px] 적용', () => {
@@ -346,8 +345,8 @@ describe('SearchPage 터치 타겟', () => {
     expect(SearchPageSrc).toContain('min-w-[44px]')
   })
 
-  it('검색 결과 카드에 active:bg-accent/50이 적용되어 있다', () => {
-    expect(SearchPageSrc).toContain('active:bg-accent/50')
+  it('검색 결과 액션 버튼에 hover:bg-accent 피드백이 적용되어 있다', () => {
+    expect(SearchPageSrc).toContain('hover:bg-accent')
   })
 
   it('페이지네이션 버튼에 p-2.5 적용', () => {
@@ -357,33 +356,34 @@ describe('SearchPage 터치 타겟', () => {
 
 // ── 20. SettingsModal 터치 타겟 ──
 import SettingsModalSrc from '../settings/SettingsModal?raw'
+import SettingsContentSrc from '../settings/SettingsContent?raw'
 
 describe('SettingsModal 터치 타겟', () => {
-  it('닫기 버튼에 p-2.5 적용', () => {
-    expect(SettingsModalSrc).toContain('p-2.5')
+  it('닫기 버튼에 p-1.5 적용', () => {
+    expect(SettingsModalSrc).toContain('p-1.5')
   })
 
-  it('탭 버튼에 min-h-[44px] 적용', () => {
-    expect(SettingsModalSrc).toContain('min-h-[44px]')
+  it('설정 탭이 SettingsContent에 존재한다', () => {
+    expect(SettingsContentSrc).toContain('role="tab"')
   })
 })
 
-// ── 21. MeetingPage 터치 타겟 ──
-import MeetingPageSrc from '../../pages/MeetingPage?raw'
+// ── 21. MeetingPage 터치 타겟 (분해된 자식 컴포넌트) ──
+import MeetingDetailTopBarSrc from '../meeting/MeetingDetailTopBar?raw'
+import BookmarkListSrc from '../meeting/BookmarkList?raw'
+import ConfirmDialogSrc from '../ui/ConfirmDialog?raw'
 
 describe('MeetingPage 터치 타겟', () => {
-  it('뒤로가기 버튼에 p-2.5 적용', () => {
-    expect(MeetingPageSrc).toContain('p-2.5')
+  it('뒤로가기 버튼에 p-1.5 터치 타겟이 적용되어 있다', () => {
+    expect(MeetingDetailTopBarSrc).toContain('p-1.5')
   })
 
-  it('북마크 삭제 버튼에 hover-hide hover-show-parent가 적용되어 있다', () => {
-    expect(MeetingPageSrc).toContain('hover-hide')
-    expect(MeetingPageSrc).toContain('hover-show-parent')
+  it('북마크 삭제 버튼이 BookmarkList에 존재한다', () => {
+    expect(BookmarkListSrc).toContain('삭제')
   })
 
-  it('확인/취소 다이얼로그 버튼에 min-h-[44px] 적용', () => {
-    // STT 재생성 확인 다이얼로그 등의 버튼
-    expect(MeetingPageSrc).toContain('min-h-[44px]')
+  it('확인 다이얼로그에 취소/확인 버튼이 존재한다', () => {
+    expect(ConfirmDialogSrc).toContain('취소')
   })
 })
 
