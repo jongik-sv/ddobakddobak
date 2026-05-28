@@ -14,6 +14,7 @@ from app.audio_constants import (
     BYTES_PER_SAMPLE as _BYTES_PER_SAMPLE,
     SEC_TO_MS as _SEC_TO_MS,
 )
+from app.diarization.overlap import find_speaker_by_overlap
 from app.stt.base import TranscriptSegment
 
 # 배치 처리용 임계값 (전체 오디오 → 안정적 embedding)
@@ -50,7 +51,7 @@ async def batch_diarize(
 
     # STT 세그먼트에 화자 할당
     for seg in segments:
-        speaker = _find_speaker(seg.started_at_ms, seg.ended_at_ms, diarization)
+        speaker = find_speaker_by_overlap(seg.started_at_ms, seg.ended_at_ms, diarization)
         if speaker:
             seg.speaker_label = speaker
 
@@ -91,18 +92,3 @@ def _run_full_pipeline(
     num_speakers = len(labels)
     print(f"[batch-diarizer] 완료: {num_speakers}명 화자, {len(result)}개 구간", flush=True)
     return result
-
-
-def _find_speaker(
-    start_ms: int,
-    end_ms: int,
-    diarization: dict[tuple[int, int], str],
-) -> str | None:
-    best_speaker: str | None = None
-    best_overlap: int = 0
-    for (d_start, d_end), speaker in diarization.items():
-        overlap = max(0, min(end_ms, d_end) - max(start_ms, d_start))
-        if overlap > best_overlap:
-            best_overlap = overlap
-            best_speaker = speaker
-    return best_speaker

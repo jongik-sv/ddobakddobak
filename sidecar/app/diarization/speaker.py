@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from app.diarization.overlap import find_speaker_by_overlap
 from app.stt.base import TranscriptSegment
 
 if TYPE_CHECKING:
@@ -396,7 +397,7 @@ class SpeakerDiarizer:
         diarization: dict[tuple[int, int], str],
     ) -> list[TranscriptSegment]:
         for seg in segments:
-            speaker = _find_speaker(seg.started_at_ms, seg.ended_at_ms, diarization)
+            speaker = find_speaker_by_overlap(seg.started_at_ms, seg.ended_at_ms, diarization)
             if speaker is not None:
                 seg.speaker_label = speaker
         return segments
@@ -405,20 +406,3 @@ class SpeakerDiarizer:
 def make_meeting_diarizer(meeting_id: int, pipeline: Any, **kwargs) -> SpeakerDiarizer:
     db_path = _get_db_dir() / f"meeting_{meeting_id}.json"
     return SpeakerDiarizer(db_path=db_path, pipeline=pipeline, **kwargs)
-
-
-def _find_speaker(
-    start_ms: int,
-    end_ms: int,
-    diarization: dict[tuple[int, int], str],
-) -> str | None:
-    best_speaker: str | None = None
-    best_overlap: int = 0
-
-    for (d_start, d_end), speaker in diarization.items():
-        overlap = max(0, min(end_ms, d_end) - max(start_ms, d_start))
-        if overlap > best_overlap:
-            best_overlap = overlap
-            best_speaker = speaker
-
-    return best_speaker
