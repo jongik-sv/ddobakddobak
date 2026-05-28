@@ -13,6 +13,7 @@ from typing import AsyncIterator
 
 import numpy as np
 
+from app.stt import lang_utils
 from app.stt.audio_utils import is_hallucination, pcm_bytes_to_float32
 from app.stt.base import SttAdapter, TranscriptSegment
 
@@ -100,7 +101,7 @@ class Qwen3TransformersAdapter(SttAdapter):
         self._is_loaded = True
         logger.info("Qwen3-ASR 모델 로드 완료 (model=%s)", self._model_id)
 
-    async def transcribe(self, audio_chunk: bytes, languages: list[str] | None = None) -> list[TranscriptSegment]:
+    async def transcribe(self, audio_chunk: bytes, languages: list[str] | None = None, mode: str = "single") -> list[TranscriptSegment]:
         """PCM 오디오 청크를 텍스트 세그먼트로 변환한다."""
         if not self._is_loaded:
             raise RuntimeError(
@@ -113,96 +114,116 @@ class Qwen3TransformersAdapter(SttAdapter):
 
         chunk_duration_ms = int(len(audio_array) / _SAMPLE_RATE * 1000)
 
-        text = await self._run_inference_from_pcm(audio_array)
-        if not text or not text.strip() or is_hallucination(text):
-            return []
-
-        return [
-            TranscriptSegment(
-                text=text.strip(),
-                started_at_ms=0,
-                ended_at_ms=max(chunk_duration_ms, 1000),
-                language="ko",
-                confidence=0.9,
-            )
-        ]
-
-    async def _run_inference_from_pcm(self, audio_array: np.ndarray) -> str:
-        """PCM float32 배열을 임시 wav 파일로 저장 후 추론한다."""
+        engine_lang = lang_utils.qwen_force_lang(languages, mode)
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._infer_from_pcm, audio_array)
+        segments = await loop.run_in_executor(None, self._infer_from_pcm, audio_array, engine_lang, languages, mode, chunk_duration_ms)
+        return segments
 
-    def _infer_from_pcm(self, audio_array: np.ndarray) -> str:
+    def _infer_from_pcm(
+        self,
+        audio_array: np.ndarray,
+        engine_lang: str | None,
+        languages: list[str] | None,
+        mode: str,
+        chunk_duration_ms: int,
+    ) -> list[TranscriptSegment]:
         """PCM float32 -> 임시 wav -> qwen-asr transcribe."""
         import soundfile as sf
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             sf.write(tmp.name, audio_array, _SAMPLE_RATE)
-            results = self._model.transcribe(audio=tmp.name, language=None)
+            results = self._model.transcribe(audio=tmp.name, language=engine_lang)
 
-        if results and len(results) > 0:
-            return results[0].text.strip()
-        return ""
+        segments = []
+        for r in results:
+            text = r.text.strip()
+            if not text or is_hallucination(text, languages):
+                continue
+            seg_lang = (
+                lang_utils.normalize_to_iso(r.language)
+                if mode == "multi"
+                else (languages[0] if languages else "ko")
+            )
+            segments.append(TranscriptSegment(
+                text=text,
+                started_at_ms=0,
+                ended_at_ms=max(chunk_duration_ms, 1000),
+                language=seg_lang,
+                confidence=0.9,
+            ))
+        return segments
 
     async def transcribe_stream(
-        self, audio_stream
+        self, audio_stream, languages: list[str] | None = None, mode: str = "single"
     ) -> AsyncIterator[TranscriptSegment]:
         """오디오 스트림을 청크 단위로 순차 변환한다."""
         async for chunk in audio_stream:
-            segments = await self.transcribe(chunk)
+            segments = await self.transcribe(chunk, languages=languages, mode=mode)
             for seg in segments:
                 yield seg
 
-    async def transcribe_file(self, file_path: str) -> list[TranscriptSegment]:
+    async def transcribe_file(self, file_path: str, languages: list[str] | None = None, mode: str = "single") -> list[TranscriptSegment]:
         """오디오 파일 전체를 변환한다."""
         if not self._is_loaded:
             raise RuntimeError(
                 "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
             )
 
+        engine_lang = lang_utils.qwen_force_lang(languages, mode)
         loop = asyncio.get_running_loop()
 
         def _transcribe() -> list[TranscriptSegment]:
             if file_path.endswith((".pcm", ".raw")):
                 # raw PCM은 임시 wav로 변환
-                return self._transcribe_pcm_file(file_path)
+                return self._transcribe_pcm_file(file_path, languages=languages, mode=mode)
 
-            results = self._model.transcribe(audio=file_path, language=None)
+            results = self._model.transcribe(audio=file_path, language=engine_lang)
             segments = []
             for r in results:
                 text = r.text.strip()
-                if text and not is_hallucination(text):
+                if text and not is_hallucination(text, languages):
+                    seg_lang = (
+                        lang_utils.normalize_to_iso(r.language)
+                        if mode == "multi"
+                        else (languages[0] if languages else (r.language or "ko"))
+                    )
                     segments.append(TranscriptSegment(
                         text=text,
                         started_at_ms=0,
                         ended_at_ms=0,
-                        language=r.language or "ko",
+                        language=seg_lang,
                         confidence=0.9,
                     ))
             return segments
 
         return await loop.run_in_executor(None, _transcribe)
 
-    def _transcribe_pcm_file(self, file_path: str) -> list[TranscriptSegment]:
+    def _transcribe_pcm_file(self, file_path: str, languages: list[str] | None = None, mode: str = "single") -> list[TranscriptSegment]:
         """raw PCM 파일을 wav로 변환 후 추론."""
         import soundfile as sf
 
         with open(file_path, "rb") as f:
             audio_array = pcm_bytes_to_float32(f.read())
 
+        engine_lang = lang_utils.qwen_force_lang(languages, mode)
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             sf.write(tmp.name, audio_array, _SAMPLE_RATE)
-            results = self._model.transcribe(audio=tmp.name, language=None)
+            results = self._model.transcribe(audio=tmp.name, language=engine_lang)
 
         segments = []
         for r in results:
             text = r.text.strip()
-            if text and not is_hallucination(text):
+            if text and not is_hallucination(text, languages):
+                seg_lang = (
+                    lang_utils.normalize_to_iso(r.language)
+                    if mode == "multi"
+                    else (languages[0] if languages else (r.language or "ko"))
+                )
                 segments.append(TranscriptSegment(
                     text=text,
                     started_at_ms=0,
                     ended_at_ms=int(len(audio_array) / _SAMPLE_RATE * 1000),
-                    language=r.language or "ko",
+                    language=seg_lang,
                     confidence=0.9,
                 ))
         return segments
