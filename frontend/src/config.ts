@@ -98,6 +98,18 @@ export function getServerUrl(): string {
   return localStorage.getItem('server_url') || getDefaultServerUrl()
 }
 
+/**
+ * 현재 접속 서버를 식별하는 키. 토큰을 서버별로 보관할 때 사용한다.
+ * - 로컬 모드(맥 데스크톱 앱): 'local'
+ * - 웹 브라우저: 페이지 origin (Caddy가 단일 origin으로 묶음)
+ * - 모바일/데스크톱 서버 모드: 저장된 서버 URL
+ */
+export function getServerKey(): string {
+  if (getMode() !== 'server') return 'local'
+  if (!IS_TAURI) return window.location.origin
+  return getServerUrl()
+}
+
 // ── API / WebSocket URL 동적 결정 ────────────────
 export function getApiBaseUrl(): string {
   if (getMode() === 'server') {

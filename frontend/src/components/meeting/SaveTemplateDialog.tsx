@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
+import { Dialog } from '../ui/Dialog'
 
 interface SaveTemplateDialogProps {
   onSave: (name: string) => Promise<void>
@@ -23,13 +24,7 @@ export default function SaveTemplateDialog({ onSave, onClose }: SaveTemplateDial
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
+    <Dialog onClose={onClose} backdropClassName="bg-black/10 backdrop-blur-sm" className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">템플릿으로 저장</h2>
           <button onClick={onClose} className="p-2.5 rounded hover:bg-muted transition-colors">
@@ -68,7 +63,6 @@ export default function SaveTemplateDialog({ onSave, onClose }: SaveTemplateDial
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Dialog>
   )
 }

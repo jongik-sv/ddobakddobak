@@ -59,7 +59,9 @@ describe('useMediaQuery', () => {
     // 미디어 쿼리 매치 변경 시뮬레이션
     mockMatches = true
     act(() => {
-      listeners.forEach((cb) => cb())
+      listeners.forEach((cb) =>
+        (cb as (e: MediaQueryListEvent) => void)({ matches: mockMatches } as MediaQueryListEvent),
+      )
     })
     expect(result.current).toBe(true)
   })

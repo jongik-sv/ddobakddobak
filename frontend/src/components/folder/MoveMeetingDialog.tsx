@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { FolderClosed, ChevronRight, ChevronDown, Inbox } from 'lucide-react'
 import { useFolderStore } from '../../stores/folderStore'
 import type { FolderNode } from '../../api/folders'
+import { Dialog } from '../ui/Dialog'
 
 interface MoveMeetingDialogProps {
   meetingTitle: string
@@ -64,15 +65,7 @@ export default function MoveMeetingDialog({ meetingTitle, currentFolderId, onCon
   const isChanged = useMemo(() => selected !== currentFolderId, [selected, currentFolderId])
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
+    <Dialog onClose={onClose} backdropClassName="bg-black/10 backdrop-blur-sm" className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
         <h2 className="text-lg font-semibold mb-1">폴더로 이동</h2>
         <p className="text-sm text-muted-foreground mb-4 truncate">{meetingTitle}</p>
 
@@ -108,7 +101,6 @@ export default function MoveMeetingDialog({ meetingTitle, currentFolderId, onCon
             이동
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }

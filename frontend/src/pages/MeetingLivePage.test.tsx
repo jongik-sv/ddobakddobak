@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import MeetingLivePage from './MeetingLivePage'
 import { useSharingStore } from '../stores/sharingStore'
@@ -12,6 +12,7 @@ vi.mock('../api/meetings', () => ({
   startMeeting: vi.fn().mockResolvedValue({ id: 1, status: 'recording', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' }),
   stopMeeting: vi.fn().mockResolvedValue({ id: 1, status: 'completed', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' }),
   getMeeting: vi.fn().mockResolvedValue({ id: 1, status: 'pending', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' }),
+  getMeetingDetail: vi.fn().mockResolvedValue({ meeting: { id: 1, title: '테스트 회의', status: 'pending', started_at: null, ended_at: null, created_by_id: 1, created_at: '', updated_at: '' }, error: null }),
   uploadAudio: vi.fn().mockResolvedValue(undefined),
   getTranscripts: vi.fn().mockResolvedValue([]),
   getSummary: vi.fn().mockResolvedValue(null),
@@ -181,6 +182,7 @@ describe('MeetingLivePage', () => {
       error: null,
       start: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn(),
+      discard: vi.fn(),
       pause: vi.fn(),
       resume: vi.fn(),
       feedSystemAudio: vi.fn(),
@@ -310,28 +312,36 @@ describe('MeetingLivePage', () => {
 
     // ── MobileRecordControls 통합 테스트 ──
 
-    it('녹음 중이 아닐 때 MobileRecordControls가 표시되지 않음', () => {
+    it('녹음 중이 아닐 때 MobileRecordControls는 회의 시작 상태로 표시된다', () => {
       renderPage()
-      expect(screen.queryByTestId('mobile-record-controls')).not.toBeInTheDocument()
+      // 모바일 컨트롤 바는 항상 마운트되며 대기 상태에서는 "회의 시작"을 보여준다
+      const controls = screen.getByTestId('mobile-record-controls')
+      expect(controls).toBeInTheDocument()
+      expect(within(controls).getByRole('button', { name: /회의 시작/i })).toBeInTheDocument()
+      // 녹음 표시등은 아직 없음
+      expect(screen.queryByTestId('mobile-recording-dot')).not.toBeInTheDocument()
     })
 
-    it('녹음 중일 때 MobileRecordControls가 표시됨', async () => {
+    it('녹음 중일 때 MobileRecordControls에 녹음 표시등이 보인다', async () => {
       vi.mocked(useAudioRecorderModule.useAudioRecorder).mockReturnValue({
         isRecording: true,
         isPaused: false,
         error: null,
         start: vi.fn().mockResolvedValue(undefined),
         stop: vi.fn(),
+        discard: vi.fn(),
         pause: vi.fn(),
         resume: vi.fn(),
         feedSystemAudio: vi.fn(),
       })
       renderPage()
+      // 데스크톱/모바일 컨트롤이 모두 DOM에 있으므로 모바일 바 내부로 범위를 좁힌다
+      const controls = screen.getByTestId('mobile-record-controls')
       await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: /회의 시작/i }))
+        fireEvent.click(within(controls).getByRole('button', { name: /회의 시작/i }))
       })
       await waitFor(() => {
-        expect(screen.getByTestId('mobile-record-controls')).toBeInTheDocument()
+        expect(screen.getByTestId('mobile-recording-dot')).toBeInTheDocument()
       })
     })
   })

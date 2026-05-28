@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Pencil, ArrowLeft, StickyNote, Paperclip, Bookmark, Trash2, FileText, Bot, Play, RefreshCw } from 'lucide-react'
-import { Tooltip } from '../components/ui/Tooltip'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
@@ -17,28 +15,26 @@ import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { AudioPlayer } from '../components/meeting/AudioPlayer'
 import { MiniAudioPlayer } from '../components/meeting/MiniAudioPlayer'
 import { TranscriptPanel } from '../components/meeting/TranscriptPanel'
-import { ExportButton } from '../components/meeting/ExportButton'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
-import { MeetingEditor } from '../components/editor/MeetingEditor'
 import { useUiStore } from '../stores/uiStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
 import { getBookmarks, deleteBookmark } from '../api/bookmarks'
 import type { Bookmark as BookmarkType } from '../api/bookmarks'
-import { DecisionList } from '../components/decision/DecisionList'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
 import MobileTabLayout from '../components/layout/MobileTabLayout'
+import { BookmarkList } from '../components/meeting/BookmarkList'
+import { MemoEditorPanel } from '../components/meeting/MemoEditorPanel'
+import { TranscribingProgress } from '../components/meeting/TranscribingProgress'
+import { TermCorrectionDetails } from '../components/meeting/TermCorrectionDetails'
+import { MeetingActionHeader } from '../components/meeting/MeetingActionHeader'
+import { MeetingDetailTopBar } from '../components/meeting/MeetingDetailTopBar'
+import { buildMeetingDetailTabs } from '../components/meeting/meetingDetailTabs'
 
 // ──────────────────────────────────────────────
 // 회의 상세 페이지
 // ──────────────────────────────────────────────
-
-// 모바일에서 상태 배지를 짧게 표시 (PC는 원문 그대로 유지)
-const STATUS_SHORT_LABEL: Record<string, string> = {
-  recording: '녹음',
-  completed: '완료',
-  pending: '대기',
-}
 
 /**
  * 회의 상세 페이지 — 2컬럼 레이아웃 (에디터 + AI요약 + ActionItems)
@@ -246,44 +242,8 @@ export default function MeetingPage() {
     }
   }
 
-  function formatMs(ms: number) {
-    const totalSec = Math.floor(ms / 1000)
-    const h = Math.floor(totalSec / 3600)
-    const m = Math.floor((totalSec % 3600) / 60)
-    const s = totalSec % 60
-    return h > 0
-      ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-      : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  }
-
   function handleSeek(ms: number) {
     setSeekMs(ms)
-  }
-
-  // 제목 인라인 편집 상태
-  const [isEditingTitle, setIsEditingTitle] = useState(false)
-  const [editingTitleValue, setEditingTitleValue] = useState('')
-
-  function handleTitleClick() {
-    if (meeting) {
-      setEditingTitleValue(meeting.title)
-      setIsEditingTitle(true)
-    }
-  }
-
-  async function handleTitleSubmit() {
-    if (editingTitleValue.trim()) {
-      await updateTitle(editingTitleValue.trim())
-    }
-    setIsEditingTitle(false)
-  }
-
-  function handleTitleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') {
-      handleTitleSubmit()
-    } else if (e.key === 'Escape') {
-      setIsEditingTitle(false)
-    }
   }
 
   // 권한 에러 처리
@@ -330,182 +290,46 @@ export default function MeetingPage() {
     )
 
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 gap-6">
-        <div className="w-full max-w-sm">
-          <div className="flex flex-col items-center gap-4 p-8 rounded-xl bg-white border shadow-sm">
-            <svg className="w-12 h-12 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-            </svg>
-            <h2 className="text-lg font-semibold text-gray-900">
-              {meeting?.title ?? '오디오 파일 변환 중'}
-            </h2>
-            <p className="text-sm text-gray-500">{progressMessage}</p>
-
-            {/* 진행률 바 */}
-            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div
-                className="h-full bg-amber-500 rounded-full transition-all duration-500 ease-out"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-            <p className="text-xs text-gray-400">{progressPercent}%</p>
-
-            {fileProgress.status === 'error' && (
-              <div className="mt-2 p-3 rounded-md bg-red-50 text-sm text-red-600 w-full">
-                오류: {fileProgress.error}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <TranscribingProgress
+        title={meeting?.title ?? '오디오 파일 변환 중'}
+        progressPercent={progressPercent}
+        message={progressMessage}
+        isError={fileProgress.status === 'error'}
+        error={fileProgress.error}
+      />
     )
   }
 
   // 모바일 탭 정의
-  const mobileTabs = [
-      {
-        id: 'transcript',
-        label: '기록',
-        icon: FileText,
-        content: (
-          <div className="h-full flex flex-col overflow-hidden">
-            {bookmarksVisible && bookmarks.length > 0 && (
-              <div className="border-b shrink-0 max-h-48 overflow-y-auto">
-                <div className="px-3 py-2 bg-amber-50 border-b">
-                  <h3 className="text-xs font-semibold text-amber-700 flex items-center gap-1">
-                    <Bookmark className="w-3 h-3" />
-                    북마크 ({bookmarks.length})
-                  </h3>
-                </div>
-                <ul className="divide-y divide-gray-100">
-                  {bookmarks.map((b) => (
-                    <li
-                      key={b.id}
-                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-amber-50 cursor-pointer group"
-                      onClick={() => handleSeek(b.timestamp_ms)}
-                    >
-                      <span className="text-xs font-mono text-amber-600 shrink-0">
-                        {formatMs(b.timestamp_ms)}
-                      </span>
-                      <span className="text-xs text-gray-700 truncate flex-1">
-                        {b.label || '(라벨 없음)'}
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDeleteBookmark(b.id)
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all"
-                        title="삭제"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              <TranscriptPanel
-                meetingId={meetingId}
-                transcripts={transcripts}
-                currentTimeMs={currentTimeMs}
-                onSeek={handleSeek}
-              />
-            </div>
-          </div>
-        ),
-      },
-      {
-        id: 'summary',
-        label: '요약',
-        icon: Bot,
-        content: (
-          <div className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
-            <AiSummaryPanel meetingId={meetingId} isRecording={false} onNotesChange={handleNotesChange} />
-          </div>
-        ),
-      },
-      {
-        id: 'memo',
-        label: '메모',
-        icon: StickyNote,
-        content: (
-          <section data-testid="memo-editor" className="h-full flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
-              <h2 className="text-sm font-semibold text-gray-500">메모</h2>
-              <button
-                onClick={handleSaveMemo}
-                disabled={isSavingMemo}
-                className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isSavingMemo ? '저장 중...' : '저장'}
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto">
-              <MeetingEditor editorRef={memoEditorRef} />
-            </div>
-            <div className="border-t shrink-0 overflow-y-auto max-h-[40%]">
-              <DecisionList meetingId={meetingId} />
-            </div>
-          </section>
-        ),
-      },
-  ]
+  const mobileTabs = buildMeetingDetailTabs({
+    meetingId,
+    bookmarksVisible,
+    bookmarks,
+    transcripts,
+    currentTimeMs,
+    onSeek: handleSeek,
+    onDeleteBookmark: handleDeleteBookmark,
+    onNotesChange: handleNotesChange,
+    memoEditorRef,
+    onSaveMemo: handleSaveMemo,
+    isSavingMemo,
+  })
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* 페이지 제목 */}
-      <div className={`bg-white border-b shrink-0 flex items-center ${isDesktop ? 'px-6 py-4 gap-3' : 'px-3 py-2 gap-2'}`}>
-        <Tooltip text="목록으로 돌아가기">
-          <button
-            onClick={() => navigate('/')}
-            className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
-          </button>
-        </Tooltip>
-        <h1 className={`font-bold text-gray-900 ${isDesktop ? 'text-xl' : 'text-lg'}`}>회의 미리보기</h1>
-        <Tooltip text={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}>
-          <button
-            onClick={toggleAttachments}
-            className={`p-1.5 rounded-md transition-colors ${attachmentsVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-          >
-            <Paperclip className="w-4 h-4" />
-          </button>
-        </Tooltip>
-        {meeting && (
-          <Tooltip text="회의 정보 수정">
-            <button
-              onClick={() => setShowEditDialog(true)}
-              className="shrink-0 p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
-          </Tooltip>
-        )}
-        {/* 메모·북마크 토글은 데스크톱 패널 표시 전용 — 모바일은 탭으로 접근하므로 숨김 */}
-        {isDesktop && (
-          <>
-            <Tooltip text={memoVisible ? '메모 숨기기' : '메모 보기'}>
-              <button
-                onClick={toggleMemo}
-                className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-              >
-                <StickyNote className="w-4 h-4" />
-              </button>
-            </Tooltip>
-            <Tooltip text={bookmarksVisible ? '북마크 숨기기' : '북마크 보기'}>
-              <button
-                onClick={toggleBookmarks}
-                className={`p-1.5 rounded-md transition-colors ${bookmarksVisible ? 'text-amber-600 bg-amber-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-              >
-                <Bookmark className="w-4 h-4" />
-              </button>
-            </Tooltip>
-          </>
-        )}
-      </div>
+      {/* 상단 툴바 */}
+      <MeetingDetailTopBar
+        isDesktop={isDesktop}
+        hasMeeting={!!meeting}
+        attachmentsVisible={attachmentsVisible}
+        memoVisible={memoVisible}
+        bookmarksVisible={bookmarksVisible}
+        onBack={() => navigate('/')}
+        onToggleAttachments={toggleAttachments}
+        onShowEdit={() => setShowEditDialog(true)}
+        onToggleMemo={toggleMemo}
+        onToggleBookmarks={toggleBookmarks}
+      />
 
       {/* 오디오 플레이어 (데스크톱) */}
       <div className="hidden lg:block">
@@ -545,113 +369,26 @@ export default function MeetingPage() {
         />
       )}
 
-      {/* 헤더 */}
-      <div className={`flex items-center justify-between border-b bg-white shrink-0 ${isDesktop ? 'px-6 py-3' : 'px-3 py-2'}`}>
-        <div className={`flex items-center flex-1 min-w-0 ${isDesktop ? 'gap-3' : 'gap-2'}`}>
-          {isEditingTitle ? (
-            <input
-              type="text"
-              value={editingTitleValue}
-              onChange={(e) => setEditingTitleValue(e.target.value)}
-              onBlur={handleTitleSubmit}
-              onKeyDown={handleTitleKeyDown}
-              className="text-lg font-semibold text-gray-900 border-b-2 border-blue-500 outline-none bg-transparent flex-1 min-w-0"
-              autoFocus
-            />
-          ) : (
-            <h1
-              className="text-lg font-semibold text-gray-900 truncate cursor-pointer hover:text-blue-700"
-              onClick={handleTitleClick}
-              title="클릭하여 제목 편집"
-            >
-              {meeting?.title ?? '회의'}
-            </h1>
-          )}
-          {meeting?.status && (
-            <span className={`shrink-0 rounded-full bg-gray-100 text-gray-600 ${isDesktop ? 'px-2 py-0.5 text-xs' : 'px-1.5 py-0 text-[10px]'}`}>
-              {isDesktop ? meeting.status : (STATUS_SHORT_LABEL[meeting.status] ?? meeting.status)}
-            </span>
-          )}
-          {meetingTypeLabel && (
-            <span className={`shrink-0 rounded-full bg-blue-50 text-blue-600 border border-blue-200 ${isDesktop ? 'px-2 py-0.5 text-xs' : 'px-1.5 py-0 text-[10px]'}`}>
-              {meetingTypeLabel}
-            </span>
-          )}
-          {isDesktop && meeting?.tags?.map((tag) => (
-            <span
-              key={tag.id}
-              className="shrink-0 px-2 py-0.5 text-xs rounded-full text-white"
-              style={{ backgroundColor: tag.color }}
-            >
-              {tag.name}
-            </span>
-          ))}
-        </div>
-        <div className={`flex items-center shrink-0 ${isDesktop ? 'gap-2' : 'gap-1'}`}>
-          {meeting?.status === 'completed' && (
-            <>
-              {meeting.has_audio_file && (
-                <button
-                  onClick={() => setShowSttConfirm(true)}
-                  aria-label="STT 재생성"
-                  className="rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-3 py-1.5"
-                >
-                  {isDesktop ? 'STT 재생성' : <RefreshCw className="w-4 h-4" />}
-                </button>
-              )}
-              {transcripts.length > 0 && (
-                <button
-                  onClick={() => setShowNotesConfirm(true)}
-                  disabled={isRegeneratingNotes}
-                  aria-label="회의록 재생성"
-                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isRegeneratingNotes ? (
-                    <span className="flex items-center gap-1">
-                      <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      {isDesktop && '재생성 중...'}
-                    </span>
-                  ) : (isDesktop ? '회의록 재생성' : <Bot className="w-4 h-4" />)}
-                </button>
-              )}
-              <button
-                onClick={async () => {
-                  await reopenMeeting(meetingId)
-                  navigate(`/meetings/${meetingId}/live`)
-                }}
-                aria-label="회의 재개"
-                className="px-3 py-1.5 rounded-md text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition-colors"
-              >
-                {isDesktop ? '회의 재개' : <Play className="w-4 h-4" />}
-              </button>
-            </>
-          )}
-          {(meeting?.status === 'pending' || meeting?.status === 'recording') && (
-            <button
-              onClick={() => navigate(`/meetings/${meetingId}/live`)}
-              aria-label="회의 진행"
-              className="px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-            >
-              {isDesktop ? '회의 진행' : <Play className="w-4 h-4" />}
-            </button>
-          )}
-          <ExportButton
-            meetingId={meetingId}
-            meetingTitle={meeting?.title}
-            meetingDate={meeting?.started_at ?? meeting?.created_at}
-          />
-          <button
-            onClick={deleteMeeting}
-            aria-label="삭제"
-            className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50"
-          >
-            {isDesktop ? '삭제' : <Trash2 className="w-4 h-4" />}
-          </button>
-        </div>
-      </div>
+      {/* 헤더 (제목 + 액션 버튼) */}
+      {meeting && (
+        <MeetingActionHeader
+          meeting={meeting}
+          meetingId={meetingId}
+          isDesktop={isDesktop}
+          meetingTypeLabel={meetingTypeLabel}
+          transcriptsCount={transcripts.length}
+          isRegeneratingNotes={isRegeneratingNotes}
+          onUpdateTitle={updateTitle}
+          onShowSttConfirm={() => setShowSttConfirm(true)}
+          onShowNotesConfirm={() => setShowNotesConfirm(true)}
+          onReopen={async () => {
+            await reopenMeeting(meetingId)
+            navigate(`/meetings/${meetingId}/live`)
+          }}
+          onGoLive={() => navigate(`/meetings/${meetingId}/live`)}
+          onDelete={deleteMeeting}
+        />
+      )}
 
       {/* 첨부 파일/링크 섹션 */}
       {attachmentsVisible && <AttachmentSection meetingId={meetingId} />}
@@ -662,42 +399,8 @@ export default function MeetingPage() {
           {/* 트랜스크립트 + 북마크 패널 — 기본 25% */}
           <Panel defaultSize={25} minSize={15}>
             <div className="h-full flex flex-col overflow-hidden">
-              {/* 북마크 섹션 */}
-              {bookmarksVisible && bookmarks.length > 0 && (
-                <div className="border-b shrink-0 max-h-48 overflow-y-auto">
-                  <div className="px-3 py-2 bg-amber-50 border-b">
-                    <h3 className="text-xs font-semibold text-amber-700 flex items-center gap-1">
-                      <Bookmark className="w-3 h-3" />
-                      북마크 ({bookmarks.length})
-                    </h3>
-                  </div>
-                  <ul className="divide-y divide-gray-100">
-                    {bookmarks.map((b) => (
-                      <li
-                        key={b.id}
-                        className="flex items-center gap-2 px-3 py-1.5 hover:bg-amber-50 cursor-pointer group"
-                        onClick={() => handleSeek(b.timestamp_ms)}
-                      >
-                        <span className="text-xs font-mono text-amber-600 shrink-0">
-                          {formatMs(b.timestamp_ms)}
-                        </span>
-                        <span className="text-xs text-gray-700 truncate flex-1">
-                          {b.label || '(라벨 없음)'}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteBookmark(b.id)
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all"
-                          title="삭제"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+              {bookmarksVisible && (
+                <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} />
               )}
               <div className="flex-1 overflow-y-auto">
                 <TranscriptPanel
@@ -725,24 +428,12 @@ export default function MeetingPage() {
 
               {/* 메모 + Decision Log — 기본 30% */}
               <Panel defaultSize={30} minSize={15}>
-                <section data-testid="memo-editor" className="h-full flex flex-col overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
-                    <h2 className="text-sm font-semibold text-gray-500">메모</h2>
-                    <button
-                      onClick={handleSaveMemo}
-                      disabled={isSavingMemo}
-                      className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {isSavingMemo ? '저장 중...' : '저장'}
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-auto">
-                    <MeetingEditor editorRef={memoEditorRef} />
-                  </div>
-                  <div className="border-t shrink-0 overflow-y-auto max-h-[40%]">
-                    <DecisionList meetingId={meetingId} />
-                  </div>
-                </section>
+                <MemoEditorPanel
+                  meetingId={meetingId}
+                  editorRef={memoEditorRef}
+                  onSave={handleSaveMemo}
+                  isSaving={isSavingMemo}
+                />
               </Panel>
             </>
           )}
@@ -755,118 +446,37 @@ export default function MeetingPage() {
 
       {/* 오타 수정 섹션 */}
       {meeting?.status === 'completed' && (
-        <div className="border-t bg-white px-6 py-3 shrink-0">
-          <details className="group">
-            <summary className="cursor-pointer text-sm font-semibold text-gray-500 select-none flex items-center gap-2">
-              <span className="transition-transform group-open:rotate-90">&rsaquo;</span>
-              오타 수정
-              {correctionStatus && (
-                <span className="text-xs font-normal text-blue-500 ml-2">{correctionStatus}</span>
-              )}
-            </summary>
-            <div className="mt-2 flex flex-col gap-2 max-w-2xl">
-              <p className="text-xs text-gray-400">
-                잘못된 용어를 올바른 용어로 일괄 치환합니다 (회의록 + 트랜스크립트)
-              </p>
-              {corrections.map((c, i) => (
-                <div key={i} className="flex items-center gap-1">
-                  <input
-                    type="text"
-                    value={c.from}
-                    onChange={(e) => updateCorrection(i, 'from', e.target.value)}
-                    placeholder="잘못된 용어"
-                    className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-                    disabled={isApplyingCorrections}
-                  />
-                  <span className="text-gray-400 text-xs shrink-0">&rarr;</span>
-                  <input
-                    type="text"
-                    value={c.to}
-                    onChange={(e) => updateCorrection(i, 'to', e.target.value)}
-                    placeholder="올바른 용어"
-                    className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-                    disabled={isApplyingCorrections}
-                  />
-                  <button
-                    onClick={() => removeCorrectionRow(i)}
-                    className="shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 text-sm"
-                    title="삭제"
-                  >
-                    &times;
-                  </button>
-                </div>
-              ))}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={addCorrectionRow}
-                  disabled={isApplyingCorrections}
-                  className="text-xs text-blue-500 hover:text-blue-700"
-                >
-                  + 용어 추가
-                </button>
-                <button
-                  onClick={handleApplyCorrections}
-                  disabled={!corrections.some((c) => c.from.trim() && c.to.trim()) || isApplyingCorrections}
-                  className="ml-auto px-4 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isApplyingCorrections ? '반영 중...' : '오타 수정 적용'}
-                </button>
-              </div>
-            </div>
-          </details>
-        </div>
+        <TermCorrectionDetails
+          corrections={corrections}
+          status={correctionStatus}
+          isApplying={isApplyingCorrections}
+          onUpdate={updateCorrection}
+          onAdd={addCorrectionRow}
+          onRemove={removeCorrectionRow}
+          onApply={handleApplyCorrections}
+        />
       )}
 
       {/* STT 재생성 확인 다이얼로그 */}
       {showSttConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-lg p-6 max-w-sm w-full mx-4">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">STT 재생성</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              기존 트랜스크립트와 회의록이 모두 삭제되고, 저장된 오디오로 처음부터 다시 생성됩니다. 계속하시겠습니까?
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowSttConfirm(false)}
-                className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleRegenerateStt}
-                className="px-3 py-1.5 text-sm rounded-md bg-amber-500 text-white hover:bg-amber-600"
-              >
-                재생성
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="STT 재생성"
+          message="기존 트랜스크립트와 회의록이 모두 삭제되고, 저장된 오디오로 처음부터 다시 생성됩니다. 계속하시겠습니까?"
+          confirmLabel="재생성"
+          onConfirm={handleRegenerateStt}
+          onCancel={() => setShowSttConfirm(false)}
+        />
       )}
 
       {/* 회의록 재생성 확인 다이얼로그 */}
       {showNotesConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-lg p-6 max-w-sm w-full mx-4">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">회의록 재생성</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              기존 회의록을 삭제하고 전체 트랜스크립트를 바탕으로 처음부터 다시 생성합니다. 계속하시겠습니까?
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowNotesConfirm(false)}
-                className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleRegenerateNotes}
-                className="px-3 py-1.5 text-sm rounded-md bg-amber-500 text-white hover:bg-amber-600"
-              >
-                재생성
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="회의록 재생성"
+          message="기존 회의록을 삭제하고 전체 트랜스크립트를 바탕으로 처음부터 다시 생성합니다. 계속하시겠습니까?"
+          confirmLabel="재생성"
+          onConfirm={handleRegenerateNotes}
+          onCancel={() => setShowNotesConfirm(false)}
+        />
       )}
 
       {/* 회의 정보 수정 다이얼로그 */}

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { createLinkAttachment } from '../../api/attachments'
 import type { AttachmentCategory } from '../../api/attachments'
+import { errorToMessage } from '../../lib/errors'
+import { Dialog } from '../ui/Dialog'
 
 const CATEGORIES: { value: AttachmentCategory; label: string }[] = [
   { value: 'agenda', label: '안건' },
@@ -39,20 +41,14 @@ export function AddLinkDialog({ meetingId, defaultCategory, onClose, onAdded }: 
       onAdded()
       onClose()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '링크 추가에 실패했습니다.')
+      setError(await errorToMessage(err, '링크 추가에 실패했습니다.'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
+    <Dialog onClose={onClose}>
         <h2 className="text-lg font-semibold mb-4">링크 추가</h2>
 
         {error && (
@@ -126,7 +122,6 @@ export function AddLinkDialog({ meetingId, defaultCategory, onClose, onAdded }: 
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Dialog>
   )
 }

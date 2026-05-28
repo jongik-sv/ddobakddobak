@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { HTTPError } from 'ky'
 import { changePassword } from '../../api/account'
 import { useAuthStore } from '../../stores/authStore'
+import { errorToMessage } from '../../lib/errors'
 
 export default function PasswordChangeSection() {
   const [current, setCurrent] = useState('')
@@ -34,12 +34,7 @@ export default function PasswordChangeSection() {
       setConfirm('')
       setSuccess('비밀번호가 변경되었습니다. 다른 기기는 다시 로그인해야 합니다.')
     } catch (err) {
-      if (err instanceof HTTPError) {
-        const body = (await err.response.json().catch(() => ({}))) as { error?: string; errors?: string[] }
-        setError(body.error ?? body.errors?.join(', ') ?? '비밀번호 변경에 실패했습니다.')
-      } else {
-        setError('비밀번호 변경에 실패했습니다.')
-      }
+      setError(await errorToMessage(err, '비밀번호 변경에 실패했습니다.'))
     } finally {
       setSaving(false)
     }

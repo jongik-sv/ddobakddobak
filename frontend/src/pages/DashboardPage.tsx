@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Mic, CheckCircle2, Clock, FileText, type LucideIcon } from 'lucide-react'
 import { getMeetings } from '../api/meetings'
@@ -63,24 +63,16 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-/* ── 상태별 카운트를 한 번의 순회로 계산 ── */
-function countByStatus(meetings: Meeting[]) {
-  let recording = 0
-  let completed = 0
-  for (const m of meetings) {
-    if (m.status === 'recording') recording++
-    else if (m.status === 'completed') completed++
-  }
-  return { recording, completed }
-}
+type StatusCounts = Partial<Record<Meeting['status'], number>>
 
 // 모듈 레벨 캐시 — 페이지 전환 시 이전 데이터 즉시 표시
-let dashboardCache: { meetings: Meeting[]; totalCount: number } | null = null
+let dashboardCache: { meetings: Meeting[]; totalCount: number; statusCounts: StatusCounts } | null = null
 
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [meetings, setMeetings] = useState<Meeting[]>(dashboardCache?.meetings ?? [])
   const [totalCount, setTotalCount] = useState(dashboardCache?.totalCount ?? 0)
+  const [statusCounts, setStatusCounts] = useState<StatusCounts>(dashboardCache?.statusCounts ?? {})
   const [isLoading, setIsLoading] = useState(!dashboardCache)
   const meetingTypeMap = usePromptTemplateStore((s) => s.meetingTypeMap)
 
@@ -88,19 +80,19 @@ export default function DashboardPage() {
     if (!dashboardCache) setIsLoading(true)
     getMeetings({ page: 1, per: 10 })
       .then((data) => {
+        const counts = data.meta.status_counts ?? {}
         setMeetings(data.meetings)
         setTotalCount(data.meta.total)
-        dashboardCache = { meetings: data.meetings, totalCount: data.meta.total }
+        setStatusCounts(counts)
+        dashboardCache = { meetings: data.meetings, totalCount: data.meta.total, statusCounts: counts }
       })
       .catch(() => {})
       .finally(() => setIsLoading(false))
   }, [])
 
-  const { recording: recordingCount, completed: completedCount } = useMemo(
-    () => countByStatus(meetings),
-    [meetings],
-  )
-  const pendingCount = totalCount - recordingCount - completedCount
+  const recordingCount = statusCounts.recording ?? 0
+  const completedCount = statusCounts.completed ?? 0
+  const pendingCount = statusCounts.pending ?? 0
   const recentMeetings = meetings.slice(0, 5)
   const showSkeleton = isLoading && meetings.length === 0
 

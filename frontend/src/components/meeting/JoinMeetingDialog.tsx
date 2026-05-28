@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { joinMeeting } from '../../api/meetings'
+import { Dialog } from '../ui/Dialog'
 
 interface JoinMeetingDialogProps {
   open: boolean
@@ -42,12 +43,7 @@ export function JoinMeetingDialog({ open, onClose }: JoinMeetingDialogProps) {
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm"
-    >
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
+    <Dialog onClose={onClose} backdropClassName="bg-black/10 backdrop-blur-sm" closeOnBackdrop={false} closeOnEsc={false}>
         <h2 className="text-lg font-semibold mb-4">회의 참여</h2>
 
         {error && (
@@ -87,7 +83,6 @@ export function JoinMeetingDialog({ open, onClose }: JoinMeetingDialogProps) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Dialog>
   )
 }

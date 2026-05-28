@@ -32,6 +32,32 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(json["meta"]).to include("total", "page", "per")
       end
 
+      it "returns status_counts breakdown for the dashboard" do
+        create(:meeting, team: team, creator: user, status: "recording")
+        create_list(:meeting, 2, team: team, creator: user, status: "pending")
+        create(:meeting, team: team, creator: user, status: "completed")
+
+        get "/api/v1/meetings"
+
+        counts = response.parsed_body["meta"]["status_counts"]
+        expect(counts["recording"]).to eq(1)
+        expect(counts["pending"]).to eq(2)
+        expect(counts["completed"]).to eq(1)
+      end
+
+      it "status_counts gives the full breakdown even when filtered by status" do
+        create(:meeting, team: team, creator: user, status: "recording")
+        create_list(:meeting, 2, team: team, creator: user, status: "pending")
+
+        get "/api/v1/meetings", params: { status: "recording" }
+
+        json = response.parsed_body
+        expect(json["meetings"].length).to eq(1)
+        expect(json["meta"]["total"]).to eq(1)
+        expect(json["meta"]["status_counts"]["recording"]).to eq(1)
+        expect(json["meta"]["status_counts"]["pending"]).to eq(2)
+      end
+
       it "supports page and per params" do
         create_list(:meeting, 3, team: team, creator: user)
 

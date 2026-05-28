@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Monitor, Globe, CheckCircle, XCircle, Loader2, Search, Pencil, Trash2 } from 'lucide-react'
+import { CheckCircle, XCircle, Loader2, Search } from 'lucide-react'
 import { getDefaultServerUrl, IS_MOBILE, IS_TAURI } from '../../config'
 import {
   type SavedServer,
@@ -11,6 +11,8 @@ import {
   displayHost,
   displayPort,
 } from '../../lib/savedServers'
+import { ServerRow } from './ServerRow'
+import { ServerModeSelector } from './ServerModeSelector'
 
 type Mode = 'local' | 'server'
 type HealthStatus = 'idle' | 'checking' | 'success' | 'error'
@@ -237,45 +239,15 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
         </div>
 
         {!IS_MOBILE && (
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <button
-            type="button"
-            aria-pressed={mode === 'local'}
-            onClick={() => {
+          <ServerModeSelector
+            mode={mode}
+            onSelectLocal={() => {
               setMode('local')
               setHealthStatus('idle')
               setHealthError(null)
             }}
-            className={`flex flex-col items-center gap-3 p-6 rounded-xl border-2 transition-all cursor-pointer ${
-              mode === 'local'
-                ? 'border-blue-500 ring-2 ring-blue-500 bg-blue-50'
-                : 'border-slate-200 hover:border-slate-300 bg-white'
-            }`}
-          >
-            <Monitor className="w-8 h-8 text-slate-600" />
-            <span className="font-semibold text-slate-800">로컬 실행</span>
-            <span className="text-sm text-slate-500 text-center">
-              이 컴퓨터에서 직접 실행합니다
-            </span>
-          </button>
-
-          <button
-            type="button"
-            aria-pressed={mode === 'server'}
-            onClick={() => setMode('server')}
-            className={`flex flex-col items-center gap-3 p-6 rounded-xl border-2 transition-all cursor-pointer ${
-              mode === 'server'
-                ? 'border-blue-500 ring-2 ring-blue-500 bg-blue-50'
-                : 'border-slate-200 hover:border-slate-300 bg-white'
-            }`}
-          >
-            <Globe className="w-8 h-8 text-slate-600" />
-            <span className="font-semibold text-slate-800">서버 연결</span>
-            <span className="text-sm text-slate-500 text-center">
-              원격 서버에 연결하여 사용합니다
-            </span>
-          </button>
-        </div>
+            onSelectServer={() => setMode('server')}
+          />
         )}
 
         {mode === 'server' && (
@@ -298,43 +270,21 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                   <p className="text-xs text-slate-400 text-center">같은 네트워크를 살펴보는 중… 수 초 걸려요</p>
                 )}
                 {foundServers.map((url) => {
-                  const isSelected = selectedUrl === url
                   const nurl = normalizeUrl(url)
                   const meta = savedByUrl.get(nurl)
                   const sub = [meta?.name, meta?.location].filter(Boolean).join(' · ')
                   return (
-                    <div
+                    <ServerRow
                       key={url}
-                      className={`rounded-lg border transition-all ${
-                        isSelected
-                          ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
-                          : 'border-slate-200 hover:border-blue-400'
-                      }`}
-                    >
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => pickServer(url)}
-                          className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 text-sm text-left rounded-lg active:scale-[0.99] transition-transform"
-                        >
-                          <Globe className={`w-4 h-4 shrink-0 ${isSelected ? 'text-blue-500' : 'text-slate-500'}`} />
-                          <span className="min-w-0 flex-1">
-                            <span className={`block break-all ${isSelected ? 'text-blue-700 font-medium' : 'text-slate-700'}`}>{url}</span>
-                            {sub && <span className="block truncate text-xs text-slate-400">{sub}</span>}
-                          </span>
-                          {renderRowStatus(url)}
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="편집"
-                          onClick={(e) => { e.stopPropagation(); startEdit(nurl, meta?.name, meta?.location) }}
-                          className="p-2 mr-1 text-slate-400 hover:text-slate-600 active:scale-90 transition-transform"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                      </div>
-                      {renderEditForm(nurl)}
-                    </div>
+                      selected={selectedUrl === url}
+                      displayText={url}
+                      displayClassName="break-all"
+                      sub={sub || null}
+                      statusNode={renderRowStatus(url)}
+                      onPick={() => pickServer(url)}
+                      onEdit={() => startEdit(nurl, meta?.name, meta?.location)}
+                      editForm={renderEditForm(nurl)}
+                    />
                   )
                 })}
                 {scanned && !scanning && foundServers.length === 0 && (
@@ -349,7 +299,6 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
               <div className="space-y-1">
                 <p className="text-xs font-medium text-slate-500">저장된 서버</p>
                 {savedOnly.map((srv) => {
-                  const isSelected = selectedUrl === srv.url
                   const port = displayPort(srv.url)
                   const host = displayHost(srv.url)
                   const primary = srv.name || host
@@ -359,48 +308,18 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                     srv.location || null,
                   ].filter(Boolean)
                   return (
-                    <div
+                    <ServerRow
                       key={srv.url}
-                      className={`rounded-lg border transition-all ${
-                        isSelected
-                          ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
-                          : 'border-slate-200 hover:border-blue-400'
-                      }`}
-                    >
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => pickServer(srv.url)}
-                          className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 text-sm text-left rounded-lg active:scale-[0.99] transition-transform"
-                        >
-                          <Globe className={`w-4 h-4 shrink-0 ${isSelected ? 'text-blue-500' : 'text-slate-500'}`} />
-                          <span className="min-w-0 flex-1">
-                            <span className={`block truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-slate-700'}`}>{primary}</span>
-                            {subParts.length > 0 && (
-                              <span className="block truncate text-xs text-slate-400">{subParts.join(' · ')}</span>
-                            )}
-                          </span>
-                          {renderSavedStatus(srv.url)}
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="편집"
-                          onClick={(e) => { e.stopPropagation(); startEdit(srv.url, srv.name, srv.location) }}
-                          className="p-2 text-slate-400 hover:text-slate-600 active:scale-90 transition-transform"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="삭제"
-                          onClick={(e) => { e.stopPropagation(); setSavedServers(removeSavedServer(srv.url)) }}
-                          className="p-2 mr-1 text-slate-400 hover:text-red-500 active:scale-90 transition-transform"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                      {renderEditForm(srv.url)}
-                    </div>
+                      selected={selectedUrl === srv.url}
+                      displayText={primary}
+                      displayClassName="truncate"
+                      sub={subParts.length > 0 ? subParts.join(' · ') : null}
+                      statusNode={renderSavedStatus(srv.url)}
+                      onPick={() => pickServer(srv.url)}
+                      onEdit={() => startEdit(srv.url, srv.name, srv.location)}
+                      onDelete={() => setSavedServers(removeSavedServer(srv.url))}
+                      editForm={renderEditForm(srv.url)}
+                    />
                   )
                 })}
               </div>

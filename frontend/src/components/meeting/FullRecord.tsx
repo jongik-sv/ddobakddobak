@@ -3,14 +3,7 @@ import { useTranscriptStore } from '../../stores/transcriptStore'
 import { SpeakerLabel } from './SpeakerLabel'
 import { EditableTranscriptText } from './EditableTranscriptText'
 import { deleteTranscripts } from '../../api/meetings'
-
-function formatElapsed(ms: number): string {
-  if (ms <= 0) return '00:00'
-  const totalSec = Math.floor(ms / 1000)
-  const m = Math.floor(totalSec / 60).toString().padStart(2, '0')
-  const s = (totalSec % 60).toString().padStart(2, '0')
-  return `${m}:${s}`
-}
+import { formatElapsedMs as formatElapsed } from '../../lib/audioUtils'
 
 interface FullRecordProps {
   meetingId: number
