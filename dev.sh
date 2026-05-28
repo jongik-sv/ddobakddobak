@@ -17,7 +17,7 @@ SESSION="ddobak"
 RAILS_PORT="${RAILS_PORT:-13323}"
 SIDECAR_PORT="${SIDECAR_PORT:-13324}"
 
-RAILS_CMD="bin/rails server -p ${RAILS_PORT}"
+RAILS_CMD="SERVER_MODE=true bin/rails server -p ${RAILS_PORT} -b 0.0.0.0"
 SIDECAR_CMD="uv run uvicorn app.main:app --host 0.0.0.0 --port ${SIDECAR_PORT}"
 
 require_tmux() {

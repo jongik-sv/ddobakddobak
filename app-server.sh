@@ -21,7 +21,8 @@ SESSION="ddobak-app"
 APP_DATA_DIR="${APP_DATA_DIR:-$HOME/Library/Application Support/com.ddobakddobak.app}"
 RAILS_PORT="${RAILS_PORT:-13323}"
 SIDECAR_PORT="${SIDECAR_PORT:-13324}"
-HOST_BIND="${HOST_BIND:-127.0.0.1}"
+RAILS_BIND="${RAILS_BIND:-0.0.0.0}"
+SIDECAR_BIND="${SIDECAR_BIND:-127.0.0.1}"
 
 BACKEND_DIR="$APP_DATA_DIR/backend"
 SIDECAR_DIR="$APP_DATA_DIR/sidecar"
@@ -91,8 +92,8 @@ start_backend() {
   fi
 
   local rails_cmd sidecar_cmd
-  rails_cmd="RAILS_ENV=production DB_PATH=\"$DB_PATH\" AUDIO_DIR=\"$AUDIO_DIR\" RAILS_LOG_TO_STDOUT=1 SOLID_QUEUE_IN_PUMA=1 bin/rails server -p $RAILS_PORT -b $HOST_BIND"
-  sidecar_cmd="MODELS_DIR=\"$MODELS_DIR\" SPEAKER_DBS_DIR=\"$SPEAKER_DBS_DIR\" uv run uvicorn app.main:app --host $HOST_BIND --port $SIDECAR_PORT"
+  rails_cmd="SERVER_MODE=true RAILS_ENV=production DB_PATH=\"$DB_PATH\" AUDIO_DIR=\"$AUDIO_DIR\" RAILS_LOG_TO_STDOUT=1 SOLID_QUEUE_IN_PUMA=1 bin/rails server -p $RAILS_PORT -b $RAILS_BIND"
+  sidecar_cmd="MODELS_DIR=\"$MODELS_DIR\" SPEAKER_DBS_DIR=\"$SPEAKER_DBS_DIR\" uv run uvicorn app.main:app --host $SIDECAR_BIND --port $SIDECAR_PORT"
 
   echo "[info] tmux 세션 '$SESSION' 생성 (production / app_data)"
   tmux new-session -d -s "$SESSION" -n rails -c "$BACKEND_DIR"
@@ -101,8 +102,8 @@ start_backend() {
   tmux new-window -t "$SESSION" -n sidecar -c "$SIDECAR_DIR"
   tmux send-keys -t "$SESSION:sidecar" "$sidecar_cmd" Enter
 
-  echo "[info]   - rails   : http://$HOST_BIND:$RAILS_PORT (RAILS_ENV=production, DB=$DB_PATH)"
-  echo "[info]   - sidecar : http://$HOST_BIND:$SIDECAR_PORT"
+  echo "[info]   - rails   : http://$RAILS_BIND:$RAILS_PORT (RAILS_ENV=production, DB=$DB_PATH)"
+  echo "[info]   - sidecar : http://$SIDECAR_BIND:$SIDECAR_PORT"
   echo "[info] 로그 확인: ./app-server.sh attach  (Ctrl+b n / p 로 윈도우 이동)"
 }
 

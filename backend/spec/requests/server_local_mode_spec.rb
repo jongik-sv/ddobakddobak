@@ -34,6 +34,12 @@ RSpec.describe "Server/Local mode branching", type: :request do
       expect(response).to have_http_status(:unauthorized)
     end
 
+    # LAN(0.0.0.0) 바인딩 안전성 보장: 비-loopback 원격 IP는 JWT 없이 거부된다.
+    it "비-loopback 원격 IP는 JWT 없이 거부된다" do
+      get "/api/v1/meetings", headers: {}, env: { "REMOTE_ADDR" => "192.168.0.50" }
+      expect(response).to have_http_status(:unauthorized)
+    end
+
     it "allows remote API requests with valid JWT" do
       post "/auth/login", params: { user: { email: user.email, password: password } }, as: :json
       token = response.parsed_body["access_token"]

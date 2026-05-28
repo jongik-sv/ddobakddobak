@@ -651,7 +651,7 @@ fn start_services(app: AppHandle) -> Result<(), String> {
         log::info!("Starting Rails: ruby={} work={}", ruby_path, work.join("backend").display());
 
         let mut backend = tool_command(ruby_path, &path)
-            .args(["bin/rails", "server", "-p", "13323", "-b", "127.0.0.1"])
+            .args(["bin/rails", "server", "-p", "13323", "-b", "0.0.0.0"])
             .current_dir(work.join("backend"))
             .env("RAILS_ENV", "production")
             .env("DB_PATH", db_path.to_str().unwrap_or_default())
