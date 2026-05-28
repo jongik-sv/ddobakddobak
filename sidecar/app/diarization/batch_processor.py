@@ -9,11 +9,12 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from app.audio_constants import (
+    SAMPLE_RATE as _SAMPLE_RATE,
+    BYTES_PER_SAMPLE as _BYTES_PER_SAMPLE,
+    SEC_TO_MS as _SEC_TO_MS,
+)
 from app.stt.base import TranscriptSegment
-
-_SAMPLE_RATE = 16000
-_BYTES_PER_SAMPLE = 2
-_SEC_TO_MS = 1000
 
 # 배치 처리용 임계값 (전체 오디오 → 안정적 embedding)
 _SIMILARITY_THRESHOLD = 0.40

@@ -18,11 +18,14 @@ from app.stt.base import TranscriptSegment
 if TYPE_CHECKING:
     import numpy as np
 
+from app.audio_constants import (
+    SAMPLE_RATE as _SAMPLE_RATE,
+    BYTES_PER_SAMPLE as _BYTES_PER_SAMPLE,
+    SEC_TO_MS as _SEC_TO_MS,
+    MIN_AUDIO_BYTES as _MIN_AUDIO_BYTES,
+)
+
 _PIPELINE_MODEL = "pyannote/speaker-diarization-3.1"
-_SAMPLE_RATE = 16000
-_BYTES_PER_SAMPLE = 2  # Int16
-_SEC_TO_MS = 1000
-_MIN_AUDIO_BYTES = _SAMPLE_RATE * _BYTES_PER_SAMPLE  # 1초 미만은 불안정
 
 # 임계값 상향: 0.10이 너무 낮아 다른 화자도 같은 화자로 매칭되던 문제 수정
 _SIMILARITY_THRESHOLD = 0.35   # 이 이상이면 기존 화자로 매칭 (기존 0.10 → 0.35)

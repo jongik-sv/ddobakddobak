@@ -16,10 +16,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from app.audio_constants import SAMPLE_RATE as _SAMPLE_RATE, SEC_TO_MS as _SEC_TO_MS
 from app.stt.base import TranscriptSegment
-
-_SAMPLE_RATE = 16000
-_SEC_TO_MS = 1000
 
 
 class WhisperXBatchProcessor:

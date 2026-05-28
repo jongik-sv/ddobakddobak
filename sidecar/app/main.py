@@ -37,8 +37,7 @@ from app.stt import lang_utils
 from app.stt.factory import create_stt_adapter
 
 # settings.yaml에서 오디오 최소 청크 길이 로드
-_SAMPLE_RATE = 16000
-_BYTES_PER_SAMPLE = 2  # Int16
+from app.audio_constants import SAMPLE_RATE as _SAMPLE_RATE, BYTES_PER_SAMPLE as _BYTES_PER_SAMPLE
 
 def _load_min_chunk_sec() -> float:
     """settings.yaml → config.yaml 순으로 min_chunk_sec를 로드한다."""
