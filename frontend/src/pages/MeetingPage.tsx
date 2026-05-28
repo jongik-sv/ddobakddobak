@@ -22,6 +22,7 @@ import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
 import { useUiStore } from '../stores/uiStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
 import { getBookmarks, deleteBookmark } from '../api/bookmarks'
 import type { Bookmark as BookmarkType } from '../api/bookmarks'
@@ -819,54 +820,24 @@ export default function MeetingPage() {
 
       {/* STT 재생성 확인 다이얼로그 */}
       {showSttConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-lg p-6 max-w-sm w-full mx-4">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">STT 재생성</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              기존 트랜스크립트와 회의록이 모두 삭제되고, 저장된 오디오로 처음부터 다시 생성됩니다. 계속하시겠습니까?
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowSttConfirm(false)}
-                className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleRegenerateStt}
-                className="px-3 py-1.5 text-sm rounded-md bg-amber-500 text-white hover:bg-amber-600"
-              >
-                재생성
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="STT 재생성"
+          message="기존 트랜스크립트와 회의록이 모두 삭제되고, 저장된 오디오로 처음부터 다시 생성됩니다. 계속하시겠습니까?"
+          confirmLabel="재생성"
+          onConfirm={handleRegenerateStt}
+          onCancel={() => setShowSttConfirm(false)}
+        />
       )}
 
       {/* 회의록 재생성 확인 다이얼로그 */}
       {showNotesConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-lg p-6 max-w-sm w-full mx-4">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">회의록 재생성</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              기존 회의록을 삭제하고 전체 트랜스크립트를 바탕으로 처음부터 다시 생성합니다. 계속하시겠습니까?
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowNotesConfirm(false)}
-                className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleRegenerateNotes}
-                className="px-3 py-1.5 text-sm rounded-md bg-amber-500 text-white hover:bg-amber-600"
-              >
-                재생성
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="회의록 재생성"
+          message="기존 회의록을 삭제하고 전체 트랜스크립트를 바탕으로 처음부터 다시 생성합니다. 계속하시겠습니까?"
+          confirmLabel="재생성"
+          onConfirm={handleRegenerateNotes}
+          onCancel={() => setShowNotesConfirm(false)}
+        />
       )}
 
       {/* 회의 정보 수정 다이얼로그 */}
