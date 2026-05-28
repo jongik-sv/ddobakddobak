@@ -291,6 +291,9 @@ export default function SettingsContent() {
 
   const selectedLanguages = useAppSettingsStore((s) => s.selectedLanguages)
   const toggleLanguage = useAppSettingsStore((s) => s.toggleLanguage)
+  const languageMode = useAppSettingsStore((s) => s.languageMode)
+  const setLanguageMode = useAppSettingsStore((s) => s.setLanguageMode)
+  const setSingleLanguage = useAppSettingsStore((s) => s.setSingleLanguage)
 
   const audioOverrides = useAppSettingsStore((s) => s.audioOverrides)
   const setAudioOverride = useAppSettingsStore((s) => s.setAudioOverride)
@@ -406,34 +409,79 @@ export default function SettingsContent() {
       <div className="rounded-lg border bg-card p-6">
         <h2 className="text-lg font-semibold mb-1">회의 언어</h2>
         <p className="text-sm text-muted-foreground mb-4">
-          회의에서 사용되는 언어를 선택합니다. 여러 언어를 동시에 선택할 수 있습니다.
+          회의에서 사용하는 언어 인식 방식을 선택합니다.
         </p>
 
+        {/* 모드 라디오 */}
         <div className="space-y-2">
-          {LANGUAGES.map((lang) => {
-            const checked = selectedLanguages.includes(lang.code)
-            const isOnly = checked && selectedLanguages.length === 1
-            return (
-              <label
-                key={lang.code}
-                className="flex items-center gap-3 rounded-md border p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+          <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer hover:bg-muted/50 transition-colors">
+            <input
+              type="radio"
+              name="language_mode"
+              checked={languageMode === 'single'}
+              onChange={() => setLanguageMode('single')}
+              className="accent-blue-600 w-4 h-4 mt-0.5"
+            />
+            <span className="text-sm">
+              <span className="font-medium">단일 언어 (정확) — 권장</span>
+              <span className="block text-xs text-muted-foreground">한 가지 언어로 고정 인식. 인식 정확도가 가장 높습니다.</span>
+            </span>
+          </label>
+
+          {languageMode === 'single' && (
+            <div className="ml-7">
+              <select
+                value={selectedLanguages[0] ?? 'ko'}
+                onChange={(e) => setSingleLanguage(e.target.value)}
+                className="rounded-md border px-3 py-2 text-sm"
               >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  disabled={isOnly}
-                  onChange={() => toggleLanguage(lang.code)}
-                  className="accent-blue-600 w-4 h-4"
-                />
-                <span className="text-sm font-medium">{lang.label}</span>
-                <span className="text-xs text-muted-foreground">({lang.code})</span>
-              </label>
-            )
-          })}
+                {LANGUAGES.map((lang) => (
+                  <option key={lang.code} value={lang.code}>{lang.label} ({lang.code})</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer hover:bg-muted/50 transition-colors">
+            <input
+              type="radio"
+              name="language_mode"
+              checked={languageMode === 'multi'}
+              onChange={() => setLanguageMode('multi')}
+              className="accent-blue-600 w-4 h-4 mt-0.5"
+            />
+            <span className="text-sm">
+              <span className="font-medium">다국어 자동감지</span>
+              <span className="block text-xs text-muted-foreground">선택한 언어들을 자동 감지. 목록 밖 언어는 걸러냅니다.</span>
+            </span>
+          </label>
+
+          {languageMode === 'multi' && (
+            <div className="ml-7 space-y-2">
+              {LANGUAGES.map((lang) => {
+                const checked = selectedLanguages.includes(lang.code)
+                const isOnly = checked && selectedLanguages.length === 1
+                return (
+                  <label key={lang.code} className="flex items-center gap-3 rounded-md border p-2 cursor-pointer hover:bg-muted/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={isOnly}
+                      onChange={() => toggleLanguage(lang.code)}
+                      className="accent-blue-600 w-4 h-4"
+                    />
+                    <span className="text-sm font-medium">{lang.label}</span>
+                    <span className="text-xs text-muted-foreground">({lang.code})</span>
+                  </label>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         <p className="mt-3 text-xs text-muted-foreground">
-          선택한 언어의 음성만 인식됩니다. 최소 1개 이상 선택해야 합니다.
+          ℹ️ 한국어로만 진행하는 회의는 <strong>단일 언어(한국어)</strong>를 선택하면 인식 정확도가 더 높습니다.
+          다국어 모드는 다른 언어가 섞여 인식될 수 있습니다.
         </p>
       </div>
 
