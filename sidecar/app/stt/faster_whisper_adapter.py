@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 from typing import AsyncIterator
 
+from app.stt import lang_utils
 from app.stt.audio_utils import is_hallucination, pcm_bytes_to_float32
 from app.stt.base import SttAdapter, TranscriptSegment
 
@@ -52,8 +53,14 @@ class FasterWhisperAdapter(SttAdapter):
         self._model = await loop.run_in_executor(None, _load)
         self._is_loaded = True
 
-    async def transcribe(self, audio_chunk: bytes, languages: list[str] | None = None) -> list[TranscriptSegment]:
-        """PCM 오디오 청크를 텍스트 세그먼트로 변환한다."""
+    async def transcribe(
+        self, audio_chunk: bytes, languages: list[str] | None = None, mode: str = "single"
+    ) -> list[TranscriptSegment]:
+        """PCM 오디오 청크를 텍스트 세그먼트로 변환한다.
+
+        single 모드: languages[0]을 ISO 코드로 인식 언어 강제.
+        multi 모드: 자동감지 후 info.language를 세그먼트에 기록(필터는 main에서).
+        """
         if not self._is_loaded:
             raise RuntimeError(
                 "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
@@ -63,32 +70,34 @@ class FasterWhisperAdapter(SttAdapter):
         if len(audio_array) == 0:
             return []
 
-        raw_segments = await self._run_inference(audio_array, languages=languages)
+        raw_segments = await self._run_inference(audio_array, languages=languages, mode=mode)
         return [
             seg for seg in raw_segments
             if seg.text.strip() and not is_hallucination(seg.text, languages)
         ]
 
-    async def _run_inference(self, audio_array, languages: list[str] | None = None) -> list[TranscriptSegment]:
+    async def _run_inference(self, audio_array, languages, mode) -> list[TranscriptSegment]:
         """faster-whisper 추론 실행 (blocking → executor 비동기화)."""
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._infer, audio_array, languages)
+        return await loop.run_in_executor(None, self._infer, audio_array, languages, mode)
 
-    def _infer(self, audio_array, languages: list[str] | None = None) -> list[TranscriptSegment]:
+    def _infer(self, audio_array, languages, mode) -> list[TranscriptSegment]:
         """동기 faster-whisper 추론."""
-        language = languages[0] if languages and len(languages) == 1 else None
-        segments_iter, _info = self._model.transcribe(
+        engine_lang = lang_utils.iso_force_lang(languages, mode)  # ISO or None
+        segments_iter, info = self._model.transcribe(
             audio_array,
-            language=language,
+            language=engine_lang,
             vad_filter=True,
         )
+        detected = getattr(info, "language", None)
         results = []
         for seg in segments_iter:
+            seg_lang = detected if mode == "multi" else (languages[0] if languages else "ko")
             results.append(TranscriptSegment(
                 text=seg.text.strip(),
                 started_at_ms=int(seg.start * 1000),
                 ended_at_ms=int(seg.end * 1000),
-                language=language or "auto",
+                language=seg_lang or "ko",
                 confidence=seg.avg_logprob if seg.avg_logprob else 0.0,
             ))
         return results
