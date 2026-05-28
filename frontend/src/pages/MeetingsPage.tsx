@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FolderClosed, FolderInput, Pencil, Trash2, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Search, X, Filter, Plus, UserPlus } from 'lucide-react'
+import { FolderClosed, FolderInput, Pencil, Trash2, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Search, X, Filter, Plus, UserPlus, Upload } from 'lucide-react'
 import { Tooltip } from '../components/ui/Tooltip'
 import { createMeeting, deleteMeeting, stopMeeting, updateMeeting, uploadAudioFile } from '../api/meetings'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { useMeetingTemplateStore } from '../stores/meetingTemplateStore'
-import { IS_TAURI, BREAKPOINTS } from '../config'
+import { IS_TAURI, IS_MOBILE, BREAKPOINTS } from '../config'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import type { Meeting } from '../api/meetings'
@@ -387,7 +387,9 @@ function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated }: Upl
   }
 
   const handleDropZoneClick = () => {
-    if (IS_TAURI) {
+    // 데스크탑 Tauri만 네이티브 picker 사용. 모바일(Tauri 안드로이드 포함)은
+    // 웹뷰 file input 사용 — content:// URI readFile 위험 회피, 시스템 선택기 신뢰.
+    if (IS_TAURI && !IS_MOBILE) {
       handleTauriFileSelect()
     } else {
       document.getElementById('audio-file-input')?.click()
@@ -747,6 +749,15 @@ export default function MeetingsPage() {
                   aria-label="회의 참여"
                 >
                   <UserPlus className="w-5 h-5" />
+                </button>
+                <button
+                  data-testid="mobile-upload-audio"
+                  onClick={() => setShowUploadModal(true)}
+                  className="p-2 rounded-md hover:bg-muted transition-colors"
+                  title="오디오 파일 업로드"
+                  aria-label="오디오 업로드"
+                >
+                  <Upload className="w-5 h-5" />
                 </button>
               </>
             )}
