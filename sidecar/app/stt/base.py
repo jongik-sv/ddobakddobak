@@ -70,9 +70,11 @@ class SttAdapter(ABC):
         """
         ...
 
-    @abstractmethod
     async def transcribe_file(self, file_path: str) -> list[TranscriptSegment]:
         """파일 전체 변환 (녹음 원본 후처리).
+
+        기본 구현: 파일을 읽어 transcribe()에 위임한다.
+        다른 처리가 필요한 어댑터는 이 메서드를 override 한다.
 
         Args:
             file_path: 오디오 파일 경로 (wav, webm 등)
@@ -80,4 +82,6 @@ class SttAdapter(ABC):
         Returns:
             TranscriptSegment 리스트 (시간 순 정렬)
         """
-        ...
+        with open(file_path, "rb") as f:
+            audio_bytes = f.read()
+        return await self.transcribe(audio_bytes)

@@ -318,6 +318,10 @@ def _get_meeting_diarizer(meeting_id: int | None, diarization_config: dict | Non
     return diarizers[meeting_id]
 
 
+def _segments_to_response(segments) -> list[SegmentResponse]:
+    return [SegmentResponse(**dataclasses.asdict(seg)) for seg in segments]
+
+
 @app.post("/transcribe", response_model=TranscribeResponse)
 async def transcribe(request: TranscribeRequest) -> TranscribeResponse:
     """배치 STT 엔드포인트.
@@ -366,7 +370,7 @@ async def transcribe(request: TranscribeRequest) -> TranscribeResponse:
 
     logger.info("[STT] /transcribe 완료 (%.1f초, %d 세그먼트)", time.monotonic() - t0, len(segments))
     return TranscribeResponse(
-        segments=[SegmentResponse(**dataclasses.asdict(seg)) for seg in segments]
+        segments=_segments_to_response(segments)
     )
 
 
@@ -463,7 +467,7 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
 
     logger.info("[STT] /transcribe-file 완료 (%.1f초, %d 세그먼트)", time.monotonic() - t0, len(segments))
     return TranscribeFileResponse(
-        segments=[SegmentResponse(**dataclasses.asdict(seg)) for seg in segments],
+        segments=_segments_to_response(segments),
         total_duration_ms=total_duration_ms,
     )
 

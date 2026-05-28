@@ -113,10 +113,4 @@ class Qwen3Adapter(SttAdapter):
             for seg in segments:
                 yield seg
 
-    async def transcribe_file(self, file_path: str) -> list[TranscriptSegment]:
-        """오디오 파일 전체를 변환한다."""
-        with open(file_path, "rb") as f:
-            audio_bytes = f.read()
-        return await self.transcribe(audio_bytes)
-
 
