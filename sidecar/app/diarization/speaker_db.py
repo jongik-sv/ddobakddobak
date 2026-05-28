@@ -1,7 +1,6 @@
-"""화자 임베딩 DB 영속화(JSON) 및 임베딩 유효성 검증.
+"""화자 임베딩 DB — 매칭 상태(embeddings/names/next_num)의 보관 및 JSON 영속화.
 
-SpeakerDiarizer의 매칭 상태(embeddings/names/next_num)를 디스크에 저장/복원하는
-순수 저장소. 매칭 알고리즘은 SpeakerDiarizer가 보유한다.
+SpeakerDiarizer는 이 객체에 매칭 상태를 위임하고, 매칭 알고리즘만 보유한다.
 """
 from __future__ import annotations
 
@@ -27,17 +26,25 @@ def is_valid_embedding(emb: Any) -> bool:
 
 
 class SpeakerDB:
-    """화자 임베딩/이름/번호를 JSON 파일에 영속화한다."""
+    """화자 임베딩/이름/번호를 보관하고 JSON 파일에 영속화한다.
+
+    - embeddings: {speaker_id: [emb0, emb1, ...]}  (각 emb는 L2-정규화된 np.ndarray)
+    - names: {speaker_id: 표시이름}
+    - next_num: 다음 신규 화자 번호
+    """
 
     def __init__(self, db_path: Path | None) -> None:
         self.path = db_path
+        self.embeddings: dict[str, list] = {}
+        self.names: dict[str, str] = {}
+        self.next_num: int = 1
 
-    def load(self) -> tuple[int, dict[str, str], dict[str, list]] | None:
-        """저장된 (next_num, names, embeddings)를 복원한다. 파일이 없거나 실패 시 None."""
+    def load(self) -> None:
+        """저장 파일에서 상태를 복원한다 (파일이 없거나 실패 시 그대로 둠)."""
         import numpy as np
 
         if not self.path or not self.path.exists():
-            return None
+            return
         try:
             with open(self.path, encoding="utf-8") as f:
                 data = json.load(f)
@@ -59,14 +66,14 @@ class SpeakerDB:
                     embeddings[label] = valid_embs
             # embedding이 없는 화자의 이름도 제거
             valid_ids = set(embeddings.keys())
-            names = {k: v for k, v in names.items() if k in valid_ids}
-            logger.info(f"[diarizer] 화자 DB 로드: {len(embeddings)}명 복원 ({self.path})")
-            return next_num, names, embeddings
+            self.next_num = next_num
+            self.embeddings = embeddings
+            self.names = {k: v for k, v in names.items() if k in valid_ids}
+            logger.info(f"[diarizer] 화자 DB 로드: {len(self.embeddings)}명 복원 ({self.path})")
         except Exception as e:
             logger.exception(f"[diarizer] 화자 DB 로드 실패 (빈 DB로 시작): {e}")
-            return None
 
-    def save(self, next_num: int, names: dict[str, str], embeddings: dict[str, list]) -> None:
+    def save(self) -> None:
         if not self.path:
             return
         try:
@@ -76,17 +83,21 @@ class SpeakerDB:
                     base64.b64encode(emb.astype("float32").tobytes()).decode()
                     for emb in emb_list
                 ]
-                for label, emb_list in embeddings.items()
+                for label, emb_list in self.embeddings.items()
             }
             with open(self.path, "w", encoding="utf-8") as f:
                 json.dump(
-                    {"next_num": next_num, "speakers": speakers, "names": names},
+                    {"next_num": self.next_num, "speakers": speakers, "names": self.names},
                     f,
                     ensure_ascii=False,
                 )
         except Exception as e:
             logger.exception(f"[diarizer] 화자 DB 저장 실패: {e}")
 
-    def delete(self) -> None:
+    def reset(self) -> None:
+        """메모리 상태와 저장 파일을 모두 초기화한다."""
+        self.embeddings.clear()
+        self.names.clear()
+        self.next_num = 1
         if self.path and self.path.exists():
             self.path.unlink()

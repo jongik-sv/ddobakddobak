@@ -65,10 +65,7 @@ class SpeakerDiarizer:
         self._similarity_threshold = similarity_threshold if similarity_threshold is not None else _SIMILARITY_THRESHOLD
         self._merge_threshold = merge_threshold if merge_threshold is not None else _MERGE_THRESHOLD
         self._max_embeddings = max_embeddings_per_speaker if max_embeddings_per_speaker is not None else _MAX_EMBEDDINGS_PER_SPEAKER
-        # 화자 DB: {speaker_id: [emb0, emb1, ...]}  (각 emb는 L2-정규화된 np.ndarray)
-        self._speaker_embeddings: dict[str, list[Any]] = {}
-        self._speaker_names: dict[str, str] = {}
-        self._next_num: int = 1
+        # 매칭 상태(embeddings/names/next_num)는 SpeakerDB가 보관·영속화한다
         self._db_path = Path(db_path) if db_path else None
         self._db = SpeakerDB(self._db_path)
         if self._is_loaded and self._db_path:
@@ -128,41 +125,36 @@ class SpeakerDiarizer:
     # ── 화자 DB 영속화 ────────────────────────────────────────────────────────
 
     def _load_db(self) -> None:
-        loaded = self._db.load()
-        if loaded is not None:
-            self._next_num, self._speaker_names, self._speaker_embeddings = loaded
+        self._db.load()
 
     def _save_db(self) -> None:
-        self._db.save(self._next_num, self._speaker_names, self._speaker_embeddings)
+        self._db.save()
 
     def _fallback_speaker(self) -> str:
         """기존 화자가 있으면 마지막 화자를, 없으면 새 화자 번호를 발급한다."""
-        if self._speaker_embeddings:
-            return list(self._speaker_embeddings.keys())[-1]
-        new_id = f"화자 {self._next_num}"
-        self._next_num += 1
+        if self._db.embeddings:
+            return list(self._db.embeddings.keys())[-1]
+        new_id = f"화자 {self._db.next_num}"
+        self._db.next_num += 1
         return new_id
 
     # ── 화자 이름 관리 ────────────────────────────────────────────────────────
 
     def get_speakers(self) -> list[dict]:
         return [
-            {"id": label, "name": self._speaker_names.get(label, label)}
-            for label in self._speaker_embeddings
+            {"id": label, "name": self._db.names.get(label, label)}
+            for label in self._db.embeddings
         ]
 
     def rename_speaker(self, speaker_id: str, name: str) -> bool:
-        if speaker_id not in self._speaker_embeddings:
+        if speaker_id not in self._db.embeddings:
             return False
-        self._speaker_names[speaker_id] = name
+        self._db.names[speaker_id] = name
         self._save_db()
         return True
 
     def reset_db(self) -> None:
-        self._speaker_embeddings.clear()
-        self._speaker_names.clear()
-        self._next_num = 1
-        self._db.delete()
+        self._db.reset()
         logger.info(f"[diarizer] 화자 DB 초기화 완료 ({self._db_path})")
 
     # ── 화자 분리 ─────────────────────────────────────────────────────────────
@@ -230,7 +222,7 @@ class SpeakerDiarizer:
 
     def _resolve_merged(self, speaker_id: str) -> str:
         """병합으로 삭제된 화자 ID를 현재 유효한 ID로 대체한다."""
-        return speaker_id if speaker_id in self._speaker_embeddings else "화자 1"
+        return speaker_id if speaker_id in self._db.embeddings else "화자 1"
 
     def _match_or_create(self, embedding: Any, force_match: bool = False) -> str:
         """multi-vector 최대 유사도로 기존 화자 매칭, 없으면 새 화자 생성.
@@ -251,7 +243,7 @@ class SpeakerDiarizer:
         best_id: str | None = None
         best_sim = -1.0
         all_sims: dict[str, float] = {}
-        for spk_id, emb_list in self._speaker_embeddings.items():
+        for spk_id, emb_list in self._db.embeddings.items():
             # NaN-safe: 유효한 embedding만 비교
             valid_sims = []
             for e in emb_list:
@@ -273,7 +265,7 @@ class SpeakerDiarizer:
         )
 
         # 최대 화자 수에 도달하면 강제 매칭
-        if not matched and len(self._speaker_embeddings) >= _MAX_SPEAKERS:
+        if not matched and len(self._db.embeddings) >= _MAX_SPEAKERS:
             if best_id is not None:
                 matched = True
                 action = f"force-max-speakers:{best_id}"
@@ -282,14 +274,14 @@ class SpeakerDiarizer:
                 )
 
         if matched:
-            self._speaker_embeddings[best_id].append(emb_norm)
-            if len(self._speaker_embeddings[best_id]) > self._max_embeddings:
-                self._speaker_embeddings[best_id].pop(0)
+            self._db.embeddings[best_id].append(emb_norm)
+            if len(self._db.embeddings[best_id]) > self._max_embeddings:
+                self._db.embeddings[best_id].pop(0)
             return best_id
 
-        new_id = f"화자 {self._next_num}"
-        self._next_num += 1
-        self._speaker_embeddings[new_id] = [emb_norm]
+        new_id = f"화자 {self._db.next_num}"
+        self._db.next_num += 1
+        self._db.embeddings[new_id] = [emb_norm]
         return new_id
 
     def _merge_similar_speakers(self) -> None:
@@ -299,30 +291,30 @@ class SpeakerDiarizer:
         merged = True
         while merged:
             merged = False
-            ids = list(self._speaker_embeddings.keys())
+            ids = list(self._db.embeddings.keys())
             for i in range(len(ids)):
                 for j in range(i + 1, len(ids)):
                     a, b = ids[i], ids[j]
-                    if a not in self._speaker_embeddings or b not in self._speaker_embeddings:
+                    if a not in self._db.embeddings or b not in self._db.embeddings:
                         continue
                     all_pair_sims = [
                         float(np.dot(ea, eb))
-                        for ea in self._speaker_embeddings[a]
-                        for eb in self._speaker_embeddings[b]
+                        for ea in self._db.embeddings[a]
+                        for eb in self._db.embeddings[b]
                     ]
                     # NaN 제거
                     valid_pair_sims = [s for s in all_pair_sims if not (np.isnan(s) or np.isinf(s))]
                     max_sim = max(valid_pair_sims) if valid_pair_sims else -1.0
                     if max_sim >= self._merge_threshold:
                         # b → a 흡수
-                        self._speaker_embeddings[a].extend(self._speaker_embeddings.pop(b))
-                        self._speaker_embeddings[a] = (
-                            self._speaker_embeddings[a][-self._max_embeddings:]
+                        self._db.embeddings[a].extend(self._db.embeddings.pop(b))
+                        self._db.embeddings[a] = (
+                            self._db.embeddings[a][-self._max_embeddings:]
                         )
-                        if b in self._speaker_names and a not in self._speaker_names:
-                            self._speaker_names[a] = self._speaker_names.pop(b)
+                        if b in self._db.names and a not in self._db.names:
+                            self._db.names[a] = self._db.names.pop(b)
                         else:
-                            self._speaker_names.pop(b, None)
+                            self._db.names.pop(b, None)
                         logger.info(f"[diarizer] merge: {b} → {a} (sim={max_sim:.3f})")
                         merged = True
                         break
