@@ -13,7 +13,7 @@ export function ShareButton({ meetingId }: ShareButtonProps) {
   const isSharing = shareCode !== null
 
   const [copied, setCopied] = useState(false)
-  const copyTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   useEffect(() => () => clearTimeout(copyTimerRef.current), [])
 

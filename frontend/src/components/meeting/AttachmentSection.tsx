@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Plus, Link, Upload } from 'lucide-react'
+import { Link, Upload } from 'lucide-react'
 import { useAttachments } from '../../hooks/useAttachments'
 import { AttachmentCard } from './AttachmentCard'
 import { AddFileDialog } from './AddFileDialog'

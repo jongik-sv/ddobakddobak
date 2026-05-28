@@ -4,15 +4,6 @@ import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
 import type { FolderNode } from '../../api/folders'
 
-function findFolder(folders: FolderNode[], id: number): FolderNode | null {
-  for (const f of folders) {
-    if (f.id === id) return f
-    const found = findFolder(f.children, id)
-    if (found) return found
-  }
-  return null
-}
-
 function buildPath(folders: FolderNode[], id: number): { id: number; name: string }[] {
   // 부모 경로를 재귀적으로 구성
   for (const f of folders) {
