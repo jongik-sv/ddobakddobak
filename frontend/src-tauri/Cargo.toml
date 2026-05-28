@@ -37,6 +37,8 @@ tokio-tungstenite = "0.24"
 # reqwest 0.12는 HTTP/1을 항상 포함하므로 별도 feature 불필요 (http2만 opt-in).
 reqwest = { version = "0.12", default-features = false, features = ["stream"] }
 futures-util = "0.3"
+mdns-sd = "0.11"
+hostname = "0.4"
 
 # 데스크톱 전용: GUI PATH 보정 + 네이티브 오디오 캡처 (모바일은 webview getUserMedia 사용)
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
@@ -47,3 +49,7 @@ rubato = "0.15"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 screencapturekit = "1.5"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+ndk-context = "0.1"

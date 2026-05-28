@@ -2,6 +2,7 @@
 mod audio;
 
 mod bridge;
+mod mdns;
 
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -881,6 +882,7 @@ pub fn run() {
             scan_lan_servers,
             bridge::bridge_port,
             bridge::set_bridge_target,
+            mdns::mdns_browse,
         ]);
 
     builder
@@ -890,6 +892,18 @@ pub fn run() {
                     .level(log::LevelFilter::Info)
                     .build(),
             )?;
+
+            // 데스크톱: Rails(13323)를 _ddobak._tcp 로 LAN에 광고.
+            // ServiceDaemon은 manage로 보관해 앱 수명 동안 살려둔다(drop 시 unregister).
+            #[cfg(desktop)]
+            {
+                match mdns::advertise(13323) {
+                    Ok(daemon) => {
+                        app.manage(daemon);
+                    }
+                    Err(e) => log::warn!("mDNS advertise 실패(디스커버리만 영향): {e}"),
+                }
+            }
 
             // 모바일: 인앱 루프백 리버스 프록시 브릿지 기동.
             #[cfg(mobile)]
