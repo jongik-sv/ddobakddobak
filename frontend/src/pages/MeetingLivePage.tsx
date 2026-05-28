@@ -42,6 +42,7 @@ import { MemoHeader } from '../components/meeting/MemoHeader'
 import { BookmarkPopover } from '../components/meeting/BookmarkPopover'
 import { DesktopRecordControls } from '../components/meeting/DesktopRecordControls'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { Dialog } from '../components/ui/Dialog'
 
 type MeetingStatus = 'idle' | 'recording' | 'stopped'
 
@@ -931,22 +932,25 @@ export default function MeetingLivePage() {
 
       {/* 녹음 중 뒤로가기 차단 다이얼로그 */}
       {showLeaveBlock && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">녹음 진행 중</h3>
-            <p className="text-sm text-gray-600 mb-5">
-              녹음 중에는 페이지를 떠날 수 없습니다. 먼저 회의를 종료해주세요.
-            </p>
-            <div className="flex justify-end">
-              <button
-                onClick={() => setShowLeaveBlock(false)}
-                className="px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-              >
-                확인
-              </button>
-            </div>
+        <Dialog
+          onClose={() => setShowLeaveBlock(false)}
+          closeOnBackdrop={false}
+          closeOnEsc={false}
+          className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4"
+        >
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">녹음 진행 중</h3>
+          <p className="text-sm text-gray-600 mb-5">
+            녹음 중에는 페이지를 떠날 수 없습니다. 먼저 회의를 종료해주세요.
+          </p>
+          <div className="flex justify-end">
+            <button
+              onClick={() => setShowLeaveBlock(false)}
+              className="px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+            >
+              확인
+            </button>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {/* 초기화 확인 다이얼로그 */}
