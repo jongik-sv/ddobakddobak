@@ -27,16 +27,19 @@ export function useTranscription(meetingId: number): UseTranscriptionResult {
   // 설정을 ref에 캐시하여 매 청크마다 새 객체 생성 방지
   const diarizationConfigRef = useRef<Record<string, unknown>>({})
   const languagesRef = useRef<string[]>([])
+  const modeRef = useRef<string>('single')
 
   // 초기값 설정 + subscribe를 하나의 effect로 통합
   useEffect(() => {
     const state = useAppSettingsStore.getState()
     diarizationConfigRef.current = buildDiarizationConfig(state)
     languagesRef.current = state.selectedLanguages
+    modeRef.current = state.languageMode
 
     return useAppSettingsStore.subscribe((s) => {
       diarizationConfigRef.current = buildDiarizationConfig(s)
       languagesRef.current = s.selectedLanguages
+      modeRef.current = s.languageMode
     })
   }, [])
 
@@ -57,7 +60,7 @@ export function useTranscription(meetingId: number): UseTranscriptionResult {
 
   const send = useCallback((source: 'mic' | 'system', pcm: Int16Array, meta?: ChunkMeta) => {
     if (subscriptionRef.current) {
-      sendAudioChunk(subscriptionRef.current, pcm, meta, diarizationConfigRef.current, languagesRef.current, source)
+      sendAudioChunk(subscriptionRef.current, pcm, meta, diarizationConfigRef.current, languagesRef.current, source, modeRef.current)
     }
   }, [])
 

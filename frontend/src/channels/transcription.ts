@@ -207,6 +207,7 @@ export function sendAudioChunk(
   diarizationConfig?: Record<string, unknown>,
   languages?: string[],
   audioSource?: 'mic' | 'system',
+  mode?: string,
 ): void {
   const bytes = new Uint8Array(pcm.buffer)
   const base64 = uint8ArrayToBase64(bytes)
@@ -223,6 +224,9 @@ export function sendAudioChunk(
   }
   if (audioSource) {
     payload.audio_source = audioSource
+  }
+  if (mode) {
+    payload.mode = mode
   }
   subscription.perform('audio_chunk', payload)
 }
