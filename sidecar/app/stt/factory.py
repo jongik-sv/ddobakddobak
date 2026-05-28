@@ -1,10 +1,13 @@
 """STT Factory: STT_ENGINE 환경 변수에 따라 Adapter 인스턴스를 생성한다."""
 from __future__ import annotations
 
+import logging
 import platform
 import sys
 
 from app.stt.base import SttAdapter
+
+logger = logging.getLogger(__name__)
 
 _KNOWN_ENGINES: frozenset[str] = frozenset(
     {"qwen3_asr_4bit", "qwen3_asr_6bit", "qwen3_asr_8bit",
@@ -51,7 +54,7 @@ def create_stt_adapter(engine: str | None = None) -> SttAdapter:
     # auto: 플랫폼 자동 감지
     if engine == "auto":
         engine = auto_select_engine()
-        print(f"[STT] 자동 감지 엔진: {engine} (platform={sys.platform}, arch={platform.machine()})")
+        logger.info(f"[STT] 자동 감지 엔진: {engine} (platform={sys.platform}, arch={platform.machine()})")
 
     if engine == "mock":
         from app.stt.mock_adapter import MockAdapter

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -25,6 +26,8 @@ from app.audio_constants import (
     SEC_TO_MS as _SEC_TO_MS,
     MIN_AUDIO_BYTES as _MIN_AUDIO_BYTES,
 )
+
+logger = logging.getLogger(__name__)
 
 _PIPELINE_MODEL = "pyannote/speaker-diarization-3.1"
 
@@ -162,12 +165,11 @@ class SpeakerDiarizer:
             # embedding이 없는 화자의 이름도 제거
             valid_ids = set(self._speaker_embeddings.keys())
             self._speaker_names = {k: v for k, v in self._speaker_names.items() if k in valid_ids}
-            print(
-                f"[diarizer] 화자 DB 로드: {len(self._speaker_embeddings)}명 복원 ({self._db_path})",
-                flush=True,
+            logger.info(
+                f"[diarizer] 화자 DB 로드: {len(self._speaker_embeddings)}명 복원 ({self._db_path})"
             )
         except Exception as e:
-            print(f"[diarizer] 화자 DB 로드 실패 (빈 DB로 시작): {e}", flush=True)
+            logger.exception(f"[diarizer] 화자 DB 로드 실패 (빈 DB로 시작): {e}")
 
     def _save_db(self) -> None:
         if not self._db_path:
@@ -188,7 +190,7 @@ class SpeakerDiarizer:
                     ensure_ascii=False,
                 )
         except Exception as e:
-            print(f"[diarizer] 화자 DB 저장 실패: {e}", flush=True)
+            logger.exception(f"[diarizer] 화자 DB 저장 실패: {e}")
 
     # ── 화자 이름 관리 ────────────────────────────────────────────────────────
 
@@ -211,7 +213,7 @@ class SpeakerDiarizer:
         self._next_num = 1
         if self._db_path and self._db_path.exists():
             self._db_path.unlink()
-        print(f"[diarizer] 화자 DB 초기화 완료 ({self._db_path})", flush=True)
+        logger.info(f"[diarizer] 화자 DB 초기화 완료 ({self._db_path})")
 
     # ── 화자 분리 ─────────────────────────────────────────────────────────────
 
@@ -238,7 +240,7 @@ class SpeakerDiarizer:
         centroids = output.speaker_embeddings  # (num_speakers, dim) or None
 
         if centroids is None:
-            print("[diarizer] WARNING: speaker_embeddings is None — fallback to sequential IDs", flush=True)
+            logger.warning("[diarizer] WARNING: speaker_embeddings is None — fallback to sequential IDs")
 
         labels = annotation.labels()
         num_local_speakers = len(labels)
@@ -248,7 +250,7 @@ class SpeakerDiarizer:
             if centroids is not None and i < len(centroids):
                 emb = centroids[i]
                 if not self._is_valid_embedding(emb):
-                    print(f"[diarizer] WARNING: invalid embedding for {label} — skip", flush=True)
+                    logger.warning(f"[diarizer] WARNING: invalid embedding for {label} — skip")
                     # 유효하지 않은 embedding → 가장 최근 화자 또는 "화자 1"
                     if self._speaker_embeddings:
                         meeting_id = list(self._speaker_embeddings.keys())[-1]
@@ -327,10 +329,9 @@ class SpeakerDiarizer:
         # force_match: 임계값 무시, 가장 가까운 화자에 매칭
         matched = best_id is not None and (best_sim >= self._similarity_threshold or force_match)
         action = f"{'force-' if force_match and best_sim < self._similarity_threshold else ''}match:{best_id}" if matched else "new"
-        print(
+        logger.info(
             f"[diarizer] sims={{{', '.join(f'{k}:{v:.3f}' for k, v in all_sims.items())}}} "
-            f"→ {action} (best={best_sim:.3f})",
-            flush=True,
+            f"→ {action} (best={best_sim:.3f})"
         )
 
         # 최대 화자 수에 도달하면 강제 매칭
@@ -338,9 +339,8 @@ class SpeakerDiarizer:
             if best_id is not None:
                 matched = True
                 action = f"force-max-speakers:{best_id}"
-                print(
-                    f"[diarizer] 최대 화자 수({_MAX_SPEAKERS})에 도달 → {action} (sim={best_sim:.3f})",
-                    flush=True,
+                logger.info(
+                    f"[diarizer] 최대 화자 수({_MAX_SPEAKERS})에 도달 → {action} (sim={best_sim:.3f})"
                 )
 
         if matched:
@@ -385,7 +385,7 @@ class SpeakerDiarizer:
                             self._speaker_names[a] = self._speaker_names.pop(b)
                         else:
                             self._speaker_names.pop(b, None)
-                        print(f"[diarizer] merge: {b} → {a} (sim={max_sim:.3f})", flush=True)
+                        logger.info(f"[diarizer] merge: {b} → {a} (sim={max_sim:.3f})")
                         merged = True
                         break
                 if merged:

@@ -7,6 +7,7 @@ pyannote가 최적의 화자 분리를 수행한다.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from app.audio_constants import (
@@ -16,6 +17,8 @@ from app.audio_constants import (
 )
 from app.diarization.overlap import find_speaker_by_overlap
 from app.stt.base import TranscriptSegment
+
+logger = logging.getLogger(__name__)
 
 # 배치 처리용 임계값 (전체 오디오 → 안정적 embedding)
 _SIMILARITY_THRESHOLD = 0.40
@@ -69,7 +72,7 @@ def _run_full_pipeline(
 
     audio_array = pcm_bytes_to_float32(audio_bytes)
     duration_sec = len(audio_array) / _SAMPLE_RATE
-    print(f"[batch-diarizer] 전체 오디오 처리: {duration_sec:.1f}초", flush=True)
+    logger.info(f"[batch-diarizer] 전체 오디오 처리: {duration_sec:.1f}초")
 
     waveform = torch.from_numpy(audio_array).unsqueeze(0)
     audio_input = {"waveform": waveform, "sample_rate": _SAMPLE_RATE}
@@ -90,5 +93,5 @@ def _run_full_pipeline(
         result[(start_ms, end_ms)] = label_map.get(speaker, "화자 1")
 
     num_speakers = len(labels)
-    print(f"[batch-diarizer] 완료: {num_speakers}명 화자, {len(result)}개 구간", flush=True)
+    logger.info(f"[batch-diarizer] 완료: {num_speakers}명 화자, {len(result)}개 구간")
     return result

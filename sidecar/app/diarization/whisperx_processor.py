@@ -14,10 +14,13 @@ pyannote 단독 대비 약 60% DER 감소 효과.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from app.audio_constants import SAMPLE_RATE as _SAMPLE_RATE, SEC_TO_MS as _SEC_TO_MS
 from app.stt.base import TranscriptSegment
+
+logger = logging.getLogger(__name__)
 
 
 class WhisperXBatchProcessor:
@@ -52,7 +55,7 @@ class WhisperXBatchProcessor:
     def _load_sync(self) -> None:
         import whisperx
 
-        print(f"[whisperx] ASR 모델 로딩: {self._whisper_model_name} ({self._device}, {self._compute_type})", flush=True)
+        logger.info(f"[whisperx] ASR 모델 로딩: {self._whisper_model_name} ({self._device}, {self._compute_type})")
         self._asr_model = whisperx.load_model(
             self._whisper_model_name,
             device=self._device,
@@ -60,7 +63,7 @@ class WhisperXBatchProcessor:
         )
 
         if self._hf_token:
-            print("[whisperx] 화자 분리 파이프라인 로딩...", flush=True)
+            logger.info("[whisperx] 화자 분리 파이프라인 로딩...")
             # WhisperX가 use_auth_token을 쓰지만 pyannote 4.x는 token= 사용
             # → monkey-patch로 호환
             from whisperx import diarize as _wx_diarize
@@ -83,10 +86,10 @@ class WhisperXBatchProcessor:
             finally:
                 _wx_diarize.DiarizationPipeline.__init__ = _orig_init
         else:
-            print("[whisperx] HF 토큰 없음 — 화자 분리 비활성화", flush=True)
+            logger.info("[whisperx] HF 토큰 없음 — 화자 분리 비활성화")
 
         self._is_loaded = True
-        print("[whisperx] 로드 완료", flush=True)
+        logger.info("[whisperx] 로드 완료")
 
     async def process_file(
         self,
@@ -165,7 +168,7 @@ class WhisperXBatchProcessor:
         import whisperx
 
         duration_sec = len(audio) / _SAMPLE_RATE
-        print(f"[whisperx] 처리 시작: {duration_sec:.1f}초", flush=True)
+        logger.info(f"[whisperx] 처리 시작: {duration_sec:.1f}초")
 
         # 1단계: ASR — 언어 지정 (첫 번째 언어 사용, 없으면 자동 감지)
         language = languages[0] if languages else None
@@ -175,7 +178,7 @@ class WhisperXBatchProcessor:
             language=language,
         )
         detected_lang = result.get("language", language or "auto")
-        print(f"[whisperx] ASR 완료: {len(result.get('segments', []))}개 세그먼트, 언어={detected_lang}", flush=True)
+        logger.info(f"[whisperx] ASR 완료: {len(result.get('segments', []))}개 세그먼트, 언어={detected_lang}")
 
         # 2단계: Forced alignment — word-level 타임스탬프
         try:
@@ -191,18 +194,18 @@ class WhisperXBatchProcessor:
                 self._device,
                 return_char_alignments=False,
             )
-            print(f"[whisperx] Alignment 완료", flush=True)
+            logger.info(f"[whisperx] Alignment 완료")
         except Exception as e:
-            print(f"[whisperx] Alignment 실패 (무시): {e}", flush=True)
+            logger.exception(f"[whisperx] Alignment 실패 (무시): {e}")
 
         # 3단계: 화자 분리 + 할당
         if self._diarize_pipeline is not None:
             try:
                 diarize_segments = self._diarize_pipeline(audio)
                 result = whisperx.assign_word_speakers(diarize_segments, result)
-                print(f"[whisperx] 화자 분리 완료", flush=True)
+                logger.info(f"[whisperx] 화자 분리 완료")
             except Exception as e:
-                print(f"[whisperx] 화자 분리 실패 (무시): {e}", flush=True)
+                logger.exception(f"[whisperx] 화자 분리 실패 (무시): {e}")
 
         # 4단계: TranscriptSegment 변환
         segments: list[TranscriptSegment] = []
@@ -236,5 +239,5 @@ class WhisperXBatchProcessor:
                 speaker_label=speaker_label,
             ))
 
-        print(f"[whisperx] 최종: {len(segments)}개 세그먼트, {len(speaker_counter)}명 화자", flush=True)
+        logger.info(f"[whisperx] 최종: {len(segments)}개 세그먼트, {len(speaker_counter)}명 화자")
         return segments

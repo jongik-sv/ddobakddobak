@@ -363,10 +363,10 @@ async def transcribe(request: TranscribeRequest) -> TranscribeResponse:
             try:
                 diarization_result = await diarizer.diarize(audio_bytes, offset_ms=request.offset_ms)
                 if diarization_result:
-                    print(f"[diarizer] result={diarization_result}", flush=True)
+                    logger.info(f"[diarizer] result={diarization_result}")
                     segments = diarizer.merge_with_segments(segments, diarization_result)
             except Exception as e:
-                print(f"[diarizer] ERROR: {e}", flush=True)
+                logger.exception(f"[diarizer] ERROR: {e}")
 
     logger.info("[STT] /transcribe 완료 (%.1f초, %d 세그먼트)", time.monotonic() - t0, len(segments))
     return TranscribeResponse(
@@ -399,14 +399,14 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
         raise HTTPException(status_code=400, detail="오디오 파일이 너무 짧습니다.")
 
     total_duration_ms = int(len(audio_bytes) / (_SAMPLE_RATE * _BYTES_PER_SAMPLE) * 1000)
-    print(f"[transcribe-file] 파일 크기={len(audio_bytes)} bytes, 길이={total_duration_ms}ms", flush=True)
+    logger.info(f"[transcribe-file] 파일 크기={len(audio_bytes)} bytes, 길이={total_duration_ms}ms")
 
     # 2. STT 실행 — 파일 변환은 항상 Whisper 사용
     from app.stt.whisper_adapter import WhisperAdapter
     file_adapter = adapter
     _whisper_loaded_here = False
     if not isinstance(adapter, WhisperAdapter):
-        print("[transcribe-file] Whisper 엔진으로 전환하여 파일 처리", flush=True)
+        logger.info("[transcribe-file] Whisper 엔진으로 전환하여 파일 처리")
         file_adapter = WhisperAdapter()
         await file_adapter.load_model()
         _whisper_loaded_here = True
@@ -415,7 +415,7 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
     try:
         if chunk_sec > 0:
             # 청크 분할 모드: 지정된 시간 단위로 분할하여 처리 (다국어 감지에 유리)
-            print(f"[transcribe-file] 청크 분할 모드 ({chunk_sec}초)", flush=True)
+            logger.info(f"[transcribe-file] 청크 분할 모드 ({chunk_sec}초)")
             segments = await _chunked_transcribe(
                 file_adapter, audio_bytes,
                 chunk_sec=chunk_sec, overlap_sec=2,
@@ -432,12 +432,12 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
             del file_adapter
             import gc; gc.collect()
 
-    print(f"[transcribe-file] STT 세그먼트 {len(segments)}개", flush=True)
+    logger.info(f"[transcribe-file] STT 세그먼트 {len(segments)}개")
 
     # multi 모드: 감지언어가 허용 목록 밖인 세그먼트 제거
     if request.mode == "multi":
         segments = lang_utils.filter_segments(segments, request.languages)
-        print(f"[transcribe-file] 언어 필터 후 {len(segments)}개", flush=True)
+        logger.info(f"[transcribe-file] 언어 필터 후 {len(segments)}개")
 
     # 3. 화자 분리 — WhisperX(ASR+alignment+diarization) 시도, 실패 시 pyannote 배치 폴백
     enable_diarization = (request.diarization_config or {}).get("enable", False)
@@ -445,7 +445,7 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
         whisperx_result = await _try_whisperx_batch(request, audio_bytes)
         if whisperx_result is not None:
             segments = whisperx_result
-            print(f"[transcribe-file] WhisperX 배치 완료: {len(segments)}개 세그먼트", flush=True)
+            logger.info(f"[transcribe-file] WhisperX 배치 완료: {len(segments)}개 세그먼트")
         else:
             # WhisperX 실패 → pyannote 전체 오디오 배치 폴백
             await _ensure_diarizer_pipeline()
@@ -454,16 +454,16 @@ async def transcribe_file(request: TranscribeFileRequest) -> TranscribeFileRespo
                 try:
                     from app.diarization.batch_processor import batch_diarize
                     segments = await batch_diarize(audio_bytes, pipeline, segments)
-                    print(f"[transcribe-file] pyannote 배치 화자 분리 완료", flush=True)
+                    logger.info(f"[transcribe-file] pyannote 배치 화자 분리 완료")
                 except Exception as e:
-                    print(f"[transcribe-file] 화자 분리 실패 (무시): {e}", flush=True)
+                    logger.exception(f"[transcribe-file] 화자 분리 실패 (무시): {e}")
     else:
-        print(f"[transcribe-file] 화자 분리 스킵", flush=True)
+        logger.info(f"[transcribe-file] 화자 분리 스킵")
 
     # 4. 한국어 문장 분리 후처리
     from app.stt.sentence_segmenter import segment_korean_sentences
     segments = segment_korean_sentences(segments)
-    print(f"[transcribe-file] 문장 분리 후 {len(segments)}개 세그먼트", flush=True)
+    logger.info(f"[transcribe-file] 문장 분리 후 {len(segments)}개 세그먼트")
 
     logger.info("[STT] /transcribe-file 완료 (%.1f초, %d 세그먼트)", time.monotonic() - t0, len(segments))
     return TranscribeFileResponse(
@@ -477,7 +477,7 @@ async def _try_whisperx_batch(request: TranscribeFileRequest, audio_bytes: bytes
     try:
         from app.diarization.whisperx_processor import WhisperXBatchProcessor
     except ImportError:
-        print("[transcribe-file] whisperx 미설치 — 폴백", flush=True)
+        logger.warning("[transcribe-file] whisperx 미설치 — 폴백")
         return None
 
     try:
@@ -495,7 +495,7 @@ async def _try_whisperx_batch(request: TranscribeFileRequest, audio_bytes: bytes
         segments = await processor.process_bytes(audio_bytes, languages=request.languages)
         return segments if segments else None
     except Exception as e:
-        print(f"[transcribe-file] WhisperX 실패: {e} — 폴백", flush=True)
+        logger.exception(f"[transcribe-file] WhisperX 실패: {e} — 폴백")
         return None
 
 
@@ -541,11 +541,11 @@ async def _chunked_transcribe(
 
         chunk_idx += 1
         if chunk_idx % 10 == 0:
-            print(f"[transcribe-file] 청크 {chunk_idx} 처리 완료 ({offset_ms}ms / {int(total_len / bytes_per_sec * 1000)}ms)", flush=True)
+            logger.info(f"[transcribe-file] 청크 {chunk_idx} 처리 완료 ({offset_ms}ms / {int(total_len / bytes_per_sec * 1000)}ms)")
 
         offset += step_bytes
 
-    print(f"[transcribe-file] 총 {chunk_idx}개 청크 처리 완료", flush=True)
+    logger.info(f"[transcribe-file] 총 {chunk_idx}개 청크 처리 완료")
     return all_segments
 
 
