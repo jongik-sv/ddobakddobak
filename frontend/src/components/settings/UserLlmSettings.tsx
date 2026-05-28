@@ -9,6 +9,8 @@ import type {
   UserLlmSettingsResponse,
   UserLlmTestResult,
 } from '../../api/userLlmSettings'
+import { UserLlmStatusBanner } from './UserLlmStatusBanner'
+import { ProviderRadioGroup } from './ProviderRadioGroup'
 
 interface ProviderOption {
   readonly id: string
@@ -260,68 +262,14 @@ export default function UserLlmSettings() {
       {!loading && settings && (
         <div className="space-y-4">
           {/* 상태 배너 */}
-          {hasSettings && isEnabled && (
-            <div className="border border-blue-200 bg-blue-50 rounded-md p-3" role="status">
-              <p className="text-sm font-medium text-blue-800">
-                내 LLM 사용 중 — {settings.llm_settings.provider} / {settings.llm_settings.model}
-              </p>
-              <p className="text-xs text-blue-600 mt-0.5">
-                내가 생성한 회의의 AI 요약에 이 LLM이 사용됩니다.
-              </p>
-            </div>
-          )}
-
-          {hasSettings && !isEnabled && (
-            <div className="border border-gray-200 bg-gray-50 rounded-md p-3" role="status">
-              <p className="text-sm font-medium text-gray-600">
-                내 LLM 비활성 — 서버 기본값 ({settings.server_default.provider} / {settings.server_default.model}) 사용 중
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                토글을 켜면 내 LLM ({settings.llm_settings.provider} / {settings.llm_settings.model})으로 전환됩니다.
-              </p>
-            </div>
-          )}
-
-          {!hasSettings && (
-            <div className="border border-amber-200 bg-amber-50 rounded-md p-3" role="status">
-              <p className="text-sm font-medium">서버 기본값 사용 중</p>
-              <p className="text-xs text-muted-foreground">
-                서버 기본 LLM ({settings.server_default.provider} / {settings.server_default.model})을 사용합니다.
-                아래에서 개인 LLM을 설정하면 내 회의 요약에 사용됩니다.
-              </p>
-              {!settings.server_default.has_key && (
-                <p className="text-xs text-red-600 mt-1" role="alert">
-                  서버에 기본 LLM이 설정되어 있지 않습니다. 개인 LLM을 설정해야 요약 기능을 사용할 수 있습니다.
-                </p>
-              )}
-            </div>
-          )}
+          <UserLlmStatusBanner settings={settings} hasSettings={hasSettings} isEnabled={isEnabled} />
 
           {showForm && (<>
-          <fieldset>
-            <legend className="block text-sm font-medium mb-2">Provider 선택</legend>
-            <div className="grid grid-cols-2 gap-2" role="radiogroup">
-              {PROVIDER_OPTIONS.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={provider === opt.id}
-                  onClick={() => handleProviderSelect(opt.id)}
-                  className={`
-                    rounded-lg border p-3 text-left transition-all
-                    ${provider === opt.id
-                      ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
-                      : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                    }
-                  `}
-                >
-                  <p className="text-sm font-medium">{opt.name}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{opt.description}</p>
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          <ProviderRadioGroup
+            options={PROVIDER_OPTIONS}
+            selected={provider}
+            onSelect={handleProviderSelect}
+          />
 
           {provider && provider !== 'none' && (
             <div>
