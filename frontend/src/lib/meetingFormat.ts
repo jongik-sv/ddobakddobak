@@ -19,3 +19,16 @@ export function folderName(folders: FolderNode[], id: number): string | null {
   }
   return null
 }
+
+export function folderPath(folders: FolderNode[], id: number, sep = ' / '): string | null {
+  const walk = (nodes: FolderNode[], trail: string[]): string[] | null => {
+    for (const f of nodes) {
+      const next = [...trail, f.name]
+      if (f.id === id) return next
+      const found = walk(f.children, next)
+      if (found) return found
+    }
+    return null
+  }
+  return walk(folders, [])?.join(sep) ?? null
+}

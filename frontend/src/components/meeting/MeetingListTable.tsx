@@ -4,7 +4,7 @@ import type { FolderNode } from '../../api/folders'
 import type { SelectedFolder } from '../../stores/folderStore'
 import { initDrag } from '../../utils/dragState'
 import { StatusBadge, MeetingTypeBadge, MeetingActionButtons } from './MeetingListUI'
-import { formatDate, folderName } from '../../lib/meetingFormat'
+import { formatDate, folderPath } from '../../lib/meetingFormat'
 
 type SortField = 'created_at' | 'title'
 type SortDirection = 'asc' | 'desc'
@@ -132,9 +132,9 @@ export function MeetingListTable({
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium truncate">{meeting.title}</span>
                   {meeting.folder_id && selectedFolderId === 'all' && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-0.5 shrink-0">
-                      <FolderClosed className="w-2.5 h-2.5" />
-                      {folderName(folders, meeting.folder_id) ?? '폴더'}
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-0.5 shrink-0 max-w-[220px]">
+                      <FolderClosed className="w-2.5 h-2.5 shrink-0" />
+                      <span className="truncate">{folderPath(folders, meeting.folder_id) ?? '폴더'}</span>
                     </span>
                   )}
                   {meeting.tags?.map((tag) => (

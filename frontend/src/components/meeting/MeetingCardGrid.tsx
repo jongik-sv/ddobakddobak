@@ -4,7 +4,7 @@ import type { FolderNode } from '../../api/folders'
 import type { SelectedFolder } from '../../stores/folderStore'
 import { initDrag } from '../../utils/dragState'
 import { StatusBadge, MeetingTypeBadge, MeetingActionButtons } from './MeetingListUI'
-import { formatDate, folderName } from '../../lib/meetingFormat'
+import { formatDate, folderPath } from '../../lib/meetingFormat'
 
 interface MeetingCardGridProps {
   childFolders: FolderNode[]
@@ -88,9 +88,9 @@ export function MeetingCardGrid({
             <div className="flex items-center gap-1.5 flex-wrap mb-2">
               <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
               {meeting.folder_id && selectedFolderId === 'all' && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-1">
-                  <FolderClosed className="w-3 h-3" />
-                  {folderName(folders, meeting.folder_id) ?? '폴더'}
+                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-1 min-w-0 max-w-[180px]">
+                  <FolderClosed className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{folderPath(folders, meeting.folder_id) ?? '폴더'}</span>
                 </span>
               )}
               {meeting.tags?.map((tag) => (
