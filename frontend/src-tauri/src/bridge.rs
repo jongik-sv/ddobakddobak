@@ -206,11 +206,15 @@ async fn ws_handler(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
-    ws.on_upgrade(move |client_socket| async move {
-        if let Err(e) = pump_ws(client_socket, upstream_url, incoming_protocol).await {
-            log::warn!("bridge ws pump ended: {}", e);
-        }
-    })
+    // ActionCable 클라이언트(connection.js)는 협상된 서브프로토콜을 echo받지 못하면
+    // (webSocket.protocol == "") open 즉시 "Protocol is unsupported"로 연결을 끊는다.
+    // axum은 자동으로 echo하지 않으므로, 지원 프로토콜을 지정해 101 응답에 포함시킨다.
+    ws.protocols(["actioncable-v1-json", "actioncable-unsupported"])
+        .on_upgrade(move |client_socket| async move {
+            if let Err(e) = pump_ws(client_socket, upstream_url, incoming_protocol).await {
+                log::warn!("bridge ws pump ended: {}", e);
+            }
+        })
 }
 
 /// axum 소켓 ↔ 업스트림 WS 간 양방향 메시지 펌프.
@@ -375,7 +379,9 @@ mod tests {
                 .map(|s| s.to_string());
             *origin_slot.lock().unwrap() = origin;
 
-            ws.on_upgrade(|mut socket: WebSocket| async move {
+            // 실제 ActionCable과 동일하게 서브프로토콜을 협상해 echo한다.
+            ws.protocols(["actioncable-v1-json", "actioncable-unsupported"])
+                .on_upgrade(|mut socket: WebSocket| async move {
                 while let Some(Ok(msg)) = socket.next().await {
                     match msg {
                         Message::Text(t) => {
@@ -437,10 +443,31 @@ mod tests {
         let bridge_port = wait_for_port(&state).await;
         *state.target.lock().unwrap() = Some(format!("http://127.0.0.1:{}", mock_port));
 
+        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+        use tokio_tungstenite::tungstenite::http::HeaderValue as TungHeaderValue;
+
+        // ActionCable 클라이언트와 동일하게 서브프로토콜을 제공한다.
         let url = format!("ws://127.0.0.1:{}/cable", bridge_port);
-        let (mut ws, _resp) = tokio_tungstenite::connect_async(url)
+        let mut request = url.into_client_request().expect("build ws request");
+        request.headers_mut().insert(
+            "Sec-WebSocket-Protocol",
+            TungHeaderValue::from_static("actioncable-v1-json, actioncable-unsupported"),
+        );
+        let (mut ws, resp) = tokio_tungstenite::connect_async(request)
             .await
             .expect("bridge ws connect failed");
+
+        // 핵심 제약: 브릿지는 협상된 서브프로토콜을 클라이언트에 echo해야 한다.
+        // 안 하면 ActionCable(connection.js)이 open 즉시 연결을 끊는다.
+        let negotiated = resp
+            .headers()
+            .get("sec-websocket-protocol")
+            .and_then(|v| v.to_str().ok());
+        assert_eq!(
+            negotiated,
+            Some("actioncable-v1-json"),
+            "bridge must echo negotiated subprotocol to client (else ActionCable disconnects on open)"
+        );
 
         ws.send(Message::Text("ping-1".to_string()))
             .await
