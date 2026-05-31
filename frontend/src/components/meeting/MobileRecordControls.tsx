@@ -15,8 +15,8 @@ export interface MobileRecordControlsProps {
   onResume: () => void
   onStop: () => void
   isStopping: boolean
-  /** 더보기 바텀 시트에 표시할 추가 옵션 */
-  children?: ReactNode
+  /** 더보기 바텀 시트에 표시할 추가 옵션. close()로 시트를 닫을 수 있다(다이얼로그를 띄우는 항목용). */
+  children?: (close: () => void) => ReactNode
 }
 
 export function MobileRecordControls({
@@ -146,7 +146,7 @@ export function MobileRecordControls({
               </button>
             </div>
             <div className="flex flex-col gap-2">
-              {children}
+              {children?.(() => setShowMore(false))}
             </div>
           </div>
         </div>,

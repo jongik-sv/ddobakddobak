@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Mic, CheckCircle2, Clock, FileText, type LucideIcon } from 'lucide-react'
+import { Mic, CheckCircle2, Clock, FileText, Plus, type LucideIcon } from 'lucide-react'
 import { getMeetings } from '../api/meetings'
 import type { Meeting } from '../api/meetings'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
+import { useMeetingStore } from '../stores/meetingStore'
+import { CreateMeetingModal } from '../components/meeting/CreateMeetingModal'
 import { DashboardStatsSkeleton, DashboardMeetingsSkeleton } from '../components/ui/Skeleton'
 
 function formatDate(dateStr: string): string {
@@ -74,7 +76,10 @@ export default function DashboardPage() {
   const [totalCount, setTotalCount] = useState(dashboardCache?.totalCount ?? 0)
   const [statusCounts, setStatusCounts] = useState<StatusCounts>(dashboardCache?.statusCounts ?? {})
   const [isLoading, setIsLoading] = useState(!dashboardCache)
+  const [showModal, setShowModal] = useState(false)
   const meetingTypeMap = usePromptTemplateStore((s) => s.meetingTypeMap)
+  const meetingTypeList = usePromptTemplateStore((s) => s.meetingTypeList)
+  const addMeeting = useMeetingStore((s) => s.addMeeting)
 
   useEffect(() => {
     if (!dashboardCache) setIsLoading(true)
@@ -106,11 +111,20 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6 lg:p-8">
-      <div className="mb-8">
-        <h1 className="text-xl md:text-2xl font-bold">
-          안녕하세요
-        </h1>
-        <p className="text-muted-foreground mt-1">회의 현황을 한눈에 확인하세요.</p>
+      <div className="mb-8 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold">
+            안녕하세요
+          </h1>
+          <p className="text-muted-foreground mt-1">회의 현황을 한눈에 확인하세요.</p>
+        </div>
+        <button
+          onClick={() => setShowModal(true)}
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors min-h-[44px]"
+        >
+          <Plus className="w-4 h-4" />
+          회의 생성
+        </button>
       </div>
 
       {/* 통계 카드 */}
@@ -182,6 +196,18 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {showModal && (
+        <CreateMeetingModal
+          folderId={null}
+          meetingTypeList={meetingTypeList}
+          onClose={() => setShowModal(false)}
+          onCreated={(meeting) => {
+            addMeeting(meeting)
+            navigate(`/meetings/${meeting.id}/live`)
+          }}
+        />
+      )}
     </div>
   )
 }

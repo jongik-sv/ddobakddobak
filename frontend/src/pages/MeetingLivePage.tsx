@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
-import { Settings, Monitor, Timer, Pencil } from 'lucide-react'
+import { Settings, Monitor, Timer, Pencil, RotateCcw } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
 import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
@@ -340,9 +340,11 @@ export default function MeetingLivePage() {
             onStop={handleStop}
             isStopping={isStopping}
           >
+            {(closeMore) => (
+            <>
             {/* 더보기 바텀 시트 추가 옵션 */}
             <button
-              onClick={() => setShowEditDialog(true)}
+              onClick={() => { closeMore(); setShowEditDialog(true) }}
               className="flex items-center gap-2 py-2 text-sm text-gray-700 hover:text-gray-900"
             >
               <Pencil className="w-4 h-4" />
@@ -379,12 +381,24 @@ export default function MeetingLivePage() {
             {/* 설정 변경은 PC/서버에서만 — 모바일에서는 숨김 */}
             {!IS_MOBILE && (
               <button
-                onClick={useUiStore.getState().openSettings}
+                onClick={() => { closeMore(); useUiStore.getState().openSettings() }}
                 className="flex items-center gap-2 py-2 text-sm text-gray-700 hover:text-gray-900"
               >
                 <Settings className="w-4 h-4" />
                 설정
               </button>
+            )}
+            {!isActive && (
+              <button
+                onClick={() => { closeMore(); handleResetClick() }}
+                disabled={isResetting}
+                className="flex items-center gap-2 py-2 text-sm text-red-600 hover:text-red-700 disabled:opacity-50"
+              >
+                <RotateCcw className="w-4 h-4" />
+                {isResetting ? '초기화 중...' : '회의 초기화'}
+              </button>
+            )}
+            </>
             )}
           </MobileRecordControls>
           <div className="flex-1 min-h-0">

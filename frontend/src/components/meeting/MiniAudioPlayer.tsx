@@ -21,7 +21,7 @@ export function MiniAudioPlayer({
   onExpand,
 }: MiniAudioPlayerProps) {
   return (
-    <div className="h-12 fixed bottom-14 left-0 right-0 lg:hidden z-40 bg-white border-t shadow-sm flex items-center gap-2 px-3">
+    <div className="min-h-12 fixed bottom-0 left-0 right-0 lg:hidden z-40 bg-white border-t shadow-sm flex items-center gap-2 px-3 py-1.5 pb-safe">
       {/* 재생/일시정지 */}
       <button
         onClick={(e) => {

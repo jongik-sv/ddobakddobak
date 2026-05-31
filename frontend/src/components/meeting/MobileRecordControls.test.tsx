@@ -129,8 +129,12 @@ describe('MobileRecordControls', () => {
   it('추가 옵션 오버레이에 children이 표시됨', () => {
     render(
       <MobileRecordControls {...defaultProps} isRecording={true}>
-        <button>STT 엔진</button>
-        <button>마이크 선택</button>
+        {() => (
+          <>
+            <button>STT 엔진</button>
+            <button>마이크 선택</button>
+          </>
+        )}
       </MobileRecordControls>
     )
     fireEvent.click(screen.getByRole('button', { name: /더보기/i }))

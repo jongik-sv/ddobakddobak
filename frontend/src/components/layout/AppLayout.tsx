@@ -40,7 +40,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       </div>
 
       {/* 모바일 헤더 - 데스크톱에서 hidden */}
-      <header className="flex lg:hidden items-center min-h-12 px-4 border-b border-border bg-white shrink-0 pt-safe">
+      <header className="flex lg:hidden items-center min-h-12 px-4 border-b border-border bg-white shrink-0">
         <button
           onClick={() => setMobileMenuOpen(true)}
           className="p-2.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"

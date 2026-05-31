@@ -345,7 +345,7 @@ export default function MeetingPage() {
       {showFullPlayer && (
         <div className="fixed inset-0 z-50 lg:hidden" onClick={() => setShowFullPlayer(false)}>
           <div className="absolute inset-0 bg-black/30" />
-          <div className="absolute bottom-14 left-0 right-0 bg-white border-t shadow-lg rounded-t-xl p-3" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute bottom-0 left-0 right-0 bg-white border-t shadow-lg rounded-t-xl p-3 pb-safe" onClick={(e) => e.stopPropagation()}>
             <AudioPlayer
               audio={audio}
               onTimeUpdate={setCurrentTimeMs}
@@ -455,6 +455,11 @@ export default function MeetingPage() {
           onRemove={removeCorrectionRow}
           onApply={handleApplyCorrections}
         />
+      )}
+
+      {/* 미니 오디오 플레이어(fixed bottom)가 하단 콘텐츠를 가리지 않도록 스페이서 (모바일) */}
+      {audio.hasAudio && audio.isReady && (
+        <div aria-hidden className="lg:hidden shrink-0 h-[calc(3rem+env(safe-area-inset-bottom))]" />
       )}
 
       {/* STT 재생성 확인 다이얼로그 */}
