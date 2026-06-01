@@ -7,6 +7,10 @@ mod mdns;
 // EOS 누수 컷(순수 헬퍼) — 모든 타깃에서 컴파일·호스트 테스트. cohere_ffi가 사용.
 mod text_post;
 
+// 모델 경로 해석/스테이징 복사. command는 android-gated지만 순수 헬퍼+테스트는
+// 비게이트라 호스트에서 검증된다.
+mod model_path;
+
 // ── 온디바이스 STT (Android 전용) ──
 // sherpa C-API in-process 전사. 데스크톱 STT는 sidecar 경로라 미사용.
 #[cfg(target_os = "android")]
@@ -912,6 +916,9 @@ pub fn run() {
             bridge::set_bridge_target,
             bridge::probe_url,
             mdns::mdns_browse,
+            model_path::resolve_model_paths,
+            model_path::cohere_model_status,
+            model_path::ensure_cohere_model,
             stt::stt_load,
             stt::stt_transcribe,
         ]);
