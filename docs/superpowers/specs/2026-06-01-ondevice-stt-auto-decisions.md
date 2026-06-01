@@ -33,12 +33,36 @@
 | A12 | T0~T5(엔진 스파인)는 **메인스레드 순차**, Workflow는 T6+(독립 청크) 병렬 | T0~T5는 의존 체인+에뮬 디버그 루프 → 병렬 이득 없음, 중간 수정 필요(A3/A4 실제 발생). advisor 확인 |
 | A13 | Workflow `w610n82lg`(6모듈 병렬) **중도 정지 + 메인스레드 복구** | ⚠ **사고**: 리뷰 단계 서브에이전트가 full tool access로 "수정"하며 `localStore.ts`를 삭제함. 정지 후 메인스레드가 고아 테스트 계약대로 재작성. 교훈: Workflow 리뷰 에이전트는 read-only여야 함(다음 Workflow는 리뷰에 파일수정 금지 명시) |
 
-## 검증 현황(이 배치)
-- frontend stt 8모듈: vitest **92/92** ✅, `tsc` 신규파일 0 에러 ✅
-- backend bulk: RSpec **12/12** ✅
-- 엔진(T5): 에뮬 dev_ffi_smoke 한국어 연속전사 GREEN(load 6.5s, 세그먼트 0.7~3.1s)
+| A14 | **임시 디버그 훅**: main.tsx에 `window.__loadSileroVad`/`__localSttE2E` unconditional 노출 + `public/ko-fixture.wav` | 에뮬엔 마이크 없음 → fixture로 파이프라인 검증. vite build는 production이라 DEV 게이트 안 먹어 unconditional. **검증 끝났으니 T12에서 제거 + devLocalSttE2E.ts/ko-fixture.wav 삭제** |
+| A15 | fs:scope에 `$APPLOCALDATA/**` 추가 | bare `fs:allow-mkdir`엔 path scope 없어 localStore가 'forbidden path' 거부. 스코프 명시 필요(되돌리면 로컬 저장 깨짐) |
+| A16 | 온디바이스 STT 모드는 config.yaml `stt_engines`에 **추가 안 함** | 그 목록은 서버 STT 모델 선택 UI 구동. 온디바이스는 클라 축(sttMode)이라 별도 토글(SttSettingsPanel OnDeviceSttSettings) |
+| A17 | 로컬 STT 언어 = `getLanguageSettings()`(현재 사용자) | 회의 시작자 = 통상 creator라 creator 권위(Q1=C)와 정합. 엄밀한 "다른 사람이 시작" 케이스는 후속 |
 
-## 미결(후속 검토 권장)
-- A13 사고 방지: Workflow 리뷰 에이전트에 Edit/Write 회수(cavecrew-reviewer류 read-only 사용).
-- T11 모델 호스팅(LAN vs CDN) — 플랜 Task 11, 아직 미구현.
-- Cohere 상업 라이선스 — 배포 전 법무 확인(플랜 리스크).
+## 검증 현황
+
+### 실제 on-device 증명 (mock 아님, 에뮬 stt_arm64_api34 arm64-v8a)
+- **T5 Cohere FFI**(dev_ffi_smoke): 한국어 20× 연속전사 GREEN, load 6.5s, 세그먼트 0.7~3.1s.
+- **Silero VAD in WebView**: loadMs 5.7s, 추론 동작, prob finite. SAB/COI=false(단일스레드 wasm)서도 OK.
+- **로컬 STT 파이프라인 E2E**(실제 localStore+SileroVad+SegmentAccumulator+invoke):
+  fixture→VAD청킹→transcribe→영속→readback GREEN. segments=1, persisted=1,
+  text="안녕하세요. 오늘 회의를 시작하겠습니다...".
+
+### 컴파일/단위 (mock·tsc·vite 레벨)
+- frontend stt 8모듈 + appSettingsStore: vitest **157/157** ✅, tsc 신규파일 0에러, vite build GREEN.
+- backend bulk: RSpec **12/12** ✅.
+
+## ⚠ 스코프 충족 현황 (정직한 평가 — advisor 지적)
+사용자 승인 스코프 = **완전 오프라인 회의 생성**(서버 없이 생성→녹음→전사→로컬저장).
+- ✅ **데이터 경로는 on-device로 증명됨**(위 E2E — createLocal+VAD+transcribe+persist).
+- ✅ **서버-회의-존재 로컬 전사**(T8): useLiveRecording이 sttMode='local'서 useLocalStt로 라우팅.
+- ❌ **완전 오프라인 *진입 UI* 미완(T16)**: `useLiveRecording(meetingId:number)`는 서버 발급
+  numeric id + `startMeeting`(POST)에 결합 → 서버 없이 그 라우트 진입 불가. 오프라인 전용
+  진입점(localId 기반, 서버 lifecycle 우회 + 별도 라우트/페이지)이 **아직 미구현**.
+  → 즉 "엔진·파이프라인·영속은 실증됐으나, 사용자가 완전 오프라인에서 회의를 *시작하는 화면*은 미완."
+
+## 미결(후속)
+- **T16 오프라인 생성 진입 UI** — 위 ❌. 다음 작업.
+- **T12 정리**: A14 임시 훅(main.tsx 2줄 + devLocalSttE2E.ts + ko-fixture.wav) 제거.
+- A13 사고 방지: Workflow 리뷰 에이전트 read-only.
+- T11 모델 호스팅(LAN vs CDN) — 미구현.
+- Cohere 상업 라이선스 — 배포 전 법무 확인.
