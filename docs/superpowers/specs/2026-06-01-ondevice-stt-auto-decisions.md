@@ -40,6 +40,24 @@
 | A18 | T16 오프라인 진입 = **별도 라우트/훅**(useLiveRecording 포크 안 함) | useLiveRecording은 numeric id+startMeeting POST 결합. 포크보다 `useLocalRecording`+`/local-meetings/:localId/live` 신설이 깔끔(서버 lifecycle 0). MeetingsPage에 LocalMeetingsSection(Android만) |
 | A19 | T11 모델 호스트 = `getApiBaseUrl()`(LAN 서버), 서버측 `cohere-onnx/` 정적 라우트는 **배포 단계** | 다운로더는 Rust 스트리밍으로 구현됐으나 서버에 2.7GB 모델 파일을 두고 정적 제공하는 건 인프라 작업. 개발/검증은 adb 스테이징+ensure_cohere_model로 충분(증명됨). CDN 폴백은 호출자가 다른 base로 재시도 |
 
+## 갭 보강 결정 — 실기기 스크린샷 후속 (A21+)
+
+실기기 스크린샷으로 발견한 갭 2개(① 오프라인 경로에 모델 다운로드 UI 없음, ② 로그인 화면 탈출구).
+
+| # | 결정 | 근거 |
+|---|---|---|
+| A21 | 갭1 스코프 = **B(실제 동작)** — 오프라인 경로 다운로드 UI + **T11 서버 정적 라우트까지 구현** | 검증 결과: `cohere-onnx/` 서버 라우트가 Caddyfile/routes.rb/public 어디에도 없음 → 다운로드는 서버가 **떠 있어도 404**(A19가 미룬 인프라 미구현). "버튼 위치"가 아니라 "동작 여부"가 진짜 갭. 사용자 선택=B. 완전 오프라인(서버 0)은 물리적으로 2.7GB 생성 불가 → "최초 1회 연결 필요, 이후 영구 오프라인"으로 정직하게 재정의 |
+| A22 | T11 서버 호스팅 = **Caddy `file_server`**(Rails 아님), 경로 `/api/v1/cohere-onnx/*` | 모바일 base=`getApiBaseUrl()`=`…/api/v1`, 루프백 브릿지가 path 보존 전달(bridge.rs `format!("{}{}",target,path_and_query)`) → 서버는 `/api/v1/cohere-onnx/<file>` 수신. `@backend path /api/*`가 가로채기 전에 `handle_path`를 **먼저** 배치(adapt로 순서 확인). 2.6GB 정적 blob은 file_server가 적합(Puma 워커 점유·X-Sendfile 미설정 회피, range 지원). root=adb 스테이징과 동일 소스 `…/ondevice-stt/android-spike/cohere-onnx`. ⚠ prod Caddy도 동일 블록+모델 배치 필요(배포가이드) |
+| A23 | 모델 UI = 공유 컴포넌트 `ModelManager`(상태·용량·다운로드%·삭제) — SttSettingsPanel/LocalMeetingsHome/LocalMeetingLivePage 게이트 3곳 재사용 | SttSettingsPanel 인라인 게이트를 추출해 DRY. 사용자 요구: 진행률 % + 모델 관리(미사용 시 삭제). 삭제는 native confirm 대신 인라인 확인 상태(Tauri 모달 dialog 차단 회피) |
+| A24 | 다운로드 획득 순서 = **adb 스테이징(ensure_cohere_model) 우선 → 실패 시 네트워크(download_cohere_model)** | 스테이징은 네트워크 불필요(개발/사전적재 기기 즉시). base 빈 문자열(서버 미연결)이면 네트워크 시도 전에 "서버 연결 필요" 정직 안내. delete는 샌드박스만 지우고 스테이징은 보존(재설치 소스) |
+| A25 | 갭2 = LoginPage에도 오프라인 탈출구(`<a href=/local-meetings>`, IS_TAURI&&IS_MOBILE) | SetupGate(f88d950)와 동일 패턴(BrowserRouter+Tauri index.html fallback로 hard nav 착지 검증됨). 로그인·서버설정 양쪽에 탈출구 노출 결정 |
+
+### A21+ 검증(이번 작업)
+- Rust: `cargo test model_path` 호스트 **7 passed**(+installed_bytes). android `cargo check --target aarch64-linux-android` GREEN(delete_cohere_model/bytes 컴파일).
+- Caddy: `caddy validate` Valid + `caddy adapt`로 cohere-onnx file_server가 api/* reverse_proxy보다 **앞** 확인.
+- 프론트: ModelManager vitest **7/7**, 관련 타깃 **103/103**, `vite build` GREEN.
+- ⚠ 미증명(실기기 수동): 실제 기기서 서버 1회 연결→다운로드% 진척→오프라인 전사, 삭제 후 재다운로드.
+
 ## 검증 현황
 
 ### 실제 on-device 증명 (mock 아님, 에뮬 stt_arm64_api34 arm64-v8a)
@@ -80,7 +98,7 @@
 
 ## 미결(후속)
 - **실기기 마이크 라이브 검증**: 실기기(R3CR60RAK3R)서 실제 발화→연속 전사 RTF/RAM/발열(플랜 수동검증).
-- **T11 서버측 정적 호스팅**: `cohere-onnx/` 2.7GB 서버 제공 라우트(A19, 배포 인프라). 개발은 adb 스테이징.
+- **T11 서버측 정적 호스팅**: dev/LAN Caddyfile은 구현됨(A22, `handle_path /api/v1/cohere-onnx/*` file_server). ⚠ **prod Caddy는 동일 블록 + 서버 호스트에 모델 4파일 배치 필요**(배포가이드). 모델 소스는 현재 `…/ondevice-stt/android-spike/cohere-onnx` 절대경로 — 배포 시 서버 로컬 경로로 교체.
 - A13: Workflow 리뷰 에이전트 read-only화(localStore 삭제 사고 방지).
 - Cohere 상업 라이선스 — 배포 전 법무 확인.
 - 빌드 경고: App 청크 500KB 초과(코드분할 권장, 비기능).
