@@ -25,6 +25,11 @@ import('./stt/sileroVadLoader')
     ;(window as unknown as Record<string, unknown>).__loadSileroVad = loadSileroVad
   })
   .catch(() => {})
+import('./stt/devLocalSttE2E')
+  .then(({ runLocalSttE2E }) => {
+    ;(window as unknown as Record<string, unknown>).__localSttE2E = runLocalSttE2E
+  })
+  .catch(() => {})
 
 async function boot() {
   await initMobileBridge()

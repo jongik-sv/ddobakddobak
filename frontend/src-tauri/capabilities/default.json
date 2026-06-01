@@ -29,6 +29,13 @@
     "fs:allow-read-dir",
     "fs:allow-read-file",
     "fs:allow-write-file",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "$APPLOCALDATA" },
+        { "path": "$APPLOCALDATA/**" }
+      ]
+    },
     "dialog:allow-save",
     "dialog:allow-open",
     "dialog:allow-ask",
