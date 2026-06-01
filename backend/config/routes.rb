@@ -72,6 +72,7 @@ Rails.application.routes.draw do
           end
           collection do
             delete :destroy_batch
+            post :bulk, action: :bulk_create
           end
         end
         resources :blocks, only: %i[index create update destroy] do

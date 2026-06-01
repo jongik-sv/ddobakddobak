@@ -153,6 +153,25 @@ export async function updateTranscript(
   return res.transcript
 }
 
+/** 온디바이스(로컬) STT 결과를 서버에 일괄 영속화한다 (멱등: sequence_number 기준 upsert). */
+export interface BulkTranscriptItem {
+  content: string
+  speaker_label: string
+  started_at_ms: number
+  ended_at_ms: number
+  sequence_number: number
+  audio_source?: 'mic' | 'system'
+}
+
+export async function bulkCreateTranscripts(
+  meetingId: number,
+  items: BulkTranscriptItem[],
+): Promise<void> {
+  await apiClient.post(`meetings/${meetingId}/transcripts/bulk`, {
+    json: { transcripts: items },
+  })
+}
+
 export async function uploadAudio(id: number, blob: Blob): Promise<void> {
   const formData = new FormData()
   const ext = blob.type.includes('wav') ? 'wav' : 'webm'
