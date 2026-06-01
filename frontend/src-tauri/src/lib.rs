@@ -921,6 +921,8 @@ pub fn run() {
             model_path::ensure_cohere_model,
             stt::stt_load,
             stt::stt_transcribe,
+            // dev 전용 온디바이스 FFI smoke (본문 debug-gated, release는 no-op).
+            stt::dev_ffi_smoke,
         ]);
 
     builder
