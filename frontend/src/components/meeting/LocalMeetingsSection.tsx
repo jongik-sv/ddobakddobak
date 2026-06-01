@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Mic, WifiOff, UploadCloud, Check } from 'lucide-react'
+import { Mic, WifiOff, UploadCloud, Check, Trash2 } from 'lucide-react'
 
 import * as localStore from '../../stt/localStore'
 import type { LocalMeetingMeta } from '../../stt/localStore'
@@ -31,6 +31,9 @@ export function LocalMeetingsSection() {
   const [metas, setMetas] = useState<LocalMeetingMeta[]>([])
   const [busy, setBusy] = useState(false)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
+  // 삭제는 native confirm 대신 인라인 확인 상태(Tauri 모달 dialog 차단 회피, 자동결정 A23).
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const localUploadEnabled = useAppSettingsStore((s) => s.localUploadEnabled)
 
   const refresh = useCallback(() => {
@@ -65,6 +68,19 @@ export function LocalMeetingsSection() {
       console.error('[LocalMeetings] 업로드 실패:', e)
     } finally {
       setUploadingId(null)
+    }
+  }
+
+  const handleDelete = async (localId: string) => {
+    setDeletingId(localId)
+    try {
+      await localStore.deleteLocal(localId)
+      setConfirmDeleteId(null)
+      refresh()
+    } catch (e) {
+      console.error('[LocalMeetings] 삭제 실패:', e)
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -105,20 +121,49 @@ export function LocalMeetingsSection() {
                   {m.serverId ? '서버 동기됨' : '기기 저장'}
                 </p>
               </button>
-              {m.serverId ? (
-                <Check className="w-4 h-4 text-green-600 shrink-0" />
-              ) : (
-                localUploadEnabled && (
+              <div className="flex items-center gap-1 shrink-0">
+                {m.serverId ? (
+                  <Check className="w-4 h-4 text-green-600" />
+                ) : (
+                  localUploadEnabled && (
+                    <button
+                      onClick={() => handleUpload(m.localId)}
+                      disabled={uploadingId === m.localId}
+                      className="p-2 rounded-md hover:bg-accent disabled:opacity-50"
+                      aria-label="서버로 업로드"
+                    >
+                      <UploadCloud className="w-4 h-4" />
+                    </button>
+                  )
+                )}
+                {confirmDeleteId === m.localId ? (
+                  <>
+                    <button
+                      onClick={() => handleDelete(m.localId)}
+                      disabled={deletingId === m.localId}
+                      className="px-2 py-1 rounded-md text-xs font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                      aria-label="삭제 확인"
+                    >
+                      삭제
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="px-2 py-1 rounded-md text-xs text-muted-foreground hover:bg-accent"
+                      aria-label="삭제 취소"
+                    >
+                      취소
+                    </button>
+                  </>
+                ) : (
                   <button
-                    onClick={() => handleUpload(m.localId)}
-                    disabled={uploadingId === m.localId}
-                    className="p-2 rounded-md hover:bg-accent shrink-0 disabled:opacity-50"
-                    aria-label="서버로 업로드"
+                    onClick={() => setConfirmDeleteId(m.localId)}
+                    className="p-2 rounded-md hover:bg-accent text-muted-foreground hover:text-red-600"
+                    aria-label="삭제"
                   >
-                    <UploadCloud className="w-4 h-4" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
-                )
-              )}
+                )}
+              </div>
             </li>
           ))}
         </ul>
