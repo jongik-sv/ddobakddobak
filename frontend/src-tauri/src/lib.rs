@@ -7,6 +7,13 @@ mod mdns;
 // EOS 누수 컷(순수 헬퍼) — 모든 타깃에서 컴파일·호스트 테스트. cohere_ffi가 사용.
 mod text_post;
 
+// ── 온디바이스 STT (Android 전용) ──
+// sherpa C-API in-process 전사. 데스크톱 STT는 sidecar 경로라 미사용.
+#[cfg(target_os = "android")]
+mod cohere_ffi;
+#[cfg(target_os = "android")]
+mod stt;
+
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::io::{Read, Write};
@@ -877,7 +884,9 @@ pub fn run() {
     };
 
     // ── 모바일 전용: 서버모드 클라이언트 (로컬 서비스/오디오 없음) + 인앱 루프백 브릿지 ──
-    #[cfg(mobile)]
+    // 주의: Android는 여기에 더해 아래 android 블록이 STT 핸들러를 추가한다. iOS는
+    // 이 모바일 핸들러만 갖는다(온디바이스 STT 비목표).
+    #[cfg(all(mobile, not(target_os = "android")))]
     let builder = builder
         .manage(std::sync::Arc::new(bridge::BridgeState::default()))
         .invoke_handler(tauri::generate_handler![
@@ -887,6 +896,24 @@ pub fn run() {
             bridge::set_bridge_target,
             bridge::probe_url,
             mdns::mdns_browse,
+        ]);
+
+    // ── Android 전용: 모바일 브릿지 핸들러 + 온디바이스 STT (sherpa C-API) ──
+    // generate_handler!는 개별 엔트리에 #[cfg]를 못 붙이므로, Android는 모바일
+    // 핸들러 목록에 STT command를 합쳐 한 번에 등록한다.
+    #[cfg(target_os = "android")]
+    let builder = builder
+        .manage(std::sync::Arc::new(bridge::BridgeState::default()))
+        .manage(stt::CohereState::default())
+        .invoke_handler(tauri::generate_handler![
+            check_health,
+            scan_lan_servers,
+            bridge::bridge_port,
+            bridge::set_bridge_target,
+            bridge::probe_url,
+            mdns::mdns_browse,
+            stt::stt_load,
+            stt::stt_transcribe,
         ]);
 
     builder
