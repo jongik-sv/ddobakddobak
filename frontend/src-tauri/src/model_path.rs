@@ -49,6 +49,8 @@ pub struct ModelStatus {
     pub present: bool,
     pub dir: String,
     pub missing: Vec<String>,
+    /// 현재 설치된(존재하는) 모델 파일들의 총 바이트. 관리 UI 용량 표시용(부분 다운로드 포함).
+    pub bytes: u64,
 }
 
 /// 네 파일이 모두 `dir`에 있고 `encoder.int8.onnx.data`가 최소
@@ -101,6 +103,16 @@ fn missing_in(dir: &Path) -> Vec<String> {
     missing
 }
 
+/// `dir`에 존재하는 모델 파일들의 총 바이트(없는 파일은 0). 관리 UI 용량 표시 + 부분
+/// 다운로드 진척 표시용. 순수 fs 헬퍼라 호스트에서 단위 테스트된다.
+fn installed_bytes(dir: &Path) -> u64 {
+    [ENCODER, ENCODER_DATA, DECODER, TOKENS]
+        .iter()
+        .filter_map(|n| std::fs::metadata(dir.join(n)).ok())
+        .map(|m| m.len())
+        .sum()
+}
+
 /// Android 모델 디렉터리: `<app_local_data_dir>/models/cohere-onnx` (실 FS 경로 —
 /// 라이브러리가 AssetManager 미지원).
 #[cfg(target_os = "android")]
@@ -117,16 +129,19 @@ fn model_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 #[tauri::command]
 pub fn cohere_model_status(app: tauri::AppHandle) -> ModelStatus {
     if let Ok(found) = resolve_model_paths(app.clone()) {
+        let bytes = installed_bytes(Path::new(&found.dir));
         return ModelStatus {
             present: true,
             dir: found.dir,
             missing: Vec::new(),
+            bytes,
         };
     }
     match model_dir(&app) {
         Ok(dir) => ModelStatus {
             present: false,
             missing: missing_in(&dir),
+            bytes: installed_bytes(&dir),
             dir: dir.to_string_lossy().into_owned(),
         },
         Err(_) => ModelStatus {
@@ -138,6 +153,7 @@ pub fn cohere_model_status(app: tauri::AppHandle) -> ModelStatus {
                 DECODER.to_string(),
                 TOKENS.to_string(),
             ],
+            bytes: 0,
         },
     }
 }
@@ -370,6 +386,25 @@ pub async fn download_cohere_model(
     })
 }
 
+/// 샌드박스에 설치된 모델 4파일(+ 중단 다운로드 잔여 `.part`)을 삭제해 디스크를 회수한다
+/// (관리 UI "모델 삭제"). 멱등 — 파일이 없으면 무시한다. adb 스테이징
+/// (`/data/local/tmp/cohere-onnx`)은 건드리지 않는다(재설치 소스 보존).
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub fn delete_cohere_model(app: tauri::AppHandle) -> Result<(), String> {
+    let dir = model_dir(&app)?;
+    for name in [ENCODER, ENCODER_DATA, DECODER, TOKENS] {
+        let p = dir.join(name);
+        if p.exists() {
+            std::fs::remove_file(&p)
+                .map_err(|e| format!("could not delete {}: {e}", p.display()))?;
+        }
+        // 중단된 다운로드가 남긴 *.part도 정리(없으면 무시).
+        let _ = std::fs::remove_file(part_path(&p));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -452,6 +487,23 @@ mod tests {
             missing.contains(&ENCODER_DATA.to_string()),
             "truncated .data reported missing"
         );
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn installed_bytes_sums_present_files_and_zero_when_absent() {
+        let tmp = std::env::temp_dir().join(format!("mp_bytes_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+
+        // 빈 디렉터리 → 0.
+        assert_eq!(installed_bytes(&tmp), 0, "no files → 0 bytes");
+
+        // 두 파일만 깔면 그 둘의 합.
+        write_sized(&tmp.join(ENCODER), 4096, b'E');
+        write_sized(&tmp.join(TOKENS), 1000, b'T');
+        assert_eq!(installed_bytes(&tmp), 4096 + 1000, "sum of present files only");
 
         let _ = fs::remove_dir_all(&tmp);
     }

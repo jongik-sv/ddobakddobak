@@ -7,6 +7,18 @@
 https://10.110.14.219:13443, https://jangjong-ig-ui-MacBookAir.local:13443 {
 	tls /Users/jji/project/ddobakddobak/certs/10.110.14.219+3.pem /Users/jji/project/ddobakddobak/certs/10.110.14.219+3-key.pem
 
+	# 온디바이스 STT 모델(~2.7GB) 정적 제공 (T11 / 자동결정 A19·A22).
+	# 모바일 download_cohere_model이 <base>/api/v1/cohere-onnx/<file>로 요청한다
+	# (base=getApiBaseUrl()=…/api/v1, 루프백 브릿지가 경로 보존 전달). Rails(@backend)가
+	# /api/*를 가로채기 전에 여기서 디스크에서 직접 스트리밍해 Puma 워커 점유를 피한다.
+	# handle_path가 /api/v1/cohere-onnx 접두를 떼므로 root는 모델 디렉터리 자체를 가리킨다.
+	# 파일은 adb 스테이징(ensure_cohere_model)과 동일 소스. ⚠ prod Caddy도 동일 블록 +
+	# 서버 호스트에 모델 4파일 배치 필요(배포가이드 참고).
+	handle_path /api/v1/cohere-onnx/* {
+		root * /Users/jji/project/ondevice-stt/android-spike/cohere-onnx
+		file_server
+	}
+
 	# /api/* · /auth/* · /cable(WebSocket) → Rails. WS 업그레이드는 Caddy가 자동 처리.
 	# /auth/* = 로그인/리프레시/로그아웃(devise_for path:"auth"). 빠지면 /auth/login이 Vite로 가 404.
 	@backend path /api/* /auth/* /cable*
