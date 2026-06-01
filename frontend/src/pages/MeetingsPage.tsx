@@ -17,6 +17,7 @@ import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { JoinMeetingDialog } from '../components/meeting/JoinMeetingDialog'
 import { MeetingsGridSkeleton } from '../components/ui/Skeleton'
 import { CreateMeetingModal } from '../components/meeting/CreateMeetingModal'
+import { LocalMeetingsSection } from '../components/meeting/LocalMeetingsSection'
 import { UploadAudioModal } from '../components/meeting/UploadAudioModal'
 import { StatusFilterTabs } from '../components/meeting/MeetingListUI'
 import { MeetingCardGrid } from '../components/meeting/MeetingCardGrid'
@@ -214,6 +215,9 @@ export default function MeetingsPage() {
 
       {/* 폴더 경로 */}
       <FolderBreadcrumb />
+
+      {/* 오프라인(온디바이스) 회의 — Android에서만 노출 */}
+      <LocalMeetingsSection />
 
       {error && (
         <div role="alert" className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive mb-4">

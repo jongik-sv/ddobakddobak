@@ -6,6 +6,7 @@ import { useUiStore } from './stores/uiStore'
 import DashboardPage from './pages/DashboardPage'
 import MeetingsPage from './pages/MeetingsPage'
 import MeetingLivePage from './pages/MeetingLivePage'
+import LocalMeetingLivePage from './pages/LocalMeetingLivePage'
 import MeetingPage from './pages/MeetingPage'
 import MeetingViewerPage from './pages/MeetingViewerPage'
 import SearchPage from './pages/SearchPage'
@@ -69,6 +70,14 @@ function App() {
         element={
           <AppLayout>
             <MeetingViewerPage />
+          </AppLayout>
+        }
+      />
+      <Route
+        path="/local-meetings/:localId/live"
+        element={
+          <AppLayout>
+            <LocalMeetingLivePage />
           </AppLayout>
         }
       />
