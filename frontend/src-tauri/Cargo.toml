@@ -14,6 +14,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.5", features = [] }
+# Android sherpa-onnx C-API 바인딩 생성용(호스트 빌드타임). build.rs는 단일
+# 호스트 컴파일 단위라 target-gate 불가 — 무조건 의존. 단 android 타깃일 때만
+# 실제 호출(android_sherpa_bindgen) → 데스크톱 빌드는 bindgen 코드 미실행.
+bindgen = "0.70"
 
 [dependencies]
 serde_json = "1.0"
