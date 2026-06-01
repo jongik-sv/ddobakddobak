@@ -36,6 +36,33 @@ interface AppSettingsState {
   setDiarizationOverride: (key: keyof DiarizationOverrides, value: number) => void
   resetDiarizationOverrides: () => void
 
+  /**
+   * STT 백엔드 모드(클라이언트-디바이스 로컬 설정 — 서버에 전송하지 않는다).
+   * 'server' = 항상 서버 STT, 'local' = 항상 온디바이스(Android), 'auto' = 서버
+   * 도달 불가 + 로컬 가능 시 자동 온디바이스 폴백. 기본 'auto'.
+   * localStorage('sttMode')에 영속.
+   */
+  sttMode: 'server' | 'local' | 'auto'
+  setSttMode: (mode: 'server' | 'local' | 'auto') => void
+
+  /** opt-in: 로컬(온디바이스) 회의를 서버로 전송(transcript+오디오). localStorage. */
+  localUploadEnabled: boolean
+  setLocalUploadEnabled: (enabled: boolean) => void
+}
+
+// ── STT 모드/업로드: 클라이언트-디바이스 로컬 영속(localStorage, 서버 무전송) ──
+const STT_MODE_KEY = 'sttMode'
+const LOCAL_UPLOAD_KEY = 'localUploadEnabled'
+
+function loadSttMode(): 'server' | 'local' | 'auto' {
+  if (typeof localStorage === 'undefined') return 'auto'
+  const v = localStorage.getItem(STT_MODE_KEY)
+  return v === 'server' || v === 'local' || v === 'auto' ? v : 'auto'
+}
+
+function loadLocalUpload(): boolean {
+  if (typeof localStorage === 'undefined') return false
+  return localStorage.getItem(LOCAL_UPLOAD_KEY) === 'true'
 }
 
 // ── .env 동기화 (debounced) ────────────────────────
@@ -92,6 +119,20 @@ export const useAppSettingsStore = create<AppSettingsState>()(
       debouncedSave()
     },
     resetDiarizationOverrides: () => { set({ diarizationOverrides: {} }); debouncedSave() },
+
+    sttMode: loadSttMode(),
+    setSttMode: (mode) => {
+      set({ sttMode: mode })
+      if (typeof localStorage !== 'undefined') localStorage.setItem(STT_MODE_KEY, mode)
+    },
+
+    localUploadEnabled: loadLocalUpload(),
+    setLocalUploadEnabled: (enabled) => {
+      set({ localUploadEnabled: enabled })
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(LOCAL_UPLOAD_KEY, String(enabled))
+      }
+    },
 
   }),
 )

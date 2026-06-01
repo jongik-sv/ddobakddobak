@@ -187,13 +187,16 @@ export function useLocalStt(opts: UseLocalSttOptions): UseLocalSttResult {
     let i = 0
     for (; i + FRAME_SIZE <= merged.length; i += FRAME_SIZE) {
       const frame = merged.subarray(i, i + FRAME_SIZE)
-      offsetSamplesRef.current += FRAME_SIZE
       // VAD process는 비동기·순차. 드레인에 직렬로 올린다.
       const frameCopy = frame.slice()
       drainRef.current = drainRef.current.then(async () => {
         const v = vadRef.current
         const a = accRef.current
         if (!v || !a) return
+        // offsetSamples는 드레인(process 시점)에서 증가시켜야 한다. enqueue 시점에
+        // 올리면 큐 깊이만큼 앞서가 onSegment가 읽는 started/ended_at_ms가 미래로
+        // 밀린다(타임스탬프 레이스). feed→onSegment와 같은 드레인 스텝에서 갱신.
+        offsetSamplesRef.current += FRAME_SIZE
         const speech = await v.process(frameCopy)
         a.feed(frameCopy, speech)
       })

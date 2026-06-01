@@ -10,6 +10,20 @@ export async function getSttSettings(): Promise<SttSettings> {
   return apiClient.get('settings').json()
 }
 
+export interface LanguageSettings {
+  mode: 'single' | 'multi'
+  languages: string[]
+  configured: boolean
+}
+
+/** 현재 사용자(회의 생성 시 = creator)의 언어 설정. 온디바이스 STT 언어 결정에 사용. */
+export async function getLanguageSettings(): Promise<LanguageSettings> {
+  const res = await apiClient
+    .get('user/language_settings')
+    .json<{ language_settings: LanguageSettings }>()
+  return res.language_settings
+}
+
 export async function updateSttEngine(engine: string): Promise<{ stt_engine: string; model_loaded: boolean }> {
   return apiClient.post('settings/stt_engine', { json: { engine } }).json()
 }

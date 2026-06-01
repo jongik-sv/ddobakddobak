@@ -5,6 +5,13 @@ import { useAudioRecorder } from './useAudioRecorder'
 import { useSystemAudioCapture } from './useSystemAudioCapture'
 import { useMicCapture } from './useMicCapture'
 import { useTranscription } from './useTranscription'
+import { useLocalStt } from './useLocalStt'
+import { resolveSttMode } from '../stt/sttModeResolver'
+import { localSttLanguage } from '../stt/cohereLang'
+import { probeUrl } from '../lib/bridge'
+import * as localStore from '../stt/localStore'
+import { flushAll as syncFlushAll } from '../stt/syncQueue'
+import { useAppSettingsStore } from '../stores/appSettingsStore'
 import {
   getMeeting,
   startMeeting,
@@ -20,10 +27,10 @@ import {
   getParticipants,
 } from '../api/meetings'
 import type { Meeting, Participant } from '../api/meetings'
-import { getSttSettings } from '../api/settings'
+import { getSttSettings, getLanguageSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useSharingStore } from '../stores/sharingStore'
-import { IS_TAURI, DEFAULT_SUMMARY_INTERVAL_SEC } from '../config'
+import { IS_TAURI, DEFAULT_SUMMARY_INTERVAL_SEC, getApiBaseUrl } from '../config'
 import { useAuthStore } from '../stores/authStore'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 
@@ -114,11 +121,32 @@ export function useLiveRecording(
   const [systemAudioEnabled, setSystemAudioEnabled] = useState(false)
   const { sendChunk, sendSystemChunk } = useTranscription(meetingId)
 
+  // ── 온디바이스(로컬) STT (Android). 서버 모드면 미사용이지만 훅 규칙상 항상 호출. ──
+  const sttMode = useAppSettingsStore((s) => s.sttMode)
+  const localUploadEnabled = useAppSettingsStore((s) => s.localUploadEnabled)
+  // 활성 모드(server/local) — 시작 시 resolveSttMode로 확정. 기본 server.
+  const [activeSttMode, setActiveSttMode] = useState<'server' | 'local'>('server')
+  const [localCtx, setLocalCtx] = useState<{
+    localId: string | null
+    language: string
+    modelDir: string | null
+  }>({ localId: null, language: 'ko', modelDir: null })
+
+  const localStt = useLocalStt({
+    localId: localCtx.localId,
+    language: localCtx.language,
+    modelDir: localCtx.modelDir,
+    uploadEnabled: localUploadEnabled,
+  })
+
+  // 활성 모드에 따라 마이크 청크를 서버/로컬 STT로 라우팅.
   const onChunkRef = useRef(sendChunk)
-  onChunkRef.current = sendChunk
+  onChunkRef.current = activeSttMode === 'local' ? localStt.sendChunk : sendChunk
 
   const systemChunkRef = useRef(sendSystemChunk)
-  systemChunkRef.current = sendSystemChunk
+  // 시스템 오디오는 로컬 모드에서도 마이크와 믹싱되어 같은 로컬 스트림으로 가므로
+  // 별도 시스템 청크 전송은 서버 모드에서만 의미가 있다.
+  systemChunkRef.current = activeSttMode === 'local' ? () => {} : sendSystemChunk
 
   // 오디오 업로드 프로미스 추적 (중단→재시작 시 업로드 완료 보장)
   const uploadPromiseRef = useRef<Promise<void> | null>(null)
@@ -190,6 +218,45 @@ export function useLiveRecording(
       await uploadPromiseRef.current.catch(() => {})
     }
 
+    // ── STT 모드 결정 (server/local). 로컬 가능성 = Android + 모델 + 언어∈Cohere8 + single. ──
+    // 주의: 이 분기는 "서버 회의가 이미 존재하는" 경로다(useLiveRecording은 numeric
+    // meetingId 기반). 완전 오프라인 회의 생성은 별도 진입점(T16)에서 처리한다.
+    let resolved: 'server' | 'local' = 'server'
+    if (IS_TAURI) {
+      try {
+        const langCfg = await getLanguageSettings().catch(
+          () => ({ mode: 'single' as const, languages: ['ko'] }),
+        )
+        const lang = localSttLanguage(langCfg)
+        let modelDir: string | null = null
+        if (lang) {
+          const { invoke } = await import('@tauri-apps/api/core')
+          const paths = await invoke<{ dir: string }>('resolve_model_paths').catch(() => null)
+          modelDir = paths?.dir ?? null
+        }
+        const localCapable = lang != null && modelDir != null
+        const base = getApiBaseUrl()
+        const serverReachable = await probeUrl(base).catch(() => false)
+        resolved = resolveSttMode({ manualMode: sttMode, serverReachable, localCapable })
+        if (resolved === 'local' && lang) {
+          // 로컬 회의 진실원천 생성(영속) + recognizer 콜드로드 선행(첫 세그먼트 지연 방지).
+          const latestMeeting = await getMeeting(meetingId).catch(() => null)
+          const localId = await localStore.createLocal({
+            title: latestMeeting?.title ?? `회의 ${meetingId}`,
+            lang,
+          })
+          setLocalCtx({ localId, language: lang, modelDir })
+          import('@tauri-apps/api/core')
+            .then(({ invoke }) => invoke('stt_load', { modelDir, language: lang }))
+            .catch((e) => console.warn('[useLocalStt] stt_load preload 실패:', e))
+        }
+      } catch (e) {
+        console.warn('[useLiveRecording] STT 모드 결정 실패, 서버 폴백:', e)
+        resolved = 'server'
+      }
+    }
+    setActiveSttMode(resolved)
+
     try {
       if (meetingApiStatus === 'completed') {
         await reopenMeeting(meetingId)
@@ -259,6 +326,18 @@ export function useLiveRecording(
     }
     stopSystemCapture()
     await stop()
+
+    // 로컬 모드: 잔여 세그먼트 flush(마지막 발화) + 로컬 회의 종료 마킹 + opt-in 프로모트.
+    if (activeSttMode === 'local') {
+      localStt.flush()
+      if (localCtx.localId) {
+        await localStore.setStatus(localCtx.localId, 'completed').catch(() => {})
+        if (localUploadEnabled) {
+          // 서버 도달 시 즉시 프로모트 시도(실패 시 syncQueue가 pending 유지).
+          await syncFlushAll().catch(() => {})
+        }
+      }
+    }
     try {
       // 종료 전 미적용 기록을 AI 회의록에 반영
       await triggerRealtimeSummary(meetingId).catch(() => {})
