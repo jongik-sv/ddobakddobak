@@ -4,6 +4,9 @@ mod audio;
 mod bridge;
 mod mdns;
 
+// EOS 누수 컷(순수 헬퍼) — 모든 타깃에서 컴파일·호스트 테스트. cohere_ffi가 사용.
+mod text_post;
+
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::io::{Read, Write};
