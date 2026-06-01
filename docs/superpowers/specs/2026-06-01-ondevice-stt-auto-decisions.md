@@ -64,10 +64,19 @@
 - ✅ **서버-회의-존재 로컬 전사**(T8) + **서버 전송 opt-in**(T9 bulk + T15 syncQueue 단방향 프로모트).
 
 ### 증명 레벨 구분(정직)
-- **실제 on-device 실행**: 엔진(T5), Silero, 파이프라인 E2E, 콜드 오프라인 도달성.
-- **마이크→전사 라이브 leg**: 에뮬엔 마이크 없음 → fixture 기반 파이프라인 E2E로 증명(실제 마이크
-  입력은 실기기 수동 검증 권장). VAD청킹·transcribe·영속은 동일 코드경로라 마이크만 다름.
-- **단위/컴파일**: vitest 168, RSpec 12, tsc 신규파일 0에러, vite build, android cross-compile, APK .so 3종 포함.
+- **실제 on-device 실행**: 엔진(T5 Cohere FFI), Silero in WebView, 콜드 오프라인 도달성(클린 빌드
+  + 실제 escape-hatch 클릭→reload→/local-meetings 착지).
+- **A20 더블-VAD 버그 수정**: 초기 useLocalStt는 audio-processor가 이미 VAD로 자른 청크를 Silero+
+  SegmentAccumulator로 재분할 → pre-cut 청크엔 trailing silence 없어 다음 청크/flush까지 emit 지연·병합
+  버그(advisor 지적). **수정**: 로컬 모드 청크는 이미 전사 가능 세그먼트이므로 재-VAD 제거,
+  stt_transcribe에 직접 전달. **실제 useLocalStt.sendChunk 구동 통합테스트로 검증**(단일 청크가
+  두 번째 청크 없이 즉시 final emit). useLocalStt는 더 이상 Silero/SegmentAccumulator 미사용.
+- **파이프라인 E2E(이전)**: 재구성 루프(훅 아님)로 fixture 구동했던 것 — 모듈은 증명하나 production
+  훅 조립은 아니었음. A20 통합테스트가 그 갭을 메움.
+- **마이크→전사 라이브 leg**: 에뮬 마이크 없음 → 실기기 수동 검증 권장(코드경로는 통합테스트로 증명,
+  마이크 입력만 다름).
+- **단위/컴파일**: vitest 172(+useLocalStt 4), RSpec 12, tsc 신규파일 0에러, vite build, android
+  cross-compile, APK .so 3종.
 
 ## 미결(후속)
 - **실기기 마이크 라이브 검증**: 실기기(R3CR60RAK3R)서 실제 발화→연속 전사 RTF/RAM/발열(플랜 수동검증).

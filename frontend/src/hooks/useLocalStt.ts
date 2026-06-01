@@ -1,139 +1,94 @@
 /**
  * useLocalStt — 서버 useTranscription의 온디바이스(로컬) 대응 훅.
  *
- * 동일 캡처 스트림(useMicCapture/useAudioRecorder의 onChunk PCM Int16 16k)을 입력으로
- * 받아 Silero VAD 프레임 처리 → SegmentAccumulator 청킹 → invoke('stt_transcribe') →
- * 동일 TranscriptFinalData shape를 3-way emit한다:
- *   ① transcriptStore.addFinal  (BlockNote 렌더 — 기존 seam 재사용)
+ * 입력은 useMicCapture/useAudioRecorder의 onChunk(PCM Int16 16k)다. 이 청크는
+ * **audio-processor.js가 이미 VAD로 잘라낸 완결 발화 세그먼트**이므로(silence/speech
+ * 임계 + min/max + preroll), 여기서 Silero로 재분할하지 않는다 — 청크를 그대로
+ * stt_transcribe에 넘긴다(과거 재-VAD는 pre-cut 청크에 trailing silence가 없어
+ * SegmentAccumulator가 다음 청크/flush까지 emit 못하는 지연·병합 버그를 유발했다).
+ *
+ * 출력: 동일 TranscriptFinalData shape를 3-way emit:
+ *   ① transcriptStore.addFinal  (BlockNote 렌더 — 기존 seam)
  *   ② localStore.appendSegment + appendAudio  (오프라인 진실원천)
  *   ③ (opt-in) syncQueue.enqueue  (서버 프로모트)
  *
  * 설계: docs/superpowers/specs/2026-06-01-ondevice-stt-local-mode-design.md §4.3.
- *
- * 직렬성 불변식: Silero state(h/c)는 순차 갱신돼야 하고(sileroVad 주석), Cohere FFI도
- * Mutex 직렬이므로 프레임/세그먼트 처리를 단일 직렬 드레인으로 돌린다(동시 처리 금지).
+ * 직렬성: Cohere FFI는 Mutex 직렬 + SYNC 커맨드라, 청크 전사를 단일 직렬 드레인으로 돌린다.
  */
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 
 import type { ChunkMeta } from './useAudioRecorder'
 import type { TranscriptFinalData } from '../channels/transcription'
 import { useTranscriptStore } from '../stores/transcriptStore'
-import { SegmentAccumulator } from '../stt/chunker'
-import { FRAME_SIZE, SileroVad } from '../stt/sileroVad'
-import { loadSileroVad } from '../stt/sileroVadLoader'
-import { resampleTo16k, shouldResample } from '../stt/resample'
 import { cutEosLeak, rms, RMS_GATE } from '../stt/postprocess'
-import { DEFAULT_AUDIO_CONFIG, chunkerOptsFromAudioConfig } from '../stt/vadConfig'
+import { DEFAULT_AUDIO_CONFIG } from '../stt/vadConfig'
 import * as localStore from '../stt/localStore'
 import { enqueue as syncEnqueue } from '../stt/syncQueue'
 
+const MAX_SEGMENT_SAMPLES = 8 * 16000 // Cohere 8s 상한(FFI 백스톱과 일치).
+
 export interface UseLocalSttOptions {
-  /** localStore localId (회의 시작 시 createLocal로 생성). null이면 영속 생략. */
+  /** localStore localId. null이면 영속 생략. */
   localId: string | null
-  /** Cohere recognizer 언어(stt_load). cohereLang.localSttLanguage 결과. */
+  /** Cohere recognizer 언어(stt_load). */
   language: string
-  /** 모델 디렉터리(resolve_model_paths 결과). null이면 stt_load 보류. */
+  /** 모델 디렉터리(resolve_model_paths 결과). null이면 transcribe 보류. */
   modelDir: string | null
-  /** opt-in 서버 전송 — true면 세그먼트마다 syncQueue.enqueue. */
+  /** opt-in 서버 전송. */
   uploadEnabled: boolean
-  /** 오디오 원본도 로컬 저장(opt-in 업로드 대비). 기본 true. */
+  /** 오디오 원본도 로컬 저장. 기본 true. */
   retainAudio?: boolean
 }
 
 export interface UseLocalSttResult {
-  /** useMicCapture/useAudioRecorder의 onChunk에 연결. PCM Int16 16k. */
+  /** useMicCapture/useAudioRecorder onChunk에 연결. 완결 발화 PCM Int16 16k. */
   sendChunk: (pcm: Int16Array, meta?: ChunkMeta) => void
-  /** 회의 종료 시 잔여 세그먼트 flush(마지막 발화 유실 방지). */
+  /** 회의 종료 시 호출(여기선 청크가 즉시 전사되므로 no-op이지만 API 호환 유지). */
   flush: () => void
 }
 
-/** Int16 PCM([-32768,32767]) → Float32([-1,1]). */
 function int16ToFloat32(pcm: Int16Array): Float32Array {
   const out = new Float32Array(pcm.length)
   for (let i = 0; i < pcm.length; i++) out[i] = pcm[i] / 32768
   return out
 }
 
-/** Float32([-1,1]) → Int16 PCM(로컬 WAV 저장용). */
-function float32ToInt16(f: Float32Array): Int16Array {
-  const out = new Int16Array(f.length)
-  for (let i = 0; i < f.length; i++) {
-    const s = Math.max(-1, Math.min(1, f[i]))
-    out[i] = s < 0 ? s * 32768 : s * 32767
-  }
-  return out
-}
-
 export function useLocalStt(opts: UseLocalSttOptions): UseLocalSttResult {
   const addFinal = useTranscriptStore((s) => s.addFinal)
 
-  const vadRef = useRef<SileroVad | null>(null)
-  const accRef = useRef<SegmentAccumulator | null>(null)
   const loadedRef = useRef<string | null>(null) // stt_load된 언어
   const seqRef = useRef(0)
-  const offsetSamplesRef = useRef(0) // 세그먼트 타임 추적(샘플)
-  // 512 미만 잔여 프레임 누적 버퍼(프레임 경계 정렬).
-  const frameTailRef = useRef<Float32Array>(new Float32Array(0))
-  // 단일 직렬 드레인: VAD/FFI는 순차 호출 필수. 진행 중 작업 체인에 이어붙인다.
+  // 단일 직렬 드레인: Cohere FFI는 순차 호출 필수. 진행 중 작업 체인에 이어붙인다.
   const drainRef = useRef<Promise<void>>(Promise.resolve())
 
-  // 옵션을 ref로 캐시(콜백 안정화).
   const optsRef = useRef(opts)
   optsRef.current = opts
 
-  // VAD + accumulator 초기화. modelDir이 정해진(로컬 모드 활성) 경우에만 transformers.js
-  // Silero를 로드한다 — 서버 모드/데스크톱 live-page 마운트에서 불필요 로드 방지.
-  useEffect(() => {
-    if (!opts.modelDir) return
-    let cancelled = false
-    accRef.current = new SegmentAccumulator(
-      chunkerOptsFromAudioConfig(DEFAULT_AUDIO_CONFIG),
-    )
-    accRef.current.onSegment = (pcm: Float32Array) => {
-      // RMS 게이트: 무음/환각 차단.
-      if (rms(pcm) < RMS_GATE) return
-      const startMs = Math.round(
-        ((offsetSamplesRef.current - pcm.length) / DEFAULT_AUDIO_CONFIG.sample_rate) * 1000,
-      )
-      const endMs = Math.round(
-        (offsetSamplesRef.current / DEFAULT_AUDIO_CONFIG.sample_rate) * 1000,
-      )
-      enqueueTranscribe(pcm, Math.max(0, startMs), Math.max(0, endMs))
-    }
+  const sendChunk = useCallback(
+    (pcm: Int16Array, meta?: ChunkMeta) => {
+      const o = optsRef.current
+      if (!o.modelDir) return
 
-    loadSileroVad()
-      .then((vad) => {
-        if (!cancelled) vadRef.current = vad
-      })
-      .catch((e) => {
-        console.error('[useLocalStt] Silero VAD 로드 실패:', e)
-      })
+      const f = int16ToFloat32(pcm)
+      // 무음/환각 차단(audio-processor가 1차로 걸러내지만 한 번 더).
+      if (rms(f) < RMS_GATE) return
+      // 8s 상한 클램프(FFI 백스톱과 일치 — Cohere 장청크 열화 방지).
+      const seg = f.length > MAX_SEGMENT_SAMPLES ? f.subarray(0, MAX_SEGMENT_SAMPLES) : f
 
-    return () => {
-      cancelled = true
-      vadRef.current = null
-      accRef.current = null
-    }
-    // modelDir이 null→경로로 바뀌는 시점(로컬 모드 활성)에 1회 로드.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opts.modelDir])
-
-  /** 세그먼트를 직렬 드레인에 올려 transcribe→emit. */
-  const enqueueTranscribe = useCallback(
-    (pcm: Float32Array, startMs: number, endMs: number) => {
       const seq = seqRef.current++
+      const startMs = meta?.offsetMs ?? 0
+      const endMs = startMs + Math.round((seg.length / DEFAULT_AUDIO_CONFIG.sample_rate) * 1000)
+      const audioInt16 = pcm.length > MAX_SEGMENT_SAMPLES ? pcm.subarray(0, MAX_SEGMENT_SAMPLES) : pcm
+
       drainRef.current = drainRef.current
         .then(async () => {
-          const o = optsRef.current
           // 모델 로드 보장(언어 변경 시 stt_load가 재생성).
-          if (o.modelDir && loadedRef.current !== o.language) {
+          if (loadedRef.current !== o.language) {
             await invoke('stt_load', { modelDir: o.modelDir, language: o.language })
             loadedRef.current = o.language
           }
-          const raw = await invoke<string>('stt_transcribe', {
-            pcm: Array.from(pcm),
-          })
+          const raw = await invoke<string>('stt_transcribe', { pcm: Array.from(seg) })
           const content = cutEosLeak(raw)
           if (!content) return
 
@@ -148,16 +103,13 @@ export function useLocalStt(opts: UseLocalSttOptions): UseLocalSttResult {
             created_at: new Date().toISOString(),
             audio_source: 'mic',
           }
-          // ① 렌더
           addFinal(final)
-          // ② 로컬 영속
           if (o.localId) {
             await localStore.appendSegment(o.localId, final)
             if (o.retainAudio !== false) {
-              await localStore.appendAudio(o.localId, seq, float32ToInt16(pcm))
+              await localStore.appendAudio(o.localId, seq, audioInt16)
             }
           }
-          // ③ opt-in 서버 프로모트
           if (o.localId && o.uploadEnabled) {
             syncEnqueue(o.localId)
           }
@@ -170,48 +122,8 @@ export function useLocalStt(opts: UseLocalSttOptions): UseLocalSttResult {
     [addFinal],
   )
 
-  const sendChunk = useCallback((pcm: Int16Array, _meta?: ChunkMeta) => {
-    const vad = vadRef.current
-    const acc = accRef.current
-    if (!vad || !acc) return
-
-    // Int16 → Float32, 필요 시 16k 리샘플(보통 이미 16k).
-    let f = int16ToFloat32(pcm)
-    if (shouldResample(DEFAULT_AUDIO_CONFIG.sample_rate)) {
-      f = resampleTo16k(f, DEFAULT_AUDIO_CONFIG.sample_rate)
-    }
-
-    // 512 프레임 경계로 정렬(잔여 tail 이어붙임).
-    const tail = frameTailRef.current
-    const merged = new Float32Array(tail.length + f.length)
-    merged.set(tail, 0)
-    merged.set(f, tail.length)
-
-    let i = 0
-    for (; i + FRAME_SIZE <= merged.length; i += FRAME_SIZE) {
-      const frame = merged.subarray(i, i + FRAME_SIZE)
-      // VAD process는 비동기·순차. 드레인에 직렬로 올린다.
-      const frameCopy = frame.slice()
-      drainRef.current = drainRef.current.then(async () => {
-        const v = vadRef.current
-        const a = accRef.current
-        if (!v || !a) return
-        // offsetSamples는 드레인(process 시점)에서 증가시켜야 한다. enqueue 시점에
-        // 올리면 큐 깊이만큼 앞서가 onSegment가 읽는 started/ended_at_ms가 미래로
-        // 밀린다(타임스탬프 레이스). feed→onSegment와 같은 드레인 스텝에서 갱신.
-        offsetSamplesRef.current += FRAME_SIZE
-        const speech = await v.process(frameCopy)
-        a.feed(frameCopy, speech)
-      })
-    }
-    frameTailRef.current = merged.slice(i)
-  }, [])
-
-  const flush = useCallback(() => {
-    drainRef.current = drainRef.current.then(async () => {
-      accRef.current?.flush()
-    })
-  }, [])
+  // 청크가 즉시 전사되므로 별도 flush 불필요(API 호환용 no-op).
+  const flush = useCallback(() => {}, [])
 
   return { sendChunk, flush }
 }
