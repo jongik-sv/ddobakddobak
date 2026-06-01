@@ -1,0 +1,7 @@
+{
+  "model_type": "custom",
+  "transformers.js_config": {
+    "use_external_data_format": false
+  },
+  "sample_rate": 16000
+}

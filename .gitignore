@@ -75,3 +75,8 @@ frontend/src-tauri/gen/android/local.properties
 frontend/src-tauri/gen/android/.tauri/
 frontend/src-tauri/gen/android/app/src/main/assets/backend/
 frontend/src-tauri/gen/android/app/src/main/assets/sidecar/
+
+# 온디바이스 STT 대용량 자산 (배포는 다운로더 — Task 11)
+frontend/src-tauri/gen/android/app/src/main/jniLibs/**/*.so
+frontend/src-tauri/**/cohere-onnx/
+*.onnx.data
