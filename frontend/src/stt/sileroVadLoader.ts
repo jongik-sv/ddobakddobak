@@ -22,9 +22,12 @@ export async function loadSileroVad(): Promise<SileroVad> {
   env.allowRemoteModels = false;
   env.allowLocalModels = true;
   env.localModelPath = "/models/";
-  const session = (await AutoModel.from_pretrained(SILERO_MODEL_ID, {
-    config: { model_type: "custom" },
-    dtype: "fp32",
-  })) as unknown as VadSession;
+  // 구형 silero ONNX는 표준 PretrainedConfig 필드가 없다 — model_type만 custom으로
+  // 지정해 AutoModel이 그래프를 그대로 세션화하도록 한다(옵션 타입 우회).
+  const fromPretrainedOpts = { config: { model_type: "custom" }, dtype: "fp32" } as unknown as Parameters<typeof AutoModel.from_pretrained>[1];
+  const session = (await AutoModel.from_pretrained(
+    SILERO_MODEL_ID,
+    fromPretrainedOpts,
+  )) as unknown as VadSession;
   return new SileroVad(session, Tensor as unknown as TensorCtor);
 }
