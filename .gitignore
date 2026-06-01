@@ -50,6 +50,7 @@ e2e/test-results/
 .claude/projects/
 .claude/worktrees/
 .claude/**/.DS_Store
+.claude/scheduled_tasks.lock
 
 # 모델 파일 (대용량)
 *.bin
