@@ -79,10 +79,12 @@ describe('MiniAudioPlayer', () => {
     expect(root.className).toContain('lg:hidden')
   })
 
-  it('fixed bottom-14 위치가 적용된다', () => {
+  it('fixed bottom 위치 + safe-area 패딩이 적용된다', () => {
     const { container } = render(<MiniAudioPlayer {...defaultProps} />)
     const root = container.firstElementChild as HTMLElement
     expect(root.className).toContain('fixed')
-    expect(root.className).toContain('bottom-14')
+    // 하단 정렬 + iOS/안드 safe-area 인셋(이전 bottom-14 → bottom-0 pb-safe로 변경).
+    expect(root.className).toContain('bottom-0')
+    expect(root.className).toContain('pb-safe')
   })
 })
