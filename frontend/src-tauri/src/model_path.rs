@@ -267,6 +267,109 @@ pub fn ensure_cohere_model(app: tauri::AppHandle) -> Result<ModelPaths, String> 
     })
 }
 
+/// 모델 4파일을 `base_url`에서 스트리밍 다운로드해 앱 샌드박스에 설치한다(adb 스테이징의
+/// 프로덕션 대체 — T11). 각 파일은 `<base_url>/cohere-onnx/<name>`에서 받아 temp→fsync→
+/// rename으로 내구 기록하고, `.data`는 사이즈가드로 완전성 확인.
+///
+/// 진행률은 `stt://model-download` 이벤트로 emit한다: `{ file, received, total, fileIndex, fileCount }`.
+/// 멱등: 이미 완전 존재하면 즉시 반환(재다운로드 안 함). reqwest streaming이라 2.7GB도
+/// 상수 메모리로 받는다(JS writeFile 전체적재 OOM 회피).
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn download_cohere_model(
+    app: tauri::AppHandle,
+    base_url: String,
+) -> Result<ModelPaths, String> {
+    use tauri::Emitter;
+
+    let dir = model_dir(&app)?;
+
+    // 멱등 fast-path.
+    if let Some(found) = paths_in(&dir) {
+        return Ok(found);
+    }
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("could not create model dir {}: {e}", dir.display()))?;
+
+    let base = base_url.trim_end_matches('/').to_string();
+    let files = [ENCODER, ENCODER_DATA, DECODER, TOKENS];
+    let client = reqwest::Client::new();
+
+    for (idx, name) in files.iter().enumerate() {
+        let url = format!("{base}/cohere-onnx/{name}");
+        let dst = dir.join(name);
+        // 개별 파일 멱등: .data는 사이즈가드, 나머지는 존재만으로 스킵.
+        if *name == ENCODER_DATA {
+            if std::fs::metadata(&dst).map(|m| m.len() >= MIN_ENCODER_DATA_BYTES).unwrap_or(false) {
+                continue;
+            }
+        } else if dst.exists() {
+            continue;
+        }
+
+        let resp = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("download request failed ({url}): {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("download {url} returned HTTP {}", resp.status()));
+        }
+        let total = resp.content_length().unwrap_or(0);
+
+        let part = part_path(&dst);
+        let mut file = tokio::fs::File::create(&part)
+            .await
+            .map_err(|e| format!("could not create temp {}: {e}", part.display()))?;
+
+        use futures_util::StreamExt;
+        use tokio::io::AsyncWriteExt;
+        let mut stream = resp.bytes_stream();
+        let mut received: u64 = 0;
+        let mut last_emit: u64 = 0;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| format!("download stream error ({name}): {e}"))?;
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| format!("write error {}: {e}", part.display()))?;
+            received += chunk.len() as u64;
+            // ~16MB마다 진행률 emit(이벤트 폭주 방지).
+            if received - last_emit >= 16 * 1024 * 1024 {
+                last_emit = received;
+                let _ = app.emit(
+                    "stt://model-download",
+                    serde_json::json!({
+                        "file": name, "received": received, "total": total,
+                        "fileIndex": idx, "fileCount": files.len(),
+                    }),
+                );
+            }
+        }
+        file.flush().await.map_err(|e| format!("flush error: {e}"))?;
+        file.sync_all().await.map_err(|e| format!("fsync error: {e}"))?;
+        drop(file);
+
+        tokio::fs::rename(&part, &dst).await.map_err(|e| {
+            format!("could not rename {} -> {}: {e}", part.display(), dst.display())
+        })?;
+
+        let _ = app.emit(
+            "stt://model-download",
+            serde_json::json!({
+                "file": name, "received": received, "total": total,
+                "fileIndex": idx, "fileCount": files.len(), "done": true,
+            }),
+        );
+    }
+
+    paths_in(&dir).ok_or_else(|| {
+        format!(
+            "download incomplete in {} (a file is missing or .data truncated); retry.",
+            dir.display()
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
