@@ -82,8 +82,10 @@ export function useLocalStt(opts: UseLocalSttOptions): UseLocalSttResult {
   const optsRef = useRef(opts)
   optsRef.current = opts
 
-  // VAD + accumulator 1회 초기화.
+  // VAD + accumulator 초기화. modelDir이 정해진(로컬 모드 활성) 경우에만 transformers.js
+  // Silero를 로드한다 — 서버 모드/데스크톱 live-page 마운트에서 불필요 로드 방지.
   useEffect(() => {
+    if (!opts.modelDir) return
     let cancelled = false
     accRef.current = new SegmentAccumulator(
       chunkerOptsFromAudioConfig(DEFAULT_AUDIO_CONFIG),
@@ -113,8 +115,9 @@ export function useLocalStt(opts: UseLocalSttOptions): UseLocalSttResult {
       vadRef.current = null
       accRef.current = null
     }
+    // modelDir이 null→경로로 바뀌는 시점(로컬 모드 활성)에 1회 로드.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [opts.modelDir])
 
   /** 세그먼트를 직렬 드레인에 올려 transcribe→emit. */
   const enqueueTranscribe = useCallback(
