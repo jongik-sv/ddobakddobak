@@ -400,6 +400,61 @@ Expected: 실기기서 서버 없이 온디바이스 연속 전사 GREEN.
 
 ---
 
+> **스코프 확장 (2026-06-01, 사용자 추가 요구):** 로컬(오프라인) 모드 + 로컬 영속 + 서버 전송 opt-in을 v1으로 끌어올림. 상세 설계 = `docs/superpowers/specs/2026-06-01-ondevice-stt-local-mode-design.md`. Task 13~16 추가. Task 7/8/9/10은 아래 조정 반영.
+
+## Task 13: localStore — 로컬 회의 영속 (fs JSON)
+
+**목적:** 서버 없이도 회의가 기기에 남는다. 진실원천.
+
+**Files:**
+- Create: `frontend/src/stt/localStore.ts`
+- Modify: `frontend/src-tauri/capabilities/*` (fs scope에 `local-meetings/**` 추가 — 필요 시)
+
+- [ ] **Step 1: 스토어** — `app_local_data_dir/local-meetings/<localId>/{meta.json, segments.jsonl, audio/<seq>.wav}`. `localId='local-'+crypto.randomUUID()`. append-only jsonl(크래시 내성). `@tauri-apps/plugin-fs`.
+- [ ] **Step 2: 인터페이스** — `createLocal/appendSegment/appendAudio(PCM16→WAV)/listLocal/getLocal/setServerId/deleteLocal`.
+- [ ] **Step 3: 단위테스트** — append/read/매핑 round-trip, jsonl 부분쓰기 복원.
+Expected: 회의 재시작 후 로컬 transcript/오디오 잔존.
+
+## Task 14: sttModeResolver + 자동폴백/수동토글
+
+**목적:** 활성 STT 모드 결정. 서버 못 찾으면 자동 로컬, 설정 명시 토글도.
+
+**Files:**
+- Create: `frontend/src/stt/sttModeResolver.ts`
+- Modify: `frontend/src/stores/appSettingsStore.ts`(`sttMode:'server'|'local'|'auto'`), `SttSettingsPanel.tsx`, `useLiveRecording.ts`
+
+- [ ] **Step 1: resolver** — 순수 함수 `{manualMode, serverReachable, localCapable}→'server'|'local'`. `serverReachable=probeUrl(base)`(bridge.ts), `localCapable=Android&&모델present&&lang∈Cohere8&&single`.
+- [ ] **Step 2: 설정 토글** — server/local/auto. auto가 기본(서버 우선, 실패+가능 시 로컬).
+- [ ] **Step 3: useLiveRecording 분기** — resolved 모드로 useTranscription/useLocalStt 택일. 상태바에 활성 모드 + (자동폴백 시) 사유.
+Expected: 서버 끊으면 자동 로컬 전환, 설정서 강제 로컬도 동작.
+
+## Task 15: syncQueue — 단방향 프로모트 (opt-in 업로드)
+
+**목적:** opt-in ON 시 로컬 회의를 서버로 승격(transcript+오디오). 오프라인 큐 후동기.
+
+**Files:**
+- Create: `frontend/src/stt/syncQueue.ts`
+- Modify: `frontend/src/hooks/useLocalStt.ts`, `frontend/src/api/meetings.ts`(재사용)
+
+- [ ] **Step 1: 큐** — `enqueue/flush/flushAll`. serverId 없으면 `createMeeting({title})`→매핑(localStore.setServerId). 멱등키 `(serverId, sequence)`(Task 9 유니크).
+- [ ] **Step 2: 트리거** — probeUrl 복귀 || opt-in 토글 ON || 회의종료. bulk transcript → (오디오 포함 시) uploadAudioChunk×N→finalizeAudio.
+- [ ] **Step 3: 보존정책** — 성공 시 audio 정리(또는 유지 옵션), pendingSync 클리어. 실패 시 유지+재시도.
+Expected: 오프라인 회의가 서버 복귀 후 자동 승격 → 요약/공유/검색 활성.
+
+## Task 16: 로컬 회의 UI (별도 버킷 + 축소기능 안내)
+
+**목적:** 로컬 회의를 타입 churn 없이 노출. 오프라인 생성 진입 + opt-in 토글.
+
+**Files:**
+- Modify: `frontend/src/pages/DashboardPage.tsx`/`MeetingsPage.tsx`(로컬 섹션), `MeetingLivePage.tsx`(오프라인 시작), 로컬 상세 뷰
+
+- [ ] **Step 1: 별도 버킷** — "기기 저장(미동기)" 섹션. `Meeting.id:number`에 string ID 안 섞음(blast radius 0). listLocal()로 렌더.
+- [ ] **Step 2: 축소기능 안내** — 로컬 상세에 "서버 동기 시 요약 생성/공유 활성" 배너. AI요약/공유/refine 버튼은 프로모트 전 비활성.
+- [ ] **Step 3: opt-in 업로드 토글** — 회의별/전역 "서버로 전송(transcript+오디오)" 토글 → syncQueue 활성.
+Expected: 로컬 회의 목록 분리 노출, 업로드 토글로 승격, 기존 number-id 소비자 무회귀.
+
+---
+
 ## 검증 전략
 
 - **단위:** `text_post`(Rust), `cohereLang`/chunker/resample/postprocess(TS), `localSttLanguage` 정책.
@@ -416,11 +471,11 @@ Expected: 실기기서 서버 없이 온디바이스 연속 전사 GREEN.
 - **라이선스(Cohere 매출 임계)**: 상업 배포 전 법무 확인 — `license-before-benchmark` 메모.
 - **언어전환 ~12s 콜드로드**: 회의 중 전환 UX 비용. 시작 시 1회 선택 권장.
 
-## 오픈 질문 (검토 시 결정 요망)
+## 오픈 질문 — 해소됨 (2026-06-01)
 
-1. **회의별 언어 vs 사용자별(creator) 권위** — 사용자 요구 "회의마다 설정"이 언어모드 설계의 "사용자별 권위"와 충돌. 회의별 `language` 컬럼 추가할지? (Task 10 Step3)
-2. **로컬 화자분리 부재** 수용 가능? (speaker_label null) 또는 로컬도 단순 화자 추정 필요?
-3. **오프라인 누적·후동기화** v1 포함? (Task 9는 "서버 도달 시 전송"만)
-4. **모델 호스팅** — 또박또박 서버 LAN 서빙 vs 외부 CDN? (Task 11)
-5. **데스크톱 온디바이스** 필요? (현재 비목표 — 데스크톱은 sidecar)
-6. **APK 서명/배포** 정책(현재 unsigned, CI Android 미포함).
+1. **회의별 언어 vs creator 권위** → **C 결정**: creator effective_language_config 기본 + 회의 시작 시 로컬STT 한정 오버라이드. 서버 seam(transcription_channel:49, file_transcription_job:15) 무수정. meetings 언어 컬럼 추가 안 함(로컬 오버라이드는 localStore meta.lang).
+2. **로컬 화자분리 부재** → **수용**. speaker_label=null. 로컬 화자추정 비목표.
+3. **오프라인 누적·후동기화** → **v1 포함**(스코프 확장). Task 13(localStore)+15(syncQueue 단방향 프로모트, 오프라인 큐).
+4. **모델 호스팅** → Task 11 유지(LAN 서버 우선, CDN 폴백). 개발 단계는 adb 스테이징.
+5. **데스크톱 온디바이스** → **비목표**(데스크톱 sidecar 유지).
+6. **APK 서명/배포** → 개발/검증은 debug + 에뮬(stt_arm64_api34 arm64-v8a). release 서명은 [[reference_android_release]] 키스토어. CI Android 미포함(수동 빌드).
