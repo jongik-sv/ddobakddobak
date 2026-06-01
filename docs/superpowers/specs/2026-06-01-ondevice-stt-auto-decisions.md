@@ -102,3 +102,10 @@
 - A13: Workflow 리뷰 에이전트 read-only화(localStore 삭제 사고 방지).
 - Cohere 상업 라이선스 — 배포 전 법무 확인.
 - 빌드 경고: App 청크 500KB 초과(코드분할 권장, 비기능).
+
+## G1 — 오프라인 라이브 UI 패리티
+
+- **A26** 오프라인 전사 본문의 인라인 편집은 **비활성**. `LiveRecord`에 `editable?: boolean`(기본 true) 추가, 오프라인은 `editable={false}`. 사유: 서버 없는 오프라인에서 `updateTranscript` POST는 실패→롤백되어 편집이 사라짐. 거짓 affordance 제거. 오프라인 편집 영속은 비목표(YAGNI). 서버 경로는 기본 true라 무영향.
+- **A27** 종료(stop) 후 **재개 허용**. `MobileRecordControls` 기본 동작(비녹음=「회의 시작」) 그대로 사용, 별도 「완료」 분기 없음. 이탈은 뒤로가기.
+- **A28** 상태/에러는 **단일 `LiveStatusBar.statusMessage` surface**. 우선순위 `resolveErr > rec.error > (resolving?'준비 중...':null)`. 제거한 커스텀 배너/평문 에러 영역의 대체. 서버 셸과 동일 패턴.
+- **A29**(부수) 모바일 폴리시: `.bn-editor` 좌우 패딩 모바일(lg 미만) 54px→16px(index.css), AppLayout 모바일 헤더 `min-h-12→min-h-10`·버튼 `p-2.5→p-2`. G1과 별개 시각 정리.
