@@ -226,3 +226,13 @@ body[data-dragging="true"] * {
   -webkit-user-select: text !important;
   user-select: text !important;
 }
+
+/* BlockNote 에디터(AI 요약·메모) 좌우 여백.
+   코어 기본값 .bn-editor{padding-inline:54px}는 문서형 데스크톱용 — 모바일에선 본문이
+   좁아져 가독성 저하(요약 화면 양쪽 여백 과다). lg(1024px) 미만에서 헤더 px-4(16px)와
+   정렬되게 축소. 데스크톱은 기본 문서형 여백 유지. */
+@media (max-width: 1023px) {
+  .bn-editor {
+    padding-inline: 16px !important;
+  }
+}
