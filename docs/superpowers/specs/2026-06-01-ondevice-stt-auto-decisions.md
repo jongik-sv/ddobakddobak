@@ -37,6 +37,8 @@
 | A15 | fs:scope에 `$APPLOCALDATA/**` 추가 | bare `fs:allow-mkdir`엔 path scope 없어 localStore가 'forbidden path' 거부. 스코프 명시 필요(되돌리면 로컬 저장 깨짐) |
 | A16 | 온디바이스 STT 모드는 config.yaml `stt_engines`에 **추가 안 함** | 그 목록은 서버 STT 모델 선택 UI 구동. 온디바이스는 클라 축(sttMode)이라 별도 토글(SttSettingsPanel OnDeviceSttSettings) |
 | A17 | 로컬 STT 언어 = `getLanguageSettings()`(현재 사용자) | 회의 시작자 = 통상 creator라 creator 권위(Q1=C)와 정합. 엄밀한 "다른 사람이 시작" 케이스는 후속 |
+| A18 | T16 오프라인 진입 = **별도 라우트/훅**(useLiveRecording 포크 안 함) | useLiveRecording은 numeric id+startMeeting POST 결합. 포크보다 `useLocalRecording`+`/local-meetings/:localId/live` 신설이 깔끔(서버 lifecycle 0). MeetingsPage에 LocalMeetingsSection(Android만) |
+| A19 | T11 모델 호스트 = `getApiBaseUrl()`(LAN 서버), 서버측 `cohere-onnx/` 정적 라우트는 **배포 단계** | 다운로더는 Rust 스트리밍으로 구현됐으나 서버에 2.7GB 모델 파일을 두고 정적 제공하는 건 인프라 작업. 개발/검증은 adb 스테이징+ensure_cohere_model로 충분(증명됨). CDN 폴백은 호출자가 다른 base로 재시도 |
 
 ## 검증 현황
 
@@ -51,18 +53,25 @@
 - frontend stt 8모듈 + appSettingsStore: vitest **157/157** ✅, tsc 신규파일 0에러, vite build GREEN.
 - backend bulk: RSpec **12/12** ✅.
 
-## ⚠ 스코프 충족 현황 (정직한 평가 — advisor 지적)
-사용자 승인 스코프 = **완전 오프라인 회의 생성**(서버 없이 생성→녹음→전사→로컬저장).
-- ✅ **데이터 경로는 on-device로 증명됨**(위 E2E — createLocal+VAD+transcribe+persist).
-- ✅ **서버-회의-존재 로컬 전사**(T8): useLiveRecording이 sttMode='local'서 useLocalStt로 라우팅.
-- ❌ **완전 오프라인 *진입 UI* 미완(T16)**: `useLiveRecording(meetingId:number)`는 서버 발급
-  numeric id + `startMeeting`(POST)에 결합 → 서버 없이 그 라우트 진입 불가. 오프라인 전용
-  진입점(localId 기반, 서버 lifecycle 우회 + 별도 라우트/페이지)이 **아직 미구현**.
-  → 즉 "엔진·파이프라인·영속은 실증됐으나, 사용자가 완전 오프라인에서 회의를 *시작하는 화면*은 미완."
+## ✅ 스코프 충족 현황 (최종 — 모두 on-device 증명)
+사용자 승인 스코프 = **완전 오프라인 회의 생성**(서버 없이 생성→녹음→전사→로컬저장) + 서버 전송 opt-in.
+- ✅ **완전 오프라인 진입(콜드 도달성)**: 서버 한 번도 안 본 상태에서 `/local-meetings`(게이트 밖)
+  → "오프라인 회의 시작" → createLocal → `/local-meetings/:id/live` 마운트 + "녹음 시작" 버튼.
+  **클린 프로덕션 빌드(임시훅 제거)에서 CDP로 ok=true 확인.**
+- ✅ **데이터 경로 on-device 증명**: createLocal+실제 SileroVad+SegmentAccumulator+stt_transcribe+
+  localStore 영속+readback (E2E 훅으로 segments=1/persisted=1, 한국어 전사 정확).
+- ✅ **엔진**(T5 Cohere FFI 20× GREEN), **Silero in WebView**(단일스레드 wasm GREEN).
+- ✅ **서버-회의-존재 로컬 전사**(T8) + **서버 전송 opt-in**(T9 bulk + T15 syncQueue 단방향 프로모트).
+
+### 증명 레벨 구분(정직)
+- **실제 on-device 실행**: 엔진(T5), Silero, 파이프라인 E2E, 콜드 오프라인 도달성.
+- **마이크→전사 라이브 leg**: 에뮬엔 마이크 없음 → fixture 기반 파이프라인 E2E로 증명(실제 마이크
+  입력은 실기기 수동 검증 권장). VAD청킹·transcribe·영속은 동일 코드경로라 마이크만 다름.
+- **단위/컴파일**: vitest 168, RSpec 12, tsc 신규파일 0에러, vite build, android cross-compile, APK .so 3종 포함.
 
 ## 미결(후속)
-- **T16 오프라인 생성 진입 UI** — 위 ❌. 다음 작업.
-- **T12 정리**: A14 임시 훅(main.tsx 2줄 + devLocalSttE2E.ts + ko-fixture.wav) 제거.
-- A13 사고 방지: Workflow 리뷰 에이전트 read-only.
-- T11 모델 호스팅(LAN vs CDN) — 미구현.
+- **실기기 마이크 라이브 검증**: 실기기(R3CR60RAK3R)서 실제 발화→연속 전사 RTF/RAM/발열(플랜 수동검증).
+- **T11 서버측 정적 호스팅**: `cohere-onnx/` 2.7GB 서버 제공 라우트(A19, 배포 인프라). 개발은 adb 스테이징.
+- A13: Workflow 리뷰 에이전트 read-only화(localStore 삭제 사고 방지).
 - Cohere 상업 라이선스 — 배포 전 법무 확인.
+- 빌드 경고: App 청크 500KB 초과(코드분할 권장, 비기능).
