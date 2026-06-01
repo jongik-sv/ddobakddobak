@@ -96,4 +96,36 @@ describe('LiveRecord', () => {
     render(<LiveRecord meetingId={1} />)
     expect(screen.getByText('SPEAKER_00')).toBeInTheDocument()
   })
+
+  it('editable=false면 전사 텍스트가 읽기전용(편집 affordance 없음)', () => {
+    useTranscriptStore.getState().addFinal({
+      id: 1,
+      content: '읽기전용 발화',
+      speaker_label: 'SPEAKER_00',
+      started_at_ms: 0,
+      ended_at_ms: 3000,
+      sequence_number: 1,
+      applied: false,
+    })
+    render(<LiveRecord meetingId={-1} editable={false} />)
+    const el = screen.getByText('읽기전용 발화')
+    // 비편집: contentEditable 비활성 + 포커스 불가(tabIndex=-1)
+    expect(el).toHaveAttribute('contenteditable', 'false')
+    expect(el).toHaveAttribute('tabindex', '-1')
+  })
+
+  it('editable 미지정(기본 true)이면 편집 가능 affordance 유지', () => {
+    useTranscriptStore.getState().addFinal({
+      id: 1,
+      content: '편집가능 발화',
+      speaker_label: 'SPEAKER_00',
+      started_at_ms: 0,
+      ended_at_ms: 3000,
+      sequence_number: 1,
+      applied: false,
+    })
+    render(<LiveRecord meetingId={1} />)
+    const el = screen.getByText('편집가능 발화')
+    expect(el).toHaveAttribute('tabindex', '0')
+  })
 })

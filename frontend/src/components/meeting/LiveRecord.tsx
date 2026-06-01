@@ -9,9 +9,10 @@ interface LiveRecordProps {
   currentTimeMs?: number
   onSeek?: (ms: number) => void
   onApply?: () => Promise<void>
+  editable?: boolean
 }
 
-export function LiveRecord({ meetingId, currentTimeMs = 0, onSeek, onApply }: LiveRecordProps) {
+export function LiveRecord({ meetingId, currentTimeMs = 0, onSeek, onApply, editable = true }: LiveRecordProps) {
   const finals = useTranscriptStore((s) => s.finals)
   const partial = useTranscriptStore((s) => s.partial)
   // 라이브 기록 = AI 회의록에 아직 적용되지 않은 버퍼 기록
@@ -86,7 +87,7 @@ export function LiveRecord({ meetingId, currentTimeMs = 0, onSeek, onApply }: Li
               transcriptId={item.id}
               meetingId={meetingId}
               content={item.content}
-              editable
+              editable={editable}
               className="text-sm text-gray-900 leading-relaxed"
             />
           </div>
