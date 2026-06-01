@@ -1,8 +1,8 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Mic, Search, Settings, Users, PanelLeftClose, LogOut } from 'lucide-react'
+import { LayoutDashboard, Mic, Search, Settings, Users, PanelLeftClose, LogOut, WifiOff } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
 import { useAuth } from '../../hooks/useAuth'
-import { getMode, IS_MOBILE } from '../../config'
+import { getMode, IS_MOBILE, IS_TAURI } from '../../config'
 import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
 import FolderTree from '../folder/FolderTree'
@@ -76,6 +76,13 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
           <Search className="w-4 h-4" />
           검색
         </NavLink>
+        {/* 오프라인(온디바이스) 회의 전용 진입 — Android(Tauri 모바일)에서만. 전용 홈(/local-meetings). */}
+        {IS_TAURI && IS_MOBILE && (
+          <NavLink to="/local-meetings" className={navLinkClass} onClick={closeIfMobile}>
+            <WifiOff className="w-4 h-4" />
+            오프라인 회의
+          </NavLink>
+        )}
         <div className={`pl-2 ${isMeetingsPage ? '' : 'hidden'}`}>
           <FolderTree />
         </div>

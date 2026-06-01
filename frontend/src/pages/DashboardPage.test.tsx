@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import DashboardPage from './DashboardPage'
 
@@ -9,6 +9,16 @@ const { mockGetMeetings } = vi.hoisted(() => ({
 
 vi.mock('../api/meetings', () => ({
   getMeetings: mockGetMeetings,
+}))
+
+// 오프라인 건수 통계 카드: Android 환경 강제 + listLocal(3건) 모킹.
+vi.mock('../config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../config')>()),
+  IS_TAURI: true,
+  IS_MOBILE: true,
+}))
+vi.mock('../stt/localStore', () => ({
+  listLocal: vi.fn().mockResolvedValue([{ localId: 'a' }, { localId: 'b' }, { localId: 'c' }]),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -71,5 +81,12 @@ describe('DashboardPage 반응형 패딩 (TSK-03-03)', () => {
     // overflow-x-auto 래퍼 또는 그리드 자체에 적용되었는지 확인
     const overflowEl = container.querySelector('.overflow-x-auto') as HTMLElement
     expect(overflowEl).toBeTruthy()
+  })
+
+  it('오프라인 회의 건수 통계 카드가 표시됨(Android)', async () => {
+    renderPage()
+    // 통계 카드 라벨 "오프라인 회의" + listLocal 3건 카운트
+    expect(await screen.findByText('오프라인 회의')).toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument()
   })
 })

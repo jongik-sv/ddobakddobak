@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Mic, CheckCircle2, Clock, FileText, Plus, type LucideIcon } from 'lucide-react'
+import { Mic, CheckCircle2, Clock, FileText, Plus, WifiOff, type LucideIcon } from 'lucide-react'
 import { getMeetings } from '../api/meetings'
 import type { Meeting } from '../api/meetings'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { useMeetingStore } from '../stores/meetingStore'
 import { CreateMeetingModal } from '../components/meeting/CreateMeetingModal'
 import { DashboardStatsSkeleton, DashboardMeetingsSkeleton } from '../components/ui/Skeleton'
+import { IS_TAURI, IS_MOBILE } from '../config'
+import * as localStore from '../stt/localStore'
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
@@ -77,6 +79,8 @@ export default function DashboardPage() {
   const [statusCounts, setStatusCounts] = useState<StatusCounts>(dashboardCache?.statusCounts ?? {})
   const [isLoading, setIsLoading] = useState(!dashboardCache)
   const [showModal, setShowModal] = useState(false)
+  // 오프라인(온디바이스) 회의 건수 — Android에서만. null이면 통계 카드 미표시(비대상 플랫폼).
+  const [offlineCount, setOfflineCount] = useState<number | null>(null)
   const meetingTypeMap = usePromptTemplateStore((s) => s.meetingTypeMap)
   const meetingTypeList = usePromptTemplateStore((s) => s.meetingTypeList)
   const addMeeting = useMeetingStore((s) => s.addMeeting)
@@ -95,6 +99,14 @@ export default function DashboardPage() {
       .finally(() => setIsLoading(false))
   }, [])
 
+  // 오프라인 회의 건수(Android만). 로컬 fs 목록 길이.
+  useEffect(() => {
+    if (!(IS_TAURI && IS_MOBILE)) return
+    localStore.listLocal()
+      .then((metas) => setOfflineCount(metas.length))
+      .catch(() => setOfflineCount(0))
+  }, [])
+
   const recordingCount = statusCounts.recording ?? 0
   const completedCount = statusCounts.completed ?? 0
   const pendingCount = statusCounts.pending ?? 0
@@ -106,8 +118,13 @@ export default function DashboardPage() {
     { icon: Mic,         iconBg: 'bg-red-50',   iconColor: 'text-red-500',   label: '녹음중',    value: recordingCount },
     { icon: CheckCircle2,iconBg: 'bg-green-50', iconColor: 'text-green-600', label: '완료',      value: completedCount },
     { icon: Clock,       iconBg: 'bg-amber-50', iconColor: 'text-amber-600', label: '대기중',    value: pendingCount },
+    // 오프라인 회의 건수(Android만). 클릭 시 전용 홈으로.
+    ...(offlineCount !== null
+      ? [{ icon: WifiOff, iconBg: 'bg-slate-100', iconColor: 'text-slate-600', label: '오프라인 회의', value: offlineCount }]
+      : []),
   ]
-  const statLinks = ['/meetings', '/meetings?status=recording', '/meetings?status=completed', '/meetings?status=pending']
+  const statLinks = ['/meetings', '/meetings?status=recording', '/meetings?status=completed', '/meetings?status=pending',
+    ...(offlineCount !== null ? ['/local-meetings'] : [])]
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6 lg:p-8">

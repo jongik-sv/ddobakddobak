@@ -9,6 +9,13 @@ vi.mock('../folder/FolderTree', () => ({
   default: () => <div data-testid="folder-tree" />,
 }))
 
+// 오프라인 회의 진입은 Android(Tauri 모바일)에서만 노출 — 테스트는 모바일 환경으로 강제.
+vi.mock('../../config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../config')>()),
+  IS_TAURI: true,
+  IS_MOBILE: true,
+}))
+
 describe('Sidebar', () => {
   beforeEach(() => {
     // 사이드바를 열린 상태로 설정
@@ -60,6 +67,16 @@ describe('Sidebar', () => {
       </MemoryRouter>
     )
     expect(screen.getByRole('button', { name: /설정/i })).toBeInTheDocument()
+  })
+
+  it('Android(Tauri 모바일)에서 "오프라인 회의" 링크가 /local-meetings로 렌더', () => {
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>
+    )
+    const link = screen.getByRole('link', { name: /오프라인 회의/i })
+    expect(link).toHaveAttribute('href', '/local-meetings')
   })
 
   it('sidebarOpen=false일 때 사이드바가 렌더링되지 않음', () => {
