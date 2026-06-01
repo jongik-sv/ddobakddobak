@@ -15,6 +15,8 @@ vi.mock('../../config', () => ({
   get IS_TAURI() {
     return mockIsTauri
   },
+  // 오프라인 탈출구는 Android(IS_MOBILE)에서만 렌더 — 기존 테스트는 false로 미렌더 유지.
+  IS_MOBILE: false,
   getMode: mockGetMode,
   hasMode: mockHasMode,
   getServerUrl: mockGetServerUrl,

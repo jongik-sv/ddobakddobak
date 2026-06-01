@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { IS_TAURI, getMode, hasMode, getServerUrl } from '../config'
+import { IS_TAURI, IS_MOBILE, getMode, hasMode, getServerUrl } from '../config'
 import SetupPage from '../pages/SetupPage'
 import { ServerSetup } from './auth/ServerSetup'
 
@@ -28,19 +28,32 @@ export default function SetupGate({ children }: { children: React.ReactNode }) {
 
   if (gate === 'mode_select') {
     return (
-      <ServerSetup
-        onComplete={() => {
-          sessionStorage.removeItem('reselect_mode')
-          if (getMode() === 'server') {
-            // apiClient의 prefixUrl은 모듈 로드 시점에 고정되므로,
-            // 변경된 서버 URL을 반영하려면 전체 리로드로 재초기화한다.
-            window.location.reload()
-          } else {
-            setGate('local_setup')
-          }
-        }}
-        onCancel={() => { sessionStorage.removeItem('reselect_mode'); setGate('ready') }}
-      />
+      <>
+        <ServerSetup
+          onComplete={() => {
+            sessionStorage.removeItem('reselect_mode')
+            if (getMode() === 'server') {
+              // apiClient의 prefixUrl은 모듈 로드 시점에 고정되므로,
+              // 변경된 서버 URL을 반영하려면 전체 리로드로 재초기화한다.
+              window.location.reload()
+            } else {
+              setGate('local_setup')
+            }
+          }}
+          onCancel={() => { sessionStorage.removeItem('reselect_mode'); setGate('ready') }}
+        />
+        {/* 완전 오프라인 탈출구: 서버 없이 온디바이스 회의로 진입(Android만). */}
+        {IS_TAURI && IS_MOBILE && (
+          <div className="fixed bottom-0 inset-x-0 p-4 pb-safe bg-white/90 backdrop-blur border-t text-center">
+            <a
+              href="/local-meetings"
+              className="inline-block text-sm font-medium text-primary underline"
+            >
+              서버 없이 오프라인으로 시작 →
+            </a>
+          </div>
+        )}
+      </>
     )
   }
 

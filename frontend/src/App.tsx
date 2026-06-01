@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage'
 import MeetingsPage from './pages/MeetingsPage'
 import MeetingLivePage from './pages/MeetingLivePage'
 import LocalMeetingLivePage from './pages/LocalMeetingLivePage'
+import LocalMeetingsHome from './pages/LocalMeetingsHome'
 import MeetingPage from './pages/MeetingPage'
 import MeetingViewerPage from './pages/MeetingViewerPage'
 import SearchPage from './pages/SearchPage'
@@ -28,6 +29,36 @@ function App() {
     usePromptTemplateStore.getState().fetch()
   }, [])
 
+  return (
+    <Routes>
+      {/* 오프라인(온디바이스) 라우트 — SetupGate/AuthGuard **밖**에서 렌더한다.
+          서버를 한 번도 못 본 상태에서도 진입 가능해야 하므로(완전 오프라인 생성).
+          서버 의존 없음: localStore(fs) + 온디바이스 STT만 사용. */}
+      <Route
+        path="/local-meetings"
+        element={
+          <AppLayout>
+            <LocalMeetingsHome />
+          </AppLayout>
+        }
+      />
+      <Route
+        path="/local-meetings/:localId/live"
+        element={
+          <AppLayout>
+            <LocalMeetingLivePage />
+          </AppLayout>
+        }
+      />
+
+      {/* 그 외 전부 = 기존 게이트(서버 설정 + 인증) 적용. 무변경. */}
+      <Route path="*" element={<GatedApp />} />
+    </Routes>
+  )
+}
+
+/** 기존 게이트(SetupGate+AuthGuard) 적용 라우트 묶음. 변경 없음. */
+function GatedApp() {
   return (
     <SetupGate>
     <AuthGuard>
@@ -70,14 +101,6 @@ function App() {
         element={
           <AppLayout>
             <MeetingViewerPage />
-          </AppLayout>
-        }
-      />
-      <Route
-        path="/local-meetings/:localId/live"
-        element={
-          <AppLayout>
-            <LocalMeetingLivePage />
           </AppLayout>
         }
       />
