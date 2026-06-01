@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 
 import { LocalMeetingsSection } from '../components/meeting/LocalMeetingsSection'
+import ModelManager from '../components/stt/ModelManager'
 
 export default function LocalMeetingsHome() {
   const navigate = useNavigate()
@@ -28,6 +29,8 @@ export default function LocalMeetingsHome() {
         서버 연결 없이 폰에서 녹음·전사하는 회의입니다. 기록은 기기에 저장되며, 나중에
         서버에 연결되면 업로드해 공유·검색·요약을 쓸 수 있습니다.
       </p>
+      {/* 오프라인 전사에 필요한 온디바이스 모델 다운로드·관리(이 화면에서 직접 받게) */}
+      <ModelManager className="mb-4" />
       <LocalMeetingsSection />
     </div>
   )

@@ -4,11 +4,7 @@ import { getSttSettings, updateSttEngine } from '../../api/settings'
 import type { SttSettings } from '../../api/settings'
 import { ENGINE_LABELS, IS_MOBILE, IS_TAURI } from '../../config'
 import { useAppSettingsStore } from '../../stores/appSettingsStore'
-import {
-  cohereModelStatus,
-  downloadCohereModel,
-  type ModelDownloadProgress,
-} from '../../stt/modelDownloader'
+import ModelManager from '../stt/ModelManager'
 
 /** STT(음성 인식) 엔진 선택 카드. */
 export function SttSettingsPanel() {
@@ -109,39 +105,8 @@ function OnDeviceSttSettings() {
   const localUploadEnabled = useAppSettingsStore((s) => s.localUploadEnabled)
   const setLocalUploadEnabled = useAppSettingsStore((s) => s.setLocalUploadEnabled)
 
-  const [modelPresent, setModelPresent] = useState<boolean | null>(null)
-  const [downloading, setDownloading] = useState(false)
-  const [progress, setProgress] = useState<ModelDownloadProgress | null>(null)
-  const [dlError, setDlError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!(IS_TAURI && IS_MOBILE)) return
-    cohereModelStatus()
-      .then((s) => setModelPresent(s.present))
-      .catch(() => setModelPresent(false))
-  }, [])
-
   // 온디바이스 STT는 Android(Tauri 모바일)에서만 가능.
   if (!(IS_TAURI && IS_MOBILE)) return null
-
-  const handleDownload = async () => {
-    setDownloading(true)
-    setDlError(null)
-    try {
-      await downloadCohereModel((p) => setProgress(p))
-      setModelPresent(true)
-    } catch (e) {
-      setDlError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setDownloading(false)
-      setProgress(null)
-    }
-  }
-
-  const pct =
-    progress && progress.total > 0
-      ? Math.round((progress.received / progress.total) * 100)
-      : 0
 
   const MODES: { value: 'server' | 'local' | 'auto'; label: string; desc: string }[] = [
     { value: 'auto', label: '자동', desc: '서버 연결 안 되면 자동으로 온디바이스 전사' },
@@ -157,41 +122,8 @@ function OnDeviceSttSettings() {
         지원하며 화자분리·태국어·다국어 자동감지는 서버 모드가 필요합니다.
       </p>
 
-      {/* 모델 다운로드 게이트 (~2.7GB) */}
-      <div className="mb-4 rounded-md border p-3">
-        {modelPresent === null && (
-          <p className="text-xs text-muted-foreground">모델 상태 확인 중...</p>
-        )}
-        {modelPresent === true && (
-          <p className="text-sm text-green-600">온디바이스 모델 준비됨 (오프라인 전사 가능)</p>
-        )}
-        {modelPresent === false && !downloading && (
-          <div>
-            <p className="text-sm font-medium mb-1">온디바이스 모델 (~2.7GB)</p>
-            <p className="text-xs text-muted-foreground mb-2">
-              오프라인 전사를 쓰려면 모델을 한 번 받아야 합니다. Wi-Fi + 충분한 저장공간 권장.
-            </p>
-            <button
-              onClick={handleDownload}
-              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground min-h-[44px]"
-            >
-              모델 다운로드
-            </button>
-            {dlError && <p className="mt-2 text-sm text-red-600">{dlError}</p>}
-          </div>
-        )}
-        {downloading && (
-          <div>
-            <p className="text-sm font-medium mb-1">
-              모델 다운로드 중... {progress ? `(${progress.fileIndex + 1}/${progress.fileCount})` : ''}
-            </p>
-            <div className="h-2 w-full rounded bg-muted overflow-hidden">
-              <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">{pct}%</p>
-          </div>
-        )}
-      </div>
+      {/* 모델 다운로드·관리 게이트 (~2.7GB) */}
+      <ModelManager className="mb-4" />
 
       <div className="space-y-2">
         {MODES.map((m) => (

@@ -17,6 +17,7 @@ import { useTranscriptStore } from '../stores/transcriptStore'
 import { getLanguageSettings } from '../api/settings'
 import { localSttLanguage } from '../stt/cohereLang'
 import { IS_TAURI } from '../config'
+import ModelManager from '../components/stt/ModelManager'
 
 function fmtElapsed(sec: number): string {
   const m = Math.floor(sec / 60)
@@ -32,10 +33,14 @@ export default function LocalMeetingLivePage() {
   const [modelDir, setModelDir] = useState<string | null>(null)
   const [resolving, setResolving] = useState(true)
   const [resolveErr, setResolveErr] = useState<string | null>(null)
+  // ModelManager 다운로드 완료 시 bump → 모델 경로 재해석(녹음 게이트 해제).
+  const [reloadKey, setReloadKey] = useState(0)
 
   // 모델 경로 + 언어 결정(creator 권위 = 현재 사용자, 오프라인이면 기본 ko).
+  // 모델 미설치면 modelDir=null로 두고(에러 아님) 화면 하단 ModelManager 게이트가 받게 한다.
   useEffect(() => {
     let cancelled = false
+    setResolving(true)
     ;(async () => {
       try {
         const cfg = await getLanguageSettings().catch(
@@ -50,7 +55,7 @@ export default function LocalMeetingLivePage() {
         if (cancelled) return
         setLanguage(lang)
         setModelDir(dir)
-        if (!dir) setResolveErr('온디바이스 모델이 아직 준비되지 않았습니다. 설정에서 모델을 받아주세요.')
+        setResolveErr(null)
       } catch (e) {
         if (!cancelled) setResolveErr(e instanceof Error ? e.message : String(e))
       } finally {
@@ -60,7 +65,7 @@ export default function LocalMeetingLivePage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [reloadKey])
 
   const rec = useLocalRecording(localId ?? '', language, modelDir)
   const finals = useTranscriptStore((s) => s.finals)
@@ -105,7 +110,16 @@ export default function LocalMeetingLivePage() {
         {resolving && <p className="text-sm text-muted-foreground">준비 중...</p>}
         {resolveErr && <p className="text-sm text-red-600">{resolveErr}</p>}
         {rec.error && <p className="text-sm text-red-600">{rec.error}</p>}
-        {!resolving && finals.length === 0 && (
+        {/* 모델 미설치 게이트 — 오프라인 사용자가 이 화면에서 직접 받게(설정 도달 불필요). */}
+        {!resolving && !modelDir && (
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              오프라인 전사를 시작하려면 먼저 온디바이스 모델을 받아야 합니다.
+            </p>
+            <ModelManager onChanged={() => setReloadKey((k) => k + 1)} />
+          </div>
+        )}
+        {!resolving && modelDir && finals.length === 0 && (
           <p className="text-sm text-muted-foreground">
             {rec.isRecording ? '말씀하시면 여기에 전사됩니다...' : '녹음을 시작하세요.'}
           </p>

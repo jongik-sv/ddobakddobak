@@ -26,11 +26,27 @@ export interface ModelStatus {
   present: boolean
   dir: string
   missing: string[]
+  /** 현재 설치된(존재하는) 모델 파일들의 총 바이트. 관리 UI 용량 표시용. */
+  bytes: number
 }
 
-/** 모델 존재 여부(다운로드 게이트용). */
+/** 모델 존재 여부 + 용량(다운로드/관리 게이트용). */
 export async function cohereModelStatus(): Promise<ModelStatus> {
   return invoke<ModelStatus>('cohere_model_status')
+}
+
+/**
+ * adb 스테이징(`/data/local/tmp/cohere-onnx`)에서 샌드박스로 모델을 복사한다(개발/사전적재
+ * 기기용, 네트워크 불필요). 스테이징이 없으면 reject — 호출자는 네트워크 다운로드로 폴백한다.
+ * 반환: 설치된 모델 경로.
+ */
+export async function ensureCohereModel(): Promise<{ dir: string }> {
+  return invoke<{ dir: string }>('ensure_cohere_model')
+}
+
+/** 설치된 모델 4파일을 삭제해 디스크를 회수한다(관리 UI "모델 삭제"). 멱등. */
+export async function deleteCohereModel(): Promise<void> {
+  await invoke('delete_cohere_model')
 }
 
 /**
