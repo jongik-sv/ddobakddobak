@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { LogIn } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import { getServerUrl, IS_MOBILE } from '../../config'
+import { getServerUrl, IS_MOBILE, IS_TAURI } from '../../config'
 
 export function LoginPage() {
   const { login, loginDirect } = useAuth()
@@ -116,6 +116,16 @@ export function LoginPage() {
         >
           {IS_MOBILE ? '서버 주소 변경' : '모드 선택으로 돌아가기'}
         </button>
+
+        {/* 완전 오프라인 탈출구: 로그인 없이 온디바이스 회의로(Android만). */}
+        {IS_TAURI && IS_MOBILE && (
+          <a
+            href="/local-meetings"
+            className="block w-full mt-2 py-2 text-center text-sm font-medium text-primary underline"
+          >
+            서버 없이 오프라인으로 시작 →
+          </a>
+        )}
       </div>
     </div>
   )
