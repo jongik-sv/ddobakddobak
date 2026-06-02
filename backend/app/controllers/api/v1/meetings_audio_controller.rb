@@ -9,6 +9,7 @@ module Api
 
       before_action :authenticate_user!
       before_action :set_meeting
+      before_action :authorize_meeting_control!, only: %i[create chunk finalize]
 
       def create
         audio_file = params.require(:audio)

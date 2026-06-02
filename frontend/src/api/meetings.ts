@@ -9,6 +9,8 @@ export interface MeetingDetail {
   started_at: string | null
   ended_at: string | null
   created_by_id: number
+  /** 모든 사용자에게 공유 여부 (기본 true) */
+  shared: boolean
   created_at: string
   updated_at: string
 }
@@ -51,9 +53,30 @@ export interface Meeting {
   attendees: string | null
   tags?: { id: number; name: string; color: string }[]
   share_code?: string | null
+  /** 모든 사용자에게 공유 여부 (기본 true). 비공유면 소유자/admin만 조회 가능. */
+  shared: boolean
+  /** 현재 사용자가 이 회의를 수정/삭제할 수 있는지 (소유자 ∨ admin). 서버가 계산해 내려준다. */
+  editable?: boolean
   started_at: string | null
   ended_at: string | null
   created_at: string
+}
+
+/**
+ * 회의 수정/삭제 등 소유권이 필요한 어포던스를 노출할지 판단하는 순수 헬퍼.
+ *
+ * 서버가 meeting_json에 계산해 내려주는 `editable`을 1순위로 신뢰하고,
+ * (구버전 응답 등으로) 없을 때만 클라이언트에서 소유자(created_by.id === user.id)
+ * 또는 admin 여부로 추론한다. UX 어포던스 게이팅 용도이며, 권한 자체는 서버가 403으로 강제한다.
+ */
+export function canEditMeeting(
+  meeting: Pick<Meeting, 'editable' | 'created_by'> | null | undefined,
+  user: { id: number; role: 'admin' | 'member' } | null | undefined,
+): boolean {
+  if (!meeting) return false
+  if (typeof meeting.editable === 'boolean') return meeting.editable
+  if (!user) return false
+  return meeting.created_by?.id === user.id || user.role === 'admin'
 }
 
 export interface MeetingListMeta {
@@ -92,7 +115,7 @@ export async function getMeetings(params: GetMeetingsParams): Promise<MeetingLis
   return apiClient.get('meetings', { searchParams }).json()
 }
 
-export async function createMeeting(data: { title: string; meeting_type?: string; folder_id?: number | null }): Promise<Meeting> {
+export async function createMeeting(data: { title: string; meeting_type?: string; folder_id?: number | null; shared?: boolean }): Promise<Meeting> {
   const res: { meeting: Meeting } = await apiClient.post('meetings', { json: data }).json()
   return res.meeting
 }
@@ -256,6 +279,8 @@ export interface UpdateMeetingParams {
   tag_ids?: number[]
   brief_summary?: string | null
   attendees?: string | null
+  /** 공유 여부. 소유자/admin만 반영된다(서버 강제). */
+  shared?: boolean
 }
 
 export async function updateMeeting(id: number, params: UpdateMeetingParams): Promise<Meeting> {

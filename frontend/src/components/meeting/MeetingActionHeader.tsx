@@ -23,6 +23,8 @@ interface MeetingActionHeaderProps {
   onReopen: () => void
   onGoLive: () => void
   onDelete: () => void
+  /** 소유자/admin만 편집·삭제·재생성 등 제어 어포던스 노출 (기본 true = 기존 동작). */
+  canEdit?: boolean
 }
 
 /** 회의 상세 헤더: 제목 인라인 편집 + 상태/유형/태그 배지 + 액션 버튼. */
@@ -39,6 +41,7 @@ export function MeetingActionHeader({
   onReopen,
   onGoLive,
   onDelete,
+  canEdit = true,
 }: MeetingActionHeaderProps) {
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [editingTitleValue, setEditingTitleValue] = useState('')
@@ -66,7 +69,7 @@ export function MeetingActionHeader({
   return (
     <div className={`flex items-center justify-between border-b bg-white shrink-0 ${isDesktop ? 'px-6 py-3' : 'px-3 py-2'}`}>
       <div className={`flex items-center flex-1 min-w-0 ${isDesktop ? 'gap-3' : 'gap-2'}`}>
-        {isEditingTitle ? (
+        {isEditingTitle && canEdit ? (
           <input
             type="text"
             value={editingTitleValue}
@@ -76,12 +79,16 @@ export function MeetingActionHeader({
             className="text-lg font-semibold text-gray-900 border-b-2 border-blue-500 outline-none bg-transparent flex-1 min-w-0"
             autoFocus
           />
-        ) : (
+        ) : canEdit ? (
           <h1
             className="text-lg font-semibold text-gray-900 truncate cursor-pointer hover:text-blue-700"
             onClick={handleTitleClick}
             title="클릭하여 제목 편집"
           >
+            {meeting.title ?? '회의'}
+          </h1>
+        ) : (
+          <h1 className="text-lg font-semibold text-gray-900 truncate">
             {meeting.title ?? '회의'}
           </h1>
         )}
@@ -106,7 +113,7 @@ export function MeetingActionHeader({
         ))}
       </div>
       <div className={`flex items-center shrink-0 ${isDesktop ? 'gap-2' : 'gap-1'}`}>
-        {meeting.status === 'completed' && (
+        {canEdit && meeting.status === 'completed' && (
           <>
             {meeting.has_audio_file && (
               <button
@@ -144,7 +151,7 @@ export function MeetingActionHeader({
             </button>
           </>
         )}
-        {(meeting.status === 'pending' || meeting.status === 'recording') && (
+        {canEdit && (meeting.status === 'pending' || meeting.status === 'recording') && (
           <button
             onClick={onGoLive}
             aria-label="회의 진행"
@@ -158,13 +165,15 @@ export function MeetingActionHeader({
           meetingTitle={meeting.title}
           meetingDate={meeting.started_at ?? meeting.created_at}
         />
-        <button
-          onClick={onDelete}
-          aria-label="삭제"
-          className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50"
-        >
-          {isDesktop ? '삭제' : <Trash2 className="w-4 h-4" />}
-        </button>
+        {canEdit && (
+          <button
+            onClick={onDelete}
+            aria-label="삭제"
+            className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50"
+          >
+            {isDesktop ? '삭제' : <Trash2 className="w-4 h-4" />}
+          </button>
+        )}
       </div>
     </div>
   )

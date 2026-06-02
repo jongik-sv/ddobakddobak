@@ -1,6 +1,7 @@
 import { IS_TAURI, getMode, getServerUrl, clearMode } from '../../config'
 import UserLlmSettings from './UserLlmSettings'
 import UserLanguageSettings from './UserLanguageSettings'
+import UserSttSettings from './UserSttSettings'
 import PasswordChangeSection from './PasswordChangeSection'
 
 interface Props {
@@ -56,6 +57,9 @@ export default function PersonalSettingsTab({ showPasswordSection }: Props) {
 
       {/* 내 LLM 설정 (사용자 개인) */}
       <UserLlmSettings />
+
+      {/* STT 전사 위치 (per-device 로컬 설정 — Android/Tauri 모바일에서만 노출) */}
+      <UserSttSettings />
     </div>
   )
 }

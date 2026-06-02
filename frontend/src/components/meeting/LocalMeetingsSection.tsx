@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Mic, WifiOff, UploadCloud, Check, Trash2 } from 'lucide-react'
+import { Mic, UploadCloud, Check, Trash2 } from 'lucide-react'
 
 import * as localStore from '../../stt/localStore'
 import type { LocalMeetingMeta } from '../../stt/localStore'
@@ -86,19 +86,13 @@ export function LocalMeetingsSection() {
 
   return (
     <div className="mb-6 rounded-lg border bg-card p-4">
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2">
-          <WifiOff className="w-4 h-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold">기기 저장 (오프라인)</h2>
-        </div>
-        <button
-          onClick={handleCreate}
-          disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground min-h-[44px] disabled:opacity-50"
-        >
-          <Mic className="w-4 h-4" /> 오프라인 회의 시작
-        </button>
-      </div>
+      <button
+        onClick={handleCreate}
+        disabled={busy}
+        className="mb-3 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground min-h-[44px] disabled:opacity-50"
+      >
+        <Mic className="w-4 h-4" /> 오프라인 회의 시작
+      </button>
 
       {metas.length === 0 ? (
         <p className="text-xs text-muted-foreground">
@@ -112,7 +106,13 @@ export function LocalMeetingsSection() {
               className="flex items-center gap-2 rounded-md p-2 hover:bg-accent/50"
             >
               <button
-                onClick={() => navigate(`/local-meetings/${m.localId}/live`)}
+                onClick={() =>
+                  navigate(
+                    m.status === 'completed'
+                      ? `/local-meetings/${m.localId}`
+                      : `/local-meetings/${m.localId}/live`,
+                  )
+                }
                 className="flex-1 min-w-0 text-left"
               >
                 <p className="text-sm font-medium truncate">{m.title}</p>

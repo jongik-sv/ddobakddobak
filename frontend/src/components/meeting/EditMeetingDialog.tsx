@@ -8,8 +8,10 @@ import { getTags, createTag } from '../../api/tags'
 interface EditMeetingDialogProps {
   meeting: Meeting
   meetingTypeList: { value: string; label: string }[]
-  onConfirm: (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null; attendees: string | null }) => void
+  onConfirm: (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null; attendees: string | null; shared: boolean }) => void
   onClose: () => void
+  /** 공유 토글 비활성화 (비소유자가 여는 경우). 기본 false. */
+  disabled?: boolean
 }
 
 export default function EditMeetingDialog({
@@ -17,11 +19,13 @@ export default function EditMeetingDialog({
   meetingTypeList,
   onConfirm,
   onClose,
+  disabled = false,
 }: EditMeetingDialogProps) {
   const [title, setTitle] = useState(meeting.title)
   const [briefSummary, setBriefSummary] = useState(meeting.brief_summary ?? '')
   const [attendees, setAttendees] = useState(meeting.attendees ?? '')
   const [meetingType, setMeetingType] = useState(meeting.meeting_type)
+  const [shared, setShared] = useState(meeting.shared ?? true)
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>(meeting.tags?.map((t) => t.id) ?? [])
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [newTagName, setNewTagName] = useState('')
@@ -40,6 +44,7 @@ export default function EditMeetingDialog({
       tag_ids: selectedTagIds,
       brief_summary: briefSummary.trim() || null,
       attendees: attendees.trim() || null,
+      shared,
     })
   }
 
@@ -125,6 +130,24 @@ export default function EditMeetingDialog({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* 공유/비공개 */}
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={shared}
+                disabled={disabled}
+                onChange={(e) => setShared(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 accent-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="이 회의를 모든 사용자에게 공유"
+              />
+              <span className="text-sm font-medium">이 회의를 모든 사용자에게 공유</span>
+            </label>
+            <p className="mt-1 ml-6 text-xs text-muted-foreground">
+              끄면 작성자와 관리자만 이 회의를 볼 수 있습니다.
+            </p>
           </div>
 
           {/* 태그 */}

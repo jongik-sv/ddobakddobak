@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_02_100000) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -20,8 +20,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.integer "meeting_id", null: false
     t.string "status", default: "todo", null: false
     t.datetime "updated_at", null: false
-    t.index [ "assignee_id" ], name: "index_action_items_on_assignee_id"
-    t.index [ "meeting_id" ], name: "index_action_items_on_meeting_id"
+    t.index ["assignee_id"], name: "index_action_items_on_assignee_id"
+    t.index ["meeting_id"], name: "index_action_items_on_meeting_id"
   end
 
   create_table "blocks", force: :cascade do |t|
@@ -32,7 +32,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.integer "parent_block_id"
     t.float "position", null: false
     t.datetime "updated_at", null: false
-    t.index [ "meeting_id", "position" ], name: "index_blocks_on_meeting_id_and_position"
+    t.index ["meeting_id", "position"], name: "index_blocks_on_meeting_id_and_position"
   end
 
   create_table "decisions", force: :cascade do |t|
@@ -45,8 +45,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.text "participants"
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
-    t.index [ "meeting_id" ], name: "index_decisions_on_meeting_id"
-    t.index [ "status" ], name: "index_decisions_on_status"
+    t.index ["meeting_id"], name: "index_decisions_on_meeting_id"
+    t.index ["status"], name: "index_decisions_on_status"
   end
 
   create_table "folders", force: :cascade do |t|
@@ -56,9 +56,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.integer "position", default: 0, null: false
     t.integer "team_id"
     t.datetime "updated_at", null: false
-    t.index [ "parent_id" ], name: "index_folders_on_parent_id"
-    t.index [ "team_id", "parent_id", "position" ], name: "index_folders_on_team_id_and_parent_id_and_position"
-    t.index [ "team_id" ], name: "index_folders_on_team_id"
+    t.index ["parent_id"], name: "index_folders_on_parent_id"
+    t.index ["team_id", "parent_id", "position"], name: "index_folders_on_team_id_and_parent_id_and_position"
+    t.index ["team_id"], name: "index_folders_on_team_id"
   end
 
   create_table "meeting_attachments", force: :cascade do |t|
@@ -75,9 +75,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.datetime "updated_at", null: false
     t.integer "uploaded_by_id", null: false
     t.string "url"
-    t.index [ "meeting_id", "category", "position" ], name: "idx_attachments_meeting_cat_pos"
-    t.index [ "meeting_id" ], name: "index_meeting_attachments_on_meeting_id"
-    t.index [ "uploaded_by_id" ], name: "index_meeting_attachments_on_uploaded_by_id"
+    t.index ["meeting_id", "category", "position"], name: "idx_attachments_meeting_cat_pos"
+    t.index ["meeting_id"], name: "index_meeting_attachments_on_meeting_id"
+    t.index ["uploaded_by_id"], name: "index_meeting_attachments_on_uploaded_by_id"
   end
 
   create_table "meeting_bookmarks", force: :cascade do |t|
@@ -86,8 +86,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.integer "meeting_id", null: false
     t.integer "timestamp_ms", null: false
     t.datetime "updated_at", null: false
-    t.index [ "meeting_id", "timestamp_ms" ], name: "index_meeting_bookmarks_on_meeting_id_and_timestamp_ms"
-    t.index [ "meeting_id" ], name: "index_meeting_bookmarks_on_meeting_id"
+    t.index ["meeting_id", "timestamp_ms"], name: "index_meeting_bookmarks_on_meeting_id_and_timestamp_ms"
+    t.index ["meeting_id"], name: "index_meeting_bookmarks_on_meeting_id"
   end
 
   create_table "meeting_participants", force: :cascade do |t|
@@ -99,10 +99,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.string "role", default: "viewer", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
-    t.index [ "meeting_id", "role" ], name: "idx_participants_meeting_role"
-    t.index [ "meeting_id", "user_id", "left_at" ], name: "idx_participants_meeting_user_active"
-    t.index [ "meeting_id" ], name: "index_meeting_participants_on_meeting_id"
-    t.index [ "user_id" ], name: "index_meeting_participants_on_user_id"
+    t.index ["meeting_id", "role"], name: "idx_participants_meeting_role"
+    t.index ["meeting_id", "user_id", "left_at"], name: "idx_participants_meeting_user_active"
+    t.index ["meeting_id"], name: "index_meeting_participants_on_meeting_id"
+    t.index ["user_id"], name: "index_meeting_participants_on_user_id"
   end
 
   create_table "meeting_templates", force: :cascade do |t|
@@ -112,7 +112,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.string "name", null: false
     t.json "settings_json", default: {}
     t.datetime "updated_at", null: false
-    t.index [ "folder_id" ], name: "index_meeting_templates_on_folder_id"
+    t.index ["folder_id"], name: "index_meeting_templates_on_folder_id"
   end
 
   create_table "meetings", force: :cascade do |t|
@@ -129,6 +129,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.string "meeting_type", default: "general", null: false
     t.text "memo"
     t.string "share_code"
+    t.boolean "shared", default: true, null: false
     t.string "source", default: "live", null: false
     t.datetime "started_at"
     t.string "status", default: "pending", null: false
@@ -136,11 +137,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.string "title", null: false
     t.integer "transcription_progress", default: 0, null: false
     t.datetime "updated_at", null: false
-    t.index [ "created_by_id" ], name: "index_meetings_on_created_by_id"
-    t.index [ "folder_id" ], name: "index_meetings_on_folder_id"
-    t.index [ "share_code" ], name: "index_meetings_on_share_code", unique: true
-    t.index [ "team_id", "status" ], name: "index_meetings_on_team_id_and_status"
-    t.index [ "team_id" ], name: "index_meetings_on_team_id"
+    t.index ["created_by_id", "shared"], name: "index_meetings_on_created_by_id_and_shared"
+    t.index ["created_by_id"], name: "index_meetings_on_created_by_id"
+    t.index ["folder_id"], name: "index_meetings_on_folder_id"
+    t.index ["share_code"], name: "index_meetings_on_share_code", unique: true
+    t.index ["team_id", "status"], name: "index_meetings_on_team_id_and_status"
+    t.index ["team_id"], name: "index_meetings_on_team_id"
   end
 
   create_table "prompt_templates", force: :cascade do |t|
@@ -150,7 +152,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.string "meeting_type", null: false
     t.text "sections_prompt", null: false
     t.datetime "updated_at", null: false
-    t.index [ "meeting_type" ], name: "index_prompt_templates_on_meeting_type", unique: true
+    t.index ["meeting_type"], name: "index_prompt_templates_on_meeting_type", unique: true
   end
 
   create_table "summaries", force: :cascade do |t|
@@ -163,7 +165,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.text "notes_markdown"
     t.string "summary_type", default: "final", null: false
     t.datetime "updated_at", null: false
-    t.index [ "meeting_id" ], name: "index_summaries_on_meeting_id"
+    t.index ["meeting_id"], name: "index_summaries_on_meeting_id"
   end
 
   create_table "taggings", force: :cascade do |t|
@@ -172,9 +174,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.integer "taggable_id", null: false
     t.string "taggable_type", null: false
     t.datetime "updated_at", null: false
-    t.index [ "tag_id", "taggable_type", "taggable_id" ], name: "index_taggings_uniqueness", unique: true
-    t.index [ "tag_id" ], name: "index_taggings_on_tag_id"
-    t.index [ "taggable_type", "taggable_id" ], name: "index_taggings_on_taggable"
+    t.index ["tag_id", "taggable_type", "taggable_id"], name: "index_taggings_uniqueness", unique: true
+    t.index ["tag_id"], name: "index_taggings_on_tag_id"
+    t.index ["taggable_type", "taggable_id"], name: "index_taggings_on_taggable"
   end
 
   create_table "tags", force: :cascade do |t|
@@ -183,8 +185,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.string "name", null: false
     t.integer "team_id"
     t.datetime "updated_at", null: false
-    t.index [ "team_id", "name" ], name: "index_tags_on_team_id_and_name", unique: true
-    t.index [ "team_id" ], name: "index_tags_on_team_id"
+    t.index ["team_id", "name"], name: "index_tags_on_team_id_and_name", unique: true
+    t.index ["team_id"], name: "index_tags_on_team_id"
   end
 
   create_table "team_memberships", force: :cascade do |t|
@@ -193,8 +195,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.integer "team_id", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
-    t.index [ "team_id" ], name: "index_team_memberships_on_team_id"
-    t.index [ "user_id", "team_id" ], name: "index_team_memberships_on_user_id_and_team_id", unique: true
+    t.index ["team_id"], name: "index_team_memberships_on_team_id"
+    t.index ["user_id", "team_id"], name: "index_team_memberships_on_user_id_and_team_id", unique: true
   end
 
   create_table "teams", force: :cascade do |t|
@@ -202,7 +204,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.integer "created_by_id", null: false
     t.string "name", null: false
     t.datetime "updated_at", null: false
-    t.index [ "created_by_id" ], name: "index_teams_on_created_by_id"
+    t.index ["created_by_id"], name: "index_teams_on_created_by_id"
   end
 
   create_table "transcripts", force: :cascade do |t|
@@ -215,7 +217,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.integer "sequence_number", null: false
     t.string "speaker_label", null: false
     t.integer "started_at_ms", null: false
-    t.index [ "meeting_id", "sequence_number" ], name: "index_transcripts_on_meeting_id_and_sequence_number"
+    t.index ["meeting_id", "sequence_number"], name: "index_transcripts_on_meeting_id_and_sequence_number"
   end
 
   create_table "users", force: :cascade do |t|
@@ -234,9 +236,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
     t.string "role", default: "member", null: false
     t.string "selected_languages"
     t.datetime "updated_at", null: false
-    t.index [ "email" ], name: "index_users_on_email", unique: true
-    t.index [ "jti" ], name: "index_users_on_jti", unique: true
-    t.index [ "refresh_token_jti" ], name: "index_users_on_refresh_token_jti", unique: true
+    t.index ["email"], name: "index_users_on_email", unique: true
+    t.index ["jti"], name: "index_users_on_jti", unique: true
+    t.index ["refresh_token_jti"], name: "index_users_on_refresh_token_jti", unique: true
   end
 
   add_foreign_key "meeting_bookmarks", "meetings"
@@ -248,6 +250,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_28_121945) do
 
   # Virtual tables defined in this database.
   # Note that virtual tables may not work with other database engines. Be careful if changing database.
-  create_virtual_table "summaries_fts", "fts5", [ "notes_markdown", "key_points", "decisions", "discussion_details", "source_id UNINDEXED", "tokenize='unicode61'" ]
-  create_virtual_table "transcripts_fts", "fts5", [ "content", "speaker_label", "source_id UNINDEXED", "tokenize='unicode61'" ]
+  create_virtual_table "summaries_fts", "fts5", ["notes_markdown", "key_points", "decisions", "discussion_details", "source_id UNINDEXED", "tokenize='unicode61'"]
+  create_virtual_table "transcripts_fts", "fts5", ["content", "speaker_label", "source_id UNINDEXED", "tokenize='unicode61'"]
 end

@@ -70,8 +70,11 @@ export default function LocalMeetingLivePage() {
 
   const rec = useLocalRecording(localId ?? '', language, modelDir)
 
-  // 단일 상태/에러 surface(설계 §2-③). 우선순위: 해석실패 > 녹음에러 > 해석중.
-  const statusMessage = resolveErr ?? rec.error ?? (resolving ? '준비 중...' : null)
+  // 단일 상태/에러 surface(설계 §2-③). 우선순위: 해석실패 > 녹음에러 > 모델로딩 > 해석중.
+  const statusMessage =
+    resolveErr ??
+    rec.error ??
+    (rec.modelLoading ? '모델 로딩 중...' : resolving ? '준비 중...' : null)
 
   const handleStop = async () => {
     setIsStopping(true)
@@ -122,6 +125,7 @@ export default function LocalMeetingLivePage() {
         onResume={() => {}}
         onStop={handleStop}
         isStopping={isStopping}
+        isStarting={rec.modelLoading}
       />
 
       <div className="flex-1 min-h-0">

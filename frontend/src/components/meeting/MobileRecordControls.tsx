@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeft, Pause, Play, Square, MoreHorizontal, X } from 'lucide-react'
+import { ArrowLeft, Pause, Play, Square, MoreHorizontal, X, Loader2 } from 'lucide-react'
 import { formatElapsedSeconds } from '../../lib/audioUtils'
 
 export interface MobileRecordControlsProps {
@@ -15,6 +15,8 @@ export interface MobileRecordControlsProps {
   onResume: () => void
   onStop: () => void
   isStopping: boolean
+  /** 시작 준비 중(예: 온디바이스 모델 로딩). true && !isRecording 이면 "회의 시작" disabled + 스피너. 기본 false(서버 무영향). */
+  isStarting?: boolean
   /** 더보기 바텀 시트에 표시할 추가 옵션. close()로 시트를 닫을 수 있다(다이얼로그를 띄우는 항목용). */
   children?: (close: () => void) => ReactNode
 }
@@ -30,6 +32,7 @@ export function MobileRecordControls({
   onResume,
   onStop,
   isStopping,
+  isStarting = false,
   children,
 }: MobileRecordControlsProps) {
   const [showMore, setShowMore] = useState(false)
@@ -80,8 +83,10 @@ export function MobileRecordControls({
         {!isRecording ? (
           <button
             onClick={onStart}
-            className="px-3 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            disabled={isStarting}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {isStarting && <Loader2 className="w-4 h-4 animate-spin" />}
             회의 시작
           </button>
         ) : (

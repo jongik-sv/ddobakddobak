@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe "Api::V1::Speakers", type: :request do
   let(:user)       { create(:user) }
   let(:other_user) { create(:user) }
-  let(:foreign)    { create(:meeting, creator: other_user) }
+  let(:foreign)    { create(:meeting, :private_meeting, creator: other_user) }
 
   before { login_as(user) }
 

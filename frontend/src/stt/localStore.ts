@@ -16,12 +16,14 @@ import {
   exists,
   mkdir,
   readDir,
+  readFile,
   readTextFile,
   remove,
   writeFile,
   writeTextFile,
 } from '@tauri-apps/plugin-fs'
 import { appLocalDataDir, join } from '@tauri-apps/api/path'
+import { Mp3Encoder } from '@breezystack/lamejs'
 
 import type { TranscriptFinalData } from '../channels/transcription'
 
@@ -180,6 +182,67 @@ export async function setStatus(
   await writeMeta(meta)
 }
 
+/** title 갱신(다른 필드 보존). setStatus/setServerId와 동일 read-modify-write 패턴. */
+export async function renameLocal(localId: string, title: string): Promise<void> {
+  const meta = await readMeta(localId)
+  meta.title = title
+  await writeMeta(meta)
+}
+
+/**
+ * audio/<seq>.wav 세그먼트들을 seq **숫자순**(파일명 사전순 아님 — 2 < 10)으로 병합한다.
+ *   1) 각 WAV의 44바이트 헤더를 떼고 PCM Int16 본문만 추출,
+ *   2) cumulative 샘플 수로 각 세그먼트 시작 오프셋(ms)을 누적,
+ *   3) 전체 PCM을 pcm16ToWav로 1회 래핑.
+ * 오디오 세그먼트가 하나도 없으면 null(opt-in 미보존 회의).
+ *
+ * segmentOffsetsMs[i] = round(앞선 세그먼트 누적 샘플 / 16000 * 1000) — 첫 세그먼트는 0.
+ * durationMs = round(총 샘플 / 16000 * 1000)(전체 누적 1회 라운딩 — offset 합과 다를 수 있음).
+ */
+export async function mergeLocalAudio(localId: string): Promise<{
+  bytes: Uint8Array<ArrayBuffer>
+  segmentOffsetsMs: number[]
+  durationMs: number
+} | null> {
+  const dir = await audioDir(localId)
+  if (!(await exists(dir))) return null
+
+  const entries = await readDir(dir)
+  const seqs = entries
+    .filter((e) => e.isFile && /^\d+\.wav$/.test(e.name))
+    .map((e) => parseInt(e.name, 10))
+    .sort((a, b) => a - b) // 숫자순(2 < 10)
+  if (seqs.length === 0) return null
+
+  const SAMPLE_RATE = 16000
+  const segments: Int16Array[] = []
+  const segmentOffsetsMs: number[] = []
+  let cumulativeSamples = 0
+
+  for (const seq of seqs) {
+    const path = await join(dir, `${seq}.wav`)
+    const wav = await readFile(path)
+    // 44바이트 캐논 헤더 제거. byteOffset/정렬 안전을 위해 fresh buffer로 복사.
+    const body = wav.slice(44)
+    const pcm = new Int16Array(body.buffer, body.byteOffset, Math.floor(body.byteLength / 2))
+    segmentOffsetsMs.push(Math.round((cumulativeSamples / SAMPLE_RATE) * 1000))
+    segments.push(pcm)
+    cumulativeSamples += pcm.length
+  }
+
+  // PCM concat.
+  const merged = new Int16Array(cumulativeSamples)
+  let off = 0
+  for (const s of segments) {
+    merged.set(s, off)
+    off += s.length
+  }
+
+  const bytes = pcm16ToWav(merged)
+  const durationMs = Math.round((cumulativeSamples / SAMPLE_RATE) * 1000)
+  return { bytes, segmentOffsetsMs, durationMs }
+}
+
 /** 모든 로컬 회의 메타를 created_at 오름차순으로 반환. 루트 없으면 빈 배열. */
 export async function listLocal(): Promise<LocalMeetingMeta[]> {
   const root = await rootDir()
@@ -209,7 +272,47 @@ export async function deleteLocal(localId: string): Promise<void> {
  * PCM16(16k mono) → 44바이트 캐논 WAV 헤더 + little-endian 본문.
  * Int16Array 뷰(byteOffset != 0)도 올바르게 직렬화한다.
  */
-export function pcm16ToWav(pcm: Int16Array): Uint8Array {
+/**
+ * 온디바이스 회의 오디오 → mp3 (순수 JS lamejs, webview 내 인코딩). 병합 PCM16 16kHz mono를
+ * 서버 audio_finalize와 동일한 mp3로 만든다. 네이티브 의존 없음 — Android WebView/데스크톱 동일.
+ * (libmp3lame Rust 경로는 NDK 정적링크 미해결로 폐기 — [[reference_offline_audio_mp3]].)
+ * 오디오 세그먼트가 없으면 null → 호출측이 WAV로 폴백.
+ */
+export async function encodeMeetingMp3(localId: string): Promise<Uint8Array<ArrayBuffer> | null> {
+  try {
+    const merged = await mergeLocalAudio(localId)
+    if (!merged) return null
+    // 병합 WAV(44바이트 표준 헤더) → PCM16 mono 뷰. byteOffset 0(fresh buffer)이라 정렬 안전.
+    const pcm = new Int16Array(
+      merged.bytes.buffer,
+      merged.bytes.byteOffset + 44,
+      (merged.bytes.byteLength - 44) >> 1,
+    )
+    const enc = new Mp3Encoder(1, 16000, 128) // mono, 16kHz, 128kbps
+    const blocks: Uint8Array[] = []
+    const BLOCK = 1152 // mp3 프레임당 샘플
+    for (let i = 0; i < pcm.length; i += BLOCK) {
+      const buf = enc.encodeBuffer(pcm.subarray(i, i + BLOCK))
+      if (buf.length > 0) blocks.push(buf)
+    }
+    const tail = enc.flush()
+    if (tail.length > 0) blocks.push(tail)
+
+    const total = blocks.reduce((n, b) => n + b.length, 0)
+    const out = new Uint8Array(total)
+    let off = 0
+    for (const b of blocks) {
+      out.set(b, off)
+      off += b.length
+    }
+    return out
+  } catch (e) {
+    console.warn('[localStore] mp3 인코딩 실패 → WAV 폴백:', e)
+    return null
+  }
+}
+
+export function pcm16ToWav(pcm: Int16Array): Uint8Array<ArrayBuffer> {
   const sampleRate = 16000
   const numChannels = 1
   const bitsPerSample = 16

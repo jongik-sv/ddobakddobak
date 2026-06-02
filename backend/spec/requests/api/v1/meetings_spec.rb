@@ -91,7 +91,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
       it "다른 사용자가 만든 회의는 목록에 포함되지 않는다" do
         create(:meeting, team: team, creator: user, title: "내 회의")
-        create(:meeting, team: team, creator: other_user, title: "남의 회의")
+        create(:meeting, :private_meeting, team: team, creator: other_user, title: "남의 회의")
 
         get "/api/v1/meetings"
 
@@ -247,8 +247,8 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     end
 
     context "접근 권한" do
-      it "소유자가 아니고 참여자도 아니면 403" do
-        foreign = create(:meeting, team: team, creator: other_user)
+      it "소유자가 아니고 참여자도 아니면 403 (비공개 회의)" do
+        foreign = create(:meeting, :private_meeting, team: team, creator: other_user)
         get "/api/v1/meetings/#{foreign.id}"
         expect(response).to have_http_status(:forbidden)
       end
@@ -268,7 +268,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "회의를 떠난(left_at 설정) 참여자는 더 이상 접근할 수 없다(403)" do
-        foreign = create(:meeting, team: team, creator: other_user)
+        foreign = create(:meeting, :private_meeting, team: team, creator: other_user)
         create(:meeting_participant, meeting: foreign, user: user, role: "viewer", left_at: Time.current)
         get "/api/v1/meetings/#{foreign.id}"
         expect(response).to have_http_status(:forbidden)
@@ -442,7 +442,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     let(:folder) { create(:folder, team: team) }
 
     it "남의 회의는 폴더 이동되지 않는다" do
-      foreign = create(:meeting, team: team, creator: other_user, folder_id: nil)
+      foreign = create(:meeting, :private_meeting, team: team, creator: other_user, folder_id: nil)
       post "/api/v1/meetings/move_to_folder", params: { meeting_ids: [ foreign.id ], folder_id: folder.id }
       expect(foreign.reload.folder_id).to be_nil
     end

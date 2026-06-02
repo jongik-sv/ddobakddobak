@@ -69,7 +69,7 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
     end
 
     context "접근 권한" do
-      let(:foreign) { create(:meeting, creator: other_user) }
+      let(:foreign) { create(:meeting, :private_meeting, creator: other_user) }
 
       it "비참여자는 남의 회의 transcripts에 접근할 수 없다(403)" do
         get "/api/v1/meetings/#{foreign.id}/transcripts"

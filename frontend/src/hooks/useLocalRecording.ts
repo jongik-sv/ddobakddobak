@@ -31,6 +31,8 @@ export interface UseLocalRecordingResult {
   error: string | null
   elapsedSeconds: number
   isRecording: boolean
+  /** 온디바이스 모델 선로딩 중(녹음 시작 게이트 UI용). */
+  modelLoading: boolean
   start: () => Promise<void>
   stop: () => Promise<void>
 }
@@ -50,6 +52,7 @@ export function useLocalRecording(
   const [meta, setMeta] = useState<LocalMeetingMeta | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [modelLoading, setModelLoading] = useState(false)
 
   const reset = useTranscriptStore((s) => s.reset)
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
@@ -57,6 +60,12 @@ export function useLocalRecording(
 
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const elapsedBaseRef = useRef<number | null>(null)
+  // 재진입 가드(동기): stt_load 콜드로드 await 중에는 status가 아직 'recording'이 아니라
+  // 사용자가 시작을 또 누를 수 있다. start()가 두 번 진입하면 mic 캡처 파이프라인이
+  // 2벌 동시 가동되어(AudioContext/워크릿/STT 중복) 모든 발화가 중복 전사된다.
+  const startingRef = useRef(false)
+  // 모델 선로딩 dir 가드: 같은 modelDir에 대해 stt_load를 1회만 호출(재렌더/언어유지 시 중복 방지).
+  const preloadedDirRef = useRef<string | null>(null)
 
   const localStt = useLocalStt({
     localId,
@@ -66,7 +75,7 @@ export function useLocalRecording(
   })
 
   const mic = useMicCapture({
-    onChunk: (pcm) => localStt.sendChunk(pcm),
+    onChunk: (pcm, meta) => localStt.sendChunk(pcm, meta),
   })
 
   // 초기 로드: 메타 + 기존 세그먼트 복원(이어하기).
@@ -91,6 +100,24 @@ export function useLocalRecording(
     }
   }, [localId, modelDir, reset, loadFinals])
 
+  // 모델 선로딩: modelDir 확정 시 dir당 1회 stt_load 콜드로드(첫 세그먼트/시작 지연 방지).
+  // stt_load는 멱등이라 이후 start() 내부 콜드로드는 빠른 no-op.
+  useEffect(() => {
+    if (!modelDir) return
+    if (preloadedDirRef.current === modelDir) return
+    preloadedDirRef.current = modelDir
+    let cancelled = false
+    setModelLoading(true)
+    invoke('stt_load', { modelDir, language })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setModelLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [modelDir, language])
+
   const tick = useCallback(() => {
     if (elapsedBaseRef.current == null) return
     setElapsedSeconds(Math.floor((Date.now() - elapsedBaseRef.current) / 1000))
@@ -101,6 +128,9 @@ export function useLocalRecording(
       setError('온디바이스 모델이 준비되지 않았습니다.')
       return
     }
+    // 이미 시작 중이거나 녹음 중이면 무시(이중 시작 → 파이프라인 중복 방지).
+    if (startingRef.current || status === 'recording') return
+    startingRef.current = true
     setError(null)
     try {
       // recognizer 콜드로드 선행(첫 세그먼트 지연 방지).
@@ -112,8 +142,10 @@ export function useLocalRecording(
       setStatus('recording')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      startingRef.current = false
     }
-  }, [modelDir, language, localId, mic, tick])
+  }, [modelDir, language, localId, mic, tick, status])
 
   const stop = useCallback(async () => {
     mic.stop()
@@ -144,6 +176,7 @@ export function useLocalRecording(
     error,
     elapsedSeconds,
     isRecording: status === 'recording',
+    modelLoading,
     start,
     stop,
   }

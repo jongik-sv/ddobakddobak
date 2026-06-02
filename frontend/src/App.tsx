@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage'
 import MeetingsPage from './pages/MeetingsPage'
 import MeetingLivePage from './pages/MeetingLivePage'
 import LocalMeetingLivePage from './pages/LocalMeetingLivePage'
+import LocalMeetingDetailPage from './pages/LocalMeetingDetailPage'
 import LocalMeetingsHome from './pages/LocalMeetingsHome'
 import MeetingPage from './pages/MeetingPage'
 import MeetingViewerPage from './pages/MeetingViewerPage'
@@ -23,6 +24,23 @@ function SettingsRedirect() {
   return <Navigate to="/meetings" replace />
 }
 
+/**
+ * 오프라인 라우트 셸 — AppLayout(사이드바 포함) + 단일 <SettingsModal offline/>.
+ *
+ * 오프라인 라우트는 GatedApp **밖**이라 GatedApp 안의 <SettingsModal/>가 안 닿는다(#5:
+ * 오프라인 사이드바 설정이 죽음). 여기서 element 레벨에 모달을 함께 마운트해 살린다.
+ * 한 번에 한 최상위 라우트만 매칭되므로 GatedApp 모달과 이중마운트되지 않는다.
+ * offline prop은 SettingsModal이 오프라인 안전 탭만 노출하도록 신호(다른 에이전트 구현).
+ */
+function OfflineShell({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <AppLayout>{children}</AppLayout>
+      <SettingsModal offline />
+    </>
+  )
+}
+
 function App() {
   useEffect(() => {
     loadAppSettings()
@@ -37,17 +55,25 @@ function App() {
       <Route
         path="/local-meetings"
         element={
-          <AppLayout>
+          <OfflineShell>
             <LocalMeetingsHome />
-          </AppLayout>
+          </OfflineShell>
         }
       />
       <Route
         path="/local-meetings/:localId/live"
         element={
-          <AppLayout>
+          <OfflineShell>
             <LocalMeetingLivePage />
-          </AppLayout>
+          </OfflineShell>
+        }
+      />
+      <Route
+        path="/local-meetings/:localId"
+        element={
+          <OfflineShell>
+            <LocalMeetingDetailPage />
+          </OfflineShell>
         }
       />
 

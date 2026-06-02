@@ -17,6 +17,8 @@ module MeetingSerializable
       ended_at: meeting.ended_at,
       created_by_id: meeting.created_by_id,
       created_by: { id: meeting.created_by_id, name: meeting.creator&.name },
+      shared: meeting.shared,
+      editable: meeting.editable_by?(current_user),
       brief_summary: meeting.brief_summary,
       source: meeting.source,
       transcription_progress: meeting.transcription_progress,

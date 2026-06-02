@@ -15,6 +15,7 @@ interface CreateMeetingModalProps {
 export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreated }: CreateMeetingModalProps) {
   const [title, setTitle] = useState('')
   const [meetingType, setMeetingType] = useState('general')
+  const [shared, setShared] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const templates = useMeetingTemplateStore((s) => s.templates)
@@ -40,6 +41,7 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
         title: title.trim(),
         meeting_type: meetingType,
         folder_id: folderId,
+        shared,
       })
       onCreated(meeting)
       onClose()
@@ -97,6 +99,22 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
             selected={meetingType}
             onSelect={setMeetingType}
           />
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={shared}
+              onChange={(e) => setShared(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 accent-blue-600"
+              aria-label="이 회의를 모든 사용자에게 공유"
+            />
+            <span className="text-sm font-medium">이 회의를 모든 사용자에게 공유</span>
+          </label>
+          <p className="mt-1 ml-6 text-xs text-muted-foreground">
+            끄면 작성자와 관리자만 이 회의를 볼 수 있습니다.
+          </p>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">

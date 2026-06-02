@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import MeetingsPage from './MeetingsPage'
 import { useMeetingStore } from '../stores/meetingStore'
+import { useAuthStore } from '../stores/authStore'
 
 const {
   mockGetMeetings,
@@ -13,7 +14,8 @@ const {
   mockCreateMeeting: vi.fn(),
 }))
 
-vi.mock('../api/meetings', () => ({
+vi.mock('../api/meetings', async () => ({
+  ...(await vi.importActual<typeof import('../api/meetings')>('../api/meetings')),
   getMeetings: mockGetMeetings,
   createMeeting: mockCreateMeeting,
   deleteMeeting: vi.fn(),
@@ -58,6 +60,8 @@ const meetings = [
     memo: null,
     attendees: null,
     folder_id: null,
+    shared: true,
+    editable: true,
     started_at: null,
     ended_at: null,
     created_at: '2024-01-15T10:00:00Z',
@@ -75,6 +79,8 @@ const meetings = [
     memo: null,
     attendees: null,
     folder_id: null,
+    shared: true,
+    editable: true,
     started_at: '2024-01-15T11:00:00Z',
     ended_at: null,
     created_at: '2024-01-15T11:00:00Z',
@@ -92,6 +98,8 @@ const meetings = [
     memo: null,
     attendees: null,
     folder_id: null,
+    shared: true,
+    editable: true,
     started_at: '2024-01-15T09:00:00Z',
     ended_at: '2024-01-15T10:00:00Z',
     created_at: '2024-01-15T09:00:00Z',
@@ -110,6 +118,8 @@ describe('MeetingsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsDesktop = true
+    // 픽스처 created_by.id===1 과 일치하는 사용자로 로그인 → 카드 액션 어포던스 노출
+    useAuthStore.setState({ user: { id: 1, email: 'me@x.com', name: '사용자1', role: 'member' } })
     useMeetingStore.getState().reset()
     mockGetMeetings.mockResolvedValue({
       meetings,
@@ -229,6 +239,7 @@ describe('MeetingsPage 모바일 대응 (TSK-03-02)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsDesktop = true
+    useAuthStore.setState({ user: { id: 1, email: 'me@x.com', name: '사용자1', role: 'member' } })
     useMeetingStore.getState().reset()
     mockGetMeetings.mockResolvedValue({
       meetings,

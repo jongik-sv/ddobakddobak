@@ -7,7 +7,7 @@ RSpec.describe "Api::V1::Folders", type: :request do
   let!(:folder) { create(:folder) }
 
   before do
-    create(:meeting, creator: other, folder_id: folder.id)  # 남의 회의
+    create(:meeting, :private_meeting, creator: other, folder_id: folder.id)  # 남의 비공개 회의 (열람 불가)
     create(:meeting, creator: user,  folder_id: folder.id)  # 내 회의
   end
 

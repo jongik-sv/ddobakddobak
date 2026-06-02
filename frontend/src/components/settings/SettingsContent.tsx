@@ -3,8 +3,18 @@ import { getMode } from '../../config'
 import { useAuthStore } from '../../stores/authStore'
 import PersonalSettingsTab from './PersonalSettingsTab'
 import GlobalSettingsTab from './GlobalSettingsTab'
+import UserSttSettings from './UserSttSettings'
 
-export default function SettingsContent() {
+interface Props {
+  /**
+   * 오프라인(서버 0) 진입 — 서버 fetch 패널(LLM·언어·비밀번호·전역탭)을 모두 숨기고
+   * 클라이언트-디바이스 전용 패널(UserSttSettings, 내부에 ModelManager 포함)만 렌더한다.
+   * 미지정(온라인) 시 기존 동작 완전 동일.
+   */
+  offline?: boolean
+}
+
+export default function SettingsContent({ offline = false }: Props = {}) {
   const user = useAuthStore((s) => s.user)
   const isLocalMode = getMode() === 'local'
   const isAdmin = user?.role === 'admin'
@@ -13,6 +23,22 @@ export default function SettingsContent() {
   const showPasswordSection = getMode() !== 'local' && user?.email !== 'desktop@local'
 
   const [tab, setTab] = useState<'personal' | 'global'>('personal')
+
+  // 오프라인: 서버 fetch 패널은 모두 행/에러를 내므로 클라이언트-디바이스 전용 패널만 단일 컬럼으로.
+  // UserSttSettings 안에 ModelManager(모델 다운로드·관리)가 포함되어 있다.
+  if (offline) {
+    return (
+      <div className="max-w-2xl space-y-6">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">오프라인 설정</h2>
+          <p className="text-sm text-gray-500">
+            온디바이스 STT 모델과 인식 방식을 설정합니다. (서버 연동 설정은 온라인에서 변경하세요.)
+          </p>
+        </div>
+        <UserSttSettings />
+      </div>
+    )
+  }
 
   // 일반 사용자는 전역 탭이 없으므로 탭바 없이 개인 설정만 노출
   if (!showAdminSettings) {

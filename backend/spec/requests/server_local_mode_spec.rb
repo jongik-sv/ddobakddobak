@@ -86,7 +86,7 @@ RSpec.describe "Server/Local mode branching", type: :request do
 
       it "explicit JWT wins over loopback fallback (scoped to the JWT user)" do
         member = create(:user, password: password, role: "member")
-        create(:meeting, creator: create(:user))  # member가 볼 수 없는 남의 회의
+        create(:meeting, :private_meeting, creator: create(:user))  # member가 볼 수 없는 남의 비공개 회의
 
         post "/auth/login", params: { user: { email: member.email, password: password } }, as: :json
         token = response.parsed_body["access_token"]

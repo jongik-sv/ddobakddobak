@@ -8,7 +8,7 @@ module Api
 
       before_action :authenticate_user!
       before_action :set_meeting, only: %i[show update destroy start stop reopen reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes]
-      before_action :authorize_meeting_control!, only: %i[update destroy start stop reopen reset_content summarize update_notes regenerate_stt regenerate_notes]
+      before_action :authorize_meeting_control!, only: %i[update start stop reopen reset_content summarize update_notes regenerate_stt regenerate_notes feedback]
 
       def index
         scope = Meeting.accessible_by(current_user)
@@ -45,7 +45,8 @@ module Api
           title: params[:title],
           created_by_id: current_user.id,
           meeting_type: params[:meeting_type] || "general",
-          folder_id: params[:folder_id]
+          folder_id: params[:folder_id],
+          shared: params.key?(:shared) ? ActiveModel::Type::Boolean.new.cast(params[:shared]) : true
         )
 
         if meeting.save
@@ -67,6 +68,7 @@ module Api
           created_by_id: current_user.id,
           meeting_type: params[:meeting_type] || "general",
           folder_id: params[:folder_id],
+          shared: params.key?(:shared) ? ActiveModel::Type::Boolean.new.cast(params[:shared]) : true,
           status: :transcribing,
           source: "upload",
           started_at: Time.current
@@ -110,6 +112,8 @@ module Api
         attrs[:memo] = params[:memo] if params.key?(:memo)
         attrs[:brief_summary] = params[:brief_summary] if params.key?(:brief_summary)
         attrs[:attendees] = params[:attendees] if params.key?(:attendees)
+        # shared 변경은 소유자/admin 만 가능 (비소유 host 의 toggle 무시)
+        attrs[:shared] = ActiveModel::Type::Boolean.new.cast(params[:shared]) if params.key?(:shared) && @meeting.editable_by?(current_user)
 
         if params.key?(:tag_ids)
           tag_ids = Array(params[:tag_ids]).map(&:to_i)
@@ -127,12 +131,17 @@ module Api
         meeting_ids = params[:meeting_ids]
         return render json: { error: "meeting_ids is required" }, status: :unprocessable_entity if meeting_ids.blank?
 
-        meetings = Meeting.accessible_by(current_user).where(id: meeting_ids)
+        # update_all 은 콜백·인가를 우회하므로 editable_by 스코프가 유일한 방어선이다.
+        # (남의 공유 회의를 일괄 폴더이동하는 것을 막는다.)
+        meetings = Meeting.editable_by(current_user).where(id: meeting_ids)
         meetings.update_all(folder_id: params[:folder_id])
         render json: { updated: meetings.count }
       end
 
       def destroy
+        # 삭제는 소유자/admin 전용 (라이브 host 라도 남의 회의를 삭제할 수 없다).
+        return render json: { error: "삭제 권한이 없습니다" }, status: :forbidden unless @meeting.editable_by?(current_user)
+
         FileUtils.rm_f(@meeting.audio_file_path) if @meeting.audio_file_path.present?
         @meeting.destroy
         head :no_content

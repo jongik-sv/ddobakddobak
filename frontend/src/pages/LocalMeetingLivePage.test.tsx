@@ -30,6 +30,7 @@ const baseRec = {
   error: null as string | null,
   elapsedSeconds: 0,
   isRecording: false,
+  modelLoading: false,
   start: vi.fn().mockResolvedValue(undefined),
   stop: vi.fn().mockResolvedValue(undefined),
 }

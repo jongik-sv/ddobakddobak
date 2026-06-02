@@ -5,6 +5,7 @@ module Api
 
       before_action :authenticate_user!
       before_action :set_meeting
+      before_action :authorize_meeting_control!, only: %i[create update destroy reorder]
       before_action :set_block, only: %i[update destroy reorder]
 
       def index

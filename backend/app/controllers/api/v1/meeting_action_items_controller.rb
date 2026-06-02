@@ -6,6 +6,7 @@ module Api
 
       before_action :authenticate_user!
       before_action :set_meeting
+      before_action :authorize_meeting_control!, only: %i[create]
 
       # GET /api/v1/meetings/:meeting_id/action_items
       def index

@@ -22,6 +22,10 @@ const mockMeeting = {
   started_at: null,
   ended_at: null,
   created_at: '2024-01-01T00:00:00Z',
+  folder_id: null,
+  memo: null,
+  attendees: null,
+  shared: true,
 }
 
 describe('meetingStore', () => {

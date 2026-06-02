@@ -5,6 +5,7 @@ import type { SelectedFolder } from '../../stores/folderStore'
 import { initDrag } from '../../utils/dragState'
 import { StatusBadge, MeetingTypeBadge, MeetingActionButtons } from './MeetingListUI'
 import { formatDate, folderPath } from '../../lib/meetingFormat'
+import { useAuthStore } from '../../stores/authStore'
 
 interface MeetingCardGridProps {
   childFolders: FolderNode[]
@@ -37,6 +38,7 @@ export function MeetingCardGrid({
   onDelete,
   onStop,
 }: MeetingCardGridProps) {
+  const me = useAuthStore((s) => s.user)
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {/* 폴더 카드 (검색 중에는 숨김) */}
@@ -113,7 +115,9 @@ export function MeetingCardGrid({
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>{formatDate(meeting.created_at)}</span>
               {meeting.created_by?.name && (
-                <span className="truncate max-w-[100px]">{meeting.created_by.name}</span>
+                <span className="truncate max-w-[120px]">
+                  {me && meeting.created_by.id !== me.id ? `by ${meeting.created_by.name}` : meeting.created_by.name}
+                </span>
               )}
             </div>
             <div className="flex items-center gap-1" data-testid="card-actions">

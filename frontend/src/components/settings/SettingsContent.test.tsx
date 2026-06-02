@@ -25,6 +25,9 @@ vi.mock('./PersonalSettingsTab', () => ({
 vi.mock('./GlobalSettingsTab', () => ({
   default: () => <div data-testid="global-tab">global</div>,
 }))
+vi.mock('./UserSttSettings', () => ({
+  default: () => <div data-testid="stt-settings">stt</div>,
+}))
 
 describe('SettingsContent tabs', () => {
   beforeEach(() => {
@@ -51,5 +54,33 @@ describe('SettingsContent tabs', () => {
     mockMode = 'local'
     render(<SettingsContent />)
     expect(screen.getByRole('tab', { name: /전역설정/ })).toBeInTheDocument()
+  })
+
+  it('offline 미지정: 기존대로 개인 탭(서버 패널) 렌더', () => {
+    render(<SettingsContent />)
+    expect(screen.getByTestId('personal-tab')).toBeInTheDocument()
+    expect(screen.queryByTestId('stt-settings')).toBeNull()
+  })
+})
+
+describe('SettingsContent offline (클라전용)', () => {
+  beforeEach(() => {
+    // admin + local mode여도 offline이면 전역탭/서버패널을 절대 노출하지 않아야 함.
+    mockUser = { role: 'admin', email: 'a@x.com' }
+    mockMode = 'local'
+  })
+
+  it('offline=true: UserSttSettings만 렌더, 서버 fetch 패널·전역탭 미렌더', () => {
+    render(<SettingsContent offline />)
+    expect(screen.getByTestId('stt-settings')).toBeInTheDocument()
+    // 개인/전역 탭(서버 fetch 패널)은 렌더하지 않는다.
+    expect(screen.queryByTestId('personal-tab')).toBeNull()
+    expect(screen.queryByTestId('global-tab')).toBeNull()
+  })
+
+  it('offline=true: 탭바를 숨긴다(단일 컬럼)', () => {
+    render(<SettingsContent offline />)
+    expect(screen.queryByRole('tablist')).toBeNull()
+    expect(screen.queryByRole('tab')).toBeNull()
   })
 })

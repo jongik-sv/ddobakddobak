@@ -1,6 +1,8 @@
 import { FolderInput, Pencil, Trash2 } from 'lucide-react'
 import { Tooltip } from '../ui/Tooltip'
 import type { Meeting } from '../../api/meetings'
+import { canEditMeeting } from '../../api/meetings'
+import { useAuthStore } from '../../stores/authStore'
 
 export const STATUS_FILTER_TABS = [
   { value: '', label: '전체' },
@@ -123,6 +125,11 @@ export function MeetingActionButtons({
   onStop,
   forceHoverOpacity = false,
 }: MeetingActionButtonsProps) {
+  const me = useAuthStore((s) => s.user)
+  // 소유권 게이팅: 서버가 403으로 강제하지만, 어포던스(수정/이동/삭제)는 권한이 있을 때만 노출한다.
+  const canEdit = canEditMeeting(meeting, me)
+  if (!canEdit) return null
+
   const opacityClass = forceHoverOpacity
     ? 'opacity-0 group-hover:opacity-100'
     : isDesktop
@@ -144,6 +151,7 @@ export function MeetingActionButtons({
       )}
       <Tooltip text="정보 수정">
         <button
+          aria-label="정보 수정"
           onClick={(e) => {
             e.stopPropagation()
             onEdit(meeting)
@@ -155,6 +163,7 @@ export function MeetingActionButtons({
       </Tooltip>
       <Tooltip text="폴더로 이동">
         <button
+          aria-label="폴더로 이동"
           onClick={(e) => {
             e.stopPropagation()
             onMove(meeting)
@@ -166,6 +175,7 @@ export function MeetingActionButtons({
       </Tooltip>
       <Tooltip text="삭제">
         <button
+          aria-label="삭제"
           onClick={(e) => {
             e.stopPropagation()
             onDelete(meeting)

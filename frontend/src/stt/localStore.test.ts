@@ -66,19 +66,31 @@ vi.mock('@tauri-apps/plugin-fs', () => {
     exists: async (path: string) =>
       h.dirs.has(path) || h.textFiles.has(path) || h.binFiles.has(path),
     readDir: async (path: string) => {
-      const children = new Set<string>()
+      // 디렉터리: path 바로 아래 첫 세그먼트가 디렉터리인 항목.
+      const dirChildren = new Set<string>()
       for (const d of h.dirs) {
         if (d === path || !isUnder(d, path)) continue
         const rest = d.slice(path.length + 1)
         const name = rest.split('/')[0]
-        if (name) children.add(name)
+        if (name) dirChildren.add(name)
       }
-      return [...children].map((name) => ({
-        name,
-        isDirectory: true,
-        isFile: false,
-        isSymlink: false,
-      }))
+      // 파일: path 바로 아래 직접 자식인 파일(중첩 경로 제외).
+      const fileChildren = new Set<string>()
+      for (const f of [...h.textFiles.keys(), ...h.binFiles.keys()]) {
+        if (!isUnder(f, path) || f === path) continue
+        const rest = f.slice(path.length + 1)
+        if (rest.includes('/')) continue // 더 깊은 하위 — 직접 자식 아님
+        fileChildren.add(rest)
+      }
+      const out: { name: string; isDirectory: boolean; isFile: boolean; isSymlink: boolean }[] = []
+      for (const name of dirChildren) {
+        out.push({ name, isDirectory: true, isFile: false, isSymlink: false })
+      }
+      for (const name of fileChildren) {
+        if (dirChildren.has(name)) continue
+        out.push({ name, isDirectory: false, isFile: true, isSymlink: false })
+      }
+      return out
     },
     remove: async (path: string, _opts?: { recursive?: boolean }) => {
       for (const d of [...h.dirs]) if (isUnder(d, path)) h.dirs.delete(d)
@@ -93,10 +105,13 @@ import {
   appendSegment,
   createLocal,
   deleteLocal,
+  encodeMeetingMp3,
   getLocal,
   listLocal,
   markPendingSync,
+  mergeLocalAudio,
   pcm16ToWav,
+  renameLocal,
   setServerId,
 } from './localStore'
 
@@ -302,5 +317,92 @@ describe('pcm16ToWav 헤더 바이트 정확성', () => {
     const wav = pcm16ToWav(sub)
     expect(wav.byteLength).toBe(44 + 4)
     expect([...wav.subarray(44, 48)]).toEqual([0x02, 0x01, 0x04, 0x03])
+  })
+})
+
+describe('renameLocal', () => {
+  it('meta.json의 title을 재기록하고 다른 필드는 보존한다', async () => {
+    const id = await createLocal({ title: '원래 제목', lang: 'en' })
+    await markPendingSync(id, true)
+    await setServerId(id, 99)
+
+    await renameLocal(id, '새 제목')
+
+    const { meta } = await getLocal(id)
+    expect(meta.title).toBe('새 제목')
+    // 타 필드 보존
+    expect(meta.lang).toBe('en')
+    expect(meta.serverId).toBe(99)
+    expect(meta.localId).toBe(id)
+    // setServerId가 pendingSync를 false로 만든 뒤이므로 그대로 false 유지
+    expect(meta.pendingSync).toBe(false)
+  })
+})
+
+describe('mergeLocalAudio', () => {
+  it('오디오 세그먼트가 없으면 null', async () => {
+    const id = await createLocal({ title: 't', lang: 'ko' })
+    expect(await mergeLocalAudio(id)).toBeNull()
+  })
+
+  it('2개 세그먼트를 seq 숫자순(2 < 10)으로 병합하고 offsets/duration을 계산한다', async () => {
+    const id = await createLocal({ title: 't', lang: 'ko' })
+    // seg 2: 16000 샘플 = 1000ms, seg 10: 8000 샘플 = 500ms.
+    // 파일명 사전순이면 '10' < '2'가 되므로 숫자순(2 먼저) 정렬을 검증.
+    const seg2 = new Int16Array(16000).fill(0x0101)
+    const seg10 = new Int16Array(8000).fill(0x0202)
+    await appendAudio(id, 2, seg2)
+    await appendAudio(id, 10, seg10)
+
+    const res = await mergeLocalAudio(id)
+    expect(res).not.toBeNull()
+    const { bytes, segmentOffsetsMs, durationMs } = res!
+
+    // 병합 본문 = 24000 샘플 → WAV = 44 + 24000*2
+    expect(bytes.byteLength).toBe(44 + 24000 * 2)
+
+    // offsets: [0(seg2 시작), 1000(seg10 시작 = seg2 누적 16000샘플)]
+    expect(segmentOffsetsMs).toEqual([0, 1000])
+    // durationMs = round(24000/16000*1000) = 1500
+    expect(durationMs).toBe(1500)
+
+    // 숫자순 병합 검증: 첫 샘플은 seg2의 0x0101, 16000번째 샘플은 seg10의 0x0202.
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    expect(view.getInt16(44 + 0 * 2, true)).toBe(0x0101)
+    expect(view.getInt16(44 + 16000 * 2, true)).toBe(0x0202)
+  })
+
+  it('단일 세그먼트면 offsets=[0], durationMs=세그먼트 길이', async () => {
+    const id = await createLocal({ title: 't', lang: 'ko' })
+    const seg = new Int16Array(16000).fill(7) // 1000ms
+    await appendAudio(id, 0, seg)
+
+    const res = await mergeLocalAudio(id)
+    expect(res).not.toBeNull()
+    expect(res!.segmentOffsetsMs).toEqual([0])
+    expect(res!.durationMs).toBe(1000)
+    expect(res!.bytes.byteLength).toBe(44 + 16000 * 2)
+  })
+})
+
+describe('encodeMeetingMp3 (lamejs, 순수 JS)', () => {
+  it('오디오 세그먼트가 없으면 null', async () => {
+    const id = await createLocal({ title: 't', lang: 'ko' })
+    expect(await encodeMeetingMp3(id)).toBeNull()
+  })
+
+  it('병합 PCM을 mp3로 인코딩(비어있지 않고 프레임 동기/ID3로 시작)', async () => {
+    const id = await createLocal({ title: 't', lang: 'ko' })
+    // 0.5s 톤 유사 신호.
+    const seg = new Int16Array(8000).map((_, i) => ((i % 64) - 32) * 200)
+    await appendAudio(id, 0, seg)
+
+    const mp3 = await encodeMeetingMp3(id)
+    expect(mp3).not.toBeNull()
+    expect(mp3!.length).toBeGreaterThan(0)
+    // MP3 프레임 동기(0xFF Ex/Fx) 또는 ID3 헤더.
+    const id3 = mp3![0] === 0x49 && mp3![1] === 0x44 && mp3![2] === 0x33
+    const frameSync = mp3![0] === 0xff && (mp3![1] & 0xe0) === 0xe0
+    expect(id3 || frameSync).toBe(true)
   })
 })

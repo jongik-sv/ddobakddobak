@@ -39,7 +39,7 @@ RSpec.describe "Api::V1::Decisions", type: :request do
 
   it "다른 사용자 회의의 decision은 목록에 포함되지 않는다" do
     mine    = create(:meeting, creator: user)
-    foreign = create(:meeting, creator: other_user)
+    foreign = create(:meeting, :private_meeting, creator: other_user)
     create(:decision, meeting: mine,    content: "내 결정")
     create(:decision, meeting: foreign, content: "남의 결정")
 

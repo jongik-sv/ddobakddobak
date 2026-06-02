@@ -4,5 +4,9 @@ FactoryBot.define do
     status { "pending" }
     association :team
     association :creator, factory: :user
+
+    trait :private_meeting do
+      shared { false }
+    end
   end
 end

@@ -33,6 +33,30 @@ describe('MobileRecordControls', () => {
     expect(onStart).toHaveBeenCalledOnce()
   })
 
+  // ─── isStarting(모델 로딩 등) 게이트 ───
+
+  it('isStarting=true && !isRecording → "회의 시작" 버튼 disabled + 스피너', () => {
+    render(<MobileRecordControls {...defaultProps} isRecording={false} isStarting={true} />)
+    const startBtn = screen.getByRole('button', { name: /회의 시작/i })
+    expect(startBtn).toBeDisabled()
+    // lucide Loader2 animate-spin 스피너 존재.
+    expect(startBtn.querySelector('.animate-spin')).not.toBeNull()
+  })
+
+  it('isStarting 미지정(기본 false) → "회의 시작" 버튼 enabled(서버 회귀가드)', () => {
+    render(<MobileRecordControls {...defaultProps} isRecording={false} />)
+    const startBtn = screen.getByRole('button', { name: '회의 시작' })
+    expect(startBtn).toBeEnabled()
+    expect(startBtn.querySelector('.animate-spin')).toBeNull()
+  })
+
+  it('isStarting=true여도 녹음 중이면 시작 버튼 자체가 없음(영향 없음)', () => {
+    render(<MobileRecordControls {...defaultProps} isRecording={true} isStarting={true} />)
+    expect(screen.queryByRole('button', { name: /회의 시작/i })).not.toBeInTheDocument()
+    // 종료 버튼은 isStarting과 무관하게 그대로.
+    expect(screen.getByRole('button', { name: /종료/i })).toBeEnabled()
+  })
+
   // ─── 상단 고정 바 ───
 
   it('녹음 중일 때 상단 고정 바가 표시됨', () => {

@@ -11,10 +11,12 @@ module MeetingLookup
     authorize_meeting_read!
   end
 
-  # 읽기 인가: admin / 소유자 / active participant 만 허용
+  # 읽기 인가: admin / 소유자 / 공유(shared) 회의 / active participant 만 허용
   def authorize_meeting_read!
     return if meeting_admin?
     return if @meeting.owner?(current_user)
+    # shared=true 회의는 임의의 로그인 사용자가 열람 가능
+    return if @meeting.shared?
     # 떠난 참여자(left_at 설정)는 제외 — 재접근하려면 공유코드로 다시 참여해야 함
     return if @meeting.active_participants.exists?(user_id: current_user.id)
 

@@ -7,6 +7,8 @@ interface MeetingDetailTopBarProps {
   attachmentsVisible: boolean
   memoVisible: boolean
   bookmarksVisible: boolean
+  /** 회의 정보 수정 어포던스를 노출할지 (소유자 ∨ admin). 기본 true. */
+  canEdit?: boolean
   onBack: () => void
   onToggleAttachments: () => void
   onShowEdit: () => void
@@ -21,6 +23,7 @@ export function MeetingDetailTopBar({
   attachmentsVisible,
   memoVisible,
   bookmarksVisible,
+  canEdit = true,
   onBack,
   onToggleAttachments,
   onShowEdit,
@@ -46,9 +49,10 @@ export function MeetingDetailTopBar({
           <Paperclip className="w-4 h-4" />
         </button>
       </Tooltip>
-      {hasMeeting && (
+      {hasMeeting && canEdit && (
         <Tooltip text="회의 정보 수정">
           <button
+            aria-label="회의 정보 수정"
             onClick={onShowEdit}
             className="shrink-0 p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
           >

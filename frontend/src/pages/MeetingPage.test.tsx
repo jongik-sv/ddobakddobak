@@ -21,13 +21,16 @@ const { mockMeetingBase } = vi.hoisted(() => ({
     memo: null,
     attendees: null,
     folder_id: null,
+    shared: true,
+    editable: true,
     started_at: '2026-03-25T10:00:00Z',
     ended_at: '2026-03-25T11:00:00Z',
     created_at: '2026-03-25T10:00:00Z',
   },
 }))
 
-vi.mock('../api/meetings', () => ({
+vi.mock('../api/meetings', async () => ({
+  ...(await vi.importActual<typeof import('../api/meetings')>('../api/meetings')),
   getMeetingDetail: vi.fn().mockResolvedValue({
     meeting: {
       id: 1,
@@ -35,6 +38,9 @@ vi.mock('../api/meetings', () => ({
       status: 'completed',
       team_id: 1,
       created_by_id: 1,
+      created_by: { id: 1, name: '테스터' },
+      shared: true,
+      editable: true,
       started_at: '2026-03-25T10:00:00Z',
       ended_at: '2026-03-25T11:00:00Z',
       created_at: '2026-03-25T10:00:00Z',
@@ -251,6 +257,7 @@ describe('MeetingPage', () => {
         title: '테스트 회의',
         status: 'completed',
         created_by_id: 1,
+        shared: true,
         started_at: '2026-03-25T10:00:00Z',
         ended_at: '2026-03-25T11:00:00Z',
         created_at: '2026-03-25T10:00:00Z',

@@ -31,14 +31,17 @@ const { mockMeetingBase } = vi.hoisted(() => ({
     last_transcript_end_ms: 0,
     last_sequence_number: 0,
     memo: null,
+    attendees: null,
     folder_id: null,
+    shared: true,
     started_at: '2026-03-25T10:00:00Z',
     ended_at: '2026-03-25T11:00:00Z',
     created_at: '2026-03-25T10:00:00Z',
   },
 }))
 
-vi.mock('../../api/meetings', () => ({
+vi.mock('../../api/meetings', async () => ({
+  ...(await vi.importActual<typeof import('../../api/meetings')>('../../api/meetings')),
   getMeetingDetail: vi.fn().mockResolvedValue({
     meeting: {
       id: 1,

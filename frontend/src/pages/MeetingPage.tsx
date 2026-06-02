@@ -6,7 +6,8 @@ import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
 import { useMemoEditor } from '../hooks/useMemoEditor'
 import type { Transcript, TermCorrection } from '../api/meetings'
-import { getTranscripts, reopenMeeting, regenerateStt, regenerateNotes, updateNotes, correctTerms } from '../api/meetings'
+import { getTranscripts, reopenMeeting, regenerateStt, regenerateNotes, updateNotes, correctTerms, canEditMeeting } from '../api/meetings'
+import { useAuthStore } from '../stores/authStore'
 import { createAuthenticatedConsumer } from '../lib/actionCableAuth'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { MeetingPageSkeleton } from '../components/ui/Skeleton'
@@ -50,6 +51,10 @@ export default function MeetingPage() {
   const { meeting, summary, isLoading, error: meetingError, updateTitle, updateMeetingInfo, deleteMeeting, refetch } =
     useMeeting(meetingId)
   const [showEditDialog, setShowEditDialog] = useState(false)
+
+  // 소유권 게이팅: 수정 어포던스는 소유자/admin에게만 노출 (서버는 403으로 강제).
+  const me = useAuthStore((s) => s.user)
+  const canEdit = canEditMeeting(meeting, me)
 
   const meetingTypeList = usePromptTemplateStore((s) => s.meetingTypeList)
   const meetingTypeMap = usePromptTemplateStore((s) => s.meetingTypeMap)
@@ -324,6 +329,7 @@ export default function MeetingPage() {
         attachmentsVisible={attachmentsVisible}
         memoVisible={memoVisible}
         bookmarksVisible={bookmarksVisible}
+        canEdit={canEdit}
         onBack={() => navigate('/')}
         onToggleAttachments={toggleAttachments}
         onShowEdit={() => setShowEditDialog(true)}
@@ -387,6 +393,7 @@ export default function MeetingPage() {
           }}
           onGoLive={() => navigate(`/meetings/${meetingId}/live`)}
           onDelete={deleteMeeting}
+          canEdit={canEdit}
         />
       )}
 

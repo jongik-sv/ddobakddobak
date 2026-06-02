@@ -12,7 +12,12 @@ const CONTAINER_MOBILE = 'fixed inset-0 w-full h-dvh bg-white flex flex-col'
 const CLOSE_BTN =
   'p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors'
 
-export default function SettingsModal() {
+interface Props {
+  /** 오프라인(서버 0) 진입 — SettingsContent로 그대로 전달해 클라전용 패널만 렌더. */
+  offline?: boolean
+}
+
+export default function SettingsModal({ offline }: Props = {}) {
   const settingsOpen = useUiStore((s) => s.settingsOpen)
   const closeSettings = useUiStore((s) => s.closeSettings)
   const isDesktop = useMediaQuery(BREAKPOINTS.lg)
@@ -51,7 +56,7 @@ export default function SettingsModal() {
 
         {/* 스크롤 가능 본문 */}
         <div className="flex-1 overflow-y-auto p-6">
-          <SettingsContent />
+          <SettingsContent offline={offline} />
         </div>
       </div>
     </div>
