@@ -18,6 +18,16 @@ document.addEventListener('keydown', (e) => {
 // 모듈 로드 시점(getApiBaseUrl())에 고정되므로, App(및 transitive import) 평가 전에
 // 브릿지 포트를 캐시하고 전달 대상을 설정한다. 데스크톱/웹에서는 즉시 통과한다.
 async function boot() {
+  // [BBDBG] 임시 계측 — AudioContext가 sampleRate:16000을 존중하는지 + logcat 채널 확인 (제거 예정)
+  try {
+    const { bbdbg } = await import('./lib/bbdbg')
+    const _c = new AudioContext({ sampleRate: 16000 })
+    bbdbg('boot ctx16k.sampleRate=' + _c.sampleRate)
+    void _c.close()
+  } catch (e) {
+    const { bbdbg } = await import('./lib/bbdbg')
+    bbdbg('boot probe fail: ' + String(e))
+  }
   await initMobileBridge()
   const { default: App } = await import('./App.tsx')
   createRoot(document.getElementById('root')!).render(

@@ -44,8 +44,11 @@ export interface UseLocalSttOptions {
 export interface UseLocalSttResult {
   /** useMicCapture/useAudioRecorder onChunk에 연결. 완결 발화 PCM Int16 16k. */
   sendChunk: (pcm: Int16Array, meta?: ChunkMeta) => void
-  /** 회의 종료 시 호출(여기선 청크가 즉시 전사되므로 no-op이지만 API 호환 유지). */
-  flush: () => void
+  /**
+   * 회의 종료 시 호출. 진행 중인 전사+오디오 저장 드레인이 모두 끝날 때까지 기다린다.
+   * (프로모트가 부분 오디오를 올리지 않도록 stop()이 await 한다.)
+   */
+  flush: () => Promise<void>
 }
 
 function int16ToFloat32(pcm: Int16Array): Float32Array {
@@ -89,6 +92,8 @@ export function useLocalStt(opts: UseLocalSttOptions): UseLocalSttResult {
             loadedRef.current = o.language
           }
           const raw = await invoke<string>('stt_transcribe', { pcm: Array.from(seg) })
+          // [BBDBG] 임시 계측 — STT 입력 길이/RMS/타임스탬프 + 원본 출력 문자열 (제거 예정)
+          void import('../lib/bbdbg').then((m) => m.bbdbg('stt ' + JSON.stringify({ len: seg.length, rms: Number(rms(f).toFixed(4)), startMs, endMs, raw })))
           const content = cutEosLeak(raw)
           if (!content) return
 
@@ -122,8 +127,9 @@ export function useLocalStt(opts: UseLocalSttOptions): UseLocalSttResult {
     [addFinal],
   )
 
-  // 청크가 즉시 전사되므로 별도 flush 불필요(API 호환용 no-op).
-  const flush = useCallback(() => {}, [])
+  // 진행 중 드레인(전사 + localStore.appendAudio 쓰기)이 끝날 때까지 기다린다.
+  // drainRef 체인은 자체 .catch로 항상 resolve되므로 이 await는 throw하지 않는다.
+  const flush = useCallback(() => drainRef.current, [])
 
   return { sendChunk, flush }
 }

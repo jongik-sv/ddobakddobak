@@ -41,6 +41,7 @@
     "dialog:allow-ask",
     "dialog:allow-confirm",
     "dialog:allow-message",
-    "deep-link:default"
+    "deep-link:default",
+    "log:default"
   ]
 }

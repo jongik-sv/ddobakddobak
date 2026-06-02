@@ -67,6 +67,8 @@ export function useMicCapture(callbacks: MicCaptureCallbacks): MicCaptureResult 
 
       const audioCtx = new AudioContext({ sampleRate: AUDIO.sample_rate })
       audioCtxRef.current = audioCtx
+      // [BBDBG] 임시 계측 — 실제 ctx 레이트 + 마이크 트랙 설정 (제거 예정)
+      ;(await import('../lib/bbdbg')).bbdbg('mic ctx.sampleRate=' + audioCtx.sampleRate + ' track=' + JSON.stringify(stream.getAudioTracks()[0]?.getSettings?.() ?? {}))
       const source = audioCtx.createMediaStreamSource(stream)
 
       // audio-processor.js 하나로 STT + 녹음 모두 처리
@@ -80,6 +82,11 @@ export function useMicCapture(callbacks: MicCaptureCallbacks): MicCaptureResult 
 
       vadWorklet.port.onmessage = (event: MessageEvent<{ type?: string; pcm: Int16Array; startSample?: number }>) => {
         const data = event.data
+        if (data.type === 'dbg') {
+          // [BBDBG] 워크릿 진단 (제거 예정)
+          void import('../lib/bbdbg').then((m) => m.bbdbg('wl ' + JSON.stringify(data)))
+          return
+        }
         if (data.type === 'raw-pcm') {
           // 녹음: 믹싱된 PCM → Rust 녹음기
           if (invoke) {

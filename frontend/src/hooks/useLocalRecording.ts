@@ -149,12 +149,16 @@ export function useLocalRecording(
 
   const stop = useCallback(async () => {
     mic.stop()
-    localStt.flush()
     if (elapsedTimerRef.current) {
       clearInterval(elapsedTimerRef.current)
       elapsedTimerRef.current = null
     }
     elapsedBaseRef.current = null
+    // 워크릿 flush가 마지막 발화 청크를 enqueue(mic teardown ≤200ms)할 시간을 준 뒤,
+    // 전사+오디오 저장 드레인이 모두 끝날 때까지 기다린다. 이걸 안 기다리면 아래
+    // syncFlushAll(프로모트)이 아직 안 써진 마지막 구간을 빼고 부분 오디오만 서버에 올린다.
+    await new Promise((r) => setTimeout(r, 250))
+    await localStt.flush()
     await localStore.setStatus(localId, 'completed').catch(() => {})
     if (localUploadEnabled) {
       await syncFlushAll().catch(() => {})

@@ -15,8 +15,10 @@
  *
  * 이 모듈은 신규 파일만 생성하며 localStore / meetings API는 import만 한다(통합은 메인스레드).
  *
- * 오디오 업로드는 v1 deferred: localStore가 audio 리더(예: readAudio(localId)→blobs)를
- * 노출하지 않는다(현재 audio는 write-only: appendAudio/pcm16ToWav). transcript 프로모트만 구현.
+ * 오디오 프로모트: transcript 전송 후, 로컬 audio/<seq>.wav 병합본(mergeLocalAudio)을 WAV로
+ * 서버에도 업로드한다(온라인 useLiveRecording과 동일 엔드포인트 — 서버 AudioUploadJob이 mp3 변환).
+ * 멱등: 서버가 이미 오디오를 보유(has_audio_file)하면 건너뛴다 — 재업로드는 서버에서 ffmpeg
+ * merge로 중복 연결되므로. 따라서 createMeeting 직후(신규)거나 has_audio_file=false일 때만 올린다.
  */
 
 import {
@@ -24,10 +26,13 @@ import {
   setServerId,
   markPendingSync,
   listLocal,
+  mergeLocalAudio,
 } from './localStore'
 import {
   createMeeting,
+  getMeeting,
   bulkCreateTranscripts,
+  promoteAudio,
   type BulkTranscriptItem,
 } from '../api/meetings'
 
@@ -58,12 +63,17 @@ export async function flush(localId: string): Promise<FlushResult> {
   try {
     const { meta, segments } = await getLocal(localId)
 
-    // 1. serverId 확보(없으면 회의 생성 후 매핑)
+    // 1. serverId 확보(없으면 회의 생성 후 매핑). 동시에 서버의 기존 오디오 보유 여부 확정.
     let serverId = meta.serverId
+    let serverHasAudio = false
     if (serverId == null) {
       const meeting = await createMeeting({ title: meta.title })
       serverId = meeting.id
+      serverHasAudio = meeting.has_audio_file === true // 신규라 항상 false
       await setServerId(localId, serverId)
+    } else {
+      // 기존 회의: 권위는 서버. 이미 오디오가 있으면 재업로드 금지(ffmpeg merge 중복 방지).
+      serverHasAudio = (await getMeeting(serverId)).has_audio_file === true
     }
 
     // 2. transcript 일괄 전송 — (serverId, sequence_number) 멱등키로 서버가 중복 흡수.
@@ -78,7 +88,17 @@ export async function flush(localId: string): Promise<FlushResult> {
     }))
     await bulkCreateTranscripts(serverId, items)
 
-    // 3. 성공 → pendingSync 클리어
+    // 3. 오디오 프로모트 — 로컬 audio/<seq>.wav 병합본을 WAV로 서버에 올린다(재생용).
+    //    서버가 이미 가지고 있으면 건너뛴다(멱등). 업로드 실패는 throw → 아래 catch가
+    //    pendingSync 유지 → 다음 트리거에 재시도(그땐 has_audio_file로 멱등 보장).
+    if (!serverHasAudio) {
+      const merged = await mergeLocalAudio(localId)
+      if (merged) {
+        await promoteAudio(serverId, new Blob([merged.bytes], { type: 'audio/wav' }))
+      }
+    }
+
+    // 4. 성공 → pendingSync 클리어
     await markPendingSync(localId, false)
     return { ok: true, serverId }
   } catch {

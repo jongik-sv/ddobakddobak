@@ -19,8 +19,8 @@ export default defineConfig({
   },
   server: {
     // Tauri 모바일 dev: 폰이 LAN으로 dev 서버에 접근하므로 TAURI_DEV_HOST(맥 LAN IP)에 바인딩.
-    // 미설정 시 localhost (데스크톱 dev / Caddy 프록시 경유).
-    host: process.env.TAURI_DEV_HOST || false,
+    // 미설정 시 0.0.0.0(전 인터페이스) — localhost(데스크톱)와 LAN(다른 PC 브라우저) 모두 접근 가능.
+    host: process.env.TAURI_DEV_HOST || true,
     port: 13325,
     strictPort: true,
     // Caddy 리버스 프록시(LAN HTTPS) 및 Tauri dev가 전달하는 Host 헤더 허용

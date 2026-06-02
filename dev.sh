@@ -16,9 +16,19 @@ SESSION="ddobak"
 
 RAILS_PORT="${RAILS_PORT:-13323}"
 SIDECAR_PORT="${SIDECAR_PORT:-13324}"
+FRONTEND_PORT="${FRONTEND_PORT:-13325}"
+CADDY_PORT="${CADDY_PORT:-13443}"
+
+# 활성 기본 인터페이스의 LAN IP 자동 감지 (다른 PC/폰에서 웹 UI 접근 안내 + 인증서 일치 확인용).
+DEFAULT_IFACE="$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')"
+LAN_IP="$(ipconfig getifaddr "${DEFAULT_IFACE:-en0}" 2>/dev/null || ipconfig getifaddr en0 2>/dev/null || true)"
 
 RAILS_CMD="SERVER_MODE=true bin/rails server -p ${RAILS_PORT} -b 0.0.0.0"
 SIDECAR_CMD="uv run uvicorn app.main:app --host 0.0.0.0 --port ${SIDECAR_PORT}"
+# Caddy: LAN HTTPS 단일 origin(:${CADDY_PORT}). /api·/auth·/cable→rails, 그 외→vite.
+# 다른 PC/폰 브라우저는 https://<LAN_IP>:${CADDY_PORT} 한 곳만 접속(같은 origin이라 CORS·IP입력 불필요).
+# 웹 프론트는 설계상 window.location.origin 기준 same-origin 호출이므로 반드시 Caddy 경유해야 동작.
+CADDY_CMD="caddy run --config '$PROJECT_ROOT/Caddyfile' --adapter caddyfile"
 
 require_tmux() {
   if ! command -v tmux >/dev/null 2>&1; then
@@ -45,8 +55,19 @@ start_backend() {
   tmux new-window -t "$SESSION" -n sidecar -c "$PROJECT_ROOT/sidecar"
   tmux send-keys -t "$SESSION:sidecar" "$SIDECAR_CMD" Enter
 
+  tmux new-window -t "$SESSION" -n caddy -c "$PROJECT_ROOT"
+  tmux send-keys -t "$SESSION:caddy" "$CADDY_CMD" Enter
+
   echo "[info]   - rails   : http://localhost:${RAILS_PORT}"
   echo "[info]   - sidecar : http://localhost:${SIDECAR_PORT}"
+  echo "[info]   - caddy   : https://localhost:${CADDY_PORT}  (LAN 웹 단일 진입점)"
+  if [ -n "$LAN_IP" ]; then
+    echo "[info]   - LAN 웹  : https://${LAN_IP}:${CADDY_PORT}  (다른 PC/폰 브라우저, 같은 origin → 서버주소 입력·CORS 불필요)"
+    if ! grep -q "$LAN_IP" "$PROJECT_ROOT/Caddyfile" 2>/dev/null; then
+      echo "[warn] 현재 LAN IP($LAN_IP)가 Caddyfile에 없음 → HTTPS 인증서 불일치로 웹 접속 깨짐."
+      echo "[warn]   해결: mkcert로 새 IP 인증서 발급 후 Caddyfile의 site주소/tls 경로 갱신."
+    fi
+  fi
   echo "[info] 로그 확인: tmux attach -t $SESSION  (Ctrl+b n / p 로 윈도우 이동)"
 }
 

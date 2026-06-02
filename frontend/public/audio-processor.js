@@ -116,6 +116,12 @@ class AudioProcessor extends AudioWorkletProcessor {
 
     const mic = input[0]
 
+    // [BBDBG] 임시 계측 — 실제 렌더레이트(글로벌 sampleRate) vs 가정(SAMPLE_RATE) + 프레임 크기 (제거 예정)
+    if (!this._dbgRateSent) {
+      this._dbgRateSent = true
+      this.port.postMessage({ type: 'dbg', ev: 'rate', realRate: sampleRate, assumed: SAMPLE_RATE, frame: mic.length })
+    }
+
     // 마이크 + 시스템 오디오 믹싱
     if (!this._mixBuf || this._mixBuf.length < mic.length) {
       this._mixBuf = new Float32Array(mic.length)
@@ -224,6 +230,19 @@ class AudioProcessor extends AudioWorkletProcessor {
       int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff
     }
     this.port.postMessage({ pcm: int16, startSample: this._chunkStartSample }, [int16.buffer])
+
+    // [BBDBG] 임시 계측 — 청크 회계: 길이/시작샘플/누적/RMS/길이ms (제거 예정)
+    let _dbgSS = 0
+    for (let i = 0; i < this._speechLen; i++) _dbgSS += this._speech[i] * this._speech[i]
+    this.port.postMessage({
+      type: 'dbg',
+      ev: 'chunk',
+      speechLen: this._speechLen,
+      startSample: this._chunkStartSample,
+      totalIn: this._totalSamplesIn,
+      rms: Number(Math.sqrt(_dbgSS / this._speechLen).toFixed(4)),
+      durMs: Math.round((this._speechLen / sampleRate) * 1000),
+    })
 
     // Save tail for overlap with next chunk
     const overlapStart = Math.max(0, this._speechLen - OVERLAP_SAMPLES)

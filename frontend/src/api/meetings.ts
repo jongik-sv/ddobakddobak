@@ -209,6 +209,29 @@ export async function uploadAudio(id: number, blob: Blob): Promise<void> {
   })
 }
 
+/**
+ * 오프라인(로컬) 회의 프로모트용 단발 오디오 업로드.
+ *
+ * uploadAudio와 달리 res.ok를 검사해 실패 시 throw 한다 — syncQueue.flush가 실패를
+ * 감지해 pendingSync를 유지하고 재시도하도록(성공 경로에서만 has_audio_file이 켜진다).
+ * 엔드포인트는 온라인 경로와 동일한 POST /meetings/:id/audio (서버가 AudioUploadJob으로 mp3 변환).
+ */
+export async function promoteAudio(id: number, blob: Blob): Promise<void> {
+  const formData = new FormData()
+  const ext = blob.type.includes('wav') ? 'wav' : 'webm'
+  formData.append('audio', blob, `promote.${ext}`)
+
+  const res = await fetch(`${getApiBaseUrl()}/meetings/${id}/audio`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: formData,
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error || `오디오 업로드 실패 (${res.status})`)
+  }
+}
+
 /** 녹음 중 압축 오디오 청크를 seq 순서대로 연속 업로드 (모바일) */
 export async function uploadAudioChunk(id: number, blob: Blob, sequence: number): Promise<void> {
   const formData = new FormData()

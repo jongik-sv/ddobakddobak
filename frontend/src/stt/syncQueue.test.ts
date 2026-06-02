@@ -6,27 +6,34 @@ import {
   setServerId,
   markPendingSync,
   listLocal,
+  mergeLocalAudio,
 } from './localStore'
-import { createMeeting, bulkCreateTranscripts } from '../api/meetings'
+import { createMeeting, getMeeting, bulkCreateTranscripts, promoteAudio } from '../api/meetings'
 
 vi.mock('./localStore', () => ({
   getLocal: vi.fn(),
   setServerId: vi.fn(),
   markPendingSync: vi.fn(),
   listLocal: vi.fn(),
+  mergeLocalAudio: vi.fn(),
 }))
 
 vi.mock('../api/meetings', () => ({
   createMeeting: vi.fn(),
+  getMeeting: vi.fn(),
   bulkCreateTranscripts: vi.fn(),
+  promoteAudio: vi.fn(),
 }))
 
 const mGetLocal = vi.mocked(getLocal)
 const mSetServerId = vi.mocked(setServerId)
 const mMarkPendingSync = vi.mocked(markPendingSync)
 const mListLocal = vi.mocked(listLocal)
+const mMergeAudio = vi.mocked(mergeLocalAudio)
 const mCreateMeeting = vi.mocked(createMeeting)
+const mGetMeeting = vi.mocked(getMeeting)
 const mBulkCreate = vi.mocked(bulkCreateTranscripts)
+const mPromoteAudio = vi.mocked(promoteAudio)
 
 // --- localStore가 반환하는 형태(계약 가정). 모킹이므로 여기서 형태만 맞춘다. ---
 interface LocalMeta {
@@ -85,6 +92,10 @@ beforeEach(() => {
   mSetServerId.mockResolvedValue(undefined as never)
   mMarkPendingSync.mockResolvedValue(undefined as never)
   mBulkCreate.mockResolvedValue(undefined)
+  // 오디오 프로모트 기본값: 오디오 없음 + 서버 미보유 → 대부분 테스트는 업로드 스킵.
+  mMergeAudio.mockResolvedValue(null as never)
+  mGetMeeting.mockResolvedValue({ has_audio_file: false } as never)
+  mPromoteAudio.mockResolvedValue(undefined as never)
 })
 
 // getLocal/listLocal는 실제 반환 타입이 이 테스트의 LocalRecord/LocalMeta와 정확히
@@ -139,6 +150,89 @@ describe('flush — 이미 serverId 있음', () => {
     expect(mBulkCreate).toHaveBeenCalledWith(7, expect.any(Array))
     expect(mMarkPendingSync).toHaveBeenCalledWith('local-abc', false)
     expect(res).toEqual({ ok: true, serverId: 7 })
+  })
+})
+
+describe('flush — 오디오 프로모트', () => {
+  const fakeMerged = {
+    bytes: new Uint8Array([1, 2, 3, 4]),
+    segmentOffsetsMs: [0],
+    durationMs: 1000,
+  }
+
+  it('서버에 오디오 없고 로컬 병합 오디오 있으면 promoteAudio(WAV)를 serverId로 1회 호출', async () => {
+    resolveGetLocal(makeRecord({ serverId: 7 }))
+    mGetMeeting.mockResolvedValue({ has_audio_file: false } as never)
+    mMergeAudio.mockResolvedValue(fakeMerged as never)
+
+    const res = await flush('local-abc')
+
+    expect(mPromoteAudio).toHaveBeenCalledTimes(1)
+    const [calledId, blob] = mPromoteAudio.mock.calls[0]
+    expect(calledId).toBe(7)
+    expect(blob).toBeInstanceOf(Blob)
+    expect((blob as Blob).type).toBe('audio/wav')
+    expect(mMarkPendingSync).toHaveBeenCalledWith('local-abc', false)
+    expect(res).toEqual({ ok: true, serverId: 7 })
+  })
+
+  it('서버가 이미 오디오를 보유하면(has_audio_file=true) merge/업로드 둘 다 스킵(중복 방지)', async () => {
+    resolveGetLocal(makeRecord({ serverId: 7 }))
+    mGetMeeting.mockResolvedValue({ has_audio_file: true } as never)
+    mMergeAudio.mockResolvedValue(fakeMerged as never)
+
+    await flush('local-abc')
+
+    expect(mMergeAudio).not.toHaveBeenCalled()
+    expect(mPromoteAudio).not.toHaveBeenCalled()
+  })
+
+  it('로컬 오디오가 없으면(mergeLocalAudio=null) promoteAudio 미호출', async () => {
+    resolveGetLocal(makeRecord({ serverId: 7 }))
+    mGetMeeting.mockResolvedValue({ has_audio_file: false } as never)
+    mMergeAudio.mockResolvedValue(null as never)
+
+    await flush('local-abc')
+
+    expect(mPromoteAudio).not.toHaveBeenCalled()
+  })
+
+  it('promoteAudio 실패 → pendingSync 유지(재시도) + ok:false', async () => {
+    resolveGetLocal(makeRecord({ serverId: 7 }))
+    mGetMeeting.mockResolvedValue({ has_audio_file: false } as never)
+    mMergeAudio.mockResolvedValue(fakeMerged as never)
+    mPromoteAudio.mockRejectedValue(new Error('upload failed'))
+
+    const res = await flush('local-abc')
+
+    expect(res).toEqual({ ok: false })
+    expect(mMarkPendingSync).not.toHaveBeenCalledWith('local-abc', false)
+  })
+
+  it('두 번째 flush(서버가 오디오 보유 상태)는 재업로드하지 않는다', async () => {
+    resolveGetLocal(makeRecord({ serverId: 7 }))
+    mMergeAudio.mockResolvedValue(fakeMerged as never)
+    mGetMeeting.mockResolvedValueOnce({ has_audio_file: false } as never)
+
+    await flush('local-abc')
+    expect(mPromoteAudio).toHaveBeenCalledTimes(1)
+
+    // 이후 서버가 오디오 보유 → 재업로드 없음
+    mGetMeeting.mockResolvedValue({ has_audio_file: true } as never)
+    await flush('local-abc')
+    expect(mPromoteAudio).toHaveBeenCalledTimes(1)
+  })
+
+  it('신규 회의(createMeeting) → has_audio_file 미정이라 업로드 시도', async () => {
+    resolveGetLocal(makeRecord({ serverId: undefined }))
+    mCreateMeeting.mockResolvedValue(fakeMeeting(99))
+    mMergeAudio.mockResolvedValue(fakeMerged as never)
+
+    await flush('local-abc')
+
+    expect(mGetMeeting).not.toHaveBeenCalled() // 신규는 createMeeting 결과만 사용
+    expect(mPromoteAudio).toHaveBeenCalledTimes(1)
+    expect(mPromoteAudio.mock.calls[0][0]).toBe(99)
   })
 })
 
