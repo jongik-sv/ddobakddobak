@@ -21,6 +21,7 @@ import { useUiStore } from '../stores/uiStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
+import { ContactsSection } from '../components/meeting/ContactsSection'
 import { getBookmarks, deleteBookmark } from '../api/bookmarks'
 import type { Bookmark as BookmarkType } from '../api/bookmarks'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
@@ -30,6 +31,7 @@ import { MemoEditorPanel } from '../components/meeting/MemoEditorPanel'
 import { TranscribingProgress } from '../components/meeting/TranscribingProgress'
 import { TermCorrectionDetails } from '../components/meeting/TermCorrectionDetails'
 import { MeetingActionHeader } from '../components/meeting/MeetingActionHeader'
+import { MeetingActions } from '../components/meeting/MeetingActions'
 import { MeetingDetailTopBar } from '../components/meeting/MeetingDetailTopBar'
 import { buildMeetingDetailTabs } from '../components/meeting/meetingDetailTabs'
 
@@ -335,6 +337,24 @@ export default function MeetingPage() {
         onShowEdit={() => setShowEditDialog(true)}
         onToggleMemo={toggleMemo}
         onToggleBookmarks={toggleBookmarks}
+        actions={meeting ? (
+          <MeetingActions
+            meeting={meeting}
+            meetingId={meetingId}
+            isDesktop={isDesktop}
+            transcriptsCount={transcripts.length}
+            isRegeneratingNotes={isRegeneratingNotes}
+            onShowSttConfirm={() => setShowSttConfirm(true)}
+            onShowNotesConfirm={() => setShowNotesConfirm(true)}
+            onReopen={async () => {
+              await reopenMeeting(meetingId)
+              navigate(`/meetings/${meetingId}/live`)
+            }}
+            onGoLive={() => navigate(`/meetings/${meetingId}/live`)}
+            onDelete={deleteMeeting}
+            canEdit={canEdit}
+          />
+        ) : undefined}
       />
 
       {/* 오디오 플레이어 (데스크톱) */}
@@ -375,30 +395,20 @@ export default function MeetingPage() {
         />
       )}
 
-      {/* 헤더 (제목 + 액션 버튼) */}
+      {/* 제목 줄 (제목 인라인 편집 + 배지). 액션 버튼은 상단 툴바로 이동(MeetingActions). */}
       {meeting && (
         <MeetingActionHeader
           meeting={meeting}
-          meetingId={meetingId}
           isDesktop={isDesktop}
           meetingTypeLabel={meetingTypeLabel}
-          transcriptsCount={transcripts.length}
-          isRegeneratingNotes={isRegeneratingNotes}
           onUpdateTitle={updateTitle}
-          onShowSttConfirm={() => setShowSttConfirm(true)}
-          onShowNotesConfirm={() => setShowNotesConfirm(true)}
-          onReopen={async () => {
-            await reopenMeeting(meetingId)
-            navigate(`/meetings/${meetingId}/live`)
-          }}
-          onGoLive={() => navigate(`/meetings/${meetingId}/live`)}
-          onDelete={deleteMeeting}
           canEdit={canEdit}
         />
       )}
 
       {/* 첨부 파일/링크 섹션 */}
       {attachmentsVisible && <AttachmentSection meetingId={meetingId} />}
+      <ContactsSection meetingId={meetingId} />
 
       {/* 패널 레이아웃: 데스크톱(PanelGroup) / 모바일(MobileTabLayout) */}
       {isDesktop ? (
