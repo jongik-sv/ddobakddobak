@@ -39,6 +39,7 @@ export function ContactCard({ contact, onDelete }: ContactCardProps) {
         <button
           type="button"
           onClick={() => setShowRaw((v) => !v)}
+          aria-expanded={showRaw}
           className="mt-2 text-[11px] text-blue-500 hover:underline"
         >
           {showRaw ? '접기' : '자세히'}

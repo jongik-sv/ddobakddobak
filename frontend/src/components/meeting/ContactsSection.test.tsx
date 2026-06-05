@@ -35,7 +35,7 @@ describe('ContactsSection', () => {
 
   it('renders nothing when there are no contacts', async () => {
     getContacts.mockResolvedValue([])
-    const { container } = render(<ContactsSection meetingId={7} />)
+    const { container } = render(<ContactsSection meetingId={8} />)
     await new Promise((r) => setTimeout(r, 0))
     expect(container.textContent).toBe('')
   })
