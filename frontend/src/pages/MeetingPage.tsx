@@ -21,7 +21,6 @@ import { useUiStore } from '../stores/uiStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
-import { ContactsSection } from '../components/meeting/ContactsSection'
 import { getBookmarks, deleteBookmark } from '../api/bookmarks'
 import type { Bookmark as BookmarkType } from '../api/bookmarks'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
@@ -406,9 +405,8 @@ export default function MeetingPage() {
         />
       )}
 
-      {/* 첨부 파일/링크 섹션 */}
+      {/* 첨부 파일/링크 섹션 (명함 탭 선택 시 참석자 패널은 섹션 내부에서 표시) */}
       {attachmentsVisible && <AttachmentSection meetingId={meetingId} />}
-      <ContactsSection meetingId={meetingId} />
 
       {/* 패널 레이아웃: 데스크톱(PanelGroup) / 모바일(MobileTabLayout) */}
       {isDesktop ? (

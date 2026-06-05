@@ -7,7 +7,6 @@ import { Dialog } from '../ui/Dialog'
 const CATEGORIES: { value: AttachmentCategory; label: string }[] = [
   { value: 'agenda', label: '안건' },
   { value: 'reference', label: '참고자료' },
-  { value: 'minutes', label: '첨부' },
 ]
 
 interface AddLinkDialogProps {

@@ -4,6 +4,7 @@ import { useAttachments } from '../../hooks/useAttachments'
 import { AttachmentCard } from './AttachmentCard'
 import { AddFileDialog } from './AddFileDialog'
 import { AddLinkDialog } from './AddLinkDialog'
+import { ContactsSection } from './ContactsSection'
 import type { AttachmentCategory } from '../../api/attachments'
 
 interface AttachmentSectionProps {
@@ -13,7 +14,6 @@ interface AttachmentSectionProps {
 const CATEGORIES: { value: AttachmentCategory; label: string }[] = [
   { value: 'agenda', label: '안건' },
   { value: 'reference', label: '참고자료' },
-  { value: 'minutes', label: '첨부' },
   { value: 'business_card', label: '명함' },
 ]
 
@@ -88,6 +88,9 @@ export function AttachmentSection({ meetingId }: AttachmentSectionProps) {
           ))}
         </div>
       )}
+
+      {/* 명함 탭 선택 시: 인식된 참석자(명함) 패널 */}
+      {activeCategory === 'business_card' && <ContactsSection meetingId={meetingId} />}
 
       {/* 파일 추가 다이얼로그 */}
       {showFileDialog && (
