@@ -14,18 +14,6 @@ RSpec.describe CardExtractionService do
 
   subject(:service) { described_class.new(attachment) }
 
-  around do |ex|
-    original = ENV["ANTHROPIC_AUTH_TOKEN"]
-    ex.run
-  ensure
-    ENV["ANTHROPIC_AUTH_TOKEN"] = original
-  end
-
-  before do
-    allow(File).to receive(:binread).and_return("rawbytes")
-    ENV["ANTHROPIC_AUTH_TOKEN"] = "sk-test"
-  end
-
   it "parses a JSON object into one contact with all fields + extra + raw_text" do
     allow(service).to receive(:call_vision).and_return(<<~JSON)
       {"name":"홍길동","company":"또박","department":"개발","title":"팀장",
@@ -58,9 +46,13 @@ RSpec.describe CardExtractionService do
     expect(result.first[:name]).to be_nil
   end
 
-  it "raises when no vision API key is configured" do
-    ENV["ANTHROPIC_AUTH_TOKEN"] = ""
-    expect { service.send(:vision_api_key!) }.to raise_error(CardExtractionService::VisionUnavailable)
+  it "raises VisionUnavailable when the Claude CLI is unavailable" do
+    original = ENV["CLAUDE_CLI_PATH"]
+    ENV["CLAUDE_CLI_PATH"] = "claude-does-not-exist-xyz"
+    expect { service.send(:call_vision, "/tmp/card.jpg") }
+      .to raise_error(CardExtractionService::VisionUnavailable)
+  ensure
+    ENV["CLAUDE_CLI_PATH"] = original
   end
 
   it "strips ```json fences before parsing" do
