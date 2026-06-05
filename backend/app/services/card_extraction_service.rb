@@ -40,7 +40,7 @@ class CardExtractionService
     text = call_vision(base64, media_type)
     parse_contacts(text) || begin
       retry_text = call_vision(base64, media_type)
-      parse_contacts(retry_text) || [ { raw_text: retry_text.to_s.strip } ]
+      parse_contacts(retry_text) || [ normalize({ "raw_text" => retry_text.to_s.strip }) ]
     end
   end
 
@@ -61,7 +61,9 @@ class CardExtractionService
         ]
       } ]
     )
-    resp.content.first.text
+    block = resp.content&.first
+    raise "Vision API가 빈 응답을 반환했습니다" unless block.respond_to?(:text)
+    block.text
   end
 
   def vision_api_key!

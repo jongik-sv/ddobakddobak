@@ -14,6 +14,13 @@ RSpec.describe CardExtractionService do
 
   subject(:service) { described_class.new(attachment) }
 
+  around do |ex|
+    original = ENV["ANTHROPIC_AUTH_TOKEN"]
+    ex.run
+  ensure
+    ENV["ANTHROPIC_AUTH_TOKEN"] = original
+  end
+
   before do
     allow(File).to receive(:binread).and_return("rawbytes")
     ENV["ANTHROPIC_AUTH_TOKEN"] = "sk-test"
@@ -54,5 +61,10 @@ RSpec.describe CardExtractionService do
   it "raises when no vision API key is configured" do
     ENV["ANTHROPIC_AUTH_TOKEN"] = ""
     expect { service.send(:vision_api_key!) }.to raise_error(CardExtractionService::VisionUnavailable)
+  end
+
+  it "strips ```json fences before parsing" do
+    allow(service).to receive(:call_vision).and_return("```json\n{\"name\":\"A\"}\n```")
+    expect(service.call.first[:name]).to eq("A")
   end
 end
