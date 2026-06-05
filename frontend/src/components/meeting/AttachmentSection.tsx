@@ -23,7 +23,7 @@ export function AttachmentSection({ meetingId }: AttachmentSectionProps) {
   const [showLinkDialog, setShowLinkDialog] = useState(false)
 
   const countByCategory = useMemo(() => {
-    const counts: Record<AttachmentCategory, number> = { agenda: 0, reference: 0, minutes: 0 }
+    const counts: Record<AttachmentCategory, number> = { agenda: 0, reference: 0, minutes: 0, business_card: 0 }
     for (const a of attachments) {
       if (a.category in counts) counts[a.category]++
     }
