@@ -77,7 +77,10 @@ module Api
         file = params[:file]
         category = params[:category] || "reference"
 
-        content_type = file.content_type.to_s.split(";").first.strip
+        content_type = file.content_type.to_s.split(";").first.to_s.strip
+        if content_type.blank? || content_type == "application/octet-stream"
+          content_type = MeetingAttachment.content_type_for_filename(file.original_filename) || content_type
+        end
         unless MeetingAttachment::ALLOWED_CONTENT_TYPES.include?(content_type)
           return render json: { error: "File type not allowed" }, status: :unprocessable_entity
         end
@@ -102,6 +105,7 @@ module Api
         )
 
         if attachment.save
+          CardExtractionJob.perform_later(attachment.id) if attachment.category == "business_card"
           render json: { attachment: attachment_json(attachment) }, status: :created
         else
           FileUtils.rm_f(dest_path)
