@@ -30,7 +30,7 @@ module Api
 
       def set_contact
         @contact = @meeting.meeting_contacts.find_by(id: params[:id])
-        render json: { error: "Contact not found" }, status: :not_found unless @contact
+        render json: { error: "Contact not found" }, status: :not_found and return unless @contact
       end
 
       def contact_params

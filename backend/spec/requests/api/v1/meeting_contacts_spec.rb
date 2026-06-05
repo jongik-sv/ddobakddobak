@@ -2,7 +2,7 @@ require "rails_helper"
 
 RSpec.describe "Api::V1::MeetingContacts", type: :request do
   let(:user)    { create(:user) }
-  let(:meeting) { create(:meeting, creator: user) }
+  let(:meeting) { create(:meeting, creator: user, shared: true) }
 
   describe "as the owner" do
     before { login_as(user) }
@@ -26,6 +26,11 @@ RSpec.describe "Api::V1::MeetingContacts", type: :request do
       delete "/api/v1/meetings/#{meeting.id}/contacts/#{c.id}"
       expect(response).to have_http_status(:no_content)
       expect(MeetingContact.exists?(c.id)).to be(false)
+    end
+
+    it "returns 404 for a missing contact id" do
+      patch "/api/v1/meetings/#{meeting.id}/contacts/999999", params: { name: "x" }
+      expect(response).to have_http_status(:not_found)
     end
   end
 
