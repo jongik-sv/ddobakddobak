@@ -1,7 +1,7 @@
-import apiClient, { getAuthHeaders } from './client'
+import apiClient from './client'
 import { getApiBaseUrl } from '../config'
 
-export type AttachmentCategory = 'agenda' | 'reference' | 'minutes'
+export type AttachmentCategory = 'agenda' | 'reference' | 'minutes' | 'business_card'
 export type AttachmentKind = 'file' | 'link'
 
 export interface MeetingAttachment {
@@ -42,17 +42,12 @@ export async function createFileAttachment(
   formData.append('file', file)
   if (displayName) formData.append('display_name', displayName)
 
-  const res = await fetch(`${getApiBaseUrl()}/meetings/${meetingId}/attachments`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: formData,
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || '파일 업로드에 실패했습니다.')
-  }
-  const json = await res.json()
-  return json.attachment
+  // apiClient(ky)로 보내 401 자동 refresh를 태운다. FormData면 ky가 Content-Type을
+  // 건드리지 않아 multipart boundary가 보존된다(raw fetch 때의 토큰 만료 무처리 갭 제거).
+  const res = await apiClient
+    .post(`meetings/${meetingId}/attachments`, { body: formData })
+    .json<{ attachment: MeetingAttachment }>()
+  return res.attachment
 }
 
 export async function createLinkAttachment(
