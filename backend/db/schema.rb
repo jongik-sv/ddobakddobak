@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_02_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_05_064422) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -54,9 +54,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_02_100000) do
     t.string "name", null: false
     t.integer "parent_id"
     t.integer "position", default: 0, null: false
+    t.boolean "shared", default: true, null: false
     t.integer "team_id"
     t.datetime "updated_at", null: false
     t.index ["parent_id"], name: "index_folders_on_parent_id"
+    t.index ["shared"], name: "index_folders_on_shared"
     t.index ["team_id", "parent_id", "position"], name: "index_folders_on_team_id_and_parent_id_and_position"
     t.index ["team_id"], name: "index_folders_on_team_id"
   end
@@ -88,6 +90,28 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_02_100000) do
     t.datetime "updated_at", null: false
     t.index ["meeting_id", "timestamp_ms"], name: "index_meeting_bookmarks_on_meeting_id_and_timestamp_ms"
     t.index ["meeting_id"], name: "index_meeting_bookmarks_on_meeting_id"
+  end
+
+  create_table "meeting_contacts", force: :cascade do |t|
+    t.text "address"
+    t.string "company"
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id", null: false
+    t.string "department"
+    t.string "email"
+    t.json "extra"
+    t.string "fax"
+    t.integer "meeting_id", null: false
+    t.string "mobile"
+    t.string "name"
+    t.string "phone"
+    t.text "raw_text"
+    t.bigint "source_attachment_id"
+    t.string "title"
+    t.datetime "updated_at", null: false
+    t.string "website"
+    t.index ["meeting_id"], name: "index_meeting_contacts_on_meeting_id"
+    t.index ["source_attachment_id"], name: "index_meeting_contacts_on_source_attachment_id"
   end
 
   create_table "meeting_participants", force: :cascade do |t|
@@ -242,6 +266,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_02_100000) do
   end
 
   add_foreign_key "meeting_bookmarks", "meetings"
+  add_foreign_key "meeting_contacts", "meetings"
   add_foreign_key "meeting_participants", "meetings"
   add_foreign_key "meeting_participants", "users"
   add_foreign_key "meeting_templates", "folders"
