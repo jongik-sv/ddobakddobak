@@ -89,6 +89,8 @@ Rails.application.routes.draw do
             patch :reorder
           end
         end
+        resources :contacts, only: %i[index update destroy],
+                  controller: "meeting_contacts"
       end
 
       # Folders
