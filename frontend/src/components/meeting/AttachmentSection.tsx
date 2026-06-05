@@ -14,6 +14,7 @@ const CATEGORIES: { value: AttachmentCategory; label: string }[] = [
   { value: 'agenda', label: '안건' },
   { value: 'reference', label: '참고자료' },
   { value: 'minutes', label: '첨부' },
+  { value: 'business_card', label: '명함' },
 ]
 
 export function AttachmentSection({ meetingId }: AttachmentSectionProps) {
