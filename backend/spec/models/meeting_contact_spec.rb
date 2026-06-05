@@ -44,4 +44,10 @@ RSpec.describe Meeting, "#append_attendee!", type: :model do
     meeting.append_attendee!("  ")
     expect(meeting.reload.attendees).to be_nil
   end
+
+  it "does NOT skip a name that is a substring of an existing entry" do
+    meeting.update_column(:attendees, "박영수")
+    meeting.append_attendee!("영수")
+    expect(meeting.reload.attendees).to eq("박영수, 영수")
+  end
 end

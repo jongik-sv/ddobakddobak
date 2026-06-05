@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_05_064422) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_05_065527) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -266,7 +266,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_05_064422) do
   end
 
   add_foreign_key "meeting_bookmarks", "meetings"
+  add_foreign_key "meeting_contacts", "meeting_attachments", column: "source_attachment_id", on_delete: :nullify
   add_foreign_key "meeting_contacts", "meetings"
+  add_foreign_key "meeting_contacts", "users", column: "created_by_id"
   add_foreign_key "meeting_participants", "meetings"
   add_foreign_key "meeting_participants", "users"
   add_foreign_key "meeting_templates", "folders"

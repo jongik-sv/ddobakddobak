@@ -89,7 +89,9 @@ class Meeting < ApplicationRecord
     return if name.blank?
 
     existing = attendees.to_s
-    return if existing.include?(name)
+    # 쉼표로 구분된 항목 단위로 정확히 비교 — "이름" 또는 "이름 (회사)" 형태만 중복으로 본다.
+    # (단순 substring 비교는 "박영수"에 "영수" 추가 시 오탐으로 skip되는 버그가 있었다.)
+    return if existing.split(/,\s*/).any? { |e| e == name || e.start_with?("#{name} (") }
 
     label   = company.to_s.strip.present? ? "#{name} (#{company.to_s.strip})" : name
     updated = existing.strip.empty? ? label : "#{existing}, #{label}"
