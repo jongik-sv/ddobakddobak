@@ -14,7 +14,6 @@ import { Mic, UploadCloud, Check, Trash2 } from 'lucide-react'
 import * as localStore from '../../stt/localStore'
 import type { LocalMeetingMeta } from '../../stt/localStore'
 import { flush as syncFlush } from '../../stt/syncQueue'
-import { useAppSettingsStore } from '../../stores/appSettingsStore'
 import { IS_TAURI, IS_MOBILE } from '../../config'
 
 function fmtDate(iso: string): string {
@@ -34,7 +33,6 @@ export function LocalMeetingsSection() {
   // 삭제는 native confirm 대신 인라인 확인 상태(Tauri 모달 dialog 차단 회피, 자동결정 A23).
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const localUploadEnabled = useAppSettingsStore((s) => s.localUploadEnabled)
 
   const refresh = useCallback(() => {
     localStore.listLocal().then(setMetas).catch(() => setMetas([]))
@@ -106,13 +104,7 @@ export function LocalMeetingsSection() {
               className="flex items-center gap-2 rounded-md p-2 hover:bg-accent/50"
             >
               <button
-                onClick={() =>
-                  navigate(
-                    m.status === 'completed'
-                      ? `/local-meetings/${m.localId}`
-                      : `/local-meetings/${m.localId}/live`,
-                  )
-                }
+                onClick={() => navigate(`/local-meetings/${m.localId}`)}
                 className="flex-1 min-w-0 text-left"
               >
                 <p className="text-sm font-medium truncate">{m.title}</p>
@@ -125,16 +117,15 @@ export function LocalMeetingsSection() {
                 {m.serverId ? (
                   <Check className="w-4 h-4 text-green-600" />
                 ) : (
-                  localUploadEnabled && (
-                    <button
-                      onClick={() => handleUpload(m.localId)}
-                      disabled={uploadingId === m.localId}
-                      className="p-2 rounded-md hover:bg-accent disabled:opacity-50"
-                      aria-label="서버로 업로드"
-                    >
-                      <UploadCloud className="w-4 h-4" />
-                    </button>
-                  )
+                  // 자동 업로드 설정(localUploadEnabled)과 무관하게 항상 노출 — 선택 업로드용.
+                  <button
+                    onClick={() => handleUpload(m.localId)}
+                    disabled={uploadingId === m.localId}
+                    className="p-2 rounded-md hover:bg-accent disabled:opacity-50"
+                    aria-label="서버로 업로드"
+                  >
+                    <UploadCloud className="w-4 h-4" />
+                  </button>
                 )}
                 {confirmDeleteId === m.localId ? (
                   <>

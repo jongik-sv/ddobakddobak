@@ -1,3 +1,4 @@
+import { type ReactNode } from 'react'
 import { Pencil, ArrowLeft, StickyNote, Paperclip, Bookmark } from 'lucide-react'
 import { Tooltip } from '../ui/Tooltip'
 
@@ -14,6 +15,8 @@ interface MeetingDetailTopBarProps {
   onShowEdit: () => void
   onToggleMemo: () => void
   onToggleBookmarks: () => void
+  /** 우측 정렬 액션 버튼 슬롯(회의 진행/내보내기/삭제 등). 자체적으로 ml-auto 정렬. */
+  actions?: ReactNode
 }
 
 /** 회의 상세 상단 툴바: 뒤로가기 + 미리보기 제목 + 첨부/메모/북마크 토글. */
@@ -29,6 +32,7 @@ export function MeetingDetailTopBar({
   onShowEdit,
   onToggleMemo,
   onToggleBookmarks,
+  actions,
 }: MeetingDetailTopBarProps) {
   return (
     <div className={`bg-white border-b shrink-0 flex items-center ${isDesktop ? 'px-6 py-4 gap-3' : 'px-3 py-2 gap-2'}`}>
@@ -40,7 +44,8 @@ export function MeetingDetailTopBar({
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </button>
       </Tooltip>
-      <h1 className={`font-bold text-gray-900 ${isDesktop ? 'text-xl' : 'text-lg'}`}>회의 미리보기</h1>
+      {/* 액션 버튼이 같은 줄 우측에 오므로 라벨은 비좁을 때 줄임표 처리(min-w-0 truncate). */}
+      <h1 className={`font-bold text-gray-900 min-w-0 truncate ${isDesktop ? 'text-xl' : 'text-lg'}`}>회의 미리보기</h1>
       <Tooltip text={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}>
         <button
           onClick={onToggleAttachments}
@@ -81,6 +86,7 @@ export function MeetingDetailTopBar({
           </Tooltip>
         </>
       )}
+      {actions}
     </div>
   )
 }

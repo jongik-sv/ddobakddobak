@@ -5,6 +5,8 @@ export interface FolderNode {
   name: string
   parent_id: number | null
   position: number
+  /** 폴더 공유 여부(기본 true). false면 이 폴더의 모든 회의가 비공개(개별 공유 설정 무시). */
+  shared: boolean
   meeting_count: number
   tags: { id: number; name: string; color: string }[]
   children: FolderNode[]
@@ -15,6 +17,7 @@ export interface Folder {
   name: string
   parent_id: number | null
   position: number
+  shared: boolean
   meeting_count: number
   children_count: number
   ancestors: { id: number; name: string }[]
@@ -44,7 +47,7 @@ export async function createFolder(data: {
 
 export async function updateFolder(
   id: number,
-  data: { name?: string; position?: number; parent_id?: number | null; tag_ids?: number[] },
+  data: { name?: string; position?: number; parent_id?: number | null; tag_ids?: number[]; shared?: boolean },
 ): Promise<Folder> {
   const res = await apiClient.patch(`folders/${id}`, { json: data }).json<{ folder: Folder }>()
   return res.folder

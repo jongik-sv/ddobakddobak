@@ -16,9 +16,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const mobileMenuOpen = useUiStore((s) => s.mobileMenuOpen)
   const setMobileMenuOpen = useUiStore((s) => s.setMobileMenuOpen)
 
-  // 특정 회의 안쪽 화면(녹음/뷰어/상세)에서는 하단 내비를 숨긴다 — 자체 헤더/뒤로가기가 있는 몰입 화면
+  // 특정 회의 안쪽 화면(녹음/뷰어/상세)에서는 하단 내비를 숨긴다 — 자체 헤더/뒤로가기가 있는 몰입 화면.
+  // 온라인 /meetings/:id(+/live,/viewer) 와 오프라인 /local-meetings/:id(+/live) 모두. 목록(/local-meetings)은 유지.
   const location = useLocation()
-  const hideBottomNav = /^\/meetings\/\d+/.test(location.pathname)
+  const hideBottomNav = /^\/meetings\/\d+|^\/local-meetings\/[^/]+/.test(location.pathname)
 
   return (
     <div className="flex flex-col lg:flex-row h-dvh bg-background overflow-hidden">

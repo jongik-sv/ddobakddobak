@@ -21,6 +21,27 @@ class MeetingAttachment < ApplicationRecord
 
   MAX_FILE_SIZE = 50.megabytes
 
+  # 확장자 → MIME 폴백. 일부 클라이언트(Tauri readFile 등)는 업로드 File에 type이 없어
+  # content_type이 비거나 application/octet-stream으로 도착 → 그대로면 ALLOWED 검사에서 거부된다.
+  EXTENSION_CONTENT_TYPES = {
+    "pdf" => "application/pdf",
+    "doc" => "application/msword",
+    "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xls" => "application/vnd.ms-excel",
+    "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "ppt" => "application/vnd.ms-powerpoint",
+    "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "txt" => "text/plain", "csv" => "text/csv", "md" => "text/markdown",
+    "png" => "image/png", "jpg" => "image/jpeg", "jpeg" => "image/jpeg",
+    "gif" => "image/gif", "webp" => "image/webp",
+    "zip" => "application/zip", "hwp" => "application/x-hwp"
+  }.freeze
+
+  def self.content_type_for_filename(filename)
+    ext = File.extname(filename.to_s).delete_prefix(".").downcase
+    EXTENSION_CONTENT_TYPES[ext]
+  end
+
   validates :kind, inclusion: { in: KINDS }
   validates :category, inclusion: { in: CATEGORIES }
   validates :display_name, presence: true, length: { maximum: 255 }

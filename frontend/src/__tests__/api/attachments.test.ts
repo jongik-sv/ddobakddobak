@@ -1,61 +1,32 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { useAuthStore } from '../../stores/authStore'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// ky mock
+// apiClient(ky) mock — createFileAttachment은 raw fetch 대신 apiClient.post(...).json()을 쓴다
+// (FormData multipart 보존 + 401 자동 refresh). Authorization 헤더는 apiClient의 beforeRequest
+// 훅 책임이라 client 테스트에서 검증하고, 여기선 업로드 페이로드/반환만 검증한다.
+const { post } = vi.hoisted(() => ({ post: vi.fn() }))
 vi.mock('ky', () => {
-  const create = vi.fn(() => ({
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-  }))
-  return { default: { create }, __esModule: true }
+  const instance = { get: vi.fn(), post, patch: vi.fn(), delete: vi.fn() }
+  return { default: { create: vi.fn(() => instance) }, __esModule: true }
 })
 
-describe('attachments API — fetch 호출 JWT 헤더', () => {
-  const originalFetch = globalThis.fetch
-
+describe('attachments API', () => {
   beforeEach(() => {
-    localStorage.clear()
-    useAuthStore.setState({
-      accessToken: null,
-      refreshToken: null,
-      isAuthenticated: false,
-      isLoading: false,
-    })
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ attachment: { id: 1 } }),
-    })
+    post.mockReset()
+    post.mockReturnValue({ json: () => Promise.resolve({ attachment: { id: 1 } }) })
   })
 
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-  })
-
-  it('createFileAttachment: accessToken이 있으면 Authorization 헤더를 포함한다', async () => {
-    useAuthStore.setState({ accessToken: 'jwt-for-attachment' })
+  it('createFileAttachment: apiClient.post로 FormData(category+file)를 업로드하고 attachment를 반환한다', async () => {
     const { createFileAttachment } = await import('../../api/attachments')
-
     const file = new File(['file-content'], 'doc.pdf', { type: 'application/pdf' })
-    await createFileAttachment(1, 'reference', file)
+    const result = await createFileAttachment(1, 'reference', file)
 
-    expect(globalThis.fetch).toHaveBeenCalledOnce()
-    const [, options] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
-    expect(options.headers).toBeDefined()
-    expect(options.headers.Authorization).toBe('Bearer jwt-for-attachment')
-  })
-
-  it('createFileAttachment: accessToken이 없으면 Authorization 헤더를 포함하지 않는다', async () => {
-    useAuthStore.setState({ accessToken: null })
-    const { createFileAttachment } = await import('../../api/attachments')
-
-    const file = new File(['file-content'], 'doc.pdf', { type: 'application/pdf' })
-    await createFileAttachment(1, 'reference', file)
-
-    expect(globalThis.fetch).toHaveBeenCalledOnce()
-    const [, options] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
-    expect(options.headers?.Authorization).toBeUndefined()
+    expect(post).toHaveBeenCalledOnce()
+    const [path, opts] = post.mock.calls[0] as [string, { body: FormData }]
+    expect(path).toBe('meetings/1/attachments')
+    expect(opts.body).toBeInstanceOf(FormData)
+    expect(opts.body.get('category')).toBe('reference')
+    expect(opts.body.get('file')).toBeInstanceOf(File)
+    expect(result).toEqual({ id: 1 })
   })
 
   it('getAttachmentDownloadUrl: 동적으로 API URL을 사용한다', async () => {

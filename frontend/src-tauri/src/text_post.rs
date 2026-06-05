@@ -4,6 +4,10 @@
 //! 특수 토큰)를 제거한다. Android FFI 경로(`cohere_ffi::CohereRecognizer::
 //! transcribe`)가 이 함수를 호출하지만, 함수 자체는 순수 Rust이므로 cfg 게이트
 //! 없이 모든 타깃에서 컴파일되고 호스트에서 `cargo test`로 검증된다.
+//!
+//! 소비자가 android FFI와 host test뿐이라, 데스크톱(비-android·비-test) 빌드에선
+//! 소비자 없이 컴파일되어 dead_code 경고가 난다 — 그 설정에서만 억제한다.
+#![cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
 
 /// 첫 번째 `"<|"` 등장 위치에서 잘라내고 양끝 공백을 제거한다.
 /// EOS 특수 토큰(`<|endoftext|>`, `<|im_start|>` 등)이 본문으로 새어 나오는 것을

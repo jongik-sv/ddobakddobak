@@ -6,6 +6,8 @@ export interface Tab {
   label: string
   icon: LucideIcon
   content: ReactNode
+  /** 비활성 탭: 클릭 불가 + 흐리게 표시(예: 오프라인 회의의 요약/메모 — 서버 없음). */
+  disabled?: boolean
 }
 
 export interface MobileTabLayoutProps {
@@ -54,10 +56,13 @@ export default function MobileTabLayout({
               role="tab"
               aria-selected={isActive}
               aria-controls={`tabpanel-${tab.id}`}
+              disabled={tab.disabled}
               className={`flex-1 flex items-center justify-center gap-1 text-xs transition-colors ${
-                isActive ? activeClass : inactiveClass
+                tab.disabled
+                  ? 'opacity-40 cursor-not-allowed text-muted-foreground'
+                  : isActive ? activeClass : inactiveClass
               }`}
-              onClick={() => handleTabClick(tab.id)}
+              onClick={() => { if (!tab.disabled) handleTabClick(tab.id) }}
             >
               <Icon className="w-4 h-4" />
               {tab.label}

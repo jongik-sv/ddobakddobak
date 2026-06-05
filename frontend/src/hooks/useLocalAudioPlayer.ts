@@ -26,7 +26,10 @@ export interface LocalAudioPlayerResult extends AudioPlayerResult {
   seekToSegment: (index: number) => void
 }
 
-export function useLocalAudioPlayer(localId: string, title: string): LocalAudioPlayerResult {
+/**
+ * @param reloadKey 값이 바뀌면 오디오/오프셋을 재병합(재전사 후 새 segmentOffsetsMs 반영용).
+ */
+export function useLocalAudioPlayer(localId: string, title: string, reloadKey = 0): LocalAudioPlayerResult {
   const [isReady, setIsReady] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasAudio, setHasAudio] = useState(false)
@@ -104,7 +107,7 @@ export function useLocalAudioPlayer(localId: string, title: string): LocalAudioP
       setDurationMs(0)
       setSegmentOffsetsMs([])
     }
-  }, [localId])
+  }, [localId, reloadKey])
 
   const play = useCallback(() => { audioRef.current?.play() }, [])
   const pause = useCallback(() => { audioRef.current?.pause() }, [])

@@ -4,6 +4,12 @@
 //! `#[tauri::command]` + `model_dir`는 `#[cfg(target_os = "android")]` 게이트.
 //! 순수 헬퍼(`paths_in`/`copy_with_verify`/`part_path`)와 단위 테스트는 비게이트라
 //! 호스트에서 `cargo test model_path`로 검증된다(향후 다운로더 T11도 재사용).
+//!
+//! command 소비자는 모두 `target_os = "android"` 게이트라, 데스크톱(비-android·비-test)
+//! 빌드에선 순수 헬퍼/상수/구조체가 소비자 없이 컴파일되어 dead_code 경고가 난다.
+//! android 빌드(command)와 host test(아래 `tests`)에선 모두 쓰이므로, 그 두 설정에서만
+//! 린트를 유지하고 데스크톱 빌드에서만 억제한다(bridge.rs/mdns.rs와 같은 관용).
+#![cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
 
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "android")]
@@ -23,7 +29,9 @@ const TOKENS: &str = "tokens.txt";
 /// 겨냥한다 — `encoder.int8.onnx` 자체는 ~2.9MB라 가드해도 truncate를 못 잡는다.
 const MIN_ENCODER_DATA_BYTES: u64 = 2_500_000_000;
 
-/// 플랫폼 데이터 디렉터리 하위 모델 경로.
+/// 플랫폼 데이터 디렉터리 하위 모델 경로. 소비자는 android 전용 `model_dir`뿐이라
+/// 그와 함께 게이트한다(호스트/데스크톱에선 미컴파일 → dead_code 없음).
+#[cfg(target_os = "android")]
 const MODEL_SUBDIR: &str = "models/cohere-onnx";
 
 /// adb push 스테이징 디렉터리(앱 첫 실행 복사가 샌드박스로 이전하기 전).
@@ -43,7 +51,9 @@ pub struct ModelPaths {
     pub tokens: String,
 }
 
-/// UI 모델 게이트용 존재 리포트.
+/// UI 모델 게이트용 존재 리포트. 생성처는 android 전용 `cohere_model_status`뿐이라
+/// 그와 함께 게이트한다(호스트/데스크톱 빌드에선 미컴파일).
+#[cfg(target_os = "android")]
 #[derive(serde::Serialize)]
 pub struct ModelStatus {
     pub present: bool,

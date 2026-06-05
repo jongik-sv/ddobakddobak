@@ -13,16 +13,21 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Pencil, Check, X, MoreHorizontal, FileText, FileType, AudioLines } from 'lucide-react'
+import { ArrowLeft, Pencil, Check, X, MoreHorizontal, FileText, FileType, AudioLines, Bot, StickyNote, UploadCloud, Mic, RotateCw } from 'lucide-react'
+import { invoke } from '@tauri-apps/api/core'
 
 import { useTranscriptStore } from '../stores/transcriptStore'
 import * as localStore from '../stt/localStore'
 import type { LocalMeetingMeta } from '../stt/localStore'
 import type { TranscriptFinalData } from '../channels/transcription'
+import { IS_TAURI } from '../config'
+import { retranscribeLocal } from '../stt/retranscribe'
 import { useLocalAudioPlayer } from '../hooks/useLocalAudioPlayer'
 import { AudioPlayer } from '../components/meeting/AudioPlayer'
 import { MiniAudioPlayer } from '../components/meeting/MiniAudioPlayer'
 import { LiveRecord } from '../components/meeting/LiveRecord'
+import MobileTabLayout, { type Tab } from '../components/layout/MobileTabLayout'
+import { flush as syncFlush } from '../stt/syncQueue'
 import { exportTranscript, exportAudio } from '../lib/localExport'
 
 /** LocalMeetingLivePage와 동일한 센티넬 — LiveRecord가 서버 updateTranscript에 닿지 않게. */
@@ -41,12 +46,20 @@ export default function LocalMeetingDetailPage() {
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [showFullPlayer, setShowFullPlayer] = useState(false)
   const [showMore, setShowMore] = useState(false)
+  const [uploading, setUploading] = useState(false)
+
+  // 재전사(녹음-후 STT 재실행) 상태. reloadKey 변경 시 데이터+오디오 재로드.
+  const [reloadKey, setReloadKey] = useState(0)
+  const [retranscribing, setRetranscribing] = useState(false)
+  const [retransDone, setRetransDone] = useState(0)
+  const [retransTotal, setRetransTotal] = useState(0)
+  const [retransErr, setRetransErr] = useState<string | null>(null)
 
   // 인라인 rename 상태.
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
 
-  const audio = useLocalAudioPlayer(localId ?? '', meta?.title ?? '오프라인 회의')
+  const audio = useLocalAudioPlayer(localId ?? '', meta?.title ?? '오프라인 회의', reloadKey)
 
   // 메타 + 세그먼트 로드 → transcriptStore에 적재(LiveRecord가 읽음).
   useEffect(() => {
@@ -62,12 +75,12 @@ export default function LocalMeetingDetailPage() {
         loadFinals(segs)
       })
       .catch(() => {
-        if (!cancelled) navigate('/meetings', { replace: true })
+        if (!cancelled) navigate('/local-meetings', { replace: true })
       })
     return () => {
       cancelled = true
     }
-  }, [localId, reset, loadFinals, navigate])
+  }, [localId, reset, loadFinals, navigate, reloadKey])
 
   // started_at_ms → finals 인덱스 → segmentOffsetsMs[index] 매핑(드리프트 회피).
   // 매핑 실패 시 started_at_ms 폴백 금지: 그 값은 VAD 무음 갭을 포함한 원본 타임라인이라
@@ -92,6 +105,60 @@ export default function LocalMeetingDetailPage() {
     await localStore.renameLocal(localId, next)
     setMeta((m) => (m ? { ...m, title: next } : m))
     setEditingTitle(false)
+  }
+
+  // 자동 업로드(localUploadEnabled)와 무관하게 이 회의 하나만 수동으로 서버에 올린다.
+  // syncFlush가 멱등(서버 has_audio_file 가드) → 중복 업로드 안전. 성공 시 meta.serverId 반영.
+  const handleUpload = async () => {
+    if (!localId) return
+    setUploading(true)
+    try {
+      await syncFlush(localId)
+      const { meta: m } = await localStore.getLocal(localId)
+      setMeta(m)
+    } catch (e) {
+      console.error('[LocalMeetingDetail] 서버 업로드 실패:', e)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // 재전사: 연속 녹음(recording.pcm)을 다시 잘라 STT → 세그먼트 교체(온라인 regenerate_stt 대응).
+  // 라이브 조각 대신 깨끗한 연속본을 써 꼬리 손실/저레벨 환각이 줄고 정확도가 오른다.
+  const handleRetranscribe = async () => {
+    if (!localId || retranscribing) return
+    setRetransErr(null)
+    if (!IS_TAURI) {
+      setRetransErr('재전사는 앱에서만 가능합니다.')
+      return
+    }
+    if (!(await localStore.hasRecording(localId))) {
+      setRetransErr('재전사할 연속 녹음이 없습니다.')
+      return
+    }
+    const paths = await invoke<{ dir: string }>('resolve_model_paths').catch(() => null)
+    const modelDir = paths?.dir ?? null
+    if (!modelDir) {
+      setRetransErr('온디바이스 모델이 없습니다. 먼저 모델을 받아주세요.')
+      return
+    }
+    setRetranscribing(true)
+    setRetransDone(0)
+    setRetransTotal(0)
+    try {
+      const segs = await retranscribeLocal(localId, modelDir, meta?.lang ?? 'ko', (p) => {
+        setRetransDone(p.done)
+        setRetransTotal(p.total)
+      })
+      setSegments(segs)
+      reset()
+      loadFinals(segs)
+      setReloadKey((k) => k + 1) // 오디오 segmentOffsetsMs 재계산(새 started_at_ms).
+    } catch (e) {
+      setRetransErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setRetranscribing(false)
+    }
   }
 
   const moreActions = useMemo(
@@ -119,8 +186,28 @@ export default function LocalMeetingDetailPage() {
     [meta, segments, localId, audio.hasAudio],
   )
 
+  // 온라인 상세와 동일한 탭 레이아웃. 오프라인은 서버가 없어 요약/메모 탭은 비활성(흐리게+클릭불가).
+  const offlineTabs: Tab[] = [
+    {
+      id: 'transcript',
+      label: '기록',
+      icon: FileText,
+      content: (
+        <LiveRecord
+          meetingId={OFFLINE_SENTINEL_MEETING_ID}
+          editable={false}
+          currentTimeMs={currentTimeMs}
+          onSeek={handleSeek}
+          segmentOffsetsMs={audio.segmentOffsetsMs}
+        />
+      ),
+    },
+    { id: 'summary', label: '요약', icon: Bot, disabled: true, content: <OfflineUnavailable label="AI 요약" /> },
+    { id: 'memo', label: '메모', icon: StickyNote, disabled: true, content: <OfflineUnavailable label="메모" /> },
+  ]
+
   if (!localId) {
-    navigate('/meetings', { replace: true })
+    navigate('/local-meetings', { replace: true })
     return null
   }
 
@@ -129,7 +216,7 @@ export default function LocalMeetingDetailPage() {
       {/* 헤더: 뒤로 + 제목(인라인 rename) + 더보기 */}
       <div className="sticky top-0 z-20 flex items-center gap-2 px-2 py-1.5 border-b bg-white shadow-sm">
         <button
-          onClick={() => navigate('/meetings')}
+          onClick={() => navigate('/local-meetings')}
           aria-label="뒤로"
           className="p-1 rounded-md hover:bg-black/5 transition-colors shrink-0"
         >
@@ -179,6 +266,41 @@ export default function LocalMeetingDetailPage() {
           </>
         )}
 
+        {/* 녹음 이어하기: 라이브 페이지로 진입 → 회의 시작 시 기존 타임라인/seq를 이어받는다. */}
+        <button
+          onClick={() => navigate(`/local-meetings/${localId}/live`)}
+          aria-label="녹음 이어하기"
+          title="이 회의에 이어서 녹음"
+          className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-black/5 transition-colors shrink-0"
+        >
+          <Mic className="w-4 h-4" />
+          <span className="hidden sm:inline">녹음 이어하기</span>
+        </button>
+
+        {audio.hasAudio && (
+          <button
+            onClick={handleRetranscribe}
+            disabled={retranscribing}
+            aria-label="STT 재전사"
+            title="녹음을 다시 인식(STT 재전사)"
+            className="p-1.5 rounded-md text-gray-600 hover:bg-black/5 transition-colors shrink-0 disabled:opacity-50"
+          >
+            <RotateCw className={`w-4 h-4 ${retranscribing ? 'animate-spin' : ''}`} />
+          </button>
+        )}
+
+        {meta && !meta.serverId && (
+          <button
+            onClick={handleUpload}
+            disabled={uploading}
+            aria-label="서버로 업로드"
+            title="이 오프라인 회의를 서버로 업로드"
+            className="p-1.5 rounded-md text-gray-600 hover:bg-black/5 transition-colors shrink-0 disabled:opacity-50"
+          >
+            <UploadCloud className="w-4 h-4" />
+          </button>
+        )}
+
         <button
           onClick={() => setShowMore(true)}
           aria-label="더보기"
@@ -219,19 +341,28 @@ export default function LocalMeetingDetailPage() {
         />
       )}
 
-      {/* 본문: 읽기전용 전사(서버 쓰기 없음) */}
+      {/* 본문: 온라인과 동일한 탭 레이아웃(기록만 활성, 요약/메모 비활성). 기록=읽기전용 전사. */}
       <div className="flex-1 min-h-0">
-        <LiveRecord
-          meetingId={OFFLINE_SENTINEL_MEETING_ID}
-          editable={false}
-          currentTimeMs={currentTimeMs}
-          onSeek={handleSeek}
-        />
+        <MobileTabLayout tabs={offlineTabs} />
       </div>
 
       {/* 미니 플레이어가 하단을 가리지 않도록 스페이서 (모바일) */}
       {audio.hasAudio && audio.isReady && (
         <div aria-hidden className="lg:hidden shrink-0 h-[calc(3rem+env(safe-area-inset-bottom))]" />
+      )}
+
+      {/* 재전사 진행/에러 토스트. 에러는 탭하면 닫힘. */}
+      {(retranscribing || retransErr) && (
+        <div
+          onClick={() => retransErr && setRetransErr(null)}
+          className="fixed left-1/2 -translate-x-1/2 bottom-20 z-[70] px-3 py-2 rounded-lg bg-black/80 text-white text-xs shadow-lg max-w-[90vw] text-center"
+        >
+          {retransErr
+            ? `재전사 실패: ${retransErr} (탭하여 닫기)`
+            : retransTotal > 0
+              ? `재전사 중… ${retransDone}/${retransTotal}`
+              : '재전사 준비 중…'}
+        </div>
       )}
 
       {/* 더보기 바텀 시트: 내보내기 */}
@@ -274,6 +405,15 @@ export default function LocalMeetingDetailPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** 오프라인 회의에서 서버 의존 탭(요약/메모) 자리에 표시하는 안내. */
+function OfflineUnavailable({ label }: { label: string }) {
+  return (
+    <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+      오프라인 회의는 {label}을(를) 사용할 수 없습니다.
     </div>
   )
 }

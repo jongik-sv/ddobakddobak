@@ -45,6 +45,7 @@ class Folder < ApplicationRecord
         name: node.name,
         parent_id: node.parent_id,
         position: node.position,
+        shared: node.shared,
         meeting_count: total_meeting_count,
         tags: node.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
         children: child_nodes

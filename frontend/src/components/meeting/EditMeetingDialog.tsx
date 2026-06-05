@@ -148,6 +148,11 @@ export default function EditMeetingDialog({
             <p className="mt-1 ml-6 text-xs text-muted-foreground">
               끄면 작성자와 관리자만 이 회의를 볼 수 있습니다.
             </p>
+            {meeting.folder_shared === false && (
+              <p className="mt-1 ml-6 text-xs text-amber-600">
+                ⚠ 이 회의가 속한 폴더가 비공개라, 위 설정과 무관하게 작성자·관리자에게만 보입니다.
+              </p>
+            )}
           </div>
 
           {/* 태그 */}

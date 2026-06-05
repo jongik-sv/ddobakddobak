@@ -102,7 +102,9 @@ describe('LocalMeetingsSection 헤더/네비게이션 (F/E)', () => {
     expect(startBtn.className).toContain('w-full')
   })
 
-  it("completed 회의 클릭 → 상세(/local-meetings/:id), recording 클릭 → 라이브(/live)", async () => {
+  it("회의 클릭 → 항상 미리보기/상세(/local-meetings/:id). 재개는 미리보기의 '녹음 이어하기'에서", async () => {
+    // 설계 결정: 뒤로=자동종료라 회의는 completed로 마감되고, 재개는 미리보기에서 진입한다.
+    // recording status(앱 강제종료 등 미완료)도 미리보기로 보내 플레이어+이어하기 노출.
     vi.mocked(localStore.listLocal).mockResolvedValue([
       { ...META, localId: 'done', title: '끝난 회의', status: 'completed' },
       { ...META, localId: 'rec', title: '녹음중 회의', status: 'recording' },
@@ -113,6 +115,6 @@ describe('LocalMeetingsSection 헤더/네비게이션 (F/E)', () => {
     expect(screen.getByTestId('loc').textContent).toBe('/local-meetings/done')
 
     fireEvent.click(screen.getByText('녹음중 회의'))
-    expect(screen.getByTestId('loc').textContent).toBe('/local-meetings/rec/live')
+    expect(screen.getByTestId('loc').textContent).toBe('/local-meetings/rec')
   })
 })

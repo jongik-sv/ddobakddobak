@@ -67,6 +67,8 @@ function renderPage() {
     <MemoryRouter initialEntries={['/local-meetings/local-abc']}>
       <Routes>
         <Route path="/local-meetings/:localId" element={<LocalMeetingDetailPage />} />
+        <Route path="/local-meetings/:localId/live" element={<div data-testid="live-route">라이브</div>} />
+        <Route path="/local-meetings" element={<div data-testid="local-meetings-route">오프라인 목록</div>} />
         <Route path="/meetings" element={<div data-testid="meetings-route">목록</div>} />
       </Routes>
     </MemoryRouter>,
@@ -112,10 +114,18 @@ describe('LocalMeetingDetailPage', () => {
     await waitFor(() => expect(screen.getByText('바뀐 제목')).toBeInTheDocument())
   })
 
-  it('뒤로 버튼 → /meetings 로 이동', async () => {
+  it('뒤로 버튼 → /local-meetings(오프라인 목록)로 이동(전체회의 아님)', async () => {
     renderPage()
     await waitFor(() => expect(screen.getByTestId('live-record')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /뒤로/i }))
-    expect(screen.getByTestId('meetings-route')).toBeInTheDocument()
+    expect(screen.getByTestId('local-meetings-route')).toBeInTheDocument()
+    expect(screen.queryByTestId('meetings-route')).not.toBeInTheDocument()
+  })
+
+  it('"녹음 이어하기" 버튼 → 라이브 페이지로 이동(이어녹음 진입)', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId('live-record')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /녹음 이어하기/i }))
+    expect(screen.getByTestId('live-route')).toBeInTheDocument()
   })
 })

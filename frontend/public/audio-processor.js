@@ -73,6 +73,7 @@ class AudioProcessor extends AudioWorkletProcessor {
         ) {
           this._sendChunk()
         }
+        this._flushRawBuf() // 일시정지 경계에서 마지막 raw-pcm 부분 버퍼 보존(녹음 끊김 방지).
         this._resetToSilence()
         this._paused = true
       } else if (event.data?.type === 'resume') {
@@ -104,6 +105,7 @@ class AudioProcessor extends AudioWorkletProcessor {
         ) {
           this._sendChunk()
         }
+        this._flushRawBuf() // 종료 시 마지막 raw-pcm 부분 버퍼 보존(녹음 끝 ≤300ms 잘림 방지).
         this._resetToSilence()
       }
     }
@@ -224,6 +226,13 @@ class AudioProcessor extends AudioWorkletProcessor {
 
   _sendChunk() {
     if (this._speechLen === 0) return
+
+    // STT 청크는 raw로 보낸다(정규화 없음). 레벨 보정은 useLocalStt가 transcribe 입력에만
+    // 적용한다(저장/재생 오디오엔 영향 없음 — 재생본은 연속 raw-pcm 녹음 별도 경로).
+    let sumSq = 0
+    for (let i = 0; i < this._speechLen; i++) sumSq += this._speech[i] * this._speech[i]
+    const rmsVal = Math.sqrt(sumSq / this._speechLen)
+
     const int16 = new Int16Array(this._speechLen)
     for (let i = 0; i < this._speechLen; i++) {
       const s = Math.max(-1, Math.min(1, this._speech[i]))
@@ -231,16 +240,14 @@ class AudioProcessor extends AudioWorkletProcessor {
     }
     this.port.postMessage({ pcm: int16, startSample: this._chunkStartSample }, [int16.buffer])
 
-    // [BBDBG] 임시 계측 — 청크 회계: 길이/시작샘플/누적/RMS/길이ms (제거 예정)
-    let _dbgSS = 0
-    for (let i = 0; i < this._speechLen; i++) _dbgSS += this._speech[i] * this._speech[i]
+    // [BBDBG] 임시 계측 — 청크 회계: 길이/시작샘플/누적/원본RMS/길이ms (제거 예정)
     this.port.postMessage({
       type: 'dbg',
       ev: 'chunk',
       speechLen: this._speechLen,
       startSample: this._chunkStartSample,
       totalIn: this._totalSamplesIn,
-      rms: Number(Math.sqrt(_dbgSS / this._speechLen).toFixed(4)),
+      rms: Number(rmsVal.toFixed(4)),
       durMs: Math.round((this._speechLen / sampleRate) * 1000),
     })
 
@@ -252,6 +259,20 @@ class AudioProcessor extends AudioWorkletProcessor {
     }
 
     this._speechLen = 0
+  }
+
+  // 연속 녹음용 raw-pcm 부분 버퍼(_rawBuf)를 즉시 방출한다. process()는 4800샘플(300ms)
+  // 찰 때만 보내므로, 정지/일시정지 시 호출하지 않으면 마지막 ≤300ms가 녹음에서 잘린다.
+  _flushRawBuf() {
+    if (this._rawPos > 0) {
+      const int16 = new Int16Array(this._rawPos)
+      for (let j = 0; j < this._rawPos; j++) {
+        const s = Math.max(-1, Math.min(1, this._rawBuf[j]))
+        int16[j] = s < 0 ? s * 0x8000 : s * 0x7fff
+      }
+      this.port.postMessage({ type: 'raw-pcm', pcm: int16 }, [int16.buffer])
+      this._rawPos = 0
+    }
   }
 
   _resetToSilence() {

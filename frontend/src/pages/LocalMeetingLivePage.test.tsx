@@ -30,8 +30,12 @@ const baseRec = {
   error: null as string | null,
   elapsedSeconds: 0,
   isRecording: false,
+  isPaused: false,
   modelLoading: false,
+  starting: false,
   start: vi.fn().mockResolvedValue(undefined),
+  pause: vi.fn(),
+  resume: vi.fn(),
   stop: vi.fn().mockResolvedValue(undefined),
 }
 
@@ -40,6 +44,7 @@ function renderPage() {
     <MemoryRouter initialEntries={['/local-meetings/local-abc/live']}>
       <Routes>
         <Route path="/local-meetings/:localId/live" element={<LocalMeetingLivePage />} />
+        <Route path="/local-meetings" element={<div data-testid="local-meetings-route">오프라인 목록</div>} />
         <Route path="/meetings" element={<div data-testid="meetings-route">회의목록</div>} />
       </Routes>
     </MemoryRouter>,
@@ -98,5 +103,52 @@ describe('LocalMeetingLivePage', () => {
     const controls = await screen.findByTestId('mobile-record-controls')
     fireEvent.click(within(controls).getByRole('button', { name: /회의 시작/i }))
     expect(start).toHaveBeenCalled()
+  })
+
+  it('녹음 중 일시정지 버튼 → rec.pause 호출(bug2)', async () => {
+    vi.mocked(invoke).mockResolvedValue({ dir: '/models/cohere' })
+    const pause = vi.fn()
+    vi.mocked(useLocalRecordingModule.useLocalRecording).mockReturnValue({
+      ...baseRec, isRecording: true, isPaused: false, pause,
+    })
+    renderPage()
+    const controls = await screen.findByTestId('mobile-record-controls')
+    fireEvent.click(within(controls).getByRole('button', { name: /일시정지/i }))
+    expect(pause).toHaveBeenCalled()
+  })
+
+  it('일시정지 상태에서 재개 버튼 → rec.resume 호출(bug2)', async () => {
+    vi.mocked(invoke).mockResolvedValue({ dir: '/models/cohere' })
+    const resume = vi.fn()
+    vi.mocked(useLocalRecordingModule.useLocalRecording).mockReturnValue({
+      ...baseRec, isRecording: true, isPaused: true, resume,
+    })
+    renderPage()
+    const controls = await screen.findByTestId('mobile-record-controls')
+    fireEvent.click(within(controls).getByRole('button', { name: /재개/i }))
+    expect(resume).toHaveBeenCalled()
+  })
+
+  it('뒤로(idle) → /local-meetings(오프라인 목록), 종료 호출 없음', async () => {
+    vi.mocked(invoke).mockResolvedValue({ dir: '/models/cohere' })
+    const stop = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(useLocalRecordingModule.useLocalRecording).mockReturnValue({ ...baseRec, isRecording: false, stop })
+    renderPage()
+    const controls = await screen.findByTestId('mobile-record-controls')
+    fireEvent.click(within(controls).getByRole('button', { name: /뒤로/i }))
+    await waitFor(() => expect(screen.getByTestId('local-meetings-route')).toBeInTheDocument())
+    expect(stop).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('meetings-route')).not.toBeInTheDocument()
+  })
+
+  it('뒤로(녹음 중) → 자동 종료(rec.stop) 후 /local-meetings(bug4: completed화)', async () => {
+    vi.mocked(invoke).mockResolvedValue({ dir: '/models/cohere' })
+    const stop = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(useLocalRecordingModule.useLocalRecording).mockReturnValue({ ...baseRec, isRecording: true, stop })
+    renderPage()
+    const controls = await screen.findByTestId('mobile-record-controls')
+    fireEvent.click(within(controls).getByRole('button', { name: /뒤로/i }))
+    await waitFor(() => expect(stop).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('local-meetings-route')).toBeInTheDocument())
   })
 })

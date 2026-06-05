@@ -9,6 +9,8 @@ import {
   Pencil,
   Trash2,
   FolderPlus,
+  Globe,
+  Lock,
 } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useFolderStore } from '../../stores/folderStore'
@@ -36,6 +38,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
   const toggleExpanded = useFolderStore((s) => s.toggleExpanded)
   const renameFolder = useFolderStore((s) => s.renameFolder)
   const removeFolder = useFolderStore((s) => s.removeFolder)
+  const setFolderShared = useFolderStore((s) => s.setFolderShared)
   const createFolder = useFolderStore((s) => s.createFolder)
   const [showMenu, setShowMenu] = useState(false)
   const [showRenameDialog, setShowRenameDialog] = useState(false)
@@ -86,6 +89,12 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
     if (!isExpanded) toggleExpanded(folder.id)
   }
 
+  const handleToggleShared = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setShowMenu(false)
+    await setFolderShared(folder.id, !folder.shared)
+  }
+
   return (
     <>
       <div
@@ -118,6 +127,9 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
           <FolderClosed className="w-4 h-4 shrink-0" />
         )}
         <span className="truncate flex-1">{folder.name}</span>
+        {!folder.shared && (
+          <Lock className="w-3 h-3 shrink-0 text-muted-foreground" aria-label="비공개 폴더" />
+        )}
         <span className="text-xs text-muted-foreground tabular-nums hover-hide-parent ml-auto">
           {folder.meeting_count}
         </span>
@@ -152,6 +164,16 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
                 className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm hover:bg-muted transition-colors"
               >
                 <FolderPlus className="w-3.5 h-3.5" /> 하위 폴더
+              </button>
+              <button
+                onClick={handleToggleShared}
+                className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm hover:bg-muted transition-colors"
+              >
+                {folder.shared ? (
+                  <><Lock className="w-3.5 h-3.5" /> 비공개로 전환</>
+                ) : (
+                  <><Globe className="w-3.5 h-3.5" /> 모든 사용자에게 공유</>
+                )}
               </button>
               <button
                 onClick={(e) => {

@@ -104,7 +104,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
 
       {/* 옵션 패널 */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-10">
+        <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-50">
           <p className="text-sm font-medium text-gray-800 mb-3">회의록 내보내기</p>
 
           {/* 형식 선택 */}

@@ -45,6 +45,8 @@ export interface Meeting {
   source?: 'live' | 'upload'
   has_audio_file?: boolean
   folder_id: number | null
+  /** 이 회의가 속한 폴더의 공유 여부(상세 응답에만 포함). false면 폴더가 비공개라 회의도 숨겨진다. */
+  folder_shared?: boolean | null
   transcription_progress?: number
   audio_duration_ms: number
   last_transcript_end_ms: number

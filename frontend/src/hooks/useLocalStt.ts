@@ -21,7 +21,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { ChunkMeta } from './useAudioRecorder'
 import type { TranscriptFinalData } from '../channels/transcription'
 import { useTranscriptStore } from '../stores/transcriptStore'
-import { cutEosLeak, rms, RMS_GATE } from '../stt/postprocess'
+import { cutEosLeak, normalizeForStt, rms, RMS_GATE } from '../stt/postprocess'
 import { DEFAULT_AUDIO_CONFIG } from '../stt/vadConfig'
 import * as localStore from '../stt/localStore'
 import { enqueue as syncEnqueue } from '../stt/syncQueue'
@@ -49,6 +49,11 @@ export interface UseLocalSttResult {
    * (프로모트가 부분 오디오를 올리지 않도록 stop()이 await 한다.)
    */
   flush: () => Promise<void>
+  /**
+   * 이어녹음 시드. seq(= 세그먼트 id/sequence_number/audio 파일명)를 n부터 시작하게 한다.
+   * 안 하면 재진입 시 seqRef가 0부터 시작해 audio/<seq>.wav를 덮어쓰고 id가 충돌한다.
+   */
+  seedSeq: (n: number) => void
 }
 
 function int16ToFloat32(pcm: Int16Array): Float32Array {
@@ -91,7 +96,8 @@ export function useLocalStt(opts: UseLocalSttOptions): UseLocalSttResult {
             await invoke('stt_load', { modelDir: o.modelDir, language: o.language })
             loadedRef.current = o.language
           }
-          const raw = await invoke<string>('stt_transcribe', { pcm: Array.from(seg) })
+          // 전사 입력만 정규화(저장 audioInt16는 raw 유지).
+          const raw = await invoke<string>('stt_transcribe', { pcm: Array.from(normalizeForStt(seg)) })
           // [BBDBG] 임시 계측 — STT 입력 길이/RMS/타임스탬프 + 원본 출력 문자열 (제거 예정)
           void import('../lib/bbdbg').then((m) => m.bbdbg('stt ' + JSON.stringify({ len: seg.length, rms: Number(rms(f).toFixed(4)), startMs, endMs, raw })))
           const content = cutEosLeak(raw)
@@ -131,5 +137,10 @@ export function useLocalStt(opts: UseLocalSttOptions): UseLocalSttResult {
   // drainRef 체인은 자체 .catch로 항상 resolve되므로 이 await는 throw하지 않는다.
   const flush = useCallback(() => drainRef.current, [])
 
-  return { sendChunk, flush }
+  // 이어녹음: 기존 최대 seq+1로 끌어올린다(되돌리지 않음 — 진행 중 카운터 보호).
+  const seedSeq = useCallback((n: number) => {
+    if (n > seqRef.current) seqRef.current = n
+  }, [])
+
+  return { sendChunk, flush, seedSeq }
 }

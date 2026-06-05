@@ -19,6 +19,7 @@ import {
   readFile,
   readTextFile,
   remove,
+  size,
   writeFile,
   writeTextFile,
 } from '@tauri-apps/plugin-fs'
@@ -60,6 +61,11 @@ async function segmentsPath(localId: string): Promise<string> {
 
 async function audioDir(localId: string): Promise<string> {
   return join(await meetingDir(localId), 'audio')
+}
+
+/** 연속 녹음 원본(raw PCM16 16k mono LE). 재생/재전사의 진실원천. */
+async function recordingPath(localId: string): Promise<string> {
+  return join(await meetingDir(localId), 'recording.pcm')
 }
 
 async function readMeta(localId: string): Promise<LocalMeetingMeta> {
@@ -121,6 +127,70 @@ export async function appendAudio(
 }
 
 /**
+ * 연속 녹음 PCM16(16k mono)을 recording.pcm에 **append**한다(절대 truncate 안 함 — 이어녹음
+ * 시 직전 세션 오디오 보존). 세션 중엔 메모리에 모았다가 종료 시 1회 호출(append 레이스 회피).
+ */
+export async function appendRecording(
+  localId: string,
+  pcm: Int16Array,
+): Promise<void> {
+  if (pcm.length === 0) return
+  const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)
+  await writeFile(await recordingPath(localId), bytes, { append: true })
+}
+
+/**
+ * 피크 정규화(부스트 전용, in-place). 최대 절댓값 샘플을 target(0.92*32767)에 맞춰 균일하게
+ * 키운다 — 원거리/작은 녹음을 "녹음앱처럼 크게". 결정적이라 AGC 펌핑/게이팅 아티팩트 없음.
+ * - gain≤1(이미 충분히 큼)이면 건드리지 않음(감쇠·클리핑 회피).
+ * - MAX_GAIN 8배(+18dB) 캡: 거의 무음(peak≈노이즈플로어) 녹음을 풀스케일로 폭주시키지 않음.
+ * 이어녹음은 세션별로 호출돼 세션 간 레벨이 다를 수 있으나(작은세션은 더 부스트) 허용범위.
+ */
+export function peakNormalizeInt16(pcm: Int16Array): void {
+  let peak = 0
+  for (let i = 0; i < pcm.length; i++) {
+    const a = pcm[i] < 0 ? -pcm[i] : pcm[i]
+    if (a > peak) peak = a
+  }
+  if (peak === 0) return
+  const TARGET = Math.round(0.92 * 32767)
+  const MAX_GAIN = 8
+  const gain = Math.min(TARGET / peak, MAX_GAIN)
+  if (gain <= 1) return
+  for (let i = 0; i < pcm.length; i++) {
+    const v = Math.round(pcm[i] * gain)
+    pcm[i] = v > 32767 ? 32767 : v < -32768 ? -32768 : v
+  }
+}
+
+/** 연속 녹음 존재 여부(재생/재전사가 segment 폴백 대신 이걸 우선 쓸지 판단). */
+export async function hasRecording(localId: string): Promise<boolean> {
+  return exists(await recordingPath(localId))
+}
+
+/**
+ * recording.pcm 길이(ms). 파일 **크기만**(size, 전체 로드 X) 읽어 계산 — 이어녹음 base offset
+ * 앵커용. PCM16 mono 16kHz라 2바이트/샘플, ms = samples/16. 없으면 0.
+ * 이게 재생(연속 recording.pcm) 타임라인의 진실원천: 새 세션 started_at_ms는 여기에 앵커해야
+ * 자막 클릭 위치가 오디오와 맞는다(segments.ended_at_ms=마지막 발화 끝은 trailing 무음만큼 어긋남).
+ */
+export async function getRecordingDurationMs(localId: string): Promise<number> {
+  const path = await recordingPath(localId)
+  if (!(await exists(path))) return 0
+  const bytes = await size(path)
+  return Math.round((bytes / 2 / 16000) * 1000)
+}
+
+/** recording.pcm → Int16Array(16k mono). 없으면 null. 정렬 안전을 위해 fresh buffer 복사. */
+export async function readRecordingPcm(localId: string): Promise<Int16Array | null> {
+  const path = await recordingPath(localId)
+  if (!(await exists(path))) return null
+  const bytes = await readFile(path)
+  if (bytes.byteLength < 2) return null
+  return new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2))
+}
+
+/**
  * 메타 + 세그먼트 전체를 읽는다. segments.jsonl의 마지막 줄이 torn write(부분 기록)면
  * 그 줄만 버리고 나머지는 보존한다(크래시 내성).
  */
@@ -149,6 +219,32 @@ function parseJsonl(raw: string): TranscriptFinalData[] {
     }
   }
   return out
+}
+
+/**
+ * 세그먼트 전체 교체(재전사 결과). segments.jsonl을 **덮어쓴다**(append 아님). 연속 녹음
+ * recording.pcm은 보존(재생/재시도 원본). 옛 VAD 세그먼트 audio/<seq>.wav는 정리(재생은
+ * recording.pcm 우선이라 불필요 — best-effort, 실패 무시).
+ */
+export async function replaceSegments(
+  localId: string,
+  segs: TranscriptFinalData[],
+): Promise<void> {
+  const body = segs.map((s) => JSON.stringify(s)).join('\n') + (segs.length ? '\n' : '')
+  await writeTextFile(await segmentsPath(localId), body)
+  try {
+    const dir = await audioDir(localId)
+    if (await exists(dir)) {
+      const entries = await readDir(dir)
+      for (const e of entries) {
+        if (e.isFile && /^\d+\.wav$/.test(e.name)) {
+          await remove(await join(dir, e.name)).catch(() => {})
+        }
+      }
+    }
+  } catch {
+    // 잔여 정리는 best-effort.
+  }
 }
 
 /** serverId 기록 + pendingSync 해제(프로모트 완료 마킹). */
@@ -204,6 +300,17 @@ export async function mergeLocalAudio(localId: string): Promise<{
   segmentOffsetsMs: number[]
   durationMs: number
 } | null> {
+  // 연속 녹음(recording.pcm)이 있으면 우선 — 무음 제거 없는 끊김 없는 깨끗한 1벌 오디오.
+  // seek 오프셋은 세그먼트 started_at_ms(실시간 타임라인, 연속 녹음과 정렬).
+  const recPcm = await readRecordingPcm(localId)
+  if (recPcm && recPcm.length > 0) {
+    const { segments } = await getLocal(localId)
+    const segmentOffsetsMs = segments.map((s) => s.started_at_ms ?? 0)
+    const durationMs = Math.round((recPcm.length / 16000) * 1000)
+    return { bytes: pcm16ToWav(recPcm), segmentOffsetsMs, durationMs }
+  }
+
+  // 폴백: 연속 녹음 없는(옛) 회의 — VAD 세그먼트 audio/<seq>.wav 병합.
   const dir = await audioDir(localId)
   if (!(await exists(dir))) return null
 

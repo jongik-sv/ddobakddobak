@@ -7,7 +7,7 @@
  *
  * 설계: docs/superpowers/specs/2026-06-01-ondevice-stt-g1-offline-ui-parity-design.md
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { invoke } from '@tauri-apps/api/core'
 import { FileText } from 'lucide-react'
@@ -70,11 +70,45 @@ export default function LocalMeetingLivePage() {
 
   const rec = useLocalRecording(localId ?? '', language, modelDir)
 
-  // 단일 상태/에러 surface(설계 §2-③). 우선순위: 해석실패 > 녹음에러 > 모델로딩 > 해석중.
+  // 시작 버튼을 모델 준비 전에 눌렀을 때: 하드에러 대신 "로딩 중"으로 두고 준비되면 자동 시작.
+  // (모델 경로 해석 resolve_model_paths + stt_load 콜드로드가 끝나기 전 탭 가능.)
+  const [pendingStart, setPendingStart] = useState(false)
+  const [startHint, setStartHint] = useState<string | null>(null)
+
+  const handleStart = useCallback(() => {
+    setStartHint(null)
+    if (resolving) {
+      // 모델 경로 해석 중 — 큐에 넣고 effect가 준비되면 자동 시작.
+      setPendingStart(true)
+      return
+    }
+    if (!modelDir) {
+      // 해석 끝났는데 모델 없음(미다운로드) — 기록 탭의 다운로드 안내로 유도.
+      setStartHint('온디바이스 모델을 먼저 받아주세요. (아래 기록 탭)')
+      return
+    }
+    // 모델 준비됨. rec.start가 stt_load 콜드로드를 await하며 starting 스피너를 띄운다.
+    rec.start()
+  }, [resolving, modelDir, rec])
+
+  // pendingStart 후 해석이 끝나면 자동 시작(모델 있으면) 또는 안내(없으면).
+  useEffect(() => {
+    if (!pendingStart || resolving) return
+    setPendingStart(false)
+    if (modelDir) {
+      rec.start()
+    } else {
+      setStartHint('온디바이스 모델을 먼저 받아주세요. (아래 기록 탭)')
+    }
+  }, [pendingStart, resolving, modelDir, rec])
+
+  // 단일 상태/에러 surface(설계 §2-③). 우선순위: 해석실패 > 시작안내 > 녹음에러 > 준비중.
+  const preparing = resolving || pendingStart || rec.modelLoading || rec.starting
   const statusMessage =
     resolveErr ??
+    startHint ??
     rec.error ??
-    (rec.modelLoading ? '모델 로딩 중...' : resolving ? '준비 중...' : null)
+    (preparing ? '모델 로딩 중...' : null)
 
   const handleStop = async () => {
     setIsStopping(true)
@@ -83,6 +117,16 @@ export default function LocalMeetingLivePage() {
     } finally {
       setIsStopping(false)
     }
+  }
+
+  // 뒤로 = 자동 종료(설계 결정 A-T). 녹음/일시정지 중이면 finalize(stop)해서 status='completed'로
+  // 만든 뒤 나간다. 안 그러면 status='recording'으로 남아 다음 진입이 플레이어 없는 라이브
+  // 페이지로 가고(마이크/AudioContext도 누수), 미리보기에 플레이어가 안 보인다(bug4).
+  const handleBack = async () => {
+    if (rec.isRecording) {
+      await handleStop()
+    }
+    navigate('/local-meetings')
   }
 
   // 기록 탭: 모델 있으면 LiveRecord(읽기전용), 없으면 ModelManager 게이트.
@@ -108,7 +152,7 @@ export default function LocalMeetingLivePage() {
   )
 
   if (!localId) {
-    navigate('/meetings', { replace: true })
+    navigate('/local-meetings', { replace: true })
     return null
   }
 
@@ -117,15 +161,15 @@ export default function LocalMeetingLivePage() {
       <MobileRecordControls
         title={rec.meta?.title ?? '오프라인 회의'}
         isRecording={rec.isRecording}
-        isPaused={false}
+        isPaused={rec.isPaused}
         elapsedSeconds={rec.elapsedSeconds}
-        onBack={() => navigate('/meetings')}
-        onStart={rec.start}
-        onPause={() => {}}
-        onResume={() => {}}
+        onBack={handleBack}
+        onStart={handleStart}
+        onPause={rec.pause}
+        onResume={rec.resume}
         onStop={handleStop}
         isStopping={isStopping}
-        isStarting={rec.modelLoading}
+        isStarting={rec.modelLoading || rec.starting || pendingStart}
       />
 
       <div className="flex-1 min-h-0">

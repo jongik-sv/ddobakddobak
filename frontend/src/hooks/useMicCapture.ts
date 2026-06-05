@@ -6,6 +6,12 @@ import type { ChunkMeta } from './useAudioRecorder'
 
 export interface MicCaptureCallbacks {
   onChunk: (pcm: Int16Array, meta: ChunkMeta) => void
+  /**
+   * 연속 녹음용 raw-pcm 배치(믹싱된 PCM, 16k Int16, ~300ms). VAD와 무관하게 연속 출력 —
+   * 무음 포함 전체. 재생/재전사 원본(끊김 없는 깨끗한 녹음). 워크릿이 매번 새 버퍼를
+   * transfer하므로 소비자는 복사 없이 보관해도 안전.
+   */
+  onRecordChunk?: (pcm: Int16Array) => void
 }
 
 export interface MicCaptureResult {
@@ -56,9 +62,15 @@ export function useMicCapture(callbacks: MicCaptureCallbacks): MicCaptureResult 
       const audioConfig = getEffectiveAudioConfig()
       console.log('[MicCapture] audioConfig:', JSON.stringify(audioConfig))
 
+      // 마이크 제약: 녹음(사람 귀)과 STT가 같은 스트림을 공유하는 트레이드오프 조정.
+      // - echoCancellation:false — true면 안드 VOICE_COMMUNICATION(전화) 소스로 강제돼
+      //   원거리 회의음 감쇠+게이팅+AEC 아티팩트로 ASR 열화. 재생출력 없어 AEC 이득 0 → off.
+      // - autoGainControl:true — 원거리/작은 목소리를 끌어올려 녹음이 "가깝고 크게" 들리게
+      //   (녹음앱과 비슷). off면 원음 그대로라 멀리서·작게 녹음됨. STT는 자체 정규화라 영향 적음.
+      // - noiseSuppression:false — NS는 약한 음절을 먹어 ASR 손해. 녹음 노이즈가 거슬리면 켠다.
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          echoCancellation: true,
+          echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: true,
         },
@@ -88,7 +100,9 @@ export function useMicCapture(callbacks: MicCaptureCallbacks): MicCaptureResult 
           return
         }
         if (data.type === 'raw-pcm') {
-          // 녹음: 믹싱된 PCM → Rust 녹음기
+          // 연속 녹음(재생/재전사 원본) — 무음 포함 전체 PCM.
+          callbacksRef.current.onRecordChunk?.(data.pcm)
+          // 데스크톱: 믹싱된 PCM → Rust cpal 녹음기(모바일은 미등록 → no-op).
           if (invoke) {
             const bytes = new Uint8Array(data.pcm.buffer)
             const base64 = uint8ArrayToBase64(bytes)

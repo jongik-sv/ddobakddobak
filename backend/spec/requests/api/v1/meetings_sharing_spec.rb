@@ -80,6 +80,54 @@ RSpec.describe "Api::V1::Meetings 공유/비공개", type: :request do
   end
 
   # ============================================================
+  # 폴더 공유 우선순위 (추가요청 #2): 유효 가시성 = meetings.shared AND folders.shared
+  # 폴더를 비공개로 두면 안의 회의는 개별 shared 여부와 무관하게 타인에게 안 보인다.
+  # ============================================================
+  describe "폴더 공유 우선순위" do
+    let!(:private_folder) { create(:folder, shared: false) }
+    let!(:shared_folder)  { create(:folder, shared: true) }
+
+    context "비-admin 사용자" do
+      before { login_as(user) }
+
+      it "index: 타인 shared 회의라도 비공개 폴더에 있으면 제외" do
+        foreign_shared.update!(folder: private_folder)
+        get "/api/v1/meetings"
+        titles = response.parsed_body["meetings"].map { |m| m["title"] }
+        expect(titles).not_to include("남 공유")
+      end
+
+      it "show: 타인 shared 회의가 비공개 폴더면 403" do
+        foreign_shared.update!(folder: private_folder)
+        get "/api/v1/meetings/#{foreign_shared.id}"
+        expect(response).to have_http_status(:forbidden)
+      end
+
+      it "show: 타인 shared 회의가 공유 폴더면 200" do
+        foreign_shared.update!(folder: shared_folder)
+        get "/api/v1/meetings/#{foreign_shared.id}"
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "show: 본인 회의는 비공개 폴더여도 본인에겐 보인다(소유자 우선)" do
+        own_shared.update!(folder: private_folder)
+        get "/api/v1/meetings/#{own_shared.id}"
+        expect(response).to have_http_status(:ok)
+      end
+    end
+
+    context "admin 사용자" do
+      before { login_as(admin) }
+
+      it "show: 비공개 폴더의 타인 회의도 본다(god-mode)" do
+        foreign_shared.update!(folder: private_folder)
+        get "/api/v1/meetings/#{foreign_shared.id}"
+        expect(response).to have_http_status(:ok)
+      end
+    end
+  end
+
+  # ============================================================
   # 직렬화: shared / editable 필드
   # ============================================================
   describe "직렬화 필드" do

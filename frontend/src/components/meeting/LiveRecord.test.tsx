@@ -114,6 +114,37 @@ describe('LiveRecord', () => {
     expect(el).toHaveAttribute('tabindex', '-1')
   })
 
+  it('segmentOffsetsMs 제공 시 표시 시간은 무음컷 병합 타임라인(started_at_ms 아님)', () => {
+    // 원본 started_at_ms=41000(무음 갭 포함 절대 타임라인)이지만 병합 오디오는 무음컷 → 30000.
+    // 표시 시간이 41초로 나오면 재생 오디오(30초)와 안 맞는다(bug1). 병합 오프셋으로 표시해야 함.
+    useTranscriptStore.getState().addFinal({
+      id: 1,
+      content: '마지막 발화',
+      speaker_label: '',
+      started_at_ms: 41000,
+      ended_at_ms: 43000,
+      sequence_number: 1,
+      applied: false,
+    })
+    render(<LiveRecord meetingId={-1} editable={false} segmentOffsetsMs={[30000]} />)
+    expect(screen.getByText('00:30')).toBeInTheDocument()
+    expect(screen.queryByText('00:41')).not.toBeInTheDocument()
+  })
+
+  it('segmentOffsetsMs 없으면(온라인) 기존대로 started_at_ms 표시', () => {
+    useTranscriptStore.getState().addFinal({
+      id: 1,
+      content: '발화',
+      speaker_label: '',
+      started_at_ms: 41000,
+      ended_at_ms: 43000,
+      sequence_number: 1,
+      applied: false,
+    })
+    render(<LiveRecord meetingId={1} />)
+    expect(screen.getByText('00:41')).toBeInTheDocument()
+  })
+
   it('editable 미지정(기본 true)이면 편집 가능 affordance 유지', () => {
     useTranscriptStore.getState().addFinal({
       id: 1,
