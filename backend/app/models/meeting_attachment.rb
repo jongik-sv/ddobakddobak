@@ -3,7 +3,7 @@ class MeetingAttachment < ApplicationRecord
   belongs_to :uploader, class_name: "User", foreign_key: "uploaded_by_id"
 
   KINDS = %w[file link].freeze
-  CATEGORIES = %w[agenda reference minutes].freeze
+  CATEGORIES = %w[agenda reference minutes business_card].freeze
 
   ALLOWED_CONTENT_TYPES = %w[
     application/pdf
