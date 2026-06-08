@@ -8,7 +8,7 @@ interface DialogProps {
   className?: string
   /** 백드롭 배경 클래스 (미지정 시 'bg-black/40') */
   backdropClassName?: string
-  /** 백드롭 클릭으로 닫기 허용 (기본 true) */
+  /** 백드롭(바깥) 클릭으로 닫기 허용 (기본 false — 폼 오닫힘 방지, 닫기는 버튼/Esc로) */
   closeOnBackdrop?: boolean
   /** Esc 키로 닫기 허용 (기본 true) */
   closeOnEsc?: boolean
@@ -27,7 +27,7 @@ export function Dialog({
   children,
   className,
   backdropClassName = 'bg-black/40',
-  closeOnBackdrop = true,
+  closeOnBackdrop = false,
   closeOnEsc = true,
   ariaLabel,
 }: DialogProps) {

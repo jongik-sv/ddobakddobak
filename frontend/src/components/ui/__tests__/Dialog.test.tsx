@@ -10,9 +10,16 @@ describe('Dialog', () => {
     expect(screen.getByText('내용')).toBeInTheDocument()
   })
 
-  it('백드롭 클릭 시 onClose 호출', () => {
+  it('기본값(closeOnBackdrop 미지정)은 백드롭 클릭을 무시한다', () => {
     const onClose = vi.fn()
     render(<Dialog onClose={onClose}><p>내용</p></Dialog>)
+    fireEvent.click(screen.getByRole('dialog'))
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('closeOnBackdrop=true면 백드롭 클릭 시 onClose 호출', () => {
+    const onClose = vi.fn()
+    render(<Dialog onClose={onClose} closeOnBackdrop><p>내용</p></Dialog>)
     fireEvent.click(screen.getByRole('dialog'))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
