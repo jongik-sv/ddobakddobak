@@ -49,7 +49,12 @@ pub fn advertise(port: u16) -> mdns_sd::Result<mdns_sd::ServiceDaemon> {
     use std::collections::HashMap;
 
     let label = host_label();
-    let host_name = format!("{label}.local.");
+    // host_name(SRV 타깃)에 머신의 실제 `.local` 호스트명을 재사용하면 안 된다:
+    // macOS mDNSResponder가 이미 `<LocalHostName>.local.`을 소유·방어하므로, mdns_sd가
+    // 같은 이름으로 A레코드를 또 등록(enable_addr_auto)하면 이름 충돌이 발생하고
+    // macOS가 매 실행마다 LocalHostName 뒤에 숫자를 붙여 rename한다(-2, -3, …).
+    // 앱 전용 네임스페이스로 분리해 충돌을 제거한다(표시 라벨 `label`은 그대로 유지).
+    let host_name = format!("ddobak-{label}.local.");
     // ip를 ""로 두고 enable_addr_auto()를 켜면 인터페이스 주소를 자동으로 채워
     // IP가 바뀌어도(예: Wi-Fi 재접속) 추종한다. properties는 없음(None).
     let info = ServiceInfo::new(
