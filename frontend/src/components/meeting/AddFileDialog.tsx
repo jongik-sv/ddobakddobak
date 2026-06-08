@@ -6,7 +6,7 @@ import { errorToMessage } from '../../lib/errors'
 import { notifyContactsChanged } from '../../hooks/useContacts'
 import { Dialog } from '../ui/Dialog'
 
-const ACCEPTED_FILE_TYPES = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.png,.jpg,.jpeg,.gif,.webp,.zip,.hwp'
+const ACCEPTED_FILE_TYPES = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.html,.htm,.png,.jpg,.jpeg,.gif,.webp,.zip,.hwp'
 
 // 확장자 → MIME. Tauri readFile로 만든 File은 type이 비어 있어 서버 ALLOWED_CONTENT_TYPES
 // 검사에서 거부된다(파일 업로드 안 되던 원인). 확장자로 MIME을 채워 보낸다.
@@ -28,6 +28,8 @@ const EXT_MIME: Record<string, string> = {
   webp: 'image/webp',
   zip: 'application/zip',
   hwp: 'application/x-hwp',
+  html: 'text/html',
+  htm: 'text/html',
 }
 
 function mimeForName(name: string): string {
@@ -107,7 +109,7 @@ export function AddFileDialog({ meetingId, defaultCategory, onClose, onUploaded 
       multiple: true,
       filters: [{
         name: 'Files',
-        extensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'md', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'zip', 'hwp'],
+        extensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'md', 'html', 'htm', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'zip', 'hwp'],
       }],
     })
     if (!selected) return

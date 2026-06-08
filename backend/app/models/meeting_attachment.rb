@@ -13,7 +13,7 @@ class MeetingAttachment < ApplicationRecord
     application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
     application/vnd.ms-powerpoint
     application/vnd.openxmlformats-officedocument.presentationml.presentation
-    text/plain text/csv text/markdown
+    text/plain text/csv text/markdown text/html
     image/png image/jpeg image/gif image/webp
     application/zip
     application/x-hwp application/haansofthwp
@@ -34,7 +34,8 @@ class MeetingAttachment < ApplicationRecord
     "txt" => "text/plain", "csv" => "text/csv", "md" => "text/markdown",
     "png" => "image/png", "jpg" => "image/jpeg", "jpeg" => "image/jpeg",
     "gif" => "image/gif", "webp" => "image/webp",
-    "zip" => "application/zip", "hwp" => "application/x-hwp"
+    "zip" => "application/zip", "hwp" => "application/x-hwp",
+    "html" => "text/html", "htm" => "text/html"
   }.freeze
 
   def self.content_type_for_filename(filename)
