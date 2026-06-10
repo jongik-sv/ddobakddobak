@@ -6,7 +6,7 @@ import { useSystemAudioCapture } from './useSystemAudioCapture'
 import { useMicCapture } from './useMicCapture'
 import { useTranscription } from './useTranscription'
 import { useLocalStt } from './useLocalStt'
-import { resolveSttMode } from '../stt/sttModeResolver'
+import { resolveSttModeWithReason } from '../stt/sttModeResolver'
 import { localSttLanguage } from '../stt/cohereLang'
 import { probeUrl } from '../lib/bridge'
 import * as localStore from '../stt/localStore'
@@ -30,7 +30,7 @@ import type { Meeting, Participant } from '../api/meetings'
 import { getSttSettings, getLanguageSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useSharingStore } from '../stores/sharingStore'
-import { IS_TAURI, DEFAULT_SUMMARY_INTERVAL_SEC, getApiBaseUrl } from '../config'
+import { IS_TAURI, DEFAULT_SUMMARY_INTERVAL_SEC, getApiOrigin } from '../config'
 import { useAuthStore } from '../stores/authStore'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 
@@ -235,9 +235,23 @@ export function useLiveRecording(
           modelDir = paths?.dir ?? null
         }
         const localCapable = lang != null && modelDir != null
-        const base = getApiBaseUrl()
-        const serverReachable = await probeUrl(base).catch(() => false)
-        resolved = resolveSttMode({ manualMode: sttMode, serverReachable, localCapable })
+        // probe_url은 bare origin을 기대한다(/api/v1/health를 직접 붙임) — getApiBaseUrl을
+        // 넘기면 /api/v1/api/v1/health로 항상 404 → 서버가 살아 있어도 로컬로 폴백한다.
+        const serverReachable = await probeUrl(getApiOrigin()).catch(() => false)
+        const resolution = resolveSttModeWithReason({ manualMode: sttMode, serverReachable, localCapable })
+        resolved = resolution.mode
+        // 모드 결정을 사용자에게 알린다 — 조용한 폴백은 "녹음은 되는데 서버 회의록에
+        // 전사가 없는" 사고로 이어진다(전사가 로컬 store에만 저장되므로).
+        if (resolution.mode === 'local') {
+          showStatus(
+            resolution.reason === 'auto-offline'
+              ? '서버에 연결할 수 없어 온디바이스 STT로 전사합니다 — 전사는 이 기기에만 저장됩니다'
+              : '개인설정에 따라 온디바이스 STT로 전사합니다 — 전사는 이 기기에만 저장됩니다',
+            8000,
+          )
+        } else if (resolution.reason === 'local-incapable') {
+          showStatus('온디바이스 STT 사용 불가(모델/언어) — 서버 STT로 전사합니다', 8000)
+        }
         if (resolved === 'local' && lang) {
           // 로컬 회의 진실원천 생성(영속) + recognizer 콜드로드 선행(첫 세그먼트 지연 방지).
           const latestMeeting = await getMeeting(meetingId).catch(() => null)
@@ -267,10 +281,13 @@ export function useLiveRecording(
     } catch {
       // 이미 recording 상태인 경우 무시
     }
-    // 재개 시 최신 오디오 길이 + 시퀀스 번호를 서버에서 가져옴
-    const latest = await getMeeting(meetingId)
-    const offsetMs = Math.max(latest.audio_duration_ms ?? 0, latest.last_transcript_end_ms ?? 0)
-    const seqNum = latest.last_sequence_number ?? 0
+    // 재개 시 최신 오디오 길이 + 시퀀스 번호를 서버에서 가져옴.
+    // 로컬 모드(auto-offline)는 서버 미도달이 정상 상태 — 실패 시 0부터 시작해
+    // 녹음은 계속돼야 한다. 서버 모드에선 실패가 곧 진행 불가이므로 그대로 throw.
+    const latest =
+      resolved === 'local' ? await getMeeting(meetingId).catch(() => null) : await getMeeting(meetingId)
+    const offsetMs = Math.max(latest?.audio_duration_ms ?? 0, latest?.last_transcript_end_ms ?? 0)
+    const seqNum = latest?.last_sequence_number ?? 0
     setAudioDurationMs(offsetMs)
     setLastSeqNum(seqNum)
 
@@ -329,7 +346,12 @@ export function useLiveRecording(
 
     // 로컬 모드: 잔여 세그먼트 flush(마지막 발화) + 로컬 회의 종료 마킹 + opt-in 프로모트.
     if (activeSttMode === 'local') {
-      localStt.flush()
+      // 워클릿 flush 청크는 stopMicCapture() 후 ~200ms(teardown 창) 안에 비동기로 도착한다.
+      // 즉시 flush()하면 마지막 발화가 아직 드레인에 안 들어와 스냅샷에서 빠진다
+      // (useLocalRecording.stop과 동일한 250ms 대기 정책).
+      await new Promise((r) => setTimeout(r, 250))
+      // 진행 중 전사 드레인 완료까지 대기 — 안 기다리면 마지막 발화가 종료/프로모트에서 누락된다.
+      await localStt.flush()
       if (localCtx.localId) {
         await localStore.setStatus(localCtx.localId, 'completed').catch(() => {})
         if (localUploadEnabled) {
@@ -571,6 +593,7 @@ export function useLiveRecording(
     meetingMemo,
     meetingApiStatus,
     sttEngine,
+    activeSttMode,
     isPaused,
     error,
     systemAudioError,

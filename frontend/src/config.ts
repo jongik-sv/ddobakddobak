@@ -131,23 +131,33 @@ export async function initMobileBridge(): Promise<void> {
 }
 
 // ── API / WebSocket URL 동적 결정 ────────────────
-export function getApiBaseUrl(): string {
+
+/**
+ * API origin — 경로 접미사 없는 "http(s)://host[:port]". Rust probe_url 등
+ * bare origin을 기대하는 네이티브 계약에 이 값을 넘긴다(probe_url이 /api/v1/health를
+ * 직접 붙이므로 /api/v1 포함 URL을 넘기면 경로가 이중으로 붙어 항상 404가 된다).
+ * 미설정(브릿지 포트/서버주소 부재) 시 ''. silent fallback 금지.
+ */
+export function getApiOrigin(): string {
   if (getMode() === 'server') {
     // 웹 브라우저: 페이지와 동일 origin을 사용한다. Caddy가 프론트와 /api·/auth·/cable을
     // 한 origin으로 묶으므로 IP 입력·CORS가 필요 없고, 접속 호스트가 바뀌어도 자동 추종한다.
-    if (!IS_TAURI) return `${window.location.origin}/api/v1`
+    if (!IS_TAURI) return window.location.origin
     // 모바일 앱(Tauri Android): 루프백 브릿지를 경유한다(mixed-content 회피).
-    // 브릿지 포트가 준비되어 있으면 그 포트로, 아니면 빈 문자열(silent fallback 금지).
     if (IS_MOBILE) {
       const port = getCachedBridgePort()
-      return port != null ? `http://127.0.0.1:${port}/api/v1` : ''
+      return port != null ? `http://127.0.0.1:${port}` : ''
     }
-    // 데스크톱 서버 모드(맥 앱): 사용자가 입력한 서버 주소. silent localhost fallback 금지.
-    const serverUrl = getServerUrl()
-    return serverUrl ? `${serverUrl}/api/v1` : ''
+    // 데스크톱 서버 모드(맥 앱): 사용자가 입력한 서버 주소.
+    return getServerUrl() || ''
   }
   // 로컬 모드(맥 데스크톱 앱): 항상 127.0.0.1:13323
-  return 'http://127.0.0.1:13323/api/v1'
+  return 'http://127.0.0.1:13323'
+}
+
+export function getApiBaseUrl(): string {
+  const origin = getApiOrigin()
+  return origin ? `${origin}/api/v1` : ''
 }
 
 export function getWsUrl(): string {

@@ -81,6 +81,60 @@ describe('useLocalStt — pre-segmented 청크 직접 전사(재-VAD 없음)', (
     expect(invokeMock).not.toHaveBeenCalled()
   })
 
+  it('8s 초과 청크는 절단하지 않고 8s 단위로 분할 전사하여 하나의 final로 합친다', async () => {
+    const { result } = renderHook(() =>
+      useLocalStt({ localId: 'local-x', language: 'ko', modelDir: '/m', uploadEnabled: false }),
+    )
+
+    // 20초 발화 청크 (settings.yaml max_chunk_sec 오버라이드가 8보다 클 때의 워클릿 출력 모사)
+    const samples = 20 * 16000
+    act(() => {
+      result.current.sendChunk(utteranceChunk(samples), { sequence: 0, offsetMs: 1000 })
+    })
+
+    await waitFor(() => {
+      expect(useTranscriptStore.getState().finals.length).toBe(1)
+    })
+    // ceil(20/8) = 3조각 전부 전사 — 과거 버그: subarray(0, 8s) 절단으로 12초(60%) 무음 폐기
+    const transcribeCalls = invokeMock.mock.calls.filter(([c]) => c === 'stt_transcribe')
+    expect(transcribeCalls.length).toBe(3)
+    const f = useTranscriptStore.getState().finals[0]
+    expect(f.content).toBe('안녕하세요 테스트 안녕하세요 테스트 안녕하세요 테스트')
+    // 타임스탬프가 전체 길이를 커버해야 한다 (절단 시 1000+8000에서 끊김)
+    expect(f.started_at_ms).toBe(1000)
+    expect(f.ended_at_ms).toBe(1000 + 20000)
+    // 저장 오디오도 전체 길이 유지
+    expect(appendAudio).toHaveBeenCalledTimes(1)
+    const savedPcm = appendAudio.mock.calls[0][2] as Int16Array
+    expect(savedPcm.length).toBe(samples)
+  })
+
+  it('분할 조각 하나가 전사 실패해도 나머지 조각으로 final을 만들고 오디오도 저장한다', async () => {
+    let call = 0
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'stt_transcribe') {
+        call++
+        return call === 2 ? Promise.reject(new Error('FFI fail')) : Promise.resolve('안녕하세요 테스트')
+      }
+      return Promise.resolve(undefined)
+    })
+
+    const { result } = renderHook(() =>
+      useLocalStt({ localId: 'local-x', language: 'ko', modelDir: '/m', uploadEnabled: false }),
+    )
+    act(() => {
+      result.current.sendChunk(utteranceChunk(20 * 16000), { sequence: 0, offsetMs: 0 })
+    })
+
+    await waitFor(() => {
+      expect(useTranscriptStore.getState().finals.length).toBe(1)
+    })
+    // 3조각 중 2번째 실패 → 나머지 2조각 텍스트로 final 구성, 저장 경로는 정상 수행.
+    expect(useTranscriptStore.getState().finals[0].content).toBe('안녕하세요 테스트 안녕하세요 테스트')
+    expect(appendSegment).toHaveBeenCalledTimes(1)
+    expect(appendAudio).toHaveBeenCalledTimes(1)
+  })
+
   it('uploadEnabled면 syncQueue.enqueue 호출', async () => {
     const { result } = renderHook(() =>
       useLocalStt({ localId: 'local-x', language: 'ko', modelDir: '/m', uploadEnabled: true }),

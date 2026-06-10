@@ -37,6 +37,11 @@ const getLocalMock = vi.fn().mockResolvedValue({ meta: { title: 't', status: 'id
 vi.mock('../stt/localStore', () => ({
   getLocal: (...a: unknown[]) => getLocalMock(...a),
   setStatus: vi.fn().mockResolvedValue(undefined),
+  // 연속 raw-pcm 녹음(재생/재전사 원본) 경로 — start/stop이 호출하므로 mock 필수.
+  // 빠지면 start() try 블록에서 TypeError → mic.start 미도달로 전 테스트가 깨진다.
+  getRecordingDurationMs: vi.fn().mockResolvedValue(0),
+  appendRecording: vi.fn().mockResolvedValue(undefined),
+  peakNormalizeInt16: vi.fn(),
 }))
 vi.mock('../stt/syncQueue', () => ({ flushAll: vi.fn().mockResolvedValue(undefined) }))
 

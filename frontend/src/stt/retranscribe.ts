@@ -7,7 +7,7 @@ import { invoke } from '@tauri-apps/api/core'
 
 import type { TranscriptFinalData } from '../channels/transcription'
 import { segmentPcm } from './batchSegment'
-import { cutEosLeak, normalizeForStt, rms, RMS_GATE } from './postprocess'
+import { cutEosLeak, hasSpeech, normalizeForStt } from './postprocess'
 import { DEFAULT_AUDIO_CONFIG } from './vadConfig'
 import * as localStore from './localStore'
 
@@ -58,7 +58,8 @@ export async function retranscribeLocal(
     onProgress?.({ done: i, total: segs.length })
     const { start, end } = segs[i]
     const slice = float.subarray(start, end)
-    if (rms(slice) < RMS_GATE) continue
+    // 프레임 게이트 — 통짜 RMS는 무음 패딩 희석으로 정상 발화를 통째로 드랍한다.
+    if (!hasSpeech(slice)) continue
     let content: string
     try {
       const raw = await invoke<string>('stt_transcribe', {

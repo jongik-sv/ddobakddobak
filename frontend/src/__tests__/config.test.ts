@@ -49,6 +49,19 @@ describe('config 동적 함수', () => {
     })
   })
 
+  describe('getApiOrigin', () => {
+    it('웹(server 모드)에서는 경로 접미사 없는 페이지 origin을 반환한다', async () => {
+      const { getApiOrigin } = await import('../config')
+      expect(getApiOrigin()).toBe(window.location.origin)
+      expect(getApiOrigin().endsWith('/api/v1')).toBe(false)
+    })
+
+    it('getApiBaseUrl은 getApiOrigin + /api/v1 이다 (probe_url bare-origin 계약과 정합)', async () => {
+      const { getApiOrigin, getApiBaseUrl } = await import('../config')
+      expect(getApiBaseUrl()).toBe(`${getApiOrigin()}/api/v1`)
+    })
+  })
+
   describe('getWsUrl', () => {
     it('웹(server 모드)에서는 동일 origin 기반 ws(s) + /cable을 반환한다', async () => {
       const { getWsUrl } = await import('../config')

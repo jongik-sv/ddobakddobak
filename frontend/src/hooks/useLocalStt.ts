@@ -21,7 +21,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { ChunkMeta } from './useAudioRecorder'
 import type { TranscriptFinalData } from '../channels/transcription'
 import { useTranscriptStore } from '../stores/transcriptStore'
-import { cutEosLeak, normalizeForStt, rms, RMS_GATE } from '../stt/postprocess'
+import { cutEosLeak, hasSpeech, hasSpeechFrame, normalizeForStt, rms } from '../stt/postprocess'
 import { DEFAULT_AUDIO_CONFIG } from '../stt/vadConfig'
 import * as localStore from '../stt/localStore'
 import { enqueue as syncEnqueue } from '../stt/syncQueue'
@@ -79,15 +79,27 @@ export function useLocalStt(opts: UseLocalSttOptions): UseLocalSttResult {
       if (!o.modelDir) return
 
       const f = int16ToFloat32(pcm)
-      // 무음/환각 차단(audio-processor가 1차로 걸러내지만 한 번 더).
-      if (rms(f) < RMS_GATE) return
-      // 8s 상한 클램프(FFI 백스톱과 일치 — Cohere 장청크 열화 방지).
-      const seg = f.length > MAX_SEGMENT_SAMPLES ? f.subarray(0, MAX_SEGMENT_SAMPLES) : f
+      // 무음/환각 차단(audio-processor가 1차로 걸러내지만 한 번 더). 프레임 게이트 —
+      // 통짜 RMS는 짧은 발화+긴 무음 패딩에서 희석돼 정상 발화를 통째로 드랍한다.
+      if (!hasSpeech(f)) return
+      // 8s 초과 청크는 절단하지 않고 8s 윈도우로 분할해 전부 전사한다.
+      // (과거 subarray(0, 8s) 절단은 max_chunk_sec 오버라이드가 8보다 클 때
+      // 청크 꼬리를 통째로 폐기했다 — 설정이 틀어져도 데이터 손실이 없어야 한다.)
+      const pieces: Float32Array[] = []
+      for (let off = 0; off < f.length; off += MAX_SEGMENT_SAMPLES) {
+        pieces.push(f.subarray(off, Math.min(off + MAX_SEGMENT_SAMPLES, f.length)))
+      }
+      // 0.5s 미만 꼬리 조각은 직전 조각에 병합 — 고립 파편 단독 전사는 Cohere 환각을
+      // 유발한다. 병합 결과 ≤8.5s는 Rust FFI 8.7s 백스톱 안이라 안전.
+      const MIN_TAIL_SAMPLES = 8000
+      if (pieces.length >= 2 && pieces[pieces.length - 1].length < MIN_TAIL_SAMPLES) {
+        const lastStart = (pieces.length - 2) * MAX_SEGMENT_SAMPLES
+        pieces.splice(pieces.length - 2, 2, f.subarray(lastStart, f.length))
+      }
 
       const seq = seqRef.current++
       const startMs = meta?.offsetMs ?? 0
-      const endMs = startMs + Math.round((seg.length / DEFAULT_AUDIO_CONFIG.sample_rate) * 1000)
-      const audioInt16 = pcm.length > MAX_SEGMENT_SAMPLES ? pcm.subarray(0, MAX_SEGMENT_SAMPLES) : pcm
+      const endMs = startMs + Math.round((f.length / DEFAULT_AUDIO_CONFIG.sample_rate) * 1000)
 
       drainRef.current = drainRef.current
         .then(async () => {
@@ -96,11 +108,27 @@ export function useLocalStt(opts: UseLocalSttOptions): UseLocalSttResult {
             await invoke('stt_load', { modelDir: o.modelDir, language: o.language })
             loadedRef.current = o.language
           }
-          // 전사 입력만 정규화(저장 audioInt16는 raw 유지).
-          const raw = await invoke<string>('stt_transcribe', { pcm: Array.from(normalizeForStt(seg)) })
-          // [BBDBG] 임시 계측 — STT 입력 길이/RMS/타임스탬프 + 원본 출력 문자열 (제거 예정)
-          void import('../lib/bbdbg').then((m) => m.bbdbg('stt ' + JSON.stringify({ len: seg.length, rms: Number(rms(f).toFixed(4)), startMs, endMs, raw })))
-          const content = cutEosLeak(raw)
+          // 조각별 순차 전사(FFI 직렬) 후 텍스트 결합. 전사 입력만 정규화(저장 pcm은 raw 유지).
+          // 조각 게이트는 느슨하게(hasSpeechFrame) — 청크는 이미 hasSpeech 통과,
+          // 여기선 순수 무음 패딩 조각만 거른다(엄격하면 경계 걸친 발화가 양쪽서 탈락).
+          const texts: string[] = []
+          for (const piece of pieces) {
+            if (!hasSpeechFrame(piece)) continue
+            let raw: string
+            try {
+              raw = await invoke<string>('stt_transcribe', { pcm: Array.from(normalizeForStt(piece)) })
+            } catch (e) {
+              // 조각 단위 실패는 스킵 — 한 조각 실패가 청크 전체(텍스트+오디오 저장)를
+              // 무효화하면 안 된다(retranscribe와 동일한 격리 정책).
+              console.error('[useLocalStt] 조각 전사 실패(스킵):', e)
+              continue
+            }
+            // [BBDBG] 임시 계측 — STT 입력 길이/RMS/타임스탬프 + 원본 출력 문자열 (제거 예정)
+            void import('../lib/bbdbg').then((m) => m.bbdbg('stt ' + JSON.stringify({ len: piece.length, of: f.length, rms: Number(rms(piece).toFixed(4)), startMs, endMs, raw })))
+            const t = cutEosLeak(raw)
+            if (t) texts.push(t)
+          }
+          const content = texts.join(' ')
           if (!content) return
 
           const final: TranscriptFinalData = {
@@ -118,7 +146,7 @@ export function useLocalStt(opts: UseLocalSttOptions): UseLocalSttResult {
           if (o.localId) {
             await localStore.appendSegment(o.localId, final)
             if (o.retainAudio !== false) {
-              await localStore.appendAudio(o.localId, seq, audioInt16)
+              await localStore.appendAudio(o.localId, seq, pcm)
             }
           }
           if (o.localId && o.uploadEnabled) {

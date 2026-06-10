@@ -66,7 +66,7 @@ export default function MeetingLivePage() {
     clearMemoEditor: () => clearMemoEditorRef.current(),
   })
   const {
-    meeting, setMeeting, meetingMemo, meetingApiStatus, sttEngine,
+    meeting, setMeeting, meetingMemo, meetingApiStatus, sttEngine, activeSttMode,
     isPaused, error, systemAudioError, isSystemCapturing,
     elapsedSeconds, summaryCountdown, summaryIntervalSec, setSummaryIntervalSec,
     systemAudioEnabled, handleToggleSystemAudio, isResetting, isStopping,
@@ -417,6 +417,7 @@ export default function MeetingLivePage() {
         meetingApiStatus={meetingApiStatus}
         statusMessage={statusMessage}
         sttEngine={sttEngine}
+        activeSttMode={activeSttMode}
       />
 
       {/* 회의 정보 수정 다이얼로그 */}
