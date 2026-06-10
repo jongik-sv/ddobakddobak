@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { getEffectiveAudioConfig, loadAppSettings } from '../stores/appSettingsStore'
 import { uint8ArrayToBase64 } from '../lib/audioUtils'
-import { AUDIO, IS_TAURI } from '../config'
+import { AUDIO, IS_TAURI, IS_MOBILE } from '../config'
 import type { ChunkMeta } from './useAudioRecorder'
 
 export interface MicCaptureCallbacks {
@@ -63,14 +63,19 @@ export function useMicCapture(callbacks: MicCaptureCallbacks): MicCaptureResult 
       console.log('[MicCapture] audioConfig:', JSON.stringify(audioConfig))
 
       // 마이크 제약: 녹음(사람 귀)과 STT가 같은 스트림을 공유하는 트레이드오프 조정.
-      // - echoCancellation:false — true면 안드 VOICE_COMMUNICATION(전화) 소스로 강제돼
-      //   원거리 회의음 감쇠+게이팅+AEC 아티팩트로 ASR 열화. 재생출력 없어 AEC 이득 0 → off.
-      // - autoGainControl:true — 원거리/작은 목소리를 끌어올려 녹음이 "가깝고 크게" 들리게
-      //   (녹음앱과 비슷). off면 원음 그대로라 멀리서·작게 녹음됨. STT는 자체 정규화라 영향 적음.
+      // - echoCancellation: 플랫폼 분기.
+      //   · 모바일(안드): false — true면 VOICE_COMMUNICATION(전화) 소스로 강제돼 원거리
+      //     회의음 감쇠+게이팅+AEC 아티팩트로 ASR 열화. 재생출력 없어 AEC 이득 0.
+      //   · 데스크톱(맥): true — macOS Chromium APM(AEC+AGC) 처리경로를 켜 마이크 레벨을
+      //     정규화한다. false면 raw 저레벨이 워클릿 VAD(고정 silence_threshold 0.05)를
+      //     굶겨 정상 발화를 무음 오판 → 청크가 MIN_CHUNK(2s) 바닥에서 잘림(문장 중간 짤림).
+      //     데스크톱은 마이크-스피커 근접 회의가 아니라 AEC 부작용보다 레벨 정규화 이득이 크다.
+      // - autoGainControl:true — 원거리/작은 목소리를 끌어올린다. 단 echoCancellation:false면
+      //   macOS에서 APM AGC가 사실상 우회되므로 데스크톱은 echoCancellation:true가 필요하다.
       // - noiseSuppression:false — NS는 약한 음절을 먹어 ASR 손해. 녹음 노이즈가 거슬리면 켠다.
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          echoCancellation: false,
+          echoCancellation: !IS_MOBILE,
           noiseSuppression: false,
           autoGainControl: true,
         },
