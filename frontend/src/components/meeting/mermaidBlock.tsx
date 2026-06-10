@@ -42,6 +42,18 @@ function MermaidRenderer({ code }: { code: string }) {
         const { svg } = await mermaid.render(id, code.trim())
         if (!cancelled && containerRef.current) {
           containerRef.current.innerHTML = svg
+          // mermaid는 width="100%" + max-width:자연폭 으로 출력 → 컨테이너 폭에 스트레치돼
+          // 도형 크기가 레이아웃 방향에 휘둘린다. viewBox의 intrinsic 픽셀 크기로 고정하면
+          // 노드 크기가 LR/TD 무관 일정해지고, 폭을 넘으면 부모(overflow-x-auto)가 스크롤한다.
+          const svgEl = containerRef.current.querySelector('svg')
+          const vb = svgEl?.viewBox?.baseVal
+          if (svgEl && vb && vb.width > 0) {
+            svgEl.removeAttribute('width')   // width="100%" 제거
+            svgEl.removeAttribute('height')
+            svgEl.style.width = `${vb.width}px`
+            svgEl.style.height = `${vb.height}px`
+            svgEl.style.maxWidth = 'none'    // 컨테이너 폭에 축소되지 않게(자연 크기 유지)
+          }
           setError(null)
         }
       } catch (e) {
@@ -58,7 +70,7 @@ function MermaidRenderer({ code }: { code: string }) {
     return null
   }
 
-  return <div ref={containerRef} className="[&>svg]:min-w-[480px] [&>svg]:h-auto" />
+  return <div ref={containerRef} className="[&>svg]:h-auto w-fit mx-auto" />
 }
 
 // ── BlockNote 커스텀 블록 ─────────────────────────
@@ -144,7 +156,7 @@ export const MermaidBlock = createReactBlockSpec(
           </div>
 
           {code.trim() && !isEditing && (
-            <div className="flex justify-center py-2 overflow-x-auto min-h-[240px]">
+            <div className="py-2 overflow-x-auto min-h-[240px]">
               <MermaidRenderer code={code} />
             </div>
           )}
