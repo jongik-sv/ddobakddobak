@@ -22,7 +22,7 @@ class LlmService
   # 회의록 정제: 기존 노트 + 새 자막 → 통합 회의록
   def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil)
     transcript_text = format_transcripts(transcripts)
-    return { "notes_markdown" => current_notes } if transcript_text.blank?
+    return { "notes_markdown" => current_notes, "ok" => true } if transcript_text.blank?
 
     parts = []
     parts << "회의 제목: #{meeting_title}" if meeting_title.present?
@@ -46,10 +46,11 @@ class LlmService
 
     result = call_llm_raw(system_prompt, user_content, max_tokens: max_tokens)
     notes = fix_mermaid_quotes(strip_markdown_fence(result))
-    { "notes_markdown" => notes }
+    { "notes_markdown" => notes, "ok" => true }
   rescue => e
     Rails.logger.error "[LlmService] refine_notes failed: #{e.message}"
-    { "notes_markdown" => current_notes }
+    # ok:false → 호출부가 transcript 미소비·미저장(무음 손실 차단, D8 anchor-C1)
+    { "notes_markdown" => current_notes, "ok" => false }
   end
 
   # 구조화된 요약 (JSON): key_points, decisions, discussion_details, action_items

@@ -98,9 +98,15 @@ class Meeting < ApplicationRecord
     update_column(:attendees, updated)
   end
 
+  # completed 회의만 final 을 하드 우선. reopen(=recording 복귀) 후엔 최신 우선 —
+  # stale final 이 reopen 후 쌓이는 realtime 진행분을 가리지 않게 (구현리뷰 useredit-M5).
   def active_summary
-    summaries.find_by(summary_type: "final") ||
-      summaries.order(generated_at: :desc).first
+    if completed?
+      summaries.find_by(summary_type: "final") ||
+        summaries.order(generated_at: :desc, id: :desc).first
+    else
+      summaries.order(generated_at: :desc, id: :desc).first
+    end
   end
 
   def current_notes_markdown

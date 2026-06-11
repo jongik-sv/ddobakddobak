@@ -17,7 +17,15 @@ class MeetingSummarizationJob < ApplicationJob
 
     mutex = MEETING_LOCKS.compute_if_absent(meeting_id) { Mutex.new }
     unless mutex.try_lock
-      Rails.logger.info "[MeetingSummarizationJob] skipped (in-process lock busy) meeting=#{meeting_id} type=#{type}"
+      if type == "final"
+        # final은 정본 확정 안전망 — 드랍하면 영영 안 생긴다(stop이 1회만 enqueue).
+        # 실전 재현: stop 직후 realtime 틱(LLM 수십 초)이 락 점유 → final try_lock 실패 → 무음 드랍.
+        # 락 해제 후 재시도하도록 재enqueue (realtime은 매분 cron이 다시 오므로 드랍 OK).
+        Rails.logger.info "[MeetingSummarizationJob] final re-enqueued (lock busy) meeting=#{meeting_id}"
+        self.class.set(wait: 30.seconds).perform_later(meeting_id, type: "final")
+      else
+        Rails.logger.info "[MeetingSummarizationJob] skipped (in-process lock busy) meeting=#{meeting_id} type=#{type}"
+      end
       return
     end
 
@@ -122,7 +130,7 @@ class MeetingSummarizationJob < ApplicationJob
       return
     end
 
-    if notes_markdown.present?
+    if result["ok"] && notes_markdown.present?
       summary = meeting.summaries.find_or_initialize_by(summary_type: "realtime")
       summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
 
@@ -138,6 +146,9 @@ class MeetingSummarizationJob < ApplicationJob
         type: "transcripts_applied",
         ids: applied_ids
       })
+    elsif !result["ok"]
+      # transient LLM 실패: 미저장·미소비. 다음 틱 재시도(무음 손실 차단).
+      Rails.logger.warn "[MeetingSummarizationJob] realtime transient failure meeting=#{meeting.id} (미소비)"
     end
     ok = true
   rescue LlmService::LlmError, StandardError => e
@@ -169,6 +180,13 @@ class MeetingSummarizationJob < ApplicationJob
     )
     notes_markdown = result["notes_markdown"]
     return if notes_markdown.blank?
+
+    # transient LLM 실패(ok:false)면 저장·소비·강등해제 전부 건너뜀 — stale notes 로 전 자막을
+    # 영구 소비(sticky)하는 무음 손실 차단 (D8 anchor-C1, realtime 경로와 동일 처리).
+    unless result["ok"]
+      Rails.logger.warn "[MeetingSummarizationJob] final transient failure meeting=#{meeting.id} (미소비)"
+      return
+    end
 
     meeting.reload
     if meeting.pending? || stale_relative_to_user_action?(meeting)
