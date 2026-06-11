@@ -81,3 +81,9 @@ frontend/src-tauri/gen/android/app/src/main/assets/sidecar/
 frontend/src-tauri/gen/android/app/src/main/jniLibs/**/*.so
 frontend/src-tauri/**/cohere-onnx/
 *.onnx.data
+
+# 멀티에이전트 starter 설명서 (로컬 보관용)
+MULTIAGENT.md
+
+# _ 로 시작하는 폴더 전부 (멀티에이전트 _shared/_templates/_local 등)
+_*/
