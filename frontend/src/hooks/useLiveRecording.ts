@@ -17,7 +17,7 @@ import {
   startMeeting,
   stopMeeting,
   reopenMeeting,
-  uploadAudio,
+  promoteAudio,
   uploadAudioChunk,
   finalizeAudio,
   triggerRealtimeSummary,
@@ -156,9 +156,20 @@ export function useLiveRecording(
 
   const onStop = useCallback(
     async (blob: Blob) => {
-      uploadPromiseRef.current = uploadAudio(meetingId, blob)
+      const task = (async () => {
+        // promoteAudio는 res.ok를 검사해 실패 시 throw → 성공했을 때만 로컬 녹음 파일을 정리한다.
+        await promoteAudio(meetingId, blob)
+        if (IS_TAURI) {
+          const { invoke } = await import('@tauri-apps/api/core')
+          await invoke('delete_recording', { meetingId })
+        }
+      })()
+      uploadPromiseRef.current = task
       try {
-        await uploadPromiseRef.current
+        await task
+      } catch (err) {
+        // 업로드 실패 → recordings/<id>.wav 보존. 다음 앱 시작 시 복구 스윕이 재업로드한다.
+        console.error('[useLiveRecording] 오디오 업로드 실패, 복구용 파일 보존', err)
       } finally {
         uploadPromiseRef.current = null
       }
@@ -167,6 +178,7 @@ export function useLiveRecording(
   )
 
   const { isRecording, isPaused, error, start, stop, discard, pause, resume, feedSystemAudio } = useAudioRecorder({
+    meetingId,
     onChunk: (pcm: Int16Array, meta: ChunkMeta) => onChunkRef.current(pcm, meta),
     onStop,
     // 모바일 청크 레코더: 녹음 중 압축 청크 연속 업로드 + 종료 시 서버 합치기/변환

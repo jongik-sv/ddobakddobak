@@ -8,6 +8,8 @@ export interface ChunkMeta {
 }
 
 export interface AudioRecorderCallbacks {
+  /** 네이티브(데스크톱) 녹음 파일 경로 키 — `recordings/<meetingId>.wav`. 강제종료 복구·정리에 사용. */
+  meetingId?: number
   /** 브라우저 모드에서만 사용: 마이크 VAD 청크 (Tauri 모드에서는 useMicCapture가 담당) */
   onChunk: (pcm: Int16Array, meta: ChunkMeta) => void
   onStop: (blob: Blob) => void
@@ -44,7 +46,7 @@ function useNativeRecorder(callbacks: AudioRecorderCallbacks): AudioRecorderResu
     try {
       const { invoke } = await import('@tauri-apps/api/core')
       console.log('[NativeRecorder] start_recording 호출')
-      await invoke('start_recording')
+      await invoke('start_recording', { meetingId: callbacksRef.current.meetingId })
       console.log('[NativeRecorder] start_recording 성공')
       setIsRecording(true)
       setIsPaused(false)
@@ -81,8 +83,10 @@ function useNativeRecorder(callbacks: AudioRecorderCallbacks): AudioRecorderResu
   const discard = useCallback(async () => {
     try {
       const { invoke } = await import('@tauri-apps/api/core')
-      // Rust 녹음기를 중지해 마이크를 해제하되, 반환된 WAV는 폐기(업로드 안 함)
+      // Rust 녹음기를 중지해 마이크를 해제하되, WAV는 폐기(업로드 안 함).
       await invoke('stop_recording')
+      // 영구 저장 파일도 삭제 — 안 하면 다음 시작 시 복구 스윕이 폐기분을 다시 업로드한다.
+      await invoke('delete_recording', { meetingId: callbacksRef.current.meetingId })
     } catch (err) {
       console.warn('[NativeRecorder] discard 실패:', err)
     }

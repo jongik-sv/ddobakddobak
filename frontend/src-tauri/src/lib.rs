@@ -877,6 +877,9 @@ pub fn run() {
                 audio::pause_recording,
                 audio::resume_recording,
                 audio::feed_recorder_mic,
+                audio::delete_recording,
+                audio::list_orphan_recordings,
+                audio::read_recording,
             ])
             .on_window_event(|window, event| {
                 if let tauri::WindowEvent::Destroyed = event {

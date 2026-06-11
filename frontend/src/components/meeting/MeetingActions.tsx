@@ -39,7 +39,7 @@ export function MeetingActions({
     <div className={`flex items-center shrink-0 ml-auto ${isDesktop ? 'gap-2' : 'gap-1'}`}>
       {canEdit && meeting.status === 'completed' && (
         <>
-          {meeting.has_audio_file && (
+          {transcriptsCount > 0 && (
             <button
               onClick={onShowSttConfirm}
               aria-label="STT 재생성"

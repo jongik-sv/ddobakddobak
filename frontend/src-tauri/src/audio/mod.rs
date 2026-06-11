@@ -123,9 +123,26 @@ pub fn is_system_audio_capturing(app: AppHandle) -> bool {
 
 // ── 녹음 Commands ─────────────────────────────────
 
-/// 녹음을 시작한다. 임시 WAV 파일을 자동 생성.
+/// 녹음 파일 저장 디렉터리(app_data_dir/recordings). TMPDIR과 달리 OS가 청소하지 않아
+/// 강제종료된 녹음이 영구 보존된다. 파일명은 `<meetingId>.wav`라 복구 시 회의 매칭이 자명.
+fn recordings_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let base = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app_data_dir 조회 실패: {}", e))?;
+    Ok(base.join("recordings"))
+}
+
+fn recording_path(app: &AppHandle, meeting_id: i64) -> Result<String, String> {
+    Ok(recordings_dir(app)?
+        .join(format!("{}.wav", meeting_id))
+        .to_string_lossy()
+        .to_string())
+}
+
+/// 녹음을 시작한다. `recordings/<meetingId>.wav`에 연속 기록(강제종료 내성).
 #[tauri::command]
-pub fn start_recording(app: AppHandle) -> Result<(), String> {
+pub fn start_recording(app: AppHandle, meeting_id: i64) -> Result<(), String> {
     let state = app.state::<RecorderState>();
     let mut recorder_lock = state.recorder.lock().unwrap();
 
@@ -133,15 +150,9 @@ pub fn start_recording(app: AppHandle) -> Result<(), String> {
         return Err("녹음이 이미 진행 중입니다".to_string());
     }
 
-    let temp_dir = std::env::temp_dir();
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let path = temp_dir
-        .join(format!("ddobak_recording_{}.wav", timestamp))
-        .to_string_lossy()
-        .to_string();
+    let dir = recordings_dir(&app)?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("recordings 디렉터리 생성 실패: {}", e))?;
+    let path = recording_path(&app, meeting_id)?;
 
     let recorder = AudioRecorder::start(&path)?;
     *recorder_lock = Some(Arc::new(recorder));
@@ -150,6 +161,7 @@ pub fn start_recording(app: AppHandle) -> Result<(), String> {
 }
 
 /// 녹음을 종료한다. WAV 파일을 base64로 인코딩하여 반환.
+/// 파일은 삭제하지 않는다 — 업로드 성공 후 `delete_recording`으로 정리(실패 시 시작 복구 스윕이 처리).
 #[tauri::command]
 pub fn stop_recording(app: AppHandle) -> Result<String, String> {
     let state = app.state::<RecorderState>();
@@ -157,13 +169,51 @@ pub fn stop_recording(app: AppHandle) -> Result<String, String> {
 
     if let Some(recorder) = recorder_lock.take() {
         let path = recorder.stop()?;
-        let bytes = std::fs::read(&path)
-            .map_err(|e| format!("WAV 파일 읽기 실패: {}", e))?;
-        std::fs::remove_file(&path).ok();
+        let bytes = std::fs::read(&path).map_err(|e| format!("WAV 파일 읽기 실패: {}", e))?;
         Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
     } else {
         Err("진행 중인 녹음이 없습니다".to_string())
     }
+}
+
+/// 업로드 완료된(혹은 폐기된) 녹음 파일을 삭제한다.
+#[tauri::command]
+pub fn delete_recording(app: AppHandle, meeting_id: i64) -> Result<(), String> {
+    let path = recording_path(&app, meeting_id)?;
+    std::fs::remove_file(&path).ok();
+    Ok(())
+}
+
+/// 미업로드 녹음 파일(`<meetingId>.wav`, 헤더 제외 데이터 존재)의 meeting id 목록.
+/// 시작 시 복구 스윕이 사용.
+#[tauri::command]
+pub fn list_orphan_recordings(app: AppHandle) -> Result<Vec<i64>, String> {
+    let dir = recordings_dir(&app)?;
+    let mut ids = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if let Some(stem) = name.strip_suffix(".wav") {
+                if let Ok(id) = stem.parse::<i64>() {
+                    let has_data = entry.metadata().map(|m| m.len() > 44).unwrap_or(false);
+                    if has_data {
+                        ids.push(id);
+                    }
+                }
+            }
+        }
+    }
+    Ok(ids)
+}
+
+/// 녹음 파일을 헤더 복구 후 base64로 반환(시작 복구 스윕 업로드용).
+#[tauri::command]
+pub fn read_recording(app: AppHandle, meeting_id: i64) -> Result<String, String> {
+    let path = recording_path(&app, meeting_id)?;
+    // 강제종료로 size가 stale/0인 파일도 안전하게 읽히도록 헤더를 실제 크기로 재계산.
+    recorder::finalize_wav_header(&path)?;
+    let bytes = std::fs::read(&path).map_err(|e| format!("WAV 파일 읽기 실패: {}", e))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
 /// 녹음 일시정지.

@@ -17,6 +17,13 @@ import SetupGate from './components/SetupGate'
 import { AuthGuard } from './components/auth/AuthGuard'
 import SettingsModal from './components/settings/SettingsModal'
 import UserManagementModal from './components/settings/UserManagementModal'
+import { useRecordingRecovery } from './hooks/useRecordingRecovery'
+
+/** 인증 직후 1회: 강제종료로 업로드 누락된 데스크톱 녹음을 복구 업로드한다. */
+function RecordingRecovery() {
+  useRecordingRecovery()
+  return null
+}
 
 function SettingsRedirect() {
   const openSettings = useUiStore((s) => s.openSettings)
@@ -141,6 +148,7 @@ function GatedApp() {
       />
       <Route path="*" element={<Navigate to="/meetings" replace />} />
     </Routes>
+    <RecordingRecovery />
     <SettingsModal />
     <UserManagementModal />
     </AuthGuard>
