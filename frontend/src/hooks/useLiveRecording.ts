@@ -80,6 +80,9 @@ export function useLiveRecording(
   // 경과 시간
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const elapsedBaseRef = useRef<number | null>(null)
+  // 요약 타이머는 틱 누산이 아니라 Date.now() 기준 deadline으로 동작 (백그라운드 throttle/일시정지에도 정확)
+  const summaryDeadlineRef = useRef<number | null>(null)
+  const summaryRemainingRef = useRef<number | null>(null)
 
   const reset = useTranscriptStore((s) => s.reset)
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
@@ -406,6 +409,8 @@ export function useLiveRecording(
       setSummaryCountdown(0)
       setElapsedSeconds(0)
       elapsedBaseRef.current = null
+      summaryDeadlineRef.current = null
+      summaryRemainingRef.current = null
     } catch (err) {
       console.error('회의 초기화 실패:', err)
     } finally {
@@ -548,40 +553,64 @@ export function useLiveRecording(
       .catch(() => {})
   }, [])
 
-  // 녹음 중(일시정지 아닌) 1초 카운트다운 → 0이면 AI 요약 트리거
+  // 녹음 중(일시정지 아닌) Date.now() 기준 deadline → 도달 시 AI 요약 트리거
+  // 카운트다운을 1틱당 -1로 누산하면 백그라운드 탭/화면꺼짐 시 setInterval throttle로
+  // 180틱이 실제 5분+ 걸린다. deadline(절대 시각) 기준으로 매 틱 남은 시간을 재계산해
+  // 벽시계와 일치시킨다. (위 경과시간 타이머가 elapsedBaseRef로 쓰는 방식과 동일)
   // summaryIntervalSec === 0 이면 "안함" — 실시간 요약 비활성화 (종료 시 final 요약만)
   useEffect(() => {
     if (!isActive || isPaused || summaryIntervalSec === 0) {
+      // 일시정지/중지/안함: 타이머 완전 리셋 (재개 시 전체 간격부터 새로 시작)
+      summaryDeadlineRef.current = null
+      summaryRemainingRef.current = null
       setSummaryCountdown(0)
       return
     }
 
-    // 오타 수정 반영 중이면 타이머 일시정지 (카운트다운 값 유지)
+    // 오타 수정 반영 중이면 타이머 일시정지 — 남은 시간 보존 (deadline → remaining)
     if (isApplyingCorrections) {
+      if (summaryDeadlineRef.current !== null) {
+        summaryRemainingRef.current = Math.max(
+          0,
+          Math.ceil((summaryDeadlineRef.current - Date.now()) / 1000),
+        )
+        summaryDeadlineRef.current = null
+      }
       return
     }
 
-    // 재개 시 기존 카운트다운 유지, 새로 시작할 때만 초기화
-    setSummaryCountdown((prev) => prev > 0 ? prev : summaryIntervalSec)
+    // 시작/재개: deadline 없으면 남은 시간(보존된 값 or 전체 간격)으로 새로 anchor
+    if (summaryDeadlineRef.current === null) {
+      const secs = summaryRemainingRef.current ?? summaryIntervalSec
+      summaryDeadlineRef.current = Date.now() + secs * 1000
+      summaryRemainingRef.current = null
+    }
+    setSummaryCountdown(
+      Math.max(0, Math.ceil((summaryDeadlineRef.current - Date.now()) / 1000)),
+    )
 
     let summarizing = false
     const interval = setInterval(() => {
-      setSummaryCountdown((prev) => {
-        if (summarizing) return prev  // 요약 진행 중이면 카운트다운 정지
-        if (prev <= 1) {
-          summarizing = true
-          showStatus('기록을 회의록에 적용 중...', 10000)
-          triggerRealtimeSummary(meetingId)
-            .then(() => showStatus('회의록 적용 완료'))
-            .catch(() => {})
-            .finally(() => {
-              summarizing = false
-              setSummaryCountdown(summaryIntervalSec)
-            })
-          return 0  // 요약 중에는 0 유지
-        }
-        return prev - 1
-      })
+      if (summarizing) return  // 요약 진행 중이면 카운트다운 정지
+      const deadline = summaryDeadlineRef.current
+      if (deadline === null) return
+      const remaining = Math.ceil((deadline - Date.now()) / 1000)
+      if (remaining <= 0) {
+        summarizing = true
+        setSummaryCountdown(0)
+        showStatus('기록을 회의록에 적용 중...', 10000)
+        triggerRealtimeSummary(meetingId)
+          .then(() => showStatus('회의록 적용 완료'))
+          .catch(() => {})
+          .finally(() => {
+            summarizing = false
+            // 다음 주기 deadline 재설정 (요약에 걸린 시간만큼 자동 보정)
+            summaryDeadlineRef.current = Date.now() + summaryIntervalSec * 1000
+            setSummaryCountdown(summaryIntervalSec)
+          })
+      } else {
+        setSummaryCountdown(remaining)
+      }
     }, 1000)
 
     return () => clearInterval(interval)
