@@ -25,9 +25,20 @@ function loadMermaid() {
   return mermaidLoading
 }
 
-function MermaidRenderer({ code }: { code: string }) {
+function MermaidRenderer({ code, zoom }: { code: string; zoom: number }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const intrinsicWidthRef = useRef<number | null>(null)  // viewBox 자연폭 (zoom 1.0 기준)
   const [error, setError] = useState<string | null>(null)
+
+  // svg 폭을 intrinsic × zoom 으로 적용. 높이는 [&>svg]:h-auto 로 비율 유지.
+  const applyZoom = useCallback((z: number) => {
+    const svgEl = containerRef.current?.querySelector('svg')
+    const w = intrinsicWidthRef.current
+    if (svgEl && w && w > 0) {
+      svgEl.style.width = `${w * z}px`
+      svgEl.style.maxWidth = 'none'
+    }
+  }, [])
 
   useEffect(() => {
     if (!code.trim() || !containerRef.current) return
@@ -43,16 +54,15 @@ function MermaidRenderer({ code }: { code: string }) {
         if (!cancelled && containerRef.current) {
           containerRef.current.innerHTML = svg
           // mermaid는 width="100%" + max-width:자연폭 으로 출력 → 컨테이너 폭에 스트레치돼
-          // 도형 크기가 레이아웃 방향에 휘둘린다. viewBox의 intrinsic 픽셀 크기로 고정하면
-          // 노드 크기가 LR/TD 무관 일정해지고, 폭을 넘으면 부모(overflow-x-auto)가 스크롤한다.
+          // 도형 크기가 레이아웃 방향에 휘둘린다. viewBox의 intrinsic 폭을 기준으로 zoom 배율을
+          // 곱해 고정하면, 폭을 넘으면 부모(overflow-x-auto)가 스크롤한다.
           const svgEl = containerRef.current.querySelector('svg')
           const vb = svgEl?.viewBox?.baseVal
           if (svgEl && vb && vb.width > 0) {
             svgEl.removeAttribute('width')   // width="100%" 제거
             svgEl.removeAttribute('height')
-            svgEl.style.width = `${vb.width}px`
-            svgEl.style.height = `${vb.height}px`
-            svgEl.style.maxWidth = 'none'    // 컨테이너 폭에 축소되지 않게(자연 크기 유지)
+            intrinsicWidthRef.current = vb.width
+            applyZoom(zoom)
           }
           setError(null)
         }
@@ -64,7 +74,10 @@ function MermaidRenderer({ code }: { code: string }) {
     })
 
     return () => { cancelled = true }
-  }, [code])
+  }, [code, zoom, applyZoom])
+
+  // zoom 변경 시엔 재렌더 없이 폭만 다시 적용 (code 동일하면 위 effect의 parse/render 생략됨)
+  useEffect(() => { applyZoom(zoom) }, [zoom, applyZoom])
 
   if (error) {
     return null
@@ -75,19 +88,13 @@ function MermaidRenderer({ code }: { code: string }) {
 
 // ── BlockNote 커스텀 블록 ─────────────────────────
 
-const WIDTH_OPTIONS = [
-  { value: 'compact', label: '작게' },
-  { value: 'normal', label: '기본' },
-  { value: 'wide', label: '넓게' },
-  { value: 'full', label: '최대' },
-] as const
+// 콘텐츠(다이어그램) 확대/축소 배율. 컴포넌트 폭이 아니라 내부 SVG 크기를 조절한다.
+const ZOOM_MIN = 0.4
+const ZOOM_MAX = 3
+const ZOOM_STEP = 0.2
 
-// 에디터 컨테이너를 넘어서 확장하기 위한 스타일
-const WIDTH_STYLES: Record<string, React.CSSProperties> = {
-  compact: { width: '60%', margin: '0 auto' },
-  normal: { width: '100%' },
-  wide: { width: 'calc(100% + 120px)', marginLeft: '-60px', marginRight: '-60px' },
-  full: { width: 'calc(100% + 240px)', marginLeft: '-120px', marginRight: '-120px' },
+function clampZoom(z: number): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100))
 }
 
 export const MermaidBlock = createReactBlockSpec(
@@ -95,14 +102,14 @@ export const MermaidBlock = createReactBlockSpec(
     type: 'mermaid' as const,
     propSchema: {
       code: { default: '' },
-      width: { default: 'normal' },
+      zoom: { default: 1 },
     },
     content: 'none',
   },
   {
     render: ({ block, editor }) => {
       const code = block.props.code as string
-      const width = (block.props.width as string) || 'normal'
+      const zoom = (block.props.zoom as number) || 1
       const [isEditing, setIsEditing] = useState(!code.trim())
       const [editCode, setEditCode] = useState(code)
 
@@ -113,35 +120,40 @@ export const MermaidBlock = createReactBlockSpec(
         if (editCode.trim()) setIsEditing(false)
       }, [editor, block, editCode])
 
-      const setWidth = useCallback((w: string) => {
-        editor.updateBlock(block, { props: { width: w } })
+      const setZoom = useCallback((z: number) => {
+        editor.updateBlock(block, { props: { zoom: clampZoom(z) } })
       }, [editor, block])
 
-      const containerStyle = WIDTH_STYLES[width] ?? WIDTH_STYLES.normal
-
       return (
-        <div
-          className="border rounded-lg overflow-visible my-1 bg-white transition-all duration-200"
-          style={containerStyle}
-        >
+        <div className="border rounded-lg overflow-visible my-1 bg-white transition-all duration-200 w-full">
           <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 border-b rounded-t-lg">
             <span className="text-xs font-medium text-gray-500">Mermaid 다이어그램</span>
             <div className="flex items-center gap-2">
               {code.trim() && !isEditing && (
                 <div className="flex items-center border rounded bg-white overflow-hidden">
-                  {WIDTH_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setWidth(opt.value)}
-                      className={`px-2 py-0.5 text-[10px] transition-colors ${
-                        width === opt.value
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-500 hover:text-blue-600'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
+                  <button
+                    onClick={() => setZoom(zoom - ZOOM_STEP)}
+                    disabled={zoom <= ZOOM_MIN}
+                    title="축소"
+                    className="px-2 py-0.5 text-xs text-gray-500 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-500"
+                  >
+                    −
+                  </button>
+                  <button
+                    onClick={() => setZoom(1)}
+                    title="기본 보기 (100%)"
+                    className="px-2 py-0.5 text-[10px] text-gray-500 hover:text-blue-600 border-x min-w-[44px]"
+                  >
+                    {Math.round(zoom * 100)}%
+                  </button>
+                  <button
+                    onClick={() => setZoom(zoom + ZOOM_STEP)}
+                    disabled={zoom >= ZOOM_MAX}
+                    title="확대"
+                    className="px-2 py-0.5 text-xs text-gray-500 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-500"
+                  >
+                    +
+                  </button>
                 </div>
               )}
               {editor.isEditable && code.trim() && (
@@ -157,7 +169,7 @@ export const MermaidBlock = createReactBlockSpec(
 
           {code.trim() && !isEditing && (
             <div className="py-2 overflow-x-auto min-h-[240px]">
-              <MermaidRenderer code={code} />
+              <MermaidRenderer code={code} zoom={zoom} />
             </div>
           )}
 
