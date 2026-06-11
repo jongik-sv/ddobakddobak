@@ -34,17 +34,17 @@ class Meeting < ApplicationRecord
   scope :by_status, ->(status) { where(status: status) if status.present? }
 
   # 열람 가능한 회의 목록 범위: admin은 전체, 그 외는 본인 소유분 + "공유로 보이는" 회의.
-  # 유효 공유 가시성 = meetings.shared AND (폴더 없음 OR 폴더도 shared). 즉 폴더를 비공개로
-  # 두면 그 폴더의 회의는 개별 shared 여부와 무관하게 전부 숨는다(폴더 설정 우선).
+  # 유효 공유 가시성 = meetings.shared AND (폴더 없음 OR 폴더와 모든 조상이 shared). 즉 상위
+  # 폴더를 비공개로 두면 그 하위 폴더·회의가 개별 shared 여부와 무관하게 전부 숨는다(상속·폴더 우선).
   # (개별 회의 접근은 MeetingLookup이 참여자까지 허용하므로 더 넓다 — 이 스코프는 목록 쿼리용)
-  # .or 양변은 join 없는 plain where(폴더는 서브쿼리로 IN 처리)라 index의 .includes/필터 체인과 호환된다.
+  # Folder.visible_folder_ids가 조상 체인을 in-memory로 평가해 보이는 폴더 id만 IN 으로 넘긴다.
   scope :accessible_by, ->(user) {
     if user.admin?
       all
     else
       visible_shared = where(shared: true).where(
         "meetings.folder_id IS NULL OR meetings.folder_id IN (?)",
-        Folder.where(shared: true).select(:id)
+        Folder.visible_folder_ids
       )
       where(created_by_id: user.id).or(visible_shared)
     end
@@ -61,11 +61,11 @@ class Meeting < ApplicationRecord
     created_by_id == user.id
   end
 
-  # 유효 공유 가시성(타인 열람 허용 여부): 회의가 공유이고, 폴더가 없거나 폴더도 공유일 때만.
-  # 폴더를 비공개로 두면 안의 회의는 개별 shared 여부와 무관하게 타인에게 안 보인다(폴더 우선).
+  # 유효 공유 가시성(타인 열람 허용 여부): 회의가 공유이고, 폴더가 없거나 폴더와 모든 조상이 공유일 때만.
+  # 상위 폴더를 비공개로 두면 하위 회의는 개별 shared 여부와 무관하게 타인에게 안 보인다(상속·폴더 우선).
   # accessible_by 스코프(목록 쿼리)와 동일 규칙을 단건(show 인가)에서 표현한다.
   def shared_visible?
-    shared? && (folder_id.nil? || folder&.shared?)
+    shared? && (folder_id.nil? || folder&.effectively_shared?)
   end
 
   # 수정·삭제 권한: admin(god-mode) 또는 본인 소유만.

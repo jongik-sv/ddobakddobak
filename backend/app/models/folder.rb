@@ -15,17 +15,59 @@ class Folder < ApplicationRecord
   def ancestors
     path = []
     current = parent
-    while current
+    seen = {}
+    while current && !seen[current.id]
+      seen[current.id] = true
       path.unshift({ id: current.id, name: current.name })
       current = current.parent
     end
     path
   end
 
+  # 타인 열람 가능 폴더 = 자신과 모든 조상이 shared일 때만(상속·폴더 우선).
+  # 조상 중 하나라도 비공개면 false → 이 폴더와 모든 하위가 가려진다.
+  # parent_id 순환(사이클)이 있어도 visited 가드로 무한루프 없이 종료.
+  def effectively_shared?
+    seen = {}
+    node = self
+    while node && !seen[node.id]
+      return false unless node.shared
+      seen[node.id] = true
+      node = node.parent
+    end
+    true
+  end
+
+  # 타인에게 보이는(자신+모든 조상 공유) 폴더 id 배열. accessible_by/tree 공용.
+  # 전 폴더를 1번만 로드해 in-memory로 조상 체인 평가(폴더당 쿼리 N+1 회피).
+  def self.visible_folder_ids
+    folders = all.to_a
+    by_id = folders.index_by(&:id)
+    cache = {}
+    visiting = {}
+    resolve = lambda do |f|
+      return cache[f.id] if cache.key?(f.id)
+      return true if visiting[f.id] # 사이클 — 낙관적 true로 끊어 크래시 방지
+      visiting[f.id] = true
+      parent = f.parent_id && by_id[f.parent_id]
+      result = f.shared && (f.parent_id.nil? || parent.nil? || resolve.call(parent))
+      visiting.delete(f.id)
+      cache[f.id] = result
+    end
+    folders.each { |f| resolve.call(f) }
+    cache.select { |_, v| v }.keys
+  end
+
   # user를 주면 그 사용자가 접근 가능한 회의만 카운트 (admin/loopback은 전체).
   # user가 nil이면 전체 카운트(하위 호환).
   def self.tree(user = nil)
     all_folders = ordered.includes(:tags).to_a
+    # non-admin: 비공개 폴더(및 비공개 조상 하위) 서브트리 통째로 숨긴다(상속).
+    # admin/loopback은 자물쇠 표시와 함께 전부 본다.
+    if user && !user.admin?
+      visible = visible_folder_ids.to_set
+      all_folders = all_folders.select { |f| visible.include?(f.id) }
+    end
     scope = user ? Meeting.accessible_by(user) : Meeting.all
     meeting_counts = scope.where(folder_id: all_folders.map(&:id))
                           .group(:folder_id).count

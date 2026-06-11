@@ -37,8 +37,9 @@ module MeetingSerializable
     }
 
     if full
-      # 폴더 공유 상태(없으면 nil). EditMeetingDialog에서 "폴더가 비공개라 회의도 숨김" 안내용.
-      json[:folder_shared] = meeting.folder&.shared
+      # 유효 폴더 공유 상태(없으면 nil). 조상 중 하나라도 비공개면 false.
+      # EditMeetingDialog에서 "폴더가 비공개라 회의도 숨김" 안내용.
+      json[:folder_shared] = meeting.folder&.effectively_shared?
       json[:audio_duration_ms] = audio_duration_ms(meeting)
       json[:last_transcript_end_ms] = meeting.transcripts.maximum(:ended_at_ms).to_i
       json[:last_sequence_number] = meeting.transcripts.maximum(:sequence_number).to_i

@@ -6,8 +6,11 @@ module Api
 
       def index
         if params[:flat] == "true"
-          folders = Folder.ordered
-          render json: { folders: folders.map { |f| folder_json(f) } }
+          # flat은 이동-폴더 선택기용이라 비공개 폴더도 노출(숨김은 트리만). 카운트만 접근 스코프.
+          folders = Folder.ordered.to_a
+          counts = Meeting.accessible_by(current_user)
+                          .where(folder_id: folders.map(&:id)).group(:folder_id).count
+          render json: { folders: folders.map { |f| folder_json(f, counts[f.id] || 0) } }
         else
           tree = Folder.tree(current_user)
           render json: { folders: tree }
@@ -65,14 +68,14 @@ module Api
         Folder.where(parent_id: parent_id).maximum(:position).to_i + 1
       end
 
-      def folder_json(folder)
+      def folder_json(folder, meeting_count = nil)
         {
           id: folder.id,
           name: folder.name,
           parent_id: folder.parent_id,
           position: folder.position,
           shared: folder.shared,
-          meeting_count: folder.meetings.accessible_by(current_user).count,
+          meeting_count: meeting_count || folder.meetings.accessible_by(current_user).count,
           children_count: folder.children.count,
           tags: folder.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
           ancestors: folder.ancestors,
