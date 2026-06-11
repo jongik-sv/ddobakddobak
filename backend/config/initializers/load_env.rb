@@ -22,6 +22,9 @@ if File.exist?(settings_path)
 
     ENV["LLM_PROVIDER"] ||= provider
     ENV["LLM_MODEL"] ||= preset["model"].to_s if preset["model"]
+    # 주의(미강제): MAX_INPUT 은 읽는 코드가 없고(트렁케이션·윈도잉 없음),
+    # MAX_OUTPUT 은 anthropic/openai API 경로만 적용 — claude_cli 등 CLI provider 는
+    # max_tokens 를 받지 않아 무시됨(출력량 제어는 프롬프트 분량 지시뿐).
     ENV["LLM_MAX_INPUT_TOKENS"] ||= (preset["max_input_tokens"] || 200_000).to_s
     ENV["LLM_MAX_OUTPUT_TOKENS"] ||= (preset["max_output_tokens"] || 10_000).to_s
 

@@ -46,7 +46,8 @@ module Api
           created_by_id: current_user.id,
           meeting_type: params[:meeting_type] || "general",
           folder_id: params[:folder_id],
-          shared: params.key?(:shared) ? ActiveModel::Type::Boolean.new.cast(params[:shared]) : true
+          shared: params.key?(:shared) ? ActiveModel::Type::Boolean.new.cast(params[:shared]) : true,
+          **summary_options_for_create
         )
 
         if meeting.save
@@ -71,7 +72,8 @@ module Api
           shared: params.key?(:shared) ? ActiveModel::Type::Boolean.new.cast(params[:shared]) : true,
           status: :transcribing,
           source: "upload",
-          started_at: Time.current
+          started_at: Time.current,
+          **summary_options_for_create
         )
 
         storage_dir = Pathname.new(audio_dir)
@@ -112,6 +114,12 @@ module Api
         attrs[:memo] = params[:memo] if params.key?(:memo)
         attrs[:brief_summary] = params[:brief_summary] if params.key?(:brief_summary)
         attrs[:attendees] = params[:attendees] if params.key?(:attendees)
+        attrs[:summary_verbosity] = params[:summary_verbosity] if params.key?(:summary_verbosity)
+        if params.key?(:summary_restructure)
+          # cast 가 nil 을 주는 입력(""/null)은 무시 — NOT NULL 컬럼이라 500 으로 터진다
+          restructure = ActiveModel::Type::Boolean.new.cast(params[:summary_restructure])
+          attrs[:summary_restructure] = restructure unless restructure.nil?
+        end
         # shared 변경은 소유자/admin 만 가능 (비소유 host 의 toggle 무시)
         attrs[:shared] = ActiveModel::Type::Boolean.new.cast(params[:shared]) if params.key?(:shared) && @meeting.editable_by?(current_user)
 
@@ -383,7 +391,9 @@ module Api
           current_notes, payload,
           meeting_title: @meeting.title,
           sections_prompt: sections_prompt,
-          attendees: @meeting.attendees
+          attendees: @meeting.attendees,
+          verbosity: @meeting.summary_verbosity,
+          restructure: @meeting.summary_restructure
         )
 
         filename = "prompt_#{@meeting.id}_#{Date.today}.txt"
@@ -394,6 +404,20 @@ module Api
       end
 
       private
+
+      # 새 회의 요약 옵션: 파라미터 > 직전 회의 승계 > 기본(standard / 재구조화 ON)
+      def summary_options_for_create
+        last = Meeting.where(created_by_id: current_user.id).order(created_at: :desc).first
+        restructure_param = ActiveModel::Type::Boolean.new.cast(params[:summary_restructure]) # ""/null → nil
+        {
+          summary_verbosity: params[:summary_verbosity].presence || last&.summary_verbosity || "standard",
+          summary_restructure: if restructure_param.nil?
+            last.nil? ? true : last.summary_restructure
+          else
+            restructure_param
+          end
+        }
+      end
 
       def pagination_page
         (params[:page] || 1).to_i

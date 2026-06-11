@@ -127,6 +127,77 @@ module LlmPrompts
     ```markdown 블록으로 감싸지 마세요. ```mermaid 코드블록은 본문 내에서 사용 가능합니다.
   PROMPT
 
+  # 압축율 5단계 — refine_notes/append_notes 의 system 프롬프트 뒤에 append.
+  # 실측(2026-06-11): claude_cli 는 max_tokens 를 무시하고 지연은 출력 생성 bound(haiku ~95자/s)
+  # → 프롬프트의 "약 N자 이내" 글자수 캡이 출력량·속도를 제어하는 유일한 레버.
+  VERBOSITY_LABELS = {
+    "very_concise"  => "아주 간결",
+    "concise"       => "간결",
+    "standard"      => "보통",
+    "detailed"      => "상세",
+    "very_detailed" => "아주 상세"
+  }.freeze
+
+  # 문체 지시. standard 는 문체 지시 없음(현행 보존), very_detailed 는 분량 캡 없음.
+  VERBOSITY_STYLES = {
+    "very_concise"  => "핵심 결정·액션아이템 위주로만 기록하세요. 각 항목은 한 문장, 부연·배경 설명 생략. 표는 꼭 필요할 때만.",
+    "concise"       => "각 항목을 1문장으로 기록하세요. 표는 최소화하고 부연 설명은 생략하세요.",
+    "standard"      => nil,
+    "detailed"      => "논의의 맥락과 근거를 충실히 기록하세요. 표를 적극 활용하세요.",
+    "very_detailed" => "발언 흐름·근거·반론까지 모두 기록하세요. 표·mermaid 를 적극 활용하고 분량 제한 없이 충실하게 작성하세요."
+  }.freeze
+
+  # 회의록 전체 글자수 캡(약). realtime 틱은 작게(지연 직결), final/파일전사는 여유.
+  # nil = 캡 없음. ~95자/s 기준: realtime standard 4,000자 ≈ 42초.
+  VERBOSITY_CHAR_LIMITS = {
+    realtime: {
+      "very_concise"  => 1_000,
+      "concise"       => 2_000,
+      "standard"      => 4_000,
+      "detailed"      => 8_000,
+      "very_detailed" => nil
+    }.freeze,
+    final: {
+      "very_concise"  => 2_000,
+      "concise"       => 4_000,
+      "standard"      => 10_000,
+      "detailed"      => 15_000,
+      "very_detailed" => nil
+    }.freeze
+  }.freeze
+
+  # 증분(흐름) 모드 회의의 통짜 생성(내보내기·재생성 폴백·파일 전사)용:
+  # 주제별 재구성 대신 회의 진행 흐름(시간순)대로 요약하게 지시.
+  CHRONOLOGICAL_NOTES_INSTRUCTION = <<~TEXT.freeze
+
+    ## 구성 방식 (시간 흐름)
+    회의록을 주제별로 재구성하지 말고, 회의가 진행된 흐름(시간 순서) 그대로 요약하세요.
+    이 지시는 위의 섹션 구조보다 우선합니다 — 섹션 대신 논의가 전개된 순서대로 단락을 나누고,
+    각 단락 첫머리에 해당 구간의 주제를 짧은 헤딩으로 붙이세요.
+    같은 주제가 나중에 다시 나오면 앞으로 합치지 말고 그 시점에 이어서 기록하세요.
+  TEXT
+
+  # 증분(append-only) 모드: 기존 회의록은 읽기 전용 컨텍스트, 새 자막만 "시간대별 새 블록"
+  # 하나로 요약해 반환. 시간 헤딩(### ⏱ …)은 시스템(Ruby)이 붙이므로 LLM 은 본문만.
+  # 출력 = 새 블록만 → 작음 → 틱 빠름 (재구조화 OFF 의 속도 이점).
+  APPEND_NOTES_SYSTEM_PROMPT = <<~PROMPT.freeze
+    당신은 실시간 회의록 작성자입니다. 이 회의록은 시간대별 증분 방식입니다.
+    기존 회의록(참고용)과 새 음성 자막을 받아, **새 자막의 내용만** 요약한 "새 블록" 하나를 반환합니다.
+
+    ## 규칙
+    1. 기존 회의록을 다시 쓰거나 수정하지 마세요. 반환물은 기존 회의록 뒤에 그대로 덧붙일 새 블록 본문뿐입니다.
+    2. 제목/시간 헤딩은 쓰지 마세요 — 시스템이 시간대 헤딩을 자동으로 붙입니다.
+    3. 기존 회의록에 이미 있는 내용은 반복하지 말고, 새로 논의된 내용만 기록하세요.
+    4. 새 내용이 앞선 결정을 번복하면 본문에 "(앞선 ○○ 결정 변경)" 처럼 명시만 하고, 앞 내용은 건드리지 않습니다.
+    5. 간결한 체언 종결("~함", "~예정")로 작성하고 오타는 교정하세요.
+    6. 표 활용 가능. LaTeX($...$) 금지, 유니코드 사용(², ₂, ±, ×, →, ≤ 등).
+       Mermaid 노드 라벨은 반드시 큰따옴표: A["라벨"] / B{"조건"}. 줄바꿈은 <br/>. mindmap 잎도 id["라벨"] 필수.
+    7. 새 자막에 기록할 만한 내용이 없으면 빈 문자열을 반환하세요.
+
+    ## 출력 형식
+    순수 Markdown 본문만 반환하세요. ```markdown 블록으로 감싸지 마세요.
+  PROMPT
+
   FEEDBACK_NOTES_SYSTEM_PROMPT = <<~PROMPT.freeze
     당신은 회의록 편집 전문가입니다.
     현재 회의록(Markdown)과 사용자의 피드백(지시사항)을 받아 회의록을 수정합니다.

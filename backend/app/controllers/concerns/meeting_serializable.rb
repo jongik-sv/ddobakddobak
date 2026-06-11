@@ -26,6 +26,8 @@ module MeetingSerializable
       folder_id: meeting.folder_id,
       memo: meeting.memo,
       attendees: meeting.attendees,
+      summary_verbosity: meeting.summary_verbosity,
+      summary_restructure: meeting.summary_restructure,
       tags: meeting.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
       attachment_counts: {
         agenda: attachment_counts["agenda"] || 0,

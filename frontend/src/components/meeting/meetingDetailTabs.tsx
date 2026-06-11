@@ -23,6 +23,8 @@ interface BuildMeetingDetailTabsArgs {
   memoEditorRef: MemoEditorRef
   onSaveMemo: () => void
   isSavingMemo: boolean
+  /** 요약 탭 헤더에 끼울 요약 옵션 컨트롤 (페이지가 생성·게이팅) */
+  summaryOptions?: React.ReactNode
 }
 
 /** 회의 상세 모바일 탭(기록/요약/메모) 정의를 생성한다. (순수 함수 — 훅 아님) */
@@ -38,6 +40,7 @@ export function buildMeetingDetailTabs({
   memoEditorRef,
   onSaveMemo,
   isSavingMemo,
+  summaryOptions,
 }: BuildMeetingDetailTabsArgs): Tab[] {
   return [
     {
@@ -66,7 +69,7 @@ export function buildMeetingDetailTabs({
       icon: Bot,
       content: (
         <div className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
-          <AiSummaryPanel meetingId={meetingId} isRecording={false} onNotesChange={onNotesChange} />
+          <AiSummaryPanel meetingId={meetingId} isRecording={false} onNotesChange={onNotesChange} headerExtra={summaryOptions} />
         </div>
       ),
     },

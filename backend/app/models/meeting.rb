@@ -15,9 +15,14 @@ class Meeting < ApplicationRecord
   has_many :meeting_participants, dependent: :destroy
   has_many :active_participants, -> { where(left_at: nil) }, class_name: "MeetingParticipant"
 
+  # 회의록 압축율 5단계 (회의 화면·미리보기에서 회의별 지정)
+  SUMMARY_VERBOSITY_LEVELS = %w[very_concise concise standard detailed very_detailed].freeze
+
   validates :title, presence: true
   validates :share_code, uniqueness: true, allow_nil: true
   validates :status, inclusion: { in: %w[pending recording transcribing completed] }
+  validates :summary_verbosity, inclusion: { in: SUMMARY_VERBOSITY_LEVELS }
+  validates :summary_restructure, inclusion: { in: [ true, false ] } # NOT NULL 컬럼 — nil 이 500 대신 422 가 되게
   validates :source, inclusion: { in: %w[live upload] }
 
   enum :status, { pending: "pending", recording: "recording", transcribing: "transcribing", completed: "completed" }

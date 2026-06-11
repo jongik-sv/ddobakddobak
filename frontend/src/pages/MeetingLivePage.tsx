@@ -9,6 +9,7 @@ import { useLiveRecording } from '../hooks/useLiveRecording'
 import { useLiveMobileTabs } from '../hooks/useLiveMobileTabs'
 import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
+import { SummaryOptionsControl } from '../components/meeting/SummaryOptionsControl'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
 import { updateMeeting, triggerRealtimeSummary, correctTerms, updateNotes } from '../api/meetings'
@@ -192,6 +193,17 @@ export default function MeetingLivePage() {
   // 데스크톱/모바일 분기
   const isDesktop = useMediaQuery(BREAKPOINTS.lg)
 
+  // 요약 옵션(압축율·재구조화) 컨트롤 — 솔로 녹음자 또는 공유 host 만. PATCH 후 기존 full 필드 보존 위해 merge.
+  const summaryOptionsControl = meeting && (!isSharing || isHost) ? (
+    <SummaryOptionsControl
+      meeting={meeting}
+      onSave={async (params) => {
+        const updated = await updateMeeting(meetingId, params)
+        setMeeting({ ...meeting, ...updated })
+      }}
+    />
+  ) : undefined
+
   // 모바일 탭 정의
   const mobileTabs = useLiveMobileTabs({
     meetingId,
@@ -210,6 +222,7 @@ export default function MeetingLivePage() {
     onAddCorrection: addCorrectionRow,
     onRemoveCorrection: removeCorrectionRow,
     onApplyCorrections: handleApplyCorrections,
+    summaryOptions: summaryOptionsControl,
   })
 
   // 403/404 접근 가드 — 모든 hook 호출 이후에 위치
@@ -290,7 +303,12 @@ export default function MeetingLivePage() {
               data-testid="ai-minutes"
               className="h-full border-r overflow-hidden flex flex-col"
             >
-              <AiSummaryPanel meetingId={meetingId} isRecording={isActive} onNotesChange={handleNotesChange} />
+              <AiSummaryPanel
+                meetingId={meetingId}
+                isRecording={isActive}
+                onNotesChange={handleNotesChange}
+                headerExtra={summaryOptionsControl}
+              />
             </section>
           </Panel>
 

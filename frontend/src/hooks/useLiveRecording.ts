@@ -404,6 +404,14 @@ export function useLiveRecording(
     setShowResetConfirm(false)
     setIsResetting(true)
     try {
+      // 녹음 중 초기화면 캡처·네이티브 녹음부터 정지 (recordingDenied 처리와 동일 패턴).
+      // 안 멈추면 좀비 캡처가 살아남아 다음 시작에서 청크 이중 전송(전사 2배) +
+      // 네이티브 start_recording이 "녹음이 이미 진행 중입니다"로 거부된다.
+      if (isRecording) {
+        if (IS_TAURI) stopMicCapture()
+        stopSystemCapture()
+        await discard()
+      }
       await resetMeetingContent(meetingId)
       // reset 시각 기록 → 잔여 broadcast 무시
       markReset()

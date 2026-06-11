@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { uploadAudioFile, updateMeeting } from '../../api/meetings'
-import type { Meeting } from '../../api/meetings'
+import type { Meeting, SummaryVerbosity } from '../../api/meetings'
 import { IS_TAURI, IS_MOBILE } from '../../config'
 import { errorToMessage } from '../../lib/errors'
 import { Dialog } from '../ui/Dialog'
 import { MeetingTypeSelector } from './MeetingListUI'
+import { VERBOSITY_OPTIONS } from './SummaryOptionsControl'
 
 const ACCEPTED_AUDIO_TYPES = '.mp3,.wav,.m4a,.webm,.ogg,.flac,.aac,.mp4'
 
@@ -18,6 +19,9 @@ interface UploadAudioModalProps {
 export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated }: UploadAudioModalProps) {
   const [title, setTitle] = useState('')
   const [meetingType, setMeetingType] = useState('general')
+  // '' = 직전 회의 설정 승계 (파라미터 미전송 → 서버가 결정)
+  const [verbosity, setVerbosity] = useState<SummaryVerbosity | ''>('')
+  const [restructure, setRestructure] = useState<'' | 'true' | 'false'>('')
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -80,6 +84,8 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
         title: title.trim(),
         meeting_type: meetingType,
         audio: file,
+        ...(verbosity ? { summary_verbosity: verbosity } : {}),
+        ...(restructure ? { summary_restructure: restructure === 'true' } : {}),
       })
       // 폴더가 있으면 이동
       if (folderId) {
@@ -178,6 +184,37 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
             selected={meetingType}
             onSelect={setMeetingType}
           />
+        </div>
+
+        {/* 회의록 압축율 */}
+        <div>
+          <label htmlFor="upload-verbosity" className="block text-sm font-medium mb-1">회의록 압축율</label>
+          <select
+            id="upload-verbosity"
+            value={verbosity}
+            onChange={(e) => setVerbosity(e.target.value as SummaryVerbosity | '')}
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-blue-400"
+          >
+            <option value="">직전 회의 설정 따름 (기본)</option>
+            {VERBOSITY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label} — {o.desc}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* 재구조화 여부 */}
+        <div>
+          <label htmlFor="upload-restructure" className="block text-sm font-medium mb-1">회의록 구성 방식</label>
+          <select
+            id="upload-restructure"
+            value={restructure}
+            onChange={(e) => setRestructure(e.target.value as '' | 'true' | 'false')}
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-blue-400"
+          >
+            <option value="">직전 회의 설정 따름 (기본)</option>
+            <option value="true">주제별 재구성 — 전체를 주제별로 재정리</option>
+            <option value="false">시간 흐름 — 회의 진행 순서대로 요약</option>
+          </select>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">

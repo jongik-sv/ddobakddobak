@@ -11,9 +11,11 @@ interface AiSummaryPanelProps {
   isRecording?: boolean
   editable?: boolean
   onNotesChange?: (markdown: string) => void
+  /** 헤더 우측에 끼울 추가 컨트롤 (요약 옵션 등). 페이지가 주입한다. */
+  headerExtra?: React.ReactNode
 }
 
-export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, editable = true, onNotesChange }: AiSummaryPanelProps) {
+export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, editable = true, onNotesChange, headerExtra }: AiSummaryPanelProps) {
   const meetingNotes = useTranscriptStore((s) => s.meetingNotes)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const isSummarizing = useTranscriptStore((s) => s.isSummarizing)
@@ -30,8 +32,13 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
   useEffect(() => {
     let cancelled = false
 
-    // meetingNotes가 null이면 에디터 초기화 (새 회의 진입 시)
+    // meetingNotes가 null이면 에디터 초기화 (새 회의 진입·회의록 재생성 시).
+    // 보류 중인 자동저장도 취소 — 안 하면 옛 내용/빈 문서가 user-edit으로 저장돼
+    // 재생성 결과를 stale 가드가 폐기한다(160초 LLM 결과 증발 버그).
     if (meetingNotes === null) {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+      isUserEditingRef.current = false
+      setIsDirty(false)
       prevMarkdownRef.current = ''
       isProgrammaticRef.current = true
       editor.replaceBlocks(editor.document, [])
@@ -147,6 +154,8 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
             </span>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          {headerExtra}
         {editable && (
           isRecording ? (
             <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-green-100 text-green-600">
@@ -166,6 +175,7 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
             </button>
           )
         )}
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto select-text">
         {editable ? (

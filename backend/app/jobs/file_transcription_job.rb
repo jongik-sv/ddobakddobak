@@ -115,7 +115,9 @@ class FileTranscriptionJob < ApplicationJob
       meeting_title: meeting.title,
       meeting_type: meeting.meeting_type,
       sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
-      attendees: meeting.attendees
+      attendees: meeting.attendees,
+      verbosity: meeting.summary_verbosity,
+      chronological: !meeting.summary_restructure # 증분 선택 업로드 = 시간 흐름 요약
     )
     notes_markdown = result["notes_markdown"]
 

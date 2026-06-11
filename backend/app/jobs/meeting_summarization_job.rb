@@ -110,14 +110,30 @@ class MeetingSummarizationJob < ApplicationJob
     started = true
     ok = false
     broadcast_started(meeting, "realtime")
-    result = llm_service_for(meeting).refine_notes(
-      current_notes, payload,
-      meeting_title: meeting.title,
-      meeting_type: meeting.meeting_type,
-      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
-      attendees: meeting.attendees
-    )
-    notes_markdown = result["notes_markdown"]
+    if meeting.summary_restructure?
+      result = llm_service_for(meeting).refine_notes(
+        current_notes, payload,
+        meeting_title: meeting.title,
+        meeting_type: meeting.meeting_type,
+        sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
+        attendees: meeting.attendees,
+        verbosity: meeting.summary_verbosity,
+        verbosity_context: :realtime
+      )
+      notes_markdown = result["notes_markdown"]
+    else
+      # 증분 모드: 새 자막만 시간대별 블록으로 요약해 기존 회의록 뒤에 덧붙인다(앞 내용 불변).
+      result = llm_service_for(meeting).append_notes(
+        current_notes, payload,
+        meeting_title: meeting.title,
+        attendees: meeting.attendees,
+        verbosity: meeting.summary_verbosity
+      )
+      # 시간 라벨은 소비셋(applied_ids) 스냅샷으로 계산 — 릴레이션 재질의는 LLM 호출(수십 초) 중
+      # 도착한 자막까지 집계해 시간대가 과대/중첩된다.
+      notes_markdown = compose_appended_notes(current_notes, result["block_markdown"],
+                                              meeting.transcripts.where(id: applied_ids))
+    end
 
     # LLM 호출 중에 stop/reset/user-edit이 일어났을 수 있으므로 broadcast/저장 전에 재확인.
     meeting.reload
@@ -146,6 +162,11 @@ class MeetingSummarizationJob < ApplicationJob
         type: "transcripts_applied",
         ids: applied_ids
       })
+    elsif result["ok"] && !meeting.summary_restructure?
+      # 증분 모드: 기록할 내용 없음(빈 블록, ok:true). 노트는 그대로 두고 자막만 소비 —
+      # 미소비로 두면 같은 자막을 매 틱 재요약하는 루프가 된다.
+      meeting.transcripts.where(id: applied_ids).update_all(applied_to_minutes: true)
+      ActionCable.server.broadcast(channel, { type: "transcripts_applied", ids: applied_ids })
     elsif !result["ok"]
       # transient LLM 실패: 미저장·미소비. 다음 틱 재시도(무음 손실 차단).
       Rails.logger.warn "[MeetingSummarizationJob] realtime transient failure meeting=#{meeting.id} (미소비)"
@@ -165,20 +186,45 @@ class MeetingSummarizationJob < ApplicationJob
     transcripts = meeting.transcripts.order(:sequence_number)
     return if transcripts.empty?
 
-    current_notes = meeting.current_notes_markdown
-    payload = Transcript.to_sidecar_payload(transcripts)
+    # 증분 모드의 base 는 "가장 최근 요약"이어야 한다. current_notes_markdown 은 completed 상태에서
+    # 옛 final 을 하드 우선하므로(reopen 직후 stop 시) 재개 세션에서 append 된 realtime 블록을 버리게 된다.
+    latest_notes = meeting.summaries.order(generated_at: :desc, id: :desc).first&.notes_markdown.to_s
 
     started = true
     ok = false
     broadcast_started(meeting, "final")
-    result = llm_service_for(meeting).refine_notes(
-      current_notes, payload,
-      meeting_title: meeting.title,
-      meeting_type: meeting.meeting_type,
-      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
-      attendees: meeting.attendees
-    )
-    notes_markdown = result["notes_markdown"]
+    # 증분 모드라도 base 가 백지면(회의록 재생성 직후 등) append 로 복원 불가 —
+    # 전체 자막 통짜 재생성으로 폴백해 처음부터 다시 만든다.
+    if meeting.summary_restructure? || latest_notes.blank?
+      payload = Transcript.to_sidecar_payload(transcripts)
+      result = llm_service_for(meeting).refine_notes(
+        meeting.current_notes_markdown, payload,
+        meeting_title: meeting.title,
+        meeting_type: meeting.meeting_type,
+        sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
+        attendees: meeting.attendees,
+        verbosity: meeting.summary_verbosity,
+        chronological: !meeting.summary_restructure? # 증분 회의의 백지 폴백 = 시간 흐름 유지
+      )
+      notes_markdown = result["notes_markdown"]
+    else
+      # 증분 모드 final: 전체 재작성 없이 남은 미적용 자막만 마지막 블록으로 덧붙여 확정(append-only).
+      remaining_ids = transcripts.where(applied_to_minutes: false).pluck(:id)
+      if remaining_ids.any?
+        remaining = meeting.transcripts.where(id: remaining_ids).order(:sequence_number)
+        payload = Transcript.to_sidecar_payload(remaining)
+        result = llm_service_for(meeting).append_notes(
+          latest_notes, payload,
+          meeting_title: meeting.title,
+          attendees: meeting.attendees,
+          verbosity: meeting.summary_verbosity
+        )
+        notes_markdown = compose_appended_notes(latest_notes, result["block_markdown"], remaining)
+      else
+        result = { "ok" => true }
+        notes_markdown = latest_notes
+      end
+    end
     return if notes_markdown.blank?
 
     # transient LLM 실패(ok:false)면 저장·소비·강등해제 전부 건너뜀 — stale notes 로 전 자막을
@@ -209,5 +255,27 @@ class MeetingSummarizationJob < ApplicationJob
     Rails.logger.error "[MeetingSummarizationJob] final meeting=#{meeting.id} error=#{e.message}"
   ensure
     broadcast_finished(meeting, "final", ok: ok) if started
+  end
+
+  # 증분 블록을 시간대 헤딩과 함께 기존 회의록 뒤에 덧붙인 전체 노트 반환. 블록 없으면 기존 그대로.
+  def compose_appended_notes(current_notes, block_markdown, new_transcripts)
+    return current_notes if block_markdown.blank?
+
+    heading = "### ⏱ #{time_range_label(new_transcripts)}"
+    [ current_notes.presence, "#{heading}\n\n#{block_markdown}" ].compact.join("\n\n")
+  end
+
+  # 새 자막 구간의 시간대 라벨(회의 시작 기준 경과): "12:05–13:40", 1시간 넘으면 "1:02:11–…"
+  def time_range_label(transcripts)
+    from_ms = transcripts.minimum(:started_at_ms).to_i
+    to_ms   = [ transcripts.maximum(:ended_at_ms).to_i, from_ms ].max
+    "#{format_clock(from_ms)}–#{format_clock(to_ms)}"
+  end
+
+  def format_clock(ms)
+    total = ms / 1000
+    h, rem = total.divmod(3600)
+    m, s = rem.divmod(60)
+    h.positive? ? format("%d:%02d:%02d", h, m, s) : format("%02d:%02d", m, s)
   end
 end

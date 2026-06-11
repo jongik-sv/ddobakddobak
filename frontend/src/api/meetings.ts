@@ -62,7 +62,13 @@ export interface Meeting {
   started_at: string | null
   ended_at: string | null
   created_at: string
+  /** 회의록 압축율 5단계 (very_concise|concise|standard|detailed|very_detailed) */
+  summary_verbosity?: SummaryVerbosity
+  /** true=지속 재구조화(매 틱 전체 재정리), false=증분(앞 내용 불변, 시간대별 추가) */
+  summary_restructure?: boolean
 }
+
+export type SummaryVerbosity = 'very_concise' | 'concise' | 'standard' | 'detailed' | 'very_detailed'
 
 /**
  * 회의 수정/삭제 등 소유권이 필요한 어포던스를 노출할지 판단하는 순수 헬퍼.
@@ -259,10 +265,15 @@ export async function uploadAudioFile(data: {
   title: string
   meeting_type?: string
   audio: File
+  /** 생략하면 서버가 직전 회의 설정을 승계한다 */
+  summary_verbosity?: SummaryVerbosity
+  summary_restructure?: boolean
 }): Promise<Meeting> {
   const formData = new FormData()
   formData.append('title', data.title)
   if (data.meeting_type) formData.append('meeting_type', data.meeting_type)
+  if (data.summary_verbosity) formData.append('summary_verbosity', data.summary_verbosity)
+  if (data.summary_restructure !== undefined) formData.append('summary_restructure', String(data.summary_restructure))
   formData.append('audio', data.audio)
 
   const res = await fetch(`${getApiBaseUrl()}/meetings/upload_audio`, {
@@ -306,6 +317,8 @@ export interface UpdateMeetingParams {
   attendees?: string | null
   /** 공유 여부. 소유자/admin만 반영된다(서버 강제). */
   shared?: boolean
+  summary_verbosity?: SummaryVerbosity
+  summary_restructure?: boolean
 }
 
 export async function updateMeeting(id: number, params: UpdateMeetingParams): Promise<Meeting> {

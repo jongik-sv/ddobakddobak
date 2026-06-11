@@ -31,6 +31,8 @@ interface UseLiveMobileTabsArgs {
   onAddCorrection: () => void
   onRemoveCorrection: (index: number) => void
   onApplyCorrections: () => void
+  /** 요약 탭 헤더에 끼울 요약 옵션 컨트롤 (페이지가 생성·게이팅) */
+  summaryOptions?: React.ReactNode
 }
 
 /** MeetingLivePage 모바일 탭(기록/요약/메모) 정의를 생성한다. */
@@ -51,6 +53,7 @@ export function useLiveMobileTabs({
   onAddCorrection,
   onRemoveCorrection,
   onApplyCorrections,
+  summaryOptions,
 }: UseLiveMobileTabsArgs): Tab[] {
   return useMemo(() => [
     {
@@ -92,7 +95,7 @@ export function useLiveMobileTabs({
       label: '요약',
       icon: Bot,
       content: (
-        <AiSummaryPanel meetingId={meetingId} isRecording={isActive} onNotesChange={onNotesChange} />
+        <AiSummaryPanel meetingId={meetingId} isRecording={isActive} onNotesChange={onNotesChange} headerExtra={summaryOptions} />
       ),
     },
     {
@@ -119,5 +122,5 @@ export function useLiveMobileTabs({
         </div>
       ),
     },
-  ], [meetingId, isActive, isSharing, isHost, currentUserId, onTransferRequest, onNotesChange, onSaveMemo, isSavingMemo, memoEditorRef, corrections, isApplyingCorrections, onUpdateCorrection, onAddCorrection, onRemoveCorrection, onApplyCorrections])
+  ], [meetingId, isActive, isSharing, isHost, currentUserId, onTransferRequest, onNotesChange, onSaveMemo, isSavingMemo, memoEditorRef, corrections, isApplyingCorrections, onUpdateCorrection, onAddCorrection, onRemoveCorrection, onApplyCorrections, summaryOptions])
 }

@@ -488,3 +488,76 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     end
   end
 end
+
+RSpec.describe "Api::V1::Meetings summary options", type: :request do
+  let(:user) { create(:user) }
+  let(:team) { create(:team, creator: user) }
+  let!(:admin_membership) { create(:team_membership, user: user, team: team, role: "admin") }
+
+  before { login_as(user) }
+
+  describe "POST /api/v1/meetings (요약 옵션)" do
+    it "uses defaults (standard / restructure ON) for the first meeting" do
+      post "/api/v1/meetings", params: { title: "첫 회의" }
+
+      json = response.parsed_body["meeting"]
+      expect(json["summary_verbosity"]).to eq("standard")
+      expect(json["summary_restructure"]).to be true
+    end
+
+    it "accepts explicit summary options" do
+      post "/api/v1/meetings",
+           params: { title: "옵션 회의", summary_verbosity: "very_concise", summary_restructure: false }
+
+      json = response.parsed_body["meeting"]
+      expect(json["summary_verbosity"]).to eq("very_concise")
+      expect(json["summary_restructure"]).to be false
+    end
+
+    it "inherits options from the creator's last meeting when params absent" do
+      create(:meeting, team: team, creator: user,
+             summary_verbosity: "detailed", summary_restructure: false, created_at: 1.hour.ago)
+
+      post "/api/v1/meetings", params: { title: "승계 회의" }
+
+      json = response.parsed_body["meeting"]
+      expect(json["summary_verbosity"]).to eq("detailed")
+      expect(json["summary_restructure"]).to be false
+    end
+
+    it "rejects invalid verbosity" do
+      post "/api/v1/meetings", params: { title: "x", summary_verbosity: "ultra" }
+
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+  end
+
+  describe "PATCH /api/v1/meetings/:id (요약 옵션)" do
+    let(:meeting) { create(:meeting, team: team, creator: user) }
+
+    it "updates summary options mid-meeting" do
+      patch "/api/v1/meetings/#{meeting.id}",
+            params: { summary_verbosity: "concise", summary_restructure: false }
+
+      expect(response).to have_http_status(:ok)
+      expect(meeting.reload.summary_verbosity).to eq("concise")
+      expect(meeting.summary_restructure).to be false
+    end
+
+    it "leaves options untouched when params absent" do
+      meeting.update!(summary_verbosity: "detailed", summary_restructure: false)
+
+      patch "/api/v1/meetings/#{meeting.id}", params: { title: "이름만 변경" }
+
+      expect(meeting.reload.summary_verbosity).to eq("detailed")
+      expect(meeting.summary_restructure).to be false
+    end
+
+    it "ignores blank summary_restructure (NOT NULL 컬럼 500 방지)" do
+      patch "/api/v1/meetings/#{meeting.id}", params: { summary_restructure: "" }
+
+      expect(response).to have_http_status(:ok)
+      expect(meeting.reload.summary_restructure).to be true
+    end
+  end
+end

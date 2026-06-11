@@ -17,6 +17,7 @@ import { AudioPlayer } from '../components/meeting/AudioPlayer'
 import { MiniAudioPlayer } from '../components/meeting/MiniAudioPlayer'
 import { TranscriptPanel } from '../components/meeting/TranscriptPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
+import { SummaryOptionsControl } from '../components/meeting/SummaryOptionsControl'
 import { useUiStore } from '../stores/uiStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
@@ -177,6 +178,9 @@ export default function MeetingPage() {
   async function handleRegenerateNotes() {
     setShowNotesConfirm(false)
     setIsRegeneratingNotes(true)
+    // 에디터 즉시 비움(+보류 자동저장 취소, AiSummaryPanel null 처리) — 옛 회의록 잔상이
+    // 대기 중 자동저장되면 last_user_edit_at 갱신으로 재생성 결과가 폐기된다.
+    setMeetingNotes(null)
     try {
       await regenerateNotes(meetingId)
     } catch (e: unknown) {
@@ -306,6 +310,11 @@ export default function MeetingPage() {
     )
   }
 
+  // 요약 옵션(압축율·재구조화) 컨트롤 — 소유자/admin 만. 데스크톱 패널·모바일 탭 공용.
+  const summaryOptionsControl = meeting && canEdit ? (
+    <SummaryOptionsControl meeting={meeting} onSave={updateMeetingInfo} />
+  ) : undefined
+
   // 모바일 탭 정의
   const mobileTabs = buildMeetingDetailTabs({
     meetingId,
@@ -319,6 +328,7 @@ export default function MeetingPage() {
     memoEditorRef,
     onSaveMemo: handleSaveMemo,
     isSavingMemo,
+    summaryOptions: summaryOptionsControl,
   })
 
   return (
@@ -433,7 +443,12 @@ export default function MeetingPage() {
           {/* AI 회의록 — 기본 45% */}
           <Panel defaultSize={45} minSize={20}>
             <div className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
-              <AiSummaryPanel meetingId={meetingId} isRecording={false} onNotesChange={handleNotesChange} />
+              <AiSummaryPanel
+                meetingId={meetingId}
+                isRecording={false}
+                onNotesChange={handleNotesChange}
+                headerExtra={summaryOptionsControl}
+              />
             </div>
           </Panel>
 

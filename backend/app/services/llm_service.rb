@@ -19,8 +19,9 @@ class LlmService
     @client = build_client
   end
 
-  # 회의록 정제: 기존 노트 + 새 자막 → 통합 회의록
-  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil)
+  # 회의록 정제: 기존 노트 + 새 자막 → 통합 회의록.
+  # chronological: 증분(흐름) 회의의 통짜 생성 시 주제별 재구성 대신 시간순 요약 지시.
+  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil, verbosity: "standard", verbosity_context: :final, chronological: false)
     transcript_text = format_transcripts(transcripts)
     return { "notes_markdown" => current_notes, "ok" => true } if transcript_text.blank?
 
@@ -43,6 +44,8 @@ class LlmService
     else
       REFINE_NOTES_SYSTEM_PROMPT
     end
+    system_prompt = system_prompt + CHRONOLOGICAL_NOTES_INSTRUCTION if chronological
+    system_prompt = apply_verbosity(system_prompt, verbosity, context: verbosity_context)
 
     result = call_llm_raw(system_prompt, user_content, max_tokens: max_tokens)
     notes = fix_mermaid_quotes(strip_markdown_fence(result))
@@ -51,6 +54,30 @@ class LlmService
     Rails.logger.error "[LlmService] refine_notes failed: #{e.message}"
     # ok:false → 호출부가 transcript 미소비·미저장(무음 손실 차단, D8 anchor-C1)
     { "notes_markdown" => current_notes, "ok" => false }
+  end
+
+  # 증분(append-only) 모드: 새 자막만 시간대별 새 블록 하나로 요약. 기존 회의록 불변.
+  # 시간 헤딩은 호출부(job)가 붙인다. 출력이 새 블록뿐이라 작음 → 틱 빠름.
+  # 반환: { "block_markdown" =>, "ok" => }. ok:false 면 호출부가 transcript 미소비(무음 손실 차단).
+  def append_notes(current_notes, transcripts, meeting_title: "", attendees: nil, verbosity: "standard")
+    transcript_text = format_transcripts(transcripts)
+    return { "block_markdown" => "", "ok" => true } if transcript_text.blank?
+
+    parts = []
+    parts << "회의 제목: #{meeting_title}" if meeting_title.present?
+    parts << "참석자: #{attendees}" if attendees.present?
+    parts << "기존 회의록(참고용 — 수정·반복 금지):\n#{current_notes}" if current_notes.present?
+    parts << "새로운 자막:\n#{transcript_text}"
+    user_content = parts.join("\n\n")
+
+    system_prompt = apply_verbosity(APPEND_NOTES_SYSTEM_PROMPT, verbosity, context: :append)
+
+    raw = call_llm_raw(system_prompt, user_content, max_tokens: max_output_tokens)
+    block = fix_mermaid_quotes(strip_markdown_fence(raw))
+    { "block_markdown" => block, "ok" => true }
+  rescue => e
+    Rails.logger.error "[LlmService] append_notes failed: #{e.message}"
+    { "block_markdown" => "", "ok" => false }
   end
 
   # 구조화된 요약 (JSON): key_points, decisions, discussion_details, action_items
@@ -104,13 +131,16 @@ class LlmService
     { "notes_markdown" => current_notes }
   end
 
-  # 외부 LLM용 프롬프트 조립 (LLM 호출 없음)
-  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil, attendees: nil)
+  # 외부 LLM용 프롬프트 조립 (LLM 호출 없음). 압축율 분량 지시 포함(통짜 생성 = final 캡).
+  # 증분(restructure=false) 회의는 시간 흐름 요약 지시를 포함 — 주제별 재구성 금지.
+  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil, attendees: nil, verbosity: "standard", restructure: true)
     system_prompt = if sections_prompt.present?
       REFINE_NOTES_SYSTEM_PROMPT.sub(DEFAULT_SECTION_STRUCTURE, sections_prompt)
     else
       REFINE_NOTES_SYSTEM_PROMPT
     end
+    system_prompt = system_prompt + CHRONOLOGICAL_NOTES_INSTRUCTION unless restructure
+    system_prompt = apply_verbosity(system_prompt, verbosity, context: :final)
 
     transcript_text = format_transcripts(transcripts)
     parts = []
@@ -138,6 +168,26 @@ class LlmService
   end
 
   private
+
+  # 압축율(verbosity) 분량 지시를 system 프롬프트 뒤에 append.
+  # claude_cli 는 max_tokens 를 무시하므로 프롬프트의 글자수 캡이 출력량(=지연)의 유일한 레버.
+  # context: :realtime(틱, 캡 작게) / :final(최종·파일전사, 캡 여유) / :append(증분 블록, 문체만)
+  def apply_verbosity(system_prompt, verbosity, context: :final)
+    key   = verbosity.to_s
+    style = VERBOSITY_STYLES[key]
+    limit = context == :append ? nil : VERBOSITY_CHAR_LIMITS.dig(context, key)
+    return system_prompt unless VERBOSITY_LABELS.key?(key) && (style || limit)
+
+    lines = [ "", "## 분량 지시 (#{VERBOSITY_LABELS[key]})" ]
+    lines << style if style
+    if limit
+      # REFINE_NOTES 규칙의 "기존 내용 보존"과 충돌할 수 있으므로 우선순위를 명시 —
+      # 두 지시가 동시에 만족 불가능해지면 모델 행동이 비결정적이 된다.
+      lines << "회의록 전체 분량은 약 #{ActiveSupport::NumberHelper.number_to_delimited(limit)}자 이내로 유지하세요."
+      lines << "이 분량 한도는 다른 규칙(기존 내용 보존 포함)보다 우선합니다 — 한도를 넘으면 오래된 세부 내용부터 압축해 요지만 남기세요."
+    end
+    system_prompt + lines.join("\n") + "\n"
+  end
 
   def resolve_config(llm_config)
     if llm_config.present?
