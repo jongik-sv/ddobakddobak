@@ -234,7 +234,14 @@ class LlmService
   def call_claude_cli(system, user_content)
     cli = ENV.fetch("CLAUDE_CLI_PATH", "claude")
     ensure_cli!(cli, "Claude Code CLI", "npm install -g @anthropic-ai/claude-code")
-    cmd = [ cli, "-p", "--output-format", "text", "--system-prompt", system ]
+    # 요약은 순수 텍스트 생성 — 툴/플러그인/스킬/MCP/훅 전부 불필요.
+    # 끄면 호출마다 ~/.claude(2GB 플러그인 등) 로딩 오버헤드가 사라진다.
+    #   --setting-sources ""     : user/project/local 설정 미로드(플러그인·훅·CLAUDE.md skip)
+    #   --strict-mcp-config      : --mcp-config 없으므로 MCP 서버 0개
+    #   --disable-slash-commands : 스킬(슬래시 명령) 비활성
+    # 주의: --bare는 OAuth/keychain을 안 읽어 구독 인증을 깨므로 금지(API키 강제).
+    cmd = [ cli, "-p", "--output-format", "text", "--system-prompt", system,
+            "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands" ]
     cmd.push("--model", @config[:model].to_s) if @config[:model].present?
     run_cli(cmd, user_content)
   end
