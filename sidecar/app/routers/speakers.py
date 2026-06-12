@@ -1,41 +1,60 @@
-"""회의별 화자 관리 라우터."""
+"""회의별 화자 관리 라우터 — SpeakerDB JSON 파일 직접 접근 (pipeline 불필요).
+
+sidecar 재시작 후나 배치 전용 흐름에서도 화자 목록 조회/이름 변경/초기화가
+동작하도록, 메모리의 diarizer 대신 SpeakerDB 파일을 직접 읽고 쓴다.
+메모리에 살아있는 실시간 diarizer가 있으면 함께 동기화한다.
+"""
 import urllib.parse
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app.deps import get_meeting_diarizer
 from app.schemas import RenameSpeakerRequest
 
 router = APIRouter()
 
 
+def _open_db(meeting_id: int):
+    from app.diarization.speaker import _get_db_dir
+    from app.diarization.speaker_db import SpeakerDB
+
+    db = SpeakerDB(_get_db_dir() / f"meeting_{meeting_id}.json")
+    db.load()
+    return db
+
+
 @router.get("/speakers")
-async def get_speakers(meeting_id: int, request: Request) -> dict:
+async def get_speakers(meeting_id: int) -> dict:
     """회의별 등록된 화자 목록을 반환한다."""
-    diarizer = get_meeting_diarizer(request.app, meeting_id)
-    if diarizer is None:
-        return {"speakers": []}
-    return {"speakers": diarizer.get_speakers()}
+    db = _open_db(meeting_id)
+    return {"speakers": [
+        {"id": label, "name": db.names.get(label, label)}
+        for label in db.embeddings
+    ]}
 
 
 @router.put("/speakers/{speaker_id}")
 async def rename_speaker(speaker_id: str, meeting_id: int, request: RenameSpeakerRequest, http_request: Request) -> dict:
     """화자에 이름을 부여한다."""
     decoded_id = urllib.parse.unquote(speaker_id)
-    diarizer = get_meeting_diarizer(http_request.app, meeting_id)
-    if diarizer is None:
-        raise HTTPException(status_code=503, detail="화자 구분 모델이 비활성화 상태입니다.")
-    if not diarizer.rename_speaker(decoded_id, request.name):
+    db = _open_db(meeting_id)
+    if decoded_id not in db.embeddings:
         raise HTTPException(status_code=404, detail=f"화자 '{decoded_id}'를 찾을 수 없습니다.")
+    db.names[decoded_id] = request.name
+    db.save()
+    # 메모리에 살아있는 실시간 diarizer와 동기화
+    diarizers = getattr(http_request.app.state, "meeting_diarizers", {})
+    if meeting_id in diarizers:
+        diarizers[meeting_id].rename_speaker(decoded_id, request.name)
     return {"id": decoded_id, "name": request.name}
 
 
 @router.delete("/speakers")
 async def reset_speakers(meeting_id: int, request: Request) -> dict:
-    """회의의 화자 DB를 초기화한다."""
-    diarizer = get_meeting_diarizer(request.app, meeting_id)
-    if diarizer is not None:
-        diarizer.reset_db()
-        # 메모리에서도 제거
-        request.app.state.meeting_diarizers.pop(meeting_id, None)
+    """회의의 화자 DB를 초기화한다 (저장 파일 삭제 + 메모리 diarizer 제거)."""
+    db = _open_db(meeting_id)
+    db.reset()
+    # lifespan 미실행(테스트 등)이면 meeting_diarizers가 없을 수 있음
+    diarizers = getattr(request.app.state, "meeting_diarizers", None)
+    if diarizers is not None:
+        diarizers.pop(meeting_id, None)
     return {"ok": True}

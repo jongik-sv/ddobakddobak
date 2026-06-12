@@ -60,11 +60,11 @@ class SpeakerDB:
                 else:
                     raw = base64.b64decode(emb_list)
                     raw_embs = [np.frombuffer(raw, dtype=np.float32).copy()]
-                # 오염된 embedding 필터링
+                # 오염된 embedding 필터링 — 빈 리스트라도 화자 키는 유지
+                # (배치 diarization은 embedding 없는 화자를 빈 리스트로 등록함)
                 valid_embs = [e for e in raw_embs if is_valid_embedding(e)]
-                if valid_embs:
-                    embeddings[label] = valid_embs
-            # embedding이 없는 화자의 이름도 제거
+                embeddings[label] = valid_embs
+            # speakers에 없는 화자의 이름은 제거
             valid_ids = set(embeddings.keys())
             self.next_num = next_num
             self.embeddings = embeddings
