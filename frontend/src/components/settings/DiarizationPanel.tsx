@@ -32,7 +32,7 @@ export function DiarizationPanel() {
       <div className="flex items-center justify-between rounded-md border p-3 mb-5">
         <div>
           <p className="text-sm font-medium">화자 분리 사용</p>
-          <p className="text-xs text-muted-foreground">비활성화하면 화자 구분 없이 빠르게 녹음됩니다.</p>
+          <p className="text-xs text-muted-foreground">파일 업로드·STT 재생성 시 화자를 구분해 라벨을 붙입니다.</p>
         </div>
         <button
           onClick={() => setDiarizationEnabled(!diarizationEnabled)}
@@ -59,8 +59,8 @@ export function DiarizationPanel() {
       <div className={`space-y-5 ${!diarizationEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
         <div className="rounded-md border border-blue-100 bg-blue-50/50 p-3 mb-2">
           <p className="text-xs text-blue-700">
-            <span className="font-semibold">스트리밍 엔진</span> — 롤링 버퍼 방식으로 긴 컨텍스트에서 화자를 분리합니다.
-            파일 업로드 시에는 WhisperX 배치 처리로 최고 정확도를 제공합니다.
+            <span className="font-semibold">배치 분석</span> — 파일 업로드와 STT 재생성 시 전체 오디오를 한 번에 분석해 화자를 구분합니다.
+            실시간 전사 중에는 화자 라벨이 붙지 않으며, 녹음한 회의는 종료 후 STT 재생성으로 화자 분리를 적용할 수 있습니다.
           </p>
         </div>
         <SettingSlider

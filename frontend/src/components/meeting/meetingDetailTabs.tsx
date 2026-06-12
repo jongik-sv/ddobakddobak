@@ -1,6 +1,7 @@
 import { FileText, Bot, StickyNote } from 'lucide-react'
 import { BookmarkList } from './BookmarkList'
 import { TranscriptPanel } from './TranscriptPanel'
+import { SpeakerPanel } from './SpeakerPanel'
 import { AiSummaryPanel } from './AiSummaryPanel'
 import { MemoEditorPanel } from './MemoEditorPanel'
 import { customSchema } from '../editor/MeetingEditor'
@@ -61,6 +62,15 @@ export function buildMeetingDetailTabs({
           {bookmarksVisible && (
             <BookmarkList bookmarks={bookmarks} onSeek={onSeek} onDelete={onDeleteBookmark} />
           )}
+          {/* 화자 accordion (기본 닫힘) — MeetingViewerPage 모바일과 동일 패턴 */}
+          <details className="border-b">
+            <summary className="px-4 py-2 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-50">
+              화자
+            </summary>
+            <div className="px-2 pb-2">
+              <SpeakerPanel meetingId={meetingId} isRecording={false} />
+            </div>
+          </details>
           <div className="flex-1 min-h-0 overflow-y-auto">
             <TranscriptPanel
               meetingId={meetingId}

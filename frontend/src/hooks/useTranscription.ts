@@ -11,12 +11,15 @@ export interface UseTranscriptionResult {
   sendSystemChunk: (pcm: Int16Array, meta?: ChunkMeta) => void
 }
 
-/** appSettingsStore 상태에서 diarization 설정 객체를 생성한다. */
+/** appSettingsStore 상태에서 diarization 설정 객체를 생성한다 (실시간 /transcribe 청크 전용). */
 function buildDiarizationConfig(state: ReturnType<typeof useAppSettingsStore.getState>): Record<string, unknown> {
   return {
     ...DIARIZATION,
     ...state.diarizationOverrides,
-    enable: state.diarizationEnabled,
+    // 실시간 청크 화자분리는 품질 문제(청크 단위 DER 20~50%, gpu_lock으로 STT 지연)로 항상 비활성.
+    // 화자 분리 토글은 배치(파일 업로드/STT 재생성) 경로에만 적용된다 — Rails가 settings.yaml에서 읽음.
+    // plan: docs/superpowers/plans/2026-06-12-speaker-diarization-v2.md
+    enable: false,
   }
 }
 

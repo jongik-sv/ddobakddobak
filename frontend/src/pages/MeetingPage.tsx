@@ -16,6 +16,7 @@ import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { AudioPlayer } from '../components/meeting/AudioPlayer'
 import { MiniAudioPlayer } from '../components/meeting/MiniAudioPlayer'
 import { TranscriptPanel } from '../components/meeting/TranscriptPanel'
+import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SummaryOptionsControl } from '../components/meeting/SummaryOptionsControl'
 import { useUiStore } from '../stores/uiStore'
@@ -473,6 +474,10 @@ export default function MeetingPage() {
                   activeSearch={activeTranscriptSearch}
                   suppressAutoScroll={!!search.effectiveQuery}
                 />
+              </div>
+              {/* 배치 화자분리 결과 이름 변경/초기화 (MeetingViewerPage 데스크톱과 동일 패턴) */}
+              <div className="border-t shrink-0">
+                <SpeakerPanel meetingId={meetingId} isRecording={false} />
               </div>
             </div>
           </Panel>

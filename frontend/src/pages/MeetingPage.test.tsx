@@ -123,6 +123,10 @@ vi.mock('../components/meeting/TranscriptPanel', () => ({
   TranscriptPanel: () => <div data-testid="transcript-panel" />,
 }))
 
+vi.mock('../components/meeting/SpeakerPanel', () => ({
+  SpeakerPanel: () => <div data-testid="speaker-panel">화자 영역</div>,
+}))
+
 vi.mock('../components/decision/DecisionList', () => ({
   DecisionList: () => <div data-testid="decision-list" />,
 }))
@@ -285,6 +289,13 @@ describe('MeetingPage', () => {
     renderPage()
     await waitFor(() => {
       expect(screen.getByTestId('ai-summary')).toBeInTheDocument()
+    })
+  })
+
+  it('화자 패널(SpeakerPanel)이 표시된다 — 배치 화자분리 결과 이름 변경용', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByTestId('speaker-panel')).toBeInTheDocument()
     })
   })
 

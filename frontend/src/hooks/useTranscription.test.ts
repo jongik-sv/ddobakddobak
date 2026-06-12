@@ -2,6 +2,8 @@ import { renderHook } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useTranscription } from './useTranscription'
 import { useTranscriptStore } from '../stores/transcriptStore'
+import { useAppSettingsStore } from '../stores/appSettingsStore'
+import { sendAudioChunk } from '../channels/transcription'
 
 // ──────────────────────────────────────────────
 // ActionCable mock
@@ -135,5 +137,25 @@ describe('useTranscription', () => {
     rerender({ id: 2 })
     // 구독이 2번 생성되어야 함 (meetingId 변경)
     expect(mockCreateTranscriptionChannel).toHaveBeenCalledTimes(2)
+  })
+
+  it('실시간 청크의 diarization enable은 토글이 ON이어도 항상 false', () => {
+    // 화자 분리 토글은 배치(파일 업로드/STT 재생성) 경로 전용 —
+    // 실시간 /transcribe 청크에는 enable: false가 강제된다.
+    vi.mocked(useAppSettingsStore.getState).mockReturnValueOnce({
+      diarizationEnabled: true,
+      diarizationOverrides: {},
+    } as ReturnType<typeof useAppSettingsStore.getState>)
+
+    const { result } = renderHook(() => useTranscription(1))
+    result.current.sendChunk(new Int16Array([1, 2, 3]))
+
+    expect(sendAudioChunk).toHaveBeenCalledWith(
+      mockSubscription,
+      expect.any(Int16Array),
+      undefined,
+      expect.objectContaining({ enable: false }),
+      'mic',
+    )
   })
 })

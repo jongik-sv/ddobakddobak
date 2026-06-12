@@ -128,6 +128,10 @@ vi.mock('../../components/meeting/TranscriptPanel', () => ({
   TranscriptPanel: () => <div data-testid="transcript-panel">전사 내용</div>,
 }))
 
+vi.mock('../../components/meeting/SpeakerPanel', () => ({
+  SpeakerPanel: () => <div data-testid="speaker-panel">화자 영역</div>,
+}))
+
 vi.mock('../../components/decision/DecisionList', () => ({
   DecisionList: () => <div data-testid="decision-list" />,
 }))
