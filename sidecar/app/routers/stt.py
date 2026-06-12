@@ -112,16 +112,20 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
     logger.info(f"[transcribe-file] 파일 크기={len(audio_bytes)} bytes, 길이={total_duration_ms}ms")
 
     # 2. STT 실행 — 파일 변환은 항상 Whisper 사용
+    timings: dict[str, float] = {}
     from app.stt.whisper_adapter import WhisperAdapter
     file_adapter = adapter
     _whisper_loaded_here = False
+    _t_load = time.monotonic()
     if not isinstance(adapter, WhisperAdapter):
         logger.info("[transcribe-file] Whisper 엔진으로 전환하여 파일 처리")
         file_adapter = WhisperAdapter()
         await file_adapter.load_model()
         _whisper_loaded_here = True
+    timings["model_load"] = time.monotonic() - _t_load
 
     chunk_sec = request.file_chunk_sec
+    _t_stt = time.monotonic()
     try:
         if chunk_sec > 0:
             # 청크 분할 모드: 지정된 시간 단위로 분할하여 처리 (다국어 감지에 유리)
@@ -141,6 +145,7 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
         if _whisper_loaded_here:
             del file_adapter
             import gc; gc.collect()
+    timings["stt"] = time.monotonic() - _t_stt
 
     logger.info(f"[transcribe-file] STT 세그먼트 {len(segments)}개")
 
@@ -150,6 +155,7 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
         logger.info(f"[transcribe-file] 언어 필터 후 {len(segments)}개")
 
     # 3. 화자 분리 — community-1 전체 오디오 배치 (MPS, gpu_lock으로 MLX와 직렬화)
+    _t_diar = time.monotonic()
     enable_diarization = (request.diarization_config or {}).get("enable", False)
     if enable_diarization and segments:
         # 일회성 파일 작업이므로 동시 로드 중이면 완료까지 대기 (wait=True)
@@ -175,13 +181,25 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
             logger.warning("[transcribe-file] 화자 분리 활성화됐지만 pipeline 로드 실패/불가 — 라벨 없이 진행")
     else:
         logger.info(f"[transcribe-file] 화자 분리 스킵")
+    timings["diarization"] = time.monotonic() - _t_diar
 
     # 4. 한국어 문장 분리 후처리
+    _t_seg = time.monotonic()
     from app.stt.sentence_segmenter import segment_korean_sentences
     segments = segment_korean_sentences(segments)
+    timings["sentence_split"] = time.monotonic() - _t_seg
     logger.info(f"[transcribe-file] 문장 분리 후 {len(segments)}개 세그먼트")
 
-    logger.info("[STT] /transcribe-file 완료 (%.1f초, %d 세그먼트)", time.monotonic() - t0, len(segments))
+    _total = time.monotonic() - t0
+    audio_sec = total_duration_ms / 1000.0
+    logger.info(
+        "[transcribe-file][timing] model_load=%.1fs stt=%.1fs diar=%.1fs "
+        "sentence_split=%.1fs total=%.1fs | audio=%.1fs speed=%.2fx",
+        timings["model_load"], timings["stt"], timings["diarization"],
+        timings["sentence_split"], _total, audio_sec,
+        (audio_sec / _total) if _total > 0 else 0.0,
+    )
+    logger.info("[STT] /transcribe-file 완료 (%.1f초, %d 세그먼트)", _total, len(segments))
     return TranscribeFileResponse(
         segments=_segments_to_response(segments),
         total_duration_ms=total_duration_ms,
