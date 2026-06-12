@@ -38,6 +38,37 @@ RSpec.describe "Api::V1::Search", type: :request do
         json = response.parsed_body
         expect(json["total"]).to eq(0)
       end
+
+      it "화자 이름으로 화자 필터가 매칭된다 (exact match)" do
+        create(:transcript, meeting: meeting, content: "프로젝트 마감 임박",
+               speaker_label: "SPEAKER_02", speaker_name: "앨리스")
+
+        get "/api/v1/search", params: { q: "프로젝트", speaker: "앨리스" }
+
+        expect(response).to have_http_status(:ok)
+        json = response.parsed_body
+        expect(json["total"]).to eq(1)
+        expect(json["results"].first["speaker"]).to eq("앨리스")
+      end
+
+      it "라벨 필터도 계속 동작하고 결과 speaker는 표시 이름을 반환한다" do
+        create(:transcript, meeting: meeting, content: "프로젝트 회고 진행",
+               speaker_label: "SPEAKER_03", speaker_name: "밥")
+
+        get "/api/v1/search", params: { q: "프로젝트", speaker: "SPEAKER_03" }
+
+        json = response.parsed_body
+        expect(json["total"]).to eq(1)
+        expect(json["results"].first["speaker"]).to eq("밥")
+      end
+
+      it "이름이 없으면 결과 speaker는 라벨을 반환한다" do
+        get "/api/v1/search", params: { q: "프로젝트", speaker: "SPEAKER_00" }
+
+        json = response.parsed_body
+        expect(json["total"]).to eq(1)
+        expect(json["results"].first["speaker"]).to eq("SPEAKER_00")
+      end
     end
 
     context "요약 검색" do

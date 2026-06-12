@@ -49,13 +49,13 @@ class SearchService
     placeholders = accessible_meeting_ids.map { "?" }.join(",")
 
     speaker_condition = if @filters[:speaker].present?
-      "AND t.speaker_label = ?"
+      "AND (t.speaker_label = ? OR t.speaker_name = ?)"
     else
       ""
     end
 
     sql = <<~SQL
-      SELECT t.id, t.meeting_id, t.speaker_label, t.created_at,
+      SELECT t.id, t.meeting_id, t.speaker_label, t.speaker_name, t.created_at,
              m.title AS meeting_title,
              snippet(transcripts_fts, 0, '<mark>', '</mark>', '…', 32) AS snippet
       FROM transcripts_fts
@@ -68,7 +68,7 @@ class SearchService
     SQL
 
     binds = [ fts_q ] + accessible_meeting_ids
-    binds << @filters[:speaker] if @filters[:speaker].present?
+    binds += [ @filters[:speaker], @filters[:speaker] ] if @filters[:speaker].present?
 
     rows = ActiveRecord::Base.connection.select_all(
       ActiveRecord::Base.sanitize_sql_array([ sql ] + binds)
@@ -80,7 +80,7 @@ class SearchService
         meeting_title: row["meeting_title"],
         type: "transcript",
         snippet: row["snippet"],
-        speaker: row["speaker_label"],
+        speaker: row["speaker_name"].presence || row["speaker_label"],
         created_at: row["created_at"]
       }
     end
