@@ -223,7 +223,8 @@ class LlmService
     when "openai"
       OpenAI::Client.new(
         access_token: @config[:auth_token],
-        uri_base: @config[:base_url].presence
+        uri_base: @config[:base_url].presence,
+        request_timeout: ENV.fetch("LLM_REQUEST_TIMEOUT", "600").to_i
       )
     when *CLI_PROVIDERS
       nil # CLI 프로바이더는 SDK 클라이언트 불필요 — 실행 시점에 Open3 로 호출
@@ -239,6 +240,11 @@ class LlmService
   def call_llm_raw(system, user_content, max_tokens: max_output_tokens)
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
+    # 추론(thinking) 모델은 요약에 불필요 — 비활성 지시 주입(속도·본문 회복)
+    if (directive = thinking_off_directive)
+      system = "#{directive}\n\n#{system}"
+    end
+
     result = case @config[:provider]
     when "openai"
       call_openai(system, user_content, max_tokens)
@@ -252,6 +258,7 @@ class LlmService
       call_anthropic(system, user_content, max_tokens)
     end
 
+    result = strip_think(result) # 새는 <think> 블록 제거(안전망)
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
     Rails.logger.info "[LlmService] #{@config[:provider]}/#{@config[:model]} #{elapsed.round(1)}s | input=#{system.length + user_content.length}자 output=#{result.length}자"
     result
@@ -395,6 +402,24 @@ class LlmService
       text = text.sub(/\n```\s*\z/, "")
     end
     text
+  end
+
+  # 추론 모델별 thinking 비활성 지시 (없으면 nil)
+  def thinking_off_directive
+    return nil if ENV["LLM_DISABLE_THINKING"] == "0"
+    m = @config[:model].to_s
+    return "detailed thinking off" if m.match?(/nemotron/i)
+    return "/no_think"             if m.match?(/qwen3|qwen-3|qwq/i)
+    ENV["LLM_DISABLE_THINKING"] == "1" ? "/no_think" : nil
+  end
+
+  # 출력에 새는 추론 블록 제거 (<think>, ◁think▷, <thinking>)
+  def strip_think(text)
+    return text if text.nil?
+    text.gsub(/◁think▷.*?◁\/think▷/m, "")
+        .gsub(/<think>.*?<\/think>/m, "")
+        .gsub(/<thinking>.*?<\/thinking>/m, "")
+        .strip
   end
 
   # Mermaid 코드블록 내 노드 라벨에 큰따옴표 자동 보정 + 줄바꿈 처리
