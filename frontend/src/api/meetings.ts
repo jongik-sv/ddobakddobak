@@ -352,6 +352,7 @@ export async function updateMemo(meetingId: number, memo: string): Promise<void>
 export interface Transcript {
   id: number
   speaker_label: string
+  speaker_name?: string | null
   content: string
   started_at_ms: number
   ended_at_ms: number

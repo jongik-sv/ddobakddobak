@@ -149,3 +149,46 @@ describe('updateFinal', () => {
     expect(useTranscriptStore.getState().finals).toBe(before)
   })
 })
+
+describe('speaker_name 갱신', () => {
+  const base = {
+    content: '발화',
+    started_at_ms: 0,
+    ended_at_ms: 1000,
+    sequence_number: 1,
+    applied: false,
+  }
+
+  beforeEach(() => {
+    useTranscriptStore.getState().reset()
+    useTranscriptStore.getState().loadFinals([
+      { ...base, id: 1, speaker_label: '화자 1' },
+      { ...base, id: 2, speaker_label: '화자 2', started_at_ms: 1000, sequence_number: 2 },
+    ])
+  })
+
+  it('setSpeakerName: 해당 라벨 finals만 speaker_name 갱신', () => {
+    useTranscriptStore.getState().setSpeakerName('화자 1', '앨리스')
+
+    const finals = useTranscriptStore.getState().finals
+    expect(finals.find((f) => f.id === 1)?.speaker_name).toBe('앨리스')
+    expect(finals.find((f) => f.id === 2)?.speaker_name).toBeUndefined()
+  })
+
+  it('setSpeakerName(label, null): 이름 해제', () => {
+    useTranscriptStore.getState().setSpeakerName('화자 1', '앨리스')
+    useTranscriptStore.getState().setSpeakerName('화자 1', null)
+
+    expect(useTranscriptStore.getState().finals.find((f) => f.id === 1)?.speaker_name).toBeNull()
+  })
+
+  it('clearSpeakerNames: 모든 finals의 speaker_name 제거', () => {
+    useTranscriptStore.getState().setSpeakerName('화자 1', '앨리스')
+    useTranscriptStore.getState().setSpeakerName('화자 2', '밥')
+    useTranscriptStore.getState().clearSpeakerNames()
+
+    for (const f of useTranscriptStore.getState().finals) {
+      expect(f.speaker_name ?? null).toBeNull()
+    }
+  })
+})

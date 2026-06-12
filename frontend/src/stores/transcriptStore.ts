@@ -25,6 +25,8 @@ interface TranscriptState {
   markApplied: (ids: number[]) => void
   removeFinals: (ids: number[]) => void
   updateFinal: (id: number, content: string) => void
+  setSpeakerName: (speakerLabel: string, name: string | null) => void
+  clearSpeakerNames: () => void
   setSummarizing: (kind: 'realtime' | 'final' | null) => void
   markUserEdit: () => void
   markReset: () => void
@@ -119,6 +121,29 @@ export const useTranscriptStore = create<TranscriptState>()((set) => ({
       const updated = [...state.finals]
       updated[idx] = { ...updated[idx], content }
       return { finals: updated }
+    }),
+
+  setSpeakerName: (speakerLabel, name) =>
+    set((state) => {
+      const changed = state.finals.some(
+        (f) => f.speaker_label === speakerLabel && (f.speaker_name ?? null) !== name
+      )
+      if (!changed) return state
+      return {
+        finals: state.finals.map((f) =>
+          f.speaker_label === speakerLabel ? { ...f, speaker_name: name } : f
+        ),
+      }
+    }),
+
+  clearSpeakerNames: () =>
+    set((state) => {
+      if (!state.finals.some((f) => f.speaker_name != null)) return state
+      return {
+        finals: state.finals.map((f) =>
+          f.speaker_name != null ? { ...f, speaker_name: null } : f
+        ),
+      }
     }),
 
   setSummarizing: (kind) =>

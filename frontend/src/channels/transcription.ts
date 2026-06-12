@@ -17,6 +17,7 @@ export type TranscriptFinalData = {
   id: number
   content: string
   speaker_label: string
+  speaker_name?: string | null
   started_at_ms: number
   ended_at_ms: number
   sequence_number: number
