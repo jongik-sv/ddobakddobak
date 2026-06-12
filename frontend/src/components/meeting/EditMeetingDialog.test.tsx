@@ -36,6 +36,51 @@ function makeMeeting(overrides: Partial<Meeting> = {}): Meeting {
   }
 }
 
+describe('EditMeetingDialog 참여 인원', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('참여 인원을 입력하면 onConfirm에 expected_participants로 전달한다', async () => {
+    const onConfirm = vi.fn()
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting()}
+        meetingTypeList={meetingTypeList}
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const input = screen.getByPlaceholderText('비우면 자동 감지')
+    await userEvent.clear(input)
+    await userEvent.type(input, '5')
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled())
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ expected_participants: 5 }))
+  })
+
+  it('비우면 null로 전달한다', async () => {
+    const onConfirm = vi.fn()
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting({ expected_participants: 3 })}
+        meetingTypeList={meetingTypeList}
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const input = screen.getByPlaceholderText('비우면 자동 감지')
+    await userEvent.clear(input)
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled())
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ expected_participants: null }))
+  })
+})
+
 describe('EditMeetingDialog 공유 토글', () => {
   beforeEach(() => {
     vi.clearAllMocks()

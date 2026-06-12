@@ -159,7 +159,7 @@ export default function MeetingsPage() {
     fetchMeetings(currentPage)
   }
 
-  const handleEditMeeting = async (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null; attendees: string | null; shared: boolean }) => {
+  const handleEditMeeting = async (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null; attendees: string | null; expected_participants: number | null; shared: boolean }) => {
     if (!editingMeeting) return
     await updateMeeting(editingMeeting.id, data)
     setEditingMeeting(null)

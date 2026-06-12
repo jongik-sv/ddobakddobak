@@ -8,7 +8,7 @@ import { getTags, createTag } from '../../api/tags'
 interface EditMeetingDialogProps {
   meeting: Meeting
   meetingTypeList: { value: string; label: string }[]
-  onConfirm: (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null; attendees: string | null; shared: boolean }) => void
+  onConfirm: (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null; attendees: string | null; expected_participants: number | null; shared: boolean }) => void
   onClose: () => void
   /** 공유 토글 비활성화 (비소유자가 여는 경우). 기본 false. */
   disabled?: boolean
@@ -24,6 +24,9 @@ export default function EditMeetingDialog({
   const [title, setTitle] = useState(meeting.title)
   const [briefSummary, setBriefSummary] = useState(meeting.brief_summary ?? '')
   const [attendees, setAttendees] = useState(meeting.attendees ?? '')
+  const [expectedParticipants, setExpectedParticipants] = useState(
+    meeting.expected_participants != null ? String(meeting.expected_participants) : ''
+  )
   const [meetingType, setMeetingType] = useState(meeting.meeting_type)
   const [shared, setShared] = useState(meeting.shared ?? true)
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>(meeting.tags?.map((t) => t.id) ?? [])
@@ -44,6 +47,7 @@ export default function EditMeetingDialog({
       tag_ids: selectedTagIds,
       brief_summary: briefSummary.trim() || null,
       attendees: attendees.trim() || null,
+      expected_participants: expectedParticipants.trim() ? Number(expectedParticipants) : null,
       shared,
     })
   }
@@ -109,6 +113,23 @@ export default function EditMeetingDialog({
               placeholder="쉼표 또는 줄바꿈으로 구분 (예: 홍길동, 김영희)"
               className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring resize-none"
             />
+          </div>
+
+          {/* 참여 인원 (화자분리 힌트) */}
+          <div>
+            <label className="block text-sm font-medium mb-1">참여 인원</label>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={expectedParticipants}
+              onChange={(e) => setExpectedParticipants(e.target.value)}
+              placeholder="비우면 자동 감지"
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              화자분리 시 이 인원수 ±2명 범위로 화자를 맞춥니다.
+            </p>
           </div>
 
           {/* 회의 유형 */}
