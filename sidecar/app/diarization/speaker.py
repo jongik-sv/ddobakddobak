@@ -28,7 +28,7 @@ from app.audio_constants import (
 
 logger = logging.getLogger(__name__)
 
-_PIPELINE_MODEL = "pyannote/speaker-diarization-3.1"
+_PIPELINE_MODEL = "pyannote/speaker-diarization-community-1"
 
 # 임계값 상향: 0.10이 너무 낮아 다른 화자도 같은 화자로 매칭되던 문제 수정
 _SIMILARITY_THRESHOLD = 0.35   # 이 이상이면 기존 화자로 매칭 (기존 0.10 → 0.35)
@@ -104,14 +104,16 @@ class SpeakerDiarizer:
                 "'uv add pyannote.audio'로 설치 후 재시작하세요."
             ) from e
 
-        import torch
         from pyannote.audio import Pipeline
 
         def _load():
             import os
             os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+            from app.diarization.device import pick_device
             pipeline = Pipeline.from_pretrained(_PIPELINE_MODEL, token=hf_token or None)
-            pipeline.to(torch.device("cpu"))
+            device = pick_device()
+            pipeline.to(device)
+            logger.info(f"[diarizer] pipeline loaded: {_PIPELINE_MODEL} on {device}")
             if hasattr(pipeline, "num_workers"):
                 pipeline.num_workers = 0
             return pipeline
