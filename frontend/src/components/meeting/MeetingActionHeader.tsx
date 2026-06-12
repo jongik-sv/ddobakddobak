@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Meeting } from '../../api/meetings'
+import { MeetingIdBadge } from './MeetingIdBadge'
 
 // 모바일에서 상태 배지를 짧게 표시 (PC는 원문 그대로 유지)
 const STATUS_SHORT_LABEL: Record<string, string> = {
@@ -78,6 +79,7 @@ export function MeetingActionHeader({
             {meeting.title ?? '회의'}
           </h1>
         )}
+        <MeetingIdBadge meetingId={meeting.id} />
         {meeting.status && (
           <span className={`shrink-0 rounded-full bg-gray-100 text-gray-600 ${isDesktop ? 'px-2 py-0.5 text-xs' : 'px-1.5 py-0 text-[10px]'}`}>
             {isDesktop ? meeting.status : (STATUS_SHORT_LABEL[meeting.status] ?? meeting.status)}
