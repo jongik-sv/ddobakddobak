@@ -4,6 +4,7 @@ import { BlockNoteView } from '@blocknote/mantine'
 import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuItems } from '@blocknote/react'
 import { insertOrUpdateBlockForSlashMenu } from '@blocknote/core'
 import { useTranscriptStore } from '../../stores/transcriptStore'
+import { useAppSettingsStore } from '../../stores/appSettingsStore'
 import { editorSchema, codeBlocksToMermaid } from './mermaidBlock'
 
 interface AiSummaryPanelProps {
@@ -20,6 +21,14 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const isSummarizing = useTranscriptStore((s) => s.isSummarizing)
   const summarizationKind = useTranscriptStore((s) => s.summarizationKind)
+  const finals = useTranscriptStore((s) => s.finals)
+  const diarizationEnabled = useAppSettingsStore((s) => s.diarizationEnabled)
+
+  const showManualHint =
+    diarizationEnabled &&
+    (meetingNotes === null || meetingNotes === '') &&
+    finals.length > 0 &&
+    !isSummarizing
   const prevMarkdownRef = useRef<string>('')
   const isUserEditingRef = useRef(false)
   const isProgrammaticRef = useRef(false)
@@ -177,6 +186,12 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
         )}
         </div>
       </div>
+      {showManualHint && (
+        <div className="mx-4 mt-3 rounded-md border border-blue-100 bg-blue-50/50 p-3 text-xs text-blue-700">
+          화자분리가 완료되었습니다. 좌측 화자 목록에서 이름을 지정한 뒤
+          <span className="font-semibold"> 회의록 재생성</span> 버튼으로 회의록을 만들 수 있습니다.
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto select-text">
         {editable ? (
           <BlockNoteView
