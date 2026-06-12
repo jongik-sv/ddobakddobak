@@ -48,6 +48,15 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         expect(transcript["ended_at_ms"]).to eq(3000)
         expect(transcript["speaker_label"]).to eq("SPEAKER_00")
       end
+
+      it "speaker_name 필드를 포함한다 (미설정 시 null)" do
+        get "/api/v1/meetings/#{meeting.id}/transcripts"
+
+        json = response.parsed_body
+        transcript = json["transcripts"].first
+        expect(transcript).to have_key("speaker_name")
+        expect(transcript["speaker_name"]).to be_nil
+      end
     end
 
     context "트랜스크립트가 없는 경우" do

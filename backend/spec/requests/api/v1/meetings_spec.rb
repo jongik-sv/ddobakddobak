@@ -276,6 +276,15 @@ RSpec.describe "Api::V1::Meetings", type: :request do
           "created_at", "updated_at"
         )
       end
+
+      it "transcripts에 speaker_name을 포함한다" do
+        create(:transcript, meeting: meeting, sequence_number: 1, speaker_name: "앨리스")
+
+        get "/api/v1/meetings/#{meeting.id}"
+
+        json = response.parsed_body
+        expect(json["meeting"]["transcripts"].first["speaker_name"]).to eq("앨리스")
+      end
     end
 
     context "존재하지 않는 회의 ID" do

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_11_210822) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_12_115223) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -242,6 +242,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_11_210822) do
     t.integer "meeting_id", null: false
     t.integer "sequence_number", null: false
     t.string "speaker_label", null: false
+    t.string "speaker_name"
     t.integer "started_at_ms", null: false
     t.index ["meeting_id", "sequence_number"], name: "index_transcripts_on_meeting_id_and_sequence_number"
   end
