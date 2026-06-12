@@ -45,6 +45,9 @@ class _FakePipeline:
     def __init__(self, tracks, embeddings, exclusive_tracks=None):
         self._out = _FakeOutput(tracks, embeddings, exclusive_tracks)
 
+    def instantiate(self, params: dict) -> None:
+        pass  # 실제 pyannote Pipeline 인터페이스 흉내 (항상 호출됨)
+
     def __call__(self, audio_input):
         return self._out
 
@@ -127,3 +130,85 @@ async def test_no_embeddings_still_assigns_labels(audio_bytes, tmp_path):
     segments = await batch_diarize(audio_bytes, pipeline, _segments(),
                                    meeting_id=5, db_dir=tmp_path)
     assert segments[0].speaker_label == "화자 1"
+
+
+# ---------------------------------------------------------------------------
+# 새 파라미터: expected_speakers / clustering_threshold
+# ---------------------------------------------------------------------------
+
+class _RecordingFakePipeline:
+    """instantiate() 호출 기록 + __call__ kwargs 기록이 가능한 확장 fake pipeline."""
+
+    def __init__(self, tracks, embeddings):
+        self._out = _FakeOutput(tracks, embeddings)
+        self.instantiate_calls: list[dict] = []
+        self.call_kwargs_list: list[dict] = []
+
+    def instantiate(self, params: dict) -> None:
+        self.instantiate_calls.append(params)
+
+    def __call__(self, audio_input, **kwargs):
+        self.call_kwargs_list.append(kwargs)
+        return self._out
+
+
+def _recording_pipeline():
+    emb = np.stack([np.ones(256, dtype=np.float32)])
+    return _RecordingFakePipeline(
+        tracks=[(0.0, 5.0, "SPEAKER_00")],
+        embeddings=emb,
+    )
+
+
+async def test_expected_speakers_passes_min_max(audio_bytes, tmp_path):
+    """expected_speakers=5 → pipeline 호출 시 min_speakers=3, max_speakers=7."""
+    pipeline = _recording_pipeline()
+    await batch_diarize(audio_bytes, pipeline, _segments(),
+                        meeting_id=1, db_dir=tmp_path, expected_speakers=5)
+    assert len(pipeline.call_kwargs_list) == 1
+    kwargs = pipeline.call_kwargs_list[0]
+    assert kwargs == {"min_speakers": 3, "max_speakers": 7}
+
+
+async def test_expected_speakers_clamps_min_to_1(audio_bytes, tmp_path):
+    """expected_speakers=2 → min_speakers는 max(1, 0)=1 로 클램프."""
+    pipeline = _recording_pipeline()
+    await batch_diarize(audio_bytes, pipeline, _segments(),
+                        meeting_id=2, db_dir=tmp_path, expected_speakers=2)
+    kwargs = pipeline.call_kwargs_list[0]
+    assert kwargs == {"min_speakers": 1, "max_speakers": 4}
+
+
+async def test_no_expected_speakers_no_kwargs(audio_bytes, tmp_path):
+    """expected_speakers 미지정 → pipeline은 kwargs 없이 호출."""
+    pipeline = _recording_pipeline()
+    await batch_diarize(audio_bytes, pipeline, _segments(),
+                        meeting_id=3, db_dir=tmp_path)
+    kwargs = pipeline.call_kwargs_list[0]
+    assert kwargs == {}
+
+
+async def test_clustering_threshold_instantiates(audio_bytes, tmp_path):
+    """clustering_threshold=0.55 → instantiate 호출, params['clustering']['threshold']==0.55."""
+    pipeline = _recording_pipeline()
+    await batch_diarize(audio_bytes, pipeline, _segments(),
+                        meeting_id=4, db_dir=tmp_path, clustering_threshold=0.55)
+    assert len(pipeline.instantiate_calls) == 1
+    assert pipeline.instantiate_calls[0]["clustering"]["threshold"] == pytest.approx(0.55)
+
+
+async def test_no_clustering_threshold_uses_default(audio_bytes, tmp_path):
+    """clustering_threshold 미지정 → 기본값 0.6으로 instantiate (이전 호출 잔류값 방지)."""
+    pipeline = _recording_pipeline()
+    await batch_diarize(audio_bytes, pipeline, _segments(),
+                        meeting_id=5, db_dir=tmp_path)
+    assert len(pipeline.instantiate_calls) == 1
+    assert pipeline.instantiate_calls[0]["clustering"]["threshold"] == pytest.approx(0.6)
+
+
+async def test_negative_expected_speakers_no_kwargs(audio_bytes, tmp_path):
+    """expected_speakers 음수 → min/max kwargs 미전달."""
+    pipeline = _recording_pipeline()
+    await batch_diarize(audio_bytes, pipeline, _segments(),
+                        meeting_id=6, db_dir=tmp_path, expected_speakers=-5)
+    assert pipeline.call_kwargs_list[0] == {}

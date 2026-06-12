@@ -156,7 +156,8 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
 
     # 3. 화자 분리 — community-1 전체 오디오 배치 (MPS, gpu_lock으로 MLX와 직렬화)
     _t_diar = time.monotonic()
-    enable_diarization = (request.diarization_config or {}).get("enable", False)
+    diar_cfg = request.diarization_config or {}
+    enable_diarization = diar_cfg.get("enable", False)
     if enable_diarization and segments:
         # 일회성 파일 작업이므로 동시 로드 중이면 완료까지 대기 (wait=True)
         await ensure_diarizer_pipeline(http_request.app, wait=True)
@@ -164,10 +165,14 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
         if pipeline:
             try:
                 from app.diarization.batch_processor import batch_diarize
+                _expected = diar_cfg.get("expected_speakers")
+                _threshold = diar_cfg.get("clustering_threshold")
                 async with http_request.app.state.gpu_lock:
                     segments = await batch_diarize(
                         audio_bytes, pipeline, segments,
                         meeting_id=request.meeting_id,
+                        expected_speakers=int(_expected) if _expected else None,
+                        clustering_threshold=float(_threshold) if _threshold is not None else None,
                     )
                 # 배치 결과가 SpeakerDB를 다시 썼으므로 메모리에 캐시된 실시간
                 # diarizer가 있으면 무효화 (이후 접근 시 파일에서 재로드)
