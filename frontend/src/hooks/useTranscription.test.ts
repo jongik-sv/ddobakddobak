@@ -76,7 +76,7 @@ describe('useTranscription', () => {
               case 'partial':
                 store.setPartial({
                   content: (raw.text ?? '') as string,
-                  speaker_label: (raw.speaker ?? raw.speaker_label ?? 'SPEAKER_00') as string,
+                  speaker_label: (raw.speaker ?? raw.speaker_label ?? '화자 1') as string,
                   started_at_ms: (raw.started_at_ms ?? 0) as number,
                 })
                 break
@@ -84,7 +84,7 @@ describe('useTranscription', () => {
                 store.addFinal({
                   id: (raw.id ?? raw.seq ?? 0) as number,
                   content: (raw.text ?? '') as string,
-                  speaker_label: (raw.speaker ?? raw.speaker_label ?? 'SPEAKER_00') as string,
+                  speaker_label: (raw.speaker ?? raw.speaker_label ?? '화자 1') as string,
                   started_at_ms: (raw.started_at_ms ?? 0) as number,
                   ended_at_ms: (raw.ended_at_ms ?? 0) as number,
                   sequence_number: (raw.seq ?? 0) as number,
@@ -93,7 +93,7 @@ describe('useTranscription', () => {
                 break
               case 'speaker_change':
                 store.setSpeaker({
-                  speaker_label: (raw.speaker ?? raw.speaker_label ?? 'SPEAKER_00') as string,
+                  speaker_label: (raw.speaker ?? raw.speaker_label ?? '화자 1') as string,
                   started_at_ms: (raw.started_at_ms ?? 0) as number,
                 })
                 break

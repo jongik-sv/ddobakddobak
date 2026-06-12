@@ -6,7 +6,7 @@ export const TranscriptBlock = createReactBlockSpec(
     type: 'transcript' as const,
     propSchema: {
       speakerLabel: {
-        default: 'SPEAKER_00',
+        default: '화자 1',
       },
       text: {
         default: '',

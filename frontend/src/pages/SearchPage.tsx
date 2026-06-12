@@ -231,7 +231,7 @@ export default function SearchPage() {
               type="text"
               value={speaker}
               onChange={(e) => setSpeaker(e.target.value)}
-              placeholder="화자 (예: SPEAKER_00)"
+              placeholder="화자 (예: 화자 1)"
               className="px-3 py-1.5 border border-input rounded-md text-sm bg-background focus:outline-none focus:ring-1 focus:ring-ring w-44"
             />
             <input

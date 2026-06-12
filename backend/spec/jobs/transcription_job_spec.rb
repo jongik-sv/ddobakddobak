@@ -133,7 +133,7 @@ RSpec.describe TranscriptionJob, type: :job do
         described_class.perform_now(meeting_id: meeting.id, audio_data: "base64audio==", sequence: 5)
 
         transcript = Transcript.last
-        expect(transcript.speaker_label).to eq("SPEAKER_00")
+        expect(transcript.speaker_label).to eq("화자 1")
         expect(transcript.started_at_ms).to eq(0)
         expect(transcript.ended_at_ms).to eq(0)
         expect(transcript.sequence_number).to eq(5)

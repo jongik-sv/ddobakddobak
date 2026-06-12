@@ -83,7 +83,7 @@ export function createTranscriptionChannel(
       },
       received(raw: BackendMessage) {
         const store = useTranscriptStore.getState()
-        const speakerLabel = raw.speaker ?? raw.speaker_label ?? 'SPEAKER_00'
+        const speakerLabel = raw.speaker ?? raw.speaker_label ?? '화자 1'
 
         switch (raw.type) {
           case 'partial':

@@ -25,7 +25,7 @@ class TranscriptionJob < ApplicationJob
       global_started = offset_ms + segment.fetch("started_at_ms", 0)
       global_ended   = offset_ms + segment.fetch("ended_at_ms", 0)
 
-      speaker = segment.fetch("speaker_label", nil) || segment.fetch("speaker", "SPEAKER_00")
+      speaker = segment.fetch("speaker_label", nil) || segment.fetch("speaker", nil) || "화자 1"
 
       transcript = Transcript.create!(
         meeting: meeting,
