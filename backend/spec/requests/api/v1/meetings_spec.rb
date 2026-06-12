@@ -357,6 +357,23 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
+
+    describe "expected_participants" do
+      it "update로 참여 인원수를 설정/해제할 수 있다" do
+        patch "/api/v1/meetings/#{meeting.id}", params: { expected_participants: 5 }
+        expect(response).to have_http_status(:ok)
+        expect(meeting.reload.expected_participants).to eq(5)
+        expect(JSON.parse(response.body).dig("meeting", "expected_participants")).to eq(5)
+
+        patch "/api/v1/meetings/#{meeting.id}", params: { expected_participants: "" }
+        expect(meeting.reload.expected_participants).to be_nil
+      end
+
+      it "범위 밖 값은 422" do
+        patch "/api/v1/meetings/#{meeting.id}", params: { expected_participants: 0 }
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+    end
   end
 
   # ============================================================
@@ -536,6 +553,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
     end
   end
+
 end
 
 RSpec.describe "Api::V1::Meetings summary options", type: :request do

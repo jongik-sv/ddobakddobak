@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_12_115223) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_12_142239) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -146,6 +146,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_12_115223) do
     t.datetime "created_at", null: false
     t.integer "created_by_id", null: false
     t.datetime "ended_at"
+    t.integer "expected_participants"
     t.integer "folder_id"
     t.integer "last_refined_seq", default: 0, null: false
     t.datetime "last_reset_at"

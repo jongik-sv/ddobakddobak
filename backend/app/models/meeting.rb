@@ -24,6 +24,7 @@ class Meeting < ApplicationRecord
   validates :summary_verbosity, inclusion: { in: SUMMARY_VERBOSITY_LEVELS }
   validates :summary_restructure, inclusion: { in: [ true, false ] } # NOT NULL 컬럼 — nil 이 500 대신 422 가 되게
   validates :source, inclusion: { in: %w[live upload] }
+  validates :expected_participants, numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 100 }, allow_nil: true
 
   enum :status, { pending: "pending", recording: "recording", transcribing: "transcribing", completed: "completed" }
 
