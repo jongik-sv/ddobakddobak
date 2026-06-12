@@ -74,7 +74,7 @@ type SearchMatch =
 - 열기: 상단바 돋보기 또는 Ctrl/Cmd+F (Tauri 앱이라 네이티브 찾기 충돌 없음). 닫기: Esc·X.
 - Enter=다음, Shift+Enter=이전.
 - 전사: 검색 활성(쿼리 비어있지 않음) 동안 전 세그먼트를 읽기전용 HighlightedText로 렌더 — 편집은 검색 닫으면 복귀. 활성 occurrence는 별색(mark 강조) + scrollIntoView.
-- 요약: 현재 매치가 summary면 블록 scrollIntoView({block:'center'}) + 일시 ring 강조(CSS class, ~1.2s).
+- 요약: 매치 텍스트를 **CSS Custom Highlight API**(`CSS.highlights`, `::highlight()`)로 단어 단위 하이라이트 — contenteditable DOM 비변형. 활성 매치는 별색(priority 1) + 블록 scrollIntoView + 일시 ring 강조(~1.2s). 미지원 환경은 flash만으로 동작(feature detect).
 - 모바일: 현재 매치 type에 따라 기록/요약 탭 자동 전환 (MobileTabLayout controlled 모드 — 이미 지원).
 - 오디오 재생 중 검색: TranscriptPanel 오디오 싱크 scrollIntoView 억제(하이라이트는 유지).
 

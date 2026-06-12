@@ -245,3 +245,14 @@ body[data-dragging="true"] * {
   0% { box-shadow: 0 0 0 3px rgb(251 146 60 / 0.9); }
   100% { box-shadow: 0 0 0 3px rgb(251 146 60 / 0); }
 }
+
+/* 페이지 내 검색 — AI요약(BlockNote) 텍스트 매치. CSS Custom Highlight API라
+   contenteditable DOM 비변형. 전사 패널 <mark> 색과 동일 팔레트. */
+::highlight(meeting-search) {
+  background-color: #fef08a; /* yellow-200 */
+  color: #111827;
+}
+::highlight(meeting-search-active) {
+  background-color: #fdba74; /* orange-300 */
+  color: #111827;
+}

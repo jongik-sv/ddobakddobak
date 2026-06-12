@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { Transcript } from '../api/meetings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { findOccurrences } from '../components/meeting/HighlightedText'
@@ -9,6 +9,43 @@ export type SearchMatch =
 
 const SUMMARY_REGION_SELECTOR = '[data-search-region="summary"]'
 const FLASH_CLASS = 'search-block-flash'
+const HIGHLIGHT_ALL = 'meeting-search'
+const HIGHLIGHT_ACTIVE = 'meeting-search-active'
+
+// CSS Custom Highlight API — contenteditable(BlockNote) DOM을 변형하지 않고 텍스트 하이라이트.
+// WKWebView(Safari 17.2+)·Android WebView 지원. 미지원 환경은 블록 flash만으로 동작.
+function supportsHighlightApi(): boolean {
+  return typeof Highlight !== 'undefined' && typeof CSS !== 'undefined' && 'highlights' in CSS
+}
+
+/** blockContent 내 텍스트 노드들을 걸어 query occurrence들의 DOM Range를 만든다. */
+export function buildTextRanges(root: Element, query: string): Range[] {
+  const text = root.textContent ?? ''
+  const starts = findOccurrences(text, query)
+  if (starts.length === 0) return []
+
+  const segments: { node: Text; start: number; end: number }[] = []
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let acc = 0
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text
+    segments.push({ node, start: acc, end: acc + node.data.length })
+    acc += node.data.length
+  }
+
+  const ranges: Range[] = []
+  for (const s of starts) {
+    const e = s + query.length
+    const startSeg = segments.find((seg) => s >= seg.start && s < seg.end)
+    const endSeg = segments.find((seg) => e > seg.start && e <= seg.end)
+    if (!startSeg || !endSeg) continue
+    const range = document.createRange()
+    range.setStart(startSeg.node, s - startSeg.start)
+    range.setEnd(endSeg.node, e - endSeg.start)
+    ranges.push(range)
+  }
+  return ranges
+}
 
 function sameMatches(a: SearchMatch[], b: SearchMatch[]): boolean {
   if (a.length !== b.length) return false
@@ -44,6 +81,8 @@ export function useMeetingSearch(transcripts: Transcript[]) {
 
   const storeFinals = useTranscriptStore((s) => s.finals)
   const meetingNotes = useTranscriptStore((s) => s.meetingNotes)
+  /** summaryMatches와 같은 순서의 DOM Range (CSS Highlight용) */
+  const summaryRangesRef = useRef<Range[]>([])
 
   // 입력 응답성 유지: 매치 계산·5000세그먼트 하이라이트 렌더는 deferred 값으로 수행
   const rawQuery = isOpen ? query.trim() : ''
@@ -79,22 +118,37 @@ export function useMeetingSearch(transcripts: Transcript[]) {
     }
     const scan = () => {
       const matches: SearchMatch[] = []
+      const ranges: Range[] = []
       // .bn-block-content 단위 스캔 — 중첩 블록(리스트 자식)의 텍스트 이중 카운트 방지
       container.querySelectorAll('.bn-block-content').forEach((blockContent) => {
         const blockId = blockContent.closest('[data-id]')?.getAttribute('data-id')
         if (!blockId) return
-        const count = findOccurrences(blockContent.textContent ?? '', effectiveQuery).length
-        for (let i = 0; i < count; i++) {
+        const blockRanges = buildTextRanges(blockContent, effectiveQuery)
+        blockRanges.forEach((range, i) => {
           matches.push({ type: 'summary', blockId, occurrence: i })
-        }
+          ranges.push(range)
+        })
       })
+      // summaryMatches와 같은 순서로 정렬된 Range — 활성 매치 하이라이트가 인덱스로 조회
+      summaryRangesRef.current = ranges
+      if (supportsHighlightApi()) {
+        if (ranges.length > 0) CSS.highlights.set(HIGHLIGHT_ALL, new Highlight(...ranges))
+        else CSS.highlights.delete(HIGHLIGHT_ALL)
+      }
       setSummaryMatches((prev) => (sameMatches(prev, matches) ? prev : matches))
     }
     scan()
     // attributes는 관찰하지 않음 — flash 클래스 토글이 무한 재스캔 루프를 만든다
     const observer = new MutationObserver(scan)
     observer.observe(container, { childList: true, characterData: true, subtree: true })
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      summaryRangesRef.current = []
+      if (supportsHighlightApi()) {
+        CSS.highlights.delete(HIGHLIGHT_ALL)
+        CSS.highlights.delete(HIGHLIGHT_ACTIVE)
+      }
+    }
   }, [effectiveQuery, meetingNotes])
 
   const matches = useMemo(
@@ -112,10 +166,25 @@ export function useMeetingSearch(transcripts: Transcript[]) {
 
   const current = matches.length > 0 ? matches[Math.min(currentIndex, matches.length - 1)] : null
   const currentKey = matchKey(current)
+  // 활성 매치의 summaryMatches 내 인덱스 (요약 매치가 아니면 -1)
+  const activeSummaryIdx =
+    current?.type === 'summary'
+      ? Math.min(currentIndex, matches.length - 1) - transcriptMatches.length
+      : -1
 
-  // 현재 매치가 요약 블록이면 scrollIntoView + 일시 강조 (탭 전환 직후를 위해 소지연).
+  // 현재 매치가 요약 블록이면 활성 텍스트 하이라이트 + scrollIntoView + 일시 강조.
   // 객체 identity가 아닌 논리 키로 발화 — 매치 재계산 churn에 재발화하지 않게.
   useEffect(() => {
+    if (supportsHighlightApi()) {
+      const range = activeSummaryIdx >= 0 ? summaryRangesRef.current[activeSummaryIdx] : undefined
+      if (range) {
+        const active = new Highlight(range)
+        active.priority = 1 // HIGHLIGHT_ALL(기본 0)과 겹칠 때 활성색이 이긴다
+        CSS.highlights.set(HIGHLIGHT_ACTIVE, active)
+      } else {
+        CSS.highlights.delete(HIGHLIGHT_ACTIVE)
+      }
+    }
     if (!currentKey.startsWith('s:')) return
     const blockId = currentKey.slice(2, currentKey.lastIndexOf(':'))
     const timer = setTimeout(() => {
@@ -130,7 +199,7 @@ export function useMeetingSearch(transcripts: Transcript[]) {
       setTimeout(() => block.classList.remove(FLASH_CLASS), 1300)
     }, 60)
     return () => clearTimeout(timer)
-  }, [currentKey])
+  }, [currentKey, activeSummaryIdx])
 
   const open = useCallback(() => {
     setIsOpen(true)

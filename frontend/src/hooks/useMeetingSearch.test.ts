@@ -1,8 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useMeetingSearch } from './useMeetingSearch'
+import { useMeetingSearch, buildTextRanges } from './useMeetingSearch'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import type { Transcript } from '../api/meetings'
+
+// jsdom엔 CSS Custom Highlight API 없음 — 스텁으로 등록 여부 검증
+class FakeHighlight {
+  ranges: Range[]
+  priority = 0
+  constructor(...ranges: Range[]) {
+    this.ranges = ranges
+  }
+}
 
 function makeTranscript(id: number, content: string): Transcript {
   return {
@@ -25,6 +34,8 @@ beforeEach(() => {
   useTranscriptStore.getState().reset()
   // jsdom에 scrollIntoView 없음
   Element.prototype.scrollIntoView = vi.fn()
+  vi.stubGlobal('Highlight', FakeHighlight)
+  ;(CSS as unknown as { highlights: Map<string, unknown> }).highlights = new Map()
 })
 
 afterEach(() => {
@@ -170,6 +181,54 @@ describe('useMeetingSearch — 요약(BlockNote DOM) 매치', () => {
       { type: 'summary', blockId: 'new-2', occurrence: 0 },
       { type: 'summary', blockId: 'new-2', occurrence: 1 },
     ])
+  })
+})
+
+describe('buildTextRanges', () => {
+  it('여러 텍스트 노드에 걸친 occurrence도 Range로 만든다', () => {
+    const root = document.createElement('div')
+    // "발사" + "대 점검" — 노드 경계를 가로지르는 매치
+    root.appendChild(document.createTextNode('발사'))
+    const strong = document.createElement('strong')
+    strong.textContent = '대 점검'
+    root.appendChild(strong)
+    document.body.appendChild(root)
+
+    const ranges = buildTextRanges(root, '발사대')
+    expect(ranges).toHaveLength(1)
+    expect(ranges[0].toString()).toBe('발사대')
+  })
+
+  it('단일 노드 내 다중 occurrence', () => {
+    const root = document.createElement('div')
+    root.textContent = '발사대 그리고 발사대'
+    document.body.appendChild(root)
+
+    const ranges = buildTextRanges(root, '발사대')
+    expect(ranges).toHaveLength(2)
+    expect(ranges.every((r) => r.toString() === '발사대')).toBe(true)
+  })
+})
+
+describe('useMeetingSearch — CSS Highlight 등록', () => {
+  it('요약 매치를 meeting-search 하이라이트로 등록하고 닫으면 해제한다', () => {
+    document.body.innerHTML = `
+      <div data-search-region="summary">
+        <div data-id="b1"><div class="bn-block-content">발사대 점검 그리고 발사대 보완</div></div>
+      </div>
+    `
+    const registry = (CSS as unknown as { highlights: Map<string, FakeHighlight> }).highlights
+    const { result } = renderHook(() => useMeetingSearch([]))
+    openWithQuery(result, '발사대')
+
+    expect(result.current.matches).toHaveLength(2)
+    expect(registry.get('meeting-search')?.ranges).toHaveLength(2)
+    // 첫 매치가 활성 → active 하이라이트 1개
+    expect(registry.get('meeting-search-active')?.ranges).toHaveLength(1)
+
+    act(() => result.current.close())
+    expect(registry.has('meeting-search')).toBe(false)
+    expect(registry.has('meeting-search-active')).toBe(false)
   })
 })
 
