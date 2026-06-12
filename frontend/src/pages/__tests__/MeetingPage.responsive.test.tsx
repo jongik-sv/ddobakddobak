@@ -293,11 +293,11 @@ describe('MeetingPage 반응형 분기', () => {
       })
     })
 
-    it('헤더 제목이 text-lg 클래스를 가짐', async () => {
+    it('헤더 제목이 모바일에서 sr-only로 숨겨짐', async () => {
       renderPage()
       await waitFor(() => {
         const heading = screen.getByText('회의 미리보기')
-        expect(heading.className).toContain('text-lg')
+        expect(heading.className).toContain('sr-only')
         expect(heading.className).not.toContain('text-xl')
       })
     })

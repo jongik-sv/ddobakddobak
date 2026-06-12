@@ -44,8 +44,8 @@ export function MeetingDetailTopBar({
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </button>
       </Tooltip>
-      {/* 액션 버튼이 같은 줄 우측에 오므로 라벨은 비좁을 때 줄임표 처리(min-w-0 truncate). */}
-      <h1 className={`font-bold text-gray-900 min-w-0 truncate ${isDesktop ? 'text-xl' : 'text-lg'}`}>회의 미리보기</h1>
+      {/* 모바일은 액션 버튼들에 밀려 "회…"처럼 잘리므로 라벨을 숨김(sr-only). 데스크톱만 표시. */}
+      <h1 className={`font-bold text-gray-900 min-w-0 truncate ${isDesktop ? 'text-xl' : 'sr-only'}`}>회의 미리보기</h1>
       <Tooltip text={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}>
         <button
           onClick={onToggleAttachments}
