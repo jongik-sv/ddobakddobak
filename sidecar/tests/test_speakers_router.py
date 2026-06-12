@@ -56,3 +56,47 @@ async def test_reset_speakers_without_pipeline(speaker_db):
     assert res.status_code == 200
     assert res.json() == {"ok": True}
     assert not speaker_db.exists()
+
+
+class _FakeDiarizer:
+    """라이브 diarizer 동기화 seam 검증용 — 호출 기록만 남긴다."""
+
+    def __init__(self):
+        self.reset_called = False
+        self.renames: list[tuple[str, str]] = []
+
+    def reset_db(self):
+        self.reset_called = True
+
+    def rename_speaker(self, speaker_id, name):
+        self.renames.append((speaker_id, name))
+        return True
+
+
+@pytest.fixture
+def live_diarizer():
+    # ASGITransport는 lifespan을 실행하지 않으므로 직접 만들어 넣는다
+    fake = _FakeDiarizer()
+    app.state.meeting_diarizers = {42: fake}
+    yield fake
+    del app.state.meeting_diarizers
+
+
+async def test_reset_clears_live_diarizer_state(speaker_db, live_diarizer):
+    """진행 중인 /transcribe가 이전 참조로 옛 상태를 재저장하지 못하도록
+    pop뿐 아니라 라이브 인스턴스의 메모리 상태도 초기화해야 한다."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.delete("/speakers", params={"meeting_id": 42})
+    assert res.status_code == 200
+    assert 42 not in app.state.meeting_diarizers
+    assert live_diarizer.reset_called
+
+
+async def test_rename_syncs_live_diarizer(speaker_db, live_diarizer):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.put("/speakers/화자 2", params={"meeting_id": 42},
+                               json={"name": "이영희"})
+    assert res.status_code == 200
+    assert live_diarizer.renames == [("화자 2", "이영희")]

@@ -56,5 +56,9 @@ async def reset_speakers(meeting_id: int, request: Request) -> dict:
     # lifespan 미실행(테스트 등)이면 meeting_diarizers가 없을 수 있음
     diarizers = getattr(request.app.state, "meeting_diarizers", None)
     if diarizers is not None:
-        diarizers.pop(meeting_id, None)
+        live = diarizers.pop(meeting_id, None)
+        if live is not None:
+            # 진행 중인 /transcribe가 이전 참조를 들고 있다가 _save_db()로
+            # 옛 화자 상태를 되살리는 것을 방지 — 메모리 상태도 함께 초기화
+            live.reset_db()
     return {"ok": True}
