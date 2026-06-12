@@ -16,13 +16,17 @@ class FileTranscriptionJob < ApplicationJob
     languages = lang[:languages]
     mode = lang[:mode]
     file_chunk_sec = ENV.fetch("AUDIO_FILE_CHUNK_SEC", "30").to_i
+    diarization_config = AppSettings.diarization_config
+    if meeting.expected_participants.present?
+      diarization_config["expected_speakers"] = meeting.expected_participants
+    end
     result = SidecarClient.new.transcribe_file(
       pcm_path,
       meeting_id: meeting.id,
       languages: languages,
       mode: mode,
       file_chunk_sec: file_chunk_sec,
-      diarization_config: AppSettings.diarization_config
+      diarization_config: diarization_config
     )
     broadcast_progress(channel, 70, "음성 인식 완료")
 
@@ -31,12 +35,17 @@ class FileTranscriptionJob < ApplicationJob
     apply_speaker_names(meeting)
     broadcast_progress(channel, 80, "트랜스크립트 저장 완료")
 
-    # 4. AI 회의록 생성 (final 모드)
-    generate_summary(meeting)
-    broadcast_progress(channel, 95, "AI 회의록 생성 완료")
+    if diarization_config["enable"]
+      # 화자분리 ON: 회의록 자동생성 스킵 — 사용자가 화자 이름 지정 후 수동 생성(regenerate_notes)
+      broadcast_progress(channel, 95, "화자 분리 완료 — 화자 이름 지정 후 회의록을 생성하세요")
+    else
+      # 4. AI 회의록 생성 (final 모드)
+      generate_summary(meeting)
+      broadcast_progress(channel, 95, "AI 회의록 생성 완료")
 
-    # 5. Action Items 추출
-    MeetingFinalizerService.new(meeting).call
+      # 5. Action Items 추출
+      MeetingFinalizerService.new(meeting).call
+    end
 
     # 6. 완료
     meeting.update!(status: :completed, transcription_progress: 100, ended_at: Time.current)

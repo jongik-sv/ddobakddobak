@@ -66,4 +66,26 @@ RSpec.describe FileTranscriptionJob, type: :job do
     expect(meeting.reload.status).to eq("completed")
     expect(meeting.transcripts.first.speaker_name).to be_nil
   end
+
+  context "화자분리 ON" do
+    before do
+      allow(AppSettings).to receive(:diarization_config).and_return({ "enable" => true, "clustering_threshold" => 0.6 })
+    end
+
+    it "회의록 자동생성과 finalizer를 스킵하고 completed로 만든다" do
+      # 상단 before의 generate_summary allow 스텁을 부정 기대로 대체해 실제 분기를 검증
+      expect_any_instance_of(described_class).not_to receive(:generate_summary)
+      expect(MeetingFinalizerService).not_to receive(:new)
+      described_class.perform_now(meeting.id)
+      expect(meeting.reload.status).to eq("completed")
+    end
+
+    it "expected_participants가 있으면 diarization_config에 expected_speakers로 넣어 보낸다" do
+      meeting.update!(expected_participants: 5)
+      expect(sidecar).to receive(:transcribe_file)
+        .with(anything, hash_including(diarization_config: hash_including("expected_speakers" => 5, "enable" => true)))
+        .and_return({ "segments" => [] })
+      described_class.perform_now(meeting.id)
+    end
+  end
 end
