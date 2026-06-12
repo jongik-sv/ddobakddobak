@@ -15,6 +15,8 @@ export function SpeakerPanel({ meetingId, isRecording }: SpeakerPanelProps) {
 
   // 실제 기록에 등장한 화자 ID 집합
   const finals = useTranscriptStore((s) => s.finals)
+  const setSpeakerName = useTranscriptStore((s) => s.setSpeakerName)
+  const clearSpeakerNames = useTranscriptStore((s) => s.clearSpeakerNames)
   const usedSpeakerIds = useMemo(
     () => new Set(finals.map((f) => f.speaker_label).filter(Boolean)),
     [finals]
@@ -56,6 +58,7 @@ export function SpeakerPanel({ meetingId, isRecording }: SpeakerPanelProps) {
         setSpeakers((prev) =>
           prev.map((s) => (s.id === speaker.id ? { ...s, name: updated.name } : s))
         )
+        setSpeakerName(speaker.id, updated.name === speaker.id ? null : updated.name)
       }
     }
     setEditingId(null)
@@ -70,6 +73,7 @@ export function SpeakerPanel({ meetingId, isRecording }: SpeakerPanelProps) {
     if (!confirm('화자 DB를 초기화하면 화자 구분이 처음부터 다시 시작됩니다. 계속할까요?')) return
     await resetSpeakers(meetingId).catch(() => {})
     setSpeakers([])
+    clearSpeakerNames()
   }
 
   if (visibleSpeakers.length === 0) {
