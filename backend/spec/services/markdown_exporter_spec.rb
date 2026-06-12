@@ -152,6 +152,15 @@ RSpec.describe MarkdownExporter do
         expect(result).to include("원본 텍스트가 없습니다")
       end
     end
+
+    it "speaker_name이 있으면 라벨 대신 이름을 출력한다" do
+      create(:transcript, meeting: meeting, speaker_label: "화자3", speaker_name: "앨리스",
+             content: "이름 테스트입니다.", started_at_ms: 120_000, sequence_number: 3)
+
+      result = exporter.call
+      expect(result).to include("**앨리스**")
+      expect(result).not_to include("**화자3**")
+    end
   end
 
   # --- 섹션 구분선 ---

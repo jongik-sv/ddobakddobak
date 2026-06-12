@@ -106,7 +106,7 @@ class MarkdownExporter
     else
       transcripts.each do |t|
         lines << ""
-        lines << "**#{t.speaker_label}** (#{format_timestamp_ms(t.started_at_ms)})"
+        lines << "**#{t.speaker_name.presence || t.speaker_label}** (#{format_timestamp_ms(t.started_at_ms)})"
         lines << t.content
       end
     end
