@@ -181,9 +181,14 @@ export function getWsUrl(): string {
 }
 
 // ── STT 엔진 라벨 ─────────────────────────────
-export const ENGINE_LABELS: Record<string, string> = Object.fromEntries(
-  Object.entries(cfg.stt_engines).map(([k, v]) => [k, v.label]),
-)
+export const ENGINE_LABELS: Record<string, string> = {
+  ...Object.fromEntries(
+    Object.entries(cfg.stt_engines).map(([k, v]) => [k, v.label]),
+  ),
+  // 배치(파일 재전사) MLX Whisper 엔진 라벨
+  mlx_whisper_turbo_8bit: '8bit (빠름)',
+  mlx_whisper_turbo_f16: '16bit (정확, 느림)',
+}
 
 export const ENGINE_LABELS_SHORT: Record<string, string> = Object.fromEntries(
   Object.entries(cfg.stt_engines).map(([k, v]) => [k, v.short]),

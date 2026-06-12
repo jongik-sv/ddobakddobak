@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 _KNOWN_ENGINES: frozenset[str] = frozenset(
     {"qwen3_asr_4bit", "qwen3_asr_6bit", "qwen3_asr_8bit",
      "qwen3_asr_transformers",
+     "mlx_whisper_turbo_8bit", "mlx_whisper_turbo_f16",
      "whisper_cpp", "faster_whisper", "faster_whisper_cpu",
      "mock", "auto"}
 )
@@ -21,6 +22,12 @@ _QWEN3_MODEL_IDS: dict[str, str] = {
     "qwen3_asr_4bit": "mlx-community/Qwen3-ASR-1.7B-4bit",
     "qwen3_asr_6bit": "mlx-community/Qwen3-ASR-1.7B-6bit",
     "qwen3_asr_8bit": "mlx-community/Qwen3-ASR-1.7B-8bit",
+}
+
+# MLX Whisper(large-v3-turbo) 양자화별 모델 ID 매핑 (배치 전사 가속용)
+_MLX_WHISPER_MODEL_IDS: dict[str, str] = {
+    "mlx_whisper_turbo_8bit": "mlx-community/whisper-large-v3-turbo-8bit",
+    "mlx_whisper_turbo_f16": "mlx-community/whisper-large-v3-turbo-fp16",
 }
 
 
@@ -45,6 +52,27 @@ def auto_select_engine() -> str:
     return "whisper_cpp"
 
 
+def resolve_file_engine(engine: str | None = None) -> str:
+    """배치(파일 재전사) STT 엔진을 결정한다.
+
+    settings.STT_FILE_ENGINE 값을 받아 'auto'면 플랫폼별 기본 엔진으로 해석한다.
+    - Apple Silicon → mlx_whisper_turbo_8bit (Metal 가속)
+    - 그 외        → whisper_cpp (ggml/gguf large-v3-turbo)
+    """
+    if engine is None:
+        from app.config import settings
+        engine = settings.STT_FILE_ENGINE
+
+    if engine == "auto":
+        if sys.platform == "darwin" and platform.machine() == "arm64":
+            resolved = "mlx_whisper_turbo_8bit"
+        else:
+            resolved = "whisper_cpp"
+        logger.info(f"[STT] 배치 엔진 자동 선택: {resolved} (platform={sys.platform}, arch={platform.machine()})")
+        return resolved
+    return engine
+
+
 def create_stt_adapter(engine: str | None = None) -> SttAdapter:
     """STT 엔진 이름으로 적절한 Adapter 인스턴스를 반환한다."""
     if engine is None:
@@ -63,6 +91,10 @@ def create_stt_adapter(engine: str | None = None) -> SttAdapter:
     if engine in _QWEN3_MODEL_IDS:
         from app.stt.qwen3_adapter import Qwen3Adapter
         return Qwen3Adapter(model_id=_QWEN3_MODEL_IDS[engine])
+
+    if engine in _MLX_WHISPER_MODEL_IDS:
+        from app.stt.mlx_whisper_adapter import MLXWhisperAdapter
+        return MLXWhisperAdapter(model_id=_MLX_WHISPER_MODEL_IDS[engine])
 
     if engine == "qwen3_asr_transformers":
         from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter

@@ -28,6 +28,20 @@ export async function updateSttEngine(engine: string): Promise<{ stt_engine: str
   return apiClient.post('settings/stt_engine', { json: { engine } }).json()
 }
 
+// 배치(파일 재전사) STT 엔진 설정
+export interface BatchSttSettings {
+  file_engine: string
+  available_engines: string[]
+}
+
+export async function getBatchSttEngine(): Promise<BatchSttSettings> {
+  return apiClient.get('settings/stt_file_engine').json()
+}
+
+export async function updateBatchSttEngine(engine: string): Promise<BatchSttSettings> {
+  return apiClient.put('settings/stt_file_engine', { json: { engine } }).json()
+}
+
 // LLM 프리셋 설정
 export interface LlmPreset {
   provider: string

@@ -77,6 +77,16 @@ export default function MeetingPage() {
     }
   }, [fileProgress.status, refetch])
 
+  // 폴링 fallback: ActionCable의 file_transcription_complete 브로드캐스트는
+  // fire-and-forget이라 브라우저 미연결 순간 유실되면 카드가 'transcribing'에
+  // 영구 멈춘다. transcribing 동안 주기적으로 refetch해 status가 completed로
+  // 바뀌면(=서버는 끝남) 카드를 빠져나오게 한다.
+  useEffect(() => {
+    if (!isTranscribing) return
+    const id = setInterval(() => { refetch() }, 10000)
+    return () => clearInterval(id)
+  }, [isTranscribing, refetch])
+
   // 기존 AI 회의록을 transcriptStore에 로드 (AiSummaryPanel이 읽음)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const resetTranscriptStore = useTranscriptStore((s) => s.reset)

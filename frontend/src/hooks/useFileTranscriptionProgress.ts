@@ -19,6 +19,14 @@ export function useFileTranscriptionProgress(meetingId: number | null): FileTran
   useEffect(() => {
     if (!meetingId) return
 
+    // 새 구독(새 전사 실행) 시작 시 이전 실행의 상태가 남지 않도록 초기화.
+    // (deps가 meetingId뿐이라 같은 회의를 재전사하면 'complete'/'변환 완료'/100이
+    //  latch된 채 새 실행에 잘못 표시되던 버그 방지)
+    setProgress(0)
+    setMessage(null)
+    setStatus('processing')
+    setError(null)
+
     const consumer = createAuthenticatedConsumer()
 
     const subscription = consumer.subscriptions.create(

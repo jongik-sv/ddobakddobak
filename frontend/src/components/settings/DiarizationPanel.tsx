@@ -1,32 +1,14 @@
-import { useAppSettingsStore, DIARIZATION_DEFAULTS } from '../../stores/appSettingsStore'
-import { DIARIZATION } from '../../config'
-import { SettingSlider } from './SettingSlider'
+import { useAppSettingsStore } from '../../stores/appSettingsStore'
 
-/** 화자 분리 on/off + 임계값 설정 카드. 값은 appSettingsStore 오버라이드, 미설정 시 config.yaml 기본값. */
+/** 화자 분리 on/off 설정 카드. 값은 appSettingsStore 오버라이드, 미설정 시 config.yaml 기본값. */
 export function DiarizationPanel() {
   const diarizationEnabled = useAppSettingsStore((s) => s.diarizationEnabled)
   const setDiarizationEnabled = useAppSettingsStore((s) => s.setDiarizationEnabled)
-  const diarizationOverrides = useAppSettingsStore((s) => s.diarizationOverrides)
-  const setDiarizationOverride = useAppSettingsStore((s) => s.setDiarizationOverride)
-  const resetDiarizationOverrides = useAppSettingsStore((s) => s.resetDiarizationOverrides)
-
-  const dv = (key: keyof typeof DIARIZATION) => (diarizationOverrides as Record<string, number>)[key] ?? DIARIZATION[key]
-  const hasDiarizationOverrides = Object.keys(diarizationOverrides).length > 0
 
   return (
     <div className="rounded-lg border bg-card p-6">
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-lg font-semibold">화자 분리 설정</h2>
-        <div className="flex items-center gap-3">
-          {hasDiarizationOverrides && (
-            <button
-              onClick={resetDiarizationOverrides}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-            >
-              기본값으로 초기화
-            </button>
-          )}
-        </div>
       </div>
 
       <div className="flex items-center justify-between rounded-md border p-3 mb-5">
@@ -56,22 +38,14 @@ export function DiarizationPanel() {
         </p>
       )}
 
-      <div className={`space-y-5 ${!diarizationEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
-        <div className="rounded-md border border-blue-100 bg-blue-50/50 p-3 mb-2">
+      <div className={!diarizationEnabled ? 'opacity-50 pointer-events-none' : ''}>
+        <div className="rounded-md border border-blue-100 bg-blue-50/50 p-3">
           <p className="text-xs text-blue-700">
             <span className="font-semibold">배치 분석</span> — 파일 업로드와 STT 재생성 시 전체 오디오를 한 번에 분석해 화자를 구분합니다.
             실시간 전사 중에는 화자 라벨이 붙지 않으며, 녹음한 회의는 종료 후 STT 재생성으로 화자 분리를 적용할 수 있습니다.
             회의 정보의 '참여 인원'을 입력하면 그 인원수 ±2명 범위로 화자를 맞춥니다.
           </p>
         </div>
-        <SettingSlider
-          label="화자 구분 세밀도"
-          description="배치 화자분리의 클러스터링 기준값. 낮을수록 화자를 더 잘게 분리하고, 높을수록 비슷한 목소리를 하나로 묶습니다."
-          value={dv('clustering_threshold')}
-          defaultValue={DIARIZATION_DEFAULTS.clustering_threshold}
-          min={0.5} max={0.8} step={0.05}
-          onChange={(v) => setDiarizationOverride('clustering_threshold', v)}
-        />
       </div>
     </div>
   )

@@ -29,6 +29,14 @@ class SidecarClient
     put("/settings/stt-engine", { engine: engine })
   end
 
+  def stt_file_engine_info
+    get("/settings/stt-file-engine")
+  end
+
+  def update_stt_file_engine(engine)
+    put("/settings/stt-file-engine", { file_engine: engine })
+  end
+
   def transcribe(audio_base64, meeting_id: nil, diarization_config: nil, languages: nil, mode: "single", offset_ms: 0)
     body = { audio: audio_base64, offset_ms: offset_ms }
     body[:meeting_id] = meeting_id if meeting_id

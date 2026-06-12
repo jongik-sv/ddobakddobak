@@ -1,7 +1,7 @@
 """LLM / HuggingFace 설정 라우터."""
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from app.config import CLI_LLM_PROVIDERS, settings
 from app.deps import get_summarizer
@@ -12,9 +12,13 @@ from app.schemas import (
     TestLlmRequest,
     UpdateHfSettingsRequest,
     UpdateLlmSettingsRequest,
+    UpdateSttFileEngineRequest,
 )
 
 router = APIRouter()
+
+# 배치(파일 재전사) STT 엔진으로 선택 가능한 값
+_AVAILABLE_FILE_ENGINES: list[str] = ["mlx_whisper_turbo_8bit", "mlx_whisper_turbo_f16"]
 
 
 def _llm_token_and_url(provider: str) -> tuple[str, str]:
@@ -130,12 +134,38 @@ async def update_hf_settings(request: UpdateHfSettingsRequest, http_request: Req
     """HuggingFace 토큰을 런타임에 변경한다."""
     settings.HF_TOKEN = request.hf_token
 
-    # 토큰 변경 시 기존 파이프라인 초기화 (다음 요청에서 lazy load)
-    http_request.app.state.diarizer_pipeline = None
-
     _persist_env(HF_TOKEN=settings.HF_TOKEN)
 
     return {
         "hf_token_masked": _mask_token(settings.HF_TOKEN),
         "has_token": bool(settings.HF_TOKEN),
+    }
+
+
+@router.get("/settings/stt-file-engine")
+async def get_stt_file_engine() -> dict:
+    """현재 배치(파일 재전사) STT 엔진을 반환한다."""
+    return {
+        "file_engine": settings.STT_FILE_ENGINE,
+        "available": _AVAILABLE_FILE_ENGINES,
+    }
+
+
+@router.put("/settings/stt-file-engine")
+async def update_stt_file_engine(request: UpdateSttFileEngineRequest) -> dict:
+    """배치 STT 엔진을 런타임(in-memory)에 변경한다.
+
+    yaml에는 쓰지 않는다(rails가 별도로 영속화). 모델을 미리 로드하지 않으며,
+    다음 transcribe-file 요청에서 resolve_file_engine()이 반영한다.
+    """
+    if request.file_engine not in _AVAILABLE_FILE_ENGINES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid file_engine: '{request.file_engine}'. "
+            f"Available: {', '.join(_AVAILABLE_FILE_ENGINES)}",
+        )
+    settings.STT_FILE_ENGINE = request.file_engine
+    return {
+        "file_engine": settings.STT_FILE_ENGINE,
+        "available": _AVAILABLE_FILE_ENGINES,
     }

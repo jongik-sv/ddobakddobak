@@ -228,8 +228,11 @@ module Api
       end
 
       def regenerate_stt
-        require_meeting_status!(@meeting, :completed?, "완료된 회의만 재생성 가능합니다")
-        return if performed?
+        # pending도 허용: 전사 실패 시 rescue가 pending+트랜스크립트 0건으로 리셋하므로
+        # completed만 허용하면 실패한 회의를 UI/API 어디서도 복구할 수 없다
+        unless @meeting.completed? || @meeting.pending?
+          return render json: { error: "녹음/전사 진행 중에는 재생성할 수 없습니다" }, status: :unprocessable_entity
+        end
 
         unless @meeting.audio_file_path.present? && File.exist?(@meeting.audio_file_path)
           return render json: { error: "오디오 파일이 없습니다" }, status: :unprocessable_entity

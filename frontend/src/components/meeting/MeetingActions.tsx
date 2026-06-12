@@ -37,17 +37,18 @@ export function MeetingActions({
 }: MeetingActionsProps) {
   return (
     <div className={`flex items-center shrink-0 ml-auto ${isDesktop ? 'gap-2' : 'gap-1'}`}>
+      {/* STT 재생성: 오디오만 있으면 가능 — 전사 실패로 pending+트랜스크립트 0건이 된 회의의 복구 경로 */}
+      {canEdit && meeting.has_audio_file && (meeting.status === 'completed' || meeting.status === 'pending') && (
+        <button
+          onClick={onShowSttConfirm}
+          aria-label="STT 재생성"
+          className="rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-3 py-1.5"
+        >
+          {isDesktop ? 'STT 재생성' : <RefreshCw className="w-4 h-4" />}
+        </button>
+      )}
       {canEdit && meeting.status === 'completed' && (
         <>
-          {transcriptsCount > 0 && (
-            <button
-              onClick={onShowSttConfirm}
-              aria-label="STT 재생성"
-              className="rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-3 py-1.5"
-            >
-              {isDesktop ? 'STT 재생성' : <RefreshCw className="w-4 h-4" />}
-            </button>
-          )}
           {transcriptsCount > 0 && (
             <button
               onClick={onShowNotesConfirm}

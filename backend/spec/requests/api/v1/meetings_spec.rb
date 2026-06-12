@@ -555,6 +555,37 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   end
 
   # ============================================================
+  # POST /api/v1/meetings/:id/regenerate_stt
+  # ============================================================
+  describe "POST /api/v1/meetings/:id/regenerate_stt" do
+    let(:audio_path) do
+      path = Rails.root.join("tmp", "regen_stt_test_#{SecureRandom.hex(4)}.mp3").to_s
+      File.write(path, "x")
+      path
+    end
+
+    after { FileUtils.rm_f(audio_path) }
+
+    it "전사 실패로 pending이 된 회의(트랜스크립트 0건)도 재생성할 수 있다" do
+      meeting = create(:meeting, team: team, creator: user, status: "pending", audio_file_path: audio_path)
+      expect(FileTranscriptionJob).to receive(:perform_later).with(meeting.id)
+
+      post "/api/v1/meetings/#{meeting.id}/regenerate_stt"
+
+      expect(response).to have_http_status(:ok)
+      expect(meeting.reload.status).to eq("transcribing")
+    end
+
+    it "녹음 중에는 422" do
+      meeting = create(:meeting, team: team, creator: user, status: "recording", audio_file_path: audio_path)
+
+      post "/api/v1/meetings/#{meeting.id}/regenerate_stt"
+
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+  end
+
+  # ============================================================
   # POST /api/v1/meetings/:id/regenerate_notes
   # ============================================================
   describe "POST /api/v1/meetings/:id/regenerate_notes" do

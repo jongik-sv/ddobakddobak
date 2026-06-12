@@ -22,6 +22,12 @@ def _load_settings_yaml() -> dict:
             # STT
             if stt_engine := (cfg.get("stt") or {}).get("engine"):
                 env["STT_ENGINE"] = str(stt_engine)
+            if file_engine := (cfg.get("stt") or {}).get("file_engine"):
+                env["STT_FILE_ENGINE"] = str(file_engine)
+
+            # 화자분리 엔진
+            if diar_engine := (cfg.get("diarization") or {}).get("engine"):
+                env["DIARIZATION_ENGINE"] = str(diar_engine)
 
             # HF
             if hf_token := (cfg.get("hf") or {}).get("token"):
@@ -100,8 +106,16 @@ class Settings(BaseSettings):
     # [재시작 필요] STT 엔진 선택 (mock | qwen3_asr_4bit | qwen3_asr_6bit | qwen3_asr_8bit | whisper_cpp | faster_whisper | sensevoice | auto)
     STT_ENGINE: str = "auto"
 
-    # [재시작 필요] Hugging Face 토큰 (pyannote.audio 화자 분리 모델 접근용)
+    # [재시작 필요] 배치(파일 재전사) STT 엔진. auto=Apple Silicon→mlx_whisper_turbo_8bit, 그 외→whisper_cpp
+    # (mlx_whisper_turbo_8bit | mlx_whisper_turbo_f16 | whisper_cpp | faster_whisper | qwen3_asr_8bit | auto)
+    STT_FILE_ENGINE: str = "auto"
+
+    # [재시작 필요] Hugging Face 토큰 (STT/모델 다운로드용)
     HF_TOKEN: str = ""
+
+    # [재시작 필요] 화자분리 엔진. auto=speakrs(CoreML 바이너리 있으면), 없으면 비활성
+    # (speakrs | auto)
+    DIARIZATION_ENGINE: str = "auto"
 
     # LLM 설정 — 아래 항목 변경 시 모두 [재시작 필요]
     LLM_PROVIDER: str = "anthropic"

@@ -6,7 +6,7 @@ module Api
       include TokenMasking
 
       before_action :authenticate_user!
-      before_action :require_admin!, only: %i[update_stt update_llm test_llm update_hf]
+      before_action :require_admin!, only: %i[update_stt update_stt_file update_llm test_llm update_hf]
 
       SETTINGS_PATH = AppSettings::SETTINGS_PATH
 
@@ -37,6 +37,36 @@ module Api
         render json: {
           stt_engine: result["stt_engine"],
           model_loaded: result["model_loaded"]
+        }
+      rescue SidecarClient::SidecarError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      rescue SidecarClient::ConnectionError, SidecarClient::TimeoutError => e
+        render json: { error: e.message }, status: :service_unavailable
+      end
+
+      # ── STT (파일 재전사 / 배치) ──
+
+      def stt_file
+        info = SidecarClient.new.stt_file_engine_info
+        render json: {
+          file_engine: info["file_engine"],
+          available_engines: info["available"]
+        }
+      rescue SidecarClient::ConnectionError, SidecarClient::TimeoutError
+        render json: {
+          file_engine: read_setting("stt", "file_engine") || "mlx_whisper_turbo_8bit",
+          available_engines: %w[mlx_whisper_turbo_8bit mlx_whisper_turbo_f16]
+        }
+      end
+
+      def update_stt_file
+        engine = params.require(:engine)
+        write_setting("stt", "file_engine", engine)
+
+        result = SidecarClient.new.update_stt_file_engine(engine)
+        render json: {
+          file_engine: result["file_engine"],
+          available_engines: result["available"]
         }
       rescue SidecarClient::SidecarError => e
         render json: { error: e.message }, status: :unprocessable_entity

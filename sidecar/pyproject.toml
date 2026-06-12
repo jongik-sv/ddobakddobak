@@ -21,12 +21,10 @@ macos = [
     "mlx-audio>=0.4.1",
     "mlx-lm>=0.31.1",
     "pywhispercpp>=1.4.1",
-    "pyannote-audio>=4.0.4",
 ]
-# Windows/Linux NVIDIA GPU: faster-whisper (CUDA) + 화자 분리
+# Windows/Linux NVIDIA GPU: faster-whisper (CUDA)
 cuda = [
     "faster-whisper>=1.1.0",
-    "pyannote-audio>=4.0.4",
 ]
 # Windows/Linux CPU 전용: whisper.cpp만 (화자 분리 비활성화)
 cpu = [

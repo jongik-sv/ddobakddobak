@@ -152,6 +152,8 @@ Rails.application.routes.draw do
       # Settings
       get  "settings", to: "settings#show"
       post "settings/stt_engine", to: "settings#update_stt"
+      get  "settings/stt_file_engine", to: "settings#stt_file"
+      put  "settings/stt_file_engine", to: "settings#update_stt_file"
       get  "settings/llm", to: "settings#llm"
       put  "settings/llm", to: "settings#update_llm"
       post "settings/llm/test", to: "settings#test_llm"

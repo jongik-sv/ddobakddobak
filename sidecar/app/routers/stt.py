@@ -9,7 +9,6 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisco
 
 from app.audio_constants import BYTES_PER_SAMPLE as _BYTES_PER_SAMPLE, SAMPLE_RATE as _SAMPLE_RATE
 from app.config import settings
-from app.deps import ensure_diarizer_pipeline, get_meeting_diarizer
 from app.schemas import (
     SegmentResponse,
     TranscribeFileRequest,
@@ -30,6 +29,12 @@ router = APIRouter()
 
 def _segments_to_response(segments) -> list[SegmentResponse]:
     return [SegmentResponse(**dataclasses.asdict(seg)) for seg in segments]
+
+
+def _resolve_diar_engine() -> str:
+    """배치 화자분리 엔진 결정. speakrs(CoreML) 바이너리가 있으면 speakrs, 없으면 비활성("")."""
+    from app.diarization.speakrs_runner import is_available
+    return "speakrs" if is_available() else ""
 
 
 @router.post("/transcribe", response_model=TranscribeResponse)
@@ -58,25 +63,14 @@ async def transcribe(request: TranscribeRequest, http_request: Request) -> Trans
         logger.info("[STT] /transcribe 스킵 (%.1f초 < 최소 %.1f초)", chunk_sec, MIN_CHUNK_SEC)
         return TranscribeResponse(segments=[])
 
-    # 화자분리 요청 시 파이프라인 lazy load
-    if request.diarization_config and request.diarization_config.get("enable"):
-        await ensure_diarizer_pipeline(http_request.app)
-    # Metal GPU 동시 접근 방지 — STT(MLX)와 화자분리(MPS) 직렬화
-    diarizer = get_meeting_diarizer(http_request.app, request.meeting_id, request.diarization_config)
+    # 실시간(청크) 경로는 화자분리를 하지 않는다 — 화자 라벨 없이 세그먼트만 반환.
+    # 화자분리는 배치(/transcribe-file)에서 speakrs로만 수행된다.
     langs = request.languages
     mode = request.mode
     async with http_request.app.state.gpu_lock:
         segments = await adapter.transcribe(audio_bytes, languages=langs, mode=mode)
         if mode == "multi":
             segments = lang_utils.filter_segments(segments, langs)
-        if diarizer and segments:
-            try:
-                diarization_result = await diarizer.diarize(audio_bytes, offset_ms=request.offset_ms)
-                if diarization_result:
-                    logger.info(f"[diarizer] result={diarization_result}")
-                    segments = diarizer.merge_with_segments(segments, diarization_result)
-            except Exception as e:
-                logger.exception(f"[diarizer] ERROR: {e}")
 
     logger.info("[STT] /transcribe 완료 (%.1f초, %d 세그먼트)", time.monotonic() - t0, len(segments))
     return TranscribeResponse(
@@ -111,17 +105,26 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
     total_duration_ms = int(len(audio_bytes) / (_SAMPLE_RATE * _BYTES_PER_SAMPLE) * 1000)
     logger.info(f"[transcribe-file] 파일 크기={len(audio_bytes)} bytes, 길이={total_duration_ms}ms")
 
-    # 2. STT 실행 — 파일 변환은 항상 Whisper 사용
+    # 2. STT 실행 — 배치 엔진은 settings.STT_FILE_ENGINE로 선택 (실시간 엔진과 분리)
     timings: dict[str, float] = {}
-    from app.stt.whisper_adapter import WhisperAdapter
+    from app.stt.factory import (
+        auto_select_engine,
+        create_stt_adapter,
+        resolve_file_engine,
+    )
+    file_engine = resolve_file_engine(settings.STT_FILE_ENGINE)
+    realtime_engine = settings.STT_ENGINE
+    if realtime_engine == "auto":
+        realtime_engine = auto_select_engine()
+
     file_adapter = adapter
-    _whisper_loaded_here = False
+    _file_adapter_loaded_here = False
     _t_load = time.monotonic()
-    if not isinstance(adapter, WhisperAdapter):
-        logger.info("[transcribe-file] Whisper 엔진으로 전환하여 파일 처리")
-        file_adapter = WhisperAdapter()
+    if file_engine != realtime_engine:
+        logger.info("[transcribe-file] 배치 STT 엔진 로드: %s (실시간=%s)", file_engine, realtime_engine)
+        file_adapter = create_stt_adapter(file_engine)
         await file_adapter.load_model()
-        _whisper_loaded_here = True
+        _file_adapter_loaded_here = True
     timings["model_load"] = time.monotonic() - _t_load
 
     chunk_sec = request.file_chunk_sec
@@ -142,7 +145,7 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
                 audio_bytes, languages=request.languages, mode=request.mode
             )
     finally:
-        if _whisper_loaded_here:
+        if _file_adapter_loaded_here:
             del file_adapter
             import gc; gc.collect()
     timings["stt"] = time.monotonic() - _t_stt
@@ -154,36 +157,24 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
         segments = lang_utils.filter_segments(segments, request.languages)
         logger.info(f"[transcribe-file] 언어 필터 후 {len(segments)}개")
 
-    # 3. 화자 분리 — community-1 전체 오디오 배치 (MPS, gpu_lock으로 MLX와 직렬화)
+    # 3. 화자 분리 — speakrs(CoreML, 별도 프로세스) 단일 엔진
     _t_diar = time.monotonic()
     diar_cfg = request.diarization_config or {}
     enable_diarization = diar_cfg.get("enable", False)
     if enable_diarization and segments:
-        # 일회성 파일 작업이므로 동시 로드 중이면 완료까지 대기 (wait=True)
-        await ensure_diarizer_pipeline(http_request.app, wait=True)
-        pipeline = getattr(http_request.app.state, "diarizer_pipeline", None)
-        if pipeline:
-            try:
-                from app.diarization.batch_processor import batch_diarize
-                _expected = diar_cfg.get("expected_speakers")
-                _threshold = diar_cfg.get("clustering_threshold")
-                async with http_request.app.state.gpu_lock:
-                    segments = await batch_diarize(
-                        audio_bytes, pipeline, segments,
-                        meeting_id=request.meeting_id,
-                        expected_speakers=int(_expected) if _expected else None,
-                        clustering_threshold=float(_threshold) if _threshold is not None else None,
-                    )
-                # 배치 결과가 SpeakerDB를 다시 썼으므로 메모리에 캐시된 실시간
-                # diarizer가 있으면 무효화 (이후 접근 시 파일에서 재로드)
-                diarizers = getattr(http_request.app.state, "meeting_diarizers", None)
-                if diarizers is not None and request.meeting_id is not None:
-                    diarizers.pop(request.meeting_id, None)
-                logger.info(f"[transcribe-file] 배치 화자 분리 완료")
-            except Exception as e:
-                logger.exception(f"[transcribe-file] 화자 분리 실패 (무시): {e}")
-        else:
-            logger.warning("[transcribe-file] 화자 분리 활성화됐지만 pipeline 로드 실패/불가 — 라벨 없이 진행")
+        diar_engine = _resolve_diar_engine()
+        try:
+            if diar_engine == "speakrs":
+                # speakrs는 별도 프로세스(CoreML)라 Metal 경쟁 없음 → gpu_lock 불필요
+                from app.diarization.batch_processor import batch_diarize_speakrs
+                segments = await batch_diarize_speakrs(
+                    audio_bytes, segments, meeting_id=request.meeting_id,
+                )
+                logger.info("[transcribe-file] 배치 화자 분리 완료 (speakrs)")
+            else:
+                logger.info("[transcribe-file] 화자 분리 엔진 사용 불가(speakrs 미설치) — 라벨 없이 진행")
+        except Exception as e:
+            logger.exception(f"[transcribe-file] 화자 분리 실패 (무시): {e}")
     else:
         logger.info(f"[transcribe-file] 화자 분리 스킵")
     timings["diarization"] = time.monotonic() - _t_diar

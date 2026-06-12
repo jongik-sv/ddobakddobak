@@ -135,6 +135,11 @@ class UpdateHfSettingsRequest(BaseModel):
     hf_token: str
 
 
+class UpdateSttFileEngineRequest(BaseModel):
+    """PUT /settings/stt-file-engine 요청 스키마."""
+    file_engine: str
+
+
 class TestLlmRequest(BaseModel):
     """POST /settings/llm/test 요청 스키마."""
     provider: str  # "anthropic", "openai", "claude_cli", "gemini_cli", "codex_cli"
