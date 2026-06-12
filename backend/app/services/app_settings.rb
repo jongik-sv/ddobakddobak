@@ -7,6 +7,7 @@ class AppSettings
   # sidecar 코드 기본값과 동일 (community-1 기준)
   DIARIZATION_DEFAULTS = {
     "enable" => false,
+    "clustering_threshold" => 0.6,
     "similarity_threshold" => 0.35,
     "merge_threshold" => 0.5,
     "max_embeddings_per_speaker" => 15
@@ -24,6 +25,7 @@ class AppSettings
     d = load["diarization"] || {}
     {
       "enable" => d.key?("enabled") ? !!d["enabled"] : DIARIZATION_DEFAULTS["enable"],
+      "clustering_threshold" => (d["clustering_threshold"] || DIARIZATION_DEFAULTS["clustering_threshold"]).to_f,
       "similarity_threshold" => (d["similarity_threshold"] || DIARIZATION_DEFAULTS["similarity_threshold"]).to_f,
       "merge_threshold" => (d["merge_threshold"] || DIARIZATION_DEFAULTS["merge_threshold"]).to_f,
       "max_embeddings_per_speaker" => (d["max_embeddings_per_speaker"] || DIARIZATION_DEFAULTS["max_embeddings_per_speaker"]).to_i

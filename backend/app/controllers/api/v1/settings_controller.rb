@@ -171,9 +171,7 @@ module Api
         # diarization
         if (diar = cfg["diarization"])
           result["diarization_enabled"] = diar["enabled"] unless diar["enabled"].nil?
-          %w[similarity_threshold merge_threshold max_embeddings_per_speaker].each do |k|
-            result["diarization_#{k}"] = diar[k] if diar[k]
-          end
+          result["diarization_clustering_threshold"] = diar["clustering_threshold"] if diar["clustering_threshold"]
         end
 
         # audio
@@ -203,11 +201,9 @@ module Api
           cfg["diarization"] ||= {}
           cfg["diarization"]["enabled"] = ActiveModel::Type::Boolean.new.cast(params[:diarization_enabled])
         end
-        %w[similarity_threshold merge_threshold max_embeddings_per_speaker].each do |k|
-          if params.key?(:"diarization_#{k}")
-            cfg["diarization"] ||= {}
-            cfg["diarization"][k] = k.include?("threshold") ? params[:"diarization_#{k}"].to_f : params[:"diarization_#{k}"].to_i
-          end
+        if params.key?(:diarization_clustering_threshold)
+          cfg["diarization"] ||= {}
+          cfg["diarization"]["clustering_threshold"] = params[:diarization_clustering_threshold].to_f.clamp(0.5, 0.8)
         end
 
         # audio
