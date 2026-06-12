@@ -16,19 +16,13 @@ class FileTranscriptionJob < ApplicationJob
     languages = lang[:languages]
     mode = lang[:mode]
     file_chunk_sec = ENV.fetch("AUDIO_FILE_CHUNK_SEC", "30").to_i
-    diarization_enabled = ENV.fetch("DIARIZATION_ENABLED", "true") == "true"
     result = SidecarClient.new.transcribe_file(
       pcm_path,
       meeting_id: meeting.id,
       languages: languages,
       mode: mode,
       file_chunk_sec: file_chunk_sec,
-      diarization_config: {
-        "enable" => diarization_enabled,
-        "similarity_threshold" => ENV.fetch("DIARIZATION_SIMILARITY_THRESHOLD", "0.35").to_f,
-        "merge_threshold" => ENV.fetch("DIARIZATION_MERGE_THRESHOLD", "0.50").to_f,
-        "max_embeddings_per_speaker" => ENV.fetch("DIARIZATION_MAX_EMBEDDINGS_PER_SPEAKER", "15").to_i
-      }
+      diarization_config: AppSettings.diarization_config
     )
     broadcast_progress(channel, 70, "음성 인식 완료")
 

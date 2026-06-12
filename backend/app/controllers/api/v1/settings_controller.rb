@@ -8,7 +8,7 @@ module Api
       before_action :authenticate_user!
       before_action :require_admin!, only: %i[update_stt update_llm test_llm update_hf]
 
-      SETTINGS_PATH = Rails.root.join("..", "settings.yaml").to_s.freeze
+      SETTINGS_PATH = AppSettings::SETTINGS_PATH
 
       # ── STT ──
 
@@ -228,10 +228,7 @@ module Api
       # ── YAML 읽기/쓰기 ──
 
       def load_settings
-        return {} unless File.exist?(SETTINGS_PATH)
-        YAML.safe_load(File.read(SETTINGS_PATH)) || {}
-      rescue Psych::SyntaxError
-        {}
+        AppSettings.load
       end
 
       def save_settings(cfg)
