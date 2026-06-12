@@ -90,7 +90,7 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek }: FullRecordP
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <SpeakerLabel speakerLabel={item.speaker_label} />
+                  <SpeakerLabel speakerLabel={item.speaker_label} speakerName={item.speaker_name} />
                   <span className="text-xs text-gray-400">{formatElapsed(item.started_at_ms)}</span>
                   {!item.applied && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700">

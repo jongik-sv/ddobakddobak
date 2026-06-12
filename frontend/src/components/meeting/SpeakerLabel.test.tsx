@@ -17,6 +17,17 @@ describe('SpeakerLabel', () => {
     render(<SpeakerLabel speakerLabel="SPEAKER_00" />)
     expect(screen.getByRole('status')).toBeInTheDocument()
   })
+
+  it('speakerName이 있으면 라벨 대신 이름을 렌더', () => {
+    render(<SpeakerLabel speakerLabel="화자 1" speakerName="앨리스" />)
+    expect(screen.getByText('앨리스')).toBeInTheDocument()
+    expect(screen.queryByText('화자 1')).not.toBeInTheDocument()
+  })
+
+  it('speakerName이 null이면 라벨로 fallback', () => {
+    render(<SpeakerLabel speakerLabel="화자 1" speakerName={null} />)
+    expect(screen.getByText('화자 1')).toBeInTheDocument()
+  })
 })
 
 describe('speakerColor', () => {

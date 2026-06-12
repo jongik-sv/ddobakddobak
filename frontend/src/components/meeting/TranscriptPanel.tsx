@@ -45,6 +45,14 @@ export function TranscriptPanel({
     return map
   }, [storeFinals])
 
+  // rename 즉시 반영: SpeakerPanel이 store finals의 speaker_name을 갱신하면
+  // prop(transcripts)이 stale해도 store 값을 우선 표시한다.
+  const speakerNameOverrides = useMemo(() => {
+    const map = new Map<number, string | null>()
+    for (const f of storeFinals) map.set(f.id, f.speaker_name ?? null)
+    return map
+  }, [storeFinals])
+
   const highlightedIndex = transcripts.findIndex(
     (t) => currentTimeMs >= t.started_at_ms && currentTimeMs < t.ended_at_ms
   )
@@ -86,7 +94,9 @@ export function TranscriptPanel({
           >
             <div className="flex items-center gap-2 mb-0.5">
               <span className="text-xs font-semibold text-indigo-600">
-                {transcript.speaker_label}
+                {(speakerNameOverrides.has(transcript.id)
+                  ? speakerNameOverrides.get(transcript.id)
+                  : transcript.speaker_name) ?? transcript.speaker_label}
               </span>
               <span className="text-[10px] text-gray-400 tabular-nums">
                 {formatTimestamp(transcript.started_at_ms)}

@@ -107,7 +107,7 @@ export function LiveRecord({ meetingId, currentTimeMs = 0, onSeek, onApply, edit
             onClick={() => onSeek?.(item.started_at_ms)}
           >
             <div className="flex items-center gap-2">
-              <SpeakerLabel speakerLabel={item.speaker_label} />
+              <SpeakerLabel speakerLabel={item.speaker_label} speakerName={item.speaker_name} />
               <span className="text-xs text-gray-400">
                 {/* 오프라인 재생: 무음컷 병합 오디오 타임라인(segmentOffsetsMs)으로 표시해야
                     재생 위치와 일치한다. started_at_ms는 무음 갭 포함 절대 타임라인이라 더 길다. */}

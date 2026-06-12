@@ -19,9 +19,11 @@ export function speakerColor(speakerLabel: string): string {
 
 interface SpeakerLabelProps {
   speakerLabel: string
+  /** 표시 이름. null/undefined면 라벨로 fallback */
+  speakerName?: string | null
 }
 
-export function SpeakerLabel({ speakerLabel }: SpeakerLabelProps) {
+export function SpeakerLabel({ speakerLabel, speakerName }: SpeakerLabelProps) {
   const colorClass = speakerColor(speakerLabel)
 
   return (
@@ -29,7 +31,7 @@ export function SpeakerLabel({ speakerLabel }: SpeakerLabelProps) {
       role="status"
       className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${colorClass}`}
     >
-      {speakerLabel}
+      {speakerName ?? speakerLabel}
     </span>
   )
 }

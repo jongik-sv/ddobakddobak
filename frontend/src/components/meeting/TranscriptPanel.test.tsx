@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { TranscriptPanel } from './TranscriptPanel'
+import { useTranscriptStore } from '../../stores/transcriptStore'
 
 const mockTranscripts = [
   {
@@ -126,5 +127,60 @@ describe('TranscriptPanel', () => {
     )
 
     expect(screen.getByText(/트랜스크립트가 없습니다/)).toBeInTheDocument()
+  })
+})
+
+describe('TranscriptPanel speaker_name', () => {
+  beforeEach(() => {
+    useTranscriptStore.getState().reset()
+  })
+
+  afterEach(() => {
+    useTranscriptStore.getState().reset()
+  })
+
+  it('speaker_name이 있으면 배지에 이름 표시', () => {
+    render(
+      <TranscriptPanel
+        meetingId={1}
+        transcripts={[{ ...mockTranscripts[0], speaker_name: '앨리스' }]}
+        currentTimeMs={0}
+        onSeek={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText('앨리스')).toBeInTheDocument()
+    expect(screen.queryByText('SPEAKER_00')).not.toBeInTheDocument()
+  })
+
+  it('rename 후 store setSpeakerName 호출 시 배지가 즉시 갱신된다', () => {
+    useTranscriptStore.getState().loadFinals([
+      {
+        id: 1,
+        content: '첫 번째 발화입니다.',
+        speaker_label: 'SPEAKER_00',
+        started_at_ms: 0,
+        ended_at_ms: 3000,
+        sequence_number: 1,
+        applied: false,
+      },
+    ])
+
+    render(
+      <TranscriptPanel
+        meetingId={1}
+        transcripts={[mockTranscripts[0]]}
+        currentTimeMs={0}
+        onSeek={vi.fn()}
+      />
+    )
+    expect(screen.getByText('SPEAKER_00')).toBeInTheDocument()
+
+    act(() => {
+      useTranscriptStore.getState().setSpeakerName('SPEAKER_00', '앨리스')
+    })
+
+    expect(screen.getByText('앨리스')).toBeInTheDocument()
+    expect(screen.queryByText('SPEAKER_00')).not.toBeInTheDocument()
   })
 })
