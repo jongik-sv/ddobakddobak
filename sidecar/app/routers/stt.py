@@ -152,7 +152,8 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
     # 3. 화자 분리 — community-1 전체 오디오 배치 (MPS, gpu_lock으로 MLX와 직렬화)
     enable_diarization = (request.diarization_config or {}).get("enable", False)
     if enable_diarization and segments:
-        await ensure_diarizer_pipeline(http_request.app)
+        # 일회성 파일 작업이므로 동시 로드 중이면 완료까지 대기 (wait=True)
+        await ensure_diarizer_pipeline(http_request.app, wait=True)
         pipeline = getattr(http_request.app.state, "diarizer_pipeline", None)
         if pipeline:
             try:
@@ -170,6 +171,8 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
                 logger.info(f"[transcribe-file] 배치 화자 분리 완료")
             except Exception as e:
                 logger.exception(f"[transcribe-file] 화자 분리 실패 (무시): {e}")
+        else:
+            logger.warning("[transcribe-file] 화자 분리 활성화됐지만 pipeline 로드 실패/불가 — 라벨 없이 진행")
     else:
         logger.info(f"[transcribe-file] 화자 분리 스킵")
 

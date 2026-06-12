@@ -5,7 +5,9 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 
 from fastapi import FastAPI
 
@@ -16,12 +18,32 @@ from app.schemas import LlmConfigOverride
 logger = logging.getLogger(__name__)
 
 
-async def ensure_diarizer_pipeline(app: FastAPI):
-    """화자 구분 파이프라인을 lazy load한다. 이미 로드됐으면 즉시 반환."""
+# 다른 요청이 로드 중일 때 wait=True 폴링 대기 한도/간격 (초)
+_DIARIZER_WAIT_TIMEOUT_SEC = 180.0
+_DIARIZER_WAIT_POLL_SEC = 0.5
+
+
+async def ensure_diarizer_pipeline(app: FastAPI, wait: bool = False):
+    """화자 구분 파이프라인을 lazy load한다. 이미 로드됐으면 즉시 반환.
+
+    wait=False(기본): 다른 요청이 로드 중이면 즉시 None 반환 — 실시간 청크
+    경로는 다음 청크에서 재시도하므로 논블로킹 유지.
+    wait=True: 배치(파일) 경로용. 다른 요청의 로드가 끝날 때까지 폴링 대기
+    후 결과를 반환한다 (일회성 작업이라 재시도 기회가 없음).
+    """
     if app.state.diarizer_pipeline is not None:
         return app.state.diarizer_pipeline
     if app.state.diarizer_loading:
-        return None  # 다른 요청에서 로드 중
+        if not wait:
+            return None  # 다른 요청에서 로드 중
+        deadline = time.monotonic() + _DIARIZER_WAIT_TIMEOUT_SEC
+        while (app.state.diarizer_loading
+               and app.state.diarizer_pipeline is None
+               and time.monotonic() < deadline):
+            await asyncio.sleep(_DIARIZER_WAIT_POLL_SEC)
+        if app.state.diarizer_pipeline is None:
+            logger.warning("화자 구분 모델 로드 대기 종료 — pipeline 없음 (로드 실패 또는 타임아웃)")
+        return app.state.diarizer_pipeline
     if not settings.HF_TOKEN:
         return None
     app.state.diarizer_loading = True
