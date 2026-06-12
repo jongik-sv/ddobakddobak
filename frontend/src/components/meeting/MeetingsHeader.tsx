@@ -35,7 +35,7 @@ export function MeetingsHeader({
           type="text"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="회의 검색"
+          placeholder="제목·요약·전사 내용 검색"
           className="flex-1 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           autoFocus
         />

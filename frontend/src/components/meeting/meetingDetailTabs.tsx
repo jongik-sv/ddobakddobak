@@ -25,6 +25,12 @@ interface BuildMeetingDetailTabsArgs {
   isSavingMemo: boolean
   /** 요약 탭 헤더에 끼울 요약 옵션 컨트롤 (페이지가 생성·게이팅) */
   summaryOptions?: React.ReactNode
+  /** 페이지 내 검색어 (전사 하이라이트용) */
+  searchQuery?: string
+  /** 현재 활성 전사 매치 */
+  activeSearch?: { transcriptId: number; occurrence: number } | null
+  /** 검색 중 오디오 싱크 자동 스크롤 억제 */
+  suppressAutoScroll?: boolean
 }
 
 /** 회의 상세 모바일 탭(기록/요약/메모) 정의를 생성한다. (순수 함수 — 훅 아님) */
@@ -41,6 +47,9 @@ export function buildMeetingDetailTabs({
   onSaveMemo,
   isSavingMemo,
   summaryOptions,
+  searchQuery,
+  activeSearch,
+  suppressAutoScroll,
 }: BuildMeetingDetailTabsArgs): Tab[] {
   return [
     {
@@ -58,6 +67,9 @@ export function buildMeetingDetailTabs({
               transcripts={transcripts}
               currentTimeMs={currentTimeMs}
               onSeek={onSeek}
+              searchQuery={searchQuery}
+              activeSearch={activeSearch}
+              suppressAutoScroll={suppressAutoScroll}
             />
           </div>
         </div>
@@ -68,7 +80,7 @@ export function buildMeetingDetailTabs({
       label: '요약',
       icon: Bot,
       content: (
-        <div className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
+        <div data-search-region="summary" className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
           <AiSummaryPanel meetingId={meetingId} isRecording={false} onNotesChange={onNotesChange} headerExtra={summaryOptions} />
         </div>
       ),

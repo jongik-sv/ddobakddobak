@@ -34,6 +34,8 @@ import { MeetingActionHeader } from '../components/meeting/MeetingActionHeader'
 import { MeetingActions } from '../components/meeting/MeetingActions'
 import { MeetingDetailTopBar } from '../components/meeting/MeetingDetailTopBar'
 import { buildMeetingDetailTabs } from '../components/meeting/meetingDetailTabs'
+import { MeetingSearchBar } from '../components/meeting/MeetingSearchBar'
+import { useMeetingSearch } from '../hooks/useMeetingSearch'
 
 // ──────────────────────────────────────────────
 // 회의 상세 페이지
@@ -217,6 +219,21 @@ export default function MeetingPage() {
   const bookmarksVisible = useUiStore((s) => s.bookmarksVisible)
   const toggleBookmarks = useUiStore((s) => s.toggleBookmarks)
 
+  // 페이지 내 검색 (전사 + AI요약)
+  const search = useMeetingSearch(transcripts)
+  const activeTranscriptSearch =
+    search.current?.type === 'transcript'
+      ? { transcriptId: search.current.transcriptId, occurrence: search.current.occurrence }
+      : null
+
+  // 모바일 탭 — 검색 매치 위치에 따라 기록/요약 탭 자동 전환 (controlled)
+  const [mobileTab, setMobileTab] = useState('transcript')
+  const currentMatchType = search.current?.type
+  useEffect(() => {
+    if (isDesktop || !currentMatchType || !search.effectiveQuery) return
+    setMobileTab(currentMatchType === 'transcript' ? 'transcript' : 'summary')
+  }, [isDesktop, currentMatchType, search.currentIndex, search.effectiveQuery])
+
   // meeting 상태가 completed로 바뀌면 트랜스크립트도 리로드 (파일 업로드 완료 시)
   useEffect(() => {
     if (meeting?.status === 'transcribing') return
@@ -329,6 +346,9 @@ export default function MeetingPage() {
     onSaveMemo: handleSaveMemo,
     isSavingMemo,
     summaryOptions: summaryOptionsControl,
+    searchQuery: search.effectiveQuery,
+    activeSearch: activeTranscriptSearch,
+    suppressAutoScroll: !!search.effectiveQuery,
   })
 
   return (
@@ -340,12 +360,14 @@ export default function MeetingPage() {
         attachmentsVisible={attachmentsVisible}
         memoVisible={memoVisible}
         bookmarksVisible={bookmarksVisible}
+        searchOpen={search.isOpen}
         canEdit={canEdit}
         onBack={() => navigate('/')}
         onToggleAttachments={toggleAttachments}
         onShowEdit={() => setShowEditDialog(true)}
         onToggleMemo={toggleMemo}
         onToggleBookmarks={toggleBookmarks}
+        onToggleSearch={() => (search.isOpen ? search.close() : search.open())}
         actions={meeting ? (
           <MeetingActions
             meeting={meeting}
@@ -365,6 +387,20 @@ export default function MeetingPage() {
           />
         ) : undefined}
       />
+
+      {/* 페이지 내 검색 바 (전사 + AI요약) */}
+      {search.isOpen && (
+        <MeetingSearchBar
+          query={search.query}
+          onQueryChange={search.setQuery}
+          matchCount={search.matches.length}
+          currentIndex={search.currentIndex}
+          onNext={search.next}
+          onPrev={search.prev}
+          onClose={search.close}
+          focusTick={search.focusTick}
+        />
+      )}
 
       {/* 오디오 플레이어 (데스크톱) */}
       <div className="hidden lg:block">
@@ -433,6 +469,9 @@ export default function MeetingPage() {
                   transcripts={transcripts}
                   currentTimeMs={currentTimeMs}
                   onSeek={handleSeek}
+                  searchQuery={search.effectiveQuery}
+                  activeSearch={activeTranscriptSearch}
+                  suppressAutoScroll={!!search.effectiveQuery}
                 />
               </div>
             </div>
@@ -442,7 +481,7 @@ export default function MeetingPage() {
 
           {/* AI 회의록 — 기본 45% */}
           <Panel defaultSize={45} minSize={20}>
-            <div className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
+            <div data-search-region="summary" className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
               <AiSummaryPanel
                 meetingId={meetingId}
                 isRecording={false}
@@ -471,6 +510,8 @@ export default function MeetingPage() {
       ) : (
         <MobileTabLayout
           tabs={mobileTabs}
+          activeTab={mobileTab}
+          onTabChange={setMobileTab}
         />
       )}
 

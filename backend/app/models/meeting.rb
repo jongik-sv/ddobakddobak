@@ -27,11 +27,20 @@ class Meeting < ApplicationRecord
 
   enum :status, { pending: "pending", recording: "recording", transcribing: "transcribing", completed: "completed" }
 
-  scope :search, ->(q) { where("title LIKE ?", "%#{sanitize_sql_like(q)}%") if q.present? }
+  # SQLite LIKE는 기본 ESCAPE 문자가 없어 sanitize_sql_like의 백슬래시 이스케이프가
+  # 리터럴로 매치된다(%·_ 포함 검색어 오동작) — ESCAPE '\' 명시 필수.
+  scope :search, ->(q) { where("title LIKE ? ESCAPE '\\'", "%#{sanitize_sql_like(q)}%") if q.present? }
+  # 목록 검색: 제목·요약 미리보기에 더해 전사 본문까지 부분문자열 매치.
+  # FTS(transcripts_fts)는 prefix-word 의미론이라 제목 LIKE와 불일치 — 일관성 위해 LIKE 유지.
   scope :search_with_summary, ->(q) {
     if q.present?
       pattern = "%#{sanitize_sql_like(q)}%"
-      where("title LIKE :q OR brief_summary LIKE :q", q: pattern)
+      where(<<~SQL.squish, q: pattern)
+        title LIKE :q ESCAPE '\\' OR brief_summary LIKE :q ESCAPE '\\' OR EXISTS (
+          SELECT 1 FROM transcripts t
+          WHERE t.meeting_id = meetings.id AND t.content LIKE :q ESCAPE '\\'
+        )
+      SQL
     end
   }
   scope :created_after, ->(date) { where("created_at >= ?", date) if date.present? }

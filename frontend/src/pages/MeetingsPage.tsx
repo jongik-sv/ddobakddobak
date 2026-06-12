@@ -263,7 +263,7 @@ export default function MeetingsPage() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="회의 검색"
+            placeholder="제목·요약·전사 내용 검색"
             className="flex-1 min-w-[200px] rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
           <div className="flex items-center gap-2">

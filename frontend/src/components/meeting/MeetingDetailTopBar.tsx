@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react'
-import { Pencil, ArrowLeft, StickyNote, Paperclip, Bookmark } from 'lucide-react'
+import { Pencil, ArrowLeft, StickyNote, Paperclip, Bookmark, Search } from 'lucide-react'
 import { Tooltip } from '../ui/Tooltip'
 
 interface MeetingDetailTopBarProps {
@@ -8,6 +8,8 @@ interface MeetingDetailTopBarProps {
   attachmentsVisible: boolean
   memoVisible: boolean
   bookmarksVisible: boolean
+  /** 페이지 내 검색(전사+요약) 바 열림 상태 */
+  searchOpen: boolean
   /** 회의 정보 수정 어포던스를 노출할지 (소유자 ∨ admin). 기본 true. */
   canEdit?: boolean
   onBack: () => void
@@ -15,6 +17,7 @@ interface MeetingDetailTopBarProps {
   onShowEdit: () => void
   onToggleMemo: () => void
   onToggleBookmarks: () => void
+  onToggleSearch: () => void
   /** 우측 정렬 액션 버튼 슬롯(회의 진행/내보내기/삭제 등). 자체적으로 ml-auto 정렬. */
   actions?: ReactNode
 }
@@ -26,12 +29,14 @@ export function MeetingDetailTopBar({
   attachmentsVisible,
   memoVisible,
   bookmarksVisible,
+  searchOpen,
   canEdit = true,
   onBack,
   onToggleAttachments,
   onShowEdit,
   onToggleMemo,
   onToggleBookmarks,
+  onToggleSearch,
   actions,
 }: MeetingDetailTopBarProps) {
   return (
@@ -46,6 +51,15 @@ export function MeetingDetailTopBar({
       </Tooltip>
       {/* 모바일은 액션 버튼들에 밀려 "회…"처럼 잘리므로 라벨을 숨김(sr-only). 데스크톱만 표시. */}
       <h1 className={`font-bold text-gray-900 min-w-0 truncate ${isDesktop ? 'text-xl' : 'sr-only'}`}>회의 미리보기</h1>
+      <Tooltip text={searchOpen ? '검색 닫기' : '페이지 내 검색 (Ctrl+F)'}>
+        <button
+          aria-label="페이지 내 검색"
+          onClick={onToggleSearch}
+          className={`p-1.5 rounded-md transition-colors ${searchOpen ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+        >
+          <Search className="w-4 h-4" />
+        </button>
+      </Tooltip>
       <Tooltip text={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}>
         <button
           onClick={onToggleAttachments}

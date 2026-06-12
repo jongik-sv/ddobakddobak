@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Transcript } from '../../api/meetings'
 import { EditableTranscriptText } from './EditableTranscriptText'
+import { HighlightedText } from './HighlightedText'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 
 interface TranscriptPanelProps {
@@ -8,6 +9,12 @@ interface TranscriptPanelProps {
   transcripts: Transcript[]
   currentTimeMs: number
   onSeek: (ms: number) => void
+  /** 페이지 내 검색어. 비어있지 않으면 편집 스팬 대신 하이라이트 스팬 렌더 (검색 닫으면 편집 복귀) */
+  searchQuery?: string
+  /** 현재 활성 전사 매치 (세그먼트 id + 내부 occurrence 인덱스) */
+  activeSearch?: { transcriptId: number; occurrence: number } | null
+  /** 검색 중 오디오 싱크 자동 스크롤 억제 (검색 스크롤과 충돌 방지) */
+  suppressAutoScroll?: boolean
 }
 
 function formatTimestamp(ms: number): string {
@@ -17,7 +24,15 @@ function formatTimestamp(ms: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-export function TranscriptPanel({ meetingId, transcripts, currentTimeMs, onSeek }: TranscriptPanelProps) {
+export function TranscriptPanel({
+  meetingId,
+  transcripts,
+  currentTimeMs,
+  onSeek,
+  searchQuery = '',
+  activeSearch = null,
+  suppressAutoScroll = false,
+}: TranscriptPanelProps) {
   const highlightedRef = useRef<HTMLDivElement | null>(null)
 
   // EditableTranscriptText의 낙관적 갱신은 transcriptStore.finals에 들어간다.
@@ -34,7 +49,12 @@ export function TranscriptPanel({ meetingId, transcripts, currentTimeMs, onSeek 
     (t) => currentTimeMs >= t.started_at_ms && currentTimeMs < t.ended_at_ms
   )
 
+  // suppressAutoScroll은 ref로 읽는다 — deps에 넣으면 검색 종료(해제) 시점에
+  // 오디오 위치로 뷰포트가 튀는 스크롤이 발화한다. 인덱스가 실제로 바뀔 때만 스크롤.
+  const suppressRef = useRef(suppressAutoScroll)
+  suppressRef.current = suppressAutoScroll
   useEffect(() => {
+    if (suppressRef.current) return
     if (highlightedRef.current) {
       highlightedRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
@@ -72,13 +92,25 @@ export function TranscriptPanel({ meetingId, transcripts, currentTimeMs, onSeek 
                 {formatTimestamp(transcript.started_at_ms)}
               </span>
             </div>
-            <EditableTranscriptText
-              transcriptId={transcript.id}
-              meetingId={meetingId}
-              content={contentOverrides.get(transcript.id) ?? transcript.content}
-              editable
-              className="text-sm text-gray-800 select-text"
-            />
+            {searchQuery ? (
+              // 검색 중엔 읽기전용 하이라이트 렌더 — contentEditable DOM에 <mark> 주입 불가
+              <HighlightedText
+                text={contentOverrides.get(transcript.id) ?? transcript.content}
+                query={searchQuery}
+                activeOccurrence={
+                  activeSearch?.transcriptId === transcript.id ? activeSearch.occurrence : -1
+                }
+                className="text-sm text-gray-800 select-text"
+              />
+            ) : (
+              <EditableTranscriptText
+                transcriptId={transcript.id}
+                meetingId={meetingId}
+                content={contentOverrides.get(transcript.id) ?? transcript.content}
+                editable
+                className="text-sm text-gray-800 select-text"
+              />
+            )}
           </div>
         )
       })}

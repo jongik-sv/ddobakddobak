@@ -81,6 +81,46 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(json["meetings"].first["title"]).to eq("Design Review")
       end
 
+      it "q param matches transcript content even when title/summary do not" do
+        hit  = create(:meeting, team: team, creator: user, title: "주간 회의", brief_summary: "일정 공유")
+        miss = create(:meeting, team: team, creator: user, title: "월간 회의", brief_summary: "예산 논의")
+        create(:transcript, meeting: hit, content: "발사대 점검 결과를 공유했습니다")
+        create(:transcript, meeting: miss, content: "다른 주제의 발언입니다")
+
+        get "/api/v1/meetings", params: { q: "발사대" }
+
+        json = response.parsed_body
+        expect(json["meetings"].map { |m| m["id"] }).to eq([ hit.id ])
+      end
+
+      it "q에 LIKE 와일드카드(%, _)가 있어도 리터럴로 검색된다" do
+        pct = create(:meeting, team: team, creator: user, title: "진행률 100% 보고")
+        create(:meeting, team: team, creator: user, title: "진행률 100점 보고")
+        snake = create(:meeting, team: team, creator: user, title: "회의록")
+        create(:transcript, meeting: snake, content: "snake_case 네이밍 논의")
+        other = create(:meeting, team: team, creator: user, title: "잡담")
+        create(:transcript, meeting: other, content: "snakeXcase 이야기")
+
+        get "/api/v1/meetings", params: { q: "100%" }
+        expect(response.parsed_body["meetings"].map { |m| m["id"] }).to eq([ pct.id ])
+
+        get "/api/v1/meetings", params: { q: "snake_case" }
+        expect(response.parsed_body["meetings"].map { |m| m["id"] }).to eq([ snake.id ])
+      end
+
+      it "q param의 전사 매치도 accessible_by 범위를 벗어나지 않는다" do
+        mine = create(:meeting, team: team, creator: user, title: "내 회의")
+        create(:transcript, meeting: mine, content: "발사대 일정")
+        others = create(:meeting, :private_meeting, team: team, creator: other_user, title: "남의 회의")
+        create(:transcript, meeting: others, content: "발사대 기밀")
+
+        get "/api/v1/meetings", params: { q: "발사대" }
+
+        ids = response.parsed_body["meetings"].map { |m| m["id"] }
+        expect(ids).to include(mine.id)
+        expect(ids).not_to include(others.id)
+      end
+
       it "returns empty meetings when no meetings" do
         get "/api/v1/meetings"
 

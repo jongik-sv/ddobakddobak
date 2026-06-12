@@ -236,3 +236,12 @@ body[data-dragging="true"] * {
     padding-inline: 16px !important;
   }
 }
+
+/* 페이지 내 검색 — AI요약 매치 블록 일시 강조 (contenteditable 내부 DOM 비변형, 클래스만 토글) */
+.search-block-flash {
+  animation: search-block-flash 1.2s ease-out;
+}
+@keyframes search-block-flash {
+  0% { box-shadow: 0 0 0 3px rgb(251 146 60 / 0.9); }
+  100% { box-shadow: 0 0 0 3px rgb(251 146 60 / 0); }
+}
