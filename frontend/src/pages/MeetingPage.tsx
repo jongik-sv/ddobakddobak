@@ -478,7 +478,7 @@ export default function MeetingPage() {
               </div>
               {/* 배치 화자분리 결과 이름 변경/초기화 (MeetingViewerPage 데스크톱과 동일 패턴) */}
               <div className="border-t shrink-0">
-                <SpeakerPanel meetingId={meetingId} isRecording={false} />
+                <SpeakerPanel meetingId={meetingId} isRecording={false} collapsible />
               </div>
             </div>
           </Panel>

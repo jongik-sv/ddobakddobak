@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { getSpeakers, renameSpeaker, resetSpeakers, type Speaker } from '../../api/speakers'
 import { speakerColor } from './SpeakerLabel'
 import { useTranscriptStore } from '../../stores/transcriptStore'
@@ -6,9 +6,11 @@ import { useTranscriptStore } from '../../stores/transcriptStore'
 interface SpeakerPanelProps {
   meetingId: number
   isRecording: boolean
+  /** 데스크톱 사이드 패널용: 화자 없으면 접힘, 감지되면 자동 펼침(이후 수동 토글 우선) */
+  collapsible?: boolean
 }
 
-export function SpeakerPanel({ meetingId, isRecording }: SpeakerPanelProps) {
+export function SpeakerPanel({ meetingId, isRecording, collapsible }: SpeakerPanelProps) {
   const [speakers, setSpeakers] = useState<Speaker[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -45,6 +47,15 @@ export function SpeakerPanel({ meetingId, isRecording }: SpeakerPanelProps) {
     return () => clearInterval(id)
   }, [isRecording, fetchSpeakers])
 
+  // collapsible 상태
+  const [open, setOpen] = useState(false)
+  const userToggledRef = useRef(false)
+
+  // 화자가 처음 감지되면 자동 펼침 — 사용자가 직접 토글한 뒤에는 개입하지 않음
+  useEffect(() => {
+    if (!userToggledRef.current && visibleSpeakers.length > 0) setOpen(true)
+  }, [visibleSpeakers.length])
+
   function startEdit(speaker: Speaker) {
     setEditingId(speaker.id)
     setEditValue(speaker.name === speaker.id ? '' : speaker.name)
@@ -76,56 +87,77 @@ export function SpeakerPanel({ meetingId, isRecording }: SpeakerPanelProps) {
     clearSpeakerNames()
   }
 
-  if (visibleSpeakers.length === 0) {
-    return (
+  // body: 기존 렌더 내용 (collapsible/비-collapsible 공통)
+  const body =
+    visibleSpeakers.length === 0 ? (
       <div className="p-4 text-xs text-gray-400">
         {isRecording ? '화자 감지 대기 중...' : '감지된 화자 없음'}
       </div>
+    ) : (
+      <div className="flex flex-col gap-2 p-4">
+        <div className="flex items-center justify-between">
+          {/* collapsible 모드에서는 summary가 라벨 역할을 하므로 헤더 라벨 숨김 */}
+          {!collapsible && (
+            <span className="text-xs font-semibold text-gray-500">화자 목록</span>
+          )}
+          <button
+            onClick={handleReset}
+            className="text-xs text-red-400 hover:text-red-600 min-h-[44px] flex items-center"
+            title="화자 DB 초기화"
+          >
+            초기화
+          </button>
+        </div>
+
+        {visibleSpeakers.map((speaker) => (
+          <div key={speaker.id} className="flex items-center gap-2 min-h-[44px]">
+            <span
+              className={`shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold ${speakerColor(speaker.id)}`}
+            >
+              {speaker.id}
+            </span>
+
+            {editingId === speaker.id ? (
+              <input
+                autoFocus
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={() => submitEdit(speaker)}
+                onKeyDown={(e) => handleKeyDown(e, speaker)}
+                placeholder={speaker.id}
+                className="flex-1 text-xs border-b border-blue-400 outline-none bg-transparent py-0.5"
+              />
+            ) : (
+              <button
+                onClick={() => startEdit(speaker)}
+                className="flex-1 text-left text-xs text-gray-700 hover:text-blue-600 truncate"
+                title="클릭하여 이름 편집"
+              >
+                {speaker.name !== speaker.id ? speaker.name : <span className="text-gray-400 italic">이름 없음</span>}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
     )
+
+  if (!collapsible) {
+    return body
   }
 
   return (
-    <div className="flex flex-col gap-2 p-4">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-500">화자 목록</span>
-        <button
-          onClick={handleReset}
-          className="text-xs text-red-400 hover:text-red-600 min-h-[44px] flex items-center"
-          title="화자 DB 초기화"
-        >
-          초기화
-        </button>
-      </div>
-
-      {visibleSpeakers.map((speaker) => (
-        <div key={speaker.id} className="flex items-center gap-2 min-h-[44px]">
-          <span
-            className={`shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold ${speakerColor(speaker.id)}`}
-          >
-            {speaker.id}
-          </span>
-
-          {editingId === speaker.id ? (
-            <input
-              autoFocus
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onBlur={() => submitEdit(speaker)}
-              onKeyDown={(e) => handleKeyDown(e, speaker)}
-              placeholder={speaker.id}
-              className="flex-1 text-xs border-b border-blue-400 outline-none bg-transparent py-0.5"
-            />
-          ) : (
-            <button
-              onClick={() => startEdit(speaker)}
-              className="flex-1 text-left text-xs text-gray-700 hover:text-blue-600 truncate"
-              title="클릭하여 이름 편집"
-            >
-              {speaker.name !== speaker.id ? speaker.name : <span className="text-gray-400 italic">이름 없음</span>}
-            </button>
-          )}
-        </div>
-      ))}
-    </div>
+    <details open={open}>
+      <summary
+        onClick={(e) => {
+          e.preventDefault()
+          userToggledRef.current = true
+          setOpen((v) => !v)
+        }}
+        className="px-4 py-2 text-xs font-semibold text-gray-500 cursor-pointer hover:bg-gray-50 select-none"
+      >
+        화자 목록{visibleSpeakers.length > 0 ? ` (${visibleSpeakers.length})` : ''}
+      </summary>
+      {body}
+    </details>
   )
 }

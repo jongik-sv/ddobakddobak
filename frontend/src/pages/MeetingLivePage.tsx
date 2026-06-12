@@ -281,7 +281,7 @@ export default function MeetingLivePage() {
                 />
               </div>
               <div className="border-t shrink-0">
-                <SpeakerPanel meetingId={meetingId} isRecording={isActive} />
+                <SpeakerPanel meetingId={meetingId} isRecording={isActive} collapsible />
               </div>
               {isSharing && (
                 <div className="border-t shrink-0">

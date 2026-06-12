@@ -138,7 +138,7 @@ export default function MeetingViewerPage() {
                 />
               </div>
               <div className="border-t shrink-0">
-                <SpeakerPanel meetingId={meetingId} isRecording={!recordingStopped} />
+                <SpeakerPanel meetingId={meetingId} isRecording={!recordingStopped} collapsible />
               </div>
               <div className="border-t shrink-0">
                 <ParticipantList
