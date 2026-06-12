@@ -28,6 +28,7 @@ class FileTranscriptionJob < ApplicationJob
 
     # 3. Transcript 레코드 일괄 생성
     store_transcripts(meeting, result["segments"])
+    apply_speaker_names(meeting)
     broadcast_progress(channel, 80, "트랜스크립트 저장 완료")
 
     # 4. AI 회의록 생성 (final 모드)
@@ -95,6 +96,20 @@ class FileTranscriptionJob < ApplicationJob
         applied_to_minutes: false
       )
     end
+  end
+
+  # SpeakerDB names 맵을 비정규화 사본(speaker_name)으로 재적용한다.
+  # name == id 는 "이름 미설정" — 복사하지 않는다. 실패해도 잡은 계속 진행.
+  def apply_speaker_names(meeting)
+    speakers = SidecarClient.new.get_speakers(meeting.id)["speakers"]
+    return if speakers.blank?
+
+    speakers.each do |sp|
+      next if sp["name"].blank? || sp["name"] == sp["id"]
+      meeting.transcripts.where(speaker_label: sp["id"]).update_all(speaker_name: sp["name"])
+    end
+  rescue SidecarClient::SidecarError, SidecarClient::ConnectionError, SidecarClient::TimeoutError => e
+    Rails.logger.warn "[FileTranscriptionJob] meeting=#{meeting.id} speaker_name 재적용 실패: #{e.message}"
   end
 
   def generate_summary(meeting)
