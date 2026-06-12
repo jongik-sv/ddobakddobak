@@ -53,9 +53,7 @@ audio:
 # ── 화자 분리 (Diarization) ─────────────────────────
 diarization:
   enabled: false                # 파일럿 검증 후 사용자가 토글로 ON
-  similarity_threshold: 0.35    # 기존 화자 매칭 임계값 (0.3~0.4 권장)
-  merge_threshold: 0.50         # 사후 병합 임계값
-  max_embeddings_per_speaker: 15
+  clustering_threshold: 0.60    # 배치 클러스터링 세밀도 (0.5~0.8, 낮을수록 잘게 분리)
 
 # ── 회의 언어 ──────────────────────────────────────
 languages:

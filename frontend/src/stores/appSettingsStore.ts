@@ -87,7 +87,7 @@ function debouncedSave() {
         (payload as Record<string, unknown>)[envKey] = AUDIO_DEFAULTS[key]
       }
     }
-    const diarKeys = ['similarity_threshold', 'merge_threshold', 'max_embeddings_per_speaker'] as const
+    const diarKeys = ['clustering_threshold'] as const
     for (const key of diarKeys) {
       const val = s.diarizationOverrides[key]
       const envKey = `diarization_${key}` as keyof AppSettings
@@ -168,9 +168,7 @@ export async function loadAppSettings() {
     // 화자분리 오버라이드: settings.yaml 값이 있으면 무조건 적용
     const diarOverrides: DiarizationOverrides = {}
     const diarMap = {
-      diarization_similarity_threshold: 'similarity_threshold',
-      diarization_merge_threshold: 'merge_threshold',
-      diarization_max_embeddings_per_speaker: 'max_embeddings_per_speaker',
+      diarization_clustering_threshold: 'clustering_threshold',
     } as const
     for (const [envKey, storeKey] of Object.entries(diarMap)) {
       const val = saved[envKey as keyof AppSettings] as number | undefined

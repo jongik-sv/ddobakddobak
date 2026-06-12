@@ -43,9 +43,7 @@ interface AppConfig {
   languages: LanguageOption[]
   meeting_types: LabelValue[]
   diarization: {
-    similarity_threshold: number
-    merge_threshold: number
-    max_embeddings_per_speaker: number
+    clustering_threshold: number
   }
   summary: {
     default_interval_sec: number

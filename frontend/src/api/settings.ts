@@ -109,9 +109,7 @@ export interface AppSettings {
   audio_preroll_ms?: number
   audio_overlap_ms?: number
   audio_file_chunk_sec?: number
-  diarization_similarity_threshold?: number
-  diarization_merge_threshold?: number
-  diarization_max_embeddings_per_speaker?: number
+  diarization_clustering_threshold?: number
 }
 
 export async function getAppSettings(): Promise<AppSettings> {

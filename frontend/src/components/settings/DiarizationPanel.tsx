@@ -61,32 +61,16 @@ export function DiarizationPanel() {
           <p className="text-xs text-blue-700">
             <span className="font-semibold">배치 분석</span> — 파일 업로드와 STT 재생성 시 전체 오디오를 한 번에 분석해 화자를 구분합니다.
             실시간 전사 중에는 화자 라벨이 붙지 않으며, 녹음한 회의는 종료 후 STT 재생성으로 화자 분리를 적용할 수 있습니다.
+            회의 정보의 '참여 인원'을 입력하면 그 인원수 ±2명 범위로 화자를 맞춥니다.
           </p>
         </div>
         <SettingSlider
-          label="화자 매칭 기준"
-          description="임베딩 유사도가 이 값 이상이면 기존 화자로 인식합니다. 낮을수록 같은 화자로 쉽게 매칭되고, 높을수록 새 화자로 분리됩니다."
-          value={dv('similarity_threshold')}
-          defaultValue={DIARIZATION_DEFAULTS.similarity_threshold}
-          min={0.10} max={0.60} step={0.05}
-          onChange={(v) => setDiarizationOverride('similarity_threshold', v)}
-        />
-        <SettingSlider
-          label="화자 병합 기준"
-          description="처리 후 유사한 화자를 하나로 합치는 기준값. 높을수록 병합이 까다로워져 화자가 많아집니다."
-          value={dv('merge_threshold')}
-          defaultValue={DIARIZATION_DEFAULTS.merge_threshold}
-          min={0.20} max={0.80} step={0.05}
-          onChange={(v) => setDiarizationOverride('merge_threshold', v)}
-        />
-        <SettingSlider
-          label="화자당 최대 임베딩 수"
-          description="화자를 식별하기 위해 보관하는 음성 샘플 수. 많을수록 정확하지만 메모리를 더 사용합니다."
-          value={dv('max_embeddings_per_speaker')}
-          defaultValue={DIARIZATION_DEFAULTS.max_embeddings_per_speaker}
-          min={3} max={25} step={1}
-          unit="개"
-          onChange={(v) => setDiarizationOverride('max_embeddings_per_speaker', v)}
+          label="화자 구분 세밀도"
+          description="배치 화자분리의 클러스터링 기준값. 낮을수록 화자를 더 잘게 분리하고, 높을수록 비슷한 목소리를 하나로 묶습니다."
+          value={dv('clustering_threshold')}
+          defaultValue={DIARIZATION_DEFAULTS.clustering_threshold}
+          min={0.5} max={0.8} step={0.05}
+          onChange={(v) => setDiarizationOverride('clustering_threshold', v)}
         />
       </div>
     </div>
