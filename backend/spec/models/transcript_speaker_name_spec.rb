@@ -13,4 +13,16 @@ RSpec.describe Transcript, type: :model do
       expect(t.reload.speaker_name).to eq("앨리스")
     end
   end
+
+  describe ".to_sidecar_payload" do
+    it "speaker_name이 있으면 speaker로 사용, 없으면 speaker_label" do
+      named = create(:transcript, speaker_label: "화자 1", speaker_name: "김철수")
+      unnamed = create(:transcript, speaker_label: "화자 2", speaker_name: nil)
+
+      payload = Transcript.to_sidecar_payload([named, unnamed])
+
+      expect(payload[0][:speaker]).to eq("김철수")
+      expect(payload[1][:speaker]).to eq("화자 2")
+    end
+  end
 end
