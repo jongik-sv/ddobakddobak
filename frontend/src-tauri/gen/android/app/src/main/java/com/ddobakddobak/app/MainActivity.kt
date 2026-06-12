@@ -2,11 +2,19 @@ package com.ddobakddobak.app
 
 import android.os.Bundle
 import android.view.View
+import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
+  // 화면 꺼짐(슬립) 중 녹음 유지용 포그라운드 서비스 브릿지 주입.
+  // JS에서 window.AndroidRecordingService.start()/stop()으로 호출.
+  override fun onWebViewCreate(webView: WebView) {
+    super.onWebViewCreate(webView)
+    webView.addJavascriptInterface(RecordingServiceBridge(this), "AndroidRecordingService")
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)

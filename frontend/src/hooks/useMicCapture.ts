@@ -4,6 +4,13 @@ import { uint8ArrayToBase64 } from '../lib/audioUtils'
 import { AUDIO, IS_TAURI, IS_MOBILE } from '../config'
 import type { ChunkMeta } from './useAudioRecorder'
 
+declare global {
+  interface Window {
+    /** 안드로이드 APK에서만 주입됨 (MainActivity.onWebViewCreate) — 화면 꺼짐 중 녹음 유지 FGS */
+    AndroidRecordingService?: { start: () => void; stop: () => void }
+  }
+}
+
 export interface MicCaptureCallbacks {
   onChunk: (pcm: Int16Array, meta: ChunkMeta) => void
   /**
@@ -128,17 +135,22 @@ export function useMicCapture(callbacks: MicCaptureCallbacks): MicCaptureResult 
       vadWorklet.connect(silentGain)
       silentGain.connect(audioCtx.destination)
 
+      // 화면 꺼짐(슬립)에도 캡처·업로드 유지 — 포그라운드 서비스(mic) + wake/wifi lock
+      window.AndroidRecordingService?.start()
+
       console.log('[MicCapture] 시작 (audio-processor 단일 경로: STT + 녹음)')
       setIsCapturing(true)
       setError(null)
     } catch (err) {
       console.error('[MicCapture] 시작 실패:', err)
+      window.AndroidRecordingService?.stop()
       setError((err as Error).message || String(err))
       setIsCapturing(false)
     }
   }, [])
 
   const stop = useCallback(() => {
+    window.AndroidRecordingService?.stop()
     vadWorkletRef.current?.port.postMessage({ type: 'flush' })
 
     setTimeout(() => {
