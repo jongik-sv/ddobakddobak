@@ -44,14 +44,6 @@ if File.exist?(settings_path)
       ENV["SELECTED_LANGUAGES"] ||= langs.join(",")
     end
 
-    # Diarization
-    if (diar = cfg["diarization"])
-      ENV["DIARIZATION_ENABLED"] ||= diar["enabled"].to_s unless diar["enabled"].nil?
-      %w[similarity_threshold merge_threshold max_embeddings_per_speaker].each do |k|
-        ENV["DIARIZATION_#{k.upcase}"] ||= diar[k].to_s if diar[k]
-      end
-    end
-
     # Audio
     if (audio = cfg["audio"])
       %w[silence_threshold speech_threshold silence_duration_ms max_chunk_sec min_chunk_sec preroll_ms overlap_ms file_chunk_sec].each do |k|

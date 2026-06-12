@@ -4,11 +4,12 @@ class AppSettings
   # Api::V1::SettingsController::SETTINGS_PATH 와 동일 경로
   SETTINGS_PATH = Rails.root.join("..", "settings.yaml").to_s.freeze
 
+  # sidecar 코드 기본값과 동일 (community-1 기준)
   DIARIZATION_DEFAULTS = {
     "enable" => false,
-    "similarity_threshold" => 0.45,
-    "merge_threshold" => 0.6,
-    "max_embeddings_per_speaker" => 17
+    "similarity_threshold" => 0.35,
+    "merge_threshold" => 0.5,
+    "max_embeddings_per_speaker" => 15
   }.freeze
 
   def self.load

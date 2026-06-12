@@ -286,12 +286,6 @@ module Api
         # NOTE: 회의 언어 ENV(SELECTED_LANGUAGES/LANGUAGE_MODE) 동기화 제거됨.
         #       사용자별 설정(User#effective_language_config)이 권위 소스.
         #       ENV는 User.server_default_language_config의 폴백 기본값으로만 사용.
-        if (diar = cfg["diarization"])
-          ENV["DIARIZATION_ENABLED"] = diar["enabled"].to_s unless diar["enabled"].nil?
-          %w[similarity_threshold merge_threshold max_embeddings_per_speaker].each do |k|
-            ENV["DIARIZATION_#{k.upcase}"] = diar[k].to_s if diar[k]
-          end
-        end
         if (audio = cfg["audio"])
           %w[silence_threshold speech_threshold silence_duration_ms max_chunk_sec min_chunk_sec preroll_ms overlap_ms file_chunk_sec].each do |k|
             ENV["AUDIO_#{k.upcase}"] = audio[k].to_s if audio[k]
