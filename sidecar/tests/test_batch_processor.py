@@ -33,15 +33,17 @@ class _FakeAnnotation:
 
 
 class _FakeOutput:
-    def __init__(self, tracks, embeddings):
+    def __init__(self, tracks, embeddings, exclusive_tracks=None):
         self.speaker_diarization = _FakeAnnotation(tracks)
-        self.exclusive_speaker_diarization = _FakeAnnotation(tracks)
+        self.exclusive_speaker_diarization = _FakeAnnotation(
+            exclusive_tracks if exclusive_tracks is not None else tracks
+        )
         self.speaker_embeddings = embeddings
 
 
 class _FakePipeline:
-    def __init__(self, tracks, embeddings):
-        self._out = _FakeOutput(tracks, embeddings)
+    def __init__(self, tracks, embeddings, exclusive_tracks=None):
+        self._out = _FakeOutput(tracks, embeddings, exclusive_tracks)
 
     def __call__(self, audio_input):
         return self._out
@@ -100,6 +102,24 @@ async def test_preserves_existing_speaker_names_on_rerun(audio_bytes, tmp_path):
     await batch_diarize(audio_bytes, pipeline, _segments(), meeting_id=7, db_dir=tmp_path)
     data2 = json.loads(db_file.read_text())
     assert data2["names"].get("화자 1") == "김철수"
+
+
+async def test_prefers_exclusive_timeline_over_raw_diarization(audio_bytes, tmp_path):
+    """겹침 발화 시 exclusive_speaker_diarization(비겹침)이 우선해야 한다.
+
+    raw 타임라인에서는 seg[1](2500~4500ms)이 화자 1(겹침 2000ms) > 화자 2(겹침
+    1500ms)로 강제 배정되므로, '화자 2' 단언은 exclusive 경로로만 통과 가능.
+    """
+    emb = np.stack([np.ones(256, dtype=np.float32), -np.ones(256, dtype=np.float32)])
+    pipeline = _FakePipeline(
+        tracks=[(0.0, 5.0, "SPEAKER_00"), (2.3, 4.0, "SPEAKER_01")],  # 겹침 발화
+        embeddings=emb,
+        exclusive_tracks=[(0.0, 2.2, "SPEAKER_00"), (2.3, 5.0, "SPEAKER_01")],
+    )
+    segments = await batch_diarize(audio_bytes, pipeline, _segments(),
+                                   meeting_id=42, db_dir=tmp_path)
+    assert segments[0].speaker_label == "화자 1"
+    assert segments[1].speaker_label == "화자 2"
 
 
 async def test_no_embeddings_still_assigns_labels(audio_bytes, tmp_path):
