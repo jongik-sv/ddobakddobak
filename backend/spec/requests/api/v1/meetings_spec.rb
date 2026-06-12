@@ -554,6 +554,25 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     end
   end
 
+  # ============================================================
+  # POST /api/v1/meetings/:id/regenerate_notes
+  # ============================================================
+  describe "POST /api/v1/meetings/:id/regenerate_notes" do
+    let(:meeting) { create(:meeting, team: team, creator: user, status: "completed") }
+
+    context "when meeting is completed with transcripts" do
+      before do
+        create(:transcript, meeting: meeting, sequence_number: 1, content: "test transcript")
+      end
+
+      it "MeetingFinalizerJob도 enqueue한다" do
+        expect(MeetingFinalizerJob).to receive(:perform_later).with(meeting.id)
+        allow(MeetingSummarizationJob).to receive(:perform_later)
+
+        post "/api/v1/meetings/#{meeting.id}/regenerate_notes"
+      end
+    end
+  end
 end
 
 RSpec.describe "Api::V1::Meetings summary options", type: :request do

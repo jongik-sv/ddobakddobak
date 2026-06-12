@@ -256,6 +256,7 @@ module Api
         @meeting.decisions.where(ai_generated: true).destroy_all
 
         MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
+        MeetingFinalizerJob.perform_later(@meeting.id)
         render json: { ok: true }
       end
 
