@@ -149,24 +149,27 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
         segments = lang_utils.filter_segments(segments, request.languages)
         logger.info(f"[transcribe-file] 언어 필터 후 {len(segments)}개")
 
-    # 3. 화자 분리 — WhisperX(ASR+alignment+diarization) 시도, 실패 시 pyannote 배치 폴백
+    # 3. 화자 분리 — community-1 전체 오디오 배치 (MPS, gpu_lock으로 MLX와 직렬화)
     enable_diarization = (request.diarization_config or {}).get("enable", False)
     if enable_diarization and segments:
-        whisperx_result = await _try_whisperx_batch(http_request.app, request, audio_bytes)
-        if whisperx_result is not None:
-            segments = whisperx_result
-            logger.info(f"[transcribe-file] WhisperX 배치 완료: {len(segments)}개 세그먼트")
-        else:
-            # WhisperX 실패 → pyannote 전체 오디오 배치 폴백
-            await ensure_diarizer_pipeline(http_request.app)
-            pipeline = getattr(http_request.app.state, "diarizer_pipeline", None)
-            if pipeline:
-                try:
-                    from app.diarization.batch_processor import batch_diarize
-                    segments = await batch_diarize(audio_bytes, pipeline, segments)
-                    logger.info(f"[transcribe-file] pyannote 배치 화자 분리 완료")
-                except Exception as e:
-                    logger.exception(f"[transcribe-file] 화자 분리 실패 (무시): {e}")
+        await ensure_diarizer_pipeline(http_request.app)
+        pipeline = getattr(http_request.app.state, "diarizer_pipeline", None)
+        if pipeline:
+            try:
+                from app.diarization.batch_processor import batch_diarize
+                async with http_request.app.state.gpu_lock:
+                    segments = await batch_diarize(
+                        audio_bytes, pipeline, segments,
+                        meeting_id=request.meeting_id,
+                    )
+                # 배치 결과가 SpeakerDB를 다시 썼으므로 메모리에 캐시된 실시간
+                # diarizer가 있으면 무효화 (이후 접근 시 파일에서 재로드)
+                diarizers = getattr(http_request.app.state, "meeting_diarizers", None)
+                if diarizers is not None and request.meeting_id is not None:
+                    diarizers.pop(request.meeting_id, None)
+                logger.info(f"[transcribe-file] 배치 화자 분리 완료")
+            except Exception as e:
+                logger.exception(f"[transcribe-file] 화자 분리 실패 (무시): {e}")
     else:
         logger.info(f"[transcribe-file] 화자 분리 스킵")
 
@@ -180,33 +183,6 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
         segments=_segments_to_response(segments),
         total_duration_ms=total_duration_ms,
     )
-
-
-async def _try_whisperx_batch(app, request: TranscribeFileRequest, audio_bytes: bytes):
-    """WhisperX 배치 처리를 시도한다. 성공 시 세그먼트 리스트, 실패 시 None 반환."""
-    try:
-        from app.diarization.whisperx_processor import WhisperXBatchProcessor
-    except ImportError:
-        logger.warning("[transcribe-file] whisperx 미설치 — 폴백")
-        return None
-
-    try:
-        # WhisperX 프로세서 lazy load (app.state에 캐싱)
-        processor = getattr(app.state, "whisperx_processor", None)
-        if processor is None:
-            processor = WhisperXBatchProcessor(
-                device="cpu",
-                compute_type="int8",
-                hf_token=settings.HF_TOKEN,
-            )
-            await processor.load()
-            app.state.whisperx_processor = processor
-
-        segments = await processor.process_bytes(audio_bytes, languages=request.languages)
-        return segments if segments else None
-    except Exception as e:
-        logger.exception(f"[transcribe-file] WhisperX 실패: {e} — 폴백")
-        return None
 
 
 async def _chunked_transcribe(
