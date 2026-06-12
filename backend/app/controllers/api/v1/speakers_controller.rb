@@ -18,6 +18,9 @@ module Api
         speaker_id = params[:id]
         name = params.require(:name)
         result = SidecarClient.new.rename_speaker(speaker_id, name, @meeting.id)
+        # name == id 는 sidecar 규약상 "이름 미설정" — 비정규화 사본도 null 유지
+        @meeting.transcripts.where(speaker_label: speaker_id)
+                .update_all(speaker_name: name == speaker_id ? nil : name)
         render json: result
       rescue SidecarClient::SidecarError => e
         render json: { error: e.message }, status: :not_found
@@ -27,6 +30,7 @@ module Api
 
       def destroy_all
         SidecarClient.new.reset_speakers(@meeting.id)
+        @meeting.transcripts.update_all(speaker_name: nil)
         render json: { ok: true }
       rescue SidecarClient::ConnectionError, SidecarClient::TimeoutError
         render json: { ok: true }
