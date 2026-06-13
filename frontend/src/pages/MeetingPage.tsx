@@ -23,11 +23,12 @@ import { useUiStore } from '../stores/uiStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
-import { getBookmarks, deleteBookmark } from '../api/bookmarks'
+import { getBookmarks, createBookmark, deleteBookmark } from '../api/bookmarks'
 import type { Bookmark as BookmarkType } from '../api/bookmarks'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
 import MobileTabLayout from '../components/layout/MobileTabLayout'
 import { BookmarkList } from '../components/meeting/BookmarkList'
+import { BookmarkPopover } from '../components/meeting/BookmarkPopover'
 import { MemoEditorPanel } from '../components/meeting/MemoEditorPanel'
 import { TranscribingProgress } from '../components/meeting/TranscribingProgress'
 import { TermCorrectionDetails } from '../components/meeting/TermCorrectionDetails'
@@ -229,6 +230,10 @@ export default function MeetingPage() {
   const [bookmarks, setBookmarks] = useState<BookmarkType[]>([])
   const bookmarksVisible = useUiStore((s) => s.bookmarksVisible)
   const toggleBookmarks = useUiStore((s) => s.toggleBookmarks)
+  // 북마크 추가 팝오버 (회의 미리보기에서 현재 재생 위치에 추가)
+  const [showBookmarkPopover, setShowBookmarkPopover] = useState(false)
+  const [bookmarkLabel, setBookmarkLabel] = useState('')
+  const [bookmarkTs, setBookmarkTs] = useState(0)
 
   // 페이지 내 검색 (전사 + AI요약)
   const search = useMeetingSearch(transcripts)
@@ -276,6 +281,27 @@ export default function MeetingPage() {
     try {
       await deleteBookmark(meetingId, bookmarkId)
       setBookmarks((prev) => prev.filter((b) => b.id !== bookmarkId))
+    } catch {
+      // ignore
+    }
+  }
+
+  function handleOpenBookmark() {
+    setBookmarkTs(currentTimeMs)
+    setBookmarkLabel('')
+    setShowBookmarkPopover(true)
+  }
+
+  async function handleSaveBookmark() {
+    setShowBookmarkPopover(false)
+    try {
+      const created = await createBookmark(meetingId, {
+        timestamp_ms: bookmarkTs,
+        label: bookmarkLabel.trim() || undefined,
+      })
+      setBookmarks((prev) =>
+        [...prev, created].sort((a, b) => a.timestamp_ms - b.timestamp_ms),
+      )
     } catch {
       // ignore
     }
@@ -353,6 +379,7 @@ export default function MeetingPage() {
     currentTimeMs,
     onSeek: handleSeek,
     onDeleteBookmark: handleDeleteBookmark,
+    onAddBookmark: handleOpenBookmark,
     onNotesChange: handleNotesChange,
     memoEditorRef,
     onSaveMemo: handleSaveMemo,
@@ -473,7 +500,7 @@ export default function MeetingPage() {
           <Panel defaultSize={25} minSize={15}>
             <div className="h-full flex flex-col overflow-hidden">
               {bookmarksVisible && (
-                <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} />
+                <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} onAdd={handleOpenBookmark} />
               )}
               <div className="flex-1 overflow-y-auto">
                 <TranscriptPanel
@@ -581,6 +608,17 @@ export default function MeetingPage() {
             setShowEditDialog(false)
           }}
           onClose={() => setShowEditDialog(false)}
+        />
+      )}
+
+      {/* 북마크 추가 팝오버 (현재 재생 위치) */}
+      {showBookmarkPopover && (
+        <BookmarkPopover
+          timestampMs={bookmarkTs}
+          label={bookmarkLabel}
+          onLabelChange={setBookmarkLabel}
+          onSave={handleSaveBookmark}
+          onClose={() => setShowBookmarkPopover(false)}
         />
       )}
     </div>

@@ -188,6 +188,11 @@ export const ENGINE_LABELS: Record<string, string> = {
   // 배치(파일 재전사) MLX Whisper 엔진 라벨
   mlx_whisper_turbo_8bit: '8bit (빠름)',
   mlx_whisper_turbo_f16: '16bit (정확, 느림)',
+  mlx_whisper_turbo_beam: 'Beam 16bit (환각 적음, 정확)',
+  mlx_whisper_turbo_beam_8bit: 'Beam 8bit (환각 적음, 빠름)',
+  whisper_cpp: 'gguf f16 (whisper.cpp, ggml turbo)',
+  // qwen3_asr_8bit 라벨은 config.yaml(실시간 STT 셀렉터와 공유)에서 옴 — 여기서 덮어쓰면
+  // 실시간 셀렉터까지 배치용 문구가 새어나가므로 override 금지.
 }
 
 export const ENGINE_LABELS_SHORT: Record<string, string> = Object.fromEntries(

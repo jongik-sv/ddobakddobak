@@ -8,7 +8,7 @@ class LlmService
 
   class LlmError < StandardError; end
 
-  CLI_TIMEOUT = 180 # seconds — Claude/Gemini/Codex CLI 실행 제한
+  CLI_TIMEOUT = ENV.fetch("LLM_CLI_TIMEOUT", "360").to_i # seconds — Claude/Gemini/Codex/GLM CLI 실행 제한
 
   CLI_PROVIDERS = %w[claude_cli gemini_cli codex_cli].freeze
 
@@ -305,8 +305,9 @@ class LlmService
   end
 
   # Gemini CLI는 2026-06-18 종료 → Antigravity CLI(agy)로 대체.
-  # agy v1.0.3 비대화형: `agy -p "<prompt>" --dangerously-skip-permissions`
-  #   - --output-format / --model 플래그 없음 (모델은 agy 설정/기본값 Gemini 3.5 Flash 사용)
+  # agy v1.0.7 비대화형: `agy -p "<prompt>" --model "<표시명>" --dangerously-skip-permissions`
+  #   - --model: `agy models` 표시명 그대로 전달 (예: "Gemini 3.5 Flash (Medium)").
+  #     미지정/잘못된 값이면 agy 기본값으로 fallback(크래시 없음).
   #   - --dangerously-skip-permissions: 요약 작업은 비대화형이라 툴 권한 프롬프트로 멈추지 않게 함
   # GEMINI_CLI_PATH 도 하위호환으로 인정. provider 이름은 gemini_cli 유지.
   def call_gemini_cli(system, user_content)
@@ -314,6 +315,7 @@ class LlmService
     ensure_cli!(cli, "Antigravity CLI", "curl -fsSL https://antigravity.google/cli/install.sh | bash")
     merged = "[시스템 지시]\n#{system}\n\n[사용자 입력]\n#{user_content}"
     cmd = [ cli, "-p", merged, "--dangerously-skip-permissions" ]
+    cmd.push("--model", @config[:model].to_s) if @config[:model].present?
     run_cli(cmd, "")
   end
 

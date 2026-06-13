@@ -199,6 +199,7 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
     return TranscribeFileResponse(
         segments=_segments_to_response(segments),
         total_duration_ms=total_duration_ms,
+        engine=file_engine,
     )
 
 
@@ -234,7 +235,17 @@ async def _chunked_transcribe(
             break
 
         offset_ms = int(offset / bytes_per_sec * 1000)
-        segments = await adapter.transcribe(chunk, languages=languages, mode=mode)
+        try:
+            segments = await adapter.transcribe(chunk, languages=languages, mode=mode)
+        except Exception as e:
+            # 한 청크 실패(예: beam 디코더 빈 시퀀스 엣지케이스)가 전체 파일 전사를
+            # 죽이지 않도록 해당 청크만 스킵한다. 30s 공백은 전체 실패보다 낫다.
+            logger.warning(
+                "[transcribe-file] 청크 스킵 (offset=%dms): %s: %s",
+                offset_ms, type(e).__name__, e,
+            )
+            offset += step_bytes
+            continue
 
         for seg in segments:
             seg.started_at_ms += offset_ms

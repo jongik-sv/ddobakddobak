@@ -68,6 +68,8 @@ export interface Meeting {
   summary_verbosity?: SummaryVerbosity
   /** true=지속 재구조화(매 틱 전체 재정리), false=증분(앞 내용 불변, 시간대별 추가) */
   summary_restructure?: boolean
+  /** 배치 재전사에 실제 사용된 STT 엔진(실시간 녹음은 null). 회의 정보 표시용 */
+  stt_engine?: string | null
 }
 
 export type SummaryVerbosity = 'very_concise' | 'concise' | 'standard' | 'detailed' | 'very_detailed'

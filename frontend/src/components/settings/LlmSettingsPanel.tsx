@@ -4,7 +4,7 @@ import type { LlmSettings } from '../../api/settings'
 
 const SERVICE_PRESETS = [
   { id: 'claude_cli', name: 'Claude Code', provider: 'claude_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['sonnet', 'opus', 'haiku'], description: 'Claude Code CLI (키 불필요)' },
-  { id: 'gemini_cli', name: 'Antigravity CLI', provider: 'gemini_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: [], description: 'Antigravity CLI(agy) — Gemini CLI 후속, 모델은 agy 설정 사용' },
+  { id: 'gemini_cli', name: 'Antigravity CLI', provider: 'gemini_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['Gemini 3.5 Flash (Medium)', 'Gemini 3.5 Flash (High)', 'Gemini 3.5 Flash (Low)', 'Gemini 3.1 Pro (Low)', 'Gemini 3.1 Pro (High)', 'Claude Sonnet 4.6 (Thinking)', 'Claude Opus 4.6 (Thinking)', 'GPT-OSS 120B (Medium)'], description: 'Antigravity CLI(agy) — Gemini CLI 후속. agy models 기준' },
   { id: 'codex_cli', name: 'Codex CLI', provider: 'codex_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['gpt-5.5', 'gpt-5.4-mini'], description: 'Codex CLI (키 불필요)' },
   { id: 'anthropic', name: 'Anthropic', provider: 'anthropic' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: ['claude-sonnet-4-6', 'claude-haiku-4-5'], description: 'Claude API (키 필요)' },
   { id: 'zai', name: 'Z.AI', provider: 'anthropic' as const, defaultBaseUrl: 'https://api.z.ai/api/anthropic', requiresApiKey: true, suggestedModels: ['glm-4.7', 'glm-4.5', 'glm-5', 'glm-5-turbo', 'glm-4.5-air'], description: 'GLM 모델 (Anthropic 호환)' },

@@ -14,11 +14,9 @@ from app.schemas import (
     UpdateLlmSettingsRequest,
     UpdateSttFileEngineRequest,
 )
+from app.stt.factory import available_file_engines
 
 router = APIRouter()
-
-# 배치(파일 재전사) STT 엔진으로 선택 가능한 값
-_AVAILABLE_FILE_ENGINES: list[str] = ["mlx_whisper_turbo_8bit", "mlx_whisper_turbo_f16"]
 
 
 def _llm_token_and_url(provider: str) -> tuple[str, str]:
@@ -144,10 +142,10 @@ async def update_hf_settings(request: UpdateHfSettingsRequest, http_request: Req
 
 @router.get("/settings/stt-file-engine")
 async def get_stt_file_engine() -> dict:
-    """현재 배치(파일 재전사) STT 엔진을 반환한다."""
+    """현재 배치(파일 재전사) STT 엔진과 플랫폼별 선택 가능 목록을 반환한다."""
     return {
         "file_engine": settings.STT_FILE_ENGINE,
-        "available": _AVAILABLE_FILE_ENGINES,
+        "available": available_file_engines(),
     }
 
 
@@ -158,14 +156,15 @@ async def update_stt_file_engine(request: UpdateSttFileEngineRequest) -> dict:
     yaml에는 쓰지 않는다(rails가 별도로 영속화). 모델을 미리 로드하지 않으며,
     다음 transcribe-file 요청에서 resolve_file_engine()이 반영한다.
     """
-    if request.file_engine not in _AVAILABLE_FILE_ENGINES:
+    available = available_file_engines()
+    if request.file_engine not in available:
         raise HTTPException(
             status_code=422,
             detail=f"Invalid file_engine: '{request.file_engine}'. "
-            f"Available: {', '.join(_AVAILABLE_FILE_ENGINES)}",
+            f"Available: {', '.join(available)}",
         )
     settings.STT_FILE_ENGINE = request.file_engine
     return {
         "file_engine": settings.STT_FILE_ENGINE,
-        "available": _AVAILABLE_FILE_ENGINES,
+        "available": available,
     }

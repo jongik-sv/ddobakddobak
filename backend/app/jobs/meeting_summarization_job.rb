@@ -244,12 +244,23 @@ class MeetingSummarizationJob < ApplicationJob
     summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
 
     meeting.refresh_brief_summary!(notes_markdown)
+    # update_all 전에 "이번에 새로 적용되는" 자막 id를 스냅샷한다(프론트 라이브기록 미적용 배지 해제용).
+    newly_applied_ids = meeting.transcripts.where(applied_to_minutes: false).pluck(:id)
     meeting.transcripts.update_all(applied_to_minutes: true)
 
     ActionCable.server.broadcast(
       meeting.transcription_stream,
       { type: "meeting_notes_update", notes_markdown: notes_markdown, is_final: true }
     )
+    # final 잡도 realtime 경로처럼 소비한 자막을 클라이언트에 알린다.
+    # 이 broadcast 누락이 "종료 요약 후 마지막 자막이 라이브기록에 미적용으로 남는" 버그의 원인
+    # (DB는 applied_to_minutes:true인데 store의 applied 플래그는 그대로라 unapplied로 표시됨).
+    if newly_applied_ids.any?
+      ActionCable.server.broadcast(
+        meeting.transcription_stream,
+        { type: "transcripts_applied", ids: newly_applied_ids }
+      )
+    end
     ok = true
   rescue LlmService::LlmError, StandardError => e
     Rails.logger.error "[MeetingSummarizationJob] final meeting=#{meeting.id} error=#{e.message}"

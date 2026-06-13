@@ -69,6 +69,7 @@ class TranscribeFileResponse(BaseModel):
     """POST /transcribe-file 응답 스키마."""
     segments: list[SegmentResponse]
     total_duration_ms: int
+    engine: str | None = None  # 실제 사용된 배치 STT 엔진(resolve 후). 회의 정보 기록용
 
 
 class TranscriptItem(BaseModel):

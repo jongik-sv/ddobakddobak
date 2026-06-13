@@ -47,8 +47,13 @@ class FileTranscriptionJob < ApplicationJob
       MeetingFinalizerService.new(meeting).call
     end
 
-    # 6. 완료
-    meeting.update!(status: :completed, transcription_progress: 100, ended_at: Time.current)
+    # 6. 완료 — 실제 사용된 배치 STT 엔진을 회의 정보에 기록(sidecar resolve 결과)
+    meeting.update!(
+      status: :completed,
+      transcription_progress: 100,
+      ended_at: Time.current,
+      stt_engine: result["engine"]
+    )
     ActionCable.server.broadcast(channel, {
       type: "file_transcription_complete",
       meeting_id: meeting.id

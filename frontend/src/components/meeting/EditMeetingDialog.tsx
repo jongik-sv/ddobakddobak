@@ -4,6 +4,7 @@ import { Dialog } from '../ui/Dialog'
 import type { Meeting } from '../../api/meetings'
 import type { Tag } from '../../api/tags'
 import { getTags, createTag } from '../../api/tags'
+import { ENGINE_LABELS } from '../../config'
 
 interface EditMeetingDialogProps {
   meeting: Meeting
@@ -131,6 +132,16 @@ export default function EditMeetingDialog({
               화자분리 시 이 인원수 ±2명 범위로 화자를 맞춥니다.
             </p>
           </div>
+
+          {/* STT 모델 (읽기전용) — 배치 재전사에 사용된 엔진. 실시간 녹음만 한 회의는 없음 */}
+          {meeting.stt_engine && (
+            <div>
+              <label className="block text-sm font-medium mb-1">STT 모델</label>
+              <p className="text-sm text-muted-foreground">
+                {ENGINE_LABELS[meeting.stt_engine] ?? meeting.stt_engine}
+              </p>
+            </div>
+          )}
 
           {/* 회의 유형 */}
           <div>

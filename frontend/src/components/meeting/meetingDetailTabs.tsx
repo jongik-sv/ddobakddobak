@@ -20,6 +20,7 @@ interface BuildMeetingDetailTabsArgs {
   currentTimeMs: number
   onSeek: (ms: number) => void
   onDeleteBookmark: (bookmarkId: number) => void
+  onAddBookmark?: () => void
   onNotesChange: (markdown: string) => void
   memoEditorRef: MemoEditorRef
   onSaveMemo: () => void
@@ -43,6 +44,7 @@ export function buildMeetingDetailTabs({
   currentTimeMs,
   onSeek,
   onDeleteBookmark,
+  onAddBookmark,
   onNotesChange,
   memoEditorRef,
   onSaveMemo,
@@ -60,7 +62,7 @@ export function buildMeetingDetailTabs({
       content: (
         <div className="h-full flex flex-col overflow-hidden">
           {bookmarksVisible && (
-            <BookmarkList bookmarks={bookmarks} onSeek={onSeek} onDelete={onDeleteBookmark} />
+            <BookmarkList bookmarks={bookmarks} onSeek={onSeek} onDelete={onDeleteBookmark} onAdd={onAddBookmark} />
           )}
           {/* 화자 accordion (기본 닫힘) — MeetingViewerPage 모바일과 동일 패턴 */}
           <details className="border-b">

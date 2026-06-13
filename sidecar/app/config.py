@@ -106,8 +106,10 @@ class Settings(BaseSettings):
     # [재시작 필요] STT 엔진 선택 (mock | qwen3_asr_4bit | qwen3_asr_6bit | qwen3_asr_8bit | whisper_cpp | faster_whisper | sensevoice | auto)
     STT_ENGINE: str = "auto"
 
-    # [재시작 필요] 배치(파일 재전사) STT 엔진. auto=Apple Silicon→mlx_whisper_turbo_8bit, 그 외→whisper_cpp
-    # (mlx_whisper_turbo_8bit | mlx_whisper_turbo_f16 | whisper_cpp | faster_whisper | qwen3_asr_8bit | auto)
+    # [재시작 필요] 배치(파일 재전사) STT 엔진. auto=whisper_cpp(전 플랫폼 공통 기본).
+    # 셀렉터 노출: Apple=whisper_cpp/mlx_whisper_turbo_beam_8bit, 그 외=whisper_cpp.
+    # MLX 계열(beam/greedy)은 비-Apple에서 whisper_cpp로 자동 대체된다(resolve_file_engine).
+    # (whisper_cpp | mlx_whisper_turbo_beam_8bit | mlx_whisper_turbo_beam | mlx_whisper_turbo_8bit | mlx_whisper_turbo_f16 | faster_whisper | qwen3_asr_8bit | auto)
     STT_FILE_ENGINE: str = "auto"
 
     # [재시작 필요] Hugging Face 토큰 (STT/모델 다운로드용)

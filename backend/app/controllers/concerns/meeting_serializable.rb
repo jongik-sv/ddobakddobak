@@ -29,6 +29,7 @@ module MeetingSerializable
       expected_participants: meeting.expected_participants,
       summary_verbosity: meeting.summary_verbosity,
       summary_restructure: meeting.summary_restructure,
+      stt_engine: meeting.stt_engine,
       tags: meeting.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
       attachment_counts: {
         agenda: attachment_counts["agenda"] || 0,

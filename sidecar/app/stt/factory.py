@@ -13,6 +13,7 @@ _KNOWN_ENGINES: frozenset[str] = frozenset(
     {"qwen3_asr_4bit", "qwen3_asr_6bit", "qwen3_asr_8bit",
      "qwen3_asr_transformers",
      "mlx_whisper_turbo_8bit", "mlx_whisper_turbo_f16",
+     "mlx_whisper_turbo_beam", "mlx_whisper_turbo_beam_8bit",
      "whisper_cpp", "faster_whisper", "faster_whisper_cpu",
      "mock", "auto"}
 )
@@ -28,6 +29,13 @@ _QWEN3_MODEL_IDS: dict[str, str] = {
 _MLX_WHISPER_MODEL_IDS: dict[str, str] = {
     "mlx_whisper_turbo_8bit": "mlx-community/whisper-large-v3-turbo-8bit",
     "mlx_whisper_turbo_f16": "mlx-community/whisper-large-v3-turbo-fp16",
+}
+
+# MLX beam search(vendored Lightning) 엔진별 모델 ID. beam 디코더 + 양자화 선택.
+# f16=full repo(정확, 큼), 8bit=양자화(품질 동급, 모델 절반·빠름).
+_MLX_BEAM_MODEL_IDS: dict[str, str] = {
+    "mlx_whisper_turbo_beam": "mlx-community/whisper-large-v3-turbo",
+    "mlx_whisper_turbo_beam_8bit": "mlx-community/whisper-large-v3-turbo-8bit",
 }
 
 
@@ -52,24 +60,56 @@ def auto_select_engine() -> str:
     return "whisper_cpp"
 
 
+def _is_apple_silicon() -> bool:
+    """현재 호스트가 Apple Silicon(macOS arm64)인지 — MLX/Metal 엔진 가용 기준."""
+    return sys.platform == "darwin" and platform.machine() == "arm64"
+
+
+def _is_mlx_engine(engine: str) -> bool:
+    """MLX(mlx-audio/Metal) 기반 엔진인지 — Apple Silicon 전용으로만 동작한다."""
+    return (
+        engine in _MLX_WHISPER_MODEL_IDS
+        or engine in _MLX_BEAM_MODEL_IDS
+        or engine in _QWEN3_MODEL_IDS
+    )
+
+
+def available_file_engines() -> list[str]:
+    """배치(파일 재전사) STT 셀렉터에 노출할 엔진 목록(플랫폼별).
+
+    - Apple Silicon → whisper_cpp(기본·안정) + mlx_whisper_turbo_beam_8bit(고속)
+    - 그 외        → whisper_cpp (MLX는 Apple 전용이므로 노출하지 않음)
+    """
+    if _is_apple_silicon():
+        return ["whisper_cpp", "mlx_whisper_turbo_beam_8bit"]
+    return ["whisper_cpp"]
+
+
 def resolve_file_engine(engine: str | None = None) -> str:
     """배치(파일 재전사) STT 엔진을 결정한다.
 
-    settings.STT_FILE_ENGINE 값을 받아 'auto'면 플랫폼별 기본 엔진으로 해석한다.
-    - Apple Silicon → mlx_whisper_turbo_8bit (Metal 가속)
-    - 그 외        → whisper_cpp (ggml/gguf large-v3-turbo)
+    settings.STT_FILE_ENGINE 값을 받아 실제 실행할 엔진으로 해석한다.
+    - 'auto'                  → whisper_cpp (전 플랫폼 공통 기본: gguf large-v3-turbo, 안정·환각 없음)
+    - 비-Apple에서 MLX 계열 지정 → whisper_cpp로 자동 대체 (MLX는 Apple Silicon 전용)
     """
     if engine is None:
         from app.config import settings
         engine = settings.STT_FILE_ENGINE
 
     if engine == "auto":
-        if sys.platform == "darwin" and platform.machine() == "arm64":
-            resolved = "mlx_whisper_turbo_8bit"
-        else:
-            resolved = "whisper_cpp"
-        logger.info(f"[STT] 배치 엔진 자동 선택: {resolved} (platform={sys.platform}, arch={platform.machine()})")
-        return resolved
+        logger.info(
+            f"[STT] 배치 엔진 자동 선택: whisper_cpp (platform={sys.platform}, arch={platform.machine()})"
+        )
+        return "whisper_cpp"
+
+    # 플랫폼 폴백: MLX 엔진을 비-Apple에서 고르면(또는 yaml로 지정되면) whisper_cpp로 대체.
+    if not _is_apple_silicon() and _is_mlx_engine(engine):
+        logger.info(
+            f"[STT] 배치 엔진 '{engine}'는 Apple Silicon 전용 → 'whisper_cpp'로 자동 대체 "
+            f"(platform={sys.platform}, arch={platform.machine()})"
+        )
+        return "whisper_cpp"
+
     return engine
 
 
@@ -95,6 +135,10 @@ def create_stt_adapter(engine: str | None = None) -> SttAdapter:
     if engine in _MLX_WHISPER_MODEL_IDS:
         from app.stt.mlx_whisper_adapter import MLXWhisperAdapter
         return MLXWhisperAdapter(model_id=_MLX_WHISPER_MODEL_IDS[engine])
+
+    if engine in _MLX_BEAM_MODEL_IDS:
+        from app.stt.mlx_whisper_beam_adapter import MLXWhisperBeamAdapter
+        return MLXWhisperBeamAdapter(model_id=_MLX_BEAM_MODEL_IDS[engine])
 
     if engine == "qwen3_asr_transformers":
         from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter

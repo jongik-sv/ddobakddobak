@@ -54,8 +54,8 @@ module Api
         }
       rescue SidecarClient::ConnectionError, SidecarClient::TimeoutError
         render json: {
-          file_engine: read_setting("stt", "file_engine") || "mlx_whisper_turbo_8bit",
-          available_engines: %w[mlx_whisper_turbo_8bit mlx_whisper_turbo_f16]
+          file_engine: read_setting("stt", "file_engine") || "whisper_cpp",
+          available_engines: %w[whisper_cpp mlx_whisper_turbo_beam_8bit]
         }
       end
 
