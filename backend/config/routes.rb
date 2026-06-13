@@ -44,6 +44,7 @@ Rails.application.routes.draw do
           post :reset_content
           post :summarize
           post :regenerate_stt
+          post :re_diarize
           post :regenerate_notes
           post :feedback
           patch :update_notes

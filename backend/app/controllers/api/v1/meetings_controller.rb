@@ -7,8 +7,8 @@ module Api
       include AudioStorage
 
       before_action :authenticate_user!
-      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes]
-      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes feedback]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize]
+      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback]
 
       def index
         scope = Meeting.accessible_by(current_user)
@@ -276,6 +276,22 @@ module Api
         @meeting.update!(status: :transcribing, transcription_progress: 0, last_refined_seq: 0)
         FileTranscriptionJob.perform_later(@meeting.id)
 
+        render json: { meeting: meeting_json(@meeting) }
+      end
+
+      def re_diarize
+        unless @meeting.completed?
+          return render json: { error: "완료된 회의에서만 화자분리를 재실행할 수 있습니다" }, status: :unprocessable_entity
+        end
+        unless @meeting.transcripts.exists?
+          return render json: { error: "트랜스크립트가 없습니다" }, status: :unprocessable_entity
+        end
+        unless @meeting.audio_file_path.present? && File.exist?(@meeting.audio_file_path)
+          return render json: { error: "오디오 파일이 없습니다" }, status: :unprocessable_entity
+        end
+
+        @meeting.update!(status: :transcribing, transcription_progress: 0)
+        ReDiarizeJob.perform_later(@meeting.id)
         render json: { meeting: meeting_json(@meeting) }
       end
 

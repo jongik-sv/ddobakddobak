@@ -1,4 +1,5 @@
 class FileTranscriptionJob < ApplicationJob
+  include PcmConvertible
   queue_as :file_transcription
 
   def perform(meeting_id)
@@ -78,27 +79,6 @@ class FileTranscriptionJob < ApplicationJob
   end
 
   private
-
-  def convert_to_pcm(meeting)
-    input_path = meeting.audio_file_path
-    raise "오디오 파일이 없습니다" unless input_path.present? && File.exist?(input_path)
-
-    pcm_path = input_path.sub(/\.[^.]+$/, "_pcm.raw")
-
-    success = system(
-      "ffmpeg", "-y",
-      "-i", input_path,
-      "-ar", "16000",
-      "-ac", "1",
-      "-f", "s16le",
-      "-acodec", "pcm_s16le",
-      pcm_path,
-      out: File::NULL, err: File::NULL
-    )
-    raise "ffmpeg 변환 실패" unless success && File.exist?(pcm_path)
-
-    pcm_path
-  end
 
   def store_transcripts(meeting, segments)
     return if segments.blank?
