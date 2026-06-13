@@ -180,6 +180,7 @@ export default function MeetingPage() {
 
   async function handleRegenerateStt() {
     setShowSttConfirm(false)
+    audio.pause() // STT 재실행 전 음성 재생 정지 (동시 재생 방지)
     try {
       await regenerateStt(meetingId)
       refetch()
@@ -302,8 +303,10 @@ export default function MeetingPage() {
       setBookmarks((prev) =>
         [...prev, created].sort((a, b) => a.timestamp_ms - b.timestamp_ms),
       )
-    } catch {
-      // ignore
+    } catch (e: unknown) {
+      // 조용히 삼키면 "추가가 안 됨" 증상의 원인(권한 403·네트워크 등)을 사용자가 알 수 없다.
+      const msg = e instanceof Error ? e.message : '북마크 추가에 실패했습니다'
+      alert(`북마크 추가 실패: ${msg}`)
     }
   }
 
