@@ -55,6 +55,8 @@ export interface Meeting {
   attendees: string | null
   /** 참여 인원수 (화자분리 ±2 힌트). null=자동 감지 */
   expected_participants?: number | null
+  /** 화자분리 거리 컷오프(AHC). 낮을수록 화자 더 분리. null=글로벌 기본(0.4) */
+  diarization_threshold?: number | null
   tags?: { id: number; name: string; color: string }[]
   share_code?: string | null
   /** 모든 사용자에게 공유 여부 (기본 true). 비공유면 소유자/admin만 조회 가능. */
@@ -333,6 +335,7 @@ export interface UpdateMeetingParams {
   brief_summary?: string | null
   attendees?: string | null
   expected_participants?: number | null
+  diarization_threshold?: number | null
   /** 공유 여부. 소유자/admin만 반영된다(서버 강제). */
   shared?: boolean
   summary_verbosity?: SummaryVerbosity
