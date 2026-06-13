@@ -3,6 +3,7 @@ import { render, screen, fireEvent, act, waitFor, within } from '@testing-librar
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import MeetingLivePage from './MeetingLivePage'
 import { useSharingStore } from '../stores/sharingStore'
+import { useTranscriptStore } from '../stores/transcriptStore'
 
 // ────────────────���─────────────────────────────
 // Mocks
@@ -18,6 +19,8 @@ vi.mock('../api/meetings', () => ({
   getSummary: vi.fn().mockResolvedValue(null),
   reopenMeeting: vi.fn().mockResolvedValue({ id: 1, status: 'recording', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' }),
   triggerRealtimeSummary: vi.fn().mockResolvedValue(undefined),
+  pauseMeeting: vi.fn().mockResolvedValue({ id: 1, status: 'recording' }),
+  resumeMeeting: vi.fn().mockResolvedValue({ id: 1, status: 'recording' }),
   resetMeetingContent: vi.fn().mockResolvedValue({ id: 1, status: 'pending', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' }),
   correctTerms: vi.fn().mockResolvedValue({ notes_markdown: '', corrected_transcripts: 0 }),
   updateNotes: vi.fn().mockResolvedValue(undefined),
@@ -129,6 +132,7 @@ describe('MeetingLivePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     useSharingStore.getState().reset()
+    useTranscriptStore.getState().reset()
     // 기본: 데스크톱 모드
     setDesktopMode(true)
     vi.mocked(useAudioRecorderModule.useAudioRecorder).mockReturnValue({
@@ -196,10 +200,9 @@ describe('MeetingLivePage', () => {
     })
   })
 
-  it('"회의 종료" 클릭 시 stopMeeting API 호출', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+  it('전사 없으면 "회의 종료" 클릭 시 다이얼로그 없이 skipSummary로 종료', async () => {
     renderPage()
-    // 먼�� 회의 시작
+    // 먼저 회의 시작
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /회의 시작/i }))
     })
@@ -207,18 +210,43 @@ describe('MeetingLivePage', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /회의 종료/i })).toBeInTheDocument()
     })
-    // 회의 종료
+    // 회의 종료 — 전사 0건이므로 확인 다이얼로그 없이 즉시 종료(skipSummary:true)
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /회의 종료/i }))
     })
-    // handleStop 내부에 2초 지연이 있어 타이머를 진행시킨다
+    expect(screen.queryByText('이번 회의를 AI로 최종 요약할까요?')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(meetingsApi.stopMeeting).toHaveBeenCalledWith(1, { skipSummary: true })
+    })
+  })
+
+  it('전사 있으면 "회의 종료" → 다이얼로그 → "요약 없이 종료"는 skipSummary로 종료', async () => {
+    renderPage()
     await act(async () => {
-      vi.advanceTimersByTime(3000)
+      fireEvent.click(screen.getByRole('button', { name: /회의 시작/i }))
     })
     await waitFor(() => {
-      expect(meetingsApi.stopMeeting).toHaveBeenCalledWith(1)
+      expect(screen.getByRole('button', { name: /회의 종료/i })).toBeInTheDocument()
     })
-    vi.useRealTimers()
+    // 라이브 기록 1건 주입(시작 정착 후) → 종료 시 확인 다이얼로그가 떠야 한다
+    act(() => {
+      useTranscriptStore.setState({
+        finals: [{
+          id: 1, content: '안녕하세요', speaker_label: 'SPEAKER_00',
+          started_at_ms: 0, ended_at_ms: 1000, sequence_number: 1, applied: false,
+        }],
+      })
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /회의 종료/i }))
+    })
+    const skipBtn = await screen.findByRole('button', { name: '요약 없이 종료' })
+    await act(async () => {
+      fireEvent.click(skipBtn)
+    })
+    await waitFor(() => {
+      expect(meetingsApi.stopMeeting).toHaveBeenCalledWith(1, { skipSummary: true })
+    })
   })
 
   // ──────────────────────────────────────────────
