@@ -249,6 +249,11 @@ module Api
           return
         end
 
+        unless @meeting.transcripts.exists?
+          render json: { ok: true, skipped: "no_transcripts" }
+          return
+        end
+
         summary_type = @meeting.completed? ? "final" : "realtime"
         MeetingSummarizationJob.perform_later(@meeting.id, type: summary_type)
         render json: { ok: true }

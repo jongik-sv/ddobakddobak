@@ -554,6 +554,33 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   end
 
   # ============================================================
+  # POST /api/v1/meetings/:id/summarize
+  # ============================================================
+  describe "POST /api/v1/meetings/:id/summarize" do
+    let(:meeting) { create(:meeting, team: team, creator: user, status: "recording") }
+
+    it "enqueues realtime summary when transcripts exist" do
+      create(:transcript, meeting: meeting)
+      expect(MeetingSummarizationJob).to receive(:perform_later).with(meeting.id, type: "realtime")
+      post "/api/v1/meetings/#{meeting.id}/summarize"
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "does NOT enqueue and returns skipped when no transcripts" do
+      expect(MeetingSummarizationJob).not_to receive(:perform_later)
+      post "/api/v1/meetings/#{meeting.id}/summarize"
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["skipped"]).to eq("no_transcripts")
+    end
+
+    it "returns 422 when meeting is pending" do
+      pending_meeting = create(:meeting, team: team, creator: user, status: "pending")
+      post "/api/v1/meetings/#{pending_meeting.id}/summarize"
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+  end
+
+  # ============================================================
   # 제어 액션 인가
   # ============================================================
   describe "제어 액션 인가" do
