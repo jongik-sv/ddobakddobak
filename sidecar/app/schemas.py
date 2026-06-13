@@ -72,6 +72,19 @@ class TranscribeFileResponse(BaseModel):
     engine: str | None = None  # 실제 사용된 배치 STT 엔진(resolve 후). 회의 정보 기록용
 
 
+class DiarizeFileRequest(BaseModel):
+    """POST /diarize-file — 기존 세그먼트에 화자분리만 재실행(STT 없음)."""
+    file_path: str  # PCM 16kHz mono Int16 경로 (backend가 ffmpeg 변환)
+    meeting_id: int | None = None
+    segments: list[dict]  # [{started_at_ms, ended_at_ms}, ...] 순서 보존
+    diarization_config: dict | None = None  # {ahc_threshold, ...}
+
+
+class DiarizeFileResponse(BaseModel):
+    """POST /diarize-file 응답 스키마."""
+    segments: list[dict]  # 입력과 같은 순서 [{started_at_ms, ended_at_ms, speaker_label}]
+
+
 class TranscriptItem(BaseModel):
     """트랜스크립트 단위 항목."""
     speaker: str
