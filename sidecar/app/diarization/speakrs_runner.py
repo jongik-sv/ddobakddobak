@@ -30,12 +30,17 @@ def is_available() -> bool:
     return p.is_file() and os.access(p, os.X_OK)
 
 
-def run_speakrs(audio_bytes: bytes) -> tuple[list[tuple[int, int, str]], list[str]]:
+def run_speakrs(
+    audio_bytes: bytes, ahc_threshold: float | None = None
+) -> tuple[list[tuple[int, int, str]], list[str]]:
     """PCM 16k mono Int16 → (turns, ordered_labels).
 
     turns: [(start_ms, end_ms, '화자 N'), ...]
     ordered_labels: ['화자 1', '화자 2', ...] (등장순)
     실패 시 ([], []) 반환.
+
+    ahc_threshold: AHC 병합 임계값. 낮을수록 화자를 더 잘게 나눈다.
+                   None이면 speakrs-cli 래퍼 기본값(0.4)을 사용한다.
     """
     binp = _bin_path()
     if not binp.is_file():
@@ -45,9 +50,13 @@ def run_speakrs(audio_bytes: bytes) -> tuple[list[tuple[int, int, str]], list[st
         tf.write(audio_bytes)
         pcm_path = tf.name
 
+    cmd = [str(binp), pcm_path]
+    if ahc_threshold is not None:
+        cmd += ["--ahc-threshold", f"{float(ahc_threshold):g}"]
+
     try:
         proc = subprocess.run(
-            [str(binp), pcm_path],
+            cmd,
             capture_output=True,
             timeout=600,
         )

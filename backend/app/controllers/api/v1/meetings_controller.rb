@@ -7,8 +7,10 @@ module Api
       include AudioStorage
 
       before_action :authenticate_user!
-      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes]
-      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes feedback]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize]
+      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback]
+      # 멈춘 화자분리-재실행 자가복구: 조회/재실행 시 stale 면 completed 로 되돌려 버튼이 다시 보이게 함
+      before_action -> { @meeting&.heal_stale_re_diarize! }, only: %i[show re_diarize]
 
       def index
         scope = Meeting.accessible_by(current_user)
@@ -115,6 +117,7 @@ module Api
         attrs[:brief_summary] = params[:brief_summary] if params.key?(:brief_summary)
         attrs[:attendees] = params[:attendees] if params.key?(:attendees)
         attrs[:expected_participants] = params[:expected_participants].presence&.to_i if params.key?(:expected_participants)
+        attrs[:diarization_threshold] = params[:diarization_threshold].to_s.strip.presence&.to_f if params.key?(:diarization_threshold)
         attrs[:summary_verbosity] = params[:summary_verbosity] if params.key?(:summary_verbosity)
         if params.key?(:summary_restructure)
           # cast 가 nil 을 주는 입력(""/null)은 무시 — NOT NULL 컬럼이라 500 으로 터진다
@@ -275,6 +278,22 @@ module Api
         @meeting.update!(status: :transcribing, transcription_progress: 0, last_refined_seq: 0)
         FileTranscriptionJob.perform_later(@meeting.id)
 
+        render json: { meeting: meeting_json(@meeting) }
+      end
+
+      def re_diarize
+        unless @meeting.completed?
+          return render json: { error: "완료된 회의에서만 화자분리를 재실행할 수 있습니다" }, status: :unprocessable_entity
+        end
+        unless @meeting.transcripts.exists?
+          return render json: { error: "트랜스크립트가 없습니다" }, status: :unprocessable_entity
+        end
+        unless @meeting.audio_file_path.present? && File.exist?(@meeting.audio_file_path)
+          return render json: { error: "오디오 파일이 없습니다" }, status: :unprocessable_entity
+        end
+
+        @meeting.update!(status: :transcribing, transcription_progress: 0, re_diarize_started_at: Time.current)
+        ReDiarizeJob.perform_later(@meeting.id)
         render json: { meeting: meeting_json(@meeting) }
       end
 

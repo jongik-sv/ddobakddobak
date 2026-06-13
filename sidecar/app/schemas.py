@@ -59,7 +59,7 @@ class TranscribeFileRequest(BaseModel):
     """POST /transcribe-file 요청 스키마."""
     file_path: str  # Backend가 ffmpeg로 변환한 raw PCM 16kHz mono Int16 파일 경로
     meeting_id: int | None = None
-    diarization_config: dict | None = None
+    diarization_config: dict | None = None  # {enable, ahc_threshold, ...}
     languages: list[str] | None = None  # 인식 대상 언어 코드 목록 (예: ["ko", "ja"])
     file_chunk_sec: int = 30  # 청크 분할 시간 (초). 0이면 분할 안 함 (Whisper 내부 윈도우 사용)
     mode: str = "single"  # "single"=언어 강제 / "multi"=자동감지+감지언어 필터
@@ -70,6 +70,19 @@ class TranscribeFileResponse(BaseModel):
     segments: list[SegmentResponse]
     total_duration_ms: int
     engine: str | None = None  # 실제 사용된 배치 STT 엔진(resolve 후). 회의 정보 기록용
+
+
+class DiarizeFileRequest(BaseModel):
+    """POST /diarize-file — 기존 세그먼트에 화자분리만 재실행(STT 없음)."""
+    file_path: str  # PCM 16kHz mono Int16 경로 (backend가 ffmpeg 변환)
+    meeting_id: int | None = None
+    segments: list[dict]  # [{started_at_ms, ended_at_ms}, ...] 순서 보존
+    diarization_config: dict | None = None  # {ahc_threshold, ...}
+
+
+class DiarizeFileResponse(BaseModel):
+    """POST /diarize-file 응답 스키마."""
+    segments: list[dict]  # 입력과 같은 순서 [{started_at_ms, ended_at_ms, speaker_label}]
 
 
 class TranscriptItem(BaseModel):

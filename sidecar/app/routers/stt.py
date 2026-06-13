@@ -10,6 +10,8 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisco
 from app.audio_constants import BYTES_PER_SAMPLE as _BYTES_PER_SAMPLE, SAMPLE_RATE as _SAMPLE_RATE
 from app.config import settings
 from app.schemas import (
+    DiarizeFileRequest,
+    DiarizeFileResponse,
     SegmentResponse,
     TranscribeFileRequest,
     TranscribeFileResponse,
@@ -161,6 +163,7 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
     _t_diar = time.monotonic()
     diar_cfg = request.diarization_config or {}
     enable_diarization = diar_cfg.get("enable", False)
+    ahc_threshold = diar_cfg.get("ahc_threshold")
     if enable_diarization and segments:
         diar_engine = _resolve_diar_engine()
         try:
@@ -169,6 +172,7 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
                 from app.diarization.batch_processor import batch_diarize_speakrs
                 segments = await batch_diarize_speakrs(
                     audio_bytes, segments, meeting_id=request.meeting_id,
+                    ahc_threshold=ahc_threshold,
                 )
                 logger.info("[transcribe-file] 배치 화자 분리 완료 (speakrs)")
             else:
@@ -200,6 +204,69 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
         segments=_segments_to_response(segments),
         total_duration_ms=total_duration_ms,
         engine=file_engine,
+    )
+
+
+@router.post("/diarize-file", response_model=DiarizeFileResponse)
+async def diarize_file(request: DiarizeFileRequest) -> DiarizeFileResponse:
+    """기존 세그먼트에 화자분리만 재실행하는 엔드포인트 (STT/whisper 없음).
+
+    이미 전사된 세그먼트 타이밍 + PCM 파일 + diarization_config를 받아
+    설정된 ahc_threshold로 speakrs를 재실행하고, 각 세그먼트에 재할당된
+    speaker_label을 입력과 같은 순서로 반환한다. 재전사 없이 새 임계값으로
+    저렴하게(~1-2분) 화자를 다시 나눌 수 있게 한다.
+    """
+    t0 = time.monotonic()
+    logger.info("[diarize] /diarize-file 요청 (meeting_id=%s, file=%s, 세그먼트=%d)",
+                request.meeting_id, request.file_path, len(request.segments))
+
+    if not os.path.isfile(request.file_path):
+        raise HTTPException(status_code=400, detail=f"파일을 찾을 수 없습니다: {request.file_path}")
+
+    # 1. PCM 파일 읽기 (/transcribe-file과 동일한 방식 — 전체를 bytes로)
+    with open(request.file_path, "rb") as f:
+        audio_bytes = f.read()
+
+    # 2. 입력 세그먼트 타이밍 → TranscriptSegment (text/lang은 비움, 라벨만 재할당)
+    from app.stt.base import TranscriptSegment
+    transcript_segments = [
+        TranscriptSegment(
+            text="",
+            started_at_ms=int(s["started_at_ms"]),
+            ended_at_ms=int(s["ended_at_ms"]),
+            language="",
+            confidence=0.0,
+            speaker_label="",
+        )
+        for s in request.segments
+    ]
+
+    diar_cfg = request.diarization_config or {}
+    ahc_threshold = diar_cfg.get("ahc_threshold")
+
+    # 3. 화자분리만 재실행 — speakrs(별도 프로세스, Metal 경쟁 없음 → gpu_lock 불필요)
+    segs = transcript_segments
+    try:
+        from app.diarization.batch_processor import batch_diarize_speakrs
+        segs = await batch_diarize_speakrs(
+            audio_bytes, transcript_segments, meeting_id=request.meeting_id,
+            ahc_threshold=ahc_threshold,
+        )
+        logger.info("[diarize] /diarize-file 화자 분리 완료 (speakrs, %.1f초)", time.monotonic() - t0)
+    except Exception as e:
+        # 실패 시 500 대신 입력 세그먼트를 그대로 반환 (재전사 비용 회피가 목적)
+        logger.exception("[diarize] /diarize-file 화자 분리 실패 (입력 그대로 반환): %s", e)
+        segs = transcript_segments
+
+    return DiarizeFileResponse(
+        segments=[
+            {
+                "started_at_ms": s.started_at_ms,
+                "ended_at_ms": s.ended_at_ms,
+                "speaker_label": s.speaker_label,
+            }
+            for s in segs
+        ]
     )
 
 

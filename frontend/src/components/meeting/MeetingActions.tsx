@@ -1,4 +1,4 @@
-import { Bot, Play, RefreshCw, Trash2 } from 'lucide-react'
+import { Bot, Play, RefreshCw, Trash2, Users } from 'lucide-react'
 import type { Meeting } from '../../api/meetings'
 import { ExportButton } from './ExportButton'
 
@@ -9,6 +9,7 @@ interface MeetingActionsProps {
   transcriptsCount: number
   isRegeneratingNotes: boolean
   onShowSttConfirm: () => void
+  onShowReDiarizeConfirm: () => void
   onShowNotesConfirm: () => void
   onReopen: () => void
   onGoLive: () => void
@@ -29,6 +30,7 @@ export function MeetingActions({
   transcriptsCount,
   isRegeneratingNotes,
   onShowSttConfirm,
+  onShowReDiarizeConfirm,
   onShowNotesConfirm,
   onReopen,
   onGoLive,
@@ -45,6 +47,17 @@ export function MeetingActions({
           className="rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-3 py-1.5"
         >
           {isDesktop ? 'STT 재생성' : <RefreshCw className="w-4 h-4" />}
+        </button>
+      )}
+      {/* 화자분리만 재실행: 전사는 유지하고 현재 민감도로 화자만 재분리(다시 전사 안 함, ~1~2분) */}
+      {canEdit && meeting.has_audio_file && meeting.status === 'completed' && (
+        <button
+          onClick={onShowReDiarizeConfirm}
+          aria-label="화자분리만 재실행"
+          title="다시 전사하지 않고, 현재 민감도 설정으로 화자만 다시 분리합니다 (약 1~2분). 전사 텍스트는 유지되고 화자 이름만 초기화됩니다."
+          className="rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-3 py-1.5"
+        >
+          {isDesktop ? '화자분리만 재실행' : <Users className="w-4 h-4" />}
         </button>
       )}
       {canEdit && meeting.status === 'completed' && (

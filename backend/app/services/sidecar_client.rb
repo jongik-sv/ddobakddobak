@@ -56,6 +56,14 @@ class SidecarClient
     post("/transcribe-file", body, timeout: ENV.fetch("SIDECAR_TRANSCRIBE_FILE_TIMEOUT", "21600").to_i)
   end
 
+  # 이미 전사된 회의에 대해 STT 없이 화자분리만 재실행한다.
+  # segments(입력 순서) 와 동일 순서로 speaker_label 이 채워진 결과를 돌려받는다.
+  def diarize_file(file_path, meeting_id:, segments:, diarization_config: nil)
+    body = { file_path: file_path, meeting_id: meeting_id, segments: segments }
+    body[:diarization_config] = diarization_config if diarization_config
+    post("/diarize-file", body, timeout: ENV.fetch("SIDECAR_DIARIZE_FILE_TIMEOUT", "1800").to_i)
+  end
+
   # ── Speakers ──
 
   def get_speakers(meeting_id)

@@ -6,7 +6,7 @@ import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
 import { useMemoEditor } from '../hooks/useMemoEditor'
 import type { Transcript, TermCorrection } from '../api/meetings'
-import { getTranscripts, reopenMeeting, regenerateStt, regenerateNotes, updateNotes, correctTerms, canEditMeeting } from '../api/meetings'
+import { getTranscripts, reopenMeeting, regenerateStt, reDiarize, regenerateNotes, updateNotes, correctTerms, canEditMeeting } from '../api/meetings'
 import { useAuthStore } from '../stores/authStore'
 import { createAuthenticatedConsumer } from '../lib/actionCableAuth'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
@@ -153,6 +153,7 @@ export default function MeetingPage() {
   // 회의록 재생성 상태
   const [isRegeneratingNotes, setIsRegeneratingNotes] = useState(false)
   const [showSttConfirm, setShowSttConfirm] = useState(false)
+  const [showReDiarizeConfirm, setShowReDiarizeConfirm] = useState(false)
   const [showNotesConfirm, setShowNotesConfirm] = useState(false)
 
   // 회의록 재생성 완료 감지용 ActionCable 구독
@@ -186,6 +187,21 @@ export default function MeetingPage() {
       refetch()
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '재생성에 실패했습니다'
+      alert(msg)
+    }
+  }
+
+  // 화자분리만 재실행: STT는 그대로 두고 현재 민감도로 화자만 재분리.
+  // 서버가 STT 재실행과 동일한 ActionCable 이벤트(transcription_progress·
+  // file_transcription_complete)를 브로드캐스트하므로 진행률 UI가 그대로 반응한다.
+  async function handleReDiarize() {
+    setShowReDiarizeConfirm(false)
+    audio.pause()
+    try {
+      await reDiarize(meetingId)
+      refetch()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '재실행에 실패했습니다'
       alert(msg)
     }
   }
@@ -418,6 +434,7 @@ export default function MeetingPage() {
             transcriptsCount={transcripts.length}
             isRegeneratingNotes={isRegeneratingNotes}
             onShowSttConfirm={() => setShowSttConfirm(true)}
+            onShowReDiarizeConfirm={() => setShowReDiarizeConfirm(true)}
             onShowNotesConfirm={() => setShowNotesConfirm(true)}
             onReopen={async () => {
               await reopenMeeting(meetingId)
@@ -587,6 +604,17 @@ export default function MeetingPage() {
           confirmLabel="재생성"
           onConfirm={handleRegenerateStt}
           onCancel={() => setShowSttConfirm(false)}
+        />
+      )}
+
+      {/* 화자분리만 재실행 확인 다이얼로그 (전사 텍스트는 유지, 화자만 재배정) */}
+      {showReDiarizeConfirm && (
+        <ConfirmDialog
+          title="화자분리만 재실행"
+          message="전사 텍스트는 그대로 두고, 현재 민감도 설정으로 화자만 다시 분리합니다. 화자 이름은 초기화됩니다. 다시 전사하지는 않으며 1~2분 정도 걸립니다. 계속하시겠습니까?"
+          confirmLabel="재실행"
+          onConfirm={handleReDiarize}
+          onCancel={() => setShowReDiarizeConfirm(false)}
         />
       )}
 

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_13_084524) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_13_212341) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -145,6 +145,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_084524) do
     t.string "brief_summary"
     t.datetime "created_at", null: false
     t.integer "created_by_id", null: false
+    t.float "diarization_threshold"
     t.datetime "ended_at"
     t.integer "expected_participants"
     t.integer "folder_id"
@@ -154,6 +155,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_084524) do
     t.string "meeting_type", default: "general", null: false
     t.text "memo"
     t.datetime "paused_at"
+    t.datetime "re_diarize_started_at"
     t.string "share_code"
     t.boolean "shared", default: true, null: false
     t.string "source", default: "live", null: false
