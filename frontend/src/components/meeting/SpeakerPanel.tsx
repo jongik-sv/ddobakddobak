@@ -30,6 +30,13 @@ export function SpeakerPanel({ meetingId, isRecording, collapsible }: SpeakerPan
     [speakers, usedSpeakerIds]
   )
 
+  // 화자 "수"는 이름 기준 distinct: 다른 라벨이라도 같은 이름이면 1명.
+  // 이름 없는 라벨(name===id)은 각자 id로 구분되어 별개 카운트.
+  const distinctSpeakerCount = useMemo(
+    () => new Set(visibleSpeakers.map((s) => s.name || s.id)).size,
+    [visibleSpeakers]
+  )
+
   const fetchSpeakers = useCallback(() => {
     getSpeakers(meetingId)
       .then(setSpeakers)
@@ -155,7 +162,7 @@ export function SpeakerPanel({ meetingId, isRecording, collapsible }: SpeakerPan
         }}
         className="px-4 py-2 text-xs font-semibold text-gray-500 cursor-pointer hover:bg-gray-50 select-none"
       >
-        화자 목록{visibleSpeakers.length > 0 ? ` (${visibleSpeakers.length})` : ''}
+        화자 목록{visibleSpeakers.length > 0 ? ` (${distinctSpeakerCount})` : ''}
       </summary>
       {body}
     </details>

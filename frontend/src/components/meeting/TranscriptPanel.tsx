@@ -57,6 +57,33 @@ export function TranscriptPanel({
     (t) => currentTimeMs >= t.started_at_ms && currentTimeMs < t.ended_at_ms
   )
 
+  // 표시 병합: 해석된 이름이 연속 동일한 세그먼트를 한 그룹으로.
+  // 편집/하이라이트/타임스탬프는 세그먼트별 유지 위해 flatIdx 함께 보관.
+  // rename이 그룹 경계 바꾸므로 deps에 speakerNameOverrides 포함.
+  const groups = useMemo(() => {
+    const resolveName = (t: Transcript): string =>
+      ((speakerNameOverrides.has(t.id)
+        ? speakerNameOverrides.get(t.id)
+        : t.speaker_name) ?? t.speaker_label)
+    const out: {
+      key: number
+      name: string
+      startedAtMs: number
+      segments: { transcript: Transcript; flatIdx: number }[]
+    }[] = []
+    transcripts.forEach((transcript, flatIdx) => {
+      const name = resolveName(transcript)
+      const last = out[out.length - 1]
+      if (last && last.name === name) {
+        last.segments.push({ transcript, flatIdx })
+      } else {
+        out.push({ key: transcript.id, name, startedAtMs: transcript.started_at_ms,
+          segments: [{ transcript, flatIdx }] })
+      }
+    })
+    return out
+  }, [transcripts, speakerNameOverrides])
+
   // suppressAutoScroll은 ref로 읽는다 — deps에 넣으면 검색 종료(해제) 시점에
   // 오디오 위치로 뷰포트가 튀는 스크롤이 발화한다. 인덱스가 실제로 바뀔 때만 스크롤.
   const suppressRef = useRef(suppressAutoScroll)
@@ -78,52 +105,54 @@ export function TranscriptPanel({
 
   return (
     <div className="flex flex-col gap-1 p-4 overflow-y-auto">
-      {transcripts.map((transcript, idx) => {
-        const isHighlighted = idx === highlightedIndex
-        return (
-          <div
-            key={transcript.id}
-            ref={isHighlighted ? highlightedRef : null}
-            data-highlighted={isHighlighted ? 'true' : 'false'}
-            className={`p-3 min-h-[44px] rounded cursor-pointer transition-colors ${
-              isHighlighted
-                ? 'bg-indigo-100 border-l-4 border-indigo-500'
-                : 'hover:bg-gray-100 active:bg-gray-100'
-            }`}
-            onClick={() => onSeek(transcript.started_at_ms)}
-          >
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs font-semibold text-indigo-600">
-                {(speakerNameOverrides.has(transcript.id)
-                  ? speakerNameOverrides.get(transcript.id)
-                  : transcript.speaker_name) ?? transcript.speaker_label}
-              </span>
-              <span className="text-[10px] text-gray-400 tabular-nums">
-                {formatTimestamp(transcript.started_at_ms)}
-              </span>
-            </div>
-            {searchQuery ? (
-              // 검색 중엔 읽기전용 하이라이트 렌더 — contentEditable DOM에 <mark> 주입 불가
-              <HighlightedText
-                text={contentOverrides.get(transcript.id) ?? transcript.content}
-                query={searchQuery}
-                activeOccurrence={
-                  activeSearch?.transcriptId === transcript.id ? activeSearch.occurrence : -1
-                }
-                className="text-sm text-gray-800 select-text"
-              />
-            ) : (
-              <EditableTranscriptText
-                transcriptId={transcript.id}
-                meetingId={meetingId}
-                content={contentOverrides.get(transcript.id) ?? transcript.content}
-                editable
-                className="text-sm text-gray-800 select-text"
-              />
-            )}
+      {groups.map((group) => (
+        <div key={group.key} className="flex flex-col">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-xs font-semibold text-indigo-600">
+              {group.name}
+            </span>
+            <span className="text-[10px] text-gray-400 tabular-nums">
+              {formatTimestamp(group.startedAtMs)}
+            </span>
           </div>
-        )
-      })}
+          {group.segments.map(({ transcript, flatIdx }) => {
+            const isHighlighted = flatIdx === highlightedIndex
+            return (
+              <div
+                key={transcript.id}
+                ref={isHighlighted ? highlightedRef : null}
+                data-highlighted={isHighlighted ? 'true' : 'false'}
+                className={`p-3 min-h-[44px] rounded cursor-pointer transition-colors ${
+                  isHighlighted
+                    ? 'bg-indigo-100 border-l-4 border-indigo-500'
+                    : 'hover:bg-gray-100 active:bg-gray-100'
+                }`}
+                onClick={() => onSeek(transcript.started_at_ms)}
+              >
+                {searchQuery ? (
+                  // 검색 중엔 읽기전용 하이라이트 렌더 — contentEditable DOM에 <mark> 주입 불가
+                  <HighlightedText
+                    text={contentOverrides.get(transcript.id) ?? transcript.content}
+                    query={searchQuery}
+                    activeOccurrence={
+                      activeSearch?.transcriptId === transcript.id ? activeSearch.occurrence : -1
+                    }
+                    className="text-sm text-gray-800 select-text"
+                  />
+                ) : (
+                  <EditableTranscriptText
+                    transcriptId={transcript.id}
+                    meetingId={meetingId}
+                    content={contentOverrides.get(transcript.id) ?? transcript.content}
+                    editable
+                    className="text-sm text-gray-800 select-text"
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ))}
     </div>
   )
 }

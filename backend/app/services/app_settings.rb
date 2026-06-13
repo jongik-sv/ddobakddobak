@@ -7,7 +7,7 @@ class AppSettings
   # sidecar 코드 기본값과 동일 (community-1 기준)
   DIARIZATION_DEFAULTS = {
     "enable" => false,
-    "ahc_threshold" => 0.4,
+    "ahc_threshold" => 0.3,
     "clustering_threshold" => 0.6,
     "similarity_threshold" => 0.35,
     "merge_threshold" => 0.5,

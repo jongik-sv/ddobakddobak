@@ -1,7 +1,8 @@
-# 화자분리 "최대 분리 + 이름 통합 + word 단위 split" — 설계
+# 화자분리 "최대 분리 + 이름 통합 + 연속 동일화자 merge" — 설계
 
 > 작성: 2026-06-14 · 브랜치: `feat/diarization-split-merge`
 > 선행: `2026-06-13-diarization-accuracy-design.md`, 킥오프 `2026-06-14-diarization-separation-kickoff.md`
+> 갱신: word 단위 split(§4)은 엔진 의존으로 폐기, 연속 동일화자 merge(§4')로 대체. §2는 확인 완료로 제외.
 
 ## 핵심 철학 (사용자 확정)
 
@@ -10,10 +11,10 @@
 - 절대 금지 = **두 사람이 한 라벨로 병합**(rename으로 복구 불가, 정보 손실).
 - 목표 = 최대한 잘게 나누고 이름으로 합친다. 우선순위 = "절대 안 섞이게".
 
-## 범위 (이번 라운드, 전부 포함)
+## 범위 (이번 라운드)
 
-§1 분리 공격성 · §2 rename 통합 검증 · §3 다운스트림 동일인 · §4 word 단위 split.
-§1~3은 코드와 무관하게 방향 확정. §4는 STT word timestamp 유무가 가능 여부를 가름(2차 코드 확인).
+§1 분리 공격성(threshold 0.3) · §3 다운스트림 동일인(요약·내보내기·통계·이름검색) · §4' 연속 동일화자 merge(표시단).
+§2(rename 중복이름) = 확인 완료, 제외. §4(word split) = 엔진 의존으로 폐기.
 
 ---
 
@@ -27,53 +28,48 @@
 
 **변경 지점(2차 확인)**: 기본 threshold 상수/디폴트 값, EditMeetingDialog 슬라이더 기본 표시.
 
-## §2. rename 중복이름 통합 (현행 유지 + 검증)
+## §2. rename 중복이름 통합 — ✅ 확인 완료, 범위 제외
 
-- **새 머지 UI 없음.** 같은 이름을 2개 이상 라벨에 중복 입력 = 통합, 현행 방식 그대로 유지.
-- 자동완성·패널 그룹핑·명시 머지 버튼은 이번 범위 밖(YAGNI).
-- **검증 항목**:
-  - 2개 라벨 → 동일 이름 rename 시 `SpeakersController#update`가 거부/오류 없이 허용하는가.
-  - sidecar SpeakerDB(`rename_speaker`)와 `transcripts.speaker_name` 동기화 정상.
-  - 패널(`SpeakerLabel.tsx`)·트랜스크립트(`TranscriptPanel.tsx`) 표시 정상(같은 이름 2라벨이 깨짐 없이).
-  - `name == id`(미설정=nil) 폴백 정상.
+- 사용자가 직접 확인: 과분할된 2개 화자에 **동일 이름 할당 → 정상 동작**(표시 OK).
+- rename 자체는 클리어. 더 점검할 항목 없음. 빌드 작업 없음.
+- 남는 것은 "표시"가 아니라 "다운스트림 동일인 취급"(§3) — 별개 항목.
 
 ## §3. 다운스트림 동일인 (speaker_name 기준 통일)
 
-같은 `speaker_name`이면 요약·내보내기·검색·통계에서 **한 사람**으로 취급되게 보정.
+같은 `speaker_name`이면 **요약·내보내기·통계·검색**에서 한 사람으로 취급되게 보정.
 
-- **요약** (LlmService payload): 화자 발화 묶음을 `speaker_label` → `speaker_name` 기준 그룹.
+- **요약** (LLM payload): 화자 발화 묶음을 `speaker_name` 기준 그룹.
 - **내보내기** (Markdown/JSON export): name 기준 그룹.
-- **검색·통계**: name 기준 집계.
-- **폴백 규칙**: `speaker_name`이 nil(미설정)이면 `speaker_label`로 폴백. (FE 표시 폴백 `speakerName ?? speakerLabel`과 일치)
+- **통계** (화자수/distinct): name 기준 집계 → 같은 이름 2라벨 = 1명.
+- **검색 (신규 기능, 사용자 요청)**: 화자 **이름으로 조회** 추가. 같은 이름이면 갈린 라벨 모두 매칭. (현재 화자명 검색 부재 가능 — workflow 확인 후 텍스트 검색 위치에 name 필터 추가)
+- **폴백 규칙**: `speaker_name`이 nil(미설정)이면 `speaker_label`로 폴백 (`speakerName ?? speakerLabel`과 일치).
 
-**2차 코드 확인**: 위 각 지점이 현재 label 기준인지 name 기준인지 파악 → label 기준인 곳만 name으로 교체. 진실원천 = SpeakerDB, `transcripts.speaker_name`은 표시용 비정규화 사본.
+**진실원천** = SpeakerDB(sidecar), `transcripts.speaker_name` = 표시용 비정규화 사본.
+**각 지점 현재 기준(label vs name)** = `diarization-downstream-map` workflow로 조사 중 → label인 곳만 name으로 교체.
 
-## §4. word 단위 화자 정렬 + 경계 split (STT 길이 불변) — 핵심 신규
+## §4. 세그먼트 split — ❌ 폐기 (엔진 의존, 속도/품질 회귀)
 
-**문제**: 정렬이 세그먼트당 화자 1개(다수결)면, 화자 전환을 가로지르는 STT 세그먼트는 두 사람이 한 라벨로 붕괴 = under-merge가 **정렬 단계에서** 발생. threshold를 낮춰도 안 잡힘(diarization은 잘 나눠도 정렬이 다시 합침).
+**조사 결과**: 기본 STT 엔진 = `qwen3_asr_8bit` (Apple Silicon auto-select, `factory.py:50`). Qwen3 어댑터(`qwen3_adapter.py:79~89`)는 청크당 **텍스트 한 덩어리**만 반환(`started_at_ms=0`), 내부 시각·단어 타임스탬프 **0**. 공통 스키마 `TranscriptSegment`(`base.py:9`)에 `words` 필드 없음. mlx_whisper 계열은 word_timestamps 지원하나 `False`로 꺼둠(`mlx_whisper_adapter.py:119`).
 
-**해법 (STT 입력 불변, 출력 후처리)**:
-- STT 세그먼트 길이·전사 품질 **안 건드림**. 짧은 세그먼트를 STT에 먹이지 않는다(품질 저하 거부됨).
-- 전사된 각 단어를 그 단어 시각이 속한 diarization 화자에 매핑.
-- 한 세그먼트 안에서 화자가 바뀌는 **단어 경계에서 텍스트만 split** → 세그먼트가 화자별로 쪼개짐.
-- 결과: STT 품질 그대로 + 정렬 단계 under-merge 해소.
+**결론**: word 단위 split = 단어 타이밍 필요 → qwen3로 불가. whisper 전환은 **STT 속도+한국어(CJK) 품질 회귀**(qwen3가 그 이유로 채택됨). 사용자 결정 = **속도 희생 불가 → split 폐기.**
 
-**전제 (2차 코드 확인)**:
-1. STT 출력에 **word-level timestamp** 존재하는가? (whisper 계열이면 보통 有)
-2. 현재 정렬 로직 = 세그먼트당 화자 다수결인가, word 단위인가?
-3. diarization(speakrs) 타임라인 해상도(granularity).
+## §4'. 연속 동일화자 merge (표시단) — split 대체, 채택
 
-**분기**:
-- word timestamp **있음** → §4 구현(word→화자 매핑 + 경계 split).
-- word timestamp **없음** → §4 보류. 세그먼트 단위가 한계임을 인정(단 STT 세그먼트는 안 짧게). 별도 과제로 기록.
+split의 안전한 반쪽. 단어 타이밍 불필요(순수 후처리).
+
+- diarization이 세그먼트별 화자 배정 후, 시간순으로 **연속된 같은 화자 세그먼트를 한 블록으로 이어붙임**(텍스트 concat, 시작=첫 세그먼트, 끝=마지막).
+- 기준 = `speaker_name ?? speaker_label`. 같은 이름 라벨이 연속이면 합쳐짐.
+- **under-merge 안 건드림** — 같은 화자만 합치므로 안전(정보 손실 0).
+- **구현 위치 = FE 표시단** (`TranscriptPanel.tsx:81` render 루프). 비파괴적, DB 미변경, rename 시 그룹핑 자동 갱신. (백엔드 영구 병합은 rename 후 재병합 꼬임 → 회피.)
+- "연속" = 트랜스크립트 순서상 인접 + 동일 resolved-name. 중간에 다른 화자 끼면 안 합침.
 
 ## §5. 검증
 
 - 검증 회의 = **111** (dev DB `backend/storage/development.sqlite3`).
 - 확인:
   - 0.3 기본값에서 화자수·분할 양상.
-  - §4 적용 시 word-split 전후 트랜스크립트 비교(혼합 세그먼트가 쪼개지는지).
-  - 같은 이름 2라벨 rename → 요약·export가 동일인으로 묶는지.
+  - §4' 적용 시 연속 동일화자 세그먼트가 한 블록으로 합쳐지는지.
+  - 같은 이름 2라벨 → 요약·export·통계가 동일인 1명으로 묶는지, 이름 검색이 양쪽 다 잡는지.
 - **함정(실측)**:
   - sidecar는 `--reload` 없음 → 새 엔드포인트/로직 추가 시 sidecar 재시작 필수(tmux `ddobak:1`).
   - 마이그레이션 파일 추가 즉시 migrate(러닝 rails PendingMigration 500).
@@ -82,11 +78,18 @@
 
 ---
 
-## 미해결 / 2차 의존
+## 최종 범위 (확정)
 
-- §4 운명 = STT word timestamp 유무(가장 큰 미지수).
-- §3 각 다운스트림 지점의 현재 기준(label vs name).
-- §1 기본 threshold 상수 위치.
+- **§1** threshold 0.4→0.3 (`app_settings.rb:10`, `EditMeetingDialog.tsx:150/161`). 슬라이더 하한 0.2 유지.
+- **§2** ✅ 확인 완료, 작업 없음.
+- **§3** 다운스트림 name 통일: 요약·내보내기·통계 + **이름 검색 신규**. 각 지점 label→name (workflow 조사 결과 반영).
+- **§4** ❌ 폐기(엔진 의존).
+- **§4'** 연속 동일화자 merge(FE 표시단).
+
+## 미해결 / 조사 의존
+
+- §3 각 지점 현재 기준(label vs name) + 화자명 검색 존재 여부 = `diarization-downstream-map` workflow 결과 대기.
+- §4' FE render 루프 정확한 그룹핑 삽입점 = 동 workflow fe_render finder.
 
 ## 기술 참조
 

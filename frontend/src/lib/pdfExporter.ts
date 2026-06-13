@@ -398,7 +398,7 @@ function renderTranscripts(transcripts: MeetingExportData['transcripts']): strin
     .map(
       (t) =>
         `<div class="transcript-entry">` +
-        `<span class="transcript-speaker">${esc(t.speaker_label)}</span>` +
+        `<span class="transcript-speaker">${esc(t.speaker_name ?? t.speaker_label)}</span>` +
         `<span class="transcript-time">${esc(t.timestamp)}</span>` +
         `<div class="transcript-content">${esc(t.content)}</div>` +
         `</div>`,

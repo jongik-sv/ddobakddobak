@@ -1,6 +1,6 @@
 class Transcript < ApplicationRecord
   include FtsIndexable
-  fts_table :transcripts_fts, columns: %i[content speaker_label]
+  fts_table :transcripts_fts, columns: %i[content speaker_label speaker_name]
 
   belongs_to :meeting
 
