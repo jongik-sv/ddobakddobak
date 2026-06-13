@@ -142,8 +142,21 @@ export async function startMeeting(id: number): Promise<Meeting> {
   return res.meeting
 }
 
-export async function stopMeeting(id: number): Promise<Meeting> {
-  const res: { meeting: Meeting } = await apiClient.post(`meetings/${id}/stop`).json()
+export async function stopMeeting(id: number, opts?: { skipSummary?: boolean }): Promise<Meeting> {
+  const searchParams = opts?.skipSummary ? { skip_summary: 'true' } : undefined
+  const res: { meeting: Meeting } = await apiClient
+    .post(`meetings/${id}/stop`, searchParams ? { searchParams } : undefined)
+    .json()
+  return res.meeting
+}
+
+export async function pauseMeeting(id: number): Promise<Meeting> {
+  const res: { meeting: Meeting } = await apiClient.post(`meetings/${id}/pause`).json()
+  return res.meeting
+}
+
+export async function resumeMeeting(id: number): Promise<Meeting> {
+  const res: { meeting: Meeting } = await apiClient.post(`meetings/${id}/resume`).json()
   return res.meeting
 }
 
