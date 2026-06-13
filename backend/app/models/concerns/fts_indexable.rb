@@ -14,7 +14,7 @@ module FtsIndexable
     def ensure_fts_tables!
       conn = ActiveRecord::Base.connection
       [
-        [ "transcripts_fts", "content, speaker_label" ],
+        [ "transcripts_fts", "content, speaker_label, speaker_name" ],
         [ "summaries_fts", "notes_markdown, key_points, decisions, discussion_details" ]
       ].each do |name, cols|
         conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS #{name} USING fts5(#{cols}, source_id UNINDEXED, tokenize='unicode61')")

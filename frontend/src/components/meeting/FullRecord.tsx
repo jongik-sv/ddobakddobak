@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 import { SpeakerLabel } from './SpeakerLabel'
 import { EditableTranscriptText } from './EditableTranscriptText'
@@ -21,6 +21,34 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek }: FullRecordP
   const highlightedIndex = currentTimeMs > 0
     ? finals.findIndex((t) => currentTimeMs >= t.started_at_ms && currentTimeMs < t.ended_at_ms)
     : -1
+
+  // 표시 병합: 해석된 이름이 연속 동일한 세그먼트를 한 그룹으로.
+  // 선택/하이라이트/대기 배지는 세그먼트별 유지 위해 flatIdx 함께 보관.
+  const groups = useMemo(() => {
+    const resolveName = (t: (typeof finals)[number]): string =>
+      t.speaker_name && t.speaker_name.trim() ? t.speaker_name : t.speaker_label
+    const out: {
+      key: number
+      name: string
+      startedAtMs: number
+      segments: { item: (typeof finals)[number]; flatIdx: number }[]
+    }[] = []
+    finals.forEach((item, flatIdx) => {
+      const name = resolveName(item)
+      const last = out[out.length - 1]
+      if (last && last.name === name) {
+        last.segments.push({ item, flatIdx })
+      } else {
+        out.push({
+          key: item.id,
+          name,
+          startedAtMs: item.started_at_ms,
+          segments: [{ item, flatIdx }],
+        })
+      }
+    })
+    return out
+  }, [finals])
 
   useEffect(() => {
     if (highlightedIndex >= 0 && highlightedRef.current) {
@@ -68,44 +96,54 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek }: FullRecordP
           <p className="text-sm text-gray-400">기록이 없습니다.</p>
         )}
 
-        {finals.map((item, idx) => {
-          const isHighlighted = idx === highlightedIndex
+        {groups.map((group) => {
+          const first = group.segments[0].item
           return (
-            <div
-              key={item.id}
-              ref={isHighlighted ? highlightedRef : null}
-              className={`flex items-start gap-2 p-2 rounded transition-colors ${
-                isHighlighted
-                  ? 'bg-indigo-100 border-l-4 border-indigo-500'
-                  : selected.has(item.id) ? 'bg-red-50' : 'hover:bg-gray-50'
-              } ${onSeek ? 'cursor-pointer' : ''}`}
-              onClick={() => onSeek?.(item.started_at_ms)}
-            >
-              <input
-                type="checkbox"
-                checked={selected.has(item.id)}
-                onChange={() => toggleSelect(item.id)}
-                onClick={(e) => e.stopPropagation()}
-                className="mt-1 shrink-0"
-              />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <SpeakerLabel speakerLabel={item.speaker_label} speakerName={item.speaker_name} />
-                  <span className="text-xs text-gray-400">{formatElapsed(item.started_at_ms)}</span>
-                  {!item.applied && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700">
-                      대기
-                    </span>
-                  )}
-                </div>
-                <EditableTranscriptText
-                  transcriptId={item.id}
-                  meetingId={meetingId}
-                  content={item.content}
-                  editable
-                  className="text-sm text-gray-900 leading-relaxed mt-0.5"
-                />
+            <div key={group.key} className="flex flex-col">
+              {/* 그룹 헤더: 화자 칩 + 그룹 시작 타임스탬프 (연속 동일 화자 1회) */}
+              <div className="flex items-center gap-2 mb-0.5 px-2">
+                <SpeakerLabel speakerLabel={first.speaker_label} speakerName={first.speaker_name} />
+                <span className="text-xs text-gray-400">{formatElapsed(group.startedAtMs)}</span>
               </div>
+              {group.segments.map(({ item, flatIdx }) => {
+                const isHighlighted = flatIdx === highlightedIndex
+                return (
+                  <div
+                    key={item.id}
+                    ref={isHighlighted ? highlightedRef : null}
+                    className={`flex items-start gap-2 p-2 rounded transition-colors ${
+                      isHighlighted
+                        ? 'bg-indigo-100 border-l-4 border-indigo-500'
+                        : selected.has(item.id) ? 'bg-red-50' : 'hover:bg-gray-50'
+                    } ${onSeek ? 'cursor-pointer' : ''}`}
+                    onClick={() => onSeek?.(item.started_at_ms)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.has(item.id)}
+                      onChange={() => toggleSelect(item.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="mt-1 shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      {!item.applied && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700">
+                            대기
+                          </span>
+                        </div>
+                      )}
+                      <EditableTranscriptText
+                        transcriptId={item.id}
+                        meetingId={meetingId}
+                        content={item.content}
+                        editable
+                        className="text-sm text-gray-900 leading-relaxed"
+                      />
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )
         })}

@@ -147,7 +147,7 @@ export default function EditMeetingDialog({
               min={0.2}
               max={0.8}
               step={0.1}
-              value={diarizationThreshold || '0.4'}
+              value={diarizationThreshold || '0.3'}
               onChange={(e) => setDiarizationThreshold(e.target.value)}
               className="w-full accent-blue-600"
             />
@@ -158,7 +158,7 @@ export default function EditMeetingDialog({
                 onClick={() => setDiarizationThreshold('')}
                 className="underline hover:text-foreground"
               >
-                기본값(0.4)
+                기본값(0.3)
               </button>
               <span>적게 나눔(0.8)</span>
             </div>

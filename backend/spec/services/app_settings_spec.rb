@@ -17,7 +17,7 @@ RSpec.describe AppSettings do
     config = described_class.diarization_config
     expect(config).to eq(
       "enable" => true,
-      "ahc_threshold" => 0.4,
+      "ahc_threshold" => 0.3,
       "clustering_threshold" => 0.6,
       "similarity_threshold" => 0.5,
       "merge_threshold" => 0.62,

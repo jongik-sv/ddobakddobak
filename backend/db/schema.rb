@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_13_212341) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_14_000001) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -286,5 +286,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_212341) do
   # Virtual tables defined in this database.
   # Note that virtual tables may not work with other database engines. Be careful if changing database.
   create_virtual_table "summaries_fts", "fts5", ["notes_markdown", "key_points", "decisions", "discussion_details", "source_id UNINDEXED", "tokenize='unicode61'"]
-  create_virtual_table "transcripts_fts", "fts5", ["content", "speaker_label", "source_id UNINDEXED", "tokenize='unicode61'"]
+  create_virtual_table "transcripts_fts", "fts5", ["content", "speaker_label", "speaker_name", "source_id UNINDEXED", "tokenize='unicode61'"]
 end

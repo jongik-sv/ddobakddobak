@@ -456,6 +456,7 @@ export interface MeetingExportData {
   }>
   transcripts: Array<{
     speaker_label: string
+    speaker_name?: string | null
     timestamp: string
     content: string
   }>

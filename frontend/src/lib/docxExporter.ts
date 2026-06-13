@@ -193,7 +193,7 @@ export async function generateDocx(data: MeetingExportData): Promise<Blob> {
       children.push(
         new Paragraph({
           children: [
-            new TextRun({ text: t.speaker_label, bold: true }),
+            new TextRun({ text: t.speaker_name ?? t.speaker_label, bold: true }),
             new TextRun({ text: ` (${t.timestamp})  `, color: '888888' }),
             new TextRun({ text: t.content }),
           ],

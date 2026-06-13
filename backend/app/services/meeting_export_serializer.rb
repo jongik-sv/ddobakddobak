@@ -76,6 +76,7 @@ class MeetingExportSerializer
     @meeting.transcripts.order(:sequence_number).map do |t|
       {
         speaker_label: t.speaker_label,
+        speaker_name:  t.speaker_name,
         timestamp:     format_timestamp_ms(t.started_at_ms),
         content:       t.content
       }
