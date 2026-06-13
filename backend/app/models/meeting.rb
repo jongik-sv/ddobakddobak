@@ -25,6 +25,8 @@ class Meeting < ApplicationRecord
   validates :summary_restructure, inclusion: { in: [ true, false ] } # NOT NULL 컬럼 — nil 이 500 대신 422 가 되게
   validates :source, inclusion: { in: %w[live upload] }
   validates :expected_participants, numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 100 }, allow_nil: true
+  # 화자분리 AHC 거리 컷오프. UI 슬라이더 0.2~0.8, API엔 약간 여유. 0/음수 등 쓰레기값 차단(garbage .to_f → 0.0 → 422)
+  validates :diarization_threshold, numericality: { greater_than_or_equal_to: 0.1, less_than_or_equal_to: 1.0 }, allow_nil: true
 
   enum :status, { pending: "pending", recording: "recording", transcribing: "transcribing", completed: "completed" }
 
