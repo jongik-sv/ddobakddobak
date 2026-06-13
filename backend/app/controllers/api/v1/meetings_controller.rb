@@ -168,7 +168,7 @@ module Api
         require_meeting_status!(@meeting, :recording?, "Meeting is not in recording state")
         return if performed?
 
-        @meeting.update!(status: :completed, ended_at: Time.current)
+        @meeting.update!(status: :completed, ended_at: Time.current, paused_at: nil)
 
         # 녹음 단일성 락 해제 (재시작/reopen 시 stale 락 방지)
         RecordingLock.clear(@meeting.id)
@@ -179,9 +179,12 @@ module Api
           { type: "recording_stopped", meeting_id: @meeting.id }
         )
 
-        # Sidecar 호출은 비동기 Job으로 — 실패해도 회의 종료에 영향 없음
-        MeetingFinalizerJob.perform_later(@meeting.id)
-        MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
+        # 사용자가 최종 요약을 건너뛰었거나(skip_summary) 라이브 기록이 없으면 요약 job 미enqueue.
+        skip = params[:skip_summary].to_s == "true"
+        if !skip && @meeting.transcripts.exists?
+          MeetingFinalizerJob.perform_later(@meeting.id)
+          MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
+        end
         render json: { meeting: meeting_json(@meeting) }
       end
 

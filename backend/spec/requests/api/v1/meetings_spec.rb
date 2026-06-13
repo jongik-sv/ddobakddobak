@@ -438,11 +438,39 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(meeting.reload.ended_at).not_to be_nil
       end
 
-      it "enqueues MeetingFinalizerJob" do
+      it "enqueues finalizer + final summary when transcripts exist" do
+        create(:transcript, meeting: meeting)
         expect(MeetingFinalizerJob).to receive(:perform_later).with(meeting.id)
+        expect(MeetingSummarizationJob).to receive(:perform_later).with(meeting.id, type: "final")
+
+        post "/api/v1/meetings/#{meeting.id}/stop"
+      end
+
+      it "does NOT enqueue jobs when no transcripts exist" do
+        expect(MeetingFinalizerJob).not_to receive(:perform_later)
+        expect(MeetingSummarizationJob).not_to receive(:perform_later)
+
+        post "/api/v1/meetings/#{meeting.id}/stop"
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "does NOT enqueue jobs when skip_summary=true even with transcripts" do
+        create(:transcript, meeting: meeting)
+        expect(MeetingFinalizerJob).not_to receive(:perform_later)
+        expect(MeetingSummarizationJob).not_to receive(:perform_later)
+
+        post "/api/v1/meetings/#{meeting.id}/stop", params: { skip_summary: "true" }
+        expect(response).to have_http_status(:ok)
+        expect(meeting.reload.status).to eq("completed")
+      end
+
+      it "clears paused_at on stop" do
+        meeting.update!(paused_at: Time.current)
+        allow(MeetingFinalizerJob).to receive(:perform_later)
         allow(MeetingSummarizationJob).to receive(:perform_later)
 
         post "/api/v1/meetings/#{meeting.id}/stop"
+        expect(meeting.reload.paused_at).to be_nil
       end
 
       it "broadcasts recording_stopped to the meeting transcription stream" do
