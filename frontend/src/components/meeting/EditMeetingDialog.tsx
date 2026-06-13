@@ -152,7 +152,7 @@ export default function EditMeetingDialog({
               className="w-full accent-blue-600"
             />
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>적게 나눔(0.8)</span>
+              <span>많이 나눔(0.2)</span>
               <button
                 type="button"
                 onClick={() => setDiarizationThreshold('')}
@@ -160,10 +160,10 @@ export default function EditMeetingDialog({
               >
                 기본값(0.4)
               </button>
-              <span>많이 나눔(0.2)</span>
+              <span>적게 나눔(0.8)</span>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              여러 명이 한 화자로 뭉치면 값을 낮추세요. 저장 후 STT 재실행 시 적용됩니다.
+              여러 명이 한 화자로 뭉치면 값을 낮추세요. 저장 후 '화자분리만 재실행'으로 적용됩니다.
             </p>
           </div>
 

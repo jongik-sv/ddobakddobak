@@ -43,4 +43,55 @@ RSpec.describe "Api::V1::Meetings re_diarize", type: :request do
       expect(meeting.reload.status).to eq("completed")
     end
   end
+
+  # 멈춘 화자분리-재실행 자가복구: :async 잡 드롭으로 transcribing 에 정지된 회의가
+  # stale(re_diarize_started_at 가 오래됨) 이면 조회/재실행 시 completed 로 회복된다.
+  context "stale 화자분리 재실행으로 멈춘 회의 (transcribing + 오래된 re_diarize_started_at)" do
+    before do
+      create(:transcript, meeting: meeting, sequence_number: 1)
+      allow(File).to receive(:exist?).and_call_original
+      allow(File).to receive(:exist?).with(meeting.audio_file_path).and_return(true)
+      meeting.update_columns(status: "transcribing", re_diarize_started_at: 10.minutes.ago)
+    end
+
+    it "GET show 가 completed 로 자가복구한다" do
+      get "/api/v1/meetings/#{meeting.id}"
+      expect(response).to have_http_status(:ok)
+      expect(meeting.reload.status).to eq("completed")
+      expect(meeting.re_diarize_started_at).to be_nil
+    end
+
+    it "POST re_diarize 가 회복 후 재실행한다(200 + enqueue)" do
+      expect {
+        post "/api/v1/meetings/#{meeting.id}/re_diarize"
+      }.to have_enqueued_job(ReDiarizeJob).with(meeting.id)
+      expect(response).to have_http_status(:ok)
+      expect(meeting.reload.status).to eq("transcribing")
+    end
+  end
+
+  context "정상 진행 중인 화자분리 (transcribing + 최근 re_diarize_started_at)" do
+    before do
+      create(:transcript, meeting: meeting, sequence_number: 1)
+      meeting.update_columns(status: "transcribing", re_diarize_started_at: 30.seconds.ago)
+    end
+
+    it "stale 아니므로 회복 안 함 → 422 (이중 실행 방지)" do
+      expect {
+        post "/api/v1/meetings/#{meeting.id}/re_diarize"
+      }.not_to have_enqueued_job(ReDiarizeJob)
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(meeting.reload.status).to eq("transcribing")
+    end
+  end
+
+  context "실 STT 진행 중 (transcribing + re_diarize_started_at nil)" do
+    before { meeting.update_columns(status: "transcribing", re_diarize_started_at: nil) }
+
+    it "GET show 가 절대 건드리지 않는다(클로버 방지)" do
+      get "/api/v1/meetings/#{meeting.id}"
+      expect(response).to have_http_status(:ok)
+      expect(meeting.reload.status).to eq("transcribing")
+    end
+  end
 end

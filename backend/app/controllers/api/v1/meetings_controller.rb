@@ -9,6 +9,8 @@ module Api
       before_action :authenticate_user!
       before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize]
       before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback]
+      # 멈춘 화자분리-재실행 자가복구: 조회/재실행 시 stale 면 completed 로 되돌려 버튼이 다시 보이게 함
+      before_action -> { @meeting&.heal_stale_re_diarize! }, only: %i[show re_diarize]
 
       def index
         scope = Meeting.accessible_by(current_user)
@@ -290,7 +292,7 @@ module Api
           return render json: { error: "오디오 파일이 없습니다" }, status: :unprocessable_entity
         end
 
-        @meeting.update!(status: :transcribing, transcription_progress: 0)
+        @meeting.update!(status: :transcribing, transcription_progress: 0, re_diarize_started_at: Time.current)
         ReDiarizeJob.perform_later(@meeting.id)
         render json: { meeting: meeting_json(@meeting) }
       end

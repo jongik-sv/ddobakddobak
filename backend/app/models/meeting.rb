@@ -95,6 +95,19 @@ class Meeting < ApplicationRecord
     "meeting_#{id}_transcription"
   end
 
+  # 화자분리만 재실행(ReDiarizeJob)이 :async 잡 드롭(서버 리로드 등)으로 멈추면 회의가
+  # transcribing 에 영구정지된다 — 재실행 버튼은 completed 에서만 보여 UI 로는 회복 불가.
+  # re_diarize_started_at 가 임계시간보다 오래되면 stale 로 보고 completed 로 자가복구한다.
+  # 실 STT(FileTranscriptionJob)는 이 컬럼을 쓰지 않으므로 절대 건드리지 않는다(클로버 방지).
+  RE_DIARIZE_STALE_AFTER = 5.minutes
+
+  def heal_stale_re_diarize!
+    return unless transcribing? && re_diarize_started_at.present?
+    return if re_diarize_started_at > RE_DIARIZE_STALE_AFTER.ago
+
+    update_columns(status: "completed", transcription_progress: 100, re_diarize_started_at: nil)
+  end
+
   def host_participant
     active_participants.find_by(role: MeetingParticipant::ROLE_HOST)
   end
