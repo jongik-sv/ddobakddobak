@@ -115,6 +115,7 @@ module Api
         attrs[:brief_summary] = params[:brief_summary] if params.key?(:brief_summary)
         attrs[:attendees] = params[:attendees] if params.key?(:attendees)
         attrs[:expected_participants] = params[:expected_participants].presence&.to_i if params.key?(:expected_participants)
+        attrs[:diarization_threshold] = params[:diarization_threshold].to_s.strip.presence&.to_f if params.key?(:diarization_threshold)
         attrs[:summary_verbosity] = params[:summary_verbosity] if params.key?(:summary_verbosity)
         if params.key?(:summary_restructure)
           # cast 가 nil 을 주는 입력(""/null)은 무시 — NOT NULL 컬럼이라 500 으로 터진다

@@ -20,6 +20,9 @@ class FileTranscriptionJob < ApplicationJob
     if meeting.expected_participants.present?
       diarization_config["expected_speakers"] = meeting.expected_participants
     end
+    if meeting.diarization_threshold.present?
+      diarization_config["ahc_threshold"] = meeting.diarization_threshold
+    end
     result = SidecarClient.new.transcribe_file(
       pcm_path,
       meeting_id: meeting.id,
