@@ -179,4 +179,14 @@ RSpec.describe MeetingSummarizationJob do
       end
     end
   end
+
+  describe "paused guard (realtime)" do
+    # 상위 before가 이 meeting(paused)에 transcript를 생성하므로, 가드가 없으면 LLM이 호출된다.
+    let(:meeting) { create(:meeting, team: team, creator: user, status: "recording", paused_at: Time.current) }
+
+    it "does not call LLM when meeting is paused" do
+      expect(LlmService).not_to receive(:new)
+      described_class.new.perform(meeting.id, type: "realtime")
+    end
+  end
 end

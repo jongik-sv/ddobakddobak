@@ -94,6 +94,7 @@ class MeetingSummarizationJob < ApplicationJob
     meeting.reload
     return if meeting.completed?
     return if meeting.pending?
+    return if meeting.paused_at? # 일시정지 중 자동 요약 금지 (cron이 enqueue 후 일시정지된 경우 방어)
     return if stale_relative_to_user_action?(meeting)
 
     new_transcripts = meeting.transcripts
