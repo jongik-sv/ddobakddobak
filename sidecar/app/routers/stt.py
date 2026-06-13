@@ -161,6 +161,7 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
     _t_diar = time.monotonic()
     diar_cfg = request.diarization_config or {}
     enable_diarization = diar_cfg.get("enable", False)
+    ahc_threshold = diar_cfg.get("ahc_threshold")
     if enable_diarization and segments:
         diar_engine = _resolve_diar_engine()
         try:
@@ -169,6 +170,7 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
                 from app.diarization.batch_processor import batch_diarize_speakrs
                 segments = await batch_diarize_speakrs(
                     audio_bytes, segments, meeting_id=request.meeting_id,
+                    ahc_threshold=ahc_threshold,
                 )
                 logger.info("[transcribe-file] 배치 화자 분리 완료 (speakrs)")
             else:

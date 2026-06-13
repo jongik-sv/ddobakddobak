@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ async def batch_diarize_speakrs(
     segments: list[TranscriptSegment],
     meeting_id: int | None = None,
     db_dir: Path | None = None,
+    ahc_threshold: float | None = None,
 ) -> list[TranscriptSegment]:
     """speakrs(Rust/CoreML)로 전체 오디오 diarization 후 STT 세그먼트에 화자 할당.
 
@@ -38,7 +40,9 @@ async def batch_diarize_speakrs(
     from app.diarization.speakrs_runner import run_speakrs
 
     loop = asyncio.get_running_loop()
-    turns, ordered_labels = await loop.run_in_executor(None, run_speakrs, audio_bytes)
+    turns, ordered_labels = await loop.run_in_executor(
+        None, partial(run_speakrs, audio_bytes, ahc_threshold=ahc_threshold)
+    )
 
     logger.info(f"[speakrs] {len(ordered_labels)}명 화자, {len(turns)}개 구간")
     if not turns:

@@ -59,7 +59,7 @@ class TranscribeFileRequest(BaseModel):
     """POST /transcribe-file 요청 스키마."""
     file_path: str  # Backend가 ffmpeg로 변환한 raw PCM 16kHz mono Int16 파일 경로
     meeting_id: int | None = None
-    diarization_config: dict | None = None
+    diarization_config: dict | None = None  # {enable, ahc_threshold, ...}
     languages: list[str] | None = None  # 인식 대상 언어 코드 목록 (예: ["ko", "ja"])
     file_chunk_sec: int = 30  # 청크 분할 시간 (초). 0이면 분할 안 함 (Whisper 내부 윈도우 사용)
     mode: str = "single"  # "single"=언어 강제 / "multi"=자동감지+감지언어 필터
