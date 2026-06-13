@@ -7,8 +7,8 @@ module Api
       include AudioStorage
 
       before_action :authenticate_user!
-      before_action :set_meeting, only: %i[show update destroy start stop reopen reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes]
-      before_action :authorize_meeting_control!, only: %i[update start stop reopen reset_content summarize update_notes regenerate_stt regenerate_notes feedback]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes]
+      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes feedback]
 
       def index
         scope = Meeting.accessible_by(current_user)
@@ -190,6 +190,30 @@ module Api
         return if performed?
 
         @meeting.update!(status: :recording, ended_at: nil)
+        render json: { meeting: meeting_json(@meeting) }
+      end
+
+      def pause
+        require_meeting_status!(@meeting, :recording?, "Meeting is not in recording state")
+        return if performed?
+
+        @meeting.update!(paused_at: Time.current)
+        ActionCable.server.broadcast(
+          @meeting.transcription_stream,
+          { type: "recording_paused", meeting_id: @meeting.id }
+        )
+        render json: { meeting: meeting_json(@meeting) }
+      end
+
+      def resume
+        require_meeting_status!(@meeting, :recording?, "Meeting is not in recording state")
+        return if performed?
+
+        @meeting.update!(paused_at: nil)
+        ActionCable.server.broadcast(
+          @meeting.transcription_stream,
+          { type: "recording_resumed", meeting_id: @meeting.id }
+        )
         render json: { meeting: meeting_json(@meeting) }
       end
 

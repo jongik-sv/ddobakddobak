@@ -482,6 +482,50 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   end
 
   # ============================================================
+  # POST /api/v1/meetings/:id/pause · resume
+  # ============================================================
+  describe "POST /api/v1/meetings/:id/pause" do
+    let(:meeting) { create(:meeting, team: team, creator: user, status: "recording") }
+
+    it "sets paused_at and broadcasts recording_paused" do
+      expect(ActionCable.server).to receive(:broadcast).with(
+        "meeting_#{meeting.id}_transcription",
+        hash_including(type: "recording_paused", meeting_id: meeting.id)
+      )
+      post "/api/v1/meetings/#{meeting.id}/pause"
+      expect(response).to have_http_status(:ok)
+      expect(meeting.reload.paused_at).not_to be_nil
+    end
+
+    it "returns 422 when not recording" do
+      pending_meeting = create(:meeting, team: team, creator: user, status: "pending")
+      post "/api/v1/meetings/#{pending_meeting.id}/pause"
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it "forbids viewer participants" do
+      foreign = create(:meeting, team: team, creator: other_user, status: "recording")
+      create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
+      post "/api/v1/meetings/#{foreign.id}/pause"
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe "POST /api/v1/meetings/:id/resume" do
+    let(:meeting) { create(:meeting, team: team, creator: user, status: "recording", paused_at: Time.current) }
+
+    it "clears paused_at and broadcasts recording_resumed" do
+      expect(ActionCable.server).to receive(:broadcast).with(
+        "meeting_#{meeting.id}_transcription",
+        hash_including(type: "recording_resumed", meeting_id: meeting.id)
+      )
+      post "/api/v1/meetings/#{meeting.id}/resume"
+      expect(response).to have_http_status(:ok)
+      expect(meeting.reload.paused_at).to be_nil
+    end
+  end
+
+  # ============================================================
   # 제어 액션 인가
   # ============================================================
   describe "제어 액션 인가" do
