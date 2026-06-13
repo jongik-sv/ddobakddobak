@@ -1,0 +1,16 @@
+[package]
+name = "speakrs-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# default features include "online" (HF cache model auto-load). coreml = native CoreML (FP32 ~1s step).
+speakrs = { version = "0.4.2", features = ["coreml"] }
+
+[[bin]]
+name = "speakrs-cli"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
