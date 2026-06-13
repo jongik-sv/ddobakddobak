@@ -38,6 +38,7 @@ import { BookmarkPopover } from '../components/meeting/BookmarkPopover'
 import { DesktopRecordControls } from '../components/meeting/DesktopRecordControls'
 import { LiveStatusBar } from '../components/meeting/LiveStatusBar'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { StopMeetingDialog } from '../components/meeting/StopMeetingDialog'
 import { Dialog } from '../components/ui/Dialog'
 
 export default function MeetingLivePage() {
@@ -74,6 +75,8 @@ export default function MeetingLivePage() {
     isActive, isSharing, isHost, currentUserId,
     showResetConfirm, setShowResetConfirm, showLeaveBlock, setShowLeaveBlock,
     handleStart, handlePause, handleResume, handleStop,
+    handleManualSummary, canManualSummary,
+    showStopConfirm, confirmStopSummarize, confirmStopSkip, cancelStop,
     handleResetClick, handleResetConfirm, handleNavigateBack,
   } = live
 
@@ -262,6 +265,8 @@ export default function MeetingLivePage() {
         onPause={handlePause}
         onResume={handleResume}
         onStop={handleStop}
+        onManualSummary={handleManualSummary}
+        canManualSummary={canManualSummary}
       />
 
       {/* 첨부 파일/링크 섹션 */}
@@ -356,6 +361,8 @@ export default function MeetingLivePage() {
             onPause={handlePause}
             onResume={handleResume}
             onStop={handleStop}
+            onManualSummary={handleManualSummary}
+            canManualSummary={canManualSummary}
             isStopping={isStopping}
           >
             {(closeMore) => (
@@ -498,6 +505,14 @@ export default function MeetingLivePage() {
           confirmClassName="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors"
           onConfirm={handleResetConfirm}
           onCancel={() => setShowResetConfirm(false)}
+        />
+      )}
+
+      {showStopConfirm && (
+        <StopMeetingDialog
+          onSummarize={confirmStopSummarize}
+          onSkip={confirmStopSkip}
+          onCancel={cancelStop}
         />
       )}
 

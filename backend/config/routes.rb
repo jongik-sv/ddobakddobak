@@ -39,6 +39,8 @@ Rails.application.routes.draw do
           post :start
           post :stop
           post :reopen
+          post :pause
+          post :resume
           post :reset_content
           post :summarize
           post :regenerate_stt

@@ -16,6 +16,8 @@ import {
   getMeeting,
   startMeeting,
   stopMeeting,
+  pauseMeeting,
+  resumeMeeting,
   reopenMeeting,
   promoteAudio,
   uploadAudioChunk,
@@ -74,6 +76,8 @@ export function useLiveRecording(
 
   // 초기화 확인 다이얼로그
   const [showResetConfirm, setShowResetConfirm] = useState(false)
+  // 종료 시 최종요약 여부 확인 다이얼로그
+  const [showStopConfirm, setShowStopConfirm] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
 
@@ -88,6 +92,8 @@ export function useLiveRecording(
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const markReset = useTranscriptStore((s) => s.markReset)
+  const finalsCount = useTranscriptStore((s) => s.finals.length)
+  const isSummarizing = useTranscriptStore((s) => s.isSummarizing)
   const [summaryIntervalSec, setSummaryIntervalSec] = useState(DEFAULT_SUMMARY_INTERVAL_SEC)
 
   // 공유 상태
@@ -337,8 +343,8 @@ export function useLiveRecording(
       import('@tauri-apps/api/core').then(({ invoke }) => invoke('pause_recording')).catch(() => {})
     }
     pause()
-    // 일시정지 시 아직 적용되지 않은 기록을 AI 회의록에 반영
-    triggerRealtimeSummary(meetingId).catch(() => {})
+    // 일시정지 중 요약 완전 금지 — flush 호출하지 않음. 서버에 일시정지 통지(cron 자동요약 차단).
+    pauseMeeting(meetingId).catch(() => {})
   }
 
   const handleResume = () => {
@@ -347,9 +353,40 @@ export function useLiveRecording(
       import('@tauri-apps/api/core').then(({ invoke }) => invoke('resume_recording')).catch(() => {})
     }
     resume()
+    resumeMeeting(meetingId).catch(() => {})
   }
 
-  const handleStop = async () => {
+  // 회의 중 수동 "지금 요약" — realtime 경로(기존 설정 반영). 종료/일시정지/빈기록/요약중엔 호출 안 함.
+  const handleManualSummary = () => {
+    if (isPaused || finalsCount === 0 || isSummarizing) return
+    triggerRealtimeSummary(meetingId).catch(() => {})
+    // 다음 자동 주기 deadline 재anchor — 수동 직후 중복 요약 방지.
+    summaryDeadlineRef.current = Date.now() + summaryIntervalSec * 1000
+    setSummaryCountdown(summaryIntervalSec)
+  }
+
+  // 종료 버튼: 라이브 기록 있으면 최종요약 여부 확인 다이얼로그, 없으면 바로 종료(skip).
+  const handleStop = () => {
+    if (finalsCount === 0) {
+      performStop(true)
+      return
+    }
+    setShowStopConfirm(true)
+  }
+
+  const confirmStopSummarize = () => {
+    setShowStopConfirm(false)
+    performStop(false)
+  }
+
+  const confirmStopSkip = () => {
+    setShowStopConfirm(false)
+    performStop(true)
+  }
+
+  const cancelStop = () => setShowStopConfirm(false)
+
+  const performStop = async (skipSummary: boolean) => {
     setIsStopping(true)
     showStatus('회의 종료 중... 기록을 회의록에 적용하고 있습니다', 10000)
     // 캡처 먼저 중지 → 녹음기에 남은 데이터 플러시
@@ -376,11 +413,13 @@ export function useLiveRecording(
       }
     }
     try {
-      // 종료 전 미적용 기록을 AI 회의록에 반영
-      await triggerRealtimeSummary(meetingId).catch(() => {})
-      // 요약 반영 시간 확보
-      await new Promise((r) => setTimeout(r, 2000))
-      await stopMeeting(meetingId)
+      // 요약함 선택 시에만 종료 전 미적용 기록 flush. 건너뛰기면 생략.
+      if (!skipSummary) {
+        await triggerRealtimeSummary(meetingId).catch(() => {})
+        // 요약 반영 시간 확보
+        await new Promise((r) => setTimeout(r, 2000))
+      }
+      await stopMeeting(meetingId, { skipSummary })
       // 최종 회의록 다시 로드
       const summary = await getSummary(meetingId).catch(() => null)
       if (summary?.notes_markdown) {
@@ -616,6 +655,12 @@ export function useLiveRecording(
       if (deadline === null) return
       const remaining = Math.ceil((deadline - Date.now()) / 1000)
       if (remaining <= 0) {
+        // 라이브 기록 없으면 요약 스킵하고 다음 주기로.
+        if (useTranscriptStore.getState().finals.length === 0) {
+          summaryDeadlineRef.current = Date.now() + summaryIntervalSec * 1000
+          setSummaryCountdown(summaryIntervalSec)
+          return
+        }
         summarizing = true
         setSummaryCountdown(0)
         showStatus('기록을 회의록에 적용 중...', 10000)
@@ -667,6 +712,12 @@ export function useLiveRecording(
     handlePause,
     handleResume,
     handleStop,
+    handleManualSummary,
+    canManualSummary: isActive && !isPaused && finalsCount > 0 && !isSummarizing,
+    showStopConfirm,
+    confirmStopSummarize,
+    confirmStopSkip,
+    cancelStop,
     handleResetClick,
     handleResetConfirm,
     handleNavigateBack,

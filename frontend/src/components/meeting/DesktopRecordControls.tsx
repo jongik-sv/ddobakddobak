@@ -35,6 +35,8 @@ export function DesktopRecordControls({
   onPause,
   onResume,
   onStop,
+  onManualSummary,
+  canManualSummary,
 }: {
   meetingId: number
   title: string
@@ -63,6 +65,8 @@ export function DesktopRecordControls({
   onPause: () => void
   onResume: () => void
   onStop: () => void
+  onManualSummary?: () => void
+  canManualSummary?: boolean
 }) {
   return (
     <div className={`hidden lg:flex items-center justify-between px-4 py-2 shadow-sm shrink-0 transition-colors duration-300 ${
@@ -247,6 +251,15 @@ export function DesktopRecordControls({
           </button>
         ) : (
           <>
+            {onManualSummary && (
+              <button
+                onClick={onManualSummary}
+                disabled={!canManualSummary}
+                className="px-3 py-1.5 rounded-md text-sm font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                지금 요약
+              </button>
+            )}
             <button
               onClick={isPaused ? onResume : onPause}
               className={`px-3 py-1.5 rounded-md text-sm font-medium text-white transition-colors ${

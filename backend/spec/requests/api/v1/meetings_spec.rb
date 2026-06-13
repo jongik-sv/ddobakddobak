@@ -438,11 +438,39 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(meeting.reload.ended_at).not_to be_nil
       end
 
-      it "enqueues MeetingFinalizerJob" do
+      it "enqueues finalizer + final summary when transcripts exist" do
+        create(:transcript, meeting: meeting)
         expect(MeetingFinalizerJob).to receive(:perform_later).with(meeting.id)
+        expect(MeetingSummarizationJob).to receive(:perform_later).with(meeting.id, type: "final")
+
+        post "/api/v1/meetings/#{meeting.id}/stop"
+      end
+
+      it "does NOT enqueue jobs when no transcripts exist" do
+        expect(MeetingFinalizerJob).not_to receive(:perform_later)
+        expect(MeetingSummarizationJob).not_to receive(:perform_later)
+
+        post "/api/v1/meetings/#{meeting.id}/stop"
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "does NOT enqueue jobs when skip_summary=true even with transcripts" do
+        create(:transcript, meeting: meeting)
+        expect(MeetingFinalizerJob).not_to receive(:perform_later)
+        expect(MeetingSummarizationJob).not_to receive(:perform_later)
+
+        post "/api/v1/meetings/#{meeting.id}/stop", params: { skip_summary: "true" }
+        expect(response).to have_http_status(:ok)
+        expect(meeting.reload.status).to eq("completed")
+      end
+
+      it "clears paused_at on stop" do
+        meeting.update!(paused_at: Time.current)
+        allow(MeetingFinalizerJob).to receive(:perform_later)
         allow(MeetingSummarizationJob).to receive(:perform_later)
 
         post "/api/v1/meetings/#{meeting.id}/stop"
+        expect(meeting.reload.paused_at).to be_nil
       end
 
       it "broadcasts recording_stopped to the meeting transcription stream" do
@@ -478,6 +506,77 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         post "/api/v1/meetings/#{pending_meeting.id}/stop"
         expect(response).to have_http_status(:unprocessable_entity)
       end
+    end
+  end
+
+  # ============================================================
+  # POST /api/v1/meetings/:id/pause · resume
+  # ============================================================
+  describe "POST /api/v1/meetings/:id/pause" do
+    let(:meeting) { create(:meeting, team: team, creator: user, status: "recording") }
+
+    it "sets paused_at and broadcasts recording_paused" do
+      expect(ActionCable.server).to receive(:broadcast).with(
+        "meeting_#{meeting.id}_transcription",
+        hash_including(type: "recording_paused", meeting_id: meeting.id)
+      )
+      post "/api/v1/meetings/#{meeting.id}/pause"
+      expect(response).to have_http_status(:ok)
+      expect(meeting.reload.paused_at).not_to be_nil
+    end
+
+    it "returns 422 when not recording" do
+      pending_meeting = create(:meeting, team: team, creator: user, status: "pending")
+      post "/api/v1/meetings/#{pending_meeting.id}/pause"
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it "forbids viewer participants" do
+      foreign = create(:meeting, team: team, creator: other_user, status: "recording")
+      create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
+      post "/api/v1/meetings/#{foreign.id}/pause"
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe "POST /api/v1/meetings/:id/resume" do
+    let(:meeting) { create(:meeting, team: team, creator: user, status: "recording", paused_at: Time.current) }
+
+    it "clears paused_at and broadcasts recording_resumed" do
+      expect(ActionCable.server).to receive(:broadcast).with(
+        "meeting_#{meeting.id}_transcription",
+        hash_including(type: "recording_resumed", meeting_id: meeting.id)
+      )
+      post "/api/v1/meetings/#{meeting.id}/resume"
+      expect(response).to have_http_status(:ok)
+      expect(meeting.reload.paused_at).to be_nil
+    end
+  end
+
+  # ============================================================
+  # POST /api/v1/meetings/:id/summarize
+  # ============================================================
+  describe "POST /api/v1/meetings/:id/summarize" do
+    let(:meeting) { create(:meeting, team: team, creator: user, status: "recording") }
+
+    it "enqueues realtime summary when transcripts exist" do
+      create(:transcript, meeting: meeting)
+      expect(MeetingSummarizationJob).to receive(:perform_later).with(meeting.id, type: "realtime")
+      post "/api/v1/meetings/#{meeting.id}/summarize"
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "does NOT enqueue and returns skipped when no transcripts" do
+      expect(MeetingSummarizationJob).not_to receive(:perform_later)
+      post "/api/v1/meetings/#{meeting.id}/summarize"
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["skipped"]).to eq("no_transcripts")
+    end
+
+    it "returns 422 when meeting is pending" do
+      pending_meeting = create(:meeting, team: team, creator: user, status: "pending")
+      post "/api/v1/meetings/#{pending_meeting.id}/summarize"
+      expect(response).to have_http_status(:unprocessable_entity)
     end
   end
 

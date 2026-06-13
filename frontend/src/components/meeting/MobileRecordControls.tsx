@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeft, Pause, Play, Square, MoreHorizontal, X, Loader2 } from 'lucide-react'
+import { ArrowLeft, Pause, Play, Square, MoreHorizontal, X, Loader2, Sparkles } from 'lucide-react'
 import { formatElapsedSeconds } from '../../lib/audioUtils'
 
 export interface MobileRecordControlsProps {
@@ -14,6 +14,8 @@ export interface MobileRecordControlsProps {
   onPause: () => void
   onResume: () => void
   onStop: () => void
+  onManualSummary?: () => void
+  canManualSummary?: boolean
   isStopping: boolean
   /** 시작 준비 중(예: 온디바이스 모델 로딩). true && !isRecording 이면 "회의 시작" disabled + 스피너. 기본 false(서버 무영향). */
   isStarting?: boolean
@@ -31,6 +33,8 @@ export function MobileRecordControls({
   onPause,
   onResume,
   onStop,
+  onManualSummary,
+  canManualSummary,
   isStopping,
   isStarting = false,
   children,
@@ -91,6 +95,16 @@ export function MobileRecordControls({
           </button>
         ) : (
           <>
+            {onManualSummary && (
+              <button
+                onClick={onManualSummary}
+                disabled={!canManualSummary}
+                aria-label="지금 요약"
+                className="p-1.5 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Sparkles className="w-4 h-4" />
+              </button>
+            )}
             {isPaused ? (
               <button
                 onClick={onResume}

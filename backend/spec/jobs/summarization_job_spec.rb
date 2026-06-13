@@ -24,6 +24,13 @@ RSpec.describe SummarizationJob, type: :job do
           described_class.new.perform
         }.not_to have_enqueued_job(MeetingSummarizationJob).with(completed_meeting.id, type: "realtime")
       end
+
+      it "skips paused meetings" do
+        paused = create(:meeting, team: team, creator: user, status: "recording", paused_at: Time.current)
+        expect {
+          described_class.new.perform
+        }.not_to have_enqueued_job(MeetingSummarizationJob).with(paused.id, type: "realtime")
+      end
     end
 
     context "when there are multiple recording meetings" do
