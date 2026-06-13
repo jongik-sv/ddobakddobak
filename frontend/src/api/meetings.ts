@@ -181,6 +181,11 @@ export async function regenerateStt(id: number): Promise<Meeting> {
   return res.meeting
 }
 
+export async function reDiarize(id: number): Promise<Meeting> {
+  const res: { meeting: Meeting } = await apiClient.post(`meetings/${id}/re_diarize`).json()
+  return res.meeting
+}
+
 export async function regenerateNotes(id: number): Promise<void> {
   await apiClient.post(`meetings/${id}/regenerate_notes`)
 }
