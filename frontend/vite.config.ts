@@ -25,10 +25,13 @@ export default defineConfig({
     strictPort: true,
     // Caddy 리버스 프록시(LAN HTTPS) 및 Tauri dev가 전달하는 Host 헤더 허용
     allowedHosts: true,
-    // HMR: 모바일 dev면 LAN IP로, 아니면 Caddy HTTPS 포트로
+    // HMR: 모바일 dev면 LAN IP로, 아니면 기본(페이지 origin = vite 13325 직접).
+    // 데스크톱 Tauri(devUrl=http://localhost:13325)·LAN 브라우저(http://<ip>:13325)는 vite에 직접 접속하므로
+    // 기본 HMR이 맞다. clientPort:13443(caddy)은 TLS 전용+localhost 미listen이라 http 페이지에서
+    // ws://localhost:13443 연결이 실패→무한 재시도 폭주를 유발했었다.
     hmr: process.env.TAURI_DEV_HOST
       ? { protocol: 'ws', host: process.env.TAURI_DEV_HOST, port: 13325 }
-      : { clientPort: 13443 },
+      : true,
   },
   test: {
     globals: true,

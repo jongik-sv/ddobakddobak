@@ -124,6 +124,7 @@ export interface AppSettings {
   audio_overlap_ms?: number
   audio_file_chunk_sec?: number
   diarization_clustering_threshold?: number
+  diarization_ahc_threshold?: number
 }
 
 export async function getAppSettings(): Promise<AppSettings> {

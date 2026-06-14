@@ -44,6 +44,7 @@ interface AppConfig {
   meeting_types: LabelValue[]
   diarization: {
     clustering_threshold: number
+    ahc_threshold: number
   }
   summary: {
     default_interval_sec: number
@@ -206,7 +207,11 @@ export const AUDIO_DEFAULTS: Readonly<AudioConfig> = { ...cfg.audio }
 // ── 화자 분리 ───────────────────────────────
 export type DiarizationConfig = typeof cfg.diarization
 export const DIARIZATION = cfg.diarization
-export const DIARIZATION_DEFAULTS: Readonly<DiarizationConfig> = { ...cfg.diarization }
+// config.yaml에 ahc_threshold가 없으면 0.3을 기본값으로 사용 (화자 구분 민감도)
+export const DIARIZATION_DEFAULTS: Readonly<DiarizationConfig> = {
+  ...cfg.diarization,
+  ahc_threshold: cfg.diarization.ahc_threshold ?? 0.3,
+}
 
 // ── 회의 언어 ─────────────────────────────────
 export const LANGUAGES = cfg.languages

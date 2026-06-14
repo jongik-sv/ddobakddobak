@@ -1,9 +1,12 @@
-import { useAppSettingsStore } from '../../stores/appSettingsStore'
+import { useAppSettingsStore, DIARIZATION_DEFAULTS } from '../../stores/appSettingsStore'
+import { SettingSlider } from './SettingSlider'
 
 /** 화자 분리 on/off 설정 카드. 값은 appSettingsStore 오버라이드, 미설정 시 config.yaml 기본값. */
 export function DiarizationPanel() {
   const diarizationEnabled = useAppSettingsStore((s) => s.diarizationEnabled)
   const setDiarizationEnabled = useAppSettingsStore((s) => s.setDiarizationEnabled)
+  const diarizationOverrides = useAppSettingsStore((s) => s.diarizationOverrides)
+  const setDiarizationOverride = useAppSettingsStore((s) => s.setDiarizationOverride)
 
   return (
     <div className="rounded-lg border bg-card p-6">
@@ -39,6 +42,18 @@ export function DiarizationPanel() {
       )}
 
       <div className={!diarizationEnabled ? 'opacity-50 pointer-events-none' : ''}>
+        <div className="mb-5">
+          <SettingSlider
+            label="화자 구분 민감도"
+            description="낮을수록 화자를 더 많이 나눕니다. 여러 명이 한 화자로 뭉치면 값을 낮추세요. 파일 업로드·STT 재생성·'화자분리만 재실행' 시 적용됩니다."
+            value={(diarizationOverrides as Record<string, number>)['ahc_threshold'] ?? DIARIZATION_DEFAULTS.ahc_threshold}
+            defaultValue={DIARIZATION_DEFAULTS.ahc_threshold}
+            min={0.2}
+            max={0.8}
+            step={0.1}
+            onChange={(v) => setDiarizationOverride('ahc_threshold', v)}
+          />
+        </div>
         <div className="rounded-md border border-blue-100 bg-blue-50/50 p-3">
           <p className="text-xs text-blue-700">
             <span className="font-semibold">배치 분석</span> — 파일 업로드와 STT 재생성 시 전체 오디오를 한 번에 분석해 화자를 구분합니다.

@@ -9,7 +9,7 @@ import { ENGINE_LABELS } from '../../config'
 interface EditMeetingDialogProps {
   meeting: Meeting
   meetingTypeList: { value: string; label: string }[]
-  onConfirm: (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null; attendees: string | null; expected_participants: number | null; diarization_threshold: number | null; shared: boolean }) => void
+  onConfirm: (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null; attendees: string | null; expected_participants: number | null; shared: boolean }) => void
   onClose: () => void
   /** 공유 토글 비활성화 (비소유자가 여는 경우). 기본 false. */
   disabled?: boolean
@@ -27,9 +27,6 @@ export default function EditMeetingDialog({
   const [attendees, setAttendees] = useState(meeting.attendees ?? '')
   const [expectedParticipants, setExpectedParticipants] = useState(
     meeting.expected_participants != null ? String(meeting.expected_participants) : ''
-  )
-  const [diarizationThreshold, setDiarizationThreshold] = useState(
-    meeting.diarization_threshold != null ? String(meeting.diarization_threshold) : ''
   )
   const [meetingType, setMeetingType] = useState(meeting.meeting_type)
   const [shared, setShared] = useState(meeting.shared ?? true)
@@ -52,7 +49,6 @@ export default function EditMeetingDialog({
       brief_summary: briefSummary.trim() || null,
       attendees: attendees.trim() || null,
       expected_participants: expectedParticipants.trim() ? Number(expectedParticipants) : null,
-      diarization_threshold: diarizationThreshold.trim() ? Number(diarizationThreshold) : null,
       shared,
     })
   }
@@ -134,36 +130,6 @@ export default function EditMeetingDialog({
             />
             <p className="mt-1 text-xs text-muted-foreground">
               화자분리 시 이 인원수 ±2명 범위로 화자를 맞춥니다.
-            </p>
-          </div>
-
-          {/* 화자 구분 민감도 (AHC threshold) */}
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              화자 구분 민감도{diarizationThreshold ? ` (${diarizationThreshold})` : ' (기본)'}
-            </label>
-            <input
-              type="range"
-              min={0.2}
-              max={0.8}
-              step={0.1}
-              value={diarizationThreshold || '0.3'}
-              onChange={(e) => setDiarizationThreshold(e.target.value)}
-              className="w-full accent-blue-600"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>많이 나눔(0.2)</span>
-              <button
-                type="button"
-                onClick={() => setDiarizationThreshold('')}
-                className="underline hover:text-foreground"
-              >
-                기본값(0.3)
-              </button>
-              <span>적게 나눔(0.8)</span>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              여러 명이 한 화자로 뭉치면 값을 낮추세요. 저장 후 '화자분리만 재실행'으로 적용됩니다.
             </p>
           </div>
 

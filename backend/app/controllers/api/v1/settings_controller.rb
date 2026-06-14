@@ -202,6 +202,7 @@ module Api
         if (diar = cfg["diarization"])
           result["diarization_enabled"] = diar["enabled"] unless diar["enabled"].nil?
           result["diarization_clustering_threshold"] = diar["clustering_threshold"] if diar["clustering_threshold"]
+          result["diarization_ahc_threshold"] = diar["ahc_threshold"] if diar["ahc_threshold"]
         end
 
         # audio
@@ -234,6 +235,10 @@ module Api
         if params.key?(:diarization_clustering_threshold)
           cfg["diarization"] ||= {}
           cfg["diarization"]["clustering_threshold"] = params[:diarization_clustering_threshold].to_f.clamp(0.5, 0.8)
+        end
+        if params.key?(:diarization_ahc_threshold)
+          cfg["diarization"] ||= {}
+          cfg["diarization"]["ahc_threshold"] = params[:diarization_ahc_threshold].to_f.clamp(0.2, 0.8)
         end
 
         # audio
