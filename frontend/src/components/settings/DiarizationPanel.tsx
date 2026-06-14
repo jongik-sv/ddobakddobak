@@ -50,7 +50,7 @@ export function DiarizationPanel() {
             defaultValue={DIARIZATION_DEFAULTS.ahc_threshold}
             min={0.2}
             max={0.8}
-            step={0.1}
+            step={0.01}
             onChange={(v) => setDiarizationOverride('ahc_threshold', v)}
           />
         </div>
