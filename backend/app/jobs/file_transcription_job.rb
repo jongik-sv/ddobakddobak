@@ -152,15 +152,19 @@ class FileTranscriptionJob < ApplicationJob
   def store_transcripts(meeting, segments)
     return if segments.blank?
 
-    segments.each_with_index do |seg, idx|
-      meeting.transcripts.create!(
-        content: seg["text"],
-        speaker_label: seg["speaker_label"] || "화자 1",
-        started_at_ms: seg["started_at_ms"],
-        ended_at_ms: seg["ended_at_ms"],
-        sequence_number: idx + 1,
-        applied_to_minutes: false
-      )
+    # 한 트랜잭션으로 묶어 SQLite 커밋/fsync를 N→1로 줄인다.
+    # 콜백(FTS upsert)·검증·sequence 순서는 그대로 — 결과셋 동일, 에러 시 부분저장 대신 롤백.
+    Transcript.transaction do
+      segments.each_with_index do |seg, idx|
+        meeting.transcripts.create!(
+          content: seg["text"],
+          speaker_label: seg["speaker_label"] || "화자 1",
+          started_at_ms: seg["started_at_ms"],
+          ended_at_ms: seg["ended_at_ms"],
+          sequence_number: idx + 1,
+          applied_to_minutes: false
+        )
+      end
     end
   end
 
