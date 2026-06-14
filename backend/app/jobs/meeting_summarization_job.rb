@@ -102,6 +102,9 @@ class MeetingSummarizationJob < ApplicationJob
                              .order(:sequence_number)
     return if new_transcripts.empty?
 
+    # 이전 회의 참고: 첫 요약 직전, 이전 회의록을 시드로 깐다(요약 0건일 때만, 멱등).
+    meeting.seed_summary_from_previous!(summary_type: "realtime")
+
     applied_ids = new_transcripts.pluck(:id)
     channel = meeting.transcription_stream
 
@@ -119,7 +122,8 @@ class MeetingSummarizationJob < ApplicationJob
         sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
         attendees: meeting.attendees,
         verbosity: meeting.summary_verbosity,
-        verbosity_context: :realtime
+        verbosity_context: :realtime,
+        seeded_from_previous: meeting.previous_meeting_id.present?
       )
       notes_markdown = result["notes_markdown"]
     else
@@ -187,6 +191,9 @@ class MeetingSummarizationJob < ApplicationJob
     transcripts = meeting.transcripts.order(:sequence_number)
     return if transcripts.empty?
 
+    # 이전 회의 참고: 요약 0건(예: 회의록 재생성 직후)이고 previous_meeting 지정 시 이전 회의록을 시드로 깐다.
+    meeting.seed_summary_from_previous!(summary_type: "final")
+
     # 증분 모드의 base 는 "가장 최근 요약"이어야 한다. current_notes_markdown 은 completed 상태에서
     # 옛 final 을 하드 우선하므로(reopen 직후 stop 시) 재개 세션에서 append 된 realtime 블록을 버리게 된다.
     latest_notes = meeting.summaries.order(generated_at: :desc, id: :desc).first&.notes_markdown.to_s
@@ -205,7 +212,8 @@ class MeetingSummarizationJob < ApplicationJob
         sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
         attendees: meeting.attendees,
         verbosity: meeting.summary_verbosity,
-        chronological: !meeting.summary_restructure? # 증분 회의의 백지 폴백 = 시간 흐름 유지
+        chronological: !meeting.summary_restructure?, # 증분 회의의 백지 폴백 = 시간 흐름 유지
+        seeded_from_previous: meeting.previous_meeting_id.present?
       )
       notes_markdown = result["notes_markdown"]
     else

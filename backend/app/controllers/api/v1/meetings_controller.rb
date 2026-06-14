@@ -49,6 +49,7 @@ module Api
           meeting_type: params[:meeting_type] || "general",
           folder_id: params[:folder_id],
           shared: params.key?(:shared) ? ActiveModel::Type::Boolean.new.cast(params[:shared]) : true,
+          previous_meeting_id: accessible_previous_meeting_id(params[:previous_meeting_id]),
           **summary_options_for_create
         )
 
@@ -125,6 +126,8 @@ module Api
         end
         # shared 변경은 소유자/admin 만 가능 (비소유 host 의 toggle 무시)
         attrs[:shared] = ActiveModel::Type::Boolean.new.cast(params[:shared]) if params.key?(:shared) && @meeting.editable_by?(current_user)
+        # 이전 회의 참고: 접근 가능한 회의만 허용. 빈 값/비접근은 nil(해제)로 정규화.
+        attrs[:previous_meeting_id] = accessible_previous_meeting_id(params[:previous_meeting_id]) if params.key?(:previous_meeting_id)
 
         if params.key?(:tag_ids)
           tag_ids = Array(params[:tag_ids]).map(&:to_i)
@@ -472,6 +475,14 @@ module Api
             restructure_param
           end
         }
+      end
+
+      # 이전 회의 참고 id 정규화: 현재 사용자가 열람 가능한 회의만 통과, 그 외(빈 값·비접근)는 nil.
+      # 셀렉터가 accessible 회의만 보여주므로 정상 경로에선 항상 통과하고, 위변조 id 만 걸러진다.
+      def accessible_previous_meeting_id(raw)
+        return nil if raw.blank?
+        id = raw.to_i
+        Meeting.accessible_by(current_user).exists?(id: id) ? id : nil
       end
 
       def pagination_page

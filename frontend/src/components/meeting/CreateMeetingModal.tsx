@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { createMeeting } from '../../api/meetings'
+import { createMeeting, getMeetings } from '../../api/meetings'
 import type { Meeting } from '../../api/meetings'
 import { useMeetingTemplateStore } from '../../stores/meetingTemplateStore'
 import { Dialog } from '../ui/Dialog'
@@ -16,12 +16,21 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
   const [title, setTitle] = useState('')
   const [meetingType, setMeetingType] = useState('general')
   const [shared, setShared] = useState(true)
+  const [previousMeetingId, setPreviousMeetingId] = useState('')
+  const [recentMeetings, setRecentMeetings] = useState<Meeting[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const templates = useMeetingTemplateStore((s) => s.templates)
   const fetchTemplates = useMeetingTemplateStore((s) => s.fetch)
 
   useEffect(() => { fetchTemplates() }, [fetchTemplates])
+
+  // 이전 회의 참고 셀렉터용: 접근 가능한 회의 최근순 목록
+  useEffect(() => {
+    getMeetings({ per: 100 })
+      .then((res) => setRecentMeetings(res.meetings))
+      .catch(() => {})
+  }, [])
 
   const handleTemplateSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const templateId = Number(e.target.value)
@@ -42,6 +51,7 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
         meeting_type: meetingType,
         folder_id: folderId,
         shared,
+        previous_meeting_id: previousMeetingId ? Number(previousMeetingId) : null,
       })
       onCreated(meeting)
       onClose()
@@ -99,6 +109,26 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
             selected={meetingType}
             onSelect={setMeetingType}
           />
+        </div>
+
+        {/* 이전 회의 참고: 선택하면 그 회의록을 시작점으로 깔고 이어서 회의록을 작성 */}
+        <div>
+          <label className="block text-sm font-medium mb-1">이전 회의 참고 (선택)</label>
+          <select
+            value={previousMeetingId}
+            onChange={(e) => setPreviousMeetingId(e.target.value)}
+            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-white"
+          >
+            <option value="">없음</option>
+            {recentMeetings.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}{m.created_at ? ` (${new Date(m.created_at).toLocaleDateString()})` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            지정하면 이전 회의록을 이어받아 그 뒤에 이번 회의 내용을 작성합니다.
+          </p>
         </div>
 
         <div>

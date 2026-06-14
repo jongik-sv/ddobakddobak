@@ -68,6 +68,10 @@ export interface Meeting {
   summary_verbosity?: SummaryVerbosity
   /** true=지속 재구조화(매 틱 전체 재정리), false=증분(앞 내용 불변, 시간대별 추가) */
   summary_restructure?: boolean
+  /** 이전 회의 참고: 이 회의록의 시작점(시드)이 된 회의 id (상세 응답에만 포함) */
+  previous_meeting_id?: number | null
+  /** 이전 회의 참고 배지 표시용 제목 (상세 응답에만 포함) */
+  previous_meeting_title?: string | null
   /** 배치 재전사에 실제 사용된 STT 엔진(실시간 녹음은 null). 회의 정보 표시용 */
   stt_engine?: string | null
 }
@@ -127,7 +131,7 @@ export async function getMeetings(params: GetMeetingsParams): Promise<MeetingLis
   return apiClient.get('meetings', { searchParams }).json()
 }
 
-export async function createMeeting(data: { title: string; meeting_type?: string; folder_id?: number | null; shared?: boolean }): Promise<Meeting> {
+export async function createMeeting(data: { title: string; meeting_type?: string; folder_id?: number | null; shared?: boolean; previous_meeting_id?: number | null }): Promise<Meeting> {
   const res: { meeting: Meeting } = await apiClient.post('meetings', { json: data }).json()
   return res.meeting
 }
@@ -342,6 +346,8 @@ export interface UpdateMeetingParams {
   shared?: boolean
   summary_verbosity?: SummaryVerbosity
   summary_restructure?: boolean
+  /** 이전 회의 참고. null/빈값이면 해제 */
+  previous_meeting_id?: number | null
 }
 
 export async function updateMeeting(id: number, params: UpdateMeetingParams): Promise<Meeting> {

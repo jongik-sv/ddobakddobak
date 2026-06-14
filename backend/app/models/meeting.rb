@@ -2,6 +2,8 @@ class Meeting < ApplicationRecord
   belongs_to :team, optional: true
   belongs_to :creator, class_name: "User", foreign_key: "created_by_id"
   belongs_to :folder, optional: true
+  # 이전 회의 참고: 지정 시 그 회의록을 현재 회의록의 시작점(시드)으로 깔고 이어쓴다.
+  belongs_to :previous_meeting, class_name: "Meeting", optional: true
   has_many :taggings, as: :taggable, dependent: :destroy
   has_many :tags, through: :taggings
   has_many :transcripts, dependent: :destroy
@@ -18,6 +20,11 @@ class Meeting < ApplicationRecord
   # 회의록 압축율 5단계 (회의 화면·미리보기에서 회의별 지정)
   SUMMARY_VERBOSITY_LEVELS = %w[very_concise concise standard detailed very_detailed].freeze
 
+  # 이전 회의 시드 경계 마커. 이 마커와 그 위는 "이전 회의록"(고정), 아래는 현재 회의 내용.
+  # 증분(append) 모드는 자연히 마커 뒤에 블록을 덧붙여 보존하고, 재구조화(refine) 모드는
+  # 프롬프트 규칙(SEEDED_FROM_PREVIOUS_INSTRUCTION)으로 마커 위를 보존한다.
+  PREVIOUS_MEETING_MARKER = "## 📋 이전 회의 이어받음".freeze
+
   validates :title, presence: true
   validates :share_code, uniqueness: true, allow_nil: true
   validates :status, inclusion: { in: %w[pending recording transcribing completed] }
@@ -25,6 +32,7 @@ class Meeting < ApplicationRecord
   validates :summary_restructure, inclusion: { in: [ true, false ] } # NOT NULL 컬럼 — nil 이 500 대신 422 가 되게
   validates :source, inclusion: { in: %w[live upload] }
   validates :expected_participants, numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 100 }, allow_nil: true
+  validate :previous_meeting_not_self
 
   enum :status, { pending: "pending", recording: "recording", transcribing: "transcribing", completed: "completed" }
 
@@ -141,6 +149,21 @@ class Meeting < ApplicationRecord
     active_summary&.notes_markdown.to_s
   end
 
+  # 이전 회의 참고 시드: 이 회의에 요약이 아직 없고 previous_meeting 이 지정돼 있으면,
+  # 이전 회의록(notes_markdown) 스냅샷을 시작점으로 깐 초기 Summary 1건을 만든다.
+  # 이후 요약 잡(realtime/final)이 이 시드를 base 로 현재 자막을 이어쓴다.
+  # 멱등: 요약이 하나라도 있으면 no-op (시드는 단 한 번). 스냅샷이므로 이후 이전 회의가 바뀌어도 고정.
+  def seed_summary_from_previous!(summary_type: "realtime")
+    return if summaries.exists?
+    return if previous_meeting_id.blank?
+
+    base = previous_meeting&.current_notes_markdown.to_s
+    return if base.blank?
+
+    seeded = "#{base.rstrip}\n\n---\n#{PREVIOUS_MEETING_MARKER}"
+    summaries.create!(summary_type: summary_type, notes_markdown: seeded, generated_at: Time.current)
+  end
+
   # 트랜스크립트·요약·액션아이템·결정·블록(선택적으로 첨부)을 모두 삭제한다.
   def purge_transcription_content!(include_attachments: false)
     transcripts.destroy_all
@@ -191,5 +214,13 @@ class Meeting < ApplicationRecord
     end
 
     result.presence
+  end
+
+  private
+
+  # 이전 회의로 자기 자신을 지정하면 무한 시드 루프가 되므로 거부.
+  def previous_meeting_not_self
+    return if previous_meeting_id.blank? || id.blank?
+    errors.add(:previous_meeting_id, "는 자기 자신일 수 없습니다") if previous_meeting_id == id
   end
 end

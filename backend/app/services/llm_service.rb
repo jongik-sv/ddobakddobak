@@ -21,7 +21,7 @@ class LlmService
 
   # 회의록 정제: 기존 노트 + 새 자막 → 통합 회의록.
   # chronological: 증분(흐름) 회의의 통짜 생성 시 주제별 재구성 대신 시간순 요약 지시.
-  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil, verbosity: "standard", verbosity_context: :final, chronological: false)
+  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil, verbosity: "standard", verbosity_context: :final, chronological: false, seeded_from_previous: false)
     transcript_text = format_transcripts(transcripts)
     return { "notes_markdown" => current_notes, "ok" => true } if transcript_text.blank?
 
@@ -46,6 +46,8 @@ class LlmService
     end
     system_prompt = system_prompt + CHRONOLOGICAL_NOTES_INSTRUCTION if chronological
     system_prompt = apply_verbosity(system_prompt, verbosity, context: verbosity_context)
+    # 이전 회의 시드 보존 규칙은 분량 한도보다 우선해야 하므로 verbosity 뒤(맨 끝)에 붙인다.
+    system_prompt = system_prompt + SEEDED_FROM_PREVIOUS_INSTRUCTION if seeded_from_previous
 
     result = call_llm_raw(system_prompt, user_content, max_tokens: max_tokens)
     notes = fix_mermaid_quotes(strip_markdown_fence(result))

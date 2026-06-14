@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_14_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_14_000002) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -155,6 +155,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_14_000001) do
     t.string "meeting_type", default: "general", null: false
     t.text "memo"
     t.datetime "paused_at"
+    t.integer "previous_meeting_id"
     t.datetime "re_diarize_started_at"
     t.string "share_code"
     t.boolean "shared", default: true, null: false
@@ -171,6 +172,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_14_000001) do
     t.index ["created_by_id", "shared"], name: "index_meetings_on_created_by_id_and_shared"
     t.index ["created_by_id"], name: "index_meetings_on_created_by_id"
     t.index ["folder_id"], name: "index_meetings_on_folder_id"
+    t.index ["previous_meeting_id"], name: "index_meetings_on_previous_meeting_id"
     t.index ["share_code"], name: "index_meetings_on_share_code", unique: true
     t.index ["team_id", "status"], name: "index_meetings_on_team_id_and_status"
     t.index ["team_id"], name: "index_meetings_on_team_id"

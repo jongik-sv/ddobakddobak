@@ -90,6 +90,14 @@ export function MeetingActionHeader({
             {meetingTypeLabel}
           </span>
         )}
+        {meeting.previous_meeting_title && (
+          <span
+            className={`shrink-0 rounded-full bg-violet-50 text-violet-600 border border-violet-200 ${isDesktop ? 'px-2 py-0.5 text-xs' : 'px-1.5 py-0 text-[10px]'}`}
+            title={`이전 회의 이어받음: ${meeting.previous_meeting_title}`}
+          >
+            {isDesktop ? `↩ 이전 회의: ${meeting.previous_meeting_title}` : '↩ 이전'}
+          </span>
+        )}
         {isDesktop && meeting.tags?.map((tag) => (
           <span
             key={tag.id}
