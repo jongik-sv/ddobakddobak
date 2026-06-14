@@ -1,5 +1,5 @@
 # 이미 전사된 회의에 대해 STT(whisper) 없이 화자분리만 재실행한다.
-# 트랜스크립트 원문은 유지하고, 회의의 diarization_threshold 에 맞춰 speaker_label 만 재할당하며,
+# 트랜스크립트 원문은 유지하고, 전역 화자분리 민감도(AHC)에 맞춰 speaker_label 만 재할당하며,
 # speaker_name(비정규화 사본)은 SpeakerDB 에 보존된 이름을 새 라벨에 재적용한다(유지).
 # sidecar /diarize-file 가 내부적으로 speakrs 실행 + SpeakerDB 등록(기존 이름 보존)까지 처리한다.
 class ReDiarizeJob < ApplicationJob
@@ -24,9 +24,6 @@ class ReDiarizeJob < ApplicationJob
     diarization_config["enable"] = true
     if meeting.expected_participants.present?
       diarization_config["expected_speakers"] = meeting.expected_participants
-    end
-    if meeting.diarization_threshold.present?
-      diarization_config["ahc_threshold"] = meeting.diarization_threshold
     end
 
     segments = transcripts.map { |t| { started_at_ms: t.started_at_ms, ended_at_ms: t.ended_at_ms } }

@@ -27,7 +27,6 @@ module MeetingSerializable
       memo: meeting.memo,
       attendees: meeting.attendees,
       expected_participants: meeting.expected_participants,
-      diarization_threshold: meeting.diarization_threshold,
       summary_verbosity: meeting.summary_verbosity,
       summary_restructure: meeting.summary_restructure,
       stt_engine: meeting.stt_engine,
