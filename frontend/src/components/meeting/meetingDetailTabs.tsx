@@ -11,6 +11,7 @@ import type { Tab } from '../layout/MobileTabLayout'
 import type { BlockNoteEditor } from '@blocknote/core'
 
 type MemoEditorRef = React.RefObject<BlockNoteEditor<typeof customSchema.blockSchema> | null>
+type OnEditorReady = (editor: BlockNoteEditor<typeof customSchema.blockSchema>) => void
 
 interface BuildMeetingDetailTabsArgs {
   meetingId: number
@@ -24,6 +25,7 @@ interface BuildMeetingDetailTabsArgs {
   onEditBookmark?: (bookmarkId: number, label: string) => void
   onNotesChange: (markdown: string) => void
   memoEditorRef: MemoEditorRef
+  onMemoEditorReady?: OnEditorReady
   onSaveMemo: () => void
   isSavingMemo: boolean
   /** 요약 탭 헤더에 끼울 요약 옵션 컨트롤 (페이지가 생성·게이팅) */
@@ -49,6 +51,7 @@ export function buildMeetingDetailTabs({
   onEditBookmark,
   onNotesChange,
   memoEditorRef,
+  onMemoEditorReady,
   onSaveMemo,
   isSavingMemo,
   summaryOptions,
@@ -107,6 +110,7 @@ export function buildMeetingDetailTabs({
         <MemoEditorPanel
           meetingId={meetingId}
           editorRef={memoEditorRef}
+          onEditorReady={onMemoEditorReady}
           onSave={onSaveMemo}
           isSaving={isSavingMemo}
         />

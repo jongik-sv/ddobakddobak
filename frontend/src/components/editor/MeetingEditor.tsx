@@ -24,6 +24,8 @@ interface MeetingEditorProps {
   onChange?: (blocks: CustomBlock[]) => void
   editable?: boolean
   editorRef?: RefObject<BlockNoteEditor<typeof customSchema.blockSchema> | null>
+  /** 에디터 인스턴스가 (재)마운트되어 준비되면 호출 — 외부에서 초기 콘텐츠 로드용 */
+  onReady?: (editor: BlockNoteEditor<typeof customSchema.blockSchema>) => void
 }
 
 export function MeetingEditor({
@@ -31,6 +33,7 @@ export function MeetingEditor({
   onChange,
   editable = true,
   editorRef,
+  onReady,
 }: MeetingEditorProps) {
   const editor = useCreateBlockNote({
     schema: customSchema,
@@ -41,12 +44,13 @@ export function MeetingEditor({
     if (editorRef) {
       editorRef.current = editor
     }
+    onReady?.(editor)
     return () => {
       if (editorRef) {
         editorRef.current = null
       }
     }
-  }, [editor, editorRef])
+  }, [editor, editorRef, onReady])
 
   const handleChange = useCallback(() => {
     onChange?.(editor.document as CustomBlock[])

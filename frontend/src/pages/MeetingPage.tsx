@@ -243,7 +243,7 @@ export default function MeetingPage() {
   const toggleMemo = useUiStore((s) => s.toggleMemo)
   const attachmentsVisible = useUiStore((s) => s.attachmentsVisible)
   const toggleAttachments = useUiStore((s) => s.toggleAttachments)
-  const { memoEditorRef, isSavingMemo, handleSaveMemo } = useMemoEditor(meetingId, meeting?.memo)
+  const { memoEditorRef, onEditorReady: onMemoEditorReady, isSavingMemo, handleSaveMemo } = useMemoEditor(meetingId, meeting?.memo)
 
   const handleNotesChange = useCallback(
     (markdown: string) => {
@@ -430,6 +430,7 @@ export default function MeetingPage() {
     onEditBookmark: handleEditBookmark,
     onNotesChange: handleNotesChange,
     memoEditorRef,
+    onMemoEditorReady,
     onSaveMemo: handleSaveMemo,
     isSavingMemo,
     summaryOptions: summaryOptionsControl,
@@ -592,6 +593,7 @@ export default function MeetingPage() {
                 <MemoEditorPanel
                   meetingId={meetingId}
                   editorRef={memoEditorRef}
+                  onEditorReady={onMemoEditorReady}
                   onSave={handleSaveMemo}
                   isSaving={isSavingMemo}
                 />
