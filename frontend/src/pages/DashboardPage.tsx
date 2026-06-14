@@ -17,6 +17,7 @@ function formatDate(dateStr: string): string {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    hourCycle: 'h23', // 24시간제 — 오전/오후 제거
   })
 }
 

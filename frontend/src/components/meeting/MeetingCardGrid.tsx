@@ -113,7 +113,7 @@ export function MeetingCardGrid({
           </div>
           <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/50">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>{formatDate(meeting.created_at)}</span>
+              <span className="whitespace-nowrap shrink-0">{formatDate(meeting.created_at)}</span>
               {meeting.created_by?.name && (
                 <span className="truncate max-w-[120px]">
                   {me && meeting.created_by.id !== me.id ? `by ${meeting.created_by.name}` : meeting.created_by.name}

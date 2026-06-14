@@ -8,6 +8,7 @@ export function formatDate(dateStr: string): string {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    hourCycle: 'h23', // 24시간제 — 오전/오후 제거(레이아웃 줄바꿈 방지)
   })
 }
 
