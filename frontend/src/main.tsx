@@ -14,6 +14,17 @@ document.addEventListener('keydown', (e) => {
   if (!isEditable) e.preventDefault()
 })
 
+// dev 한정: Cmd/Ctrl+R 로 웹뷰 리로드 (Tauri는 기본 미바인딩이라 안 먹는다).
+// 프로덕션에선 실사용 중(녹음 등) 실수로 새로고침해 상태가 날아가는 사고를 막기 위해 제외한다.
+if (import.meta.env.DEV) {
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'r' || e.key === 'R')) {
+      e.preventDefault()
+      location.reload()
+    }
+  })
+}
+
 // 모바일(Tauri)에서는 API/WS가 루프백 브릿지를 경유한다. apiClient의 prefixUrl이
 // 모듈 로드 시점(getApiBaseUrl())에 고정되므로, App(및 transitive import) 평가 전에
 // 브릿지 포트를 캐시하고 전달 대상을 설정한다. 데스크톱/웹에서는 즉시 통과한다.
