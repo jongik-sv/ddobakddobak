@@ -47,10 +47,13 @@ module MeetingSerializable
       # 이전 회의 참고: 배지 표시용 (id + 제목). list 응답엔 미포함(N+1 회피).
       json[:previous_meeting_id] = meeting.previous_meeting_id
       json[:previous_meeting_title] = meeting.previous_meeting&.title
+      # transcripts를 한 번만 로드해 max 집계와 직렬화에 재사용(기존 3쿼리 → 1쿼리).
+      # ended_at_ms / sequence_number는 NOT NULL이라 compact는 방어용(동작 동일).
+      ordered_transcripts = meeting.transcripts.order(:started_at_ms).to_a
       json[:audio_duration_ms] = audio_duration_ms(meeting)
-      json[:last_transcript_end_ms] = meeting.transcripts.maximum(:ended_at_ms).to_i
-      json[:last_sequence_number] = meeting.transcripts.maximum(:sequence_number).to_i
-      json[:transcripts]   = serialize_transcripts(meeting)
+      json[:last_transcript_end_ms] = ordered_transcripts.map(&:ended_at_ms).compact.max.to_i
+      json[:last_sequence_number] = ordered_transcripts.map(&:sequence_number).compact.max.to_i
+      json[:transcripts]   = serialize_transcripts(ordered_transcripts)
       json[:summary]       = serialize_summary(meeting)
       json[:action_items]  = serialize_action_items(meeting)
     end
@@ -58,8 +61,8 @@ module MeetingSerializable
     json
   end
 
-  def serialize_transcripts(meeting)
-    meeting.transcripts.order(:started_at_ms).map do |t|
+  def serialize_transcripts(transcripts)
+    transcripts.map do |t|
       {
         id: t.id,
         content: t.content,
