@@ -20,10 +20,9 @@ class Meeting < ApplicationRecord
   # 회의록 압축율 5단계 (회의 화면·미리보기에서 회의별 지정)
   SUMMARY_VERBOSITY_LEVELS = %w[very_concise concise standard detailed very_detailed].freeze
 
-  # 이전 회의 시드 경계 마커. 이 마커와 그 위는 "이전 회의록"(고정), 아래는 현재 회의 내용.
-  # 증분(append) 모드는 자연히 마커 뒤에 블록을 덧붙여 보존하고, 재구조화(refine) 모드는
-  # 프롬프트 규칙(SEEDED_FROM_PREVIOUS_INSTRUCTION)으로 마커 위를 보존한다.
-  PREVIOUS_MEETING_MARKER = "## 📋 이전 회의 이어받음".freeze
+  # 이전 회의 시드 절취선. 증분(append) 모드에서만 이전 회의록 뒤에 붙어 이전/현재를 구분한다.
+  # (재구조화 모드는 이전+현재를 한 회의로 병합하므로 절취선을 넣지 않는다.)
+  PREVIOUS_MEETING_CUT_LINE = "**✂ ─ ─ ─ ─ ─ 이전 회의 / 현재 회의 ─ ─ ─ ─ ─**".freeze
 
   validates :title, presence: true
   validates :share_code, uniqueness: true, allow_nil: true
@@ -153,6 +152,9 @@ class Meeting < ApplicationRecord
   # 이전 회의록(notes_markdown) 스냅샷을 시작점으로 깐 초기 Summary 1건을 만든다.
   # 이후 요약 잡(realtime/final)이 이 시드를 base 로 현재 자막을 이어쓴다.
   # 멱등: 요약이 하나라도 있으면 no-op (시드는 단 한 번). 스냅샷이므로 이후 이전 회의가 바뀌어도 고정.
+  #
+  # 시드는 모드 무관 이전 회의록 base 만 깐다(절취선 없음). 이후 요약 잡이 이전+현재를 한 회의로
+  # 병합하며, 증분(연결) 모드에선 LLM 이 논의사항 안에 절취선(PREVIOUS_MEETING_CUT_LINE)을 한 번 삽입한다.
   def seed_summary_from_previous!(summary_type: "realtime")
     return if summaries.exists?
     return if previous_meeting_id.blank?
@@ -160,8 +162,7 @@ class Meeting < ApplicationRecord
     base = previous_meeting&.current_notes_markdown.to_s
     return if base.blank?
 
-    seeded = "#{base.rstrip}\n\n---\n#{PREVIOUS_MEETING_MARKER}"
-    summaries.create!(summary_type: summary_type, notes_markdown: seeded, generated_at: Time.current)
+    summaries.create!(summary_type: summary_type, notes_markdown: base.rstrip, generated_at: Time.current)
   end
 
   # 트랜스크립트·요약·액션아이템·결정·블록(선택적으로 첨부)을 모두 삭제한다.

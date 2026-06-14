@@ -14,7 +14,7 @@ RSpec.describe Meeting, type: :model do
              notes_markdown: "## 지난 회의\n- 결정: A안 채택", generated_at: 1.day.ago)
     end
 
-    it "seeds an initial summary from the previous meeting's notes ending with the marker" do
+    it "재구조화(기본): 이전 회의록 base만 시드(절취선 없음 — LLM이 논의에 삽입)" do
       meeting.seed_summary_from_previous!(summary_type: "realtime")
 
       seeded = meeting.summaries.order(:id).last
@@ -22,7 +22,18 @@ RSpec.describe Meeting, type: :model do
       expect(seeded.summary_type).to eq("realtime")
       expect(seeded.notes_markdown).to include("## 지난 회의")
       expect(seeded.notes_markdown).to include("결정: A안 채택")
-      expect(seeded.notes_markdown).to end_with(Meeting::PREVIOUS_MEETING_MARKER)
+      expect(seeded.notes_markdown).not_to include(Meeting::PREVIOUS_MEETING_CUT_LINE)
+      expect(seeded.notes_markdown.rstrip).to end_with("결정: A안 채택")
+    end
+
+    it "증분도 동일하게 base만 시드(절취선은 시드에 안 넣음)" do
+      meeting.update!(summary_restructure: false)
+      meeting.seed_summary_from_previous!(summary_type: "realtime")
+
+      seeded = meeting.summaries.order(:id).last
+      expect(seeded.notes_markdown).to include("## 지난 회의")
+      expect(seeded.notes_markdown).not_to include(Meeting::PREVIOUS_MEETING_CUT_LINE)
+      expect(seeded.notes_markdown.rstrip).to end_with("결정: A안 채택")
     end
 
     it "honors the summary_type argument (final)" do

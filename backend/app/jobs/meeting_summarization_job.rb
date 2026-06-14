@@ -114,7 +114,8 @@ class MeetingSummarizationJob < ApplicationJob
     started = true
     ok = false
     broadcast_started(meeting, "realtime")
-    if meeting.summary_restructure?
+    # 재구조화 OR 연결(이전 회의 참고)이면 refine 로 통합. 연결+증분은 seeded_merge 로 논의 절취선 삽입.
+    if meeting.summary_restructure? || meeting.previous_meeting_id.present?
       result = llm_service_for(meeting).refine_notes(
         current_notes, payload,
         meeting_title: meeting.title,
@@ -123,11 +124,11 @@ class MeetingSummarizationJob < ApplicationJob
         attendees: meeting.attendees,
         verbosity: meeting.summary_verbosity,
         verbosity_context: :realtime,
-        seeded_from_previous: meeting.previous_meeting_id.present?
+        seeded_merge: meeting.previous_meeting_id.present? && !meeting.summary_restructure?
       )
       notes_markdown = result["notes_markdown"]
     else
-      # 증분 모드: 새 자막만 시간대별 블록으로 요약해 기존 회의록 뒤에 덧붙인다(앞 내용 불변).
+      # 비연결 증분 모드: 새 자막만 시간대별 블록으로 요약해 기존 회의록 뒤에 덧붙인다(앞 내용 불변).
       result = llm_service_for(meeting).append_notes(
         current_notes, payload,
         meeting_title: meeting.title,
@@ -201,9 +202,9 @@ class MeetingSummarizationJob < ApplicationJob
     started = true
     ok = false
     broadcast_started(meeting, "final")
-    # 증분 모드라도 base 가 백지면(회의록 재생성 직후 등) append 로 복원 불가 —
-    # 전체 자막 통짜 재생성으로 폴백해 처음부터 다시 만든다.
-    if meeting.summary_restructure? || latest_notes.blank?
+    # refine 통짜 재생성 경로: 재구조화 / 연결(이전 회의 참고) / 증분이라도 base 백지(재생성 직후 등).
+    # 연결+증분은 seeded_merge 로 이전+현재를 한 회의로 통합하고 논의에 절취선을 넣는다.
+    if meeting.summary_restructure? || meeting.previous_meeting_id.present? || latest_notes.blank?
       payload = Transcript.to_sidecar_payload(transcripts)
       result = llm_service_for(meeting).refine_notes(
         meeting.current_notes_markdown, payload,
@@ -212,12 +213,12 @@ class MeetingSummarizationJob < ApplicationJob
         sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
         attendees: meeting.attendees,
         verbosity: meeting.summary_verbosity,
-        chronological: !meeting.summary_restructure?, # 증분 회의의 백지 폴백 = 시간 흐름 유지
-        seeded_from_previous: meeting.previous_meeting_id.present?
+        chronological: !meeting.summary_restructure? && meeting.previous_meeting_id.blank?, # 비연결 증분 백지폴백만 시간 흐름
+        seeded_merge: meeting.previous_meeting_id.present? && !meeting.summary_restructure?
       )
       notes_markdown = result["notes_markdown"]
     else
-      # 증분 모드 final: 전체 재작성 없이 남은 미적용 자막만 마지막 블록으로 덧붙여 확정(append-only).
+      # 비연결 증분 final: 전체 재작성 없이 남은 미적용 자막만 마지막 블록으로 덧붙여 확정(append-only).
       remaining_ids = transcripts.where(applied_to_minutes: false).pluck(:id)
       if remaining_ids.any?
         remaining = meeting.transcripts.where(id: remaining_ids).order(:sequence_number)
