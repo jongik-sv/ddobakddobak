@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, Plus } from 'lucide-react'
 import { Dialog } from '../ui/Dialog'
+import { getMeetings } from '../../api/meetings'
 import type { Meeting } from '../../api/meetings'
 import type { Tag } from '../../api/tags'
 import { getTags, createTag } from '../../api/tags'
@@ -9,7 +10,7 @@ import { ENGINE_LABELS } from '../../config'
 interface EditMeetingDialogProps {
   meeting: Meeting
   meetingTypeList: { value: string; label: string }[]
-  onConfirm: (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null; attendees: string | null; expected_participants: number | null; shared: boolean }) => void
+  onConfirm: (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null; attendees: string | null; expected_participants: number | null; shared: boolean; previous_meeting_id: number | null }) => void
   onClose: () => void
   /** 공유 토글 비활성화 (비소유자가 여는 경우). 기본 false. */
   disabled?: boolean
@@ -34,10 +35,21 @@ export default function EditMeetingDialog({
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [newTagName, setNewTagName] = useState('')
   const [showNewTag, setShowNewTag] = useState(false)
+  const [previousMeetingId, setPreviousMeetingId] = useState(
+    meeting.previous_meeting_id != null ? String(meeting.previous_meeting_id) : ''
+  )
+  const [folderMeetings, setFolderMeetings] = useState<Meeting[]>([])
 
   useEffect(() => {
     getTags().then(setAllTags).catch(() => {})
   }, [])
+
+  // 이전 회의 참고 셀렉터용: 같은 폴더의 회의 최근순 (자기 자신 제외)
+  useEffect(() => {
+    getMeetings({ folder_id: meeting.folder_id, per: 100 })
+      .then((res) => setFolderMeetings(res.meetings.filter((m) => m.id !== meeting.id)))
+      .catch(() => {})
+  }, [meeting.folder_id, meeting.id])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -50,6 +62,7 @@ export default function EditMeetingDialog({
       attendees: attendees.trim() || null,
       expected_participants: expectedParticipants.trim() ? Number(expectedParticipants) : null,
       shared,
+      previous_meeting_id: previousMeetingId ? Number(previousMeetingId) : null,
     })
   }
 
@@ -162,6 +175,26 @@ export default function EditMeetingDialog({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* 이전 회의 참고 (같은 폴더 회의만) */}
+          <div>
+            <label className="block text-sm font-medium mb-1">이전 회의 참고</label>
+            <select
+              value={previousMeetingId}
+              onChange={(e) => setPreviousMeetingId(e.target.value)}
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-white"
+            >
+              <option value="">없음</option>
+              {folderMeetings.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.title}{m.created_at ? ` (${new Date(m.created_at).toLocaleDateString()})` : ''}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              지정하면 이전 회의록을 이어받아 그 뒤에 이번 회의 내용을 작성합니다 (같은 폴더 회의만).
+            </p>
           </div>
 
           {/* 공유/비공개 */}

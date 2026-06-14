@@ -13,6 +13,7 @@ RSpec.describe FileTranscriptionJob, type: :job do
     allow(SidecarClient).to receive(:new).and_return(sidecar)
     allow(sidecar).to receive(:transcribe_file).and_return({ "segments" => [] })
     allow(sidecar).to receive(:get_speakers).and_return({ "speakers" => [] })
+    allow(sidecar).to receive(:get_transcribe_progress).and_return(nil)
     allow_any_instance_of(described_class).to receive(:generate_summary)
     allow(MeetingFinalizerService).to receive(:new).and_return(instance_double(MeetingFinalizerService, call: nil))
   end
@@ -65,6 +66,65 @@ RSpec.describe FileTranscriptionJob, type: :job do
 
     expect(meeting.reload.status).to eq("completed")
     expect(meeting.transcripts.first.speaker_name).to be_nil
+  end
+
+  describe "STT 폴링 진행률" do
+    let(:job) { described_class.new }
+
+    it "processed/total 을 5~90% 로 선형 매핑한다" do
+      expect(job.send(:stt_poll_percent, 0, 1000)).to eq(5)
+      expect(job.send(:stt_poll_percent, 1000, 1000)).to eq(90)
+      expect(job.send(:stt_poll_percent, 500, 1000)).to eq(48) # 5 + 0.5*85 = 47.5 → 48
+      expect(job.send(:stt_poll_percent, 100, 0)).to eq(5)     # total 0 → 최소
+    end
+
+    it "경과 시간을 표기한다 (10% 미만이면 잔여 없음)" do
+      # pct = 5 + 1000/100000*85 ≈ 6 (<10) → 잔여 미표기
+      msg = job.send(:stt_poll_message, 6, 90, 1000, 100000)
+      expect(msg).to eq("음성 인식 중… 경과 1:30")
+    end
+
+    it "10% 이상이면 경과 + 잔여(추정)를 표기한다" do
+      # elapsed 60s, processed 50%/total → 잔여 = 60*(1-0.5)/0.5 = 60s, pct=48(≥10)
+      msg = job.send(:stt_poll_message, 48, 60, 5000, 10000)
+      expect(msg).to eq("음성 인식 중… 경과 1:00 · 잔여 ~1:00")
+    end
+
+    it "format_hms: 1시간 이상은 H:MM:SS, 음수는 0:00" do
+      expect(job.send(:format_hms, 90)).to eq("1:30")
+      expect(job.send(:format_hms, 3661)).to eq("1:01:01")
+      expect(job.send(:format_hms, -5)).to eq("0:00")
+    end
+
+    it "전사 중 진행률을 broadcast 한다" do
+      allow(sidecar).to receive(:get_transcribe_progress).with(meeting.id)
+        .and_return({ "processed_ms" => 5000, "total_ms" => 10000 })
+      allow(sidecar).to receive(:transcribe_file) { sleep 0.1; { "segments" => [] } }
+
+      broadcasts = []
+      allow(ActionCable.server).to receive(:broadcast) { |_ch, msg| broadcasts << msg }
+
+      described_class.perform_now(meeting.id)
+
+      prog = broadcasts.select { |m| m[:type] == "transcription_progress" && m[:message].to_s.include?("음성 인식 중") }
+      expect(prog).not_to be_empty
+      expect(prog.first[:progress]).to eq(48)
+    end
+
+    it "phase=post(화자분리·후처리) 중엔 90%로 안내한다" do
+      allow(sidecar).to receive(:get_transcribe_progress).with(meeting.id)
+        .and_return({ "phase" => "post", "processed_ms" => 10000, "total_ms" => 10000 })
+      allow(sidecar).to receive(:transcribe_file) { sleep 0.1; { "segments" => [] } }
+
+      broadcasts = []
+      allow(ActionCable.server).to receive(:broadcast) { |_ch, msg| broadcasts << msg }
+
+      described_class.perform_now(meeting.id)
+
+      post = broadcasts.select { |m| m[:type] == "transcription_progress" && m[:message].to_s.include?("화자 분리") }
+      expect(post).not_to be_empty
+      expect(post.first[:progress]).to eq(90)
+    end
   end
 
   context "화자분리 ON" do

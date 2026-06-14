@@ -56,6 +56,40 @@ RSpec.describe "Api::V1::Meetings previous meeting reference", type: :request do
     end
   end
 
+  describe "same-folder 제약" do
+    it "accepts a previous meeting in the same folder on create" do
+      fa = create(:folder, team: team)
+      prev = create(:meeting, team: team, creator: user, folder: fa)
+
+      post "/api/v1/meetings", params: { title: "같은폴더", folder_id: fa.id, previous_meeting_id: prev.id }
+
+      expect(response).to have_http_status(:created)
+      expect(Meeting.find_by(title: "같은폴더").previous_meeting_id).to eq(prev.id)
+    end
+
+    it "drops a previous meeting from a different folder on create" do
+      fa = create(:folder, team: team)
+      fb = create(:folder, team: team)
+      prev = create(:meeting, team: team, creator: user, folder: fa)
+
+      post "/api/v1/meetings", params: { title: "타폴더", folder_id: fb.id, previous_meeting_id: prev.id }
+
+      expect(response).to have_http_status(:created)
+      expect(Meeting.find_by(title: "타폴더").previous_meeting_id).to be_nil
+    end
+
+    it "drops a different-folder previous meeting on update" do
+      fa = create(:folder, team: team)
+      fb = create(:folder, team: team)
+      prev = create(:meeting, team: team, creator: user, folder: fa)
+      m = create(:meeting, team: team, creator: user, folder: fb)
+
+      patch "/api/v1/meetings/#{m.id}", params: { previous_meeting_id: prev.id }
+
+      expect(m.reload.previous_meeting_id).to be_nil
+    end
+  end
+
   describe "GET /api/v1/meetings/:id (show)" do
     it "includes previous_meeting_id and title for the badge" do
       prev = create(:meeting, team: team, creator: user, title: "지난 회의")

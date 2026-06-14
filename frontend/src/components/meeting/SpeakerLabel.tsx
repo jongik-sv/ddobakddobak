@@ -11,25 +11,49 @@ const SPEAKER_COLORS = [
   'bg-cyan-100 text-cyan-800',
 ]
 
-export function speakerColor(speakerLabel: string): string {
+const SPEAKER_BORDER_COLORS = [
+  'border-blue-400',
+  'border-green-400',
+  'border-purple-400',
+  'border-orange-400',
+  'border-pink-400',
+  'border-teal-400',
+  'border-yellow-400',
+  'border-red-400',
+  'border-indigo-400',
+  'border-cyan-400',
+]
+
+function speakerIndex(speakerLabel: string): number {
   const match = speakerLabel.match(/(\d+)$/)
-  const index = match ? parseInt(match[1], 10) % SPEAKER_COLORS.length : 0
-  return SPEAKER_COLORS[index]
+  return match ? parseInt(match[1], 10) % SPEAKER_COLORS.length : 0
+}
+
+export function speakerColor(speakerLabel: string): string {
+  return SPEAKER_COLORS[speakerIndex(speakerLabel)]
+}
+
+/** 화자별 왼쪽 띠 border 색 (그룹 구분 강조용) */
+export function speakerBorderColor(speakerLabel: string): string {
+  return SPEAKER_BORDER_COLORS[speakerIndex(speakerLabel)]
 }
 
 interface SpeakerLabelProps {
   speakerLabel: string
   /** 표시 이름. null/undefined면 라벨로 fallback */
   speakerName?: string | null
+  /** 칩 크기. 'sm'(기본) 또는 'md'(미리보기 등 크게) */
+  size?: 'sm' | 'md'
 }
 
-export function SpeakerLabel({ speakerLabel, speakerName }: SpeakerLabelProps) {
+export function SpeakerLabel({ speakerLabel, speakerName, size = 'sm' }: SpeakerLabelProps) {
   const colorClass = speakerColor(speakerLabel)
+  const sizeClass = size === 'md' ? 'px-2.5 py-1 text-sm' : 'px-2 py-0.5 text-xs'
 
   return (
     <span
       role="status"
-      className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${colorClass}`}
+      className={`inline-block rounded font-semibold ${sizeClass} ${colorClass}`}
     >
       {speakerName ?? speakerLabel}
     </span>

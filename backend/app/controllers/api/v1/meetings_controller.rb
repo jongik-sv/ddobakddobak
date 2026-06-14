@@ -49,7 +49,7 @@ module Api
           meeting_type: params[:meeting_type] || "general",
           folder_id: params[:folder_id],
           shared: params.key?(:shared) ? ActiveModel::Type::Boolean.new.cast(params[:shared]) : true,
-          previous_meeting_id: accessible_previous_meeting_id(params[:previous_meeting_id]),
+          previous_meeting_id: accessible_previous_meeting_id(params[:previous_meeting_id], params[:folder_id].presence&.to_i),
           **summary_options_for_create
         )
 
@@ -126,8 +126,12 @@ module Api
         end
         # shared 변경은 소유자/admin 만 가능 (비소유 host 의 toggle 무시)
         attrs[:shared] = ActiveModel::Type::Boolean.new.cast(params[:shared]) if params.key?(:shared) && @meeting.editable_by?(current_user)
-        # 이전 회의 참고: 접근 가능한 회의만 허용. 빈 값/비접근은 nil(해제)로 정규화.
-        attrs[:previous_meeting_id] = accessible_previous_meeting_id(params[:previous_meeting_id]) if params.key?(:previous_meeting_id)
+        # 이전 회의 참고: 접근 가능 + 같은 폴더만 허용. 빈 값/비접근/타폴더는 nil(해제)로 정규화.
+        # 같은 요청에서 폴더도 옮기면 옮긴 폴더 기준, 아니면 현재 폴더 기준.
+        if params.key?(:previous_meeting_id)
+          target_folder = params.key?(:folder_id) ? params[:folder_id].presence&.to_i : @meeting.folder_id
+          attrs[:previous_meeting_id] = accessible_previous_meeting_id(params[:previous_meeting_id], target_folder)
+        end
 
         if params.key?(:tag_ids)
           tag_ids = Array(params[:tag_ids]).map(&:to_i)
@@ -335,13 +339,34 @@ module Api
 
         return render json: { error: "No valid corrections provided" }, status: :unprocessable_entity if corrections.empty?
 
-        # 회의록(notes_markdown) 치환
-        current_notes = @meeting.current_notes_markdown || ""
-        corrected_notes = apply_term_corrections(current_notes, corrections)
+        before_active_notes = @meeting.current_notes_markdown.to_s
 
-        if corrected_notes != current_notes && corrected_notes.present?
-          summary = find_or_create_active_summary
-          summary.update!(notes_markdown: corrected_notes, generated_at: Time.current)
+        # 회의의 모든 텍스트 표면에 교정 적용 — active/비활성 summary 의 notes_markdown +
+        # 구조화 필드(key_points/decisions/discussion_details, JSON 평문 치환), action_items,
+        # decisions, blocks, transcripts. (사용자 메모는 원문 보존 — 제외)
+        @meeting.summaries.find_each do |summary|
+          attrs = {}
+          %i[notes_markdown key_points decisions discussion_details].each do |col|
+            original = summary[col]
+            next if original.blank?
+            corrected = apply_term_corrections(original, corrections)
+            attrs[col] = corrected if corrected != original
+          end
+          if attrs.any?
+            attrs[:generated_at] = Time.current
+            summary.update!(attrs)
+          end
+        end
+
+        correct_records!(@meeting.action_items, :content, corrections)
+        correct_records!(@meeting.decisions, :content, corrections)
+        correct_records!(@meeting.blocks, :content, corrections)
+
+        # 트랜스크립트 원문 치환
+        corrected_count = correct_records!(@meeting.transcripts, :content, corrections)
+
+        corrected_notes = @meeting.reload.current_notes_markdown.to_s
+        if corrected_notes != before_active_notes
           @meeting.update!(last_user_edit_at: Time.current)
           @meeting.refresh_brief_summary!(corrected_notes)
 
@@ -349,17 +374,6 @@ module Api
             type: "meeting_notes_update",
             notes_markdown: corrected_notes
           })
-        end
-
-        # 트랜스크립트 원문 치환
-        corrected_count = 0
-        @meeting.transcripts.find_each do |transcript|
-          original = transcript.content
-          corrected = apply_term_corrections(original, corrections)
-          if corrected != original
-            transcript.update!(content: corrected)
-            corrected_count += 1
-          end
         end
 
         render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
@@ -477,12 +491,15 @@ module Api
         }
       end
 
-      # 이전 회의 참고 id 정규화: 현재 사용자가 열람 가능한 회의만 통과, 그 외(빈 값·비접근)는 nil.
-      # 셀렉터가 accessible 회의만 보여주므로 정상 경로에선 항상 통과하고, 위변조 id 만 걸러진다.
-      def accessible_previous_meeting_id(raw)
+      # 이전 회의 참고 id 정규화: 현재 사용자가 열람 가능 + 대상과 같은 폴더인 회의만 통과.
+      # 그 외(빈 값·비접근·다른 폴더)는 nil. 셀렉터가 같은 폴더만 보여주므로 정상 경로는 통과,
+      # 위변조·타폴더 id 만 걸러진다. target_folder_id 는 정규화된 정수 또는 nil(루트).
+      def accessible_previous_meeting_id(raw, target_folder_id)
         return nil if raw.blank?
         id = raw.to_i
-        Meeting.accessible_by(current_user).exists?(id: id) ? id : nil
+        candidate = Meeting.accessible_by(current_user).find_by(id: id)
+        return nil unless candidate && candidate.folder_id == target_folder_id
+        id
       end
 
       def pagination_page
@@ -517,6 +534,21 @@ module Api
         result = text
         corrections.each { |c| result = result.gsub(c[:from], c[:to]) }
         result
+      end
+
+      # 관계의 각 레코드에서 column 을 교정하고, 변경된 레코드만 저장한다. 변경 건수 반환.
+      def correct_records!(relation, column, corrections)
+        changed = 0
+        relation.find_each do |record|
+          original = record[column]
+          next if original.blank?
+          corrected = apply_term_corrections(original, corrections)
+          if corrected != original
+            record.update!(column => corrected)
+            changed += 1
+          end
+        end
+        changed
       end
     end
   end

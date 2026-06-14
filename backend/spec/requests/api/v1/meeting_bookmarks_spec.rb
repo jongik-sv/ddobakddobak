@@ -75,6 +75,42 @@ RSpec.describe "Api::V1::MeetingBookmarks", type: :request do
     end
   end
 
+  describe "PATCH /api/v1/meetings/:meeting_id/bookmarks/:id" do
+    it "200과 라벨이 수정된 북마크 반환" do
+      bookmark = create(:meeting_bookmark, meeting: meeting, timestamp_ms: 5000, label: "원래 라벨")
+
+      patch "/api/v1/meetings/#{meeting.id}/bookmarks/#{bookmark.id}",
+            params: { label: "바뀐 라벨" },
+            as: :json
+
+      expect(response).to have_http_status(:ok)
+      json = response.parsed_body
+      expect(json["id"]).to eq(bookmark.id)
+      expect(json["label"]).to eq("바뀐 라벨")
+      expect(json["timestamp_ms"]).to eq(5000) # 시점은 불변
+      expect(bookmark.reload.label).to eq("바뀐 라벨")
+    end
+
+    it "빈 라벨로도 수정 가능(라벨 지우기)" do
+      bookmark = create(:meeting_bookmark, meeting: meeting, label: "지울 라벨")
+
+      patch "/api/v1/meetings/#{meeting.id}/bookmarks/#{bookmark.id}",
+            params: { label: "" },
+            as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(bookmark.reload.label).to eq("")
+    end
+
+    it "404 반환 (존재하지 않는 북마크)" do
+      patch "/api/v1/meetings/#{meeting.id}/bookmarks/99999",
+            params: { label: "x" },
+            as: :json
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
   describe "DELETE /api/v1/meetings/:meeting_id/bookmarks/:id" do
     it "204 반환하고 북마크 삭제" do
       bookmark = create(:meeting_bookmark, meeting: meeting)

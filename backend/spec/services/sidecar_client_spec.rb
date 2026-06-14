@@ -64,6 +64,26 @@ RSpec.describe SidecarClient, type: :service do
     end
   end
 
+  describe "#get_transcribe_progress" do
+    it "returns parsed progress on success" do
+      response = stub_response({ "processed_ms" => 1000, "total_ms" => 5000 })
+      allow(mock_http).to receive(:request).with(instance_of(Net::HTTP::Get)).and_return(response)
+
+      expect(client.get_transcribe_progress(42)).to eq({ "processed_ms" => 1000, "total_ms" => 5000 })
+    end
+
+    it "returns nil on connection error (does not raise — poll must not kill the job)" do
+      allow(mock_http).to receive(:start).and_raise(Errno::ECONNREFUSED)
+      expect(client.get_transcribe_progress(42)).to be_nil
+    end
+
+    it "returns nil on non-2xx (does not raise)" do
+      response = stub_response({ "error" => "boom" }, code: "500")
+      allow(mock_http).to receive(:request).with(instance_of(Net::HTTP::Get)).and_return(response)
+      expect(client.get_transcribe_progress(42)).to be_nil
+    end
+  end
+
   describe "error handling" do
     it "raises TimeoutError on Net::ReadTimeout" do
       allow(mock_http).to receive(:start).and_raise(Net::ReadTimeout)

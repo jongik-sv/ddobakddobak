@@ -9,6 +9,7 @@ import type { Transcript, TermCorrection } from '../api/meetings'
 import { getTranscripts, reopenMeeting, regenerateStt, reDiarize, regenerateNotes, updateNotes, correctTerms, canEditMeeting } from '../api/meetings'
 import { useAuthStore } from '../stores/authStore'
 import { createAuthenticatedConsumer } from '../lib/actionCableAuth'
+import { computeBookmarkLabel } from '../lib/bookmarkLabel'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { MeetingPageSkeleton } from '../components/ui/Skeleton'
 import { useTranscriptStore } from '../stores/transcriptStore'
@@ -23,7 +24,7 @@ import { useUiStore } from '../stores/uiStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
-import { getBookmarks, createBookmark, deleteBookmark } from '../api/bookmarks'
+import { getBookmarks, createBookmark, deleteBookmark, updateBookmark } from '../api/bookmarks'
 import type { Bookmark as BookmarkType } from '../api/bookmarks'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
 import MobileTabLayout from '../components/layout/MobileTabLayout'
@@ -120,10 +121,26 @@ export default function MeetingPage() {
       if (result.notes_markdown) {
         setMeetingNotes(result.notes_markdown)
       }
-      // 트랜스크립트 리로드
+      // 트랜스크립트 리로드 — 로컬 state + store.finals(TranscriptPanel이 우선 조회) 모두 갱신해야 화면 반영됨
       if (result.corrected_transcripts > 0) {
-        getTranscripts(meetingId).then(setTranscripts)
+        getTranscripts(meetingId).then((data) => {
+          setTranscripts(data)
+          loadFinals(
+            data.map((t) => ({
+              id: t.id,
+              content: t.content,
+              speaker_label: t.speaker_label,
+              speaker_name: t.speaker_name ?? null,
+              started_at_ms: t.started_at_ms,
+              ended_at_ms: t.ended_at_ms,
+              sequence_number: t.sequence_number,
+              applied: t.applied_to_minutes ?? true,
+            })),
+          )
+        })
       }
+      // 구조화 요약(key_points/decisions/discussion_details)·brief 갱신을 위해 회의 리페치
+      refetch()
       setCorrectionStatus(
         result.corrected_transcripts > 0
           ? `완료 (트랜스크립트 ${result.corrected_transcripts}건 수정)`
@@ -303,9 +320,20 @@ export default function MeetingPage() {
     }
   }
 
+  async function handleEditBookmark(bookmarkId: number, label: string) {
+    try {
+      const updated = await updateBookmark(meetingId, bookmarkId, { label })
+      setBookmarks((prev) => prev.map((b) => (b.id === bookmarkId ? updated : b)))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '북마크 수정에 실패했습니다'
+      alert(`북마크 수정 실패: ${msg}`)
+    }
+  }
+
   function handleOpenBookmark() {
-    setBookmarkTs(currentTimeMs)
-    setBookmarkLabel('')
+    // timestamp_ms 는 정수만 허용(모델 numericality only_integer) — audio.currentTime*1000 은 float 라 floor
+    setBookmarkTs(Math.floor(currentTimeMs))
+    setBookmarkLabel(computeBookmarkLabel(transcripts, currentTimeMs))
     setShowBookmarkPopover(true)
   }
 
@@ -399,6 +427,7 @@ export default function MeetingPage() {
     onSeek: handleSeek,
     onDeleteBookmark: handleDeleteBookmark,
     onAddBookmark: handleOpenBookmark,
+    onEditBookmark: handleEditBookmark,
     onNotesChange: handleNotesChange,
     memoEditorRef,
     onSaveMemo: handleSaveMemo,
@@ -520,7 +549,7 @@ export default function MeetingPage() {
           <Panel defaultSize={25} minSize={15}>
             <div className="h-full flex flex-col overflow-hidden">
               {bookmarksVisible && (
-                <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} onAdd={handleOpenBookmark} />
+                <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} onAdd={handleOpenBookmark} onEdit={handleEditBookmark} />
               )}
               <div className="flex-1 overflow-y-auto">
                 <TranscriptPanel

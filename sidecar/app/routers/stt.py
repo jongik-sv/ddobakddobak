@@ -3,6 +3,7 @@ import base64
 import dataclasses
 import logging
 import os
+import threading
 import time
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -27,6 +28,42 @@ MIN_CHUNK_SEC = settings.MIN_CHUNK_SEC
 MIN_CHUNK_BYTES = int(MIN_CHUNK_SEC * _SAMPLE_RATE * _BYTES_PER_SAMPLE)
 
 router = APIRouter()
+
+# 파일 전사 진행 레지스트리 (프로세스-로컬, 단일 uvicorn worker 전제).
+# {meeting_id: {"processed_ms", "total_ms", "phase"}} — Rails 폴러가 GET 으로 조회.
+# phase: "stt"(청크 전사 중) | "post"(STT 끝, 화자분리·후처리 중) — post 구간 진행바 정지 방지.
+_FILE_PROGRESS: dict[int, dict] = {}
+_FILE_PROGRESS_LOCK = threading.Lock()
+
+
+def _set_file_progress(meeting_id, processed_ms: int, total_ms: int, phase: str = "stt") -> None:
+    if meeting_id is None:
+        return
+    with _FILE_PROGRESS_LOCK:
+        _FILE_PROGRESS[int(meeting_id)] = {
+            "processed_ms": int(processed_ms),
+            "total_ms": int(total_ms),
+            "phase": phase,
+        }
+
+
+def _clear_file_progress(meeting_id) -> None:
+    if meeting_id is None:
+        return
+    with _FILE_PROGRESS_LOCK:
+        _FILE_PROGRESS.pop(int(meeting_id), None)
+
+
+def _get_file_progress(meeting_id) -> dict | None:
+    with _FILE_PROGRESS_LOCK:
+        entry = _FILE_PROGRESS.get(int(meeting_id))
+        return dict(entry) if entry else None
+
+
+@router.get("/transcribe-file/progress/{meeting_id}")
+async def transcribe_file_progress(meeting_id: int) -> dict:
+    """파일 전사 진행 상황 조회 — 등록돼 있으면 {processed_ms, total_ms}, 없으면 {}."""
+    return _get_file_progress(meeting_id) or {}
 
 
 def _segments_to_response(segments) -> list[SegmentResponse]:
@@ -107,6 +144,9 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
     total_duration_ms = int(len(audio_bytes) / (_SAMPLE_RATE * _BYTES_PER_SAMPLE) * 1000)
     logger.info(f"[transcribe-file] 파일 크기={len(audio_bytes)} bytes, 길이={total_duration_ms}ms")
 
+    # 진행 레지스트리 등록 — 폴러가 즉시 total 을 받도록 STT 시작 전에 0/total 로 초기화
+    _set_file_progress(request.meeting_id, 0, total_duration_ms)
+
     # 2. STT 실행 — 배치 엔진은 settings.STT_FILE_ENGINE로 선택 (실시간 엔진과 분리)
     timings: dict[str, float] = {}
     from app.stt.factory import (
@@ -140,6 +180,7 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
                 chunk_sec=chunk_sec, overlap_sec=2,
                 languages=request.languages,
                 mode=request.mode,
+                meeting_id=request.meeting_id,
             )
         else:
             # 분할 없이 Whisper 내부 윈도우(~30초)로 처리
@@ -150,6 +191,9 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
         if _file_adapter_loaded_here:
             del file_adapter
             import gc; gc.collect()
+        # STT 단계 종료 → phase="post"(90% 고정)로 유지. 화자분리·후처리 동안 폴러가
+        # "화자 분리·후처리 중…"을 표시해 진행바 정지를 막는다. 정리는 엔드포인트 끝에서.
+        _set_file_progress(request.meeting_id, total_duration_ms, total_duration_ms, phase="post")
     timings["stt"] = time.monotonic() - _t_stt
 
     logger.info(f"[transcribe-file] STT 세그먼트 {len(segments)}개")
@@ -200,6 +244,7 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
         (audio_sec / _total) if _total > 0 else 0.0,
     )
     logger.info("[STT] /transcribe-file 완료 (%.1f초, %d 세그먼트)", _total, len(segments))
+    _clear_file_progress(request.meeting_id)  # 전 과정 종료 — 레지스트리 정리
     return TranscribeFileResponse(
         segments=_segments_to_response(segments),
         total_duration_ms=total_duration_ms,
@@ -277,6 +322,7 @@ async def _chunked_transcribe(
     overlap_sec: int = 2,
     languages: list[str] | None = None,
     mode: str = "single",
+    meeting_id: int | None = None,
 ) -> list:
     """Qwen3 등 내부 분할이 없는 엔진을 위해 오디오를 청크로 나눠 처리한다.
 
@@ -290,6 +336,7 @@ async def _chunked_transcribe(
     step_bytes = chunk_bytes - overlap_bytes
 
     total_len = len(audio_bytes)
+    total_ms = int(total_len / bytes_per_sec * 1000)
     all_segments: list[TranscriptSegment] = []
     offset = 0
     chunk_idx = 0
@@ -320,8 +367,10 @@ async def _chunked_transcribe(
             all_segments.append(seg)
 
         chunk_idx += 1
+        # 진행 갱신 — 이 청크 끝 위치(end)를 처리 완료 지점으로 기록
+        _set_file_progress(meeting_id, int(end / bytes_per_sec * 1000), total_ms)
         if chunk_idx % 10 == 0:
-            logger.info(f"[transcribe-file] 청크 {chunk_idx} 처리 완료 ({offset_ms}ms / {int(total_len / bytes_per_sec * 1000)}ms)")
+            logger.info(f"[transcribe-file] 청크 {chunk_idx} 처리 완료 ({offset_ms}ms / {total_ms}ms)")
 
         offset += step_bytes
 

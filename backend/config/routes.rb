@@ -83,7 +83,7 @@ Rails.application.routes.draw do
             patch :reorder
           end
         end
-        resources :bookmarks, only: %i[index create destroy],
+        resources :bookmarks, only: %i[index create update destroy],
                   controller: "meeting_bookmarks"
         resources :attachments, only: %i[index create update destroy],
                   controller: "meeting_attachments" do

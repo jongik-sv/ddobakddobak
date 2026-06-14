@@ -16,7 +16,17 @@ export async function createBookmark(
   meetingId: number,
   data: { timestamp_ms: number; label?: string },
 ): Promise<Bookmark> {
-  return apiClient.post(`meetings/${meetingId}/bookmarks`, { json: data }).json()
+  // 백엔드 timestamp_ms 는 정수만 허용(numericality only_integer) — 모든 호출부 보호 위해 floor
+  const payload = { ...data, timestamp_ms: Math.floor(data.timestamp_ms) }
+  return apiClient.post(`meetings/${meetingId}/bookmarks`, { json: payload }).json()
+}
+
+export async function updateBookmark(
+  meetingId: number,
+  bookmarkId: number,
+  data: { label: string },
+): Promise<Bookmark> {
+  return apiClient.patch(`meetings/${meetingId}/bookmarks/${bookmarkId}`, { json: data }).json()
 }
 
 export async function deleteBookmark(meetingId: number, bookmarkId: number): Promise<void> {

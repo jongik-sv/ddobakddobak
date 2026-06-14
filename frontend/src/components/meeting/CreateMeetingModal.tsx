@@ -25,12 +25,12 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
 
   useEffect(() => { fetchTemplates() }, [fetchTemplates])
 
-  // 이전 회의 참고 셀렉터용: 접근 가능한 회의 최근순 목록
+  // 이전 회의 참고 셀렉터용: 같은 폴더의 회의 최근순 목록 (folderId=null이면 루트)
   useEffect(() => {
-    getMeetings({ per: 100 })
+    getMeetings({ folder_id: folderId, per: 100 })
       .then((res) => setRecentMeetings(res.meetings))
       .catch(() => {})
-  }, [])
+  }, [folderId])
 
   const handleTemplateSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const templateId = Number(e.target.value)

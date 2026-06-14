@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import type { Transcript } from '../../api/meetings'
 import { EditableTranscriptText } from './EditableTranscriptText'
 import { HighlightedText } from './HighlightedText'
+import { SpeakerLabel, speakerBorderColor } from './SpeakerLabel'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 
 interface TranscriptPanelProps {
@@ -106,11 +107,16 @@ export function TranscriptPanel({
   return (
     <div className="flex flex-col gap-1 p-4 overflow-y-auto">
       {groups.map((group) => (
-        <div key={group.key} className="flex flex-col">
-          <div className="flex items-center gap-2 mb-0.5">
-            <span className="text-xs font-semibold text-indigo-600">
-              {group.name}
-            </span>
+        <div
+          key={group.key}
+          className={`flex flex-col mt-3 first:mt-0 border-l-4 pl-2 ${speakerBorderColor(group.segments[0].transcript.speaker_label)}`}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <SpeakerLabel
+              speakerLabel={group.segments[0].transcript.speaker_label}
+              speakerName={group.name}
+              size="md"
+            />
             <span className="text-[10px] text-gray-400 tabular-nums">
               {formatTimestamp(group.startedAtMs)}
             </span>

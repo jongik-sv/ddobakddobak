@@ -9,6 +9,7 @@ class SidecarClient
   class ConnectionError < SidecarError; end
 
   TIMEOUT = 30
+  PROGRESS_TIMEOUT = 3
 
   def initialize
     @host = ENV.fetch("SIDECAR_HOST", "localhost")
@@ -54,6 +55,18 @@ class SidecarClient
     body[:mode] = mode if mode
     body[:file_chunk_sec] = file_chunk_sec if file_chunk_sec
     post("/transcribe-file", body, timeout: ENV.fetch("SIDECAR_TRANSCRIBE_FILE_TIMEOUT", "21600").to_i)
+  end
+
+  # 파일 전사 진행 상황 폴링 — {"processed_ms", "total_ms"} 또는 미등록 시 {}.
+  # 폴링 실패(타임아웃·연결거부·5xx)는 nil 을 돌려 잡 진행을 막지 않는다.
+  def get_transcribe_progress(meeting_id)
+    with_connection(timeout: PROGRESS_TIMEOUT) do |http|
+      req = Net::HTTP::Get.new("/transcribe-file/progress/#{meeting_id}")
+      parse_response(http.request(req))
+    end
+  rescue SidecarError, TimeoutError, ConnectionError => e
+    Rails.logger.debug { "[SidecarClient] progress poll failed: #{e.message}" }
+    nil
   end
 
   # 이미 전사된 회의에 대해 STT 없이 화자분리만 재실행한다.
