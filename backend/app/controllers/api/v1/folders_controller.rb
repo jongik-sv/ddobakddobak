@@ -3,6 +3,7 @@ module Api
     class FoldersController < ApplicationController
       before_action :authenticate_user!
       before_action :set_folder, only: %i[update destroy]
+      before_action :authorize_folder_edit!, only: %i[update destroy]
 
       def index
         if params[:flat] == "true"
@@ -18,6 +19,14 @@ module Api
       end
 
       def create
+        if params[:parent_id].present?
+          parent = Folder.find_by(id: params[:parent_id])
+          return render json: { error: "상위 폴더가 없습니다" }, status: :not_found unless parent
+          unless parent.editable_by?(current_user)
+            return render json: { error: "상위 폴더에 생성할 권한이 없습니다" }, status: :forbidden
+          end
+        end
+
         folder = Folder.new(
           name: params[:name],
           parent_id: params[:parent_id],
@@ -62,6 +71,11 @@ module Api
 
       def set_folder
         @folder = Folder.find(params[:id])
+      end
+
+      def authorize_folder_edit!
+        return if @folder.editable_by?(current_user)
+        render json: { error: "폴더를 편집할 권한이 없습니다" }, status: :forbidden
       end
 
       def next_position(parent_id)
