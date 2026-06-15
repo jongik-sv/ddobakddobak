@@ -5,11 +5,9 @@ import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
 import { useMemoEditor } from '../hooks/useMemoEditor'
-import type { Transcript, TermCorrection } from '../api/meetings'
-import { getTranscripts, reopenMeeting, regenerateStt, reDiarize, regenerateNotes, updateNotes, correctTerms, canEditMeeting } from '../api/meetings'
+import type { Transcript } from '../api/meetings'
+import { getTranscripts, reopenMeeting, updateNotes, canEditMeeting } from '../api/meetings'
 import { useAuthStore } from '../stores/authStore'
-import { createAuthenticatedConsumer } from '../lib/actionCableAuth'
-import { computeBookmarkLabel } from '../lib/bookmarkLabel'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { MeetingPageSkeleton } from '../components/ui/Skeleton'
 import { useTranscriptStore } from '../stores/transcriptStore'
@@ -24,8 +22,6 @@ import { useUiStore } from '../stores/uiStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
-import { getBookmarks, createBookmark, deleteBookmark, updateBookmark } from '../api/bookmarks'
-import type { Bookmark as BookmarkType } from '../api/bookmarks'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
 import MobileTabLayout from '../components/layout/MobileTabLayout'
 import { BookmarkList } from '../components/meeting/BookmarkList'
@@ -39,6 +35,9 @@ import { MeetingDetailTopBar } from '../components/meeting/MeetingDetailTopBar'
 import { buildMeetingDetailTabs } from '../components/meeting/meetingDetailTabs'
 import { MeetingSearchBar } from '../components/meeting/MeetingSearchBar'
 import { useMeetingSearch } from '../hooks/useMeetingSearch'
+import { useTermCorrections } from '../hooks/useTermCorrections'
+import { useNotesRegeneration } from '../hooks/useNotesRegeneration'
+import { useBookmarks } from '../hooks/useBookmarks'
 
 // ──────────────────────────────────────────────
 // 회의 상세 페이지
@@ -104,140 +103,6 @@ export default function MeetingPage() {
     }
   }, [summary?.notes_markdown, setMeetingNotes])
 
-  // 오타 수정 상태
-  const [corrections, setCorrections] = useState<TermCorrection[]>([{ from: '', to: '' }])
-  const [isApplyingCorrections, setIsApplyingCorrections] = useState(false)
-  const [correctionStatus, setCorrectionStatus] = useState('')
-
-  const handleApplyCorrections = async () => {
-    const valid = corrections.filter((c) => c.from.trim() && c.to.trim())
-    if (valid.length === 0 || isApplyingCorrections) return
-
-    setIsApplyingCorrections(true)
-    setCorrectionStatus('반영 중...')
-    try {
-      const result = await correctTerms(meetingId, valid)
-      setCorrections([{ from: '', to: '' }])
-      if (result.notes_markdown) {
-        setMeetingNotes(result.notes_markdown)
-      }
-      // 트랜스크립트 리로드 — 로컬 state + store.finals(TranscriptPanel이 우선 조회) 모두 갱신해야 화면 반영됨
-      if (result.corrected_transcripts > 0) {
-        getTranscripts(meetingId).then((data) => {
-          setTranscripts(data)
-          loadFinals(
-            data.map((t) => ({
-              id: t.id,
-              content: t.content,
-              speaker_label: t.speaker_label,
-              speaker_name: t.speaker_name ?? null,
-              started_at_ms: t.started_at_ms,
-              ended_at_ms: t.ended_at_ms,
-              sequence_number: t.sequence_number,
-              applied: t.applied_to_minutes ?? true,
-            })),
-          )
-        })
-      }
-      // 구조화 요약(key_points/decisions/discussion_details)·brief 갱신을 위해 회의 리페치
-      refetch()
-      setCorrectionStatus(
-        result.corrected_transcripts > 0
-          ? `완료 (트랜스크립트 ${result.corrected_transcripts}건 수정)`
-          : '완료'
-      )
-      setTimeout(() => setCorrectionStatus(''), 3000)
-    } catch {
-      setCorrectionStatus('반영 실패')
-      setTimeout(() => setCorrectionStatus(''), 3000)
-    } finally {
-      setIsApplyingCorrections(false)
-    }
-  }
-
-  const updateCorrection = (index: number, field: 'from' | 'to', value: string) => {
-    setCorrections((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)))
-  }
-
-  const addCorrectionRow = () => {
-    setCorrections((prev) => [...prev, { from: '', to: '' }])
-  }
-
-  const removeCorrectionRow = (index: number) => {
-    setCorrections((prev) => (prev.length <= 1 ? [{ from: '', to: '' }] : prev.filter((_, i) => i !== index)))
-  }
-
-  // 회의록 재생성 상태
-  const [isRegeneratingNotes, setIsRegeneratingNotes] = useState(false)
-  const [showSttConfirm, setShowSttConfirm] = useState(false)
-  const [showReDiarizeConfirm, setShowReDiarizeConfirm] = useState(false)
-  const [showNotesConfirm, setShowNotesConfirm] = useState(false)
-
-  // 회의록 재생성 완료 감지용 ActionCable 구독
-  useEffect(() => {
-    if (!isRegeneratingNotes) return
-
-    const consumer = createAuthenticatedConsumer()
-    const sub = consumer.subscriptions.create(
-      { channel: 'TranscriptionChannel', meeting_id: meetingId },
-      {
-        received(data: Record<string, unknown>) {
-          if (data.type === 'meeting_notes_update') {
-            setIsRegeneratingNotes(false)
-            setMeetingNotes((data.notes_markdown as string) ?? '')
-            refetch()
-          }
-        },
-      }
-    )
-    return () => {
-      sub.unsubscribe()
-      consumer.disconnect()
-    }
-  }, [isRegeneratingNotes, meetingId, setMeetingNotes, refetch])
-
-  async function handleRegenerateStt() {
-    setShowSttConfirm(false)
-    audio.pause() // STT 재실행 전 음성 재생 정지 (동시 재생 방지)
-    try {
-      await regenerateStt(meetingId)
-      refetch()
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '재생성에 실패했습니다'
-      alert(msg)
-    }
-  }
-
-  // 화자분리만 재실행: STT는 그대로 두고 현재 민감도로 화자만 재분리.
-  // 서버가 STT 재실행과 동일한 ActionCable 이벤트(transcription_progress·
-  // file_transcription_complete)를 브로드캐스트하므로 진행률 UI가 그대로 반응한다.
-  async function handleReDiarize() {
-    setShowReDiarizeConfirm(false)
-    audio.pause()
-    try {
-      await reDiarize(meetingId)
-      refetch()
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '재실행에 실패했습니다'
-      alert(msg)
-    }
-  }
-
-  async function handleRegenerateNotes() {
-    setShowNotesConfirm(false)
-    setIsRegeneratingNotes(true)
-    // 에디터 즉시 비움(+보류 자동저장 취소, AiSummaryPanel null 처리) — 옛 회의록 잔상이
-    // 대기 중 자동저장되면 last_user_edit_at 갱신으로 재생성 결과가 폐기된다.
-    setMeetingNotes(null)
-    try {
-      await regenerateNotes(meetingId)
-    } catch (e: unknown) {
-      setIsRegeneratingNotes(false)
-      const msg = e instanceof Error ? e.message : '재생성에 실패했습니다'
-      alert(msg)
-    }
-  }
-
   // 메모 에디터 + 토글
   const memoVisible = useUiStore((s) => s.memoVisible)
   const toggleMemo = useUiStore((s) => s.toggleMemo)
@@ -260,14 +125,44 @@ export default function MeetingPage() {
   const [showFullPlayer, setShowFullPlayer] = useState(false)
   const [transcripts, setTranscripts] = useState<Transcript[]>([])
 
-  // 북마크 상태
-  const [bookmarks, setBookmarks] = useState<BookmarkType[]>([])
+  // god 분해: 오타수정 / 회의록 재생성 / 북마크 로직을 전용 훅으로 분리 (동작 무변경)
+  const {
+    corrections,
+    isApplyingCorrections,
+    correctionStatus,
+    handleApplyCorrections,
+    updateCorrection,
+    addCorrectionRow,
+    removeCorrectionRow,
+  } = useTermCorrections(meetingId, { setTranscripts, refetch })
+  const {
+    isRegeneratingNotes,
+    showSttConfirm,
+    setShowSttConfirm,
+    showReDiarizeConfirm,
+    setShowReDiarizeConfirm,
+    showNotesConfirm,
+    setShowNotesConfirm,
+    handleRegenerateStt,
+    handleReDiarize,
+    handleRegenerateNotes,
+  } = useNotesRegeneration(meetingId, { pauseAudio: () => audio.pause(), refetch })
+  const {
+    bookmarks,
+    showBookmarkPopover,
+    setShowBookmarkPopover,
+    bookmarkLabel,
+    setBookmarkLabel,
+    bookmarkTs,
+    handleDeleteBookmark,
+    handleEditBookmark,
+    handleOpenBookmark,
+    handleSaveBookmark,
+  } = useBookmarks(meetingId, { transcripts, currentTimeMs })
+
+  // 북마크 표시 토글 (uiStore) — 데이터/CRUD/팝오버는 useBookmarks 훅
   const bookmarksVisible = useUiStore((s) => s.bookmarksVisible)
   const toggleBookmarks = useUiStore((s) => s.toggleBookmarks)
-  // 북마크 추가 팝오버 (회의 미리보기에서 현재 재생 위치에 추가)
-  const [showBookmarkPopover, setShowBookmarkPopover] = useState(false)
-  const [bookmarkLabel, setBookmarkLabel] = useState('')
-  const [bookmarkTs, setBookmarkTs] = useState(0)
 
   // 페이지 내 검색 (전사 + AI요약)
   const search = useMeetingSearch(transcripts)
@@ -305,54 +200,6 @@ export default function MeetingPage() {
       )
     })
   }, [meetingId, meeting?.status, loadFinals])
-
-  // 북마크 로드
-  useEffect(() => {
-    getBookmarks(meetingId).then(setBookmarks).catch(() => {})
-  }, [meetingId])
-
-  async function handleDeleteBookmark(bookmarkId: number) {
-    try {
-      await deleteBookmark(meetingId, bookmarkId)
-      setBookmarks((prev) => prev.filter((b) => b.id !== bookmarkId))
-    } catch {
-      // ignore
-    }
-  }
-
-  async function handleEditBookmark(bookmarkId: number, label: string) {
-    try {
-      const updated = await updateBookmark(meetingId, bookmarkId, { label })
-      setBookmarks((prev) => prev.map((b) => (b.id === bookmarkId ? updated : b)))
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '북마크 수정에 실패했습니다'
-      alert(`북마크 수정 실패: ${msg}`)
-    }
-  }
-
-  function handleOpenBookmark() {
-    // timestamp_ms 는 정수만 허용(모델 numericality only_integer) — audio.currentTime*1000 은 float 라 floor
-    setBookmarkTs(Math.floor(currentTimeMs))
-    setBookmarkLabel(computeBookmarkLabel(transcripts, currentTimeMs))
-    setShowBookmarkPopover(true)
-  }
-
-  async function handleSaveBookmark() {
-    setShowBookmarkPopover(false)
-    try {
-      const created = await createBookmark(meetingId, {
-        timestamp_ms: bookmarkTs,
-        label: bookmarkLabel.trim() || undefined,
-      })
-      setBookmarks((prev) =>
-        [...prev, created].sort((a, b) => a.timestamp_ms - b.timestamp_ms),
-      )
-    } catch (e: unknown) {
-      // 조용히 삼키면 "추가가 안 됨" 증상의 원인(권한 403·네트워크 등)을 사용자가 알 수 없다.
-      const msg = e instanceof Error ? e.message : '북마크 추가에 실패했습니다'
-      alert(`북마크 추가 실패: ${msg}`)
-    }
-  }
 
   function handleSeek(ms: number) {
     setSeekMs(ms)
