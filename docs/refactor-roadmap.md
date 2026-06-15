@@ -38,7 +38,7 @@
 | 8 | meetings#index 이중 스코프 통합 | Rails | perf | 中 | M | meetings_controller.rb:16-37 |
 | 9 | lib.rs(967) god분해+커맨드 레지스트리 | Tauri | maint | 中 | L | ✅ 완료: lib.rs 967→186. network.rs(110)+environment.rs(331)+services.rs(382). cargo 경고0, 순수 코드이동 |
 | 10 | blocknote·mermaid·html2pdf lazy load+청크 | Front | perf | 中 | L | package.json:19-21; AiSummaryPanel.tsx |
-| 11 | 누락 FK·체크제약 | DB | reli | 中 | M | schema.rb:175-176,278-286 |
+| 11 | 누락 FK·체크제약 | DB | reli | 中 | M | 🟡 1단계 done(refactor/db-foreign-keys): orphan 0인 5 FK 추가 — meetings.{team→cascade,folder→nullify,prev→nullify}, team_memberships.{team,user}→cascade. on_delete=기존 dependent 미러링(기능변경0). 768P+1기존stale. **남음(결정필요)**: transcripts/summaries cascade FK(garbage orphan 47+2 정리 선행), meetings/teams.created_by_id FK(창작자없는 실데이터 7+5 처리 결정) |
 | 12 | 멀티서버 SQLite→PostgreSQL | 데이터 | maint | 中 | L | **사용자 보류 — 지금 안 함** |
 
 ## 가로 테마 (영역 가로지름)
