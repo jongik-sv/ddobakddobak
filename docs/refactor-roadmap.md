@@ -35,7 +35,7 @@
 | 6 | Rust lock().unwrap() 39개 panic 제거 | Tauri | reli | 高 | M | lib.rs/bridge.rs/audio/* |
 | 7 | useLiveRecording(727)/MeetingPage(688) 분해+store 단일화 | Front | maint | 高 | M | useLiveRecording.ts:64-97,235-436; MeetingPage.tsx:127-140 |
 | 8 | meetings#index 이중 스코프 통합 | Rails | perf | 中 | M | meetings_controller.rb:16-37 |
-| 9 | lib.rs(967) god분해+커맨드 레지스트리 | Tauri | maint | 中 | L | ◑ 진행: network.rs 추출(967→869, cargo 경고0). environment·services 남음 |
+| 9 | lib.rs(967) god분해+커맨드 레지스트리 | Tauri | maint | 中 | L | ✅ 완료: lib.rs 967→186. network.rs(110)+environment.rs(331)+services.rs(382). cargo 경고0, 순수 코드이동 |
 | 10 | blocknote·mermaid·html2pdf lazy load+청크 | Front | perf | 中 | L | package.json:19-21; AiSummaryPanel.tsx |
 | 11 | 누락 FK·체크제약 | DB | reli | 中 | M | schema.rb:175-176,278-286 |
 | 12 | 멀티서버 SQLite→PostgreSQL | 데이터 | maint | 中 | L | **사용자 보류 — 지금 안 함** |
