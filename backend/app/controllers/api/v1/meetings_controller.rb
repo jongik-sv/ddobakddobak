@@ -341,40 +341,20 @@ module Api
 
         corrections = corrections.map { |c| { from: c[:from].to_s, to: c[:to].to_s } }
                                  .reject { |c| c[:from].blank? }
-
         return render json: { error: "No valid corrections provided" }, status: :unprocessable_entity if corrections.empty?
 
         before_active_notes = @meeting.current_notes_markdown.to_s
 
-        # 회의의 모든 텍스트 표면에 교정 적용 — active/비활성 summary 의 notes_markdown +
-        # 구조화 필드(key_points/decisions/discussion_details, JSON 평문 치환), action_items,
-        # decisions, blocks, transcripts. (사용자 메모는 원문 보존 — 제외)
-        @meeting.summaries.find_each do |summary|
-          attrs = {}
-          %i[notes_markdown key_points decisions discussion_details].each do |col|
-            original = summary[col]
-            next if original.blank?
-            corrected = apply_term_corrections(original, corrections)
-            attrs[col] = corrected if corrected != original
-          end
-          if attrs.any?
-            attrs[:generated_at] = Time.current
-            summary.update!(attrs)
-          end
-        end
+        entries = corrections.map { |c| { from: c[:from], to: c[:to], match_type: "literal" } }
+        corrected_count = MeetingGlossaryApplier.new(@meeting, entries).apply_all!
 
-        correct_records!(@meeting.action_items, :content, corrections)
-        correct_records!(@meeting.decisions, :content, corrections)
-        correct_records!(@meeting.blocks, :content, corrections)
-
-        # 트랜스크립트 원문 치환
-        corrected_count = correct_records!(@meeting.transcripts, :content, corrections)
+        # D2=A: 적용한 교정을 회의 사전에 자동 영속(upsert). best-effort.
+        persist_corrections_to_meeting_glossary(corrections)
 
         corrected_notes = @meeting.reload.current_notes_markdown.to_s
         if corrected_notes != before_active_notes
           @meeting.update!(last_user_edit_at: Time.current)
           @meeting.refresh_brief_summary!(corrected_notes)
-
           ActionCable.server.broadcast(@meeting.transcription_stream, {
             type: "meeting_notes_update",
             notes_markdown: corrected_notes
@@ -535,25 +515,15 @@ module Api
           @meeting.summaries.build(summary_type: latest_summary_type)
       end
 
-      def apply_term_corrections(text, corrections)
-        result = text
-        corrections.each { |c| result = result.gsub(c[:from], c[:to]) }
-        result
-      end
-
-      # 관계의 각 레코드에서 column 을 교정하고, 변경된 레코드만 저장한다. 변경 건수 반환.
-      def correct_records!(relation, column, corrections)
-        changed = 0
-        relation.find_each do |record|
-          original = record[column]
-          next if original.blank?
-          corrected = apply_term_corrections(original, corrections)
-          if corrected != original
-            record.update!(column => corrected)
-            changed += 1
-          end
+      def persist_corrections_to_meeting_glossary(corrections)
+        corrections.each do |c|
+          next if c[:from] == c[:to]
+          entry = @meeting.glossary_entries.find_or_initialize_by(from_text: c[:from], match_type: "literal")
+          entry.to_text = c[:to]
+          entry.enabled = true
+          entry.created_by_id ||= current_user.id
+          entry.save # 검증 실패는 조용히 스킵(영속화는 부가 기능)
         end
-        changed
       end
     end
   end
