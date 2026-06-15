@@ -102,7 +102,7 @@ Rails.application.routes.draw do
 
       # Folders
       resources :folders, only: %i[index create update destroy] do
-        resources :glossary_entries, only: %i[create], controller: "glossary_entries"
+        resources :glossary_entries, only: %i[index create], controller: "glossary_entries"
       end
       resources :glossary_entries, only: %i[update destroy]
 

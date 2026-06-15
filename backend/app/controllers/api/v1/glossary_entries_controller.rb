@@ -3,6 +3,14 @@ module Api
     class GlossaryEntriesController < ApplicationController
       before_action :authenticate_user!
 
+      def index
+        owner = resolve_owner
+        return render json: { error: "Not found" }, status: :not_found unless owner
+        return unless authorize_owner_edit!(owner)
+
+        render json: { entries: owner.glossary_entries.order(:id).map { |e| serialize(e) } }
+      end
+
       def create
         owner = resolve_owner
         return render json: { error: "Not found" }, status: :not_found unless owner

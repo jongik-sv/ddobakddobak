@@ -64,4 +64,30 @@ RSpec.describe "Api::V1::GlossaryEntries", type: :request do
       expect(GlossaryEntry.exists?(entry.id)).to be false
     end
   end
+
+  describe "GET /folders/:id/glossary_entries" do
+    before do
+      folder.glossary_entries.create!(from_text: "회진", to_text: "회의")
+      folder.glossary_entries.create!(from_text: "결과", to_text: "리포트")
+    end
+
+    it "폴더 편집자는 폴더 엔트리 목록을 조회한다" do
+      login_as(owner)
+      get "/api/v1/folders/#{folder.id}/glossary_entries"
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["entries"].map { |e| e["from_text"] }).to contain_exactly("회진", "결과")
+    end
+
+    it "무관한 사용자는 403" do
+      login_as(other)
+      get "/api/v1/folders/#{folder.id}/glossary_entries"
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "없는 폴더는 404" do
+      login_as(owner)
+      get "/api/v1/folders/999999/glossary_entries"
+      expect(response).to have_http_status(:not_found)
+    end
+  end
 end
