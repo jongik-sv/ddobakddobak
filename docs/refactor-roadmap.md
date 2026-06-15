@@ -17,6 +17,7 @@
 | 1 | #3 insert_all/delete_all 전환 | ❌ 폐기 | Transcript/Summary=FtsIndexable 콜백, Block=dependent:destroy → 스킵시 FTS깨짐/orphan=동작변경 |
 | 1 | #3 correct_records!/feedback/destroy 트랜잭션 | ⏸ 보류 | update!=FTS 필요. 표면 넓어 검토 패스 |
 | 1 | #8 meetings#index total을 status_counts에서 파생(COUNT쿼리 제거) | ✅ done | refactor/meetings-index-scope. status NOT NULL→합==전체. meetings+sharing 114P |
+| 3 | #10 라우트 React.lazy + idle prefetch(App.tsx) | ✅ done | App청크 gz596→45KB. blocknote 1.4MB(gz421) 초기그래프서 제거→에디터 진입시 로드. 1100 FE테스트 P. Tauri 동적import 기존검증 |
 
 > **미커밋**: `refactor/stage0-perf-safe` 브랜치에 단계0 2건. 커밋은 사용자 명시 요청 시.
 > **별건 stale 테스트**: `default_user_lookup_spec.rb:18` `사용자`→`관리자` 기대 불일치(commit 69df3a1 rename 후 미갱신). 내 변경 무관. 수정은 별도.
@@ -29,6 +30,7 @@
 | 2 | 인덱스(status·applied_to_minutes·speaker) | DB | perf | 高 | S | schema.rb:164,244,251 |
 | 3 | 전사·피드백·삭제 N쿼리→bulk | Rails | perf | 高 | M | file_transcription_job.rb:155-164; meetings_controller.rb:314-316,540-552 |
 | 4 | 설정 트리플 단일화+중앙로더 | 설정 | maint | 高 | M | config.yaml vs settings.yaml vs ddobak.env; load_env/app_settings/settings_controller 3중 |
+| | ⤷ **캐싱(perf) 측면 폐기** | | | | | 선행조사: load_env=부팅1회·PromptTemplate config.yaml=frozen상수1회·AppSettings settings.yaml=잡당1회뿐. 요청별 재파싱 없음. 캐싱=무이득+잡 즉시반영깨짐(stale) |
 | 5 | Sidecar gpu_lock 직렬화 완화+락/어댑터 누수 | Sidecar | perf | 高 | M | routers/stt.py:109,157-169; routers/llm.py:68-70 |
 | 6 | Rust lock().unwrap() 39개 panic 제거 | Tauri | reli | 高 | M | lib.rs/bridge.rs/audio/* |
 | 7 | useLiveRecording(727)/MeetingPage(688) 분해+store 단일화 | Front | maint | 高 | M | useLiveRecording.ts:64-97,235-436; MeetingPage.tsx:127-140 |

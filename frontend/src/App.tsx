@@ -1,23 +1,44 @@
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { loadAppSettings } from './stores/appSettingsStore'
 import { usePromptTemplateStore } from './stores/promptTemplateStore'
 import { useUiStore } from './stores/uiStore'
-import DashboardPage from './pages/DashboardPage'
 import MeetingsPage from './pages/MeetingsPage'
-import MeetingLivePage from './pages/MeetingLivePage'
-import LocalMeetingLivePage from './pages/LocalMeetingLivePage'
-import LocalMeetingDetailPage from './pages/LocalMeetingDetailPage'
-import LocalMeetingsHome from './pages/LocalMeetingsHome'
-import MeetingPage from './pages/MeetingPage'
-import MeetingViewerPage from './pages/MeetingViewerPage'
-import SearchPage from './pages/SearchPage'
 import AppLayout from './components/layout/AppLayout'
 import SetupGate from './components/SetupGate'
 import { AuthGuard } from './components/auth/AuthGuard'
 import SettingsModal from './components/settings/SettingsModal'
 import UserManagementModal from './components/settings/UserManagementModal'
 import { useRecordingRecovery } from './hooks/useRecordingRecovery'
+
+// 무거운/비랜딩 페이지는 지연 로드해 초기 App 청크에서 분리한다(@blocknote·lamejs 등).
+// 랜딩(/meetings = MeetingsPage)은 eager 유지 — 첫 페인트 경로는 그대로.
+// import 썽크를 한 곳(load)에 모아 lazy()와 idle prefetch가 동일 청크를 공유하게 한다.
+const load = {
+  DashboardPage: () => import('./pages/DashboardPage'),
+  MeetingLivePage: () => import('./pages/MeetingLivePage'),
+  LocalMeetingLivePage: () => import('./pages/LocalMeetingLivePage'),
+  LocalMeetingDetailPage: () => import('./pages/LocalMeetingDetailPage'),
+  LocalMeetingsHome: () => import('./pages/LocalMeetingsHome'),
+  MeetingPage: () => import('./pages/MeetingPage'),
+  MeetingViewerPage: () => import('./pages/MeetingViewerPage'),
+  SearchPage: () => import('./pages/SearchPage'),
+}
+
+const DashboardPage = lazy(load.DashboardPage)
+const MeetingLivePage = lazy(load.MeetingLivePage)
+const LocalMeetingLivePage = lazy(load.LocalMeetingLivePage)
+const LocalMeetingDetailPage = lazy(load.LocalMeetingDetailPage)
+const LocalMeetingsHome = lazy(load.LocalMeetingsHome)
+const MeetingPage = lazy(load.MeetingPage)
+const MeetingViewerPage = lazy(load.MeetingViewerPage)
+const SearchPage = lazy(load.SearchPage)
+
+/** 지연 로드 페이지 래퍼. fallback=null — 새 스피너 UI를 도입하지 않고(셸은 그대로 렌더),
+ *  청크 로딩 중 페이지 영역만 잠깐 비운다. idle prefetch로 콜드 진입 창은 사실상 사라진다. */
+function Suspended({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={null}>{children}</Suspense>
+}
 
 /** 인증 직후 1회: 강제종료로 업로드 누락된 데스크톱 녹음을 복구 업로드한다. */
 function RecordingRecovery() {
@@ -54,6 +75,21 @@ function App() {
     usePromptTemplateStore.getState().fetch()
   }, [])
 
+  // 첫 페인트 후 idle 시간에 지연 페이지 청크를 미리 받아둔다 → 실제 네비게이션 시 스피너/공백 없음.
+  useEffect(() => {
+    const warm = () => { for (const fn of Object.values(load)) void fn() }
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void) => number
+      cancelIdleCallback?: (id: number) => void
+    }
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(warm)
+      return () => w.cancelIdleCallback?.(id)
+    }
+    const id = window.setTimeout(warm, 1500)
+    return () => window.clearTimeout(id)
+  }, [])
+
   return (
     <Routes>
       {/* 오프라인(온디바이스) 라우트 — SetupGate/AuthGuard **밖**에서 렌더한다.
@@ -63,7 +99,7 @@ function App() {
         path="/local-meetings"
         element={
           <OfflineShell>
-            <LocalMeetingsHome />
+            <Suspended><LocalMeetingsHome /></Suspended>
           </OfflineShell>
         }
       />
@@ -71,7 +107,7 @@ function App() {
         path="/local-meetings/:localId/live"
         element={
           <OfflineShell>
-            <LocalMeetingLivePage />
+            <Suspended><LocalMeetingLivePage /></Suspended>
           </OfflineShell>
         }
       />
@@ -79,7 +115,7 @@ function App() {
         path="/local-meetings/:localId"
         element={
           <OfflineShell>
-            <LocalMeetingDetailPage />
+            <Suspended><LocalMeetingDetailPage /></Suspended>
           </OfflineShell>
         }
       />
@@ -101,7 +137,7 @@ function GatedApp() {
         path="/dashboard"
         element={
           <AppLayout>
-            <DashboardPage />
+            <Suspended><DashboardPage /></Suspended>
           </AppLayout>
         }
       />
@@ -109,7 +145,7 @@ function GatedApp() {
         path="/search"
         element={
           <AppLayout>
-            <SearchPage />
+            <Suspended><SearchPage /></Suspended>
           </AppLayout>
         }
       />
@@ -125,7 +161,7 @@ function GatedApp() {
         path="/meetings/:id/live"
         element={
           <AppLayout>
-            <MeetingLivePage />
+            <Suspended><MeetingLivePage /></Suspended>
           </AppLayout>
         }
       />
@@ -133,7 +169,7 @@ function GatedApp() {
         path="/meetings/:id/viewer"
         element={
           <AppLayout>
-            <MeetingViewerPage />
+            <Suspended><MeetingViewerPage /></Suspended>
           </AppLayout>
         }
       />
@@ -142,7 +178,7 @@ function GatedApp() {
         path="/meetings/:id"
         element={
           <AppLayout>
-            <MeetingPage />
+            <Suspended><MeetingPage /></Suspended>
           </AppLayout>
         }
       />
