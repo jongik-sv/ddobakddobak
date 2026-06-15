@@ -7,8 +7,8 @@ module Api
       include AudioStorage
 
       before_action :authenticate_user!
-      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize]
-      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary]
+      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary]
       # 멈춘 화자분리-재실행 자가복구: 조회/재실행 시 stale 면 completed 로 되돌려 버튼이 다시 보이게 함
       before_action -> { @meeting&.heal_stale_re_diarize! }, only: %i[show re_diarize]
 
@@ -364,6 +364,40 @@ module Api
         render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
       end
 
+      def glossary
+        folder = @meeting.folder
+        render json: {
+          meeting: { entries: @meeting.glossary_entries.order(:id).map { |e| glossary_entry_json(e) } },
+          folder: folder && {
+            folder: { id: folder.id, name: folder.name },
+            entries: folder.glossary_entries.order(:id).map { |e| glossary_entry_json(e) }
+          },
+          ancestors: (folder ? folder.ancestor_records : []).map do |f|
+            { folder: { id: f.id, name: f.name },
+              entries: f.glossary_entries.order(:id).map { |e| glossary_entry_json(e) } }
+          end,
+          resolved: GlossaryResolver.for(@meeting)
+        }
+      end
+
+      def reapply_glossary
+        entries = GlossaryResolver.for(@meeting)
+        before_active_notes = @meeting.current_notes_markdown.to_s
+        corrected_count = MeetingGlossaryApplier.new(@meeting, entries).apply_all!
+
+        corrected_notes = @meeting.reload.current_notes_markdown.to_s
+        if corrected_notes != before_active_notes
+          @meeting.update!(last_user_edit_at: Time.current)
+          @meeting.refresh_brief_summary!(corrected_notes)
+          ActionCable.server.broadcast(@meeting.transcription_stream, {
+            type: "meeting_notes_update",
+            notes_markdown: corrected_notes
+          })
+        end
+
+        render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
+      end
+
       def update_notes
         notes_markdown = params[:notes_markdown]
         return render json: { error: "notes_markdown is required" }, status: :unprocessable_entity if notes_markdown.nil?
@@ -513,6 +547,18 @@ module Api
       def find_or_create_active_summary
         @meeting.active_summary ||
           @meeting.summaries.build(summary_type: latest_summary_type)
+      end
+
+      def glossary_entry_json(entry)
+        {
+          id: entry.id,
+          from_text: entry.from_text,
+          to_text: entry.to_text,
+          match_type: entry.match_type,
+          enabled: entry.enabled,
+          owner_type: entry.owner_type,
+          owner_id: entry.owner_id
+        }
       end
 
       def persist_corrections_to_meeting_glossary(corrections)

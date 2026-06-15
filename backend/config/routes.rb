@@ -47,6 +47,8 @@ Rails.application.routes.draw do
           post :re_diarize
           post :regenerate_notes
           post :feedback
+          get  :glossary
+          post :reapply_glossary
           patch :update_notes
           post :audio, to: "meetings_audio#create"
           post :audio_chunk, to: "meetings_audio#chunk"
