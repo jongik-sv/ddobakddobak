@@ -96,10 +96,14 @@ Rails.application.routes.draw do
         end
         resources :contacts, only: %i[index update destroy],
                   controller: "meeting_contacts"
+        resources :glossary_entries, only: %i[create], controller: "glossary_entries"
       end
 
       # Folders
-      resources :folders, only: %i[index create update destroy]
+      resources :folders, only: %i[index create update destroy] do
+        resources :glossary_entries, only: %i[create], controller: "glossary_entries"
+      end
+      resources :glossary_entries, only: %i[update destroy]
 
       # Tags
       resources :tags, only: %i[index create update destroy]
