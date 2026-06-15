@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_15_000003) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_15_000004) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -286,11 +286,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000003) do
   add_foreign_key "meetings", "folders", on_delete: :nullify
   add_foreign_key "meetings", "meetings", column: "previous_meeting_id", on_delete: :nullify
   add_foreign_key "meetings", "teams", on_delete: :cascade
+  add_foreign_key "meetings", "users", column: "created_by_id"
   add_foreign_key "summaries", "meetings", on_delete: :cascade
   add_foreign_key "taggings", "tags"
   add_foreign_key "tags", "teams"
   add_foreign_key "team_memberships", "teams", on_delete: :cascade
   add_foreign_key "team_memberships", "users", on_delete: :cascade
+  add_foreign_key "teams", "users", column: "created_by_id"
   add_foreign_key "transcripts", "meetings", on_delete: :cascade
 
   # Virtual tables defined in this database.
