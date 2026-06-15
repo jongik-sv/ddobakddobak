@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_15_000008) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_15_000009) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -63,6 +63,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000008) do
     t.index ["parent_id"], name: "index_folders_on_parent_id"
     t.index ["shared"], name: "index_folders_on_shared"
     t.index ["team_id", "parent_id", "position"], name: "index_folders_on_team_id_and_parent_id_and_position"
+  end
+
+  create_table "glossary_entries", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.boolean "enabled", default: true, null: false
+    t.string "from_text", null: false
+    t.string "match_type", default: "literal", null: false
+    t.bigint "owner_id", null: false
+    t.string "owner_type", null: false
+    t.string "to_text", null: false
+    t.datetime "updated_at", null: false
+    t.index ["owner_type", "owner_id", "from_text", "match_type"], name: "idx_glossary_unique_from", unique: true
+    t.index ["owner_type", "owner_id"], name: "index_glossary_entries_on_owner_type_and_owner_id"
   end
 
   create_table "meeting_attachments", force: :cascade do |t|
