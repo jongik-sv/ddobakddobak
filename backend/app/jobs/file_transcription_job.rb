@@ -41,6 +41,7 @@ class FileTranscriptionJob < ApplicationJob
     # 3. Transcript 레코드 일괄 생성
     store_transcripts(meeting, result["segments"])
     apply_speaker_names(meeting)
+    apply_glossary_corrections(meeting)
     broadcast_progress(channel, 93, "트랜스크립트 저장 완료")
 
     if diarization_config["enable"]
@@ -180,6 +181,16 @@ class FileTranscriptionJob < ApplicationJob
     end
   rescue SidecarClient::SidecarError, SidecarClient::ConnectionError, SidecarClient::TimeoutError => e
     Rails.logger.warn "[FileTranscriptionJob] meeting=#{meeting.id} speaker_name 재적용 실패: #{e.message}"
+  end
+
+  # 폴더/회의 오타사전을 트랜스크립트에 자동 재적용(요약 생성 전). 실패해도 전사는 진행.
+  def apply_glossary_corrections(meeting)
+    entries = GlossaryResolver.for(meeting)
+    return if entries.empty?
+    count = MeetingGlossaryApplier.new(meeting, entries).apply_transcripts!
+    Rails.logger.info("[FileTranscriptionJob] glossary applied meeting=#{meeting.id} changed=#{count}")
+  rescue => e
+    Rails.logger.warn("[FileTranscriptionJob] glossary skip meeting=#{meeting.id} err=#{e.class}: #{e.message}")
   end
 
   def generate_summary(meeting)
