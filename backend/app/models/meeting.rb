@@ -35,6 +35,25 @@ class Meeting < ApplicationRecord
 
   enum :status, { pending: "pending", recording: "recording", transcribing: "transcribing", completed: "completed" }
 
+  # ── 오디오 길이 측정/캐시 ──
+  # audio_file_path 파일의 길이(ms)를 ffprobe로 측정한다. 파일이 없으면 0.
+  def measure_audio_duration_ms
+    path = audio_file_path
+    return 0 unless path.present? && File.exist?(path)
+
+    output = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 #{Shellwords.escape(path)}`.strip
+    (output.to_f * 1000).to_i
+  rescue StandardError
+    0
+  end
+
+  # 측정값을 audio_duration_ms 컬럼에 저장(콜백·검증 우회). audio_file_path가 바뀌는
+  # 쓰기 지점에서 호출해 컬럼이 항상 현재 파일 길이를 반영하게 한다(merge로 path가
+  # 그대로여도 내용이 커지므로 무조건 재측정한다).
+  def refresh_audio_duration!
+    update_column(:audio_duration_ms, measure_audio_duration_ms)
+  end
+
   # SQLite LIKE는 기본 ESCAPE 문자가 없어 sanitize_sql_like의 백슬래시 이스케이프가
   # 리터럴로 매치된다(%·_ 포함 검색어 오동작) — ESCAPE '\' 명시 필수.
   scope :search, ->(q) { where("title LIKE ? ESCAPE '\\'", "%#{sanitize_sql_like(q)}%") if q.present? }

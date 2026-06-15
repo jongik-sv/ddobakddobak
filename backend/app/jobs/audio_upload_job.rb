@@ -16,6 +16,7 @@ class AudioUploadJob < ApplicationJob
 
     if transcode_to_mp3(src, mp3_path)
       meeting.update!(audio_file_path: mp3_path)
+      meeting.refresh_audio_duration!
       cleanup_original(src)
       Rails.logger.info "[AudioUploadJob] meeting=#{meeting_id} mp3 변환 완료 #{mp3_path}"
     else

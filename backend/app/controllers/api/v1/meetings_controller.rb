@@ -102,6 +102,7 @@ module Api
         end
 
         meeting.update!(audio_file_path: audio_path)
+        meeting.refresh_audio_duration!
 
         # 백그라운드 처리 시작
         FileTranscriptionJob.perform_later(meeting.id)
@@ -244,6 +245,7 @@ module Api
           ended_at: nil,
           last_refined_seq: 0,
           audio_file_path: nil,
+          audio_duration_ms: nil,
           brief_summary: nil,
           last_reset_at: Time.current,
           last_user_edit_at: nil

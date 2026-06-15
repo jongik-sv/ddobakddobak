@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_15_000004) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_15_000005) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -141,6 +141,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000004) do
 
   create_table "meetings", force: :cascade do |t|
     t.text "attendees"
+    t.integer "audio_duration_ms"
     t.string "audio_file_path"
     t.string "brief_summary"
     t.datetime "created_at", null: false

@@ -10,7 +10,7 @@
 |------|------|:---:|------|
 | 0 | applied_to_minutes 복합 인덱스 | ✅ done | refactor/stage0-perf-safe |
 | 0 | meeting_serializable show full 3쿼리→1쿼리 | ✅ done | refactor/stage0-perf-safe |
-| 0 | ffprobe→컬럼 | ⏸ 연기→단계1 | 녹음중 회의 stale 위험, 종료조건 필요 |
+| 0 | ffprobe→컬럼 | ✅ done(#1과 통합) | 녹음중 stale 우려는 무효(chunk는 audio_file_path 미변경, .part 별도). 컬럼+쓰기처 refresh로 해결 |
 | 0 | Sidecar refine_locks cleanup | ⏸ 연기→단계1 | 제거 타이밍 잘못=직렬화 깨짐, 설계+테스트 필요 |
 | 0 | pdfExporter ID/scale | ❌ 폐기 | ID는 거짓양성(mermaid d접두 정상), scale↓=품질변경 |
 | 1 | #3 store_transcripts 트랜잭션 래핑(N커밋→1) | ✅ done | refactor/stage0-perf-safe. FTS콜백 유지·결과동일. job+search 26P |
@@ -27,7 +27,7 @@
 
 | # | 항목 | 영역 | 차원 | 임팩트 | 노력 | 근거 |
 |---|------|------|------|:---:|:---:|------|
-| 1 | 동기 ffprobe + 중복 aggregate 제거 | Rails | perf | 高 | S | meeting_serializable.rb:50-52,114-122 |
+| 1 | 동기 ffprobe + 중복 aggregate 제거 | Rails | perf | 高 | S | ✅ done(perf/audio-duration-column): aggregate는 serializer 3→1로 기완. ffprobe는 meetings.audio_duration_ms 컬럼 캐시로 — 쓰기처 4곳(import/audio create·finalize/mp3-job) refresh_audio_duration!, reset는 nil, serializer는 컬럼 우선·legacy lazy. 매 full show 서브프로세스 제거. 773P(+5 신규)·기능변경0 |
 | 2 | 인덱스(status·applied_to_minutes·speaker) | DB | perf | 高 | S | schema.rb:164,244,251 |
 | 3 | 전사·피드백·삭제 N쿼리→bulk | Rails | perf | 高 | M | file_transcription_job.rb:155-164; meetings_controller.rb:314-316,540-552 |
 | 4 | 설정 트리플 단일화+중앙로더 | 설정 | maint | 高 | M | config.yaml vs settings.yaml vs ddobak.env; load_env/app_settings/settings_controller 3중 |

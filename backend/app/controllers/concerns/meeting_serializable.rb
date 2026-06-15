@@ -50,7 +50,7 @@ module MeetingSerializable
       # transcripts를 한 번만 로드해 max 집계와 직렬화에 재사용(기존 3쿼리 → 1쿼리).
       # ended_at_ms / sequence_number는 NOT NULL이라 compact는 방어용(동작 동일).
       ordered_transcripts = meeting.transcripts.order(:started_at_ms).to_a
-      json[:audio_duration_ms] = audio_duration_ms(meeting)
+      json[:audio_duration_ms] = cached_audio_duration_ms(meeting)
       json[:last_transcript_end_ms] = ordered_transcripts.map(&:ended_at_ms).compact.max.to_i
       json[:last_sequence_number] = ordered_transcripts.map(&:sequence_number).compact.max.to_i
       json[:transcripts]   = serialize_transcripts(ordered_transcripts)
@@ -114,13 +114,15 @@ module MeetingSerializable
     end
   end
 
-  def audio_duration_ms(meeting)
-    path = meeting.audio_file_path
-    return 0 unless path.present? && File.exist?(path)
+  # audio_duration_ms 컬럼 우선. 컬럼이 비어있는 레거시 회의만 한 번 측정해 캐시한다
+  # (완료 회의의 오디오 파일은 불변이라 안전 — 이후 조회는 컬럼만 읽어 ffprobe 제거).
+  def cached_audio_duration_ms(meeting)
+    return meeting.audio_duration_ms unless meeting.audio_duration_ms.nil?
 
-    output = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 #{Shellwords.escape(path)}`.strip
-    (output.to_f * 1000).to_i
-  rescue StandardError
-    0
+    duration = meeting.measure_audio_duration_ms
+    if meeting.audio_file_path.present? && File.exist?(meeting.audio_file_path)
+      meeting.update_column(:audio_duration_ms, duration)
+    end
+    duration
   end
 end
