@@ -24,6 +24,24 @@ class Folder < ApplicationRecord
     path
   end
 
+  # admin 또는 이 폴더에 직속한 회의의 creator 면 편집 가능(폴더엔 소유 컬럼이 없음).
+  def editable_by?(user)
+    user.admin? || meetings.exists?(created_by_id: user.id)
+  end
+
+  # 가까운 → 먼 순서의 조상 Folder 레코드 (사이클 가드).
+  def ancestor_records
+    records = []
+    current = parent
+    seen = {}
+    while current && !seen[current.id]
+      seen[current.id] = true
+      records << current
+      current = current.parent
+    end
+    records
+  end
+
   # 타인 열람 가능 폴더 = 자신과 모든 조상이 shared일 때만(상속·폴더 우선).
   # 조상 중 하나라도 비공개면 false → 이 폴더와 모든 하위가 가려진다.
   # parent_id 순환(사이클)이 있어도 visited 가드로 무한루프 없이 종료.
