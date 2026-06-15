@@ -67,16 +67,22 @@ function GlossaryLevelTable({
   title: string
   level: GlossaryLevel
   warnMeetings?: boolean
-  onAdd: (d: GlossaryEntryInput) => void
+  onAdd: (d: GlossaryEntryInput) => Promise<void>
   onEdit: (id: number, d: Partial<GlossaryEntryInput>) => void
   onRemove: (id: number) => void
 }) {
   const [draft, setDraft] = useState<GlossaryEntryInput>({ from_text: '', to_text: '', match_type: 'literal' })
+  const [error, setError] = useState('')
 
-  const submit = () => {
+  const submit = async () => {
     if (!draft.from_text.trim() || !draft.to_text.trim()) return
-    onAdd(draft)
-    setDraft({ from_text: '', to_text: '', match_type: 'literal' })
+    setError('')
+    try {
+      await onAdd(draft)
+      setDraft({ from_text: '', to_text: '', match_type: 'literal' })
+    } catch {
+      setError('추가 실패 (정규식이 올바른지 확인하세요)')
+    }
   }
 
   return (
@@ -120,6 +126,7 @@ function GlossaryLevelTable({
         </select>
         <button onClick={submit} className="text-xs text-blue-500 hover:text-blue-700 shrink-0">추가</button>
       </div>
+      {error && <div className="text-[11px] text-red-500">{error}</div>}
     </div>
   )
 }
