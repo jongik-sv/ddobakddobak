@@ -101,8 +101,7 @@ module Api
           end
         end
 
-        meeting.update!(audio_file_path: audio_path)
-        meeting.refresh_audio_duration!
+        meeting.set_audio_file!(audio_path)
 
         # 백그라운드 처리 시작
         FileTranscriptionJob.perform_later(meeting.id)

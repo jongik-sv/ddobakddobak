@@ -15,8 +15,7 @@ class AudioUploadJob < ApplicationJob
     mp3_path = "#{src.sub(/#{Regexp.escape(File.extname(src))}\z/, '')}.mp3"
 
     if transcode_to_mp3(src, mp3_path)
-      meeting.update!(audio_file_path: mp3_path)
-      meeting.refresh_audio_duration!
+      meeting.set_audio_file!(mp3_path)
       cleanup_original(src)
       Rails.logger.info "[AudioUploadJob] meeting=#{meeting_id} mp3 변환 완료 #{mp3_path}"
     else

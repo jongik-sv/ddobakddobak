@@ -54,6 +54,14 @@ class Meeting < ApplicationRecord
     update_column(:audio_duration_ms, measure_audio_duration_ms)
   end
 
+  # audio_file_path를 바꾸는 모든 쓰기 지점의 단일 진입점. 경로를 저장(검증 실행)하고
+  # 곧바로 길이를 재측정·캐시해 path↔duration 결합을 모델에서 강제한다(콜백 부재 →
+  # 새 쓰기 지점이 refresh를 빠뜨리는 일 방지). 파일을 '비우는' reset 경로는 별개.
+  def set_audio_file!(path)
+    update!(audio_file_path: path)
+    refresh_audio_duration!
+  end
+
   # SQLite LIKE는 기본 ESCAPE 문자가 없어 sanitize_sql_like의 백슬래시 이스케이프가
   # 리터럴로 매치된다(%·_ 포함 검색어 오동작) — ESCAPE '\' 명시 필수.
   scope :search, ->(q) { where("title LIKE ? ESCAPE '\\'", "%#{sanitize_sql_like(q)}%") if q.present? }

@@ -48,11 +48,11 @@ module MeetingSerializable
       json[:previous_meeting_id] = meeting.previous_meeting_id
       json[:previous_meeting_title] = meeting.previous_meeting&.title
       # transcripts를 한 번만 로드해 max 집계와 직렬화에 재사용(기존 3쿼리 → 1쿼리).
-      # ended_at_ms / sequence_number는 NOT NULL이라 compact는 방어용(동작 동일).
+      # 빈 컬렉션이면 max가 nil → to_i로 0 (기존 .maximum(:col).to_i와 동일).
       ordered_transcripts = meeting.transcripts.order(:started_at_ms).to_a
       json[:audio_duration_ms] = cached_audio_duration_ms(meeting)
-      json[:last_transcript_end_ms] = ordered_transcripts.map(&:ended_at_ms).compact.max.to_i
-      json[:last_sequence_number] = ordered_transcripts.map(&:sequence_number).compact.max.to_i
+      json[:last_transcript_end_ms] = ordered_transcripts.map(&:ended_at_ms).max.to_i
+      json[:last_sequence_number] = ordered_transcripts.map(&:sequence_number).max.to_i
       json[:transcripts]   = serialize_transcripts(ordered_transcripts)
       json[:summary]       = serialize_summary(meeting)
       json[:action_items]  = serialize_action_items(meeting)

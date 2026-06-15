@@ -21,8 +21,7 @@ module Api
         end
 
         dest_path = save_or_merge_audio(audio_file, @meeting)
-        @meeting.update!(audio_file_path: dest_path)
-        @meeting.refresh_audio_duration!
+        @meeting.set_audio_file!(dest_path)
         AudioUploadJob.perform_later(meeting_id: @meeting.id)
 
         render json: { audio_available: true }, status: :created
@@ -62,8 +61,7 @@ module Api
           parts.each { |p| out.write(File.binread(p)) }
         end
 
-        @meeting.update!(audio_file_path: dest)
-        @meeting.refresh_audio_duration!
+        @meeting.set_audio_file!(dest)
         AudioUploadJob.perform_later(meeting_id: @meeting.id)
         FileUtils.rm_rf(dir)
 
