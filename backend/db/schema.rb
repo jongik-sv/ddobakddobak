@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_15_000006) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_15_000007) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -63,7 +63,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000006) do
     t.index ["parent_id"], name: "index_folders_on_parent_id"
     t.index ["shared"], name: "index_folders_on_shared"
     t.index ["team_id", "parent_id", "position"], name: "index_folders_on_team_id_and_parent_id_and_position"
-    t.index ["team_id"], name: "index_folders_on_team_id"
   end
 
   create_table "meeting_attachments", force: :cascade do |t|
@@ -81,7 +80,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000006) do
     t.integer "uploaded_by_id", null: false
     t.string "url"
     t.index ["meeting_id", "category", "position"], name: "idx_attachments_meeting_cat_pos"
-    t.index ["meeting_id"], name: "index_meeting_attachments_on_meeting_id"
     t.index ["uploaded_by_id"], name: "index_meeting_attachments_on_uploaded_by_id"
     t.check_constraint "category IN ('agenda','reference','minutes','business_card')", name: "chk_meeting_attachments_category"
     t.check_constraint "kind IN ('file','link')", name: "chk_meeting_attachments_kind"
@@ -94,7 +92,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000006) do
     t.integer "timestamp_ms", null: false
     t.datetime "updated_at", null: false
     t.index ["meeting_id", "timestamp_ms"], name: "index_meeting_bookmarks_on_meeting_id_and_timestamp_ms"
-    t.index ["meeting_id"], name: "index_meeting_bookmarks_on_meeting_id"
   end
 
   create_table "meeting_contacts", force: :cascade do |t|
@@ -130,7 +127,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000006) do
     t.integer "user_id", null: false
     t.index ["meeting_id", "role"], name: "idx_participants_meeting_role"
     t.index ["meeting_id", "user_id", "left_at"], name: "idx_participants_meeting_user_active"
-    t.index ["meeting_id"], name: "index_meeting_participants_on_meeting_id"
     t.index ["user_id"], name: "index_meeting_participants_on_user_id"
     t.check_constraint "role IN ('host','viewer')", name: "chk_meeting_participants_role"
   end
@@ -177,12 +173,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000006) do
     t.integer "transcription_progress", default: 0, null: false
     t.datetime "updated_at", null: false
     t.index ["created_by_id", "shared"], name: "index_meetings_on_created_by_id_and_shared"
-    t.index ["created_by_id"], name: "index_meetings_on_created_by_id"
     t.index ["folder_id"], name: "index_meetings_on_folder_id"
     t.index ["previous_meeting_id"], name: "index_meetings_on_previous_meeting_id"
     t.index ["share_code"], name: "index_meetings_on_share_code", unique: true
     t.index ["team_id", "status"], name: "index_meetings_on_team_id_and_status"
-    t.index ["team_id"], name: "index_meetings_on_team_id"
     t.check_constraint "source IN ('live','upload')", name: "chk_meetings_source"
     t.check_constraint "status IN ('pending','recording','transcribing','completed')", name: "chk_meetings_status"
     t.check_constraint "summary_verbosity IN ('very_concise','concise','standard','detailed','very_detailed')", name: "chk_meetings_summary_verbosity"
@@ -219,7 +213,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000006) do
     t.string "taggable_type", null: false
     t.datetime "updated_at", null: false
     t.index ["tag_id", "taggable_type", "taggable_id"], name: "index_taggings_uniqueness", unique: true
-    t.index ["tag_id"], name: "index_taggings_on_tag_id"
     t.index ["taggable_type", "taggable_id"], name: "index_taggings_on_taggable"
   end
 
@@ -230,7 +223,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000006) do
     t.integer "team_id"
     t.datetime "updated_at", null: false
     t.index ["team_id", "name"], name: "index_tags_on_team_id_and_name", unique: true
-    t.index ["team_id"], name: "index_tags_on_team_id"
   end
 
   create_table "team_memberships", force: :cascade do |t|
