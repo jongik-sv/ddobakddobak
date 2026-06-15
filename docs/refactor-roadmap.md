@@ -34,7 +34,7 @@
 | | ⤷ **캐싱(perf) 측면 폐기** | | | | | 선행조사: load_env=부팅1회·PromptTemplate config.yaml=frozen상수1회·AppSettings settings.yaml=잡당1회뿐. 요청별 재파싱 없음. 캐싱=무이득+잡 즉시반영깨짐(stale) |
 | 5 | Sidecar gpu_lock 직렬화 완화+락/어댑터 누수 | Sidecar | perf | 高 | M | routers/stt.py:109,157-169; routers/llm.py:68-70 |
 | 6 | Rust lock().unwrap() panic 제거 | Tauri | reli | 高 | M | ✅ 완료: sync_ext::LockExt::lock_safe()(poison 복구) 도입, 프로덕션 34 사이트 변환(bridge5/services10/audio mod8/recorder5/env3/win2/mac1). bridge 테스트 5개 유지. check+clippy(-D warnings)+test20 PASS. happy-path 무변경 |
-| 7 | useLiveRecording(727)/MeetingPage(688) 분해+store 단일화 | Front | maint | 高 | M | useLiveRecording.ts:64-97,235-436; MeetingPage.tsx:127-140 |
+| 7 | useLiveRecording(727)/MeetingPage(688) 분해+store 단일화 | Front | maint | 高 | M | 🟡 분해 done(refactor/frontend-god): useLiveRecording 727→602(+useNavigationGuards,useRecordingSummaryTimer), MeetingPage 688→535(+useBookmarks,useTermCorrections,useNotesRegeneration). 순수 코드이동, vite build+1100 테스트 P. **남음**: store 단일화(MeetingPage transcripts 로컬 state ↔ transcriptStore.finals 이중소스, 고위험 별도 트랙) |
 | 8 | meetings#index 이중 스코프 통합 | Rails | perf | 中 | M | meetings_controller.rb:16-37 |
 | 9 | lib.rs(967) god분해+커맨드 레지스트리 | Tauri | maint | 中 | L | ✅ 완료: lib.rs 967→186. network.rs(110)+environment.rs(331)+services.rs(382). cargo 경고0, 순수 코드이동 |
 | 10 | blocknote·mermaid·html2pdf lazy load+청크 | Front | perf | 中 | L | package.json:19-21; AiSummaryPanel.tsx |
