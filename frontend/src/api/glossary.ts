@@ -39,6 +39,10 @@ export async function createMeetingGlossaryEntry(meetingId: number, data: Glossa
   return apiClient.post(`meetings/${meetingId}/glossary_entries`, { json: data }).json()
 }
 
+export async function getFolderGlossaryEntries(folderId: number): Promise<{ entries: GlossaryEntry[] }> {
+  return apiClient.get(`folders/${folderId}/glossary_entries`).json()
+}
+
 export async function createFolderGlossaryEntry(folderId: number, data: GlossaryEntryInput): Promise<{ entry: GlossaryEntry }> {
   return apiClient.post(`folders/${folderId}/glossary_entries`, { json: data }).json()
 }

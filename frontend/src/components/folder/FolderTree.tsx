@@ -11,6 +11,7 @@ import {
   FolderPlus,
   Globe,
   Lock,
+  SpellCheck,
 } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useFolderStore } from '../../stores/folderStore'
@@ -19,6 +20,7 @@ import { useUiStore } from '../../stores/uiStore'
 import type { FolderNode } from '../../api/folders'
 import type { SelectedFolder } from '../../stores/folderStore'
 import CreateFolderDialog from './CreateFolderDialog'
+import GlossaryDialog from './GlossaryDialog'
 import { initDrag } from '../../utils/dragState'
 
 function countAllFolders(nodes: FolderNode[]): number {
@@ -43,6 +45,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
   const [showMenu, setShowMenu] = useState(false)
   const [showRenameDialog, setShowRenameDialog] = useState(false)
   const [showSubfolderDialog, setShowSubfolderDialog] = useState(false)
+  const [showGlossaryDialog, setShowGlossaryDialog] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const isExpanded = expandedFolderIds.has(folder.id)
@@ -178,6 +181,16 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
               <button
                 onClick={(e) => {
                   e.stopPropagation()
+                  setShowMenu(false)
+                  setShowGlossaryDialog(true)
+                }}
+                className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm hover:bg-muted transition-colors"
+              >
+                <SpellCheck className="w-3.5 h-3.5" /> 오타 사전
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
                   handleDelete()
                 }}
                 className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm text-red-600 hover:bg-red-50 transition-colors"
@@ -208,6 +221,9 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
           onConfirm={handleCreateSubfolder}
           onClose={() => setShowSubfolderDialog(false)}
         />
+      )}
+      {showGlossaryDialog && (
+        <GlossaryDialog folderId={folder.id} folderName={folder.name} onClose={() => setShowGlossaryDialog(false)} />
       )}
     </>
   )
