@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI):
     app.state.summarizer = LLMSummarizer()
     app.state.engine_lock = asyncio.Lock()
     app.state.gpu_lock = asyncio.Lock()  # Metal GPU 동시 접근 방지
-    app.state.refine_locks: dict[str, asyncio.Lock] = {}  # 회의별 LLM 동시 호출 방지
+    app.state.refine_locks = {}  # 회의별 LLM 동시 호출 방지 (값=락+waiter 카운트 entry, llm.refine_notes가 관리·정리)
 
     yield
 

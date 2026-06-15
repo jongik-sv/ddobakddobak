@@ -32,7 +32,7 @@
 | 3 | 전사·피드백·삭제 N쿼리→bulk | Rails | perf | 高 | M | file_transcription_job.rb:155-164; meetings_controller.rb:314-316,540-552 |
 | 4 | 설정 트리플 단일화+중앙로더 | 설정 | maint | 高 | M | config.yaml vs settings.yaml vs ddobak.env; load_env/app_settings/settings_controller 3중 |
 | | ⤷ **캐싱(perf) 측면 폐기** | | | | | 선행조사: load_env=부팅1회·PromptTemplate config.yaml=frozen상수1회·AppSettings settings.yaml=잡당1회뿐. 요청별 재파싱 없음. 캐싱=무이득+잡 즉시반영깨짐(stale) |
-| 5 | Sidecar gpu_lock 직렬화 완화+락/어댑터 누수 | Sidecar | perf | 高 | M | routers/stt.py:109,157-169; routers/llm.py:68-70 |
+| 5 | Sidecar gpu_lock 직렬화 완화+락/어댑터 누수 | Sidecar | perf | 高 | M | 🟡 누수 part done(refactor/sidecar-refine-lock-leak): refine_locks dict가 meeting_title별 asyncio.Lock 영구누적→waiter 카운트 entry로 0일 때 제거(직렬화 보존, 기능변경0). 신규 test_refine_locks 3 PASS. stt.py file_adapter는 이미 finally+gc(누수 없음). **보류**: gpu_lock 직렬화 완화=동작(동시성) 변경이라 철칙 위반→제외 |
 | 6 | Rust lock().unwrap() panic 제거 | Tauri | reli | 高 | M | ✅ 완료: sync_ext::LockExt::lock_safe()(poison 복구) 도입, 프로덕션 34 사이트 변환(bridge5/services10/audio mod8/recorder5/env3/win2/mac1). bridge 테스트 5개 유지. check+clippy(-D warnings)+test20 PASS. happy-path 무변경 |
 | 7 | useLiveRecording(727)/MeetingPage(688) 분해+store 단일화 | Front | maint | 高 | M | 🟡 분해 done(refactor/frontend-god): useLiveRecording 727→602(+useNavigationGuards,useRecordingSummaryTimer), MeetingPage 688→535(+useBookmarks,useTermCorrections,useNotesRegeneration). 순수 코드이동, vite build+1100 테스트 P. **남음**: store 단일화(MeetingPage transcripts 로컬 state ↔ transcriptStore.finals 이중소스, 고위험 별도 트랙) |
 | 8 | meetings#index 이중 스코프 통합 | Rails | perf | 中 | M | meetings_controller.rb:16-37 |
