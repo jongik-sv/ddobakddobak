@@ -15,7 +15,7 @@ class GlossaryApplication
       re = Regexp.new(entry[:from].to_s, timeout: REGEX_TIMEOUT)
       text.gsub(re, entry[:to].to_s)
     else
-      text.gsub(entry[:from].to_s, entry[:to].to_s)
+      text.gsub(entry[:from].to_s) { entry[:to].to_s }
     end
   rescue Regexp::TimeoutError, RegexpError => err
     Rails.logger.warn("[glossary] regex skip from=#{entry[:from].inspect} err=#{err.class}")
