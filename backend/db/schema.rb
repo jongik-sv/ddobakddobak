@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_15_000005) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_15_000006) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -22,6 +22,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000005) do
     t.datetime "updated_at", null: false
     t.index ["assignee_id"], name: "index_action_items_on_assignee_id"
     t.index ["meeting_id"], name: "index_action_items_on_meeting_id"
+    t.check_constraint "status IN ('todo','in_progress','done')", name: "chk_action_items_status"
   end
 
   create_table "blocks", force: :cascade do |t|
@@ -33,6 +34,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000005) do
     t.float "position", null: false
     t.datetime "updated_at", null: false
     t.index ["meeting_id", "position"], name: "index_blocks_on_meeting_id_and_position"
+    t.check_constraint "block_type IN ('text','heading1','heading2','heading3','bullet_list','numbered_list','checkbox','quote','divider')", name: "chk_blocks_block_type"
   end
 
   create_table "decisions", force: :cascade do |t|
@@ -47,6 +49,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000005) do
     t.datetime "updated_at", null: false
     t.index ["meeting_id"], name: "index_decisions_on_meeting_id"
     t.index ["status"], name: "index_decisions_on_status"
+    t.check_constraint "status IN ('active','revised','cancelled')", name: "chk_decisions_status"
   end
 
   create_table "folders", force: :cascade do |t|
@@ -80,6 +83,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000005) do
     t.index ["meeting_id", "category", "position"], name: "idx_attachments_meeting_cat_pos"
     t.index ["meeting_id"], name: "index_meeting_attachments_on_meeting_id"
     t.index ["uploaded_by_id"], name: "index_meeting_attachments_on_uploaded_by_id"
+    t.check_constraint "category IN ('agenda','reference','minutes','business_card')", name: "chk_meeting_attachments_category"
+    t.check_constraint "kind IN ('file','link')", name: "chk_meeting_attachments_kind"
   end
 
   create_table "meeting_bookmarks", force: :cascade do |t|
@@ -127,6 +132,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000005) do
     t.index ["meeting_id", "user_id", "left_at"], name: "idx_participants_meeting_user_active"
     t.index ["meeting_id"], name: "index_meeting_participants_on_meeting_id"
     t.index ["user_id"], name: "index_meeting_participants_on_user_id"
+    t.check_constraint "role IN ('host','viewer')", name: "chk_meeting_participants_role"
   end
 
   create_table "meeting_templates", force: :cascade do |t|
@@ -177,6 +183,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000005) do
     t.index ["share_code"], name: "index_meetings_on_share_code", unique: true
     t.index ["team_id", "status"], name: "index_meetings_on_team_id_and_status"
     t.index ["team_id"], name: "index_meetings_on_team_id"
+    t.check_constraint "source IN ('live','upload')", name: "chk_meetings_source"
+    t.check_constraint "status IN ('pending','recording','transcribing','completed')", name: "chk_meetings_status"
+    t.check_constraint "summary_verbosity IN ('very_concise','concise','standard','detailed','very_detailed')", name: "chk_meetings_summary_verbosity"
   end
 
   create_table "prompt_templates", force: :cascade do |t|
@@ -200,6 +209,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000005) do
     t.string "summary_type", default: "final", null: false
     t.datetime "updated_at", null: false
     t.index ["meeting_id"], name: "index_summaries_on_meeting_id"
+    t.check_constraint "summary_type IN ('realtime','final')", name: "chk_summaries_summary_type"
   end
 
   create_table "taggings", force: :cascade do |t|
@@ -231,6 +241,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000005) do
     t.integer "user_id", null: false
     t.index ["team_id"], name: "index_team_memberships_on_team_id"
     t.index ["user_id", "team_id"], name: "index_team_memberships_on_user_id_and_team_id", unique: true
+    t.check_constraint "role IN ('admin','member')", name: "chk_team_memberships_role"
   end
 
   create_table "teams", force: :cascade do |t|
@@ -275,6 +286,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000005) do
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["jti"], name: "index_users_on_jti", unique: true
     t.index ["refresh_token_jti"], name: "index_users_on_refresh_token_jti", unique: true
+    t.check_constraint "role IN ('admin','member')", name: "chk_users_role"
   end
 
   add_foreign_key "meeting_bookmarks", "meetings"
