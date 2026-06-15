@@ -29,12 +29,16 @@ module Api
         # 상태별 카운트는 status 필터 적용 전 스코프에서 계산 (탭 선택과 무관하게 정확)
         status_counts = scope.group(:status).count
 
+        # total은 status_counts에서 파생 — 별도 COUNT 쿼리(비싼 search/date WHERE 재실행) 제거.
+        # by_status는 scope에 where(status:)만 더하므로 동일 집합이고, status는 NOT NULL이라
+        # 필터 없을 때 그룹 합 == 전체. 값은 meetings.count와 동일.
+        total = params[:status].present? ? (status_counts[params[:status]] || 0) : status_counts.values.sum
+
         meetings = scope.by_status(params[:status])
-        total    = meetings.count
-        meetings = meetings.includes(:creator, :tags, :meeting_attachments)
-                           .order(created_at: :desc)
-                           .limit(pagination_per)
-                           .offset((pagination_page - 1) * pagination_per)
+                        .includes(:creator, :tags, :meeting_attachments)
+                        .order(created_at: :desc)
+                        .limit(pagination_per)
+                        .offset((pagination_page - 1) * pagination_per)
 
         render json: {
           meetings: meetings.map { |m| meeting_json(m) },

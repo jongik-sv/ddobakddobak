@@ -16,6 +16,7 @@
 | 1 | #3 store_transcripts 트랜잭션 래핑(N커밋→1) | ✅ done | refactor/stage0-perf-safe. FTS콜백 유지·결과동일. job+search 26P |
 | 1 | #3 insert_all/delete_all 전환 | ❌ 폐기 | Transcript/Summary=FtsIndexable 콜백, Block=dependent:destroy → 스킵시 FTS깨짐/orphan=동작변경 |
 | 1 | #3 correct_records!/feedback/destroy 트랜잭션 | ⏸ 보류 | update!=FTS 필요. 표면 넓어 검토 패스 |
+| 1 | #8 meetings#index total을 status_counts에서 파생(COUNT쿼리 제거) | ✅ done | refactor/meetings-index-scope. status NOT NULL→합==전체. meetings+sharing 114P |
 
 > **미커밋**: `refactor/stage0-perf-safe` 브랜치에 단계0 2건. 커밋은 사용자 명시 요청 시.
 > **별건 stale 테스트**: `default_user_lookup_spec.rb:18` `사용자`→`관리자` 기대 불일치(commit 69df3a1 rename 후 미갱신). 내 변경 무관. 수정은 별도.
