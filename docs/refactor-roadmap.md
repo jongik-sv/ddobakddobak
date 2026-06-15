@@ -38,7 +38,7 @@
 | 8 | meetings#index 이중 스코프 통합 | Rails | perf | 中 | M | meetings_controller.rb:16-37 |
 | 9 | lib.rs(967) god분해+커맨드 레지스트리 | Tauri | maint | 中 | L | ✅ 완료: lib.rs 967→186. network.rs(110)+environment.rs(331)+services.rs(382). cargo 경고0, 순수 코드이동 |
 | 10 | blocknote·mermaid·html2pdf lazy load+청크 | Front | perf | 中 | L | package.json:19-21; AiSummaryPanel.tsx |
-| 11 | 누락 FK·체크제약 | DB | reli | 中 | M | ✅ done(3단계): ①orphan0 5FK(meetings.{team→cascade,folder/prev→nullify}, team_memberships.{team,user}→cascade) ②garbage 49행 정리+stale FTS sweep+transcripts/summaries→meetings cascade ③창작자 orphan 12행(회의7+팀5) desktop@local 재할당+meetings/teams.created_by_id→users FK(restrict). on_delete=dependent 미러링/restrict=meeting_contacts패턴(기능변경0). 768P+1기존stale, orphan0·FTS0. 체크제약은 미착수(별건) |
+| 11 | 누락 FK·체크제약 | DB | reli | 中 | M | ✅ done(3단계): ①orphan0 5FK(meetings.{team→cascade,folder/prev→nullify}, team_memberships.{team,user}→cascade) ②garbage 49행 정리+stale FTS sweep+transcripts/summaries→meetings cascade ③창작자 orphan 12행(회의7+팀5) desktop@local 재할당+meetings/teams.created_by_id→users FK(restrict). on_delete=dependent 미러링/restrict=meeting_contacts패턴(기능변경0). 768P+1기존stale, orphan0·FTS0. ④체크제약 done(20260615000006): 12 CHECK/9테이블, 모델 inclusion/enum 미러(기능변경0). 제외=content_type(조건부)·summary_restructure(boolean). 773P+1기존stale |
 | 12 | 멀티서버 SQLite→PostgreSQL | 데이터 | maint | 中 | L | **사용자 보류 — 지금 안 함** |
 
 ## 가로 테마 (영역 가로지름)
