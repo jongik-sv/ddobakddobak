@@ -29,6 +29,7 @@ import { BookmarkPopover } from '../components/meeting/BookmarkPopover'
 import { MemoEditorPanel } from '../components/meeting/MemoEditorPanel'
 import { TranscribingProgress } from '../components/meeting/TranscribingProgress'
 import { TermCorrectionDetails } from '../components/meeting/TermCorrectionDetails'
+import { GlossaryPanel } from '../components/meeting/GlossaryPanel'
 import { MeetingActionHeader } from '../components/meeting/MeetingActionHeader'
 import { MeetingActions } from '../components/meeting/MeetingActions'
 import { MeetingDetailTopBar } from '../components/meeting/MeetingDetailTopBar'
@@ -457,6 +458,11 @@ export default function MeetingPage() {
           onRemove={removeCorrectionRow}
           onApply={handleApplyCorrections}
         />
+      )}
+
+      {/* 오타 사전 섹션 */}
+      {meeting?.status === 'completed' && meeting?.id && (
+        <GlossaryPanel meetingId={meeting.id} />
       )}
 
       {/* 미니 오디오 플레이어(fixed bottom)가 하단 콘텐츠를 가리지 않도록 스페이서 (모바일) */}
