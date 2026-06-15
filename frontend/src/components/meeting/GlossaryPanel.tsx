@@ -4,7 +4,7 @@ import type { GlossaryEntry, GlossaryLevel, GlossaryEntryInput } from '../../api
 
 /** 폴더별 오타사전 패널 — 상위폴더들 → 현재폴더 → 현재회의 3단 테이블 (회의 상세 하단) */
 export function GlossaryPanel({ meetingId }: { meetingId: number }) {
-  const { view, status, addMeetingEntry, addFolderEntry, editEntry, removeEntry, reapply } = useGlossary(meetingId)
+  const { view, status, addMeetingEntry, addFolderEntry, editEntry, removeEntry, reapply, applyEntry } = useGlossary(meetingId)
 
   if (!view) return null
 
@@ -27,6 +27,7 @@ export function GlossaryPanel({ meetingId }: { meetingId: number }) {
               onAdd={(d) => addFolderEntry(lvl.folder.id, d)}
               onEdit={editEntry}
               onRemove={removeEntry}
+              onApply={applyEntry}
             />
           ))}
 
@@ -38,6 +39,7 @@ export function GlossaryPanel({ meetingId }: { meetingId: number }) {
               onAdd={(d) => addFolderEntry(view.folder!.folder.id, d)}
               onEdit={editEntry}
               onRemove={removeEntry}
+              onApply={applyEntry}
             />
           )}
 
@@ -47,6 +49,7 @@ export function GlossaryPanel({ meetingId }: { meetingId: number }) {
             onAdd={(d) => addMeetingEntry(d)}
             onEdit={editEntry}
             onRemove={removeEntry}
+            onApply={applyEntry}
           />
 
           <button
@@ -62,7 +65,7 @@ export function GlossaryPanel({ meetingId }: { meetingId: number }) {
 }
 
 function GlossaryLevelTable({
-  title, level, warnMeetings, onAdd, onEdit, onRemove,
+  title, level, warnMeetings, onAdd, onEdit, onRemove, onApply,
 }: {
   title: string
   level: GlossaryLevel
@@ -70,6 +73,7 @@ function GlossaryLevelTable({
   onAdd: (d: GlossaryEntryInput) => Promise<void>
   onEdit: (id: number, d: Partial<GlossaryEntryInput>) => void
   onRemove: (id: number) => void
+  onApply: (id: number) => Promise<void>
 }) {
   const [draft, setDraft] = useState<GlossaryEntryInput>({ from_text: '', to_text: '', match_type: 'literal' })
   const [error, setError] = useState('')
@@ -101,6 +105,7 @@ function GlossaryLevelTable({
             <input type="checkbox" checked={e.enabled} onChange={(ev) => onEdit(e.id, { enabled: ev.target.checked })} />
             사용
           </label>
+          <button onClick={() => onApply(e.id)} className="text-[11px] text-blue-600 hover:text-blue-800 shrink-0" title="이 항목만 적용">적용</button>
           <button onClick={() => onRemove(e.id)} className="w-6 h-6 text-gray-400 hover:text-red-500" title="삭제">&times;</button>
         </div>
       ))}

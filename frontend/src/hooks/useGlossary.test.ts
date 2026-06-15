@@ -14,6 +14,7 @@ vi.mock('../api/glossary', () => ({
   updateGlossaryEntry: vi.fn(async () => ({ entry: { id: 1, from_text: 'a', to_text: 'z', match_type: 'literal', enabled: true, owner_type: 'Meeting', owner_id: 1 } })),
   deleteGlossaryEntry: vi.fn(async () => {}),
   reapplyGlossary: vi.fn(async () => ({ notes_markdown: '', corrected_transcripts: 3 })),
+  applyGlossaryEntry: vi.fn(async () => ({ notes_markdown: '', corrected_transcripts: 1 })),
 }))
 
 describe('useGlossary', () => {
@@ -32,5 +33,14 @@ describe('useGlossary', () => {
     await act(async () => { await result.current.reapply() })
     expect(api.reapplyGlossary).toHaveBeenCalledWith(1)
     expect(api.getGlossary).toHaveBeenCalledTimes(2) // 초기 + reapply 후
+  })
+
+  it('applyEntry 호출 시 해당 엔트리를 적용하고 재조회', async () => {
+    const api = await import('../api/glossary')
+    const { result } = renderHook(() => useGlossary(1))
+    await waitFor(() => expect(result.current.view).not.toBeNull())
+    await act(async () => { await result.current.applyEntry(1) })
+    expect(api.applyGlossaryEntry).toHaveBeenCalledWith(1, 1)
+    expect(api.getGlossary).toHaveBeenCalledTimes(2) // 초기 + 적용 후
   })
 })

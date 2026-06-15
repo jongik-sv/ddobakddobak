@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   getGlossary, createMeetingGlossaryEntry, createFolderGlossaryEntry,
-  updateGlossaryEntry, deleteGlossaryEntry, reapplyGlossary,
+  updateGlossaryEntry, deleteGlossaryEntry, reapplyGlossary, applyGlossaryEntry,
 } from '../api/glossary'
 import type { GlossaryView, GlossaryEntryInput } from '../api/glossary'
 
@@ -54,5 +54,18 @@ export function useGlossary(meetingId: number) {
     }
   }, [meetingId, load])
 
-  return { view, loading, status, reload: load, addMeetingEntry, addFolderEntry, editEntry, removeEntry, reapply }
+  const applyEntry = useCallback(async (entryId: number) => {
+    setStatus('적용 중...')
+    try {
+      const r = await applyGlossaryEntry(meetingId, entryId)
+      setStatus(`적용 완료 (트랜스크립트 ${r.corrected_transcripts}건 수정)`)
+      await load()
+      setTimeout(() => setStatus(''), 3000)
+    } catch {
+      setStatus('적용 실패')
+      setTimeout(() => setStatus(''), 3000)
+    }
+  }, [meetingId, load])
+
+  return { view, loading, status, reload: load, addMeetingEntry, addFolderEntry, editEntry, removeEntry, reapply, applyEntry }
 }

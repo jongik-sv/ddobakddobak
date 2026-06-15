@@ -54,3 +54,7 @@ export async function deleteGlossaryEntry(id: number): Promise<void> {
 export async function reapplyGlossary(meetingId: number): Promise<{ notes_markdown: string; corrected_transcripts: number }> {
   return apiClient.post(`meetings/${meetingId}/reapply_glossary`, { timeout: 60000 }).json()
 }
+
+export async function applyGlossaryEntry(meetingId: number, entryId: number): Promise<{ notes_markdown: string; corrected_transcripts: number }> {
+  return apiClient.post(`meetings/${meetingId}/apply_glossary_entry`, { json: { entry_id: entryId }, timeout: 60000 }).json()
+}
