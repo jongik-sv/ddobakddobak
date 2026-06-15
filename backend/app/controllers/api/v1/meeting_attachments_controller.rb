@@ -25,12 +25,15 @@ module Api
         attrs = {}
         attrs[:display_name] = params[:display_name] if params.key?(:display_name)
 
+        old_category = @attachment.category
         if params.key?(:category) && params[:category] != @attachment.category
           attrs[:category] = params[:category]
           attrs[:position] = next_position_for(params[:category])
         end
 
         if @attachment.update(attrs)
+          # 카테고리가 agenda 로/에서 바뀌면 안건 참고자료를 재계산한다.
+          recompute_agenda_reference! if [ old_category, @attachment.category ].include?("agenda") && old_category != @attachment.category
           render json: { attachment: attachment_json(@attachment) }
         else
           render json: { errors: @attachment.errors.full_messages }, status: :unprocessable_entity
@@ -38,7 +41,9 @@ module Api
       end
 
       def destroy
+        was_agenda = @attachment.category == "agenda"
         @attachment.destroy
+        recompute_agenda_reference! if was_agenda
         head :no_content
       end
 
@@ -67,6 +72,20 @@ module Api
       end
 
       private
+
+      # 안건(agenda) 첨부 변경 시 압축 캐시(meeting.agenda_reference)를 비동기 재계산.
+      def recompute_agenda_reference!
+        AgendaReferenceJob.perform_later(@meeting.id)
+      end
+
+      # 안건 파일 생성: 텍스트(md/txt)는 바로 압축 재계산, 비텍스트는 추출 잡(추출 후 RefJob 체이닝).
+      def enqueue_agenda_processing(attachment)
+        if AgendaReferenceJob::AGENDA_TEXT_TYPES.include?(attachment.content_type)
+          recompute_agenda_reference!
+        else
+          AgendaExtractionJob.perform_later(attachment.id)
+        end
+      end
 
       def set_attachment
         @attachment = @meeting.meeting_attachments.find_by(id: params[:id])
@@ -106,6 +125,7 @@ module Api
 
         if attachment.save
           CardExtractionJob.perform_later(attachment.id) if attachment.category == "business_card"
+          enqueue_agenda_processing(attachment) if attachment.category == "agenda"
           render json: { attachment: attachment_json(attachment) }, status: :created
         else
           FileUtils.rm_f(dest_path)

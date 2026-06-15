@@ -48,6 +48,13 @@ class MeetingSummarizationJob < ApplicationJob
     LlmService.new(llm_config: llm_config)
   end
 
+  # realtime/타이머 경로의 안건 주입값: 업로드 후 아직 한 번도 주입 안 됐을 때만(applied_at nil)
+  # 압축 안건을 반환한다. 이미 주입됐으면 nil(재주입 안 함). final 은 이 헬퍼를 쓰지 않고 항상 주입.
+  def realtime_agenda_reference(meeting)
+    return nil if meeting.agenda_reference_applied_at.present?
+    meeting.agenda_reference.presence
+  end
+
   # 사용자 편집/초기화가 이 잡의 enqueue 이후에 일어났으면 잡을 폐기한다.
   # - 사용자가 회의록을 직접 수정한 경우, 우리가 LLM으로 덮어쓰면 안 됨.
   # - 회의가 reset_content로 :pending이 되었으면 잔여 잡은 무시.
@@ -105,6 +112,10 @@ class MeetingSummarizationJob < ApplicationJob
     # 이전 회의 참고: 첫 요약 직전, 이전 회의록을 시드로 깐다(요약 0건일 때만, 멱등).
     meeting.seed_summary_from_previous!(summary_type: "realtime")
 
+    # 안건 자료 1회 주입: 업로드 후 첫 요약(applied_at nil)에만 주입한다. 성공 시 플래그를 채워
+    # 이후 매분 cron 틱마다 재주입(비용 폭증)을 막는다.
+    agenda_ref = realtime_agenda_reference(meeting)
+
     applied_ids = new_transcripts.pluck(:id)
     channel = meeting.transcription_stream
 
@@ -124,7 +135,8 @@ class MeetingSummarizationJob < ApplicationJob
         attendees: meeting.attendees,
         verbosity: meeting.summary_verbosity,
         verbosity_context: :realtime,
-        seeded_merge: meeting.previous_meeting_id.present? && !meeting.summary_restructure?
+        seeded_merge: meeting.previous_meeting_id.present? && !meeting.summary_restructure?,
+        agenda_reference: agenda_ref
       )
       notes_markdown = result["notes_markdown"]
     else
@@ -133,7 +145,8 @@ class MeetingSummarizationJob < ApplicationJob
         current_notes, payload,
         meeting_title: meeting.title,
         attendees: meeting.attendees,
-        verbosity: meeting.summary_verbosity
+        verbosity: meeting.summary_verbosity,
+        agenda_reference: agenda_ref
       )
       # 시간 라벨은 소비셋(applied_ids) 스냅샷으로 계산 — 릴레이션 재질의는 LLM 호출(수십 초) 중
       # 도착한 자막까지 집계해 시간대가 과대/중첩된다.
@@ -177,6 +190,11 @@ class MeetingSummarizationJob < ApplicationJob
       # transient LLM 실패: 미저장·미소비. 다음 틱 재시도(무음 손실 차단).
       Rails.logger.warn "[MeetingSummarizationJob] realtime transient failure meeting=#{meeting.id} (미소비)"
     end
+    # 안건을 실제로 주입했고 LLM 이 성공했으면 1회주입 플래그를 채운다(이후 틱 재주입 방지).
+    # 실패(ok:false) 시엔 플래그를 두지 않아 다음 틱이 다시 주입한다.
+    if agenda_ref.present? && result["ok"]
+      meeting.update_column(:agenda_reference_applied_at, Time.current)
+    end
     ok = true
   rescue LlmService::LlmError, StandardError => e
     Rails.logger.error "[MeetingSummarizationJob] realtime meeting=#{meeting.id} error=#{e.message}"
@@ -214,7 +232,9 @@ class MeetingSummarizationJob < ApplicationJob
         attendees: meeting.attendees,
         verbosity: meeting.summary_verbosity,
         chronological: !meeting.summary_restructure? && meeting.previous_meeting_id.blank?, # 비연결 증분 백지폴백만 시간 흐름
-        seeded_merge: meeting.previous_meeting_id.present? && !meeting.summary_restructure?
+        seeded_merge: meeting.previous_meeting_id.present? && !meeting.summary_restructure?,
+        # final(종료·재생성)은 1회주입 플래그와 무관하게 항상 안건 전체를 주입한다.
+        agenda_reference: meeting.agenda_reference.presence
       )
       notes_markdown = result["notes_markdown"]
     else
@@ -227,7 +247,8 @@ class MeetingSummarizationJob < ApplicationJob
           latest_notes, payload,
           meeting_title: meeting.title,
           attendees: meeting.attendees,
-          verbosity: meeting.summary_verbosity
+          verbosity: meeting.summary_verbosity,
+          agenda_reference: meeting.agenda_reference.presence
         )
         notes_markdown = compose_appended_notes(latest_notes, result["block_markdown"], remaining)
       else

@@ -66,6 +66,12 @@ class MeetingAttachment < ApplicationRecord
     kind == "link"
   end
 
+  # 비-텍스트 첨부 추출물(.md) 저장 폴더. 원본 파일 옆에 둔다(파일 없으면 nil).
+  def extraction_dir
+    return nil unless file? && file_path.present?
+    "#{file_path}.extracted"
+  end
+
   after_destroy :remove_file_from_disk
 
   private
@@ -83,5 +89,6 @@ class MeetingAttachment < ApplicationRecord
   def remove_file_from_disk
     return unless file? && file_path.present?
     FileUtils.rm_f(file_path)
+    FileUtils.rm_rf(extraction_dir) if extraction_dir
   end
 end

@@ -21,13 +21,14 @@ class LlmService
 
   # 회의록 정제: 기존 노트 + 새 자막 → 통합 회의록.
   # chronological: 증분(흐름) 회의의 통짜 생성 시 주제별 재구성 대신 시간순 요약 지시.
-  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil, verbosity: "standard", verbosity_context: :final, chronological: false, seeded_merge: false)
+  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil, verbosity: "standard", verbosity_context: :final, chronological: false, seeded_merge: false, agenda_reference: nil)
     transcript_text = format_transcripts(transcripts)
     return { "notes_markdown" => current_notes, "ok" => true } if transcript_text.blank?
 
     parts = []
     parts << "회의 제목: #{meeting_title}" if meeting_title.present?
     parts << "참석자: #{attendees}" if attendees.present?
+    parts << agenda_reference_block(agenda_reference) if agenda_reference.present?
     if current_notes.present?
       parts << "현재 회의록:\n#{current_notes}"
     else
@@ -61,13 +62,14 @@ class LlmService
   # 증분(append-only) 모드: 새 자막만 시간대별 새 블록 하나로 요약. 기존 회의록 불변.
   # 시간 헤딩은 호출부(job)가 붙인다. 출력이 새 블록뿐이라 작음 → 틱 빠름.
   # 반환: { "block_markdown" =>, "ok" => }. ok:false 면 호출부가 transcript 미소비(무음 손실 차단).
-  def append_notes(current_notes, transcripts, meeting_title: "", attendees: nil, verbosity: "standard")
+  def append_notes(current_notes, transcripts, meeting_title: "", attendees: nil, verbosity: "standard", agenda_reference: nil)
     transcript_text = format_transcripts(transcripts)
     return { "block_markdown" => "", "ok" => true } if transcript_text.blank?
 
     parts = []
     parts << "회의 제목: #{meeting_title}" if meeting_title.present?
     parts << "참석자: #{attendees}" if attendees.present?
+    parts << agenda_reference_block(agenda_reference) if agenda_reference.present?
     parts << "기존 회의록(참고용 — 수정·반복 금지):\n#{current_notes}" if current_notes.present?
     parts << "새로운 자막:\n#{transcript_text}"
     user_content = parts.join("\n\n")
@@ -135,7 +137,7 @@ class LlmService
 
   # 외부 LLM용 프롬프트 조립 (LLM 호출 없음). 압축율 분량 지시 포함(통짜 생성 = final 캡).
   # 증분(restructure=false) 회의는 시간 흐름 요약 지시를 포함 — 주제별 재구성 금지.
-  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil, attendees: nil, verbosity: "standard", restructure: true)
+  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil, attendees: nil, verbosity: "standard", restructure: true, agenda_reference: nil)
     system_prompt = if sections_prompt.present?
       REFINE_NOTES_SYSTEM_PROMPT.sub(DEFAULT_SECTION_STRUCTURE, sections_prompt)
     else
@@ -148,6 +150,7 @@ class LlmService
     parts = []
     parts << "회의 제목: #{meeting_title}" if meeting_title.present?
     parts << "참석자: #{attendees}" if attendees.present?
+    parts << agenda_reference_block(agenda_reference) if agenda_reference.present?
     parts << (current_notes.present? ? "현재 회의록:\n#{current_notes}" : "현재 회의록: (아직 없음 — 새로 작성해주세요)")
     parts << "새로운 자막:\n#{transcript_text}" if transcript_text.present?
     user_content = parts.join("\n\n")
@@ -157,6 +160,21 @@ class LlmService
                   "아래 내용을 LLM(ChatGPT, Claude 등)에 그대로 붙여넣으면 회의록이 생성됩니다.\n\n" \
                   "---\n\n## 지시사항\n\n#{system_prompt}\n\n---\n\n## 입력 데이터\n\n#{user_content}"
     }
+  end
+
+  # 안건 자료 압축: 업로드 시점에 LLM 으로 요약해 max_chars 미만으로 줄인다.
+  # 입력 토큰 캡이 없으므로(LLM 호출부에 입력 길이 제한 없음) 반환·실패 모두 하드 트렁케이트로
+  # 길이를 강제한다. blank 면 LLM 을 호출하지 않고 "" 반환.
+  def compress_agenda(text, max_chars: 8000)
+    text = text.to_s
+    return "" if text.strip.blank?
+
+    compressed = call_llm_raw(COMPRESS_AGENDA_SYSTEM_PROMPT, text)
+    truncate_chars(strip_markdown_fence(compressed), max_chars)
+  rescue => e
+    Rails.logger.error "[LlmService] compress_agenda failed: #{e.message}"
+    # 압축 실패 시 원본을 캡까지 잘라 폴백(주입 자체는 가능하게).
+    truncate_chars(text, max_chars)
   end
 
   # LLM 연결 테스트
@@ -170,6 +188,17 @@ class LlmService
   end
 
   private
+
+  # 안건 자료 블록: 회의록 작성 시 참고만 하고 그대로 베끼지 말라는 가드를 라벨에 명시한다.
+  def agenda_reference_block(agenda_reference)
+    "안건 자료(참고용 — 회의 내용 우선, 그대로 복사하지 말 것):\n#{agenda_reference}"
+  end
+
+  # 글자수 하드 캡(멀티바이트 안전). nil 은 "" 로.
+  def truncate_chars(text, max_chars)
+    text = text.to_s
+    text.length > max_chars ? text[0, max_chars] : text
+  end
 
   # 압축율(verbosity) 분량 지시를 system 프롬프트 뒤에 append.
   # claude_cli 는 max_tokens 를 무시하므로 프롬프트의 글자수 캡이 출력량(=지연)의 유일한 레버.
