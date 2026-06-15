@@ -35,6 +35,8 @@ import { useSharingStore } from '../stores/sharingStore'
 import { IS_TAURI, DEFAULT_SUMMARY_INTERVAL_SEC, getApiOrigin } from '../config'
 import { useAuthStore } from '../stores/authStore'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
+import { useNavigationGuards } from './useNavigationGuards'
+import { useRecordingSummaryTimer } from './useRecordingSummaryTimer'
 
 type MeetingStatus = 'idle' | 'recording' | 'stopped'
 type ChunkMeta = { sequence: number; offsetMs: number }
@@ -62,14 +64,11 @@ export function useLiveRecording(
   }, [])
 
   const [status, setStatus] = useState<MeetingStatus>('idle')
+  const isActive = status === 'recording'
   const [meetingApiStatus, setMeetingApiStatus] = useState<'pending' | 'recording' | 'completed' | null>(null)
   const [sttEngine, setSttEngine] = useState<string | null>(null)
-  const [summaryCountdown, setSummaryCountdown] = useState<number>(0)
   const [, setAudioDurationMs] = useState(0)
   const [, setLastSeqNum] = useState(0)
-
-  // 녹음 중 뒤로가기 차단
-  const [showLeaveBlock, setShowLeaveBlock] = useState(false)
 
   // 회의 정보
   const [meeting, setMeeting] = useState<Meeting | null>(null)
@@ -84,9 +83,6 @@ export function useLiveRecording(
   // 경과 시간
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const elapsedBaseRef = useRef<number | null>(null)
-  // 요약 타이머는 틱 누산이 아니라 Date.now() 기준 deadline으로 동작 (백그라운드 throttle/일시정지에도 정확)
-  const summaryDeadlineRef = useRef<number | null>(null)
-  const summaryRemainingRef = useRef<number | null>(null)
 
   const reset = useTranscriptStore((s) => s.reset)
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
@@ -194,6 +190,19 @@ export function useLiveRecording(
       return uploadPromiseRef.current
     },
   })
+
+  // 라이브 세션 보조 훅 (god 분해): 자동/수동 요약 타이머 + 이탈 차단 가드
+  const { summaryCountdown, handleManualSummary, resetSummaryTimer } = useRecordingSummaryTimer({
+    isActive,
+    isPaused,
+    isApplyingCorrections,
+    meetingId,
+    summaryIntervalSec,
+    finalsCount,
+    isSummarizing,
+    showStatus,
+  })
+  const { showLeaveBlock, setShowLeaveBlock, handleNavigateBack } = useNavigationGuards(meetingId, isActive)
 
   // Tauri 네이티브 마이크 캡처 (STT용) — 시스템 오디오도 여기서 믹싱하여 하나의 STT 스트림으로 처리
   const {
@@ -356,15 +365,6 @@ export function useLiveRecording(
     resumeMeeting(meetingId).catch(() => {})
   }
 
-  // 회의 중 수동 "지금 요약" — realtime 경로(기존 설정 반영). 종료/일시정지/빈기록/요약중엔 호출 안 함.
-  const handleManualSummary = () => {
-    if (isPaused || finalsCount === 0 || isSummarizing) return
-    triggerRealtimeSummary(meetingId).catch(() => {})
-    // 다음 자동 주기 deadline 재anchor — 수동 직후 중복 요약 방지.
-    summaryDeadlineRef.current = Date.now() + summaryIntervalSec * 1000
-    setSummaryCountdown(summaryIntervalSec)
-  }
-
   // 종료 버튼: 라이브 기록 있으면 최종요약 여부 확인 다이얼로그, 없으면 바로 종료(skip).
   const handleStop = () => {
     if (finalsCount === 0) {
@@ -465,27 +465,14 @@ export function useLiveRecording(
       setMeetingApiStatus('pending')
       setAudioDurationMs(0)
       setLastSeqNum(0)
-      setSummaryCountdown(0)
       setElapsedSeconds(0)
       elapsedBaseRef.current = null
-      summaryDeadlineRef.current = null
-      summaryRemainingRef.current = null
+      resetSummaryTimer()
     } catch (err) {
       console.error('회의 초기화 실패:', err)
     } finally {
       setIsResetting(false)
     }
-  }
-
-  const isActive = status === 'recording'
-
-  // 뒤로가기 (미리보기로)
-  const handleNavigateBack = () => {
-    if (isActive) {
-      setShowLeaveBlock(true)
-      return
-    }
-    navigate(`/meetings/${meetingId}`)
   }
 
   // 녹음 상태를 글로벌 스토어에 동기화 (폴더 클릭 차단용)
@@ -510,49 +497,6 @@ export function useLiveRecording(
     }
     // 리셋은 handleStop / handleResetConfirm에서 명시적으로 처리
   }, [isActive, isPaused])
-
-  // 녹음 중 브라우저 뒤로가기/새로고침 차단
-  useEffect(() => {
-    if (!isActive) return
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-    }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
-  }, [isActive])
-
-  // 녹음 중 Option+←/→ (히스토리 뒤로/앞으로) 키보드 단축키 차단
-  useEffect(() => {
-    if (!isActive) return
-    const handler = (e: KeyboardEvent) => {
-      // Option+← 또는 Option+→ (macOS 브라우저 뒤로/앞으로)
-      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-        e.preventDefault()
-        setShowLeaveBlock(true)
-      }
-      // Cmd+[ 또는 Cmd+] (macOS 뒤로/앞으로)
-      if (e.metaKey && (e.key === '[' || e.key === ']')) {
-        e.preventDefault()
-        setShowLeaveBlock(true)
-      }
-    }
-    window.addEventListener('keydown', handler, true)
-    return () => window.removeEventListener('keydown', handler, true)
-  }, [isActive])
-
-  // 녹음 중 popstate (브라우저 뒤로/앞으로 버튼) 차단
-  useEffect(() => {
-    if (!isActive) return
-    const handler = () => {
-      // 뒤로가기가 발생하면 원래 위치로 되돌리고 경고 표시
-      window.history.pushState(null, '', window.location.href)
-      setShowLeaveBlock(true)
-    }
-    // 현재 위치를 히스토리에 한 번 더 push (popstate 감지용)
-    window.history.pushState(null, '', window.location.href)
-    window.addEventListener('popstate', handler)
-    return () => window.removeEventListener('popstate', handler)
-  }, [isActive])
 
   const handleToggleSystemAudio = async (next: boolean) => {
     setSystemAudioEnabled(next)
@@ -611,75 +555,6 @@ export function useLiveRecording(
       .then((s) => setSttEngine(s.stt_engine))
       .catch(() => {})
   }, [])
-
-  // 녹음 중(일시정지 아닌) Date.now() 기준 deadline → 도달 시 AI 요약 트리거
-  // 카운트다운을 1틱당 -1로 누산하면 백그라운드 탭/화면꺼짐 시 setInterval throttle로
-  // 180틱이 실제 5분+ 걸린다. deadline(절대 시각) 기준으로 매 틱 남은 시간을 재계산해
-  // 벽시계와 일치시킨다. (위 경과시간 타이머가 elapsedBaseRef로 쓰는 방식과 동일)
-  // summaryIntervalSec === 0 이면 "안함" — 실시간 요약 비활성화 (종료 시 final 요약만)
-  useEffect(() => {
-    if (!isActive || isPaused || summaryIntervalSec === 0) {
-      // 일시정지/중지/안함: 타이머 완전 리셋 (재개 시 전체 간격부터 새로 시작)
-      summaryDeadlineRef.current = null
-      summaryRemainingRef.current = null
-      setSummaryCountdown(0)
-      return
-    }
-
-    // 오타 수정 반영 중이면 타이머 일시정지 — 남은 시간 보존 (deadline → remaining)
-    if (isApplyingCorrections) {
-      if (summaryDeadlineRef.current !== null) {
-        summaryRemainingRef.current = Math.max(
-          0,
-          Math.ceil((summaryDeadlineRef.current - Date.now()) / 1000),
-        )
-        summaryDeadlineRef.current = null
-      }
-      return
-    }
-
-    // 시작/재개: deadline 없으면 남은 시간(보존된 값 or 전체 간격)으로 새로 anchor
-    if (summaryDeadlineRef.current === null) {
-      const secs = summaryRemainingRef.current ?? summaryIntervalSec
-      summaryDeadlineRef.current = Date.now() + secs * 1000
-      summaryRemainingRef.current = null
-    }
-    setSummaryCountdown(
-      Math.max(0, Math.ceil((summaryDeadlineRef.current - Date.now()) / 1000)),
-    )
-
-    let summarizing = false
-    const interval = setInterval(() => {
-      if (summarizing) return  // 요약 진행 중이면 카운트다운 정지
-      const deadline = summaryDeadlineRef.current
-      if (deadline === null) return
-      const remaining = Math.ceil((deadline - Date.now()) / 1000)
-      if (remaining <= 0) {
-        // 라이브 기록 없으면 요약 스킵하고 다음 주기로.
-        if (useTranscriptStore.getState().finals.length === 0) {
-          summaryDeadlineRef.current = Date.now() + summaryIntervalSec * 1000
-          setSummaryCountdown(summaryIntervalSec)
-          return
-        }
-        summarizing = true
-        setSummaryCountdown(0)
-        showStatus('기록을 회의록에 적용 중...', 10000)
-        triggerRealtimeSummary(meetingId)
-          .then(() => showStatus('회의록 적용 완료'))
-          .catch(() => {})
-          .finally(() => {
-            summarizing = false
-            // 다음 주기 deadline 재설정 (요약에 걸린 시간만큼 자동 보정)
-            summaryDeadlineRef.current = Date.now() + summaryIntervalSec * 1000
-            setSummaryCountdown(summaryIntervalSec)
-          })
-      } else {
-        setSummaryCountdown(remaining)
-      }
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [isActive, isPaused, isApplyingCorrections, meetingId, summaryIntervalSec])
 
   return {
     meeting,
