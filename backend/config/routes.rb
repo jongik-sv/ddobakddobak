@@ -49,6 +49,7 @@ Rails.application.routes.draw do
           post :feedback
           get  :glossary
           post :reapply_glossary
+          post :apply_glossary_entry
           patch :update_notes
           post :audio, to: "meetings_audio#create"
           post :audio_chunk, to: "meetings_audio#chunk"

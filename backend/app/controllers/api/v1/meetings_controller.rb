@@ -7,8 +7,8 @@ module Api
       include AudioStorage
 
       before_action :authenticate_user!
-      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary]
-      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry]
+      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary apply_glossary_entry]
       # 멈춘 화자분리-재실행 자가복구: 조회/재실행 시 stale 면 completed 로 되돌려 버튼이 다시 보이게 함
       before_action -> { @meeting&.heal_stale_re_diarize! }, only: %i[show re_diarize]
 
@@ -398,6 +398,32 @@ module Api
         render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
       end
 
+      def apply_glossary_entry
+        entry = GlossaryEntry.find_by(id: params[:entry_id])
+        unless entry && entry_in_meeting_scope?(entry)
+          return render json: { error: "사전 항목을 찾을 수 없습니다" }, status: :not_found
+        end
+        unless entry.enabled
+          return render json: { error: "비활성 항목입니다" }, status: :unprocessable_entity
+        end
+
+        payload = [{ from: entry.from_text, to: entry.to_text, match_type: entry.match_type }]
+        before_active_notes = @meeting.current_notes_markdown.to_s
+        corrected_count = MeetingGlossaryApplier.new(@meeting, payload).apply_all!
+
+        corrected_notes = @meeting.reload.current_notes_markdown.to_s
+        if corrected_notes != before_active_notes
+          @meeting.update!(last_user_edit_at: Time.current)
+          @meeting.refresh_brief_summary!(corrected_notes)
+          ActionCable.server.broadcast(@meeting.transcription_stream, {
+            type: "meeting_notes_update",
+            notes_markdown: corrected_notes
+          })
+        end
+
+        render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
+      end
+
       def update_notes
         notes_markdown = params[:notes_markdown]
         return render json: { error: "notes_markdown is required" }, status: :unprocessable_entity if notes_markdown.nil?
@@ -547,6 +573,16 @@ module Api
       def find_or_create_active_summary
         @meeting.active_summary ||
           @meeting.summaries.build(summary_type: latest_summary_type)
+      end
+
+      # 엔트리가 이 회의의 캐스케이드(회의 자신 + 폴더 + 조상 폴더)에 속하는지 검증.
+      def entry_in_meeting_scope?(entry)
+        return true if entry.owner_type == "Meeting" && entry.owner_id == @meeting.id
+        return false unless entry.owner_type == "Folder"
+        folder = @meeting.folder
+        return false unless folder
+        folder_ids = [folder.id, *folder.ancestor_records.map(&:id)]
+        folder_ids.include?(entry.owner_id)
       end
 
       def glossary_entry_json(entry)

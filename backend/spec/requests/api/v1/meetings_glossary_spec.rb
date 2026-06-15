@@ -58,4 +58,46 @@ RSpec.describe "Api::V1 meeting glossary", type: :request do
       expect(meeting.summaries.first.reload.notes_markdown).to eq("회의 노트")
     end
   end
+
+  describe "POST /apply_glossary_entry — 항목별 개별 적용" do
+    it "지정한 회의 엔트리 한 건만 전 표면에 적용한다" do
+      e1 = meeting.glossary_entries.create!(from_text: "회진", to_text: "회의")
+      meeting.glossary_entries.create!(from_text: "결과", to_text: "리포트") # 적용 안 됨
+      create(:summary, meeting: meeting, summary_type: "final", notes_markdown: "회진 결과 노트")
+
+      post "/api/v1/meetings/#{meeting.id}/apply_glossary_entry", params: { entry_id: e1.id }
+      expect(response).to have_http_status(:ok)
+      expect(meeting.transcripts.first.reload.content).to eq("회의 결과") # 회진만 치환, 결과 보존
+      expect(meeting.summaries.first.reload.notes_markdown).to eq("회의 결과 노트")
+    end
+
+    it "폴더(상위) 엔트리도 이 회의에 적용 가능" do
+      fe = folder.glossary_entries.create!(from_text: "회진", to_text: "회의")
+      post "/api/v1/meetings/#{meeting.id}/apply_glossary_entry", params: { entry_id: fe.id }
+      expect(response).to have_http_status(:ok)
+      expect(meeting.transcripts.first.reload.content).to eq("회의 결과")
+    end
+
+    it "이 회의 캐스케이드에 속하지 않는 엔트리는 404" do
+      other_folder = create(:folder)
+      stray = other_folder.glossary_entries.create!(from_text: "회진", to_text: "회의")
+      post "/api/v1/meetings/#{meeting.id}/apply_glossary_entry", params: { entry_id: stray.id }
+      expect(response).to have_http_status(:not_found)
+      expect(meeting.transcripts.first.reload.content).to eq("회진 결과") # 미적용
+    end
+
+    it "disabled 엔트리는 422" do
+      e = meeting.glossary_entries.create!(from_text: "회진", to_text: "회의", enabled: false)
+      post "/api/v1/meetings/#{meeting.id}/apply_glossary_entry", params: { entry_id: e.id }
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it "제어 권한 없는 사용자는 403" do
+      stranger = create(:user)
+      login_as(stranger)
+      e = meeting.glossary_entries.create!(from_text: "회진", to_text: "회의")
+      post "/api/v1/meetings/#{meeting.id}/apply_glossary_entry", params: { entry_id: e.id }
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
 end
