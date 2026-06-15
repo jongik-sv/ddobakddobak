@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { correctTerms, getTranscripts } from '../api/meetings'
 import type { Transcript, TermCorrection } from '../api/meetings'
 import { useTranscriptStore } from '../stores/transcriptStore'
+import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 
 interface UseTermCorrectionsOptions {
   setTranscripts: Dispatch<SetStateAction<Transcript[]>>
@@ -38,18 +39,7 @@ export function useTermCorrections(meetingId: number, { setTranscripts, refetch 
       if (result.corrected_transcripts > 0) {
         getTranscripts(meetingId).then((data) => {
           setTranscripts(data)
-          loadFinals(
-            data.map((t) => ({
-              id: t.id,
-              content: t.content,
-              speaker_label: t.speaker_label,
-              speaker_name: t.speaker_name ?? null,
-              started_at_ms: t.started_at_ms,
-              ended_at_ms: t.ended_at_ms,
-              sequence_number: t.sequence_number,
-              applied: t.applied_to_minutes ?? true,
-            })),
-          )
+          loadFinals(mapTranscriptsToFinals(data, true))
         })
       }
       // 구조화 요약(key_points/decisions/discussion_details)·brief 갱신을 위해 회의 리페치

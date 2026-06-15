@@ -32,9 +32,16 @@ pub struct EnvironmentStatus {
 // ── PATH 해결 ───────────────────────────────────────
 
 pub fn resolve_shell_path() -> String {
-    let default_path = std::env::var("PATH").unwrap_or_default();
+    build_path(std::env::var("PATH").unwrap_or_default())
+}
 
-    let mut base_path = default_path.clone();
+pub fn refresh_path(state_path: &str) -> String {
+    build_path(state_path.to_string())
+}
+
+/// `seed`를 시작 PATH로 삼아 로그인 셸의 $PATH로 갱신한 뒤 macOS 공통 경로를 앞에 보강한다.
+fn build_path(seed: String) -> String {
+    let mut base_path = seed;
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
     if let Ok(output) = Command::new(&shell)
         .args(["-l", "-c", "echo $PATH"])
@@ -51,44 +58,6 @@ pub fn resolve_shell_path() -> String {
     }
 
     // macOS 공통 경로를 PATH 앞에 보강
-    let home = dirs::home_dir().unwrap_or_default();
-    let priority_paths: Vec<String> = vec![
-        rbenv_real_bin_dir().unwrap_or_default(),
-        home.join(".rbenv/shims").to_string_lossy().to_string(),
-        home.join(".local/bin").to_string_lossy().to_string(),
-        home.join(".cargo/bin").to_string_lossy().to_string(),
-        home.join(".pyenv/shims").to_string_lossy().to_string(),
-        "/opt/homebrew/bin".to_string(),
-        "/opt/homebrew/sbin".to_string(),
-        "/usr/local/bin".to_string(),
-    ];
-    for p in priority_paths.iter().rev() {
-        if !p.is_empty() {
-            let mut paths: Vec<&str> = base_path.split(':').filter(|s| *s != p).collect();
-            paths.insert(0, p);
-            base_path = paths.join(":");
-        }
-    }
-    base_path
-}
-
-pub fn refresh_path(state_path: &str) -> String {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-    let mut base_path = state_path.to_string();
-    if let Ok(output) = Command::new(&shell)
-        .args(["-l", "-c", "echo $PATH"])
-        .output()
-    {
-        if output.status.success() {
-            if let Ok(path) = String::from_utf8(output.stdout) {
-                let resolved = path.trim().to_string();
-                if !resolved.is_empty() {
-                    base_path = resolved;
-                }
-            }
-        }
-    }
-
     let home = dirs::home_dir().unwrap_or_default();
     let priority_paths: Vec<String> = vec![
         rbenv_real_bin_dir().unwrap_or_default(),
