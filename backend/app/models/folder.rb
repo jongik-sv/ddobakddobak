@@ -3,6 +3,7 @@ class Folder < ApplicationRecord
   belongs_to :parent, class_name: "Folder", optional: true
   has_many :children, class_name: "Folder", foreign_key: :parent_id, dependent: :nullify
   has_many :meetings, dependent: :nullify
+  has_many :glossary_entries, as: :owner, dependent: :destroy
   has_many :taggings, as: :taggable, dependent: :destroy
   has_many :tags, through: :taggings
 

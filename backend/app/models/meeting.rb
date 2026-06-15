@@ -6,6 +6,7 @@ class Meeting < ApplicationRecord
   belongs_to :previous_meeting, class_name: "Meeting", optional: true
   has_many :taggings, as: :taggable, dependent: :destroy
   has_many :tags, through: :taggings
+  has_many :glossary_entries, as: :owner, dependent: :destroy
   has_many :transcripts, dependent: :destroy
   has_many :summaries, dependent: :destroy
   has_many :action_items, dependent: :destroy
