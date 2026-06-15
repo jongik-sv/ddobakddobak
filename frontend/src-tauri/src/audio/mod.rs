@@ -13,6 +13,7 @@ use capture_windows::SystemAudioCapture;
 
 use recorder::AudioRecorder;
 
+use crate::sync_ext::LockExt;
 use base64::Engine;
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
@@ -69,7 +70,7 @@ fn pcm_to_base64(pcm_i16: &[i16]) -> String {
 #[tauri::command]
 pub fn start_system_audio_capture(app: AppHandle) -> Result<(), String> {
     let state = app.state::<AudioCaptureState>();
-    let mut capture_lock = state.capture.lock().unwrap();
+    let mut capture_lock = state.capture.lock_safe();
 
     if capture_lock.is_some() {
         return Err("시스템 오디오 캡처가 이미 실행 중입니다".to_string());
@@ -103,7 +104,7 @@ pub fn start_system_audio_capture(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn stop_system_audio_capture(app: AppHandle) -> Result<(), String> {
     let state = app.state::<AudioCaptureState>();
-    let mut capture_lock = state.capture.lock().unwrap();
+    let mut capture_lock = state.capture.lock_safe();
 
     if let Some(mut capture) = capture_lock.take() {
         capture.stop();
@@ -117,7 +118,7 @@ pub fn stop_system_audio_capture(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn is_system_audio_capturing(app: AppHandle) -> bool {
     let state = app.state::<AudioCaptureState>();
-    let is_capturing = state.capture.lock().unwrap().is_some();
+    let is_capturing = state.capture.lock_safe().is_some();
     is_capturing
 }
 
@@ -144,7 +145,7 @@ fn recording_path(app: &AppHandle, meeting_id: i64) -> Result<String, String> {
 #[tauri::command]
 pub fn start_recording(app: AppHandle, meeting_id: i64) -> Result<(), String> {
     let state = app.state::<RecorderState>();
-    let mut recorder_lock = state.recorder.lock().unwrap();
+    let mut recorder_lock = state.recorder.lock_safe();
 
     if recorder_lock.is_some() {
         return Err("녹음이 이미 진행 중입니다".to_string());
@@ -165,7 +166,7 @@ pub fn start_recording(app: AppHandle, meeting_id: i64) -> Result<(), String> {
 #[tauri::command]
 pub fn stop_recording(app: AppHandle) -> Result<String, String> {
     let state = app.state::<RecorderState>();
-    let mut recorder_lock = state.recorder.lock().unwrap();
+    let mut recorder_lock = state.recorder.lock_safe();
 
     if let Some(recorder) = recorder_lock.take() {
         let path = recorder.stop()?;
@@ -220,7 +221,7 @@ pub fn read_recording(app: AppHandle, meeting_id: i64) -> Result<String, String>
 #[tauri::command]
 pub fn pause_recording(app: AppHandle) -> Result<(), String> {
     let state = app.state::<RecorderState>();
-    let recorder_lock = state.recorder.lock().unwrap();
+    let recorder_lock = state.recorder.lock_safe();
     if let Some(ref rec) = *recorder_lock {
         rec.pause();
         Ok(())
@@ -233,7 +234,7 @@ pub fn pause_recording(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn resume_recording(app: AppHandle) -> Result<(), String> {
     let state = app.state::<RecorderState>();
-    let recorder_lock = state.recorder.lock().unwrap();
+    let recorder_lock = state.recorder.lock_safe();
     if let Some(ref rec) = *recorder_lock {
         rec.resume();
         Ok(())
@@ -246,7 +247,7 @@ pub fn resume_recording(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn feed_recorder_mic(app: AppHandle, pcm_base64: String) -> Result<(), String> {
     let state = app.state::<RecorderState>();
-    let recorder_lock = state.recorder.lock().unwrap();
+    let recorder_lock = state.recorder.lock_safe();
     if let Some(ref rec) = *recorder_lock {
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(&pcm_base64)

@@ -7,6 +7,7 @@ use crate::environment::{
     which, EnvironmentStatus,
 };
 use crate::network::is_port_open;
+use crate::sync_ext::LockExt;
 use crate::AppState;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -37,7 +38,7 @@ fn emit_progress(app: &AppHandle, step: &str, message: &str) {
 }
 
 pub fn kill_child(proc: &Mutex<Option<Child>>) {
-    if let Some(mut child) = proc.lock().unwrap().take() {
+    if let Some(mut child) = proc.lock_safe().take() {
         #[cfg(unix)]
         {
             let pid = child.id();
@@ -122,7 +123,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
 #[tauri::command]
 pub fn install_dependencies(app: AppHandle) -> Result<EnvironmentStatus, String> {
     let state = app.state::<AppState>();
-    let mut path = state.shell_path.lock().unwrap().clone();
+    let mut path = state.shell_path.lock_safe().clone();
 
     // 1. Homebrew
     if which("brew", &path).is_none() {
@@ -173,7 +174,7 @@ pub fn install_dependencies(app: AppHandle) -> Result<EnvironmentStatus, String>
         path = refresh_path(&path);
     }
 
-    *state.shell_path.lock().unwrap() = path.clone();
+    *state.shell_path.lock_safe() = path.clone();
 
     // 도구 재탐색 + 저장
     let tools = discover_tools(&path);
@@ -182,7 +183,7 @@ pub fn install_dependencies(app: AppHandle) -> Result<EnvironmentStatus, String>
     let ffmpeg_ver = tools.ffmpeg.as_ref().and_then(|p| get_version(p, &["-version"]));
     let all_ready = ruby_ver.is_some() && uv_ver.is_some() && ffmpeg_ver.is_some();
 
-    *state.tool_paths.lock().unwrap() = tools;
+    *state.tool_paths.lock_safe() = tools;
 
     if all_ready {
         emit_progress(&app, "deps_done", "모든 의존성 설치 완료!");
@@ -217,8 +218,8 @@ pub fn check_first_run(app: AppHandle) -> Result<bool, String> {
 pub fn run_initial_setup(app: AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let project_dir = state.project_dir.clone();
-    let path = state.shell_path.lock().unwrap().clone();
-    let tools = state.tool_paths.lock().unwrap().clone();
+    let path = state.shell_path.lock_safe().clone();
+    let tools = state.tool_paths.lock_safe().clone();
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
 
     for sub in &["db", "models", "audio", "speaker_dbs"] {
@@ -283,8 +284,8 @@ pub fn run_initial_setup(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn start_services(app: AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let path = state.shell_path.lock().unwrap().clone();
-    let tools = state.tool_paths.lock().unwrap().clone();
+    let path = state.shell_path.lock_safe().clone();
+    let tools = state.tool_paths.lock_safe().clone();
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let work = work_dir(&app);
     let db_path = data_dir.join("db").join("production.sqlite3");
@@ -334,7 +335,7 @@ pub fn start_services(app: AppHandle) -> Result<(), String> {
             Ok(None) => log::info!("Rails 프로세스 실행 중 (pid={})", backend.id()),
             Err(e) => log::warn!("Rails 상태 확인 실패: {}", e),
         }
-        *state.backend_process.lock().unwrap() = Some(backend);
+        *state.backend_process.lock_safe() = Some(backend);
     }
 
     // Sidecar (절대 경로로 uv 실행)
@@ -365,7 +366,7 @@ pub fn start_services(app: AppHandle) -> Result<(), String> {
             Ok(None) => log::info!("Sidecar 프로세스 실행 중 (pid={})", sidecar.id()),
             Err(e) => log::warn!("Sidecar 상태 확인 실패: {}", e),
         }
-        *state.sidecar_process.lock().unwrap() = Some(sidecar);
+        *state.sidecar_process.lock_safe() = Some(sidecar);
     }
 
     Ok(())

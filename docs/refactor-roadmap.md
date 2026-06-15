@@ -18,6 +18,7 @@
 | 1 | #3 correct_records!/feedback/destroy 트랜잭션 | ⏸ 보류 | update!=FTS 필요. 표면 넓어 검토 패스 |
 | 1 | #8 meetings#index total을 status_counts에서 파생(COUNT쿼리 제거) | ✅ done | refactor/meetings-index-scope. status NOT NULL→합==전체. meetings+sharing 114P |
 | 3 | #10 라우트 React.lazy + idle prefetch(App.tsx) | ✅ done | App청크 gz596→45KB. blocknote 1.4MB(gz421) 초기그래프서 제거→에디터 진입시 로드. 1100 FE테스트 P. Tauri 동적import 기존검증 |
+| 1 | #6 Rust lock().unwrap() panic 제거 | ✅ done | refactor/rust-panic-removal. sync_ext::LockExt::lock_safe()(poison 복구) 도입. 프로덕션 34 사이트(8파일) 변환, bridge 테스트 5개 유지. cargo check+clippy(-D warnings)+test20 PASS. happy-path 동일 |
 
 > **미커밋**: `refactor/stage0-perf-safe` 브랜치에 단계0 2건. 커밋은 사용자 명시 요청 시.
 > **별건 stale 테스트**: `default_user_lookup_spec.rb:18` `사용자`→`관리자` 기대 불일치(commit 69df3a1 rename 후 미갱신). 내 변경 무관. 수정은 별도.
@@ -32,7 +33,7 @@
 | 4 | 설정 트리플 단일화+중앙로더 | 설정 | maint | 高 | M | config.yaml vs settings.yaml vs ddobak.env; load_env/app_settings/settings_controller 3중 |
 | | ⤷ **캐싱(perf) 측면 폐기** | | | | | 선행조사: load_env=부팅1회·PromptTemplate config.yaml=frozen상수1회·AppSettings settings.yaml=잡당1회뿐. 요청별 재파싱 없음. 캐싱=무이득+잡 즉시반영깨짐(stale) |
 | 5 | Sidecar gpu_lock 직렬화 완화+락/어댑터 누수 | Sidecar | perf | 高 | M | routers/stt.py:109,157-169; routers/llm.py:68-70 |
-| 6 | Rust lock().unwrap() 39개 panic 제거 | Tauri | reli | 高 | M | lib.rs/bridge.rs/audio/* |
+| 6 | Rust lock().unwrap() panic 제거 | Tauri | reli | 高 | M | ✅ 완료: sync_ext::LockExt::lock_safe()(poison 복구) 도입, 프로덕션 34 사이트 변환(bridge5/services10/audio mod8/recorder5/env3/win2/mac1). bridge 테스트 5개 유지. check+clippy(-D warnings)+test20 PASS. happy-path 무변경 |
 | 7 | useLiveRecording(727)/MeetingPage(688) 분해+store 단일화 | Front | maint | 高 | M | useLiveRecording.ts:64-97,235-436; MeetingPage.tsx:127-140 |
 | 8 | meetings#index 이중 스코프 통합 | Rails | perf | 中 | M | meetings_controller.rb:16-37 |
 | 9 | lib.rs(967) god분해+커맨드 레지스트리 | Tauri | maint | 中 | L | ✅ 완료: lib.rs 967→186. network.rs(110)+environment.rs(331)+services.rs(382). cargo 경고0, 순수 코드이동 |

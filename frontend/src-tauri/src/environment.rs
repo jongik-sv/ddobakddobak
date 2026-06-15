@@ -2,6 +2,7 @@
 //!
 //! lib.rs god 파일에서 분리. 순수 코드 이동 — 로직·동작 무변경.
 
+use crate::sync_ext::LockExt;
 use crate::AppState;
 use serde::Serialize;
 use std::path::Path;
@@ -306,8 +307,8 @@ pub fn check_environment(app: AppHandle) -> EnvironmentStatus {
     let state = app.state::<AppState>();
 
     // PATH 새로고침
-    let refreshed = refresh_path(&state.shell_path.lock().unwrap());
-    *state.shell_path.lock().unwrap() = refreshed.clone();
+    let refreshed = refresh_path(&state.shell_path.lock_safe());
+    *state.shell_path.lock_safe() = refreshed.clone();
     let path = refreshed;
 
     // 도구 탐색 — 절대 경로 저장
@@ -324,7 +325,7 @@ pub fn check_environment(app: AppHandle) -> EnvironmentStatus {
     let all_ready = ruby_ver.is_some() && uv_ver.is_some() && ffmpeg_ver.is_some();
 
     // 절대 경로를 state에 저장
-    *state.tool_paths.lock().unwrap() = tools;
+    *state.tool_paths.lock_safe() = tools;
 
     let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
     EnvironmentStatus { ruby: ruby_ver, uv: uv_ver, ffmpeg: ffmpeg_ver, platform, all_ready }

@@ -4,6 +4,7 @@ use cpal::{SampleFormat, StreamConfig};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::sync_ext::LockExt;
 use super::resample::resample_to_16k_mono_i16;
 
 /// Windows 시스템 오디오 캡처 결과를 전달하는 콜백 타입
@@ -62,7 +63,7 @@ impl SystemAudioCapture {
                     if !running_clone.load(Ordering::Relaxed) {
                         return;
                     }
-                    let mut buf = buffer_clone.lock().unwrap();
+                    let mut buf = buffer_clone.lock_safe();
                     buf.extend_from_slice(data);
 
                     while buf.len() >= batch_source_samples {
@@ -85,7 +86,7 @@ impl SystemAudioCapture {
                     }
                     // i16 → f32 변환
                     let floats: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
-                    let mut buf = buffer_clone.lock().unwrap();
+                    let mut buf = buffer_clone.lock_safe();
                     buf.extend_from_slice(&floats);
 
                     while buf.len() >= batch_source_samples {

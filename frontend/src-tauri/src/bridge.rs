@@ -14,6 +14,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use crate::sync_ext::LockExt;
+
 use axum::{
     body::Body,
     extract::{Query, State, WebSocketUpgrade},
@@ -39,14 +41,14 @@ pub struct BridgeState {
 /// 브릿지가 바인딩한 루프백 포트를 반환한다 (아직 바인딩 전이면 None).
 #[tauri::command]
 pub fn bridge_port(state: tauri::State<'_, Arc<BridgeState>>) -> Option<u16> {
-    *state.port.lock().unwrap()
+    *state.port.lock_safe()
 }
 
 /// 전달 대상 서버 URL을 설정한다. 끝 슬래시를 제거해 정규화한다.
 #[tauri::command]
 pub fn set_bridge_target(url: String, state: tauri::State<'_, Arc<BridgeState>>) {
     let normalized = url.trim().trim_end_matches('/').to_string();
-    *state.target.lock().unwrap() = Some(normalized);
+    *state.target.lock_safe() = Some(normalized);
 }
 
 /// 대상 서버가 또박또박 서버인지 네이티브로 확인(webview mixed-content 회피). http(s) 모두 가능.
@@ -92,7 +94,7 @@ async fn http_proxy_handler(
     body: Body,
 ) -> Response {
     // 락을 await 너머로 들고 가지 않도록 즉시 스냅샷.
-    let target = { state.target.lock().unwrap().clone() };
+    let target = { state.target.lock_safe().clone() };
     let Some(target) = target else {
         return (StatusCode::BAD_GATEWAY, "bridge target not set").into_response();
     };
@@ -174,7 +176,7 @@ async fn ws_handler(
     Query(query): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
-    let target = { state.target.lock().unwrap().clone() };
+    let target = { state.target.lock_safe().clone() };
     let Some(target) = target else {
         return (StatusCode::BAD_GATEWAY, "bridge target not set").into_response();
     };
@@ -323,7 +325,7 @@ pub async fn serve(state: Arc<BridgeState>) {
         }
     };
     if let Ok(addr) = listener.local_addr() {
-        *state.port.lock().unwrap() = Some(addr.port());
+        *state.port.lock_safe() = Some(addr.port());
         log::info!("bridge listening on 127.0.0.1:{}", addr.port());
     }
 

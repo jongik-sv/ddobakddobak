@@ -7,6 +7,8 @@ use screencapturekit::stream::output_type::SCStreamOutputType;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::sync_ext::LockExt;
+
 /// macOS 시스템 오디오 캡처 결과를 전달하는 콜백 타입
 pub type AudioChunkCallback = Box<dyn Fn(Vec<i16>) + Send + Sync>;
 
@@ -90,7 +92,7 @@ impl SystemAudioCapture {
                         )
                     };
 
-                    let mut buf = handler_state.buffer.lock().unwrap();
+                    let mut buf = handler_state.buffer.lock_safe();
                     buf.extend_from_slice(floats);
 
                     // 배치 사이즈만큼 모이면 Int16 변환 후 콜백

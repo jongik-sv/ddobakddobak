@@ -4,6 +4,9 @@ mod audio;
 mod bridge;
 mod mdns;
 
+// Mutex poison 복구 헬퍼(lock_safe). 모든 모듈에서 공유.
+mod sync_ext;
+
 // health 체크 + LAN 서버 스캔(디스커버리). lib.rs에서 분리.
 mod network;
 

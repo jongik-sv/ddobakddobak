@@ -1,3 +1,4 @@
+use crate::sync_ext::LockExt;
 use std::fs::File;
 use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::sync::Mutex;
@@ -103,19 +104,19 @@ impl AudioRecorder {
     }
 
     pub fn pause(&self) {
-        *self.paused.lock().unwrap() = true;
+        *self.paused.lock_safe() = true;
     }
 
     pub fn resume(&self) {
-        *self.paused.lock().unwrap() = false;
+        *self.paused.lock_safe() = false;
     }
 
     /// 믹싱된 PCM을 즉시 WAV에 기록한다. 일정 분량마다 헤더를 갱신·flush해 크래시 내성 확보.
     pub fn feed_mic(&self, samples: &[i16]) {
-        if *self.paused.lock().unwrap() {
+        if *self.paused.lock_safe() {
             return;
         }
-        let mut lock = self.inner.lock().unwrap();
+        let mut lock = self.inner.lock_safe();
         if let Some(inner) = lock.as_mut() {
             for &s in samples {
                 inner.file.write_all(&s.to_le_bytes()).ok();
@@ -131,7 +132,7 @@ impl AudioRecorder {
     }
 
     pub fn stop(&self) -> Result<String, String> {
-        let mut lock = self.inner.lock().unwrap();
+        let mut lock = self.inner.lock_safe();
         if let Some(mut inner) = lock.take() {
             inner
                 .flush_header()
