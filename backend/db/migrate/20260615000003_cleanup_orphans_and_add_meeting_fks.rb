@@ -15,13 +15,19 @@ class CleanupOrphansAndAddMeetingFks < ActiveRecord::Migration[8.1]
   # 직접 삭제 시의 안전망(참조 무결성 보강)일 뿐이다.
 
   def up
-    say_with_time "Removing orphan transcripts/summaries (parent meeting gone)" do
-      orphans = Transcript.where("meeting_id NOT IN (SELECT id FROM meetings)")
-      summaries = Summary.where("meeting_id NOT IN (SELECT id FROM meetings)")
-      n = orphans.count + summaries.count
-      orphans.destroy_all  # after_destroy → transcripts_fts 정리
-      summaries.destroy_all # after_destroy → summaries_fts 정리
-      n
+    # 안전장치(2026-06-16 사고): meetings가 비면 NOT IN (빈 집합)이 모든 행 TRUE가 되어
+    # 전 transcripts/summaries가 삭제된다. 부모 테이블이 비었으면 고아 판정 자체가 불가능하므로 건너뛴다.
+    if Meeting.count.zero?
+      say "meetings 비어 있음 — 고아 정리 건너뜀 (NOT IN 빈집합 대량삭제 방지)"
+    else
+      say_with_time "Removing orphan transcripts/summaries (parent meeting gone)" do
+        orphans = Transcript.where("meeting_id IS NOT NULL AND meeting_id NOT IN (SELECT id FROM meetings)")
+        summaries = Summary.where("meeting_id IS NOT NULL AND meeting_id NOT IN (SELECT id FROM meetings)")
+        n = orphans.count + summaries.count
+        orphans.destroy_all  # after_destroy → transcripts_fts 정리
+        summaries.destroy_all # after_destroy → summaries_fts 정리
+        n
+      end
     end
 
     # 방어적 FTS 정합화: source_id가 가리키는 행이 사라진 phantom FTS 엔트리 제거.
