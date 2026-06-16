@@ -40,7 +40,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
       const projects = await getProjects()
       let current = get().currentProjectId
       if (!current || !projects.some((p) => p.id === current)) {
-        current = (projects.find((p) => p.personal) ?? projects[0])?.id ?? null
+        current = (projects.find((p) => !p.personal) ?? projects[0])?.id ?? null
         if (current) localStorage.setItem(CURRENT_KEY, String(current))
       }
       set({ projects, currentProjectId: current, isLoading: false })

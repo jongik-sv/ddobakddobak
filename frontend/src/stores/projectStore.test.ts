@@ -33,11 +33,17 @@ describe('projectStore', () => {
     localStorage.clear()
   })
 
-  it('fetch 후 personal 우선으로 currentProjectId 설정(저장값 없을 때)', async () => {
+  it('fetch 후 비개인(「기본」) 우선으로 currentProjectId 설정(저장값 없을 때)', async () => {
     mockGetProjects.mockResolvedValue([
-      makeProject({ id: 9, personal: false }),
       makeProject({ id: 3, personal: true }),
+      makeProject({ id: 9, personal: false }),
     ])
+    await useProjectStore.getState().fetchProjects()
+    expect(useProjectStore.getState().currentProjectId).toBe(9)
+  })
+
+  it('비개인 프로젝트가 없으면 첫 번째 선택', async () => {
+    mockGetProjects.mockResolvedValue([makeProject({ id: 3, personal: true })])
     await useProjectStore.getState().fetchProjects()
     expect(useProjectStore.getState().currentProjectId).toBe(3)
   })
