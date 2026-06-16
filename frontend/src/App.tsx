@@ -25,6 +25,7 @@ const load = {
   SearchPage: () => import('./pages/SearchPage'),
   ProjectsPage: () => import('./pages/ProjectsPage'),
   InviteRedeemPage: () => import('./pages/InviteRedeemPage'),
+  ProjectSelectLanding: () => import('./pages/ProjectSelectLanding'),
 }
 
 const DashboardPage = lazy(load.DashboardPage)
@@ -37,6 +38,7 @@ const MeetingViewerPage = lazy(load.MeetingViewerPage)
 const SearchPage = lazy(load.SearchPage)
 const ProjectsPage = lazy(load.ProjectsPage)
 const InviteRedeemPage = lazy(load.InviteRedeemPage)
+const ProjectSelectLanding = lazy(load.ProjectSelectLanding)
 
 /** 지연 로드 페이지 래퍼. fallback=null — 새 스피너 UI를 도입하지 않고(셸은 그대로 렌더),
  *  청크 로딩 중 페이지 영역만 잠깐 비운다. idle prefetch로 콜드 진입 창은 사실상 사라진다. */
@@ -143,7 +145,7 @@ function GatedApp() {
     <SetupGate>
     <AuthGuard>
     <Routes>
-      <Route path="/" element={<Navigate to="/meetings" replace />} />
+      <Route path="/" element={<Suspended><ProjectSelectLanding /></Suspended>} />
       <Route
         path="/dashboard"
         element={

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('./components/editor/MeetingEditor', () => ({
@@ -40,16 +40,51 @@ vi.mock('@blocknote/core', () => ({
   insertOrUpdateBlockForSlashMenu: vi.fn(),
 }))
 
+vi.mock('./pages/ProjectSelectLanding', () => ({
+  default: () => <div>LANDING_SENTINEL</div>,
+}))
+
+vi.mock('./config', () => ({
+  getMode: () => 'local',
+  IS_TAURI: false,
+  IS_MOBILE: false,
+  hasMode: () => true,
+  getServerUrl: () => '',
+  getDefaultServerUrl: () => '',
+  getServerKey: () => 'local',
+  getApiBaseUrl: () => '',
+  getApiOrigin: () => '',
+  getWsUrl: () => '',
+  loadAppSettings: vi.fn(),
+  AUDIO: {},
+  AUDIO_DEFAULTS: {},
+  LANGUAGES: [],
+  MEETING_TYPES: [],
+  SUMMARY_INTERVAL_OPTIONS: [],
+  DEFAULT_SUMMARY_INTERVAL_SEC: 60,
+  BREAKPOINTS: {},
+  ENGINE_LABELS: {},
+  ENGINE_LABELS_SHORT: {},
+  DIARIZATION: {},
+  DIARIZATION_DEFAULTS: {},
+  initMobileBridge: vi.fn(),
+  clearMode: vi.fn(),
+}))
+
+vi.mock('./hooks/useAuth', () => ({
+  useAuth: () => ({ isAuthenticated: true, isLoading: false }),
+}))
+
 import App from './App'
 
 describe('App 라우팅', () => {
-  it('/ 경로에서 /meetings로 리다이렉트됨', () => {
+  it('/ 경로에서 프로젝트 선택 랜딩을 렌더', async () => {
+    localStorage.clear()
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>
     )
-    // meetings page renders after redirect
-    expect(document.querySelector('[class]')).toBeTruthy()
+    expect(await screen.findByText('LANDING_SENTINEL')).toBeInTheDocument()
   })
 })
