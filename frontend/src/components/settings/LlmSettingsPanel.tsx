@@ -69,19 +69,22 @@ export function LlmSettingsPanel() {
 
   const handlePresetSelect = (presetId: string) => {
     setSelectedPreset(presetId)
+    const presetDef = SERVICE_PRESETS.find((p) => p.id === presetId)
     if (!presetCache[presetId]) {
-      const presetDef = SERVICE_PRESETS.find((p) => p.id === presetId)!
       setPresetCache((c) => ({
         ...c,
         [presetId]: {
           auth_token: '',
-          base_url: presetDef.defaultBaseUrl,
-          model: presetDef.suggestedModels[0] ?? '',
+          base_url: presetDef?.defaultBaseUrl ?? '',
+          model: presetDef?.suggestedModels[0] ?? '',
           max_input_tokens: 200000,
           max_output_tokens: 10000,
         },
       }))
     }
+    // 서비스 전환 시 챗 모델을 새 프리셋의 첫 제안 모델로 재설정
+    // (ollama/custom처럼 제안 모델이 없으면 '' = "요약 모델과 동일")
+    setChatModel(presetDef?.suggestedModels[0] ?? '')
     setUseCustomModel(false)
     setLlmTestResult(null)
     setOllamaModels([])
@@ -179,7 +182,7 @@ export function LlmSettingsPanel() {
 
   return (
     <div className="rounded-lg border bg-card p-6">
-      <h2 className="text-lg font-semibold mb-1">AI 요약 모델</h2>
+      <h2 className="text-lg font-semibold mb-1">LLM 모델 설정</h2>
       <p className="text-sm text-muted-foreground mb-4">
         회의록 요약에 사용할 AI 서비스를 선택합니다.
       </p>

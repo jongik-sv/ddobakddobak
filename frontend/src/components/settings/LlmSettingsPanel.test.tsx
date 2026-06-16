@@ -41,7 +41,7 @@ describe('LlmSettingsPanel - AI 챗 모델명', () => {
   it('설정 응답의 chat_model로 "AI 챗 모델명" 필드를 채운다', async () => {
     mockGetLlmSettings.mockResolvedValue(settingsResponse)
     render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('AI 요약 모델'))
+    await waitFor(() => screen.getByText('LLM 모델 설정'))
 
     const chatModelInput = screen.getByLabelText('AI 챗 모델명') as HTMLInputElement
     await waitFor(() => expect(chatModelInput.value).toBe('haiku'))
@@ -51,7 +51,7 @@ describe('LlmSettingsPanel - AI 챗 모델명', () => {
     mockGetLlmSettings.mockResolvedValue(settingsResponse)
     mockUpdateLlmSettings.mockResolvedValue(settingsResponse)
     render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('AI 요약 모델'))
+    await waitFor(() => screen.getByText('LLM 모델 설정'))
 
     const chatModelInput = screen.getByLabelText('AI 챗 모델명')
     fireEvent.change(chatModelInput, { target: { value: 'claude-haiku-4-5' } })
@@ -68,7 +68,7 @@ describe('LlmSettingsPanel - AI 챗 모델명', () => {
   it('모델 목록이 있는 프리셋(anthropic)에서 챗 모델 필드를 select(combobox)로 렌더한다', async () => {
     mockGetLlmSettings.mockResolvedValue(settingsResponse)
     render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('AI 요약 모델'))
+    await waitFor(() => screen.getByText('LLM 모델 설정'))
 
     const chatSelect = screen.getByLabelText('AI 챗 모델명')
     expect(chatSelect.tagName).toBe('SELECT')
@@ -86,7 +86,7 @@ describe('LlmSettingsPanel - AI 챗 모델명', () => {
     mockGetLlmSettings.mockResolvedValue(settingsResponse)
     mockUpdateLlmSettings.mockResolvedValue(settingsResponse)
     render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('AI 요약 모델'))
+    await waitFor(() => screen.getByText('LLM 모델 설정'))
 
     const chatSelect = screen.getByLabelText('AI 챗 모델명')
     fireEvent.change(chatSelect, { target: { value: '' } })
@@ -103,7 +103,7 @@ describe('LlmSettingsPanel - AI 챗 모델명', () => {
     // settingsResponse.chat_model === 'haiku' (anthropic 제안 목록에 없음)
     mockGetLlmSettings.mockResolvedValue(settingsResponse)
     render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('AI 요약 모델'))
+    await waitFor(() => screen.getByText('LLM 모델 설정'))
 
     const chatSelect = screen.getByLabelText('AI 챗 모델명') as HTMLSelectElement
     await waitFor(() => expect(chatSelect.value).toBe('haiku'))
@@ -116,7 +116,7 @@ describe('LlmSettingsPanel - AI 챗 모델명', () => {
   it('모델 목록이 없는 프리셋(custom)에서는 챗 모델 필드를 텍스트 입력으로 폴백한다', async () => {
     mockGetLlmSettings.mockResolvedValue(settingsResponse)
     render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('AI 요약 모델'))
+    await waitFor(() => screen.getByText('LLM 모델 설정'))
 
     // suggestedModels가 빈 'custom' 프리셋 카드 선택 (설명으로 카드 특정)
     const customCard = screen.getByText('호환 API 직접 설정').closest('button')!
@@ -124,5 +124,24 @@ describe('LlmSettingsPanel - AI 챗 모델명', () => {
 
     const chatField = screen.getByLabelText('AI 챗 모델명')
     expect(chatField.tagName).toBe('INPUT')
+  })
+
+  it('서비스 프리셋 전환 시 챗 모델이 새 프리셋의 첫 제안 모델로 재설정된다', async () => {
+    mockGetLlmSettings.mockResolvedValue(settingsResponse)
+    render(<LlmSettingsPanel />)
+    await waitFor(() => screen.getByText('LLM 모델 설정'))
+
+    // 로드된 기본 프리셋(anthropic)에서 챗 모델은 'haiku'
+    const chatSelect = screen.getByLabelText('AI 챗 모델명') as HTMLSelectElement
+    await waitFor(() => expect(chatSelect.value).toBe('haiku'))
+
+    // 다른 서비스(OpenAI) 프리셋 카드 선택 → suggestedModels[0] === 'gpt-4o'
+    const openaiCard = screen.getByText('GPT 모델 (키 필요)').closest('button')!
+    fireEvent.click(openaiCard)
+
+    // 챗 모델이 OpenAI의 첫 제안 모델로 자동 전환되어야 함
+    await waitFor(() =>
+      expect((screen.getByLabelText('AI 챗 모델명') as HTMLSelectElement).value).toBe('gpt-4o'),
+    )
   })
 })

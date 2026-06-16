@@ -5,7 +5,7 @@ import { Dialog } from '../ui/Dialog'
 import { AiSummaryPanel } from './AiSummaryPanel'
 
 const CONTAINER_DESKTOP =
-  'relative w-full max-w-5xl max-h-[90vh] rounded-xl bg-white shadow-2xl border border-gray-100 flex flex-col mx-4'
+  'relative w-full max-w-7xl h-[92vh] max-h-[92vh] rounded-xl bg-white shadow-2xl border border-gray-100 flex flex-col mx-4'
 const CONTAINER_MOBILE = 'fixed inset-0 w-full h-dvh bg-white flex flex-col'
 
 const CLOSE_BTN =

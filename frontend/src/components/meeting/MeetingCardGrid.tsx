@@ -48,7 +48,7 @@ export function MeetingCardGrid({
           data-drop-folder-id={child.id}
           onPointerDown={(e) => initDrag('folder', child.id, e)}
           onClick={() => onFolderSelect(child.id)}
-          className="group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 hover:shadow-sm transition-all flex flex-col"
+          className={`group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 hover:shadow-sm transition-all flex flex-col ${isDesktop ? 'h-[250px]' : 'h-[160px]'} overflow-hidden`}
         >
           <div className="flex items-center gap-2 mb-2">
             <FolderClosed className="w-5 h-5 text-primary/70 shrink-0" />
@@ -80,7 +80,7 @@ export function MeetingCardGrid({
           key={meeting.id}
           onPointerDown={(e) => initDrag('meeting', meeting.id, e)}
           onClick={() => onMeetingOpen(meeting.id)}
-          className="group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 hover:shadow-sm transition-all flex flex-col min-h-[180px]"
+          className={`group rounded-lg border bg-card p-4 cursor-pointer hover:bg-muted/50 hover:shadow-sm transition-all flex flex-col ${isDesktop ? 'h-[250px]' : 'h-[160px]'} overflow-hidden`}
         >
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 mb-1">
