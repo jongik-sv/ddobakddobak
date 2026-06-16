@@ -1,24 +1,31 @@
 module Api
   module V1
     class FoldersController < ApplicationController
+      include ProjectScoped
+
       before_action :authenticate_user!
       before_action :set_folder, only: %i[update destroy]
       before_action :authorize_folder_edit!, only: %i[update destroy]
 
       def index
+        project = require_project!(params[:project_id])
+        return unless project
+
         if params[:flat] == "true"
           # flat은 이동-폴더 선택기용이라 비공개 폴더도 노출(숨김은 트리만). 카운트만 접근 스코프.
-          folders = Folder.ordered.to_a
-          counts = Meeting.accessible_by(current_user)
+          folders = Folder.ordered.where(project_id: project.id).to_a
+          counts = Meeting.accessible_by(current_user).where(project_id: project.id)
                           .where(folder_id: folders.map(&:id)).group(:folder_id).count
           render json: { folders: folders.map { |f| folder_json(f, counts[f.id] || 0) } }
         else
-          tree = Folder.tree(current_user)
-          render json: { folders: tree }
+          render json: { folders: Folder.tree(current_user, project.id) }
         end
       end
 
       def create
+        project = require_project!(params[:project_id])
+        return unless project
+
         if params[:parent_id].present?
           parent = Folder.find_by(id: params[:parent_id])
           return render json: { error: "상위 폴더가 없습니다" }, status: :not_found unless parent
@@ -30,6 +37,7 @@ module Api
         folder = Folder.new(
           name: params[:name],
           parent_id: params[:parent_id],
+          project_id: project.id,
           position: params[:position] || next_position(params[:parent_id])
         )
 

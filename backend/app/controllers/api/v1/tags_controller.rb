@@ -1,15 +1,21 @@
 module Api
   module V1
     class TagsController < ApplicationController
+      include ProjectScoped
+
       before_action :authenticate_user!
 
       def index
         tags = Tag.ordered
+        tags = tags.where(project_id: params[:project_id]) if params[:project_id].present?
         render json: { tags: tags.map { |t| tag_json(t) } }
       end
 
       def create
-        tag = Tag.new(name: params[:name], color: params[:color] || "#6b7280")
+        project = require_project!(params[:project_id])
+        return unless project
+
+        tag = Tag.new(name: params[:name], color: params[:color] || "#6b7280", project_id: project.id)
 
         if tag.save
           render json: { tag: tag_json(tag) }, status: :created

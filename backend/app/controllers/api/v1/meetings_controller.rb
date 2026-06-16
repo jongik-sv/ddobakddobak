@@ -6,8 +6,10 @@ module Api
       include TranscriptSerializable
       include AudioStorage
       include MeetingWriteGuard
+      include ProjectScoped
 
       before_action :authenticate_user!
+      before_action :require_create_project!, only: %i[create upload_audio]
       before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry lock unlock]
       before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary apply_glossary_entry]
       before_action :authorize_lock!, only: %i[lock unlock]
@@ -21,6 +23,8 @@ module Api
                        .search_with_summary(params[:q])
                        .created_after(params[:date_from])
                        .created_before(params[:date_to])
+
+        scope = scope.where(project_id: params[:project_id]) if params[:project_id].present?
 
         if params.key?(:folder_id)
           if params[:folder_id] == "null"
@@ -62,7 +66,7 @@ module Api
           created_by_id: current_user.id,
           meeting_type: params[:meeting_type] || "general",
           folder_id: params[:folder_id],
-          project_id: resolve_project_id,
+          project_id: @create_project.id,
           shared: params.key?(:shared) ? ActiveModel::Type::Boolean.new.cast(params[:shared]) : true,
           previous_meeting_id: accessible_previous_meeting_id(params[:previous_meeting_id], params[:folder_id].presence&.to_i),
           **summary_options_for_create
@@ -88,7 +92,7 @@ module Api
           created_by_id: current_user.id,
           meeting_type: params[:meeting_type] || "general",
           folder_id: params[:folder_id],
-          project_id: resolve_project_id,
+          project_id: @create_project.id,
           shared: params.key?(:shared) ? ActiveModel::Type::Boolean.new.cast(params[:shared]) : true,
           status: :transcribing,
           source: "upload",
@@ -572,22 +576,11 @@ module Api
         render json: { error: "권한이 없습니다" }, status: :forbidden
       end
 
-      # 회의가 속할 프로젝트 id 결정 (meetings.project_id 는 NOT NULL).
-      # 우선순위: 명시 project_id > 폴더의 project_id > 현재 사용자 개인 프로젝트.
-      # 개인 프로젝트는 User after_create 콜백으로 항상 존재하나, 방어적으로 한번 더 보장한다.
-      # NOTE(임시 브리지): 명시 project_id 를 멤버십 검증 없이 신뢰한다(IDOR 여지).
-      #   NOT NULL 충족을 위한 과도기 코드. Phase 5 (Task 5.5) 에서 프로젝트 멤버십
-      #   인가를 추가하며 이 메서드를 대체한다. 그때까지 의도적으로 유지.
-      def resolve_project_id
-        explicit = params[:project_id].presence&.to_i
-        return explicit if explicit
-
-        if params[:folder_id].present?
-          folder_pid = Folder.where(id: params[:folder_id]).pick(:project_id)
-          return folder_pid if folder_pid
-        end
-
-        EnsurePersonalProject.call(current_user).id
+      # 회의가 속할 프로젝트를 멤버십 검증과 함께 해석한다 (meetings.project_id 는 NOT NULL).
+      # require_project! 가 project_id 누락(400)·미존재(404)·비멤버(403)를 직접 render 하며 halt 한다.
+      # 비멤버가 남의 프로젝트에 회의를 만드는 IDOR 를 차단한다.
+      def require_create_project!
+        @create_project = require_project!(params[:project_id])
       end
 
       # 회의 생성 시 important 가 요청에 명시되면 값을 세팅하고 명시 플래그를 켠다.

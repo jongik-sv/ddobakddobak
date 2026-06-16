@@ -6,14 +6,8 @@ class Auth::SessionsController < Devise::SessionsController
     self.resource = warden.authenticate!(auth_options)
     sign_in(resource_name, resource)
 
-    refresh_jti = resource.generate_refresh_token_jti!
-    refresh_token = JwtService.encode_refresh_token(resource, refresh_jti)
-
-    render json: {
-      access_token: request.env["warden-jwt_auth.token"],
-      refresh_token: refresh_token,
-      user: { id: resource.id, email: resource.email, name: resource.name, role: resource.role }
-    }
+    # access_token 은 devise-jwt 가 발급한 warden 토큰을 그대로 사용(sub 를 문자열로 직렬화 — 종전과 동일).
+    render json: JwtService.issue_session(resource, access_token: request.env["warden-jwt_auth.token"])
   end
 
   # DELETE /auth/logout

@@ -188,14 +188,25 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
 
-      it "creates meeting even without valid project_id (project is optional)" do
-        post "/api/v1/meetings",
-             params: { title: "New Meeting" },
-             as: :json
+      it "requires project_id (400 when missing — Phase 5 멤버십 강제)" do
+        expect {
+          post "/api/v1/meetings",
+               params: { title: "New Meeting" },
+               as: :json
+        }.not_to change(Meeting, :count)
 
-        expect(response).to have_http_status(:created)
-        json = response.parsed_body
-        expect(json["meeting"]["title"]).to eq("New Meeting")
+        expect(response).to have_http_status(:bad_request)
+      end
+
+      it "비멤버 프로젝트에는 회의를 만들 수 없다 (403, IDOR 방어)" do
+        foreign = create(:project, creator: other_user)
+        expect {
+          post "/api/v1/meetings",
+               params: { title: "침입", project_id: foreign.id },
+               as: :json
+        }.not_to change(Meeting, :count)
+
+        expect(response).to have_http_status(:forbidden)
       end
     end
   end
@@ -714,7 +725,7 @@ RSpec.describe "Api::V1::Meetings summary options", type: :request do
 
   describe "POST /api/v1/meetings (요약 옵션)" do
     it "uses defaults (standard / restructure ON) for the first meeting" do
-      post "/api/v1/meetings", params: { title: "첫 회의" }
+      post "/api/v1/meetings", params: { title: "첫 회의", project_id: project.id }
 
       json = response.parsed_body["meeting"]
       expect(json["summary_verbosity"]).to eq("standard")
@@ -723,7 +734,7 @@ RSpec.describe "Api::V1::Meetings summary options", type: :request do
 
     it "accepts explicit summary options" do
       post "/api/v1/meetings",
-           params: { title: "옵션 회의", summary_verbosity: "very_concise", summary_restructure: false }
+           params: { title: "옵션 회의", project_id: project.id, summary_verbosity: "very_concise", summary_restructure: false }
 
       json = response.parsed_body["meeting"]
       expect(json["summary_verbosity"]).to eq("very_concise")
@@ -734,7 +745,7 @@ RSpec.describe "Api::V1::Meetings summary options", type: :request do
       create(:meeting, project: project, creator: user,
              summary_verbosity: "detailed", summary_restructure: false, created_at: 1.hour.ago)
 
-      post "/api/v1/meetings", params: { title: "승계 회의" }
+      post "/api/v1/meetings", params: { title: "승계 회의", project_id: project.id }
 
       json = response.parsed_body["meeting"]
       expect(json["summary_verbosity"]).to eq("detailed")
@@ -742,7 +753,7 @@ RSpec.describe "Api::V1::Meetings summary options", type: :request do
     end
 
     it "rejects invalid verbosity" do
-      post "/api/v1/meetings", params: { title: "x", summary_verbosity: "ultra" }
+      post "/api/v1/meetings", params: { title: "x", project_id: project.id, summary_verbosity: "ultra" }
 
       expect(response).to have_http_status(:unprocessable_entity)
     end

@@ -4,11 +4,12 @@ RSpec.describe "Api::V1::Folders", type: :request do
   let(:user) { create(:user) }
   let(:other) { create(:user) }
   let(:admin) { create(:user, :admin) }
-  let!(:folder) { create(:folder) }
+  let(:project) { create(:project) }
+  let!(:folder) { create(:folder, project: project) }
 
   before do
-    create(:meeting, :private_meeting, creator: other, folder_id: folder.id)  # 남의 비공개 회의 (열람 불가)
-    create(:meeting, creator: user,  folder_id: folder.id)  # 내 회의
+    create(:meeting, :private_meeting, creator: other, folder_id: folder.id, project: project)  # 남의 비공개 회의 (열람 불가)
+    create(:meeting, creator: user,  folder_id: folder.id, project: project)  # 내 회의 (creator 자동 멤버십)
   end
 
   # 사이드바 폴더 트리/플랫의 meeting_count는 접근 가능한 회의만 세야 한다 (누수 방지).
@@ -19,20 +20,20 @@ RSpec.describe "Api::V1::Folders", type: :request do
 
     it "non-admin은 본인 소유 회의만 카운트한다 (tree)" do
       login_as(user)
-      get "/api/v1/folders"
+      get "/api/v1/folders", params: { project_id: project.id }
       expect(response).to have_http_status(:ok)
       expect(folder_count(response.parsed_body)).to eq(1)
     end
 
     it "admin은 전체를 카운트한다 (tree)" do
       login_as(admin)
-      get "/api/v1/folders"
+      get "/api/v1/folders", params: { project_id: project.id }
       expect(folder_count(response.parsed_body)).to eq(2)
     end
 
     it "flat 모드 meeting_count도 스코프된다" do
       login_as(user)
-      get "/api/v1/folders", params: { flat: "true" }
+      get "/api/v1/folders", params: { flat: "true", project_id: project.id }
       expect(folder_count(response.parsed_body)).to eq(1)
     end
   end

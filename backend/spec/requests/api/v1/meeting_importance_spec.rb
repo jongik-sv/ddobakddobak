@@ -89,7 +89,7 @@ RSpec.describe "Api::V1::Meetings importance", type: :request do
     it "important=true 폴더에서 만든 회의는 important=true 를 상속한다 (요청에 important 미포함)" do
       folder = create(:folder, project: project, important: true)
 
-      post "/api/v1/meetings", params: { title: "회의", folder_id: folder.id }
+      post "/api/v1/meetings", params: { title: "회의", project_id: project.id, folder_id: folder.id }
 
       expect(response).to have_http_status(:created)
       meeting = Meeting.find(response.parsed_body["meeting"]["id"])
@@ -99,7 +99,7 @@ RSpec.describe "Api::V1::Meetings importance", type: :request do
     it "important=false 폴더에서 만든 회의는 important=false 를 상속한다" do
       folder = create(:folder, project: project, important: false)
 
-      post "/api/v1/meetings", params: { title: "회의", folder_id: folder.id }
+      post "/api/v1/meetings", params: { title: "회의", project_id: project.id, folder_id: folder.id }
 
       meeting = Meeting.find(response.parsed_body["meeting"]["id"])
       expect(meeting.important).to be false
@@ -108,7 +108,7 @@ RSpec.describe "Api::V1::Meetings importance", type: :request do
     it "요청에 important=false 를 명시하면 important=true 폴더라도 false 로 저장한다 (상속 안 함)" do
       folder = create(:folder, project: project, important: true)
 
-      post "/api/v1/meetings", params: { title: "회의", folder_id: folder.id, important: false }
+      post "/api/v1/meetings", params: { title: "회의", project_id: project.id, folder_id: folder.id, important: false }
 
       meeting = Meeting.find(response.parsed_body["meeting"]["id"])
       expect(meeting.important).to be false
@@ -117,7 +117,7 @@ RSpec.describe "Api::V1::Meetings importance", type: :request do
     it "요청에 important=true 를 명시하면 important=false 폴더라도 true 로 저장한다" do
       folder = create(:folder, project: project, important: false)
 
-      post "/api/v1/meetings", params: { title: "회의", folder_id: folder.id, important: true }
+      post "/api/v1/meetings", params: { title: "회의", project_id: project.id, folder_id: folder.id, important: true }
 
       meeting = Meeting.find(response.parsed_body["meeting"]["id"])
       expect(meeting.important).to be true

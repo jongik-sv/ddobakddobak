@@ -213,14 +213,14 @@ RSpec.describe "Api::V1::Meetings 공유/비공개", type: :request do
     before { login_as(user) }
 
     it "create 는 기본 shared=true 로 생성된다" do
-      post "/api/v1/meetings", params: { title: "기본" }, as: :json
+      post "/api/v1/meetings", params: { title: "기본", project_id: project.id }, as: :json
       expect(response).to have_http_status(:created)
       expect(Meeting.last.shared).to eq(true)
       expect(response.parsed_body["meeting"]["shared"]).to eq(true)
     end
 
     it "create shared:false 면 비공개로 저장된다" do
-      post "/api/v1/meetings", params: { title: "비공개생성", shared: false }, as: :json
+      post "/api/v1/meetings", params: { title: "비공개생성", project_id: project.id, shared: false }, as: :json
       expect(response).to have_http_status(:created)
       expect(Meeting.last.shared).to eq(false)
     end

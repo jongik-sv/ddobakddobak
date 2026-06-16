@@ -43,5 +43,18 @@ class JwtService
       }
       JWT.encode(payload, SECRET.call, "HS256")
     end
+
+    # 로그인/초대-가입 공통 세션 발급 페이로드. 두 경로의 토큰·user 해시가 갈라지지 않도록 단일화한다.
+    # refresh 토큰과 user 해시는 항상 동일하게 발급한다.
+    # access_token: 호출자가 직접 줄 수 있다(예: SessionsController 는 devise-jwt 의 warden 토큰을
+    #   넘겨 응답을 종전과 바이트 동일하게 유지 — 그 토큰은 sub 를 문자열로 직렬화). nil 이면
+    #   encode_access_token 으로 생성한다(초대-가입 경로).
+    def issue_session(user, access_token: nil)
+      {
+        access_token: access_token || encode_access_token(user),
+        refresh_token: encode_refresh_token(user, user.generate_refresh_token_jti!),
+        user: { id: user.id, email: user.email, name: user.name, role: user.role }
+      }
+    end
   end
 end

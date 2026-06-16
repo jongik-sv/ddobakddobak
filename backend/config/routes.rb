@@ -136,12 +136,18 @@ Rails.application.routes.draw do
       end
 
       # Projects
-      resources :projects, only: %i[index create] do
+      resources :projects, only: %i[index show create update destroy] do
         member do
-          post :invite
+          get  :members
+          patch  "members/:user_id", action: :update_member, as: :update_member
           delete "members/:user_id", action: :remove_member, as: :remove_member
         end
+        resources :invites, only: %i[index create destroy], controller: "project_invites"
       end
+
+      # 공개 초대(인증 불필요 — 미리보기 / redeem(가입 가능))
+      get  "invite/:code", to: "invites#show"
+      post "invite/:code/redeem", to: "invites#redeem"
 
       # Admin
       namespace :admin do

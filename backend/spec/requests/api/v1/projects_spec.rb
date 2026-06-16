@@ -17,10 +17,10 @@ RSpec.describe "Api::V1::Projects", type: :request do
         get "/api/v1/projects"
 
         expect(response).to have_http_status(:ok)
-        json = response.parsed_body
+        projects = response.parsed_body["projects"]
         # 신규 유저는 개인 프로젝트(personal)가 자동 생성되므로 그것을 제외하고 검증한다.
         personal_id = user.projects.find_by(personal: true).id
-        shared = json.reject { |p| p["id"] == personal_id }
+        shared = projects.reject { |p| p["id"] == personal_id }
         expect(shared.length).to eq(1)
         expect(shared.first["name"]).to eq(project.name)
         expect(shared.first["role"]).to eq("admin")
@@ -31,9 +31,9 @@ RSpec.describe "Api::V1::Projects", type: :request do
         get "/api/v1/projects"
 
         expect(response).to have_http_status(:ok)
-        json = response.parsed_body
+        projects = response.parsed_body["projects"]
         personal_id = user.projects.find_by(personal: true).id
-        expect(json.map { |p| p["id"] }).to eq([personal_id])
+        expect(projects.map { |p| p["id"] }).to eq([personal_id])
       end
     end
   end
@@ -46,10 +46,10 @@ RSpec.describe "Api::V1::Projects", type: :request do
         }.to change(Project, :count).by(1).and change(ProjectMembership, :count).by(1)
 
         expect(response).to have_http_status(:created)
-        json = response.parsed_body
-        expect(json["project"]["name"]).to eq("Dev Project")
-        expect(json["project"]["role"]).to eq("admin")
-        expect(json["project"]["member_count"]).to eq(1)
+        json = response.parsed_body["project"]
+        expect(json["name"]).to eq("Dev Project")
+        expect(json["role"]).to eq("admin")
+        expect(json["member_count"]).to eq(1)
 
         membership = ProjectMembership.last
         expect(membership.user).to eq(user)
@@ -61,44 +61,101 @@ RSpec.describe "Api::V1::Projects", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
+
+    it "프로젝트를 만들고 생성자를 admin 멤버로 넣는다" do
+      post "/api/v1/projects", params: { name: "마케팅", icon_type: "emoji", icon_value: "📣" }, as: :json
+      expect(response).to have_http_status(:created)
+      json = response.parsed_body["project"]
+      expect(json["name"]).to eq("마케팅")
+      expect(Project.find(json["id"]).admin?(user)).to be true
+    end
   end
 
-  describe "POST /api/v1/projects/:id/invite" do
+  describe "GET /api/v1/projects/:id" do
+    let!(:project) { create(:project, creator: user) }
+    let!(:membership) { create(:project_membership, user: user, project: project, role: "admin") }
+
+    it "멤버는 프로젝트 상세를 조회한다" do
+      get "/api/v1/projects/#{project.id}"
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["project"]["id"]).to eq(project.id)
+    end
+
+    it "비멤버는 403" do
+      login_as(other_user)
+      get "/api/v1/projects/#{project.id}"
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe "PATCH /api/v1/projects/:id" do
     let!(:project) { create(:project, creator: user) }
     let!(:admin_membership) { create(:project_membership, user: user, project: project, role: "admin") }
 
-    context "as admin" do
-      it "adds the user to the project as member" do
-        other_user # 개인 프로젝트 멤버십(자동 생성)이 측정에 끼지 않도록 먼저 생성
-        expect {
-          post "/api/v1/projects/#{project.id}/invite",
-               params: { email: other_user.email },
-               as: :json
-        }.to change(ProjectMembership, :count).by(1)
+    it "admin 은 프로젝트를 수정한다" do
+      patch "/api/v1/projects/#{project.id}", params: { name: "변경됨" }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(project.reload.name).to eq("변경됨")
+    end
 
-        expect(response).to have_http_status(:created)
-        json = response.parsed_body
-        expect(json["membership"]["role"]).to eq("member")
+    it "비admin 멤버는 수정 불가(403)" do
+      create(:project_membership, user: other_user, project: project, role: "member")
+      login_as(other_user)
+      patch "/api/v1/projects/#{project.id}", params: { name: "해킹" }, as: :json
+      expect(response).to have_http_status(:forbidden)
+      expect(project.reload.name).not_to eq("해킹")
+    end
+  end
 
-        membership = ProjectMembership.find_by(user: other_user, project: project)
-        expect(membership).to be_present
-        expect(membership.role).to eq("member")
-      end
+  describe "DELETE /api/v1/projects/:id" do
+    it "비어있는 비개인 프로젝트는 삭제" do
+      project = create(:project)
+      create(:project_membership, user: user, project: project, role: "admin")
+      delete "/api/v1/projects/#{project.id}", as: :json
+      expect(response).to have_http_status(:no_content)
+    end
+    it "회의가 있으면 409" do
+      project = create(:project)
+      create(:project_membership, user: user, project: project, role: "admin")
+      create(:meeting, project: project, creator: user)
+      delete "/api/v1/projects/#{project.id}", as: :json
+      expect(response).to have_http_status(:conflict)
+    end
+    it "개인 프로젝트는 삭제 불가(409)" do
+      personal = user.projects.find_by(personal: true)
+      delete "/api/v1/projects/#{personal.id}", as: :json
+      expect(response).to have_http_status(:conflict)
+    end
+  end
 
-      it "returns 404 when email not found" do
-        post "/api/v1/projects/#{project.id}/invite",
-             params: { email: "nobody@example.com" },
-             as: :json
-        expect(response).to have_http_status(:not_found)
-      end
+  describe "GET /api/v1/projects/:id/members" do
+    let!(:project) { create(:project, creator: user) }
+    let!(:admin_membership) { create(:project_membership, user: user, project: project, role: "admin") }
+    let!(:member_membership) { create(:project_membership, user: other_user, project: project, role: "member") }
 
-      it "returns 422 when user already in project" do
-        create(:project_membership, user: other_user, project: project, role: "member")
-        post "/api/v1/projects/#{project.id}/invite",
-             params: { email: other_user.email },
-             as: :json
-        expect(response).to have_http_status(:unprocessable_entity)
-      end
+    it "admin 은 멤버 목록을 본다" do
+      get "/api/v1/projects/#{project.id}/members"
+      expect(response).to have_http_status(:ok)
+      members = response.parsed_body["members"]
+      expect(members.map { |m| m["user_id"] }).to match_array([user.id, other_user.id])
+    end
+  end
+
+  describe "PATCH /api/v1/projects/:id/members/:user_id" do
+    let!(:project) { create(:project, creator: user) }
+    let!(:admin_membership) { create(:project_membership, user: user, project: project, role: "admin") }
+    let!(:member_membership) { create(:project_membership, user: other_user, project: project, role: "member") }
+
+    it "admin 은 멤버 역할을 변경한다" do
+      patch "/api/v1/projects/#{project.id}/members/#{other_user.id}",
+            params: { role: "admin" }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(member_membership.reload.role).to eq("admin")
+    end
+
+    it "멤버가 없으면 404" do
+      patch "/api/v1/projects/#{project.id}/members/999999", params: { role: "admin" }, as: :json
+      expect(response).to have_http_status(:not_found)
     end
   end
 
@@ -119,6 +176,17 @@ RSpec.describe "Api::V1::Projects", type: :request do
       it "returns 404 when member not found" do
         delete "/api/v1/projects/#{project.id}/members/999"
         expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    context "as non-admin member" do
+      it "is forbidden (403)" do
+        create(:project_membership, user: create(:user), project: project, role: "member")
+        member = create(:user)
+        create(:project_membership, user: member, project: project, role: "member")
+        login_as(member)
+        delete "/api/v1/projects/#{project.id}/members/#{other_user.id}"
+        expect(response).to have_http_status(:forbidden)
       end
     end
   end

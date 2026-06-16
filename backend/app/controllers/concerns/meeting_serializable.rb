@@ -27,6 +27,7 @@ module MeetingSerializable
       transcription_progress: meeting.transcription_progress,
       has_audio_file: meeting.audio_file_path.present?,
       folder_id: meeting.folder_id,
+      project_id: meeting.project_id,
       memo: meeting.memo,
       attendees: meeting.attendees,
       expected_participants: meeting.expected_participants,
