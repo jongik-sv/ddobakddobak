@@ -103,6 +103,15 @@ describe('meetingStore', () => {
     )
   })
 
+  it('특정 폴더 선택 시 showAll off여도 show_all=true를 전달한다', async () => {
+    mockGetMeetings.mockResolvedValue({ meetings: [], meta: { total: 0, page: 1, per: 20 } })
+    useMeetingStore.getState().setFolderId(5)
+    await useMeetingStore.getState().fetchMeetings(1)
+    expect(mockGetMeetings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ folder_id: 5, show_all: true }),
+    )
+  })
+
   it('fetchMeetings 실패 시 error 설정', async () => {
     mockGetMeetings.mockRejectedValue(new Error('API 오류'))
 
