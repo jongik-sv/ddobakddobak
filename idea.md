@@ -85,6 +85,7 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
   - root 밑의 폴더에서 확장된 개념? 새로운 root 개념(새로운 root개념일 경우 User 개인 프로젝트는 디폴트로 존재해야 함)
   - 할당된 프로젝트만 볼수 있음
   - 프로젝트 초대 기능
+  - 프로젝트의 특징을 잘 나타낼 수 있는 아이콘 할당
 2. 회의 내용을 llm-wiki 로 구성해서 회의 내용을 검색하거나 요약하도록 구성
 3. 실제 서비스 환경 구축 
   - sidecar
@@ -93,3 +94,65 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
   - stt 모델 서버, 요약 LLM 모델 서버
 4. 증분방식 재설계
   - 세션유지(기존 회의록) + 신규 트랜스크립트 --> 수정위치/수정내용 으로 변경
+
+
+
+## 또박또박 추천 기능 — 경쟁사 대비 갭 분석
+
+> 16-에이전트 워크플로 조사(경쟁사 12종 웹조사 + 코드베이스 실측, 2026-06-16). 경쟁사: Otter / Fireflies / Granola / Fathom / tl;dv / Avoma / Read.ai·Sembly / Notion AI / Teams Copilot / Zoom Companion / 클로바노트 / 다글로·VITO·릴리스AI.
+
+**포지셔닝:** 또박또박 = 한국어·자체호스팅 팀 회의록(Rails+SQLite/React/Tauri+Android). altalt(개인·온디바이스)·클로바노트(클라우드·개인)와 달리 공유·라이브 호스트 이양·폴더·팀을 갖춘 협업형. 전 코퍼스 로컬 → 클라우드 경쟁사가 못 내는 프라이버시·소유 우위.
+
+**핵심 진단:** 현 기능은 강하나 사후(post)·배치·텍스트 출력에 편중. 최대 빈틈 = 라이브(in-meeting) 가치 — 가장 어려운 전제(LivePage+ActionCable+per-user 챗 RAG)를 이미 깔아놓고 안 쓰는 중.
+
+### Top picks (가치×적합도 최상)
+
+| # | 기능 | 한 줄 가치 | 경쟁사 | value/effort |
+|---|------|-----------|--------|--------------|
+| 1 | 폴더/팀 교차 AI Q&A("폴더에게 묻기") | "지난달 주간회의에서 X 뭘 정했지?" — 회의 1건 묶인 챗을 폴더·팀 전체로. FTS5+RAG+chat_llm_model 이미 보유, 스코프만 확대 | Otter, Fireflies, Granola, Fathom, Zoom, Notion | high / med |
+| 2 | 라이브 in-meeting 어시스턴트(catch me up) | 진행 중 "내가 놓친 것/지금까지 액션/내 이름 언급됐나" 실시간. 라이브 인프라 이미 있음 → RAG를 라이브 트랜스크립트로만 돌리면 됨. 최대 미사용 자산 | Zoom Companion, Teams Copilot, Otter | high / med |
+| 3 | 화자별 발언 점유율(발언 %·발언/경청비·최장 독백) | 저장된 diarization 데이터 순수 후처리. 신규 캡처·클라우드·LLM 비용 0 | Fireflies, tl;dv, Avoma, Read.ai | high / low |
+| 4 | 요약·챗 답변 인라인 출처 인용 | 요약 줄 클릭 → 트랜스크립트+오디오 정확 지점 점프. 한국어 STT 불완전 → 원문대조 가치 큼. 환각 신뢰 직격. timestamp_ms+플레이어 보유 | Granola, Fireflies, Lilys, Notion | high / med |
+| 5 | 즉석 다포맷 재구성 + 한국어 템플릿 | 같은 회의를 임원보고/화자별/한줄로 재성형 + 주간/1on1/킥오프/인터뷰 기성 템플릿. llm 인프라 위 얇은 레이어 | Fathom, Teams, Granola, 클로바노트 | high / low |
+
+### 카테고리별 나머지
+
+**Intelligence**
+- 액션아이템 책임 추적(알림·마감·"내 미결 액션") — schema에 assignee_id+due_date 이미 존재, 데이터모델이 제품보다 앞섬 · high/med
+- 한국어 번역(KR↔EN, 글로사리 일관 번역이 차별점) · high/med
+- 회의 챕터/자동 토픽 분할(점프 타임스탬프) · med/med
+- 타입드 거버넌스 항목(위험/이슈/블로커/미결) · med/med
+- 사전 회의 브리프("이 폴더서 지난번 X·미결 Y개") · med/med
+- 폴더 단위 정기 AI 다이제스트(#1 의존) · med/med
+- 감정/참여 신호(보수 버전, EU-AI-Act 리스크 자체호스팅 스코핑) · med/med
+
+**Collaboration**
+- 트랜스크립트 코멘트/@멘션/스레드 — comments 모델 부재, ActionCable+팀멤버십 재사용. 팀 정체성 핵심 · high/med
+- 오디오 클립/하이라이트 공유(북마크+오디오+공유 보유 → span+ffmpeg) · med/med
+- 사후 배포: 요약+액션 자동 이메일(카드OCR 이메일+미사용 Mailer 스캐폴드+자체 SMTP) · med/med
+
+**Capture**
+- 데스크톱 시스템/루프백 오디오(봇 없이 VC 콜 캡처, macOS ScreenCaptureKit) · high/high
+- 모바일 잠금화면 백그라운드 녹음 패리티 · med/med
+
+**UX / Output**
+- 소프트 삭제/휴지통+복원+노트 버전 이력 — 문서화된 Ctrl+Z 데이터손실 + DB 와이프 사고 직격 · med/low
+- 교차회의 전문+AI 검색 결과 페이지(FTS5 확장) · med/low
+- 시각 렌더(마인드맵·타임라인 — BlockNote Mermaid 이미 렌더) · med/med
+- 콘텐츠 인제스천(YouTube/URL·PDF 요약 — 한국 경쟁사 2/3 진입로) · med/med
+
+**Accessibility**
+- 라이브 캡션 + a11y(ARIA/스크린리더) — 한국 공공/교육 조달 요건, 추천에 0이던 빈틈 · med/med
+
+**Integration**
+- 아웃바운드 웹훅 + 스코프드 API 토큰 — 회의완료/요약준비 시 웹훅, 팀이 사내메신저/Jira 자체연동. 자체호스팅에 가장 맞는 통합 · high/med
+- SRT/VTT 자막 내보내기(데이터 완비, 시리얼라이저만) · med/low
+- 관리 거버넌스 번들(보존정책·감사로그·2FA) — 클라우드는 엔터프라이즈 게이팅, ddobak 전원 제공 · med/med
+- 녹음 동의 캡처 + egress 제어(EU-AI-Act/동의 대응) · med/med
+
+### 진행 중 브랜치 연계
+- 현 브랜치 `feat/meeting-lock-importance`(미커밋: 잠금=읽기전용+중요 플래그, schema 2026_06_16): 잠금이 mutating 가드를 이미 깔아둠 → 거버넌스 번들·소프트 삭제/복원이 그 위에 자연스럽게 얹힘. 중요 플래그 ↔ "중요 회의 자동 보존" 정책으로 확장.
+- AI Chat/glossary/요약 전체보기 이미 main 병합 → #1·#2가 chat_messages/meeting_chat_context 직접 재사용, 추가 인프라 최소.
+
+### 저비용 즉효 3종 (한 스프린트 체감 최대)
+발언 점유율(#3) · 다포맷 재구성+템플릿(#5) · 소프트 삭제/복원 — value high, effort low.
