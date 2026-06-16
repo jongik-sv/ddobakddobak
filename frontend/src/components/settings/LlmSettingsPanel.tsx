@@ -37,12 +37,14 @@ export function LlmSettingsPanel() {
   const [ollamaLoading, setOllamaLoading] = useState(false)
   const [ollamaError, setOllamaError] = useState<string | null>(null)
   const [useCustomModel, setUseCustomModel] = useState(false)
+  const [chatModel, setChatModel] = useState('')
 
   useEffect(() => {
     getLlmSettings().then((llm) => {
       if (!llm) return
       setLlmSettings(llm)
       setSelectedPreset(llm.active_preset || 'anthropic')
+      setChatModel(llm.chat_model || '')
       const cache: Record<string, PresetFormState> = {}
       for (const [id, preset] of Object.entries(llm.presets || {})) {
         cache[id] = {
@@ -152,10 +154,12 @@ export function LlmSettingsPanel() {
 
       const result = await updateLlmSettings({
         active_preset: selectedPreset,
+        chat_model: chatModel.trim() || '',
         preset_id: selectedPreset,
         preset_data: presetData,
       })
       setLlmSettings(result)
+      setChatModel(result.chat_model || '')
       updateCurrentForm({ auth_token: '' })
       setLlmSuccess('AI 설정이 저장되었습니다.')
     } catch {
@@ -325,6 +329,20 @@ export function LlmSettingsPanel() {
         <p className="text-xs text-muted-foreground">
           사용 중인 모델의 스펙에 맞게 설정하세요. 모르겠으면 기본값을 유지하면 됩니다.
         </p>
+
+        {/* AI 챗 모델명 (전역 설정) */}
+        <div>
+          <label htmlFor="llm-chat-model" className="block text-sm font-medium mb-1">AI 챗 모델명</label>
+          <input
+            id="llm-chat-model"
+            type="text"
+            value={chatModel}
+            onChange={(e) => setChatModel(e.target.value)}
+            placeholder="모델명을 입력하세요"
+            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
+          />
+          <p className="text-xs text-muted-foreground mt-1">비우면 요약 모델을 사용합니다</p>
+        </div>
 
         {/* 버튼 + 결과 */}
         <div className="flex items-center gap-2">

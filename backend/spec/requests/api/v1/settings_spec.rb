@@ -129,6 +129,92 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
   end
 
   # ============================================================
+  # Global chat model (chat_model top-level field)
+  # ============================================================
+  describe "global chat_model" do
+    before do
+      allow_any_instance_of(ApplicationController).to receive(:server_mode?).and_return(true)
+      allow_any_instance_of(ApplicationController).to receive(:authenticate_user!).and_return(true)
+      login_as(admin)
+    end
+
+    # ENV["CHAT_LLM_MODEL"] 가 다른 예제로 새지 않도록 보존/복원한다.
+    around do |example|
+      prev = ENV["CHAT_LLM_MODEL"]
+      example.run
+      if prev.nil?
+        ENV.delete("CHAT_LLM_MODEL")
+      else
+        ENV["CHAT_LLM_MODEL"] = prev
+      end
+    end
+
+    it "PUT /api/v1/settings/llm with chat_model persists it under llm.chat_model" do
+      written = nil
+      allow(File).to receive(:write)
+        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_path, content|
+          written = YAML.safe_load(content)
+          true
+        end
+
+      put "/api/v1/settings/llm", params: { chat_model: "claude-haiku-4" }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(written.dig("llm", "chat_model")).to eq("claude-haiku-4")
+    end
+
+    it "PUT /api/v1/settings/llm sets ENV[\"CHAT_LLM_MODEL\"] from chat_model" do
+      # write→read 라운드트립 시뮬레이션: 저장된 내용이 이후 load_settings 재읽기에 보인다.
+      # (sync_active_llm_to_env 가 저장 직후 파일을 다시 읽어 ENV 를 갱신하기 때문)
+      allow(File).to receive(:write)
+        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_path, content|
+          allow(File).to receive(:read).with(Api::V1::SettingsController::SETTINGS_PATH).and_return(content)
+          true
+        end
+
+      put "/api/v1/settings/llm", params: { chat_model: "claude-haiku-4" }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(ENV["CHAT_LLM_MODEL"]).to eq("claude-haiku-4")
+    end
+
+    it "GET /api/v1/settings/llm returns chat_model as a top-level field" do
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:read).with(Api::V1::SettingsController::SETTINGS_PATH).and_return(YAML.dump({
+        "stt" => { "engine" => "whisper_cpp" },
+        "llm" => {
+          "active_preset" => "anthropic",
+          "chat_model" => "claude-haiku-4",
+          "presets" => { "anthropic" => { "provider" => "anthropic", "auth_token" => "sk-test" } }
+        },
+        "hf" => { "token" => "hf_test" }
+      }))
+
+      get "/api/v1/settings/llm"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["chat_model"]).to eq("claude-haiku-4")
+    end
+
+    it "PUT /api/v1/settings/llm with empty chat_model clears it (nil) and deletes ENV" do
+      ENV["CHAT_LLM_MODEL"] = "stale-model"
+      written = nil
+      allow(File).to receive(:write)
+        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_path, content|
+          written = YAML.safe_load(content)
+          allow(File).to receive(:read).with(Api::V1::SettingsController::SETTINGS_PATH).and_return(content)
+          true
+        end
+
+      put "/api/v1/settings/llm", params: { chat_model: "" }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(written.dig("llm", "chat_model")).to be_nil
+      expect(ENV.key?("CHAT_LLM_MODEL")).to be(false)
+    end
+  end
+
+  # ============================================================
   # Local mode: bypasses admin check (any user can write)
   # ============================================================
   describe "local mode — member user" do

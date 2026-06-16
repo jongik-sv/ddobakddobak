@@ -92,6 +92,7 @@ module Api
 
         render json: {
           active_preset: active,
+          chat_model: llm_cfg["chat_model"],
           presets: masked_presets
         }
       end
@@ -105,6 +106,11 @@ module Api
         # 활성 프리셋 변경
         if params[:active_preset].present?
           llm_cfg["active_preset"] = params[:active_preset]
+        end
+
+        # 전역 AI Chat 모델 (active_preset 형제 필드). 빈 문자열은 nil 로 저장해 클리어한다.
+        if params.key?(:chat_model)
+          llm_cfg["chat_model"] = params[:chat_model].to_s.presence
         end
 
         # 프리셋별 설정 업데이트
@@ -295,6 +301,13 @@ module Api
         ENV["LLM_MODEL"] = preset["model"].to_s if preset["model"]
         ENV["LLM_MAX_INPUT_TOKENS"] = (preset["max_input_tokens"] || 200_000).to_s
         ENV["LLM_MAX_OUTPUT_TOKENS"] = (preset["max_output_tokens"] || 10_000).to_s
+
+        # 전역 AI Chat 모델. 지정 시 ENV 설정, 비면 삭제(요약 모델로 폴백).
+        if llm["chat_model"].present?
+          ENV["CHAT_LLM_MODEL"] = llm["chat_model"].to_s
+        else
+          ENV.delete("CHAT_LLM_MODEL")
+        end
 
         if provider == "openai"
           ENV["OPENAI_API_KEY"] = preset["auth_token"].to_s

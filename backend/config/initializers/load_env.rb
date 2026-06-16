@@ -28,6 +28,10 @@ if File.exist?(settings_path)
     ENV["LLM_MAX_INPUT_TOKENS"] ||= (preset["max_input_tokens"] || 200_000).to_s
     ENV["LLM_MAX_OUTPUT_TOKENS"] ||= (preset["max_output_tokens"] || 10_000).to_s
 
+    # 전역 AI Chat 모델 (active_preset 형제 필드, ENV["CHAT_LLM_MODEL"]).
+    # 지정 시 부팅 시점에 설정한다. 비어 있으면 설정하지 않아 요약 모델로 폴백한다.
+    ENV["CHAT_LLM_MODEL"] ||= llm["chat_model"].to_s if llm["chat_model"].present?
+
     if provider == "openai"
       ENV["OPENAI_API_KEY"] ||= preset["auth_token"].to_s if preset["auth_token"]
       ENV["OPENAI_BASE_URL"] ||= preset["base_url"].to_s if preset["base_url"]

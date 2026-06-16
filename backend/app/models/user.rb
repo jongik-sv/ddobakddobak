@@ -54,13 +54,15 @@ class User < ApplicationRecord
     end
   end
 
-  # AI Chat용 LLM 설정. 요약과 같은 provider/key를 쓰되, chat_llm_model이
-  # 지정된 경우에만 모델을 덮어쓴다. 비어 있으면 요약 모델(effective_llm_config)로 폴백한다.
+  # AI Chat용 LLM 설정. 요약과 같은 provider/key를 쓰되, 채팅 모델을 덮어쓴다.
+  # 우선순위: 사용자 개인 chat_llm_model(컬럼) > 전역 ENV["CHAT_LLM_MODEL"] > 요약 모델.
+  # 모두 비어 있으면 요약 모델(effective_llm_config)로 폴백한다.
   def effective_chat_llm_config
     cfg = effective_llm_config
-    return cfg if cfg.blank? || chat_llm_model.blank?
+    return cfg if cfg.blank?
 
-    cfg.merge(model: chat_llm_model)
+    chat_model = chat_llm_model.presence || ENV["CHAT_LLM_MODEL"].presence
+    chat_model ? cfg.merge(model: chat_model) : cfg
   end
 
   # 사용자 개인 LLM 설정을 sidecar llm_config 형식으로 반환한다.

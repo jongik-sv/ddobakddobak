@@ -54,6 +54,7 @@ export interface LlmPreset {
 
 export interface LlmSettings {
   active_preset: string
+  chat_model?: string | null
   presets: Record<string, LlmPreset>
   offline?: boolean
   sidecar?: Record<string, unknown>
@@ -65,6 +66,7 @@ export async function getLlmSettings(): Promise<LlmSettings> {
 
 export async function updateLlmSettings(params: {
   active_preset?: string
+  chat_model?: string | null
   preset_id?: string
   preset_data?: {
     provider?: string
