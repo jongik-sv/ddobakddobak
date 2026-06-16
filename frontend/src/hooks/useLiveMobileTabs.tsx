@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
-import { FileText, Bot, PenLine } from 'lucide-react'
+import { FileText, Bot, PenLine, MessageCircle } from 'lucide-react'
 import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
+import { AiChatPanel } from '../components/meeting/AiChatPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor, customSchema } from '../components/editor/MeetingEditor'
@@ -121,6 +122,12 @@ export function useLiveMobileTabs({
           </div>
         </div>
       ),
+    },
+    {
+      id: 'chat',
+      label: 'AI 챗',
+      icon: MessageCircle,
+      content: <AiChatPanel meetingId={meetingId} />,
     },
   ], [meetingId, isActive, isSharing, isHost, currentUserId, onTransferRequest, onNotesChange, onSaveMemo, isSavingMemo, memoEditorRef, corrections, isApplyingCorrections, onUpdateCorrection, onAddCorrection, onRemoveCorrection, onApplyCorrections, summaryOptions])
 }

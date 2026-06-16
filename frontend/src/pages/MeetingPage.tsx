@@ -416,8 +416,8 @@ export default function MeetingPage() {
       {/* 패널 레이아웃: 데스크톱(PanelGroup) / 모바일(MobileTabLayout) */}
       {isDesktop ? (
         <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden min-h-0">
-          {/* 트랜스크립트 + 북마크 패널 — 기본 25% */}
-          <Panel defaultSize={25} minSize={15}>
+          {/* 트랜스크립트 + 북마크 패널 — 기본 22% */}
+          <Panel defaultSize={22} minSize={15}>
             <div className="h-full flex flex-col overflow-hidden">
               {bookmarksVisible && (
                 <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} onAdd={handleOpenBookmark} onEdit={handleEditBookmark} readOnly={locked} />
@@ -443,8 +443,8 @@ export default function MeetingPage() {
 
           <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-          {/* AI 회의록 — 기본 45% */}
-          <Panel defaultSize={45} minSize={20}>
+          {/* AI 회의록 — 기본 48% */}
+          <Panel defaultSize={48} minSize={20}>
             <div data-search-region="summary" className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
               <AiSummaryPanel
                 meetingId={meetingId}
@@ -487,8 +487,8 @@ export default function MeetingPage() {
         />
       )}
 
-      {/* 오타 수정 섹션 — 잠긴 회의는 전사/회의록을 바꾸므로 숨김 */}
-      {meeting?.status === 'completed' && !locked && (
+      {/* 오타 수정 섹션 — 잠긴 회의는 전사/회의록을 바꾸므로 숨김 (녹음/일시정지 중에도 노출) */}
+      {!locked && (
         <TermCorrectionDetails
           corrections={corrections}
           status={correctionStatus}
@@ -500,8 +500,8 @@ export default function MeetingPage() {
         />
       )}
 
-      {/* 오타 사전 섹션 — 잠긴 회의는 숨김 */}
-      {meeting?.status === 'completed' && meeting?.id && !locked && (
+      {/* 오타 사전 섹션 — 잠긴 회의는 숨김 (녹음/일시정지 중에도 노출) */}
+      {meeting?.id && !locked && (
         <GlossaryPanel meetingId={meeting.id} />
       )}
 

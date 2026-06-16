@@ -34,6 +34,7 @@ import MobileTabLayout from '../components/layout/MobileTabLayout'
 import { MobileRecordControls } from '../components/meeting/MobileRecordControls'
 import { CorrectionsSection } from '../components/meeting/CorrectionsSection'
 import { MemoHeader } from '../components/meeting/MemoHeader'
+import { RightTabsPanel } from '../components/meeting/RightTabsPanel'
 import { BookmarkPopover } from '../components/meeting/BookmarkPopover'
 import { DesktopRecordControls } from '../components/meeting/DesktopRecordControls'
 import { LiveStatusBar } from '../components/meeting/LiveStatusBar'
@@ -275,8 +276,8 @@ export default function MeetingLivePage() {
       {/* 데스크톱: 3영역 리사이즈 레이아웃 / 모바일: 탭 레이아웃 */}
       {isDesktop ? (
         <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden">
-          {/* 기록 + 화자 영역 — 기본 20% */}
-          <Panel defaultSize={20} minSize={15}>
+          {/* 기록 + 화자 영역 — 기본 22% */}
+          <Panel defaultSize={22} minSize={15}>
             <section className="h-full border-r overflow-hidden flex flex-col">
               <div className="flex-1 overflow-hidden">
                 <RecordTabPanel
@@ -302,8 +303,8 @@ export default function MeetingLivePage() {
 
           <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-          {/* AI 회의록 영역 — 기본 50% */}
-          <Panel defaultSize={50} minSize={20}>
+          {/* AI 회의록 영역 — 기본 48% */}
+          <Panel defaultSize={48} minSize={20}>
             <section
               data-testid="ai-minutes"
               className="h-full border-r overflow-hidden flex flex-col"
@@ -321,30 +322,34 @@ export default function MeetingLivePage() {
             <>
               <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-              {/* 메모 + 피드백 영역 — 나머지 30% */}
+              {/* 메모 + 오타수정 + AI 챗 탭 — 나머지 30% */}
               <Panel defaultSize={30} minSize={15}>
-                <section
-                  data-testid="memo-editor"
-                  className="h-full flex flex-col overflow-hidden"
-                >
-                  {/* 메모 영역 (60%) */}
-                  <MemoHeader onSave={handleSaveMemo} isSaving={isSavingMemo} />
-                  <div className="overflow-auto" style={{ flex: '0 0 60%' }}>
-                    <MeetingEditor editorRef={memoEditorRef} />
-                  </div>
-
-                  {/* 오타 수정 영역 (40%) */}
-                  <div className="flex flex-col border-t" style={{ flex: '0 0 40%' }}>
-                    <CorrectionsSection
-                      corrections={corrections}
-                      isApplyingCorrections={isApplyingCorrections}
-                      onUpdate={updateCorrection}
-                      onAdd={addCorrectionRow}
-                      onRemove={removeCorrectionRow}
-                      onApply={handleApplyCorrections}
-                    />
-                  </div>
-                </section>
+                <RightTabsPanel
+                  meetingId={meetingId}
+                  memo={
+                    <section
+                      data-testid="memo-editor"
+                      className="h-full flex flex-col overflow-hidden"
+                    >
+                      <MemoHeader onSave={handleSaveMemo} isSaving={isSavingMemo} />
+                      <div className="flex-1 overflow-auto">
+                        <MeetingEditor editorRef={memoEditorRef} />
+                      </div>
+                    </section>
+                  }
+                  corrections={
+                    <div className="h-full flex flex-col overflow-hidden">
+                      <CorrectionsSection
+                        corrections={corrections}
+                        isApplyingCorrections={isApplyingCorrections}
+                        onUpdate={updateCorrection}
+                        onAdd={addCorrectionRow}
+                        onRemove={removeCorrectionRow}
+                        onApply={handleApplyCorrections}
+                      />
+                    </div>
+                  }
+                />
               </Panel>
             </>
           )}

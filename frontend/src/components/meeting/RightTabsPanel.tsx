@@ -2,9 +2,18 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { AiChatPanel } from './AiChatPanel'
 
-type Tab = 'memo' | 'chat'
+type Tab = 'memo' | 'corrections' | 'chat'
 
-export function RightTabsPanel({ meetingId, memo }: { meetingId: number; memo: ReactNode }) {
+export function RightTabsPanel({
+  meetingId,
+  memo,
+  corrections,
+}: {
+  meetingId: number
+  memo: ReactNode
+  /** 오타수정 탭 콘텐츠. 제공 시 메모와 AI 챗 사이에 3번째 탭으로 노출. 미제공 시 2탭(메모/AI 챗). */
+  corrections?: ReactNode
+}) {
   const [tab, setTab] = useState<Tab>('memo')
   const btn = (t: Tab) =>
     `px-3 py-1.5 text-sm font-medium ${
@@ -16,12 +25,21 @@ export function RightTabsPanel({ meetingId, memo }: { meetingId: number; memo: R
         <button className={btn('memo')} onClick={() => setTab('memo')}>
           메모
         </button>
+        {corrections != null && (
+          <button className={btn('corrections')} onClick={() => setTab('corrections')}>
+            오타수정
+          </button>
+        )}
         <button className={btn('chat')} onClick={() => setTab('chat')}>
           AI 챗
         </button>
       </div>
       <div className="flex-1 min-h-0">
-        {tab === 'memo' ? memo : <AiChatPanel meetingId={meetingId} />}
+        {tab === 'memo'
+          ? memo
+          : tab === 'corrections'
+            ? corrections
+            : <AiChatPanel meetingId={meetingId} />}
       </div>
     </div>
   )
