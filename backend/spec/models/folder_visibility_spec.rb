@@ -6,10 +6,15 @@ RSpec.describe "Folder/Meeting 폴더 상속 가시성", type: :model do
   let(:other) { create(:user) }
   let(:admin) { create(:user, :admin) }
 
+  # 공유 가시성은 같은 프로젝트 멤버 사이에서만 성립한다(Phase 4 프로젝트 격리).
+  # 폴더·회의를 한 프로젝트에 묶고, 뷰어(other)도 그 프로젝트 멤버로 둔다.
+  let(:project) { create(:project) }
+  let!(:other_membership) { create(:project_membership, user: other, project: project, role: "member") }
+
   # parent(비공개) > child(공유) > meeting(공유)
-  let!(:parent) { create(:folder, shared: false) }
-  let!(:child)  { create(:folder, shared: true, parent: parent) }
-  let!(:meeting) { create(:meeting, creator: owner, folder_id: child.id, shared: true) }
+  let!(:parent) { create(:folder, project: project, shared: false) }
+  let!(:child)  { create(:folder, project: project, shared: true, parent: parent) }
+  let!(:meeting) { create(:meeting, project: project, creator: owner, folder_id: child.id, shared: true) }
 
   describe "Folder#effectively_shared?" do
     it "조상이 비공개면 false (자신이 공유여도)" do
@@ -57,7 +62,7 @@ RSpec.describe "Folder/Meeting 폴더 상속 가시성", type: :model do
     end
 
     it "폴더 없는 공유 회의는 보임(빈 visible_folder_ids 케이스 포함)" do
-      folderless = create(:meeting, creator: owner, folder_id: nil, shared: true)
+      folderless = create(:meeting, project: project, creator: owner, folder_id: nil, shared: true)
       expect(Meeting.accessible_by(other)).to include(folderless)
     end
   end
@@ -88,6 +93,17 @@ RSpec.describe "Folder/Meeting 폴더 상속 가시성", type: :model do
       parent.update!(shared: true)
       ids = flatten_ids(Folder.tree(other))
       expect(ids).to include(parent.id, child.id)
+    end
+  end
+
+  describe ".tree project 스코핑" do
+    it "지정 프로젝트의 폴더만 반환한다" do
+      user = create(:user, :admin)
+      p1 = create(:project); p2 = create(:project)
+      f1 = create(:folder, project: p1, name: "A")
+      _f2 = create(:folder, project: p2, name: "B")
+      ids = Folder.tree(user, p1.id).map { |n| n[:id] }
+      expect(ids).to eq([f1.id])
     end
   end
 

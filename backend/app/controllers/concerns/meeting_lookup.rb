@@ -11,25 +11,34 @@ module MeetingLookup
     authorize_meeting_read!
   end
 
-  # 읽기 인가: admin / 소유자 / 공유(shared) 회의 / active participant 만 허용
+  # 읽기 인가: admin / 소유자 / (프로젝트 멤버 && 공유) / active participant(공유코드 게스트) 만 허용.
+  # 공유 가시성은 이제 프로젝트 멤버십 뒤에 게이트된다 — 비멤버는 shared 회의라도 못 본다(프로젝트 격리).
   def authorize_meeting_read!
     return if meeting_admin?
     return if @meeting.owner?(current_user)
-    # shared=true 회의는 임의의 로그인 사용자가 열람 가능 — 단, 폴더가 비공개면 가린다(폴더 우선).
-    return if @meeting.shared_visible?
-    # 떠난 참여자(left_at 설정)는 제외 — 재접근하려면 공유코드로 다시 참여해야 함
+    # shared=true 회의는 같은 프로젝트 멤버에게만(폴더 비공개면 shared_visible?가 가림). 비멤버 차단.
+    return if project_member?(@meeting) && @meeting.shared_visible?
+    # 떠난 참여자(left_at 설정)는 제외 — 재접근하려면 공유코드로 다시 참여해야 함.
+    # 공유코드 게스트는 멤버십과 무관하게 READ 만 허용(외부 공유 링크 경로 유지).
     return if @meeting.active_participants.exists?(user_id: current_user.id)
 
     render json: { error: "이 회의에 접근할 권한이 없습니다" }, status: :forbidden
   end
 
-  # 제어 인가: admin / 소유자 / 현재 host participant 만 허용
+  # 제어 인가: admin / 소유자 / (프로젝트 멤버 && 현재 host participant) 만 허용.
+  # 게스트(비멤버)는 host 라도 제어 불가 — 제어는 멤버십 뒤에 게이트된다.
   def authorize_meeting_control!
     return if meeting_admin?
     return if @meeting.owner?(current_user)
-    return if @meeting.host_participant&.user_id == current_user.id
+    # host 제어도 프로젝트 멤버 한정 — 공유코드 게스트(비멤버)는 host라도 제어 불가.
+    return if project_member?(@meeting) && @meeting.host_participant&.user_id == current_user.id
 
     render json: { error: "회의를 제어할 권한이 없습니다" }, status: :forbidden
+  end
+
+  # 현재 사용자가 이 회의의 프로젝트 멤버인지. project_id 없으면 false(과도기 안전).
+  def project_member?(meeting)
+    meeting.project_id && ProjectMembership.exists?(project_id: meeting.project_id, user_id: current_user.id)
   end
 
   def meeting_admin?

@@ -79,8 +79,10 @@ class Folder < ApplicationRecord
 
   # user를 주면 그 사용자가 접근 가능한 회의만 카운트 (admin/loopback은 전체).
   # user가 nil이면 전체 카운트(하위 호환).
-  def self.tree(user = nil)
-    all_folders = ordered.includes(:tags).to_a
+  def self.tree(user = nil, project_id = nil)
+    base = ordered.includes(:tags)
+    base = base.where(project_id: project_id) if project_id.present?
+    all_folders = base.to_a
     # non-admin: 비공개 폴더(및 비공개 조상 하위) 서브트리 통째로 숨긴다(상속).
     # admin/loopback은 자물쇠 표시와 함께 전부 본다.
     if user && !user.admin?
@@ -88,6 +90,7 @@ class Folder < ApplicationRecord
       all_folders = all_folders.select { |f| visible.include?(f.id) }
     end
     scope = user ? Meeting.accessible_by(user) : Meeting.all
+    scope = scope.where(project_id: project_id) if project_id.present?
     meeting_counts = scope.where(folder_id: all_folders.map(&:id))
                           .group(:folder_id).count
     children_by_parent = all_folders.group_by(&:parent_id)

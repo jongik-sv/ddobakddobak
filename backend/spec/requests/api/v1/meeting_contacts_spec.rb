@@ -36,7 +36,11 @@ RSpec.describe "Api::V1::MeetingContacts", type: :request do
 
   describe "as a non-owner (shared meeting → read ok, control forbidden)" do
     let(:other) { create(:user) }
-    before { login_as(other) }
+    # 공유 회의 열람은 같은 프로젝트 멤버에게만 허용된다(Phase 4 프로젝트 격리).
+    before do
+      create(:project_membership, user: other, project: meeting.project, role: "member")
+      login_as(other)
+    end
 
     it "can read but cannot update" do
       c = create(:meeting_contact, meeting: meeting, name: "홍길동")

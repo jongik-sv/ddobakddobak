@@ -174,6 +174,16 @@ module Api
           return render json: { error: "잠긴 회의입니다. 잠금을 해제한 뒤 다시 시도하세요." }, status: :forbidden
         end
 
+        # 교차 프로젝트 이동 차단(권한 상승 방지): 대상 폴더의 프로젝트와 다른 프로젝트의
+        # 회의를 그 폴더로 옮기려는 시도를 거부한다. editable_by 범위 내에서만 검사한다.
+        if params[:folder_id].present?
+          target = Folder.find_by(id: params[:folder_id])
+          return render json: { error: "폴더를 찾을 수 없습니다" }, status: :not_found unless target
+          if Meeting.editable_by(current_user).where(id: meeting_ids).where.not(project_id: target.project_id).exists?
+            return render json: { error: "다른 프로젝트의 폴더로는 이동할 수 없습니다" }, status: :forbidden
+          end
+        end
+
         # update_all 은 콜백·인가를 우회하므로 editable_by 스코프가 유일한 방어선이다.
         # (남의 공유 회의를 일괄 폴더이동하는 것을 막는다.)
         meetings = Meeting.editable_by(current_user).where(id: meeting_ids)

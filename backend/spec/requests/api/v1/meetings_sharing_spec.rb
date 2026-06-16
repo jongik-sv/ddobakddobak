@@ -12,10 +12,16 @@ RSpec.describe "Api::V1::Meetings 공유/비공개", type: :request do
   let(:other_user) { create(:user) }
   let(:admin)      { create(:user, :admin) }
 
-  let!(:own_private) { create(:meeting, :private_meeting, creator: user, title: "내 비공개") }
-  let!(:own_shared)  { create(:meeting, creator: user, shared: true, title: "내 공유") }
-  let!(:foreign_private) { create(:meeting, :private_meeting, creator: other_user, title: "남 비공개") }
-  let!(:foreign_shared)  { create(:meeting, creator: other_user, shared: true, title: "남 공유") }
+  # 공유 가시성은 같은 프로젝트 멤버 사이에서만 성립한다(Phase 4 프로젝트 격리).
+  # 현실 시나리오 = user·other_user 가 한 프로젝트의 멤버이고 그 안에서 회의를 공유한다.
+  # 회의 팩토리가 각 creator 를 멤버로 자동등록하므로, 뷰어(user)도 명시적으로 멤버로 둔다.
+  let(:project) { create(:project) }
+  let!(:user_membership) { create(:project_membership, user: user, project: project, role: "member") }
+
+  let!(:own_private) { create(:meeting, :private_meeting, project: project, creator: user, title: "내 비공개") }
+  let!(:own_shared)  { create(:meeting, project: project, creator: user, shared: true, title: "내 공유") }
+  let!(:foreign_private) { create(:meeting, :private_meeting, project: project, creator: other_user, title: "남 비공개") }
+  let!(:foreign_shared)  { create(:meeting, project: project, creator: other_user, shared: true, title: "남 공유") }
 
   # ============================================================
   # 가시성 매트릭스
@@ -239,7 +245,8 @@ RSpec.describe "Api::V1::Meetings 공유/비공개", type: :request do
   # move_to_folder: 타인 회의 미이동
   # ============================================================
   describe "move_to_folder" do
-    let(:folder) { create(:folder) }
+    # 폴더는 회의와 같은 프로젝트여야 한다(교차 프로젝트 이동은 Phase 4 가드가 403).
+    let(:folder) { create(:folder, project: project) }
 
     before { login_as(user) }
 

@@ -41,4 +41,28 @@ RSpec.describe Meeting, type: :model do
       expect(meeting.important).to be false
     end
   end
+
+  describe ".accessible_by 프로젝트 격리" do
+    let(:user)  { create(:user) }
+    let(:p1)    { create(:project) }
+    let(:p2)    { create(:project) }
+
+    before { create(:project_membership, user: user, project: p1, role: "member") }
+
+    it "멤버인 프로젝트의 공유 회의만 보인다" do
+      mine = create(:meeting, project: p1, creator: user)
+      other_shared = create(:meeting, project: p1, creator: create(:user), shared: true)
+      foreign = create(:meeting, project: p2, creator: create(:user), shared: true)
+
+      ids = Meeting.accessible_by(user).pluck(:id)
+      expect(ids).to include(mine.id, other_shared.id)
+      expect(ids).not_to include(foreign.id)   # 비멤버 프로젝트 → 안 보임
+    end
+
+    it "전역 admin은 프로젝트 무관 전부 본다" do
+      admin = create(:user, :admin)
+      foreign = create(:meeting, project: p2, creator: create(:user))
+      expect(Meeting.accessible_by(admin).pluck(:id)).to include(foreign.id)
+    end
+  end
 end

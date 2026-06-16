@@ -99,15 +99,20 @@ class Meeting < ApplicationRecord
   # 폴더를 비공개로 두면 그 하위 폴더·회의가 개별 shared 여부와 무관하게 전부 숨는다(상속·폴더 우선).
   # (개별 회의 접근은 MeetingLookup이 참여자까지 허용하므로 더 넓다 — 이 스코프는 목록 쿼리용)
   # Folder.visible_folder_ids가 조상 체인을 in-memory로 평가해 보이는 폴더 id만 IN 으로 넘긴다.
+  # Phase 5 컨트롤러 스코핑(index 등)에서 사용 예정.
+  scope :in_project, ->(pid) { pid.present? ? where(project_id: pid) : all }
+
   scope :accessible_by, ->(user) {
     if user.admin?
       all
     else
-      visible_shared = where(shared: true).where(
+      member_pids = ProjectMembership.where(user_id: user.id).select(:project_id)
+      base = where(project_id: member_pids)
+      visible_shared = base.where(shared: true).where(
         "meetings.folder_id IS NULL OR meetings.folder_id IN (?)",
         Folder.visible_folder_ids
       )
-      where(created_by_id: user.id).or(visible_shared)
+      base.where(created_by_id: user.id).or(visible_shared)
     end
   }
 

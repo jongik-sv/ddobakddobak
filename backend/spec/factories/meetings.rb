@@ -15,5 +15,16 @@ FactoryBot.define do
     trait :private_meeting do
       shared { false }
     end
+
+    # 실제 앱에서 회의 생성자는 항상 그 프로젝트의 멤버다(개인 프로젝트=admin, Phase 5 강제).
+    # accessible_by 가 멤버십 프로젝트로 스코핑되므로, 테스트도 현실을 반영하도록
+    # 생성자를 회의 프로젝트의 멤버로 자동 등록한다.
+    after(:create) do |meeting|
+      if meeting.project_id && meeting.created_by_id
+        ProjectMembership.find_or_create_by!(project_id: meeting.project_id, user_id: meeting.created_by_id) do |pm|
+          pm.role = "member"
+        end
+      end
+    end
   end
 end
