@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_16_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_16_000002) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -290,6 +290,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_16_000001) do
   end
 
   create_table "users", force: :cascade do |t|
+    t.string "chat_llm_model"
     t.datetime "created_at", null: false
     t.string "email", default: "", null: false
     t.string "encrypted_password", default: "", null: false

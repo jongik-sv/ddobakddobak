@@ -54,6 +54,15 @@ class User < ApplicationRecord
     end
   end
 
+  # AI Chat용 LLM 설정. 요약과 같은 provider/key를 쓰되, chat_llm_model이
+  # 지정된 경우에만 모델을 덮어쓴다. 비어 있으면 요약 모델(effective_llm_config)로 폴백한다.
+  def effective_chat_llm_config
+    cfg = effective_llm_config
+    return cfg if cfg.blank? || chat_llm_model.blank?
+
+    cfg.merge(model: chat_llm_model)
+  end
+
   # 사용자 개인 LLM 설정을 sidecar llm_config 형식으로 반환한다.
   # 개인 설정이 없으면 nil을 반환하여 sidecar가 서버 기본값을 사용하도록 한다.
   def sidecar_llm_config

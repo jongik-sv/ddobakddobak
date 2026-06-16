@@ -24,6 +24,7 @@ module Api
               llm_api_key: nil,
               llm_model: nil,
               llm_base_url: nil,
+              chat_llm_model: nil,
               llm_enabled: true
             )
             return render json: build_response
@@ -72,12 +73,13 @@ module Api
         private
 
         def normalize_params
-          p = params.require(:llm_settings).permit(:provider, :api_key, :model, :base_url)
+          p = params.require(:llm_settings).permit(:provider, :api_key, :model, :base_url, :chat_llm_model)
 
           attrs = {
             llm_provider: p[:provider],
             llm_model: p[:model],
-            llm_base_url: p[:base_url].presence
+            llm_base_url: p[:base_url].presence,
+            chat_llm_model: p[:chat_llm_model].presence
           }
 
           # api_key 처리: 빈 문자열 → 기존 유지, nil → 삭제, 값 있으면 갱신
@@ -95,6 +97,7 @@ module Api
               provider: current_user.llm_provider,
               api_key_masked: mask_token(current_user.llm_api_key),
               model: current_user.llm_model,
+              chat_llm_model: current_user.chat_llm_model,
               base_url: current_user.llm_base_url,
               configured: current_user.llm_configured?,
               enabled: current_user.llm_enabled?,

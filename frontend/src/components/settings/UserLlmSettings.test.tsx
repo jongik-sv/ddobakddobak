@@ -24,6 +24,7 @@ const configuredResponse: UserLlmSettingsResponse = {
     provider: 'anthropic',
     api_key_masked: 'sk-a****5678',
     model: 'claude-sonnet-4-6',
+    chat_llm_model: 'claude-haiku-4-5',
     base_url: null,
     configured: true,
     enabled: true,
@@ -149,6 +150,37 @@ describe('UserLlmSettings', () => {
     await waitFor(() => {
       expect(screen.getByText(/서버 기본값 사용 중/)).toBeInTheDocument()
     })
+  })
+
+  // AI 챗 모델명 표시
+  it('설정 응답의 chat_llm_model로 "AI 챗 모델명" 필드를 채운다', async () => {
+    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
+    render(<UserLlmSettings />)
+    await waitFor(() => screen.getByText('Anthropic'))
+
+    const chatModelInput = screen.getByLabelText('AI 챗 모델명') as HTMLInputElement
+    expect(chatModelInput.value).toBe('claude-haiku-4-5')
+  })
+
+  // AI 챗 모델명 저장
+  it('저장 시 PUT payload에 chat_llm_model을 포함한다', async () => {
+    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
+    mockUpdateUserLlmSettings.mockResolvedValue(configuredResponse)
+    render(<UserLlmSettings />)
+    await waitFor(() => screen.getByText('Anthropic'))
+
+    const chatModelInput = screen.getByLabelText('AI 챗 모델명')
+    fireEvent.change(chatModelInput, { target: { value: 'gpt-4o-mini' } })
+
+    fireEvent.click(screen.getByText('저장'))
+    await waitFor(() => {
+      expect(screen.getByText(/저장되었습니다/)).toBeInTheDocument()
+    })
+    expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        llm_settings: expect.objectContaining({ chat_llm_model: 'gpt-4o-mini' }),
+      })
+    )
   })
 
   // 6.2.9 API 키 마스킹 표시

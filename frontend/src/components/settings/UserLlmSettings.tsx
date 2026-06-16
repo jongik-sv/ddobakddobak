@@ -71,6 +71,7 @@ export default function UserLlmSettings() {
   const [provider, setProvider] = useState<string>('')
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('')
+  const [chatModel, setChatModel] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [useCustomModel, setUseCustomModel] = useState(false)
 
@@ -92,9 +93,11 @@ export default function UserLlmSettings() {
         setProvider(ls.provider)
       }
       setModel(ls.model || '')
+      setChatModel(ls.chat_llm_model || '')
       setBaseUrl(ls.base_url || '')
     } else {
       setProvider('')
+      setChatModel('')
     }
     setApiKey('')
     setUseCustomModel(false)
@@ -120,6 +123,7 @@ export default function UserLlmSettings() {
     setProvider(id)
     const opt = PROVIDER_OPTIONS.find((p) => p.id === id)
     setModel(opt?.suggestedModels[0] ?? '')
+    setChatModel('')
     setBaseUrl('')
     setTestResult(null)
     setUseCustomModel(false)
@@ -145,6 +149,7 @@ export default function UserLlmSettings() {
           provider: actualProvider,
           ...(apiKey ? { api_key: apiKey } : {}),
           model,
+          chat_llm_model: chatModel || null,
           base_url: baseUrl || null,
         },
       })
@@ -339,6 +344,21 @@ export default function UserLlmSettings() {
                   className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
                 />
               )}
+            </div>
+          )}
+
+          {provider && provider !== 'none' && (
+            <div>
+              <label htmlFor="user-llm-chat-model" className="block text-sm font-medium mb-1">AI 챗 모델명</label>
+              <input
+                id="user-llm-chat-model"
+                type="text"
+                value={chatModel}
+                onChange={(e) => setChatModel(e.target.value)}
+                placeholder="모델명을 입력하세요"
+                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
+              />
+              <p className="text-xs text-muted-foreground mt-1">비우면 요약 모델을 사용합니다</p>
             </div>
           )}
 

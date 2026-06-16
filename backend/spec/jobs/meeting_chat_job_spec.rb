@@ -35,4 +35,20 @@ RSpec.describe MeetingChatJob, type: :job do
     )
     MeetingChatJob.perform_now(answer.id)
   end
+
+  it "builds LlmService with the creator's chat LLM config (separate chat model)" do
+    meeting.creator.update!(
+      llm_provider: "anthropic",
+      llm_api_key: "sk-creator-key",
+      llm_model: "claude-sonnet-4-6",
+      chat_llm_model: "claude-haiku-4-5"
+    )
+
+    fake = instance_double(LlmService, answer_question: "ok")
+    expect(LlmService).to receive(:new)
+      .with(llm_config: hash_including(model: "claude-haiku-4-5"))
+      .and_return(fake)
+
+    MeetingChatJob.perform_now(answer.id)
+  end
 end

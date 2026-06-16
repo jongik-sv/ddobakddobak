@@ -11,7 +11,7 @@ class MeetingChatJob < ApplicationJob
                       .where("created_at <= ?", answer.created_at).order(:created_at).last
 
     ctx = MeetingChatContext.build(meeting: meeting, user: user, question: question&.content.to_s)
-    config = meeting.creator&.effective_llm_config
+    config = meeting.creator&.effective_chat_llm_config
     raise "이 회의의 LLM이 설정되어 있지 않습니다." if config.blank?
 
     text = LlmService.new(llm_config: config).answer_question(ctx[:system_prompt], ctx[:user_content])
