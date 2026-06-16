@@ -1,9 +1,10 @@
-import { FileText, Bot, StickyNote } from 'lucide-react'
+import { FileText, Bot, StickyNote, MessageCircle } from 'lucide-react'
 import { BookmarkList } from './BookmarkList'
 import { TranscriptPanel } from './TranscriptPanel'
 import { SpeakerPanel } from './SpeakerPanel'
 import { AiSummaryPanel } from './AiSummaryPanel'
 import { MemoEditorPanel } from './MemoEditorPanel'
+import { AiChatPanel } from './AiChatPanel'
 import { customSchema } from '../editor/MeetingEditor'
 import type { Transcript } from '../../api/meetings'
 import type { Bookmark as BookmarkType } from '../../api/bookmarks'
@@ -115,6 +116,12 @@ export function buildMeetingDetailTabs({
           isSaving={isSavingMemo}
         />
       ),
+    },
+    {
+      id: 'chat',
+      label: 'AI 챗',
+      icon: MessageCircle,
+      content: <AiChatPanel meetingId={meetingId} />,
     },
   ]
 }

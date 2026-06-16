@@ -27,6 +27,7 @@ import MobileTabLayout from '../components/layout/MobileTabLayout'
 import { BookmarkList } from '../components/meeting/BookmarkList'
 import { BookmarkPopover } from '../components/meeting/BookmarkPopover'
 import { MemoEditorPanel } from '../components/meeting/MemoEditorPanel'
+import { RightTabsPanel } from '../components/meeting/RightTabsPanel'
 import { TranscribingProgress } from '../components/meeting/TranscribingProgress'
 import { TermCorrectionDetails } from '../components/meeting/TermCorrectionDetails'
 import { GlossaryPanel } from '../components/meeting/GlossaryPanel'
@@ -426,14 +427,19 @@ export default function MeetingPage() {
             <>
               <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-              {/* 메모 + Decision Log — 기본 30% */}
+              {/* 메모 + Decision Log + AI 챗 탭 — 기본 30% */}
               <Panel defaultSize={30} minSize={15}>
-                <MemoEditorPanel
+                <RightTabsPanel
                   meetingId={meetingId}
-                  editorRef={memoEditorRef}
-                  onEditorReady={onMemoEditorReady}
-                  onSave={handleSaveMemo}
-                  isSaving={isSavingMemo}
+                  memo={
+                    <MemoEditorPanel
+                      meetingId={meetingId}
+                      editorRef={memoEditorRef}
+                      onEditorReady={onMemoEditorReady}
+                      onSave={handleSaveMemo}
+                      isSaving={isSavingMemo}
+                    />
+                  }
                 />
               </Panel>
             </>

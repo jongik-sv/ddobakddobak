@@ -17,6 +17,7 @@ class Meeting < ApplicationRecord
   has_many :meeting_bookmarks, dependent: :destroy
   has_many :meeting_participants, dependent: :destroy
   has_many :active_participants, -> { where(left_at: nil) }, class_name: "MeetingParticipant"
+  has_many :chat_messages, dependent: :destroy
 
   # 회의록 압축율 5단계 (회의 화면·미리보기에서 회의별 지정)
   SUMMARY_VERBOSITY_LEVELS = %w[very_concise concise standard detailed very_detailed].freeze

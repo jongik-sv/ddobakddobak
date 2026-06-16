@@ -98,6 +98,7 @@ Rails.application.routes.draw do
         resources :contacts, only: %i[index update destroy],
                   controller: "meeting_contacts"
         resources :glossary_entries, only: %i[create], controller: "glossary_entries"
+        resources :chat_messages, only: %i[index create]
       end
 
       # Folders

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_15_000009) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_16_000001) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -35,6 +35,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000009) do
     t.datetime "updated_at", null: false
     t.index ["meeting_id", "position"], name: "index_blocks_on_meeting_id_and_position"
     t.check_constraint "block_type IN ('text','heading1','heading2','heading3','bullet_list','numbered_list','checkbox','quote','divider')", name: "chk_blocks_block_type"
+  end
+
+  create_table "chat_messages", force: :cascade do |t|
+    t.text "content", default: "", null: false
+    t.datetime "created_at", null: false
+    t.text "error_message"
+    t.integer "meeting_id", null: false
+    t.string "role", null: false
+    t.string "status", default: "complete", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["meeting_id", "user_id", "created_at"], name: "index_chat_messages_on_meeting_id_and_user_id_and_created_at"
+    t.index ["meeting_id"], name: "index_chat_messages_on_meeting_id"
+    t.index ["user_id"], name: "index_chat_messages_on_user_id"
   end
 
   create_table "decisions", force: :cascade do |t|
@@ -297,6 +311,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_000009) do
     t.check_constraint "role IN ('admin','member')", name: "chk_users_role"
   end
 
+  add_foreign_key "chat_messages", "meetings", on_delete: :cascade
+  add_foreign_key "chat_messages", "users"
   add_foreign_key "meeting_bookmarks", "meetings"
   add_foreign_key "meeting_contacts", "meeting_attachments", column: "source_attachment_id", on_delete: :nullify
   add_foreign_key "meeting_contacts", "meetings"

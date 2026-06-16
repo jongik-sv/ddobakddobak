@@ -162,6 +162,11 @@ class LlmService
     }
   end
 
+  # 회의 Q&A: 컨텍스트 빌더가 만든 system/user를 batch 호출. (스트리밍은 후속)
+  def answer_question(system_prompt, user_content)
+    call_llm_raw(system_prompt, user_content)
+  end
+
   # 안건 자료 압축: 업로드 시점에 LLM 으로 요약해 max_chars 미만으로 줄인다.
   # 입력 토큰 캡이 없으므로(LLM 호출부에 입력 길이 제한 없음) 반환·실패 모두 하드 트렁케이트로
   # 길이를 강제한다. blank 면 LLM 을 호출하지 않고 "" 반환.
