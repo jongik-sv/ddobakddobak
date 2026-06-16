@@ -6,6 +6,7 @@ import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 
 export function useViewerData(meetingId: number) {
   const [meetingTitle, setMeetingTitle] = useState('')
+  const [locked, setLocked] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -17,7 +18,10 @@ export function useViewerData(meetingId: number) {
     reset()
 
     Promise.all([
-      getMeeting(meetingId).then((m) => setMeetingTitle(m.title)),
+      getMeeting(meetingId).then((m) => {
+        setMeetingTitle(m.title)
+        setLocked(!!m.locked)
+      }),
       getTranscripts(meetingId).then((t) => loadFinals(mapTranscriptsToFinals(t))),
       getSummary(meetingId).then((s) => {
         if (s?.notes_markdown) setMeetingNotes(s.notes_markdown)
@@ -30,5 +34,5 @@ export function useViewerData(meetingId: number) {
       .catch(() => setError('회의 정보를 불러올 수 없습니다'))
   }, [meetingId, reset, loadFinals, setMeetingNotes])
 
-  return { meetingTitle, isLoaded, error }
+  return { meetingTitle, locked, isLoaded, error }
 }

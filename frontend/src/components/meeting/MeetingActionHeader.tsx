@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { Lock, Unlock } from 'lucide-react'
 import type { Meeting } from '../../api/meetings'
 import { MeetingIdBadge } from './MeetingIdBadge'
+import { Tooltip } from '../ui/Tooltip'
 
 // 모바일에서 상태 배지를 짧게 표시 (PC는 원문 그대로 유지)
 const STATUS_SHORT_LABEL: Record<string, string> = {
@@ -16,6 +18,10 @@ interface MeetingActionHeaderProps {
   onUpdateTitle: (title: string) => Promise<void> | void
   /** 소유자/admin만 제목 인라인 편집 허용 (기본 true = 기존 동작). */
   canEdit?: boolean
+  /** 잠금/해제 토글 핸들러. 소유자/admin만 노출(canEdit). 미지정이면 버튼 숨김. */
+  onToggleLock?: () => void
+  /** 잠금/해제 요청 진행 중이면 버튼 비활성. */
+  isTogglingLock?: boolean
 }
 
 /**
@@ -29,9 +35,13 @@ export function MeetingActionHeader({
   meetingTypeLabel,
   onUpdateTitle,
   canEdit = true,
+  onToggleLock,
+  isTogglingLock = false,
 }: MeetingActionHeaderProps) {
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [editingTitleValue, setEditingTitleValue] = useState('')
+  // 잠긴 회의는 제목 인라인 편집도 막는다(잠금 토글 버튼은 canEdit로 계속 노출).
+  const titleEditable = canEdit && !meeting.locked
 
   function handleTitleClick() {
     setEditingTitleValue(meeting.title)
@@ -56,7 +66,7 @@ export function MeetingActionHeader({
   return (
     <div className={`flex items-center border-b bg-white shrink-0 ${isDesktop ? 'px-6 py-3' : 'px-3 py-2'}`}>
       <div className={`flex items-center flex-1 min-w-0 ${isDesktop ? 'gap-3' : 'gap-2'}`}>
-        {isEditingTitle && canEdit ? (
+        {isEditingTitle && titleEditable ? (
           <input
             type="text"
             value={editingTitleValue}
@@ -66,7 +76,7 @@ export function MeetingActionHeader({
             className="text-lg font-semibold text-gray-900 border-b-2 border-blue-500 outline-none bg-transparent flex-1 min-w-0"
             autoFocus
           />
-        ) : canEdit ? (
+        ) : titleEditable ? (
           <h1
             className="text-lg font-semibold text-gray-900 truncate cursor-pointer hover:text-blue-700"
             onClick={handleTitleClick}
@@ -80,6 +90,15 @@ export function MeetingActionHeader({
           </h1>
         )}
         <MeetingIdBadge meetingId={meeting.id} />
+        {meeting.locked && (
+          <span
+            className={`shrink-0 inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 border border-amber-300 ${isDesktop ? 'px-2 py-0.5 text-xs' : 'px-1.5 py-0 text-[10px]'}`}
+            title="잠긴 회의입니다 (읽기 전용)"
+          >
+            <Lock className={isDesktop ? 'w-3 h-3' : 'w-2.5 h-2.5'} />
+            {isDesktop ? '읽기 전용' : '잠금'}
+          </span>
+        )}
         {meeting.status && (
           <span className={`shrink-0 rounded-full bg-gray-100 text-gray-600 ${isDesktop ? 'px-2 py-0.5 text-xs' : 'px-1.5 py-0 text-[10px]'}`}>
             {isDesktop ? meeting.status : (STATUS_SHORT_LABEL[meeting.status] ?? meeting.status)}
@@ -108,6 +127,24 @@ export function MeetingActionHeader({
           </span>
         ))}
       </div>
+      {/* 잠금/해제 토글 (소유자·admin만; 잠금 중에도 동작) — 제목 폭을 차지하지 않도록 그룹 밖 우측. */}
+      {onToggleLock && canEdit && (
+        <Tooltip text={meeting.locked ? '회의 잠금 해제' : '회의 잠금 (읽기 전용)'}>
+          <button
+            type="button"
+            onClick={onToggleLock}
+            disabled={isTogglingLock}
+            aria-label={meeting.locked ? '회의 잠금 해제' : '회의 잠금'}
+            className={`shrink-0 ml-2 p-1.5 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              meeting.locked
+                ? 'text-amber-600 bg-amber-50 hover:bg-amber-100'
+                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            {meeting.locked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+          </button>
+        </Tooltip>
+      )}
     </div>
   )
 }

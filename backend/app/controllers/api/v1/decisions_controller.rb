@@ -2,10 +2,12 @@ module Api
   module V1
     class DecisionsController < ApplicationController
       include DecisionSerializable
+      include MeetingWriteGuard
 
       before_action :authenticate_user!
       before_action :set_decision, only: %i[update destroy]
       before_action :authorize_decision_control!, only: %i[update destroy]
+      before_action :reject_if_locked!, only: %i[update destroy]
 
       # GET /api/v1/decisions?folder_id=N
       def index
@@ -36,6 +38,11 @@ module Api
         @decision = Decision.find(params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Not found" }, status: :not_found
+      end
+
+      # MeetingWriteGuard#reject_if_locked! 대상 회의 = 이 결정의 회의.
+      def locked_meeting
+        @decision&.meeting
       end
 
       # 소유/admin/현재 host만 변조 허용 (MeetingLookup#authorize_meeting_control!와 동일 티어).

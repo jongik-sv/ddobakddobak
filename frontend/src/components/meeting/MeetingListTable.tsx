@@ -1,10 +1,11 @@
-import { FolderClosed, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { FolderClosed, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Lock, Star } from 'lucide-react'
 import type { Meeting } from '../../api/meetings'
 import type { FolderNode } from '../../api/folders'
 import type { SelectedFolder } from '../../stores/folderStore'
 import { initDrag } from '../../utils/dragState'
 import { StatusBadge, MeetingTypeBadge, MeetingActionButtons } from './MeetingListUI'
 import { formatDate, folderPath } from '../../lib/meetingFormat'
+import { Tooltip } from '../ui/Tooltip'
 
 type SortField = 'created_at' | 'title'
 type SortDirection = 'asc' | 'desc'
@@ -26,6 +27,8 @@ interface MeetingListTableProps {
   onMove: (m: Meeting) => void
   onDelete: (m: Meeting) => void
   onStop: (m: Meeting) => void
+  /** 중요 표시 토글. 미지정이면 별 토글 숨김. 잠긴 회의는 비활성(update 경유라 막힘). */
+  onToggleImportant?: (m: Meeting) => void
 }
 
 export function MeetingListTable({
@@ -45,6 +48,7 @@ export function MeetingListTable({
   onMove,
   onDelete,
   onStop,
+  onToggleImportant,
 }: MeetingListTableProps) {
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
@@ -130,6 +134,27 @@ export function MeetingListTable({
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
+                  {onToggleImportant && (
+                    <Tooltip text={meeting.locked ? '잠긴 회의입니다' : meeting.important ? '중요 해제' : '중요 표시'}>
+                      <button
+                        type="button"
+                        aria-label={meeting.important ? '중요 해제' : '중요 표시'}
+                        disabled={meeting.locked}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onToggleImportant(meeting)
+                        }}
+                        className="shrink-0 p-0.5 rounded hover:bg-black/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Star
+                          className={`w-4 h-4 ${meeting.important ? 'text-amber-500 fill-amber-500' : 'text-gray-300'}`}
+                        />
+                      </button>
+                    </Tooltip>
+                  )}
+                  {meeting.locked && (
+                    <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" aria-label="잠긴 회의" />
+                  )}
                   <span className="text-sm font-medium truncate">{meeting.title}</span>
                   {meeting.folder_id && selectedFolderId === 'all' && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-0.5 shrink-0 max-w-[220px]">

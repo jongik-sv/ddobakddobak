@@ -9,6 +9,8 @@ import type { AttachmentCategory } from '../../api/attachments'
 
 interface AttachmentSectionProps {
   meetingId: number
+  /** 잠긴 회의면 첨부 추가·삭제를 막는다 (열기·다운로드는 가능). 기본 false. */
+  readOnly?: boolean
 }
 
 const CATEGORIES: { value: AttachmentCategory; label: string }[] = [
@@ -17,7 +19,7 @@ const CATEGORIES: { value: AttachmentCategory; label: string }[] = [
   { value: 'business_card', label: '명함' },
 ]
 
-export function AttachmentSection({ meetingId }: AttachmentSectionProps) {
+export function AttachmentSection({ meetingId, readOnly = false }: AttachmentSectionProps) {
   const { attachments, remove, refetch } = useAttachments(meetingId)
   const [activeCategory, setActiveCategory] = useState<AttachmentCategory>('agenda')
   const [showFileDialog, setShowFileDialog] = useState(false)
@@ -58,14 +60,18 @@ export function AttachmentSection({ meetingId }: AttachmentSectionProps) {
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setShowFileDialog(true)}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+            disabled={readOnly}
+            title={readOnly ? '잠긴 회의입니다' : undefined}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           >
             <Upload className="w-3.5 h-3.5" />
             파일 추가
           </button>
           <button
             onClick={() => setShowLinkDialog(true)}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+            disabled={readOnly}
+            title={readOnly ? '잠긴 회의입니다' : undefined}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           >
             <Link className="w-3.5 h-3.5" />
             링크 추가
@@ -84,6 +90,7 @@ export function AttachmentSection({ meetingId }: AttachmentSectionProps) {
               attachment={a}
               meetingId={meetingId}
               onDelete={remove}
+              readOnly={readOnly}
             />
           ))}
         </div>

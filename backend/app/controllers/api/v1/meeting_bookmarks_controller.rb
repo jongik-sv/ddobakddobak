@@ -2,6 +2,7 @@ module Api
   module V1
     class MeetingBookmarksController < ApplicationController
       include MeetingLookup
+      include MeetingWriteGuard
 
       before_action :authenticate_user!
       before_action :set_meeting
@@ -9,6 +10,7 @@ module Api
       # 비소유자가 소유자의 북마크를 추가/삭제하지 못하도록 쓰기는 제어 티어(소유/admin/host)로
       # 제한한다. 열람(index)은 read-tier 유지 — 공유 회의 열람자도 북마크를 볼 수 있다.
       before_action :authorize_meeting_control!, only: %i[create update destroy]
+      before_action :reject_if_locked!, only: %i[create update destroy]
 
       # GET /api/v1/meetings/:meeting_id/bookmarks
       def index

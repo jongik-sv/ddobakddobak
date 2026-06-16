@@ -5,10 +5,14 @@ module Api
       include MeetingSerializable
       include TranscriptSerializable
       include AudioStorage
+      include MeetingWriteGuard
 
       before_action :authenticate_user!
-      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry lock unlock]
       before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary apply_glossary_entry]
+      before_action :authorize_lock!, only: %i[lock unlock]
+      # 잠긴 회의 변조 차단. lock/unlock 은 제외(아니면 영원히 못 풂). create/upload_audio/index/show/move_to_folder 제외.
+      before_action :reject_if_locked!, only: %i[update destroy start stop reopen pause resume reset_content summarize regenerate_stt re_diarize regenerate_notes update_notes feedback reapply_glossary apply_glossary_entry]
       # 멈춘 화자분리-재실행 자가복구: 조회/재실행 시 stale 면 completed 로 되돌려 버튼이 다시 보이게 함
       before_action -> { @meeting&.heal_stale_re_diarize! }, only: %i[show re_diarize]
 
@@ -24,6 +28,12 @@ module Api
           else
             scope = scope.where(folder_id: params[:folder_id])
           end
+        end
+
+        # 중요 플래그 필터: show_all 이 truthy 가 아니면 important=true 회의만 노출(기본).
+        # 검색·상태필터가 걸려도 AND 로 함께 적용된다(1차 스펙은 단순 — 항상 important=true).
+        unless ActiveModel::Type::Boolean.new.cast(params[:show_all])
+          scope = scope.where(important: true)
         end
 
         # 상태별 카운트는 status 필터 적용 전 스코프에서 계산 (탭 선택과 무관하게 정확)
@@ -56,6 +66,7 @@ module Api
           previous_meeting_id: accessible_previous_meeting_id(params[:previous_meeting_id], params[:folder_id].presence&.to_i),
           **summary_options_for_create
         )
+        apply_explicit_importance!(meeting)
 
         if meeting.save
           render json: { meeting: meeting_json(meeting) }, status: :created
@@ -71,7 +82,7 @@ module Api
         # 파일 확장자 추출
         ext = File.extname(audio_file.original_filename).downcase.presence || ".webm"
 
-        meeting = Meeting.create!(
+        meeting = Meeting.new(
           title: params[:title].presence || "업로드된 회의",
           created_by_id: current_user.id,
           meeting_type: params[:meeting_type] || "general",
@@ -82,6 +93,8 @@ module Api
           started_at: Time.current,
           **summary_options_for_create
         )
+        apply_explicit_importance!(meeting)
+        meeting.save!
 
         storage_dir = Pathname.new(audio_dir)
         FileUtils.mkdir_p(storage_dir)
@@ -123,6 +136,7 @@ module Api
         attrs[:attendees] = params[:attendees] if params.key?(:attendees)
         attrs[:expected_participants] = params[:expected_participants].presence&.to_i if params.key?(:expected_participants)
         attrs[:summary_verbosity] = params[:summary_verbosity] if params.key?(:summary_verbosity)
+        attrs[:important] = ActiveModel::Type::Boolean.new.cast(params[:important]) if params.key?(:important)
         if params.key?(:summary_restructure)
           # cast 가 nil 을 주는 입력(""/null)은 무시 — NOT NULL 컬럼이라 500 으로 터진다
           restructure = ActiveModel::Type::Boolean.new.cast(params[:summary_restructure])
@@ -152,6 +166,11 @@ module Api
       def move_to_folder
         meeting_ids = params[:meeting_ids]
         return render json: { error: "meeting_ids is required" }, status: :unprocessable_entity if meeting_ids.blank?
+
+        # 잠긴 회의가 하나라도 포함되면 일괄 이동 자체를 차단한다(부분 적용 방지).
+        if Meeting.where(id: meeting_ids).where.not(locked_at: nil).exists?
+          return render json: { error: "잠긴 회의입니다. 잠금을 해제한 뒤 다시 시도하세요." }, status: :forbidden
+        end
 
         # update_all 은 콜백·인가를 우회하므로 editable_by 스코프가 유일한 방어선이다.
         # (남의 공유 회의를 일괄 폴더이동하는 것을 막는다.)
@@ -520,7 +539,35 @@ module Api
           filename:    filename
       end
 
+      # POST /api/v1/meetings/:id/lock — 회의를 잠금(완전 읽기전용). 소유자/admin 만(authorize_lock!).
+      def lock
+        @meeting.update_column(:locked_at, Time.current)
+        render json: { meeting: meeting_json(@meeting) }
+      end
+
+      # DELETE /api/v1/meetings/:id/lock — 잠금 해제. 소유자/admin 만(authorize_lock!).
+      def unlock
+        @meeting.update_column(:locked_at, nil)
+        render json: { meeting: meeting_json(@meeting) }
+      end
+
       private
+
+      # 잠금/해제 권한: 소유자·admin 만(editable_by?). 라이브 host 라도 잠금은 못 건다.
+      def authorize_lock!
+        return if @meeting.editable_by?(current_user)
+
+        render json: { error: "권한이 없습니다" }, status: :forbidden
+      end
+
+      # 회의 생성 시 important 가 요청에 명시되면 값을 세팅하고 명시 플래그를 켠다.
+      # (플래그가 켜져야 before_create :seed_importance_from_folder 가 폴더값으로 덮지 않는다.)
+      # 파라미터에 없으면 손대지 않아 폴더 상속이 그대로 동작한다.
+      def apply_explicit_importance!(meeting)
+        return unless params.key?(:important)
+        meeting.important = ActiveModel::Type::Boolean.new.cast(params[:important])
+        meeting.important_explicitly_set = true
+      end
 
       # 새 회의 요약 옵션: 파라미터 > 직전 회의 승계 > 기본(standard / 재구조화 ON)
       def summary_options_for_create

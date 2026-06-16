@@ -6,6 +6,8 @@ interface ContactCardProps {
   contact: MeetingContact
   onDelete: (id: number) => void
   onUpdate: (id: number, data: UpdateContactParams) => void
+  /** 잠긴 회의면 수정·삭제 버튼을 숨긴다. 기본 false. */
+  readOnly?: boolean
 }
 
 const EDIT_FIELDS: { key: keyof UpdateContactParams; label: string }[] = [
@@ -18,7 +20,7 @@ const EDIT_FIELDS: { key: keyof UpdateContactParams; label: string }[] = [
   { key: 'email', label: '이메일' },
 ]
 
-export function ContactCard({ contact, onDelete, onUpdate }: ContactCardProps) {
+export function ContactCard({ contact, onDelete, onUpdate, readOnly = false }: ContactCardProps) {
   const [showRaw, setShowRaw] = useState(false)
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<UpdateContactParams>({})
@@ -69,14 +71,16 @@ export function ContactCard({ contact, onDelete, onUpdate }: ContactCardProps) {
           <p className="font-semibold text-gray-800 truncate">{contact.name || '(미인식 명함)'}</p>
           {subtitle && <p className="text-xs text-gray-500 truncate flex items-center gap-1"><Building2 className="w-3 h-3 shrink-0" />{subtitle}</p>}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <button type="button" onClick={startEdit} className="text-gray-300 hover:text-blue-500" aria-label="수정">
-            <Pencil className="w-4 h-4" />
-          </button>
-          <button type="button" onClick={() => onDelete(contact.id)} className="text-gray-300 hover:text-red-500" aria-label="삭제">
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
+        {!readOnly && (
+          <div className="flex items-center gap-1 shrink-0">
+            <button type="button" onClick={startEdit} className="text-gray-300 hover:text-blue-500" aria-label="수정">
+              <Pencil className="w-4 h-4" />
+            </button>
+            <button type="button" onClick={() => onDelete(contact.id)} className="text-gray-300 hover:text-red-500" aria-label="삭제">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="mt-2 space-y-1 text-xs text-gray-600">

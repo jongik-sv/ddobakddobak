@@ -24,12 +24,15 @@ export function BookmarkList({
   onDelete,
   onAdd,
   onEdit,
+  readOnly = false,
 }: {
   bookmarks: BookmarkType[]
   onSeek: (ms: number) => void
   onDelete: (bookmarkId: number) => void
   onAdd?: () => void
   onEdit?: (bookmarkId: number, label: string) => void
+  /** 잠긴 회의면 북마크 추가·편집·삭제를 막는다 (탐색·이동은 가능). 기본 false. */
+  readOnly?: boolean
 }) {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [draft, setDraft] = useState('')
@@ -57,7 +60,7 @@ export function BookmarkList({
           <Bookmark className="w-3 h-3" />
           북마크 ({bookmarks.length})
         </h3>
-        {onAdd && (
+        {onAdd && !readOnly && (
           <button
             onClick={onAdd}
             className="flex items-center gap-0.5 text-xs text-amber-600 hover:text-amber-800 font-medium"
@@ -70,7 +73,13 @@ export function BookmarkList({
       </div>
       {bookmarks.length === 0 ? (
         <p className="px-3 py-3 text-xs text-gray-400 leading-relaxed">
-          아직 북마크가 없습니다. 재생 위치를 옮긴 뒤 <span className="text-amber-600 font-medium">현재 지점 추가</span>를 누르세요.
+          {readOnly ? (
+            '북마크가 없습니다.'
+          ) : (
+            <>
+              아직 북마크가 없습니다. 재생 위치를 옮긴 뒤 <span className="text-amber-600 font-medium">현재 지점 추가</span>를 누르세요.
+            </>
+          )}
         </p>
       ) : (
         <ul className="divide-y divide-gray-100">
@@ -133,7 +142,7 @@ export function BookmarkList({
                     <span className="text-xs text-gray-700 truncate flex-1">
                       {b.label || '(라벨 없음)'}
                     </span>
-                    {onEdit && (
+                    {onEdit && !readOnly && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
@@ -145,16 +154,18 @@ export function BookmarkList({
                         <Pencil className="w-3 h-3" />
                       </button>
                     )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDelete(b.id)
-                      }}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all"
-                      title="삭제"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+                    {!readOnly && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDelete(b.id)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all"
+                        title="삭제"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </>
                 )}
               </li>

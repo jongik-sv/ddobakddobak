@@ -6,9 +6,11 @@ import { ContactCard } from './ContactCard'
 
 interface ContactsSectionProps {
   meetingId: number
+  /** 잠긴 회의면 참석자(명함) 수정·삭제를 막는다. 기본 false. */
+  readOnly?: boolean
 }
 
-export function ContactsSection({ meetingId }: ContactsSectionProps) {
+export function ContactsSection({ meetingId, readOnly = false }: ContactsSectionProps) {
   const { contacts, remove, update, refetch } = useContacts(meetingId)
   const [failed, setFailed] = useState(false)
 
@@ -57,7 +59,7 @@ export function ContactsSection({ meetingId }: ContactsSectionProps) {
       {contacts.length > 0 && (
         <div className="flex gap-3 overflow-x-auto pb-1">
           {contacts.map((c) => (
-            <ContactCard key={c.id} contact={c} onDelete={remove} onUpdate={update} />
+            <ContactCard key={c.id} contact={c} onDelete={remove} onUpdate={update} readOnly={readOnly} />
           ))}
         </div>
       )}

@@ -3,10 +3,12 @@ module Api
     class TranscriptsController < ApplicationController
       include MeetingLookup
       include TranscriptSerializable
+      include MeetingWriteGuard
 
       before_action :authenticate_user!
       before_action :set_meeting
       before_action :authorize_meeting_control!, only: %i[destroy_batch bulk_create update_content]
+      before_action :reject_if_locked!, only: %i[bulk_create update_content destroy_batch]
 
       def index
         transcripts = @meeting.transcripts.order(:sequence_number)

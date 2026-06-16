@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useMeetingStore } from '../stores/meetingStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
@@ -64,6 +65,32 @@ export default function MeetingPage() {
   // 소유권 게이팅: 수정 어포던스는 소유자/admin에게만 노출 (서버는 403으로 강제).
   const me = useAuthStore((s) => s.user)
   const canEdit = canEditMeeting(meeting, me)
+
+  // 회의 잠금/해제 — store 액션(목록 동기화) 호출 후 상세도 refetch.
+  const storeLockMeeting = useMeetingStore((s) => s.lockMeeting)
+  const storeUnlockMeeting = useMeetingStore((s) => s.unlockMeeting)
+  const [isTogglingLock, setIsTogglingLock] = useState(false)
+  const locked = !!meeting?.locked
+  const handleToggleLock = useCallback(async () => {
+    if (!meeting || isTogglingLock) return
+    setIsTogglingLock(true)
+    try {
+      if (meeting.locked) {
+        await storeUnlockMeeting(meeting.id)
+      } else {
+        await storeLockMeeting(meeting.id)
+      }
+      await refetch()
+    } catch (e) {
+      console.error('[toggleLock] 실패:', e)
+      const { message } = await import('@tauri-apps/plugin-dialog')
+        .then((m) => ({ message: m.message }))
+        .catch(() => ({ message: (msg: string) => window.alert(msg) }))
+      message('잠금 상태 변경에 실패했습니다. 권한을 확인하세요.')
+    } finally {
+      setIsTogglingLock(false)
+    }
+  }, [meeting, isTogglingLock, storeLockMeeting, storeUnlockMeeting, refetch])
 
   const meetingTypeList = usePromptTemplateStore((s) => s.meetingTypeList)
   const meetingTypeMap = usePromptTemplateStore((s) => s.meetingTypeMap)
@@ -276,6 +303,7 @@ export default function MeetingPage() {
     searchQuery: search.effectiveQuery,
     activeSearch: activeTranscriptSearch,
     suppressAutoScroll: !!search.effectiveQuery,
+    locked,
   })
 
   return (
@@ -289,6 +317,7 @@ export default function MeetingPage() {
         bookmarksVisible={bookmarksVisible}
         searchOpen={search.isOpen}
         canEdit={canEdit}
+        locked={locked}
         onBack={() => navigate('/')}
         onToggleAttachments={toggleAttachments}
         onShowEdit={() => setShowEditDialog(true)}
@@ -376,11 +405,13 @@ export default function MeetingPage() {
           meetingTypeLabel={meetingTypeLabel}
           onUpdateTitle={updateTitle}
           canEdit={canEdit}
+          onToggleLock={handleToggleLock}
+          isTogglingLock={isTogglingLock}
         />
       )}
 
       {/* 첨부 파일/링크 섹션 (명함 탭 선택 시 참석자 패널은 섹션 내부에서 표시) */}
-      {attachmentsVisible && <AttachmentSection meetingId={meetingId} />}
+      {attachmentsVisible && <AttachmentSection meetingId={meetingId} readOnly={locked} />}
 
       {/* 패널 레이아웃: 데스크톱(PanelGroup) / 모바일(MobileTabLayout) */}
       {isDesktop ? (
@@ -389,7 +420,7 @@ export default function MeetingPage() {
           <Panel defaultSize={25} minSize={15}>
             <div className="h-full flex flex-col overflow-hidden">
               {bookmarksVisible && (
-                <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} onAdd={handleOpenBookmark} onEdit={handleEditBookmark} />
+                <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} onAdd={handleOpenBookmark} onEdit={handleEditBookmark} readOnly={locked} />
               )}
               <div className="flex-1 overflow-y-auto">
                 <TranscriptPanel
@@ -400,11 +431,12 @@ export default function MeetingPage() {
                   searchQuery={search.effectiveQuery}
                   activeSearch={activeTranscriptSearch}
                   suppressAutoScroll={!!search.effectiveQuery}
+                  readOnly={locked}
                 />
               </div>
               {/* 배치 화자분리 결과 이름 변경/초기화 (MeetingViewerPage 데스크톱과 동일 패턴) */}
               <div className="border-t shrink-0">
-                <SpeakerPanel meetingId={meetingId} isRecording={false} collapsible />
+                <SpeakerPanel meetingId={meetingId} isRecording={false} collapsible readOnly={locked} />
               </div>
             </div>
           </Panel>
@@ -417,6 +449,7 @@ export default function MeetingPage() {
               <AiSummaryPanel
                 meetingId={meetingId}
                 isRecording={false}
+                editable={!locked}
                 onNotesChange={handleNotesChange}
                 headerExtra={summaryOptionsControl}
               />
@@ -438,6 +471,7 @@ export default function MeetingPage() {
                       onEditorReady={onMemoEditorReady}
                       onSave={handleSaveMemo}
                       isSaving={isSavingMemo}
+                      readOnly={locked}
                     />
                   }
                 />
@@ -453,8 +487,8 @@ export default function MeetingPage() {
         />
       )}
 
-      {/* 오타 수정 섹션 */}
-      {meeting?.status === 'completed' && (
+      {/* 오타 수정 섹션 — 잠긴 회의는 전사/회의록을 바꾸므로 숨김 */}
+      {meeting?.status === 'completed' && !locked && (
         <TermCorrectionDetails
           corrections={corrections}
           status={correctionStatus}
@@ -466,8 +500,8 @@ export default function MeetingPage() {
         />
       )}
 
-      {/* 오타 사전 섹션 */}
-      {meeting?.status === 'completed' && meeting?.id && (
+      {/* 오타 사전 섹션 — 잠긴 회의는 숨김 */}
+      {meeting?.status === 'completed' && meeting?.id && !locked && (
         <GlossaryPanel meetingId={meeting.id} />
       )}
 

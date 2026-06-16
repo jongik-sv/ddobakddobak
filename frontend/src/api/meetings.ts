@@ -11,6 +11,12 @@ export interface MeetingDetail {
   created_by_id: number
   /** 모든 사용자에게 공유 여부 (기본 true) */
   shared: boolean
+  /** 회의 잠금 여부. 잠금되면 편집이 차단된다(소유자/admin만 잠금/해제). */
+  locked: boolean
+  /** 잠금 시각 (ISO 문자열). 미잠금이면 null. */
+  locked_at: string | null
+  /** 중요 표시 여부. */
+  important: boolean
   created_at: string
   updated_at: string
 }
@@ -59,6 +65,12 @@ export interface Meeting {
   share_code?: string | null
   /** 모든 사용자에게 공유 여부 (기본 true). 비공유면 소유자/admin만 조회 가능. */
   shared: boolean
+  /** 회의 잠금 여부. 잠금되면 편집이 차단된다(소유자/admin만 잠금/해제). */
+  locked: boolean
+  /** 잠금 시각 (ISO 문자열). 미잠금이면 null. */
+  locked_at: string | null
+  /** 중요 표시 여부. 기본 목록은 important=true만 노출(show_all로 해제). */
+  important: boolean
   /** 현재 사용자가 이 회의를 수정/삭제할 수 있는지 (소유자 ∨ admin). 서버가 계산해 내려준다. */
   editable?: boolean
   started_at: string | null
@@ -115,6 +127,8 @@ export interface GetMeetingsParams {
   date_from?: string
   date_to?: string
   folder_id?: number | null
+  /** true면 중요 필터를 해제하고 전체 회의를 가져온다(show_all=1). 미지정/false면 important=true만. */
+  show_all?: boolean
 }
 
 export async function getMeetings(params: GetMeetingsParams): Promise<MeetingListResponse> {
@@ -128,6 +142,7 @@ export async function getMeetings(params: GetMeetingsParams): Promise<MeetingLis
   if (params.folder_id !== undefined) {
     searchParams.folder_id = params.folder_id === null ? 'null' : params.folder_id
   }
+  if (params.show_all) searchParams.show_all = 1
   return apiClient.get('meetings', { searchParams }).json()
 }
 
@@ -181,6 +196,23 @@ export async function triggerRealtimeSummary(id: number): Promise<void> {
 export async function regenerateStt(id: number): Promise<Meeting> {
   const res: { meeting: Meeting } = await apiClient.post(`meetings/${id}/regenerate_stt`).json()
   return res.meeting
+}
+
+/** 회의 잠금 (소유자/admin). 갱신된 meeting 반환. */
+export async function lockMeeting(id: number): Promise<Meeting> {
+  const res: { meeting: Meeting } = await apiClient.post(`meetings/${id}/lock`).json()
+  return res.meeting
+}
+
+/** 회의 잠금 해제 (소유자/admin). 갱신된 meeting 반환. */
+export async function unlockMeeting(id: number): Promise<Meeting> {
+  const res: { meeting: Meeting } = await apiClient.delete(`meetings/${id}/lock`).json()
+  return res.meeting
+}
+
+/** 회의 중요 표시 토글. 기존 update(PATCH)에 important만 보내는 얇은 헬퍼. */
+export async function setMeetingImportant(id: number, important: boolean): Promise<Meeting> {
+  return updateMeeting(id, { important })
 }
 
 export async function reDiarize(id: number): Promise<Meeting> {
@@ -344,6 +376,8 @@ export interface UpdateMeetingParams {
   expected_participants?: number | null
   /** 공유 여부. 소유자/admin만 반영된다(서버 강제). */
   shared?: boolean
+  /** 중요 표시 여부. */
+  important?: boolean
   summary_verbosity?: SummaryVerbosity
   summary_restructure?: boolean
   /** 이전 회의 참고. null/빈값이면 해제 */

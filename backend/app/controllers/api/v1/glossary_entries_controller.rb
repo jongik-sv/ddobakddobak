@@ -1,7 +1,11 @@
 module Api
   module V1
     class GlossaryEntriesController < ApplicationController
+      include MeetingWriteGuard
+
       before_action :authenticate_user!
+      # 잠금 가드는 가장 마지막 before_action — 인가(authorize_owner_edit!)는 액션 내부 흐름이라 충돌 없음.
+      before_action :reject_if_locked!, only: %i[create update destroy]
 
       def index
         owner = resolve_owner
@@ -54,6 +58,18 @@ module Api
         elsif params[:folder_id]
           Folder.find_by(id: params[:folder_id])
         end
+      end
+
+      # MeetingWriteGuard#reject_if_locked! 대상 회의 결정:
+      #   create(meeting_id 스코프)는 resolve_owner, update/destroy(top-level :id)는 엔트리의 owner.
+      #   owner 가 Meeting 이 아니면(폴더 글로서리 등) nil → 잠금 무관.
+      def locked_meeting
+        owner = if params[:meeting_id]
+          Meeting.find_by(id: params[:meeting_id])
+        elsif params[:id]
+          GlossaryEntry.find_by(id: params[:id])&.owner
+        end
+        owner.is_a?(Meeting) ? owner : nil
       end
 
       # 인가 통과면 true, 아니면 403 렌더 후 false.

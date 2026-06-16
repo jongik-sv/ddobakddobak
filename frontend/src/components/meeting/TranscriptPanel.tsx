@@ -16,6 +16,8 @@ interface TranscriptPanelProps {
   activeSearch?: { transcriptId: number; occurrence: number } | null
   /** 검색 중 오디오 싱크 자동 스크롤 억제 (검색 스크롤과 충돌 방지) */
   suppressAutoScroll?: boolean
+  /** 잠긴 회의면 전사 인라인 편집을 막는다 (읽기 전용). 기본 false. */
+  readOnly?: boolean
 }
 
 function formatTimestamp(ms: number): string {
@@ -33,6 +35,7 @@ export function TranscriptPanel({
   searchQuery = '',
   activeSearch = null,
   suppressAutoScroll = false,
+  readOnly = false,
 }: TranscriptPanelProps) {
   const highlightedRef = useRef<HTMLDivElement | null>(null)
 
@@ -150,7 +153,7 @@ export function TranscriptPanel({
                     transcriptId={transcript.id}
                     meetingId={meetingId}
                     content={contentOverrides.get(transcript.id) ?? transcript.content}
-                    editable
+                    editable={!readOnly}
                     className="text-sm text-gray-800 select-text"
                   />
                 )}

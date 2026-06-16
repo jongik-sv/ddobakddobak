@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { LayoutGrid, List, Plus } from 'lucide-react'
+import { LayoutGrid, List, Plus, Eye, EyeOff } from 'lucide-react'
 import { Tooltip } from '../components/ui/Tooltip'
-import { deleteMeeting, stopMeeting, updateMeeting } from '../api/meetings'
+import { deleteMeeting, stopMeeting, updateMeeting, setMeetingImportant } from '../api/meetings'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
@@ -47,12 +47,14 @@ export default function MeetingsPage() {
     dateFrom,
     dateTo,
     folderId,
+    showAll,
     isLoading,
     error,
     setSearchQuery,
     setStatusFilter,
     setDateFrom,
     setDateTo,
+    toggleShowAll,
     fetchMeetings,
     addMeeting,
   } = useMeetingStore()
@@ -184,6 +186,23 @@ export default function MeetingsPage() {
     fetchMeetings(currentPage)
   }, [fetchMeetings, currentPage])
 
+  // 중요 표시 토글: setMeetingImportant(update 경유) 후 목록 갱신.
+  const handleToggleImportant = useCallback(async (meeting: Meeting) => {
+    try {
+      await setMeetingImportant(meeting.id, !meeting.important)
+    } catch (e) {
+      console.error('[toggleImportant] 실패:', e)
+    }
+    fetchMeetings(currentPage)
+  }, [fetchMeetings, currentPage])
+
+  // 전체 보기 토글: showAll 켜면 important=false 회의도 노출 → 1페이지부터 재조회.
+  const handleToggleShowAll = useCallback(() => {
+    toggleShowAll()
+    setCurrentPage(1)
+    fetchMeetings(1)
+  }, [toggleShowAll, fetchMeetings])
+
   const handleFolderSelect = useCallback((id: number) => {
     useFolderStore.getState().setSelectedFolder(id)
     useMeetingStore.getState().setFolderId(id)
@@ -223,10 +242,25 @@ export default function MeetingsPage() {
 
       {/* 하위 폴더 — 회의 카드와 같은 그리드에 표시되도록 아래 그리드에 통합 */}
 
-      {/* 상태 필터 탭 (데스크톱만) */}
+      {/* 상태 필터 탭 + 전체 보기 토글 (데스크톱만) */}
       {isDesktop && (
         <div className="flex items-center gap-1 mb-4">
           <StatusFilterTabs statusFilter={statusFilter} onSelect={handleStatusFilterSelect} />
+          <Tooltip text={showAll ? '중요 회의만 보기' : '전체 회의 보기'}>
+            <button
+              type="button"
+              onClick={handleToggleShowAll}
+              aria-pressed={showAll}
+              className={`ml-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                showAll
+                  ? 'bg-amber-50 text-amber-700 border-amber-300'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {showAll ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              전체 보기
+            </button>
+          </Tooltip>
         </div>
       )}
 
@@ -304,6 +338,24 @@ export default function MeetingsPage() {
               </div>
             </div>
 
+            {/* 전체 보기 토글 */}
+            <div>
+              <h3 className="text-sm font-medium mb-2">표시 범위</h3>
+              <button
+                type="button"
+                onClick={handleToggleShowAll}
+                aria-pressed={showAll}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  showAll
+                    ? 'bg-amber-50 text-amber-700 border-amber-300'
+                    : 'bg-white text-gray-600 border-gray-300'
+                }`}
+              >
+                {showAll ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                {showAll ? '전체 회의 표시 중' : '중요 회의만 표시'}
+              </button>
+            </div>
+
             {/* 날짜 필터 */}
             <div>
               <h3 className="text-sm font-medium mb-2">날짜</h3>
@@ -379,6 +431,7 @@ export default function MeetingsPage() {
           onMove={setMovingMeeting}
           onDelete={handleDeleteMeeting}
           onStop={handleStopMeeting}
+          onToggleImportant={handleToggleImportant}
         />
       )}
 

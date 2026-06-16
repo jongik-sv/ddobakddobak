@@ -38,7 +38,7 @@ export default function MeetingViewerPage() {
     useUiStore.setState({ sidebarOpen: false })
   }, [])
 
-  const { meetingTitle, isLoaded, error } = useViewerData(meetingId)
+  const { meetingTitle, locked, isLoaded, error } = useViewerData(meetingId)
   const { isLoading: accessLoading, error: accessError } = useMeetingAccess(meetingId)
 
   useTranscription(meetingId)
@@ -74,14 +74,14 @@ export default function MeetingViewerPage() {
               화자 · 참여자
             </summary>
             <div className="px-2 pb-2">
-              <SpeakerPanel meetingId={meetingId} isRecording={!recordingStopped} />
+              <SpeakerPanel meetingId={meetingId} isRecording={!recordingStopped} readOnly={locked} />
               <div className="border-t mt-2 pt-2">
                 <ParticipantList isHost={false} currentUserId={0} />
               </div>
             </div>
           </details>
           <div className="flex-1 overflow-hidden">
-            <RecordTabPanel meetingId={meetingId} currentTimeMs={0} />
+            <RecordTabPanel meetingId={meetingId} currentTimeMs={0} readOnly={locked} />
           </div>
         </div>
       ),
@@ -94,7 +94,7 @@ export default function MeetingViewerPage() {
         <AiSummaryPanel meetingId={meetingId} isRecording={!recordingStopped} editable={false} />
       ),
     },
-  ], [meetingId, recordingStopped])
+  ], [meetingId, recordingStopped, locked])
 
   if (!accessLoading && (accessError === 'forbidden' || accessError === 'not_found')) {
     return <MeetingAccessFallback error={accessError} />
@@ -135,10 +135,11 @@ export default function MeetingViewerPage() {
                 <RecordTabPanel
                   meetingId={meetingId}
                   currentTimeMs={0}
+                  readOnly={locked}
                 />
               </div>
               <div className="border-t shrink-0">
-                <SpeakerPanel meetingId={meetingId} isRecording={!recordingStopped} collapsible />
+                <SpeakerPanel meetingId={meetingId} isRecording={!recordingStopped} collapsible readOnly={locked} />
               </div>
               <div className="border-t shrink-0">
                 <ParticipantList

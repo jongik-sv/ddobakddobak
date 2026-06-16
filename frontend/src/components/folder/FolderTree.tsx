@@ -12,6 +12,7 @@ import {
   Globe,
   Lock,
   SpellCheck,
+  Star,
 } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useFolderStore } from '../../stores/folderStore'
@@ -41,6 +42,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
   const renameFolder = useFolderStore((s) => s.renameFolder)
   const removeFolder = useFolderStore((s) => s.removeFolder)
   const setFolderShared = useFolderStore((s) => s.setFolderShared)
+  const setFolderImportant = useFolderStore((s) => s.setFolderImportant)
   const createFolder = useFolderStore((s) => s.createFolder)
   const [showMenu, setShowMenu] = useState(false)
   const [showRenameDialog, setShowRenameDialog] = useState(false)
@@ -98,6 +100,12 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
     await setFolderShared(folder.id, !folder.shared)
   }
 
+  const handleToggleImportant = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setShowMenu(false)
+    await setFolderImportant(folder.id, !folder.important)
+  }
+
   return (
     <>
       <div
@@ -130,6 +138,9 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
           <FolderClosed className="w-4 h-4 shrink-0" />
         )}
         <span className="truncate flex-1">{folder.name}</span>
+        {folder.important && (
+          <Star className="w-3 h-3 shrink-0 text-amber-500 fill-amber-500" aria-label="중요 폴더" />
+        )}
         {!folder.shared && (
           <Lock className="w-3 h-3 shrink-0 text-muted-foreground" aria-label="비공개 폴더" />
         )}
@@ -176,6 +187,16 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
                   <><Lock className="w-3.5 h-3.5" /> 비공개로 전환</>
                 ) : (
                   <><Globe className="w-3.5 h-3.5" /> 모든 사용자에게 공유</>
+                )}
+              </button>
+              <button
+                onClick={handleToggleImportant}
+                className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm hover:bg-muted transition-colors"
+              >
+                {folder.important ? (
+                  <><Star className="w-3.5 h-3.5" /> 중요 해제</>
+                ) : (
+                  <><Star className="w-3.5 h-3.5 text-amber-500" /> 중요 표시</>
                 )}
               </button>
               <button

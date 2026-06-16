@@ -26,6 +26,9 @@ const mockMeeting = {
   memo: null,
   attendees: null,
   shared: true,
+  locked: false,
+  locked_at: null,
+  important: false,
 }
 
 describe('meetingStore', () => {
@@ -77,6 +80,27 @@ describe('meetingStore', () => {
       per: 20,
       q: '검색어',
     })
+  })
+
+  it('toggleShowAll 후 fetchMeetings는 show_all=true를 전달한다 (기본은 미전달)', async () => {
+    mockGetMeetings.mockResolvedValue({
+      meetings: [],
+      meta: { total: 0, page: 1, per: 20 },
+    })
+
+    // 기본(off): show_all 미포함
+    await useMeetingStore.getState().fetchMeetings(1)
+    expect(mockGetMeetings).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ show_all: expect.anything() }),
+    )
+
+    // 토글(on): show_all=true 포함
+    useMeetingStore.getState().toggleShowAll()
+    expect(useMeetingStore.getState().showAll).toBe(true)
+    await useMeetingStore.getState().fetchMeetings(1)
+    expect(mockGetMeetings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ show_all: true }),
+    )
   })
 
   it('fetchMeetings 실패 시 error 설정', async () => {

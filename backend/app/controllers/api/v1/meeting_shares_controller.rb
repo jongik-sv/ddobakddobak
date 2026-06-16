@@ -1,8 +1,11 @@
 module Api
   module V1
     class MeetingSharesController < ApplicationController
+      include MeetingWriteGuard
+
       before_action :authenticate_user!
       before_action :set_meeting, only: %i[create_share destroy_share participants transfer_host claim_host]
+      before_action :reject_if_locked!, only: %i[create_share destroy_share claim_host transfer_host]
 
       rescue_from MeetingShareService::NotHostError, with: :render_forbidden
       rescue_from MeetingShareService::InvalidShareCodeError, with: :render_not_found

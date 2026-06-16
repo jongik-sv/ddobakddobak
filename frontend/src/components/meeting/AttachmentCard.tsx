@@ -9,6 +9,8 @@ interface AttachmentCardProps {
   attachment: MeetingAttachment
   meetingId: number
   onDelete: (id: number) => void
+  /** 잠긴 회의면 삭제 버튼을 숨긴다 (열기·다운로드는 가능). 기본 false. */
+  readOnly?: boolean
 }
 
 function getFileIcon(contentType: string | null) {
@@ -42,7 +44,7 @@ function formatDate(dateStr: string): string {
   return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
 }
 
-export function AttachmentCard({ attachment, meetingId, onDelete }: AttachmentCardProps) {
+export function AttachmentCard({ attachment, meetingId, onDelete, readOnly = false }: AttachmentCardProps) {
   const [showConfirm, setShowConfirm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [errMsg, setErrMsg] = useState<string | null>(null)
@@ -158,7 +160,16 @@ export function AttachmentCard({ attachment, meetingId, onDelete }: AttachmentCa
 
       {/* hover 시 액션 버튼 */}
       <div className="absolute top-1.5 right-1.5 hidden hover-show-flex-parent items-center gap-2">
-        {showConfirm ? (
+        {readOnly ? (
+          <button
+            onClick={handleDownload}
+            disabled={busy}
+            className="p-2 rounded bg-white/90 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shadow-sm border disabled:opacity-50"
+            title={isFile ? '다운로드' : '열기'}
+          >
+            {isFile ? <Download className="w-3 h-3" /> : <ExternalLink className="w-3 h-3" />}
+          </button>
+        ) : showConfirm ? (
           <>
             <button
               onClick={handleDelete}

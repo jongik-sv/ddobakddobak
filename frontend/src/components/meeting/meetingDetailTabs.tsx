@@ -37,6 +37,8 @@ interface BuildMeetingDetailTabsArgs {
   activeSearch?: { transcriptId: number; occurrence: number } | null
   /** 검색 중 오디오 싱크 자동 스크롤 억제 */
   suppressAutoScroll?: boolean
+  /** 잠긴 회의면 전사·화자·회의록 편집을 막는다 (읽기 전용). 기본 false. */
+  locked?: boolean
 }
 
 /** 회의 상세 모바일 탭(기록/요약/메모) 정의를 생성한다. (순수 함수 — 훅 아님) */
@@ -59,6 +61,7 @@ export function buildMeetingDetailTabs({
   searchQuery,
   activeSearch,
   suppressAutoScroll,
+  locked = false,
 }: BuildMeetingDetailTabsArgs): Tab[] {
   return [
     {
@@ -68,7 +71,7 @@ export function buildMeetingDetailTabs({
       content: (
         <div className="h-full flex flex-col overflow-hidden">
           {bookmarksVisible && (
-            <BookmarkList bookmarks={bookmarks} onSeek={onSeek} onDelete={onDeleteBookmark} onAdd={onAddBookmark} onEdit={onEditBookmark} />
+            <BookmarkList bookmarks={bookmarks} onSeek={onSeek} onDelete={onDeleteBookmark} onAdd={onAddBookmark} onEdit={onEditBookmark} readOnly={locked} />
           )}
           {/* 화자 accordion (기본 닫힘) — MeetingViewerPage 모바일과 동일 패턴 */}
           <details className="border-b">
@@ -76,7 +79,7 @@ export function buildMeetingDetailTabs({
               화자
             </summary>
             <div className="px-2 pb-2">
-              <SpeakerPanel meetingId={meetingId} isRecording={false} />
+              <SpeakerPanel meetingId={meetingId} isRecording={false} readOnly={locked} />
             </div>
           </details>
           <div className="flex-1 min-h-0 overflow-y-auto">
@@ -88,6 +91,7 @@ export function buildMeetingDetailTabs({
               searchQuery={searchQuery}
               activeSearch={activeSearch}
               suppressAutoScroll={suppressAutoScroll}
+              readOnly={locked}
             />
           </div>
         </div>
@@ -99,7 +103,7 @@ export function buildMeetingDetailTabs({
       icon: Bot,
       content: (
         <div data-search-region="summary" className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
-          <AiSummaryPanel meetingId={meetingId} isRecording={false} onNotesChange={onNotesChange} headerExtra={summaryOptions} />
+          <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={!locked} onNotesChange={onNotesChange} headerExtra={summaryOptions} />
         </div>
       ),
     },
@@ -114,6 +118,7 @@ export function buildMeetingDetailTabs({
           onEditorReady={onMemoEditorReady}
           onSave={onSaveMemo}
           isSaving={isSavingMemo}
+          readOnly={locked}
         />
       ),
     },

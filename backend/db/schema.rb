@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_16_000003) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_16_000004) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -69,6 +69,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_16_000003) do
 
   create_table "folders", force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.boolean "important", default: false, null: false
     t.string "name", null: false
     t.integer "parent_id"
     t.integer "position", default: 0, null: false
@@ -183,9 +184,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_16_000003) do
     t.datetime "ended_at"
     t.integer "expected_participants"
     t.integer "folder_id"
+    t.boolean "important", default: false, null: false
     t.integer "last_refined_seq", default: 0, null: false
     t.datetime "last_reset_at"
     t.datetime "last_user_edit_at"
+    t.datetime "locked_at"
     t.string "meeting_type", default: "general", null: false
     t.text "memo"
     t.datetime "paused_at"
@@ -205,6 +208,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_16_000003) do
     t.datetime "updated_at", null: false
     t.index ["created_by_id", "shared"], name: "index_meetings_on_created_by_id_and_shared"
     t.index ["folder_id"], name: "index_meetings_on_folder_id"
+    t.index ["important"], name: "index_meetings_on_important"
     t.index ["previous_meeting_id"], name: "index_meetings_on_previous_meeting_id"
     t.index ["share_code"], name: "index_meetings_on_share_code", unique: true
     t.index ["team_id", "status"], name: "index_meetings_on_team_id_and_status"

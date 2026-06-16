@@ -9,6 +9,8 @@ import { DecisionForm } from './DecisionForm'
 
 interface DecisionListProps {
   meetingId: number
+  /** 잠긴 회의면 결정사항 추가·수정·삭제를 막는다 (읽기 전용). 기본 false. */
+  readOnly?: boolean
 }
 
 const STATUS_LABELS: Record<Decision['status'], string> = {
@@ -23,7 +25,7 @@ const STATUS_COLORS: Record<Decision['status'], string> = {
   cancelled: 'bg-gray-100 text-gray-500',
 }
 
-export function DecisionList({ meetingId }: DecisionListProps) {
+export function DecisionList({ meetingId, readOnly = false }: DecisionListProps) {
   const [items, setItems] = useState<Decision[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -68,7 +70,7 @@ export function DecisionList({ meetingId }: DecisionListProps) {
     <div className="flex flex-col gap-3 p-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-700">Decision Log</h3>
-        {!showForm && !editingItem && (
+        {!readOnly && !showForm && !editingItem && (
           <button
             onClick={() => setShowForm(true)}
             className="text-xs text-blue-600 hover:text-blue-800 min-h-[44px] flex items-center"
@@ -121,30 +123,32 @@ export function DecisionList({ meetingId }: DecisionListProps) {
                 {item.participants && (
                   <p className="text-xs text-gray-400 pl-0.5">{item.participants}</p>
                 )}
-                <div className="flex items-center gap-2 mt-1">
-                  <select
-                    value={item.status}
-                    onChange={(e) => handleStatusChange(item, e.target.value as Decision['status'])}
-                    className="text-xs border rounded p-0.5 text-gray-600"
-                  >
-                    <option value="active">유효</option>
-                    <option value="revised">수정됨</option>
-                    <option value="cancelled">취소됨</option>
-                  </select>
-                  <button
-                    onClick={() => setEditingItem(item)}
-                    className="text-xs text-gray-400 hover:text-gray-600 min-h-[44px] flex items-center"
-                  >
-                    수정
-                  </button>
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    className="text-xs text-red-400 hover:text-red-600 min-h-[44px] flex items-center"
-                    aria-label="삭제"
-                  >
-                    삭제
-                  </button>
-                </div>
+                {!readOnly && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <select
+                      value={item.status}
+                      onChange={(e) => handleStatusChange(item, e.target.value as Decision['status'])}
+                      className="text-xs border rounded p-0.5 text-gray-600"
+                    >
+                      <option value="active">유효</option>
+                      <option value="revised">수정됨</option>
+                      <option value="cancelled">취소됨</option>
+                    </select>
+                    <button
+                      onClick={() => setEditingItem(item)}
+                      className="text-xs text-gray-400 hover:text-gray-600 min-h-[44px] flex items-center"
+                    >
+                      수정
+                    </button>
+                    <button
+                      onClick={() => handleDelete(item.id)}
+                      className="text-xs text-red-400 hover:text-red-600 min-h-[44px] flex items-center"
+                      aria-label="삭제"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                )}
               </li>
             )
           )}

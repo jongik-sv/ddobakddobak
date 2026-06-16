@@ -9,9 +9,11 @@ interface FullRecordProps {
   meetingId: number
   currentTimeMs?: number
   onSeek?: (ms: number) => void
+  /** 잠긴 회의면 전사 인라인 편집·선택 삭제를 막는다 (탐색·재생은 가능). 기본 false. */
+  readOnly?: boolean
 }
 
-export function FullRecord({ meetingId, currentTimeMs = 0, onSeek }: FullRecordProps) {
+export function FullRecord({ meetingId, currentTimeMs = 0, onSeek, readOnly = false }: FullRecordProps) {
   const finals = useTranscriptStore((s) => s.finals)
   const removeFinals = useTranscriptStore((s) => s.removeFinals)
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -118,13 +120,15 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek }: FullRecordP
                     } ${onSeek ? 'cursor-pointer' : ''}`}
                     onClick={() => onSeek?.(item.started_at_ms)}
                   >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(item.id)}
-                      onChange={() => toggleSelect(item.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="mt-1 shrink-0"
-                    />
+                    {!readOnly && (
+                      <input
+                        type="checkbox"
+                        checked={selected.has(item.id)}
+                        onChange={() => toggleSelect(item.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-1 shrink-0"
+                      />
+                    )}
                     <div className="flex-1 min-w-0">
                       {!item.applied && (
                         <div className="flex items-center gap-2">
@@ -137,7 +141,7 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek }: FullRecordP
                         transcriptId={item.id}
                         meetingId={meetingId}
                         content={item.content}
-                        editable
+                        editable={!readOnly}
                         className="text-sm text-gray-900 leading-relaxed"
                       />
                     </div>
@@ -150,7 +154,7 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek }: FullRecordP
       </div>
 
       {/* 하단 선택 삭제 바 */}
-      {finals.length > 0 && (
+      {finals.length > 0 && !readOnly && (
         <div className="border-t bg-gray-50 px-4 py-2 flex items-center justify-between shrink-0">
           <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
             <input

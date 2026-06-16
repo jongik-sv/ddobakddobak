@@ -8,9 +8,11 @@ interface SpeakerPanelProps {
   isRecording: boolean
   /** 데스크톱 사이드 패널용: 화자 없으면 접힘, 감지되면 자동 펼침(이후 수동 토글 우선) */
   collapsible?: boolean
+  /** 잠긴 회의면 화자명 변경·초기화를 막는다 (읽기 전용). 기본 false. */
+  readOnly?: boolean
 }
 
-export function SpeakerPanel({ meetingId, isRecording, collapsible }: SpeakerPanelProps) {
+export function SpeakerPanel({ meetingId, isRecording, collapsible, readOnly = false }: SpeakerPanelProps) {
   const [speakers, setSpeakers] = useState<Speaker[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -109,8 +111,9 @@ export function SpeakerPanel({ meetingId, isRecording, collapsible }: SpeakerPan
           )}
           <button
             onClick={handleReset}
-            className="text-xs text-red-400 hover:text-red-600 min-h-[44px] flex items-center"
-            title="화자 DB 초기화"
+            disabled={readOnly}
+            className="text-xs text-red-400 hover:text-red-600 min-h-[44px] flex items-center disabled:opacity-40 disabled:cursor-not-allowed"
+            title={readOnly ? '잠긴 회의입니다' : '화자 DB 초기화'}
           >
             초기화
           </button>
@@ -136,9 +139,10 @@ export function SpeakerPanel({ meetingId, isRecording, collapsible }: SpeakerPan
               />
             ) : (
               <button
-                onClick={() => startEdit(speaker)}
-                className="flex-1 text-left text-xs text-gray-700 hover:text-blue-600 truncate"
-                title="클릭하여 이름 편집"
+                onClick={() => { if (!readOnly) startEdit(speaker) }}
+                disabled={readOnly}
+                className="flex-1 text-left text-xs text-gray-700 hover:text-blue-600 truncate disabled:hover:text-gray-700 disabled:cursor-not-allowed"
+                title={readOnly ? '잠긴 회의입니다' : '클릭하여 이름 편집'}
               >
                 {speaker.name !== speaker.id ? speaker.name : <span className="text-gray-400 italic">이름 없음</span>}
               </button>

@@ -46,6 +46,7 @@ module Api
         permitted[:position] = params[:position] if params.key?(:position)
         permitted[:parent_id] = params[:parent_id] if params.key?(:parent_id)
         permitted[:shared] = ActiveModel::Type::Boolean.new.cast(params[:shared]) if params.key?(:shared)
+        permitted[:important] = ActiveModel::Type::Boolean.new.cast(params[:important]) if params.key?(:important)
 
         if params.key?(:tag_ids)
           tag_ids = Array(params[:tag_ids]).map(&:to_i)
@@ -89,6 +90,7 @@ module Api
           parent_id: folder.parent_id,
           position: folder.position,
           shared: folder.shared,
+          important: folder.important,
           meeting_count: meeting_count || folder.meetings.accessible_by(current_user).count,
           children_count: folder.children.count,
           tags: folder.tags.map { |t| { id: t.id, name: t.name, color: t.color } },

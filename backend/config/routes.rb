@@ -65,6 +65,8 @@ Rails.application.routes.draw do
           get :participants, to: "meeting_shares#participants"
           post :transfer_host, to: "meeting_shares#transfer_host"
           post :claim_host, to: "meeting_shares#claim_host"
+          post :lock
+          delete :lock, to: "meetings#unlock"
         end
         resources :action_items,
           only: %i[index create],

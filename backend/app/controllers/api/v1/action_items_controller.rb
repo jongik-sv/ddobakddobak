@@ -2,10 +2,12 @@ module Api
   module V1
     class ActionItemsController < ApplicationController
       include ActionItemSerializable
+      include MeetingWriteGuard
 
       before_action :authenticate_user!
       before_action :set_action_item
       before_action :authorize_item_control!, only: %i[update destroy]
+      before_action :reject_if_locked!, only: %i[update destroy]
 
       # PATCH /api/v1/action_items/:id
       def update
@@ -28,6 +30,11 @@ module Api
         @action_item = ActionItem.find(params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Not found" }, status: :not_found
+      end
+
+      # MeetingWriteGuard#reject_if_locked! 대상 회의 = 이 액션 아이템의 회의.
+      def locked_meeting
+        @action_item&.meeting
       end
 
       # 소유/admin/현재 host만 변조 허용 (MeetingLookup#authorize_meeting_control!와 동일 티어).

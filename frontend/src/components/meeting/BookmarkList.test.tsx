@@ -59,3 +59,39 @@ describe('BookmarkList 라벨 편집', () => {
     expect(onSeek).not.toHaveBeenCalled()
   })
 })
+
+describe('BookmarkList 잠금 게이팅', () => {
+  it('readOnly=true면 추가·편집·삭제 버튼 없음 (탐색은 가능)', () => {
+    const onSeek = vi.fn()
+    render(
+      <BookmarkList
+        bookmarks={[bm]}
+        onSeek={onSeek}
+        onDelete={vi.fn()}
+        onAdd={vi.fn()}
+        onEdit={vi.fn()}
+        readOnly
+      />,
+    )
+    expect(screen.queryByText('현재 지점 추가')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('라벨 편집')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('삭제')).not.toBeInTheDocument()
+    // 북마크 항목 자체는 표시되어 탐색은 가능
+    expect(screen.getByText('원래 라벨')).toBeInTheDocument()
+  })
+
+  it('readOnly=false면 추가·편집·삭제 버튼 표시', () => {
+    render(
+      <BookmarkList
+        bookmarks={[bm]}
+        onSeek={vi.fn()}
+        onDelete={vi.fn()}
+        onAdd={vi.fn()}
+        onEdit={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('현재 지점 추가')).toBeInTheDocument()
+    expect(screen.getByTitle('라벨 편집')).toBeInTheDocument()
+    expect(screen.getByTitle('삭제')).toBeInTheDocument()
+  })
+})

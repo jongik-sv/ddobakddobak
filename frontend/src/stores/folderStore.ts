@@ -23,6 +23,7 @@ interface FolderState {
   createFolder: (name: string, parentId?: number | null) => Promise<void>
   renameFolder: (id: number, name: string) => Promise<void>
   setFolderShared: (id: number, shared: boolean) => Promise<void>
+  setFolderImportant: (id: number, important: boolean) => Promise<void>
   moveFolder: (id: number, newParentId: number | null) => Promise<void>
   removeFolder: (id: number) => Promise<void>
   reset: () => void
@@ -79,6 +80,24 @@ export const useFolderStore = create<FolderState>()((set, get) => ({
       await get().fetchFolders()
     } catch {
       set({ error: '폴더 공유 설정 변경에 실패했습니다.' })
+    }
+  },
+
+  setFolderImportant: async (id, important) => {
+    // 낙관적 갱신: 트리에서 해당 폴더(중첩 포함)의 important만 즉시 바꾸고,
+    // API 실패 시 fetchFolders로 서버 상태 복원.
+    const patchTree = (nodes: FolderNode[]): FolderNode[] =>
+      nodes.map((n) =>
+        n.id === id
+          ? { ...n, important }
+          : { ...n, children: patchTree(n.children) },
+      )
+    set((state) => ({ folders: patchTree(state.folders) }))
+    try {
+      await apiUpdateFolder(id, { important })
+    } catch {
+      set({ error: '폴더 중요 설정 변경에 실패했습니다.' })
+      await get().fetchFolders()
     }
   },
 

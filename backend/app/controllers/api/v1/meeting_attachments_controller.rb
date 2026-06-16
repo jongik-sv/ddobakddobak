@@ -2,10 +2,12 @@ module Api
   module V1
     class MeetingAttachmentsController < ApplicationController
       include MeetingLookup
+      include MeetingWriteGuard
 
       before_action :authenticate_user!
       before_action :set_meeting
       before_action :authorize_meeting_control!, only: %i[create update destroy reorder]
+      before_action :reject_if_locked!, only: %i[create update destroy reorder]
       before_action :set_attachment, only: %i[update destroy download reorder]
 
       def index

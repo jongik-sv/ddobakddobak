@@ -3,6 +3,7 @@ module Api
     class MeetingsAudioController < ApplicationController
       include MeetingLookup
       include AudioStorage
+      include MeetingWriteGuard
 
       ALLOWED_AUDIO_CONTENT_TYPES = %w[audio/webm audio/ogg video/webm audio/mp4 audio/wav audio/x-wav audio/wave].freeze
       AUDIO_MIME_OVERRIDES = { ".m4a" => "audio/mp4", ".aac" => "audio/aac" }.freeze
@@ -10,6 +11,7 @@ module Api
       before_action :authenticate_user!
       before_action :set_meeting
       before_action :authorize_meeting_control!, only: %i[create chunk finalize]
+      before_action :reject_if_locked!, only: %i[create chunk finalize]
 
       def create
         audio_file = params.require(:audio)

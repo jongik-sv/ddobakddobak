@@ -3,10 +3,12 @@ module Api
     class MeetingActionItemsController < ApplicationController
       include ActionItemSerializable
       include MeetingLookup
+      include MeetingWriteGuard
 
       before_action :authenticate_user!
       before_action :set_meeting
       before_action :authorize_meeting_control!, only: %i[create]
+      before_action :reject_if_locked!, only: %i[create]
 
       # GET /api/v1/meetings/:meeting_id/action_items
       def index

@@ -37,14 +37,19 @@ export function MeetingActions({
   onDelete,
   canEdit = true,
 }: MeetingActionsProps) {
+  // 잠긴 회의: 내용을 바꾸는 모든 어포던스를 비활성(disabled + 안내 툴팁). 내보내기(읽기)는 예외.
+  const locked = meeting.locked
+  const lockTitle = '잠긴 회의입니다 — 잠금을 해제한 뒤 다시 시도하세요.'
   return (
     <div className={`flex items-center shrink-0 ml-auto ${isDesktop ? 'gap-2' : 'gap-1'}`}>
       {/* STT 재생성: 오디오만 있으면 가능 — 전사 실패로 pending+트랜스크립트 0건이 된 회의의 복구 경로 */}
       {canEdit && meeting.has_audio_file && (meeting.status === 'completed' || meeting.status === 'pending') && (
         <button
           onClick={onShowSttConfirm}
+          disabled={locked}
+          title={locked ? lockTitle : undefined}
           aria-label="STT 재생성"
-          className="rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-3 py-1.5"
+          className="rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isDesktop ? 'STT 재생성' : <RefreshCw className="w-4 h-4" />}
         </button>
@@ -53,9 +58,10 @@ export function MeetingActions({
       {canEdit && meeting.has_audio_file && meeting.status === 'completed' && (
         <button
           onClick={onShowReDiarizeConfirm}
+          disabled={locked}
           aria-label="화자분리만 재실행"
-          title="다시 전사하지 않고, 현재 민감도 설정으로 화자만 다시 분리합니다 (약 1~2분). 전사 텍스트는 유지되고 화자 이름만 초기화됩니다."
-          className="rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-3 py-1.5"
+          title={locked ? lockTitle : '다시 전사하지 않고, 현재 민감도 설정으로 화자만 다시 분리합니다 (약 1~2분). 전사 텍스트는 유지되고 화자 이름만 초기화됩니다.'}
+          className="rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isDesktop ? '화자분리만 재실행' : <Users className="w-4 h-4" />}
         </button>
@@ -65,7 +71,8 @@ export function MeetingActions({
           {transcriptsCount > 0 && (
             <button
               onClick={onShowNotesConfirm}
-              disabled={isRegeneratingNotes}
+              disabled={isRegeneratingNotes || locked}
+              title={locked ? lockTitle : undefined}
               aria-label="회의록 재생성"
               className="px-3 py-1.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -82,8 +89,10 @@ export function MeetingActions({
           )}
           <button
             onClick={onReopen}
+            disabled={locked}
+            title={locked ? lockTitle : undefined}
             aria-label="회의 재개"
-            className="px-3 py-1.5 rounded-md text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition-colors"
+            className="px-3 py-1.5 rounded-md text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isDesktop ? '회의 재개' : <Play className="w-4 h-4" />}
           </button>
@@ -92,8 +101,10 @@ export function MeetingActions({
       {canEdit && (meeting.status === 'pending' || meeting.status === 'recording') && (
         <button
           onClick={onGoLive}
+          disabled={locked}
+          title={locked ? lockTitle : undefined}
           aria-label="회의 진행"
-          className="px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+          className="px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isDesktop ? '회의 진행' : <Play className="w-4 h-4" />}
         </button>
@@ -106,8 +117,10 @@ export function MeetingActions({
       {canEdit && (
         <button
           onClick={onDelete}
+          disabled={locked}
+          title={locked ? lockTitle : undefined}
           aria-label="삭제"
-          className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50"
+          className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isDesktop ? '삭제' : <Trash2 className="w-4 h-4" />}
         </button>

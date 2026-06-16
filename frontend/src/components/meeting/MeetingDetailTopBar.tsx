@@ -12,6 +12,8 @@ interface MeetingDetailTopBarProps {
   searchOpen: boolean
   /** 회의 정보 수정 어포던스를 노출할지 (소유자 ∨ admin). 기본 true. */
   canEdit?: boolean
+  /** 잠긴 회의면 회의 정보 수정 버튼을 비활성. 기본 false. */
+  locked?: boolean
   onBack: () => void
   onToggleAttachments: () => void
   onShowEdit: () => void
@@ -31,6 +33,7 @@ export function MeetingDetailTopBar({
   bookmarksVisible,
   searchOpen,
   canEdit = true,
+  locked = false,
   onBack,
   onToggleAttachments,
   onShowEdit,
@@ -69,11 +72,12 @@ export function MeetingDetailTopBar({
         </button>
       </Tooltip>
       {hasMeeting && canEdit && (
-        <Tooltip text="회의 정보 수정">
+        <Tooltip text={locked ? '잠긴 회의입니다' : '회의 정보 수정'}>
           <button
             aria-label="회의 정보 수정"
             onClick={onShowEdit}
-            className="shrink-0 p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            disabled={locked}
+            className="shrink-0 p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Pencil className="w-4 h-4" />
           </button>

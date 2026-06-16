@@ -37,6 +37,16 @@ class Meeting < ApplicationRecord
 
   enum :status, { pending: "pending", recording: "recording", transcribing: "transcribing", completed: "completed" }
 
+  # 회의 잠금: locked_at 가 채워져 있으면 잠긴(읽기전용) 회의. 가드는 별도 task.
+  def locked?
+    locked_at.present?
+  end
+
+  # 중요 플래그 상속: 회의 생성 시 important 를 명시 지정하지 않았으면 소속 폴더값을 상속한다.
+  # 명시 지정(컨트롤러가 important_explicitly_set=true 세팅) 케이스는 상속을 건너뛰고 지정값 보존.
+  attr_accessor :important_explicitly_set
+  before_create :seed_importance_from_folder
+
   # ── 오디오 길이 측정/캐시 ──
   # audio_file_path 파일의 길이(ms)를 ffprobe로 측정한다. 파일이 없으면 0.
   def measure_audio_duration_ms
@@ -247,6 +257,13 @@ class Meeting < ApplicationRecord
   end
 
   private
+
+  # 회의 생성 시 important 를 폴더값으로 상속. important_explicitly_set 면 상속 생략(지정값 보존).
+  # 폴더가 없으면 false. (목록은 important=true 만 표시 — 신규 회의는 폴더 정책을 따른다.)
+  def seed_importance_from_folder
+    return if important_explicitly_set
+    self.important = folder&.important || false
+  end
 
   # 이전 회의로 자기 자신을 지정하면 무한 시드 루프가 되므로 거부.
   def previous_meeting_not_self
