@@ -116,6 +116,14 @@ export function LlmSettingsPanel() {
   const modelOptions = selectedPreset === 'ollama' ? ollamaModels : currentPreset.suggestedModels
   const showModelSelect = modelOptions.length > 0 && !useCustomModel
 
+  // AI 챗 모델: 요약 모델과 동일한 프리셋별 목록을 사용 (커스텀 입력 토글 없음)
+  const chatModelOptions = modelOptions
+  // 저장된 값이 목록에 없으면(이전 자유 입력값 등) 보존 옵션으로 추가
+  const chatModelSelectOptions =
+    chatModel && !chatModelOptions.includes(chatModel)
+      ? [...chatModelOptions, chatModel]
+      : chatModelOptions
+
   const handleLlmTest = async () => {
     setLlmTesting(true)
     setLlmTestResult(null)
@@ -255,7 +263,7 @@ export function LlmSettingsPanel() {
         {/* 모델명 */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="block text-sm font-medium">모델명</label>
+            <label className="block text-sm font-medium">회의록 작성 모델명</label>
             {modelOptions.length > 0 && (
               <button
                 onClick={() => setUseCustomModel(!useCustomModel)}
@@ -333,14 +341,28 @@ export function LlmSettingsPanel() {
         {/* AI 챗 모델명 (전역 설정) */}
         <div>
           <label htmlFor="llm-chat-model" className="block text-sm font-medium mb-1">AI 챗 모델명</label>
-          <input
-            id="llm-chat-model"
-            type="text"
-            value={chatModel}
-            onChange={(e) => setChatModel(e.target.value)}
-            placeholder="모델명을 입력하세요"
-            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
-          />
+          {chatModelOptions.length > 0 ? (
+            <select
+              id="llm-chat-model"
+              value={chatModel}
+              onChange={(e) => setChatModel(e.target.value)}
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono bg-white min-h-[44px]"
+            >
+              <option value="">요약 모델과 동일</option>
+              {chatModelSelectOptions.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              id="llm-chat-model"
+              type="text"
+              value={chatModel}
+              onChange={(e) => setChatModel(e.target.value)}
+              placeholder="모델명을 입력하세요"
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
+            />
+          )}
           <p className="text-xs text-muted-foreground mt-1">비우면 요약 모델을 사용합니다</p>
         </div>
 
