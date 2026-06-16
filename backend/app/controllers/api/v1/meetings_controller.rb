@@ -62,6 +62,7 @@ module Api
           created_by_id: current_user.id,
           meeting_type: params[:meeting_type] || "general",
           folder_id: params[:folder_id],
+          project_id: resolve_project_id,
           shared: params.key?(:shared) ? ActiveModel::Type::Boolean.new.cast(params[:shared]) : true,
           previous_meeting_id: accessible_previous_meeting_id(params[:previous_meeting_id], params[:folder_id].presence&.to_i),
           **summary_options_for_create
@@ -87,6 +88,7 @@ module Api
           created_by_id: current_user.id,
           meeting_type: params[:meeting_type] || "general",
           folder_id: params[:folder_id],
+          project_id: resolve_project_id,
           shared: params.key?(:shared) ? ActiveModel::Type::Boolean.new.cast(params[:shared]) : true,
           status: :transcribing,
           source: "upload",
@@ -558,6 +560,24 @@ module Api
         return if @meeting.editable_by?(current_user)
 
         render json: { error: "권한이 없습니다" }, status: :forbidden
+      end
+
+      # 회의가 속할 프로젝트 id 결정 (meetings.project_id 는 NOT NULL).
+      # 우선순위: 명시 project_id > 폴더의 project_id > 현재 사용자 개인 프로젝트.
+      # 개인 프로젝트는 User after_create 콜백으로 항상 존재하나, 방어적으로 한번 더 보장한다.
+      # NOTE(임시 브리지): 명시 project_id 를 멤버십 검증 없이 신뢰한다(IDOR 여지).
+      #   NOT NULL 충족을 위한 과도기 코드. Phase 5 (Task 5.5) 에서 프로젝트 멤버십
+      #   인가를 추가하며 이 메서드를 대체한다. 그때까지 의도적으로 유지.
+      def resolve_project_id
+        explicit = params[:project_id].presence&.to_i
+        return explicit if explicit
+
+        if params[:folder_id].present?
+          folder_pid = Folder.where(id: params[:folder_id]).pick(:project_id)
+          return folder_pid if folder_pid
+        end
+
+        EnsurePersonalProject.call(current_user).id
       end
 
       # 회의 생성 시 important 가 요청에 명시되면 값을 세팅하고 명시 플래그를 켠다.

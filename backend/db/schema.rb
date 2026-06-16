@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_17_000002) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_17_000004) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -73,7 +73,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000002) do
     t.string "name", null: false
     t.integer "parent_id"
     t.integer "position", default: 0, null: false
-    t.integer "project_id"
+    t.integer "project_id", null: false
     t.boolean "shared", default: true, null: false
     t.datetime "updated_at", null: false
     t.index ["parent_id"], name: "index_folders_on_parent_id"
@@ -193,7 +193,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000002) do
     t.text "memo"
     t.datetime "paused_at"
     t.integer "previous_meeting_id"
-    t.integer "project_id"
+    t.integer "project_id", null: false
     t.datetime "re_diarize_started_at"
     t.string "share_code"
     t.boolean "shared", default: true, null: false
@@ -293,7 +293,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000002) do
     t.string "color", default: "#6b7280", null: false
     t.datetime "created_at", null: false
     t.string "name", null: false
-    t.integer "project_id"
+    t.integer "project_id", null: false
     t.datetime "updated_at", null: false
     t.index ["project_id", "name"], name: "index_tags_on_project_id_and_name", unique: true
   end
