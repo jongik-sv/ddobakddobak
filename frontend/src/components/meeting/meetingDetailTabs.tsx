@@ -39,6 +39,8 @@ interface BuildMeetingDetailTabsArgs {
   suppressAutoScroll?: boolean
   /** 잠긴 회의면 전사·화자·회의록 편집을 막는다 (읽기 전용). 기본 false. */
   locked?: boolean
+  /** AI 회의록(요약) 아래에 끼울 노드(오타수정·오타사전 등). 페이지가 생성. */
+  belowSummary?: React.ReactNode
 }
 
 /** 회의 상세 모바일 탭(기록/요약/메모) 정의를 생성한다. (순수 함수 — 훅 아님) */
@@ -62,6 +64,7 @@ export function buildMeetingDetailTabs({
   activeSearch,
   suppressAutoScroll,
   locked = false,
+  belowSummary,
 }: BuildMeetingDetailTabsArgs): Tab[] {
   return [
     {
@@ -103,7 +106,10 @@ export function buildMeetingDetailTabs({
       icon: Bot,
       content: (
         <div data-search-region="summary" className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
-          <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={!locked} onNotesChange={onNotesChange} headerExtra={summaryOptions} />
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+            <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={!locked} onNotesChange={onNotesChange} headerExtra={summaryOptions} />
+          </div>
+          {belowSummary}
         </div>
       ),
     },

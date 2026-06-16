@@ -283,6 +283,22 @@ export default function MeetingPage() {
     <SummaryOptionsControl meeting={meeting} onSave={updateMeetingInfo} />
   ) : undefined
 
+  // 오타수정·오타사전 — AI 회의록 아래에 배치(데스크톱 패널 + 모바일 요약 탭 공통). 잠금 시 숨김.
+  const typoSections = !locked ? (
+    <div className="shrink-0 max-h-[45%] overflow-y-auto">
+      <TermCorrectionDetails
+        corrections={corrections}
+        status={correctionStatus}
+        isApplying={isApplyingCorrections}
+        onUpdate={updateCorrection}
+        onAdd={addCorrectionRow}
+        onRemove={removeCorrectionRow}
+        onApply={handleApplyCorrections}
+      />
+      {meeting?.id && <GlossaryPanel meetingId={meeting.id} />}
+    </div>
+  ) : null
+
   // 모바일 탭 정의
   const mobileTabs = buildMeetingDetailTabs({
     meetingId,
@@ -304,6 +320,7 @@ export default function MeetingPage() {
     activeSearch: activeTranscriptSearch,
     suppressAutoScroll: !!search.effectiveQuery,
     locked,
+    belowSummary: typoSections,
   })
 
   return (
@@ -446,13 +463,16 @@ export default function MeetingPage() {
           {/* AI 회의록 — 기본 48% */}
           <Panel defaultSize={48} minSize={20}>
             <div data-search-region="summary" className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
-              <AiSummaryPanel
-                meetingId={meetingId}
-                isRecording={false}
-                editable={!locked}
-                onNotesChange={handleNotesChange}
-                headerExtra={summaryOptionsControl}
-              />
+              <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                <AiSummaryPanel
+                  meetingId={meetingId}
+                  isRecording={false}
+                  editable={!locked}
+                  onNotesChange={handleNotesChange}
+                  headerExtra={summaryOptionsControl}
+                />
+              </div>
+              {typoSections}
             </div>
           </Panel>
 
@@ -485,24 +505,6 @@ export default function MeetingPage() {
           activeTab={mobileTab}
           onTabChange={setMobileTab}
         />
-      )}
-
-      {/* 오타 수정 섹션 — 잠긴 회의는 전사/회의록을 바꾸므로 숨김 (녹음/일시정지 중에도 노출) */}
-      {!locked && (
-        <TermCorrectionDetails
-          corrections={corrections}
-          status={correctionStatus}
-          isApplying={isApplyingCorrections}
-          onUpdate={updateCorrection}
-          onAdd={addCorrectionRow}
-          onRemove={removeCorrectionRow}
-          onApply={handleApplyCorrections}
-        />
-      )}
-
-      {/* 오타 사전 섹션 — 잠긴 회의는 숨김 (녹음/일시정지 중에도 노출) */}
-      {meeting?.id && !locked && (
-        <GlossaryPanel meetingId={meeting.id} />
       )}
 
       {/* 미니 오디오 플레이어(fixed bottom)가 하단 콘텐츠를 가리지 않도록 스페이서 (모바일) */}
