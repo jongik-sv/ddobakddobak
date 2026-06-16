@@ -1,4 +1,4 @@
-import { FolderClosed } from 'lucide-react'
+import { FolderClosed, Star, Lock } from 'lucide-react'
 import type { Meeting } from '../../api/meetings'
 import type { FolderNode } from '../../api/folders'
 import type { SelectedFolder } from '../../stores/folderStore'
@@ -6,6 +6,7 @@ import { initDrag } from '../../utils/dragState'
 import { StatusBadge, MeetingTypeBadge, MeetingActionButtons } from './MeetingListUI'
 import { formatDate, folderPath } from '../../lib/meetingFormat'
 import { useAuthStore } from '../../stores/authStore'
+import { Tooltip } from '../ui/Tooltip'
 
 interface MeetingCardGridProps {
   childFolders: FolderNode[]
@@ -21,6 +22,8 @@ interface MeetingCardGridProps {
   onMove: (m: Meeting) => void
   onDelete: (m: Meeting) => void
   onStop: (m: Meeting) => void
+  /** 중요 표시 토글. 미지정이면 별 토글 숨김. 잠긴 회의는 비활성. */
+  onToggleImportant?: (m: Meeting) => void
 }
 
 export function MeetingCardGrid({
@@ -37,6 +40,7 @@ export function MeetingCardGrid({
   onMove,
   onDelete,
   onStop,
+  onToggleImportant,
 }: MeetingCardGridProps) {
   const me = useAuthStore((s) => s.user)
   return (
@@ -84,7 +88,30 @@ export function MeetingCardGrid({
         >
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 mb-1">
-              <h3 className="font-medium text-sm line-clamp-2">{meeting.title}</h3>
+              <div className="flex items-start gap-1.5 min-w-0">
+                {onToggleImportant && (
+                  <Tooltip text={meeting.locked ? '잠긴 회의입니다' : meeting.important ? '중요 해제' : '중요 표시'}>
+                    <button
+                      type="button"
+                      aria-label={meeting.important ? '중요 해제' : '중요 표시'}
+                      disabled={meeting.locked}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onToggleImportant(meeting)
+                      }}
+                      className="shrink-0 mt-0.5 p-0.5 rounded hover:bg-black/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Star
+                        className={`w-4 h-4 ${meeting.important ? 'text-amber-500 fill-amber-500' : 'text-gray-300'}`}
+                      />
+                    </button>
+                  </Tooltip>
+                )}
+                {meeting.locked && (
+                  <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" aria-label="잠긴 회의" />
+                )}
+                <h3 className="font-medium text-sm line-clamp-2">{meeting.title}</h3>
+              </div>
               <StatusBadge status={meeting.status} />
             </div>
             <div className="flex items-center gap-1.5 flex-wrap mb-2">

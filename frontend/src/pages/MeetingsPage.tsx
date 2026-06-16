@@ -412,6 +412,7 @@ export default function MeetingsPage() {
           onMove={setMovingMeeting}
           onDelete={handleDeleteMeeting}
           onStop={handleStopMeeting}
+          onToggleImportant={handleToggleImportant}
         />
       ) : (
         <MeetingListTable
