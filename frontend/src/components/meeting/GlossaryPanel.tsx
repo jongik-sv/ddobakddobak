@@ -105,7 +105,7 @@ function GlossaryLevelTable({
             <input type="checkbox" checked={e.enabled} onChange={(ev) => onEdit(e.id, { enabled: ev.target.checked })} />
             사용
           </label>
-          <button onClick={() => onApply(e.id)} className="text-[11px] text-blue-600 hover:text-blue-800 shrink-0" title="이 항목만 적용">적용</button>
+          <button onClick={() => onApply(e.id)} className="px-3 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors shrink-0" title="이 항목만 적용">적용</button>
           <button onClick={() => onRemove(e.id)} className="w-6 h-6 text-gray-400 hover:text-red-500" title="삭제">&times;</button>
         </div>
       ))}
