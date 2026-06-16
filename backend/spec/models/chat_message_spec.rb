@@ -24,4 +24,38 @@ RSpec.describe ChatMessage, type: :model do
     create(:chat_message)
     expect(ChatMessage.for_user(a.user)).to eq([a])
   end
+
+  describe "#suggestions" do
+    it "defaults to an empty array" do
+      msg = create(:chat_message)
+      expect(msg.reload.suggestions).to eq([])
+    end
+
+    it "round-trips an array of strings through the writer" do
+      msg = create(:chat_message)
+      msg.suggestions = %w[질문1 질문2 질문3]
+      msg.save!
+      expect(msg.reload.suggestions).to eq(%w[질문1 질문2 질문3])
+    end
+
+    it "returns [] when the stored JSON is broken" do
+      msg = create(:chat_message)
+      msg.update_column(:suggestions_json, "not json{")
+      expect(msg.reload.suggestions).to eq([])
+    end
+
+    it "coerces non-string entries to strings and caps at 3" do
+      msg = create(:chat_message)
+      msg.suggestions = ["a", 2, "c", "d"]
+      msg.save!
+      expect(msg.reload.suggestions).to eq(%w[a 2 c])
+    end
+
+    it "ignores a non-array writer value" do
+      msg = create(:chat_message)
+      msg.suggestions = "nope"
+      msg.save!
+      expect(msg.reload.suggestions).to eq([])
+    end
+  end
 end

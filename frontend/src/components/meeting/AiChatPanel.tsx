@@ -1,17 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useChatStore } from '../../stores/chatStore'
 import { subscribeChat } from '../../channels/chat'
+import { ChatMarkdown } from './ChatMarkdown'
 
 export function AiChatPanel({ meetingId }: { meetingId: number }) {
   const { load, send } = useChatStore()
   const messages = useChatStore((s) => s.messages) ?? []
+  const hasPending = messages.some((m) => m.status === 'pending')
   const [draft, setDraft] = useState('')
+  const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     load(meetingId)
     const unsub = subscribeChat(meetingId)
     return unsub
   }, [meetingId, load])
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
+  }, [messages])
 
   const submit = () => {
     const q = draft.trim()
@@ -26,27 +33,59 @@ export function AiChatPanel({ meetingId }: { meetingId: number }) {
         {messages.length === 0 && (
           <p className="text-sm text-gray-400">이 회의 내용에 대해 무엇이든 물어보세요.</p>
         )}
-        {messages.map((m) => (
-          <div key={m.id} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
+        {messages.map((m) => {
+          const suggestions =
+            m.role === 'assistant' && m.status === 'complete' ? (m.suggestions ?? []) : []
+          return (
             <div
+              key={m.id}
               className={
                 m.role === 'user'
-                  ? 'max-w-[80%] rounded-lg px-3 py-2 text-sm bg-blue-600 text-white whitespace-pre-wrap'
-                  : 'max-w-[80%] rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-800 whitespace-pre-wrap'
+                  ? 'flex flex-col items-end'
+                  : 'flex flex-col items-start'
               }
             >
-              {m.status === 'pending' && m.role === 'assistant' ? (
-                <span data-testid="chat-typing" className="text-gray-400">
-                  …답변 작성 중
-                </span>
-              ) : m.status === 'error' ? (
-                <span className="text-red-500">답변 실패: {m.error_message}</span>
-              ) : (
-                m.content
+              <div
+                className={
+                  m.role === 'user'
+                    ? 'max-w-[80%] rounded-lg px-3 py-2 text-sm bg-blue-600 text-white whitespace-pre-wrap'
+                    : 'max-w-[80%] rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-800'
+                }
+              >
+                {m.status === 'pending' && m.role === 'assistant' ? (
+                  <span data-testid="chat-typing" className="text-gray-400">
+                    …답변 작성 중
+                  </span>
+                ) : m.status === 'error' ? (
+                  <span className="text-red-500">답변 실패: {m.error_message}</span>
+                ) : m.role === 'assistant' && m.status === 'complete' ? (
+                  <ChatMarkdown content={m.content} />
+                ) : (
+                  m.content
+                )}
+              </div>
+              {suggestions.length > 0 && (
+                <div data-testid="chat-suggestions" className="mt-1.5 flex flex-wrap gap-1.5">
+                  {suggestions.slice(0, 3).map((q, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      disabled={hasPending}
+                      onClick={() => {
+                        if (hasPending) return
+                        void send(meetingId, q)
+                      }}
+                      className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
-          </div>
-        ))}
+          )
+        })}
+        <div ref={bottomRef} />
       </div>
       <div className="border-t border-gray-200 p-2 flex gap-2">
         <input

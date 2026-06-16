@@ -51,4 +51,58 @@ RSpec.describe MeetingChatJob, type: :job do
 
     MeetingChatJob.perform_now(answer.id)
   end
+
+  context "when the LLM appends a followups sentinel" do
+    before do
+      raw = "답변본문\n<<<FOLLOWUPS>>>[\"질문1\",\"질문2\",\"질문3\"]"
+      fake = instance_double(LlmService, answer_question: raw)
+      allow(LlmService).to receive(:new).and_return(fake)
+    end
+
+    it "splits the body from the suggestions and stores both" do
+      MeetingChatJob.perform_now(answer.id)
+      answer.reload
+      expect(answer.content).to eq("답변본문")
+      expect(answer.suggestions).to eq(%w[질문1 질문2 질문3])
+      expect(answer.status).to eq("complete")
+    end
+
+    it "includes suggestions in the broadcast payload" do
+      expect(ActionCable.server).to receive(:broadcast).with(
+        "meeting_#{meeting.id}_chat_#{user.id}",
+        hash_including(suggestions: %w[질문1 질문2 질문3])
+      )
+      MeetingChatJob.perform_now(answer.id)
+    end
+  end
+
+  context "when there is no sentinel in the answer" do
+    before do
+      fake = instance_double(LlmService, answer_question: "그냥 답변, 센티넬 없음")
+      allow(LlmService).to receive(:new).and_return(fake)
+    end
+
+    it "keeps the raw content and leaves suggestions empty" do
+      MeetingChatJob.perform_now(answer.id)
+      answer.reload
+      expect(answer.content).to eq("그냥 답변, 센티넬 없음")
+      expect(answer.suggestions).to eq([])
+    end
+  end
+
+  context "when the sentinel is followed by broken JSON" do
+    before do
+      raw = "답변본문\n<<<FOLLOWUPS>>>[not valid json"
+      fake = instance_double(LlmService, answer_question: raw)
+      allow(LlmService).to receive(:new).and_return(fake)
+    end
+
+    it "falls back gracefully: clean body, empty suggestions" do
+      MeetingChatJob.perform_now(answer.id)
+      answer.reload
+      expect(answer.content).to eq("답변본문")
+      expect(answer.suggestions).to eq([])
+      expect(answer.status).to eq("complete")
+    end
+  end
 end

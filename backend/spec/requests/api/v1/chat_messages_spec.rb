@@ -30,6 +30,17 @@ RSpec.describe "Api::V1::ChatMessages", type: :request do
       expect(contents).to include("mine")
       expect(contents).not_to include("theirs")
     end
+
+    it "serializes the suggestions array for assistant messages" do
+      msg = create(:chat_message, meeting: meeting, user: owner, role: "assistant",
+                                  status: "complete", content: "답")
+      msg.update!(suggestions: %w[다음질문1 다음질문2])
+
+      get "/api/v1/meetings/#{meeting.id}/chat_messages", as: :json
+
+      serialized = response.parsed_body.find { |m| m["id"] == msg.id }
+      expect(serialized["suggestions"]).to eq(%w[다음질문1 다음질문2])
+    end
   end
 
   context "as a user without meeting read access" do

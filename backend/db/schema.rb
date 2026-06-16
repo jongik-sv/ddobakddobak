@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_16_000002) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_16_000003) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -44,6 +44,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_16_000002) do
     t.integer "meeting_id", null: false
     t.string "role", null: false
     t.string "status", default: "complete", null: false
+    t.text "suggestions_json", default: "[]", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
     t.index ["meeting_id", "user_id", "created_at"], name: "index_chat_messages_on_meeting_id_and_user_id_and_created_at"

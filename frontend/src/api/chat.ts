@@ -8,6 +8,8 @@ export interface ChatMessage {
   role: ChatRole
   content: string
   status: ChatStatus
+  /** 어시스턴트 답변 뒤 예상질문(한국어, 최대 3개). 클릭 시 즉시 자동 질문. */
+  suggestions?: string[]
   error_message?: string | null
   created_at: string
 }
