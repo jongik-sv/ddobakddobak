@@ -1,36 +1,36 @@
 module Api
   module V1
-    class TeamsController < ApplicationController
+    class ProjectsController < ApplicationController
       before_action :authenticate_user!
-      before_action :set_team, only: %i[invite remove_member]
+      before_action :set_project, only: %i[invite remove_member]
 
       def index
-        memberships = current_user.team_memberships.includes(:team)
-        teams = memberships.map do |m|
+        memberships = current_user.project_memberships.includes(:project)
+        projects = memberships.map do |m|
           {
-            id: m.team.id,
-            name: m.team.name,
+            id: m.project.id,
+            name: m.project.name,
             role: m.role,
-            member_count: m.team.team_memberships.count
+            member_count: m.project.project_memberships.count
           }
         end
-        render json: teams
+        render json: projects
       end
 
       def create
-        team = Team.new(name: params[:name], creator: current_user)
-        if team.save
-          membership = TeamMembership.create!(user: current_user, team: team, role: "admin")
+        project = Project.new(name: params[:name], creator: current_user)
+        if project.save
+          membership = ProjectMembership.create!(user: current_user, project: project, role: "admin")
           render json: {
-            team: {
-              id: team.id,
-              name: team.name,
+            project: {
+              id: project.id,
+              name: project.name,
               role: membership.role,
               member_count: 1
             }
           }, status: :created
         else
-          render json: { errors: team.errors.full_messages }, status: :unprocessable_entity
+          render json: { errors: project.errors.full_messages }, status: :unprocessable_entity
         end
       end
 
@@ -38,12 +38,12 @@ module Api
         invited_user = ::User.find_by(email: params[:email])
         return render json: { error: "User not found" }, status: :not_found unless invited_user
 
-        membership = TeamMembership.new(user: invited_user, team: @team, role: "member")
+        membership = ProjectMembership.new(user: invited_user, project: @project, role: "member")
         if membership.save
           render json: {
             membership: {
               user_id: membership.user_id,
-              team_id: membership.team_id,
+              project_id: membership.project_id,
               role: membership.role
             }
           }, status: :created
@@ -53,7 +53,7 @@ module Api
       end
 
       def remove_member
-        membership = @team.team_memberships.find_by(user_id: params[:user_id])
+        membership = @project.project_memberships.find_by(user_id: params[:user_id])
         return render json: { error: "Member not found" }, status: :not_found unless membership
 
         membership.destroy
@@ -62,10 +62,10 @@ module Api
 
       private
 
-      def set_team
-        membership = current_user.team_memberships.includes(:team).find_by(team_id: params[:id])
+      def set_project
+        membership = current_user.project_memberships.includes(:project).find_by(project_id: params[:id])
         if membership
-          @team = membership.team
+          @project = membership.project
         else
           render json: { error: "Forbidden" }, status: :forbidden
         end

@@ -2,14 +2,14 @@ require "rails_helper"
 
 RSpec.describe "Api::V1::MeetingDecisions", type: :request do
   let(:user)       { create(:user) }
-  let(:team)       { create(:team, creator: user) }
-  let!(:membership) { create(:team_membership, user: user, team: team, role: "member") }
-  let(:meeting)    { create(:meeting, team: team, creator: user) }
+  let(:project)       { create(:project, creator: user) }
+  let!(:membership) { create(:project_membership, user: user, project: project, role: "member") }
+  let(:meeting)    { create(:meeting, project: project, creator: user) }
 
   before { login_as(user) }
 
   describe "GET /api/v1/meetings/:meeting_id/decisions" do
-    context "인증된 팀 멤버" do
+    context "인증된 프로젝트 멤버" do
       it "200과 decisions 배열 반환" do
         decision = create(:decision, meeting: meeting, content: "API 설계 확정")
         get "/api/v1/meetings/#{meeting.id}/decisions"
@@ -36,7 +36,7 @@ RSpec.describe "Api::V1::MeetingDecisions", type: :request do
   end
 
   describe "POST /api/v1/meetings/:meeting_id/decisions" do
-    context "인증된 팀 멤버" do
+    context "인증된 프로젝트 멤버" do
       it "201과 생성된 decision 반환" do
         expect {
           post "/api/v1/meetings/#{meeting.id}/decisions",

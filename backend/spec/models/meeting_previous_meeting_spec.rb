@@ -3,11 +3,11 @@ require "rails_helper"
 # 이전 회의 참고(시드+이어쓰기): Meeting#seed_summary_from_previous! + 자기참조 검증
 RSpec.describe Meeting, type: :model do
   let(:user) { create(:user) }
-  let(:team) { create(:team, creator: user) }
+  let(:project) { create(:project, creator: user) }
 
   describe "#seed_summary_from_previous!" do
-    let(:previous) { create(:meeting, team: team, creator: user, status: "completed") }
-    let(:meeting)  { create(:meeting, team: team, creator: user, status: "recording", previous_meeting: previous) }
+    let(:previous) { create(:meeting, project: project, creator: user, status: "completed") }
+    let(:meeting)  { create(:meeting, project: project, creator: user, status: "recording", previous_meeting: previous) }
 
     before do
       create(:summary, meeting: previous, summary_type: "final",
@@ -48,28 +48,28 @@ RSpec.describe Meeting, type: :model do
     end
 
     it "no-ops when previous_meeting is nil" do
-      solo = create(:meeting, team: team, creator: user, status: "recording")
+      solo = create(:meeting, project: project, creator: user, status: "recording")
       expect { solo.seed_summary_from_previous! }.not_to change { solo.summaries.count }
     end
 
     it "no-ops when the previous meeting has no notes" do
-      blank_prev = create(:meeting, team: team, creator: user, status: "completed")
-      m = create(:meeting, team: team, creator: user, status: "recording", previous_meeting: blank_prev)
+      blank_prev = create(:meeting, project: project, creator: user, status: "completed")
+      m = create(:meeting, project: project, creator: user, status: "recording", previous_meeting: blank_prev)
       expect { m.seed_summary_from_previous! }.not_to change { m.summaries.count }
     end
   end
 
   describe "previous_meeting self-reference validation" do
     it "rejects referencing itself" do
-      m = create(:meeting, team: team, creator: user)
+      m = create(:meeting, project: project, creator: user)
       m.previous_meeting_id = m.id
       expect(m).not_to be_valid
       expect(m.errors[:previous_meeting_id]).to be_present
     end
 
     it "allows referencing another meeting" do
-      prev = create(:meeting, team: team, creator: user)
-      m = create(:meeting, team: team, creator: user)
+      prev = create(:meeting, project: project, creator: user)
+      m = create(:meeting, project: project, creator: user)
       m.previous_meeting_id = prev.id
       expect(m).to be_valid
     end

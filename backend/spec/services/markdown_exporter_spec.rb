@@ -2,11 +2,11 @@ require "rails_helper"
 
 RSpec.describe MarkdownExporter do
   let(:user)    { create(:user, name: "홍길동") }
-  let(:team)    { create(:team, creator: user) }
+  let(:project)    { create(:project, creator: user) }
   let(:meeting) do
     create(:meeting,
       title:      "2분기 목표 회의",
-      team:       team,
+      project:       project,
       creator:    user,
       status:     "completed",
       started_at: Time.zone.parse("2026-06-02 14:00"),
@@ -145,7 +145,7 @@ RSpec.describe MarkdownExporter do
     end
 
     context "transcript가 없을 때" do
-      let(:empty_meeting) { create(:meeting, team: team, creator: user) }
+      let(:empty_meeting) { create(:meeting, project: project, creator: user) }
 
       it "안내 문구를 포함한다" do
         result = described_class.new(empty_meeting).call

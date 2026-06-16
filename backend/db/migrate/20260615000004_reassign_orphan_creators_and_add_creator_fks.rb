@@ -14,13 +14,13 @@ class ReassignOrphanCreatorsAndAddCreatorFks < ActiveRecord::Migration[8.1]
                User.order(:id).first
 
     orphan_meetings = Meeting.where("created_by_id NOT IN (SELECT id FROM users)")
-    orphan_teams    = Team.where("created_by_id NOT IN (SELECT id FROM users)")
+    orphan_teams_count = select_value("SELECT COUNT(*) FROM teams WHERE created_by_id NOT IN (SELECT id FROM users)").to_i
 
-    if orphan_meetings.exists? || orphan_teams.exists?
+    if orphan_meetings.exists? || orphan_teams_count.positive?
       raise "No fallback user available for orphan creator reassignment" if fallback.nil?
       say_with_time "Reassigning orphan creators to #{fallback.email} (id=#{fallback.id})" do
-        orphan_meetings.update_all(created_by_id: fallback.id) +
-          orphan_teams.update_all(created_by_id: fallback.id)
+        orphan_meetings.update_all(created_by_id: fallback.id)
+        execute("UPDATE teams SET created_by_id = #{fallback.id} WHERE created_by_id NOT IN (SELECT id FROM users)")
       end
     end
 

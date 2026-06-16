@@ -2,8 +2,8 @@ require "rails_helper"
 
 RSpec.describe SummarizationJob, type: :job do
   let(:user) { create(:user) }
-  let(:team) { create(:team, creator: user) }
-  let(:meeting) { create(:meeting, team: team, creator: user, status: "recording") }
+  let(:project) { create(:project, creator: user) }
+  let(:meeting) { create(:meeting, project: project, creator: user, status: "recording") }
 
   describe "#perform" do
     context "when there are recording meetings" do
@@ -16,7 +16,7 @@ RSpec.describe SummarizationJob, type: :job do
       end
 
       it "only processes recording meetings" do
-        completed_meeting = create(:meeting, team: team, creator: user, status: "completed")
+        completed_meeting = create(:meeting, project: project, creator: user, status: "completed")
         expect {
           described_class.new.perform
         }.to have_enqueued_job(MeetingSummarizationJob).with(meeting.id, type: "realtime")
@@ -26,7 +26,7 @@ RSpec.describe SummarizationJob, type: :job do
       end
 
       it "skips paused meetings" do
-        paused = create(:meeting, team: team, creator: user, status: "recording", paused_at: Time.current)
+        paused = create(:meeting, project: project, creator: user, status: "recording", paused_at: Time.current)
         expect {
           described_class.new.perform
         }.not_to have_enqueued_job(MeetingSummarizationJob).with(paused.id, type: "realtime")
@@ -34,7 +34,7 @@ RSpec.describe SummarizationJob, type: :job do
     end
 
     context "when there are multiple recording meetings" do
-      let(:meeting2) { create(:meeting, team: team, creator: user, status: "recording") }
+      let(:meeting2) { create(:meeting, project: project, creator: user, status: "recording") }
 
       before do
         meeting

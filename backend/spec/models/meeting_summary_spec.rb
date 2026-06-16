@@ -5,11 +5,11 @@ require "rails_helper"
 # (reopen 후 stale final 이 실시간 요약을 가리는 버그 방지)
 RSpec.describe Meeting, type: :model do
   let(:user) { create(:user) }
-  let(:team) { create(:team, creator: user) }
+  let(:project) { create(:project, creator: user) }
 
   describe "#active_summary" do
     context "completed 회의: final 우선" do
-      let(:meeting) { create(:meeting, team: team, creator: user, status: "completed") }
+      let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
 
       it "returns the final summary even when a newer realtime exists" do
         _realtime = create(:summary, meeting: meeting, summary_type: "realtime",
@@ -30,7 +30,7 @@ RSpec.describe Meeting, type: :model do
     end
 
     context "recording 회의(reopen 시나리오): 최신 우선 (stale final 무시)" do
-      let(:meeting) { create(:meeting, team: team, creator: user, status: "recording") }
+      let(:meeting) { create(:meeting, project: project, creator: user, status: "recording") }
 
       it "returns the realtime summary (newer generated_at) over a stale final" do
         # reopen 후 시나리오: final 은 오래됐고, realtime 이 더 최신

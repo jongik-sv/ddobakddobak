@@ -2,11 +2,11 @@ require "rails_helper"
 
 RSpec.describe TranscriptionChannel, type: :channel do
   let(:user) { create(:user) }
-  let(:team) { create(:team, creator: user) }
-  let(:meeting) { create(:meeting, team: team, creator: user) }
+  let(:project) { create(:project, creator: user) }
+  let(:meeting) { create(:meeting, project: project, creator: user) }
 
   before do
-    create(:team_membership, user: user, team: team, role: "admin")
+    create(:project_membership, user: user, project: project, role: "admin")
     stub_connection current_user: user
   end
 

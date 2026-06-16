@@ -1,5 +1,5 @@
 class Meeting < ApplicationRecord
-  belongs_to :team, optional: true
+  belongs_to :project, optional: true
   belongs_to :creator, class_name: "User", foreign_key: "created_by_id"
   belongs_to :folder, optional: true
   # 이전 회의 참고: 지정 시 그 회의록을 현재 회의록의 시작점(시드)으로 깔고 이어쓴다.

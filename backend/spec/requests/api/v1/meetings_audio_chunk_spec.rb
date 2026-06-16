@@ -2,9 +2,9 @@ require "rails_helper"
 
 RSpec.describe "Api::V1::MeetingsAudio 청크 업로드", type: :request do
   let(:user)    { create(:user) }
-  let(:team)    { create(:team, creator: user) }
-  let!(:member) { create(:team_membership, user: user, team: team, role: "admin") }
-  let(:meeting) { create(:meeting, team: team, creator: user) }
+  let(:project)    { create(:project, creator: user) }
+  let!(:member) { create(:project_membership, user: user, project: project, role: "admin") }
+  let(:meeting) { create(:meeting, project: project, creator: user) }
 
   before do
     login_as(user)

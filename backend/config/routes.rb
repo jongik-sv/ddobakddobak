@@ -135,8 +135,8 @@ Rails.application.routes.draw do
         end
       end
 
-      # Teams
-      resources :teams, only: %i[index create] do
+      # Projects
+      resources :projects, only: %i[index create] do
         member do
           post :invite
           delete "members/:user_id", action: :remove_member, as: :remove_member

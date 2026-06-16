@@ -5,13 +5,13 @@ require "rails_helper"
 RSpec.describe "Api::V1::Meetings previous meeting reference", type: :request do
   let(:user)  { create(:user) }
   let(:other) { create(:user) }
-  let(:team)  { create(:team, creator: user) }
+  let(:project)  { create(:project, creator: user) }
 
   before { login_as(user) }
 
   describe "POST /api/v1/meetings" do
     it "persists an accessible previous_meeting_id" do
-      prev = create(:meeting, team: team, creator: user, title: "지난 회의")
+      prev = create(:meeting, project: project, creator: user, title: "지난 회의")
 
       post "/api/v1/meetings", params: { title: "이어가는 회의", previous_meeting_id: prev.id }
 
@@ -37,8 +37,8 @@ RSpec.describe "Api::V1::Meetings previous meeting reference", type: :request do
 
   describe "PATCH /api/v1/meetings/:id" do
     it "updates previous_meeting_id" do
-      prev = create(:meeting, team: team, creator: user)
-      m = create(:meeting, team: team, creator: user)
+      prev = create(:meeting, project: project, creator: user)
+      m = create(:meeting, project: project, creator: user)
 
       patch "/api/v1/meetings/#{m.id}", params: { previous_meeting_id: prev.id }
 
@@ -47,8 +47,8 @@ RSpec.describe "Api::V1::Meetings previous meeting reference", type: :request do
     end
 
     it "clears previous_meeting_id when sent blank" do
-      prev = create(:meeting, team: team, creator: user)
-      m = create(:meeting, team: team, creator: user, previous_meeting: prev)
+      prev = create(:meeting, project: project, creator: user)
+      m = create(:meeting, project: project, creator: user, previous_meeting: prev)
 
       patch "/api/v1/meetings/#{m.id}", params: { previous_meeting_id: "" }
 
@@ -58,8 +58,8 @@ RSpec.describe "Api::V1::Meetings previous meeting reference", type: :request do
 
   describe "same-folder 제약" do
     it "accepts a previous meeting in the same folder on create" do
-      fa = create(:folder, team: team)
-      prev = create(:meeting, team: team, creator: user, folder: fa)
+      fa = create(:folder, project: project)
+      prev = create(:meeting, project: project, creator: user, folder: fa)
 
       post "/api/v1/meetings", params: { title: "같은폴더", folder_id: fa.id, previous_meeting_id: prev.id }
 
@@ -68,9 +68,9 @@ RSpec.describe "Api::V1::Meetings previous meeting reference", type: :request do
     end
 
     it "drops a previous meeting from a different folder on create" do
-      fa = create(:folder, team: team)
-      fb = create(:folder, team: team)
-      prev = create(:meeting, team: team, creator: user, folder: fa)
+      fa = create(:folder, project: project)
+      fb = create(:folder, project: project)
+      prev = create(:meeting, project: project, creator: user, folder: fa)
 
       post "/api/v1/meetings", params: { title: "타폴더", folder_id: fb.id, previous_meeting_id: prev.id }
 
@@ -79,10 +79,10 @@ RSpec.describe "Api::V1::Meetings previous meeting reference", type: :request do
     end
 
     it "drops a different-folder previous meeting on update" do
-      fa = create(:folder, team: team)
-      fb = create(:folder, team: team)
-      prev = create(:meeting, team: team, creator: user, folder: fa)
-      m = create(:meeting, team: team, creator: user, folder: fb)
+      fa = create(:folder, project: project)
+      fb = create(:folder, project: project)
+      prev = create(:meeting, project: project, creator: user, folder: fa)
+      m = create(:meeting, project: project, creator: user, folder: fb)
 
       patch "/api/v1/meetings/#{m.id}", params: { previous_meeting_id: prev.id }
 
@@ -92,8 +92,8 @@ RSpec.describe "Api::V1::Meetings previous meeting reference", type: :request do
 
   describe "GET /api/v1/meetings/:id (show)" do
     it "includes previous_meeting_id and title for the badge" do
-      prev = create(:meeting, team: team, creator: user, title: "지난 회의")
-      m = create(:meeting, team: team, creator: user, previous_meeting: prev)
+      prev = create(:meeting, project: project, creator: user, title: "지난 회의")
+      m = create(:meeting, project: project, creator: user, previous_meeting: prev)
 
       get "/api/v1/meetings/#{m.id}"
 

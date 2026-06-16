@@ -5,8 +5,8 @@ class User < ApplicationRecord
   devise :database_authenticatable, :jwt_authenticatable,
          jwt_revocation_strategy: self
 
-  has_many :team_memberships, dependent: :destroy
-  has_many :teams, through: :team_memberships
+  has_many :project_memberships, dependent: :destroy
+  has_many :projects, through: :project_memberships
   has_many :meeting_participants, dependent: :destroy
   has_many :chat_messages, dependent: :destroy
 

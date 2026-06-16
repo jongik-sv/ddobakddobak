@@ -3,8 +3,8 @@ require "rails_helper"
 # 이전 회의 참고(시드+병합)가 요약 잡에 배선됐는지 검증.
 RSpec.describe MeetingSummarizationJob, "이전 회의 참고 시드" do
   let(:user)     { create(:user) }
-  let(:team)     { create(:team, creator: user) }
-  let(:previous) { create(:meeting, team: team, creator: user, status: "completed") }
+  let(:project)     { create(:project, creator: user) }
+  let(:previous) { create(:meeting, project: project, creator: user, status: "completed") }
 
   before do
     create(:summary, meeting: previous, summary_type: "final",
@@ -13,7 +13,7 @@ RSpec.describe MeetingSummarizationJob, "이전 회의 참고 시드" do
 
   context "연결 + 증분: refine 병합 + 논의 절취선(seeded_merge:true)" do
     let(:meeting) do
-      create(:meeting, team: team, creator: user, status: "recording",
+      create(:meeting, project: project, creator: user, status: "recording",
              summary_restructure: false, previous_meeting: previous)
     end
 
@@ -47,7 +47,7 @@ RSpec.describe MeetingSummarizationJob, "이전 회의 참고 시드" do
 
   context "연결 + 재구조화: 완전 병합(seeded_merge:false, 절취선 없음)" do
     let(:meeting) do
-      create(:meeting, team: team, creator: user, status: "recording",
+      create(:meeting, project: project, creator: user, status: "recording",
              summary_restructure: true, previous_meeting: previous)
     end
 
@@ -72,7 +72,7 @@ RSpec.describe MeetingSummarizationJob, "이전 회의 참고 시드" do
 
   context "비연결 + 증분: append-only 유지" do
     let(:meeting) do
-      create(:meeting, team: team, creator: user, status: "recording", summary_restructure: false)
+      create(:meeting, project: project, creator: user, status: "recording", summary_restructure: false)
     end
 
     before do

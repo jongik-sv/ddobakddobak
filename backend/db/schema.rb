@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_16_000004) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_17_000001) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -73,12 +73,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_16_000004) do
     t.string "name", null: false
     t.integer "parent_id"
     t.integer "position", default: 0, null: false
+    t.integer "project_id"
     t.boolean "shared", default: true, null: false
-    t.integer "team_id"
     t.datetime "updated_at", null: false
     t.index ["parent_id"], name: "index_folders_on_parent_id"
+    t.index ["project_id", "parent_id", "position"], name: "index_folders_on_project_id_and_parent_id_and_position"
     t.index ["shared"], name: "index_folders_on_shared"
-    t.index ["team_id", "parent_id", "position"], name: "index_folders_on_team_id_and_parent_id_and_position"
   end
 
   create_table "glossary_entries", force: :cascade do |t|
@@ -193,6 +193,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_16_000004) do
     t.text "memo"
     t.datetime "paused_at"
     t.integer "previous_meeting_id"
+    t.integer "project_id"
     t.datetime "re_diarize_started_at"
     t.string "share_code"
     t.boolean "shared", default: true, null: false
@@ -202,7 +203,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_16_000004) do
     t.string "stt_engine"
     t.boolean "summary_restructure", default: true, null: false
     t.string "summary_verbosity", default: "standard", null: false
-    t.integer "team_id"
     t.string "title", null: false
     t.integer "transcription_progress", default: 0, null: false
     t.datetime "updated_at", null: false
@@ -210,11 +210,30 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_16_000004) do
     t.index ["folder_id"], name: "index_meetings_on_folder_id"
     t.index ["important"], name: "index_meetings_on_important"
     t.index ["previous_meeting_id"], name: "index_meetings_on_previous_meeting_id"
+    t.index ["project_id", "status"], name: "index_meetings_on_project_id_and_status"
     t.index ["share_code"], name: "index_meetings_on_share_code", unique: true
-    t.index ["team_id", "status"], name: "index_meetings_on_team_id_and_status"
     t.check_constraint "source IN ('live','upload')", name: "chk_meetings_source"
     t.check_constraint "status IN ('pending','recording','transcribing','completed')", name: "chk_meetings_status"
     t.check_constraint "summary_verbosity IN ('very_concise','concise','standard','detailed','very_detailed')", name: "chk_meetings_summary_verbosity"
+  end
+
+  create_table "project_memberships", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "project_id", null: false
+    t.string "role", default: "member", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["project_id"], name: "index_project_memberships_on_project_id"
+    t.index ["user_id", "project_id"], name: "index_project_memberships_on_user_id_and_project_id", unique: true
+    t.check_constraint "role IN ('admin','member')", name: "chk_team_memberships_role"
+  end
+
+  create_table "projects", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "created_by_id", null: false
+    t.string "name", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_id"], name: "index_projects_on_created_by_id"
   end
 
   create_table "prompt_templates", force: :cascade do |t|
@@ -255,28 +274,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_16_000004) do
     t.string "color", default: "#6b7280", null: false
     t.datetime "created_at", null: false
     t.string "name", null: false
-    t.integer "team_id"
+    t.integer "project_id"
     t.datetime "updated_at", null: false
-    t.index ["team_id", "name"], name: "index_tags_on_team_id_and_name", unique: true
-  end
-
-  create_table "team_memberships", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.string "role", default: "member", null: false
-    t.integer "team_id", null: false
-    t.datetime "updated_at", null: false
-    t.integer "user_id", null: false
-    t.index ["team_id"], name: "index_team_memberships_on_team_id"
-    t.index ["user_id", "team_id"], name: "index_team_memberships_on_user_id_and_team_id", unique: true
-    t.check_constraint "role IN ('admin','member')", name: "chk_team_memberships_role"
-  end
-
-  create_table "teams", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.integer "created_by_id", null: false
-    t.string "name", null: false
-    t.datetime "updated_at", null: false
-    t.index ["created_by_id"], name: "index_teams_on_created_by_id"
+    t.index ["project_id", "name"], name: "index_tags_on_project_id_and_name", unique: true
   end
 
   create_table "transcripts", force: :cascade do |t|
@@ -328,14 +328,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_16_000004) do
   add_foreign_key "meeting_templates", "folders"
   add_foreign_key "meetings", "folders", on_delete: :nullify
   add_foreign_key "meetings", "meetings", column: "previous_meeting_id", on_delete: :nullify
-  add_foreign_key "meetings", "teams", on_delete: :cascade
+  add_foreign_key "meetings", "projects", on_delete: :cascade
   add_foreign_key "meetings", "users", column: "created_by_id"
+  add_foreign_key "project_memberships", "projects", on_delete: :cascade
+  add_foreign_key "project_memberships", "users", on_delete: :cascade
+  add_foreign_key "projects", "users", column: "created_by_id"
   add_foreign_key "summaries", "meetings", on_delete: :cascade
   add_foreign_key "taggings", "tags"
-  add_foreign_key "tags", "teams"
-  add_foreign_key "team_memberships", "teams", on_delete: :cascade
-  add_foreign_key "team_memberships", "users", on_delete: :cascade
-  add_foreign_key "teams", "users", column: "created_by_id"
+  add_foreign_key "tags", "projects"
   add_foreign_key "transcripts", "meetings", on_delete: :cascade
 
   # Virtual tables defined in this database.

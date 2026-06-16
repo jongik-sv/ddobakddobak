@@ -1,6 +1,6 @@
 FactoryBot.define do
-  factory :team do
-    sequence(:name) { |n| "Team #{n}" }
+  factory :project do
+    sequence(:name) { |n| "Project #{n}" }
     association :creator, factory: :user
   end
 end

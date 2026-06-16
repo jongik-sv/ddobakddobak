@@ -2,8 +2,8 @@ require "rails_helper"
 
 RSpec.describe MeetingSummarizationJob do
   let(:user)    { create(:user) }
-  let(:team)    { create(:team, creator: user) }
-  let(:meeting) { create(:meeting, team: team, creator: user, status: "recording") }
+  let(:project)    { create(:project, creator: user) }
+  let(:meeting) { create(:meeting, project: project, creator: user, status: "recording") }
 
   before do
     create(:transcript, meeting: meeting, sequence_number: 1, content: "첫 발화", applied_to_minutes: false)
@@ -32,7 +32,7 @@ RSpec.describe MeetingSummarizationJob do
   end
 
   describe "final path — ok:false 가드" do
-    let(:meeting) { create(:meeting, team: team, creator: user, status: "completed") }
+    let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
 
     # R3 final ok 가드: transient LLM 실패(ok:false) 시 final summary 미생성·transcripts 미소비
     # 상위 before 블록이 이 meeting 에도 transcript 2건을 추가하므로 별도 생성 불필요.
@@ -52,7 +52,7 @@ RSpec.describe MeetingSummarizationJob do
   # 증분(append-only) 모드: summary_restructure=false → 앞 내용 불변, 시간대별 블록만 추가
   describe "incremental mode (summary_restructure: false)" do
     let(:meeting) do
-      create(:meeting, team: team, creator: user, status: "recording", summary_restructure: false)
+      create(:meeting, project: project, creator: user, status: "recording", summary_restructure: false)
     end
 
     it "appends a time-block to existing notes without rewriting them" do
@@ -151,7 +151,7 @@ RSpec.describe MeetingSummarizationJob do
   # 실전 재현 버그: stop 직후 realtime 틱이 락 점유 → final try_lock 실패 → 무음 드랍.
   # 수정: final은 재enqueue (realtime은 cron이 다시 오므로 드랍 유지).
   describe "final lock contention (dev :async)" do
-    let(:meeting) { create(:meeting, team: team, creator: user, status: "completed") }
+    let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
 
     it "re-enqueues final instead of dropping when the in-process lock is busy" do
       mutex = described_class::MEETING_LOCKS.compute_if_absent(meeting.id) { Mutex.new }
@@ -182,7 +182,7 @@ RSpec.describe MeetingSummarizationJob do
 
   describe "paused guard (realtime)" do
     # 상위 before가 이 meeting(paused)에 transcript를 생성하므로, 가드가 없으면 LLM이 호출된다.
-    let(:meeting) { create(:meeting, team: team, creator: user, status: "recording", paused_at: Time.current) }
+    let(:meeting) { create(:meeting, project: project, creator: user, status: "recording", paused_at: Time.current) }
 
     it "does not call LLM when meeting is paused" do
       expect(LlmService).not_to receive(:new)

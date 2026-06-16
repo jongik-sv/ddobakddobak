@@ -1,5 +1,5 @@
 class Tag < ApplicationRecord
-  belongs_to :team, optional: true
+  belongs_to :project, optional: true
   has_many :taggings, dependent: :destroy
 
   validates :name, presence: true, length: { maximum: 30 }

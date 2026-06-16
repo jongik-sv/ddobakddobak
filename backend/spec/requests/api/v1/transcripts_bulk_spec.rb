@@ -3,9 +3,9 @@ require "rails_helper"
 RSpec.describe "Api::V1::Transcripts bulk", type: :request do
   let(:user)        { create(:user) }
   let(:other_user)  { create(:user) }
-  let(:team)        { create(:team, creator: user) }
-  let!(:membership) { create(:team_membership, user: user, team: team, role: "admin") }
-  let(:meeting)     { create(:meeting, team: team, creator: user) }
+  let(:project)        { create(:project, creator: user) }
+  let!(:membership) { create(:project_membership, user: user, project: project, role: "admin") }
+  let(:meeting)     { create(:meeting, project: project, creator: user) }
 
   def item(seq:, content: "로컬 전사 #{seq}", speaker_label: "", started_at_ms: seq * 1000, ended_at_ms: seq * 1000 + 800, audio_source: "mic")
     {

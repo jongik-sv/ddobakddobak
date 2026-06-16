@@ -3,9 +3,9 @@ require "rails_helper"
 RSpec.describe "Api::V1::Meetings", type: :request do
   let(:user) { create(:user) }
   let(:other_user) { create(:user) }
-  let(:team) { create(:team, creator: user) }
-  let!(:admin_membership) { create(:team_membership, user: user, team: team, role: "admin") }
-  let(:meeting) { create(:meeting, team: team, creator: user) }
+  let(:project) { create(:project, creator: user) }
+  let!(:admin_membership) { create(:project_membership, user: user, project: project, role: "admin") }
+  let(:meeting) { create(:meeting, project: project, creator: user) }
 
   before { login_as(user) }
 
@@ -15,7 +15,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   describe "GET /api/v1/meetings" do
     context "when authenticated" do
       it "returns meetings created by the user" do
-        meeting = create(:meeting, team: team, creator: user)
+        meeting = create(:meeting, project: project, creator: user)
 
         get "/api/v1/meetings"
 
@@ -33,9 +33,9 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "returns status_counts breakdown for the dashboard" do
-        create(:meeting, team: team, creator: user, status: "recording")
-        create_list(:meeting, 2, team: team, creator: user, status: "pending")
-        create(:meeting, team: team, creator: user, status: "completed")
+        create(:meeting, project: project, creator: user, status: "recording")
+        create_list(:meeting, 2, project: project, creator: user, status: "pending")
+        create(:meeting, project: project, creator: user, status: "completed")
 
         get "/api/v1/meetings"
 
@@ -46,8 +46,8 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "status_counts gives the full breakdown even when filtered by status" do
-        create(:meeting, team: team, creator: user, status: "recording")
-        create_list(:meeting, 2, team: team, creator: user, status: "pending")
+        create(:meeting, project: project, creator: user, status: "recording")
+        create_list(:meeting, 2, project: project, creator: user, status: "pending")
 
         get "/api/v1/meetings", params: { status: "recording" }
 
@@ -59,7 +59,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "supports page and per params" do
-        create_list(:meeting, 3, team: team, creator: user)
+        create_list(:meeting, 3, project: project, creator: user)
 
         get "/api/v1/meetings", params: { page: 1, per: 2 }
 
@@ -71,8 +71,8 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "supports search by title with q param" do
-        create(:meeting, team: team, creator: user, title: "Design Review")
-        create(:meeting, team: team, creator: user, title: "Sprint Planning")
+        create(:meeting, project: project, creator: user, title: "Design Review")
+        create(:meeting, project: project, creator: user, title: "Sprint Planning")
 
         get "/api/v1/meetings", params: { q: "design" }
 
@@ -82,8 +82,8 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "q param matches transcript content even when title/summary do not" do
-        hit  = create(:meeting, team: team, creator: user, title: "주간 회의", brief_summary: "일정 공유")
-        miss = create(:meeting, team: team, creator: user, title: "월간 회의", brief_summary: "예산 논의")
+        hit  = create(:meeting, project: project, creator: user, title: "주간 회의", brief_summary: "일정 공유")
+        miss = create(:meeting, project: project, creator: user, title: "월간 회의", brief_summary: "예산 논의")
         create(:transcript, meeting: hit, content: "발사대 점검 결과를 공유했습니다")
         create(:transcript, meeting: miss, content: "다른 주제의 발언입니다")
 
@@ -94,11 +94,11 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "q에 LIKE 와일드카드(%, _)가 있어도 리터럴로 검색된다" do
-        pct = create(:meeting, team: team, creator: user, title: "진행률 100% 보고")
-        create(:meeting, team: team, creator: user, title: "진행률 100점 보고")
-        snake = create(:meeting, team: team, creator: user, title: "회의록")
+        pct = create(:meeting, project: project, creator: user, title: "진행률 100% 보고")
+        create(:meeting, project: project, creator: user, title: "진행률 100점 보고")
+        snake = create(:meeting, project: project, creator: user, title: "회의록")
         create(:transcript, meeting: snake, content: "snake_case 네이밍 논의")
-        other = create(:meeting, team: team, creator: user, title: "잡담")
+        other = create(:meeting, project: project, creator: user, title: "잡담")
         create(:transcript, meeting: other, content: "snakeXcase 이야기")
 
         get "/api/v1/meetings", params: { q: "100%" }
@@ -109,9 +109,9 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "q param의 전사 매치도 accessible_by 범위를 벗어나지 않는다" do
-        mine = create(:meeting, team: team, creator: user, title: "내 회의")
+        mine = create(:meeting, project: project, creator: user, title: "내 회의")
         create(:transcript, meeting: mine, content: "발사대 일정")
-        others = create(:meeting, :private_meeting, team: team, creator: other_user, title: "남의 회의")
+        others = create(:meeting, :private_meeting, project: project, creator: other_user, title: "남의 회의")
         create(:transcript, meeting: others, content: "발사대 기밀")
 
         get "/api/v1/meetings", params: { q: "발사대" }
@@ -130,8 +130,8 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "다른 사용자가 만든 회의는 목록에 포함되지 않는다" do
-        create(:meeting, team: team, creator: user, title: "내 회의")
-        create(:meeting, :private_meeting, team: team, creator: other_user, title: "남의 회의")
+        create(:meeting, project: project, creator: user, title: "내 회의")
+        create(:meeting, :private_meeting, project: project, creator: other_user, title: "남의 회의")
 
         get "/api/v1/meetings"
 
@@ -142,7 +142,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
       it "admin은 모든 사용자의 회의를 본다" do
         admin = create(:user, role: "admin")
-        create(:meeting, team: team, creator: other_user, title: "남의 회의")
+        create(:meeting, project: project, creator: other_user, title: "남의 회의")
         login_as(admin)
 
         get "/api/v1/meetings"
@@ -157,11 +157,11 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # POST /api/v1/meetings
   # ============================================================
   describe "POST /api/v1/meetings" do
-    context "when authenticated as team member" do
+    context "when authenticated as project member" do
       it "creates a meeting" do
         expect {
           post "/api/v1/meetings",
-               params: { title: "New Meeting", team_id: team.id },
+               params: { title: "New Meeting", project_id: project.id },
                as: :json
         }.to change(Meeting, :count).by(1)
 
@@ -173,7 +173,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
       it "sets created_by_id to current_user" do
         post "/api/v1/meetings",
-             params: { title: "My Meeting", team_id: team.id },
+             params: { title: "My Meeting", project_id: project.id },
              as: :json
 
         meeting = Meeting.last
@@ -182,13 +182,13 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
       it "returns 422 when title is blank" do
         post "/api/v1/meetings",
-             params: { title: "", team_id: team.id },
+             params: { title: "", project_id: project.id },
              as: :json
 
         expect(response).to have_http_status(:unprocessable_entity)
       end
 
-      it "creates meeting even without valid team_id (team is optional)" do
+      it "creates meeting even without valid project_id (project is optional)" do
         post "/api/v1/meetings",
              params: { title: "New Meeting" },
              as: :json
@@ -204,7 +204,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # GET /api/v1/meetings/:id
   # ============================================================
   describe "GET /api/v1/meetings/:id" do
-    context "when authenticated as team member" do
+    context "when authenticated as project member" do
       it "returns meeting with transcripts, summary, and action_items" do
         transcript = create(:transcript, meeting: meeting, sequence_number: 1)
         summary = create(:summary, meeting: meeting, summary_type: "final")
@@ -297,34 +297,34 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
     context "접근 권한" do
       it "소유자가 아니고 참여자도 아니면 403 (비공개 회의)" do
-        foreign = create(:meeting, :private_meeting, team: team, creator: other_user)
+        foreign = create(:meeting, :private_meeting, project: project, creator: other_user)
         get "/api/v1/meetings/#{foreign.id}"
         expect(response).to have_http_status(:forbidden)
       end
 
       it "공유코드로 참여한 viewer는 조회 가능(200)" do
-        foreign = create(:meeting, team: team, creator: other_user)
+        foreign = create(:meeting, project: project, creator: other_user)
         create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
         get "/api/v1/meetings/#{foreign.id}"
         expect(response).to have_http_status(:ok)
       end
 
       it "admin은 남의 회의도 조회 가능(200)" do
-        foreign = create(:meeting, team: team, creator: other_user)
+        foreign = create(:meeting, project: project, creator: other_user)
         login_as(create(:user, role: "admin"))
         get "/api/v1/meetings/#{foreign.id}"
         expect(response).to have_http_status(:ok)
       end
 
       it "회의를 떠난(left_at 설정) 참여자는 더 이상 접근할 수 없다(403)" do
-        foreign = create(:meeting, :private_meeting, team: team, creator: other_user)
+        foreign = create(:meeting, :private_meeting, project: project, creator: other_user)
         create(:meeting_participant, meeting: foreign, user: user, role: "viewer", left_at: Time.current)
         get "/api/v1/meetings/#{foreign.id}"
         expect(response).to have_http_status(:forbidden)
       end
 
       it "소유자는 자신의 회의에 접근 가능(200)" do
-        mine = create(:meeting, team: team, creator: user)
+        mine = create(:meeting, project: project, creator: user)
         get "/api/v1/meetings/#{mine.id}"
         expect(response).to have_http_status(:ok)
       end
@@ -335,7 +335,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # PATCH /api/v1/meetings/:id
   # ============================================================
   describe "PATCH /api/v1/meetings/:id" do
-    let(:meeting) { create(:meeting, team: team, creator: user, title: "Old Title") }
+    let(:meeting) { create(:meeting, project: project, creator: user, title: "Old Title") }
 
     context "as meeting creator" do
       it "updates the meeting title" do
@@ -380,7 +380,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # DELETE /api/v1/meetings/:id
   # ============================================================
   describe "DELETE /api/v1/meetings/:id" do
-    let!(:meeting) { create(:meeting, team: team, creator: user) }
+    let!(:meeting) { create(:meeting, project: project, creator: user) }
 
     context "as meeting creator" do
       it "deletes the meeting" do
@@ -397,7 +397,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # POST /api/v1/meetings/:id/start
   # ============================================================
   describe "POST /api/v1/meetings/:id/start" do
-    let(:meeting) { create(:meeting, team: team, creator: user, status: "pending") }
+    let(:meeting) { create(:meeting, project: project, creator: user, status: "pending") }
 
     context "when meeting is pending" do
       it "transitions to recording and sets started_at" do
@@ -412,7 +412,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     end
 
     context "when meeting is not pending" do
-      let(:recording_meeting) { create(:meeting, team: team, creator: user, status: "recording") }
+      let(:recording_meeting) { create(:meeting, project: project, creator: user, status: "recording") }
 
       it "returns 422" do
         post "/api/v1/meetings/#{recording_meeting.id}/start"
@@ -425,7 +425,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # POST /api/v1/meetings/:id/stop
   # ============================================================
   describe "POST /api/v1/meetings/:id/stop" do
-    let(:meeting) { create(:meeting, team: team, creator: user, status: "recording") }
+    let(:meeting) { create(:meeting, project: project, creator: user, status: "recording") }
 
     context "when meeting is recording" do
       it "transitions to completed and sets ended_at" do
@@ -500,7 +500,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     end
 
     context "when meeting is not recording" do
-      let(:pending_meeting) { create(:meeting, team: team, creator: user, status: "pending") }
+      let(:pending_meeting) { create(:meeting, project: project, creator: user, status: "pending") }
 
       it "returns 422" do
         post "/api/v1/meetings/#{pending_meeting.id}/stop"
@@ -513,7 +513,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # POST /api/v1/meetings/:id/pause · resume
   # ============================================================
   describe "POST /api/v1/meetings/:id/pause" do
-    let(:meeting) { create(:meeting, team: team, creator: user, status: "recording") }
+    let(:meeting) { create(:meeting, project: project, creator: user, status: "recording") }
 
     it "sets paused_at and broadcasts recording_paused" do
       expect(ActionCable.server).to receive(:broadcast).with(
@@ -526,13 +526,13 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     end
 
     it "returns 422 when not recording" do
-      pending_meeting = create(:meeting, team: team, creator: user, status: "pending")
+      pending_meeting = create(:meeting, project: project, creator: user, status: "pending")
       post "/api/v1/meetings/#{pending_meeting.id}/pause"
       expect(response).to have_http_status(:unprocessable_entity)
     end
 
     it "forbids viewer participants" do
-      foreign = create(:meeting, team: team, creator: other_user, status: "recording")
+      foreign = create(:meeting, project: project, creator: other_user, status: "recording")
       create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
       post "/api/v1/meetings/#{foreign.id}/pause"
       expect(response).to have_http_status(:forbidden)
@@ -540,7 +540,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   end
 
   describe "POST /api/v1/meetings/:id/resume" do
-    let(:meeting) { create(:meeting, team: team, creator: user, status: "recording", paused_at: Time.current) }
+    let(:meeting) { create(:meeting, project: project, creator: user, status: "recording", paused_at: Time.current) }
 
     it "clears paused_at and broadcasts recording_resumed" do
       expect(ActionCable.server).to receive(:broadcast).with(
@@ -557,7 +557,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # POST /api/v1/meetings/:id/summarize
   # ============================================================
   describe "POST /api/v1/meetings/:id/summarize" do
-    let(:meeting) { create(:meeting, team: team, creator: user, status: "recording") }
+    let(:meeting) { create(:meeting, project: project, creator: user, status: "recording") }
 
     it "enqueues realtime summary when transcripts exist" do
       create(:transcript, meeting: meeting)
@@ -574,7 +574,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     end
 
     it "returns 422 when meeting is pending" do
-      pending_meeting = create(:meeting, team: team, creator: user, status: "pending")
+      pending_meeting = create(:meeting, project: project, creator: user, status: "pending")
       post "/api/v1/meetings/#{pending_meeting.id}/summarize"
       expect(response).to have_http_status(:unprocessable_entity)
     end
@@ -584,7 +584,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # 제어 액션 인가
   # ============================================================
   describe "제어 액션 인가" do
-    let(:foreign) { create(:meeting, team: team, creator: other_user, status: "pending") }
+    let(:foreign) { create(:meeting, project: project, creator: other_user, status: "pending") }
 
     it "viewer 참여자는 회의를 제어(start)할 수 없다(403)" do
       create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
@@ -604,16 +604,16 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # POST /api/v1/meetings/move_to_folder
   # ============================================================
   describe "POST /api/v1/meetings/move_to_folder" do
-    let(:folder) { create(:folder, team: team) }
+    let(:folder) { create(:folder, project: project) }
 
     it "남의 회의는 폴더 이동되지 않는다" do
-      foreign = create(:meeting, :private_meeting, team: team, creator: other_user, folder_id: nil)
+      foreign = create(:meeting, :private_meeting, project: project, creator: other_user, folder_id: nil)
       post "/api/v1/meetings/move_to_folder", params: { meeting_ids: [ foreign.id ], folder_id: folder.id }
       expect(foreign.reload.folder_id).to be_nil
     end
 
     it "내 회의는 폴더 이동된다" do
-      mine = create(:meeting, team: team, creator: user, folder_id: nil)
+      mine = create(:meeting, project: project, creator: user, folder_id: nil)
       post "/api/v1/meetings/move_to_folder", params: { meeting_ids: [ mine.id ], folder_id: folder.id }
       expect(mine.reload.folder_id).to eq(folder.id)
     end
@@ -623,7 +623,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # GET /api/v1/meetings/:id/audio
   # ============================================================
   describe "GET /api/v1/meetings/:id/audio" do
-    let(:meeting) { create(:meeting, team: team, creator: user) }
+    let(:meeting) { create(:meeting, project: project, creator: user) }
 
     context "when audio file exists" do
       let(:audio_path) { Rails.root.join("tmp", "test_audio.webm").to_s }
@@ -666,7 +666,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     after { FileUtils.rm_f(audio_path) }
 
     it "전사 실패로 pending이 된 회의(트랜스크립트 0건)도 재생성할 수 있다" do
-      meeting = create(:meeting, team: team, creator: user, status: "pending", audio_file_path: audio_path)
+      meeting = create(:meeting, project: project, creator: user, status: "pending", audio_file_path: audio_path)
       expect(FileTranscriptionJob).to receive(:perform_later).with(meeting.id)
 
       post "/api/v1/meetings/#{meeting.id}/regenerate_stt"
@@ -676,7 +676,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     end
 
     it "녹음 중에는 422" do
-      meeting = create(:meeting, team: team, creator: user, status: "recording", audio_file_path: audio_path)
+      meeting = create(:meeting, project: project, creator: user, status: "recording", audio_file_path: audio_path)
 
       post "/api/v1/meetings/#{meeting.id}/regenerate_stt"
 
@@ -688,7 +688,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # POST /api/v1/meetings/:id/regenerate_notes
   # ============================================================
   describe "POST /api/v1/meetings/:id/regenerate_notes" do
-    let(:meeting) { create(:meeting, team: team, creator: user, status: "completed") }
+    let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
 
     context "when meeting is completed with transcripts" do
       before do
@@ -707,8 +707,8 @@ end
 
 RSpec.describe "Api::V1::Meetings summary options", type: :request do
   let(:user) { create(:user) }
-  let(:team) { create(:team, creator: user) }
-  let!(:admin_membership) { create(:team_membership, user: user, team: team, role: "admin") }
+  let(:project) { create(:project, creator: user) }
+  let!(:admin_membership) { create(:project_membership, user: user, project: project, role: "admin") }
 
   before { login_as(user) }
 
@@ -731,7 +731,7 @@ RSpec.describe "Api::V1::Meetings summary options", type: :request do
     end
 
     it "inherits options from the creator's last meeting when params absent" do
-      create(:meeting, team: team, creator: user,
+      create(:meeting, project: project, creator: user,
              summary_verbosity: "detailed", summary_restructure: false, created_at: 1.hour.ago)
 
       post "/api/v1/meetings", params: { title: "승계 회의" }
@@ -749,7 +749,7 @@ RSpec.describe "Api::V1::Meetings summary options", type: :request do
   end
 
   describe "PATCH /api/v1/meetings/:id (요약 옵션)" do
-    let(:meeting) { create(:meeting, team: team, creator: user) }
+    let(:meeting) { create(:meeting, project: project, creator: user) }
 
     it "updates summary options mid-meeting" do
       patch "/api/v1/meetings/#{meeting.id}",

@@ -5,8 +5,8 @@ require "rails_helper"
 # 비활성 summary/action_items/decisions/blocks 에 오타 잔존("적용이 다 안됨").
 RSpec.describe "Api::V1::Meetings feedback (term corrections)", type: :request do
   let(:user) { create(:user) }
-  let(:team) { create(:team, creator: user) }
-  let(:meeting) { create(:meeting, team: team, creator: user, status: "completed") }
+  let(:project) { create(:project, creator: user) }
+  let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
 
   before { login_as(user) }
 

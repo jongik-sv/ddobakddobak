@@ -3,9 +3,9 @@ require "rails_helper"
 RSpec.describe "Api::V1::Blocks", type: :request do
   let(:user)       { create(:user) }
   let(:other_user) { create(:user) }
-  let(:team)       { create(:team, creator: user) }
-  let!(:membership) { create(:team_membership, user: user, team: team, role: "admin") }
-  let(:meeting)    { create(:meeting, team: team, creator: user) }
+  let(:project)       { create(:project, creator: user) }
+  let!(:membership) { create(:project_membership, user: user, project: project, role: "admin") }
+  let(:meeting)    { create(:meeting, project: project, creator: user) }
 
   before { login_as(user) }
 
@@ -27,7 +27,7 @@ RSpec.describe "Api::V1::Blocks", type: :request do
       end
 
       it "블록이 없으면 빈 배열 반환" do
-        other_meeting = create(:meeting, team: team, creator: user)
+        other_meeting = create(:meeting, project: project, creator: user)
         get "/api/v1/meetings/#{other_meeting.id}/blocks"
         expect(response).to have_http_status(:ok)
         expect(response.parsed_body).to eq([])

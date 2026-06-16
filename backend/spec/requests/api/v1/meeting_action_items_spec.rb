@@ -3,14 +3,14 @@ require "rails_helper"
 RSpec.describe "Api::V1::MeetingActionItems", type: :request do
   let(:user)       { create(:user) }
   let(:other_user) { create(:user) }
-  let(:team)       { create(:team, creator: user) }
-  let!(:membership) { create(:team_membership, user: user, team: team, role: "member") }
-  let(:meeting)    { create(:meeting, team: team, creator: user) }
+  let(:project)       { create(:project, creator: user) }
+  let!(:membership) { create(:project_membership, user: user, project: project, role: "member") }
+  let(:meeting)    { create(:meeting, project: project, creator: user) }
 
   before { login_as(user) }
 
   describe "GET /api/v1/meetings/:meeting_id/action_items" do
-    context "인증된 팀 멤버" do
+    context "인증된 프로젝트 멤버" do
       it "200과 action_items 배열 반환" do
         item = create(:action_item, meeting: meeting, content: "할 일 1")
         get "/api/v1/meetings/#{meeting.id}/action_items"
@@ -36,7 +36,7 @@ RSpec.describe "Api::V1::MeetingActionItems", type: :request do
   end
 
   describe "POST /api/v1/meetings/:meeting_id/action_items" do
-    context "인증된 팀 멤버" do
+    context "인증된 프로젝트 멤버" do
       it "201과 생성된 action_item 반환" do
         expect {
           post "/api/v1/meetings/#{meeting.id}/action_items",
@@ -53,7 +53,7 @@ RSpec.describe "Api::V1::MeetingActionItems", type: :request do
 
       it "assignee_id, due_date 포함해서 생성" do
         assignee = create(:user)
-        create(:team_membership, user: assignee, team: team, role: "member")
+        create(:project_membership, user: assignee, project: project, role: "member")
 
         post "/api/v1/meetings/#{meeting.id}/action_items",
              params: { action_item: { content: "담당자 할 일", assignee_id: assignee.id, due_date: "2026-04-01" } },

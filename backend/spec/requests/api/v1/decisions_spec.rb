@@ -3,9 +3,9 @@ require "rails_helper"
 RSpec.describe "Api::V1::Decisions", type: :request do
   let(:user)       { create(:user) }
   let(:other_user) { create(:user) }
-  let(:team)       { create(:team, creator: user) }
-  let!(:membership) { create(:team_membership, user: user, team: team, role: "member") }
-  let(:meeting)    { create(:meeting, team: team, creator: user) }
+  let(:project)       { create(:project, creator: user) }
+  let!(:membership) { create(:project_membership, user: user, project: project, role: "member") }
+  let(:meeting)    { create(:meeting, project: project, creator: user) }
   let(:decision)   { create(:decision, meeting: meeting, content: "기존 결정사항", status: "active") }
 
   before { login_as(user) }
@@ -23,8 +23,8 @@ RSpec.describe "Api::V1::Decisions", type: :request do
     end
 
     it "folder_id 필터 적용" do
-      folder = create(:folder, team: team)
-      meeting_in_folder = create(:meeting, team: team, creator: user, folder: folder)
+      folder = create(:folder, project: project)
+      meeting_in_folder = create(:meeting, project: project, creator: user, folder: folder)
       create(:decision, meeting: meeting_in_folder, content: "폴더 내 결정")
       create(:decision, meeting: meeting, content: "폴더 외 결정")
 
@@ -51,7 +51,7 @@ RSpec.describe "Api::V1::Decisions", type: :request do
   end
 
   describe "PATCH /api/v1/decisions/:id" do
-    context "인증된 팀 멤버" do
+    context "인증된 프로젝트 멤버" do
       it "200과 status 업데이트 반환" do
         patch "/api/v1/decisions/#{decision.id}",
               params: { decision: { status: "revised" } },
@@ -86,7 +86,7 @@ RSpec.describe "Api::V1::Decisions", type: :request do
   end
 
   describe "DELETE /api/v1/decisions/:id" do
-    context "인증된 팀 멤버" do
+    context "인증된 프로젝트 멤버" do
       it "204와 DB에서 제거" do
         item_to_delete = create(:decision, meeting: meeting)
 

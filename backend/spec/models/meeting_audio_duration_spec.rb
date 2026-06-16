@@ -3,8 +3,8 @@ require "rails_helper"
 # audio_duration_ms 컬럼 캐시 (#1 perf: serializer 매 show ffprobe 제거)
 RSpec.describe Meeting, type: :model do
   let(:user) { create(:user) }
-  let(:team) { create(:team, creator: user) }
-  let(:meeting) { create(:meeting, team: team, creator: user) }
+  let(:project) { create(:project, creator: user) }
+  let(:meeting) { create(:meeting, project: project, creator: user) }
 
   describe "#measure_audio_duration_ms" do
     it "returns 0 when audio_file_path is blank" do

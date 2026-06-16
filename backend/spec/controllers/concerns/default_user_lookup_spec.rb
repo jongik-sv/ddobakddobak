@@ -15,7 +15,7 @@ RSpec.describe DefaultUserLookup do
     it "returns desktop@local user" do
       user = controller.local_default_user
       expect(user.email).to eq("desktop@local")
-      expect(user.name).to eq("사용자")
+      expect(user.name).to eq("관리자")
     end
 
     it "creates the user if not present" do

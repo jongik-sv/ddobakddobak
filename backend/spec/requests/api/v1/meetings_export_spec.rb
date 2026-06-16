@@ -2,13 +2,13 @@ require "rails_helper"
 
 RSpec.describe "GET /api/v1/meetings/:id/export", type: :request do
   let(:user)    { create(:user) }
-  let(:team)    { create(:team, creator: user) }
-  let!(:membership) { create(:team_membership, user: user, team: team, role: "member") }
-  let(:meeting) { create(:meeting, team: team, creator: user, status: "completed") }
+  let(:project)    { create(:project, creator: user) }
+  let!(:membership) { create(:project_membership, user: user, project: project, role: "member") }
+  let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
 
   before { login_as(user) }
 
-  context "인증된 팀원이 요청할 때" do
+  context "인증된 프로젝트 멤버가 요청할 때" do
     before do
       create(:transcript, meeting: meeting, speaker_label: "화자1",
              content: "테스트 발언", started_at_ms: 0, sequence_number: 1)

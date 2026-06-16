@@ -2,7 +2,7 @@ FactoryBot.define do
   factory :meeting do
     sequence(:title) { |n| "Meeting #{n}" }
     status { "pending" }
-    association :team
+    association :project
     association :creator, factory: :user
 
     # 목록은 important=true 만 노출. 프로덕션 백필로 기존 회의는 전부 true 이고

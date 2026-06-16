@@ -3,8 +3,8 @@ require "rails_helper"
 RSpec.describe "Api::V1::MeetingShares", type: :request do
   let(:user) { create(:user) }
   let(:other_user) { create(:user) }
-  let(:team) { create(:team, creator: user) }
-  let(:meeting) { create(:meeting, team: team, creator: user) }
+  let(:project) { create(:project, creator: user) }
+  let(:meeting) { create(:meeting, project: project, creator: user) }
 
   before { login_as(user) }
 

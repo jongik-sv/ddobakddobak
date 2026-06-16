@@ -2,8 +2,8 @@ require "rails_helper"
 
 RSpec.describe MeetingFinalizerService do
   let(:user) { create(:user) }
-  let(:team) { create(:team, creator: user) }
-  let(:meeting) { create(:meeting, team: team, creator: user, status: "completed") }
+  let(:project) { create(:project, creator: user) }
+  let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
   let(:llm_double) { instance_double(LlmService) }
 
   let(:action_items_result) do
@@ -49,7 +49,7 @@ RSpec.describe MeetingFinalizerService do
     end
 
     context "when meeting has no transcripts" do
-      let(:meeting_no_transcripts) { create(:meeting, team: team, creator: user, status: "completed") }
+      let(:meeting_no_transcripts) { create(:meeting, project: project, creator: user, status: "completed") }
 
       it "does not call summarize_action_items" do
         expect(llm_double).not_to receive(:summarize_action_items)

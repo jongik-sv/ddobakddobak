@@ -2,8 +2,8 @@ require "rails_helper"
 
 RSpec.describe "Api::V1::Search", type: :request do
   let(:user) { create(:user) }
-  let(:team) { create(:team, creator: user) }
-  let!(:admin_membership) { create(:team_membership, user: user, team: team, role: "admin") }
+  let(:project) { create(:project, creator: user) }
+  let!(:admin_membership) { create(:project_membership, user: user, project: project, role: "admin") }
 
   before { login_as(user) }
 
@@ -11,7 +11,7 @@ RSpec.describe "Api::V1::Search", type: :request do
   # GET /api/v1/search
   # ─────────────────────────────────────────────────────────
   describe "GET /api/v1/search" do
-    let!(:meeting) { create(:meeting, team: team, creator: user, title: "주간 회의") }
+    let!(:meeting) { create(:meeting, project: project, creator: user, title: "주간 회의") }
 
     context "트랜스크립트 검색" do
       before do
@@ -105,9 +105,9 @@ RSpec.describe "Api::V1::Search", type: :request do
     end
 
     context "필터" do
-      let(:folder) { create(:folder, team: team) }
-      let!(:meeting_in_folder) { create(:meeting, team: team, creator: user, folder: folder) }
-      let!(:completed_meeting) { create(:meeting, team: team, creator: user, status: "completed") }
+      let(:folder) { create(:folder, project: project) }
+      let!(:meeting_in_folder) { create(:meeting, project: project, creator: user, folder: folder) }
+      let!(:completed_meeting) { create(:meeting, project: project, creator: user, status: "completed") }
 
       before do
         create(:transcript, meeting: meeting_in_folder, content: "폴더 안의 내용입니다", speaker_label: "SPEAKER_00")
@@ -134,7 +134,7 @@ RSpec.describe "Api::V1::Search", type: :request do
       end
 
       it "date_from, date_to 필터로 검색 범위를 제한한다" do
-        future_meeting = create(:meeting, team: team, creator: user, created_at: 3.days.from_now)
+        future_meeting = create(:meeting, project: project, creator: user, created_at: 3.days.from_now)
         create(:transcript, meeting: future_meeting, content: "미래 내용입니다", speaker_label: "SPEAKER_00")
 
         get "/api/v1/search", params: { q: "내용", date_from: Date.today.to_s, date_to: Date.today.to_s }

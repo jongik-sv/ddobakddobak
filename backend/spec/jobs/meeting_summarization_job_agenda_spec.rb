@@ -6,7 +6,7 @@ require "rails_helper"
 # - final(종료·재생성) 경로는 플래그와 무관하게 항상 안건 전체를 주입한다.
 RSpec.describe MeetingSummarizationJob, "agenda reference injection" do
   let(:user)    { create(:user) }
-  let(:team)    { create(:team, creator: user) }
+  let(:project)    { create(:project, creator: user) }
 
   def stub_refine_capturing
     captured = []
@@ -19,7 +19,7 @@ RSpec.describe MeetingSummarizationJob, "agenda reference injection" do
 
   describe "realtime path" do
     let(:meeting) do
-      create(:meeting, team: team, creator: user, status: "recording",
+      create(:meeting, project: project, creator: user, status: "recording",
              agenda_reference: "1. 예산안 검토")
     end
 
@@ -48,7 +48,7 @@ RSpec.describe MeetingSummarizationJob, "agenda reference injection" do
 
   describe "final path" do
     let(:meeting) do
-      create(:meeting, team: team, creator: user, status: "completed",
+      create(:meeting, project: project, creator: user, status: "completed",
              agenda_reference: "1. 예산안 검토",
              agenda_reference_applied_at: 1.minute.ago)
     end

@@ -2,8 +2,8 @@ require "rails_helper"
 
 RSpec.describe MeetingParticipant, type: :model do
   let(:user) { create(:user) }
-  let(:team) { create(:team, creator: user) }
-  let(:meeting) { create(:meeting, team: team, creator: user) }
+  let(:project) { create(:project, creator: user) }
+  let(:meeting) { create(:meeting, project: project, creator: user) }
 
   # ============================================================
   # Associations
