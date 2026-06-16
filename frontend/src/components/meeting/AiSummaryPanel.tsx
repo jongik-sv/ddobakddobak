@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
+import { Maximize2 } from 'lucide-react'
 import '@blocknote/mantine/style.css'
 import { BlockNoteView } from '@blocknote/mantine'
 import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuItems } from '@blocknote/react'
@@ -6,6 +7,16 @@ import { insertOrUpdateBlockForSlashMenu } from '@blocknote/core'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 import { useAppSettingsStore } from '../../stores/appSettingsStore'
 import { editorSchema, codeBlocksToMermaid } from './mermaidBlock'
+import { AiSummaryFullViewModal } from './AiSummaryFullViewModal'
+
+/**
+ * Defense 2 (데이터 손실 가드): 자동저장이 파괴적인 빈 저장인지 판정한다.
+ * 다음 내용이 비었는데(공백만 포함) 이전 내용이 비어있지 않으면 의심스러운 빈 저장.
+ * (예: Ctrl+Z로 프로그래매틱 주입이 undo되어 문서가 빈 상태로 돌아간 경우)
+ */
+export function isSuspiciousEmptySave(nextMarkdown: string, prevMarkdown: string): boolean {
+  return nextMarkdown.trim() === '' && prevMarkdown.trim() !== ''
+}
 
 interface AiSummaryPanelProps {
   meetingId: number
@@ -14,9 +25,11 @@ interface AiSummaryPanelProps {
   onNotesChange?: (markdown: string) => void
   /** 헤더 우측에 끼울 추가 컨트롤 (요약 옵션 등). 페이지가 주입한다. */
   headerExtra?: React.ReactNode
+  /** 전체보기(확대) 버튼 숨김. 전체보기 모달 안에서 마운트될 때 true로 재귀를 막는다. 기본 false. */
+  hideExpand?: boolean
 }
 
-export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, editable = true, onNotesChange, headerExtra }: AiSummaryPanelProps) {
+export function AiSummaryPanel({ meetingId, isRecording = false, editable = true, onNotesChange, headerExtra, hideExpand = false }: AiSummaryPanelProps) {
   const meetingNotes = useTranscriptStore((s) => s.meetingNotes)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const isSummarizing = useTranscriptStore((s) => s.isSummarizing)
@@ -35,6 +48,7 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [showFullView, setShowFullView] = useState(false)
 
   const editor = useCreateBlockNote({ schema: editorSchema })
 
@@ -50,7 +64,11 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
       setIsDirty(false)
       prevMarkdownRef.current = ''
       isProgrammaticRef.current = true
-      editor.replaceBlocks(editor.document, [])
+      // Defense 1: 프로그래매틱 주입을 undo 히스토리에서 제외 (Ctrl+Z로 빈 상태 복귀→소실 방지)
+      editor.transact((tr: any) => {
+        tr.setMeta('addToHistory', false)
+        editor.replaceBlocks(editor.document, [])
+      })
       requestAnimationFrame(() => { isProgrammaticRef.current = false })
       return () => { cancelled = true }
     }
@@ -65,7 +83,11 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
         const blocks = await editor.tryParseMarkdownToBlocks(meetingNotes!)
         if (cancelled) return
         const converted = codeBlocksToMermaid(blocks as any[])
-        editor.replaceBlocks(editor.document, converted as any)
+        // Defense 1: 프로그래매틱 주입을 undo 히스토리에서 제외 (Ctrl+Z로 빈 상태 복귀→소실 방지)
+        editor.transact((tr: any) => {
+          tr.setMeta('addToHistory', false)
+          editor.replaceBlocks(editor.document, converted as any)
+        })
         prevMarkdownRef.current = meetingNotes ?? ''
       } catch { /* ignore */ } finally {
         if (!cancelled) {
@@ -77,7 +99,7 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
     return () => { cancelled = true }
   }, [meetingNotes, editor])
 
-  const saveNow = useCallback(async () => {
+  const saveNow = useCallback(async (source: 'auto' | 'manual' = 'auto') => {
     try {
       const doc = editor.document as any[]
 
@@ -108,6 +130,18 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
       }
       const markdown = parts.join('\n\n')
 
+      // Defense 2: 자동저장이 파괴적 빈 저장이면(이전엔 내용 있는데 지금 빈 상태) 저장 차단.
+      // Ctrl+Z가 USER edit으로 오인돼 빈 마크다운이 영구 저장되는 것을 방지.
+      // 수동 저장(source='manual')은 의도적 비우기이므로 통과시킨다. isDirty는 유지해
+      // 사용자가 정말 비우려면 수동 저장으로 가능하게 둔다.
+      if (source === 'auto' && isSuspiciousEmptySave(markdown, prevMarkdownRef.current)) {
+        console.warn(
+          '[saveNow] 의심스러운 빈 자동저장 차단: 이전 회의록이 존재하는데 빈 내용으로 저장 시도됨(예: Ctrl+Z). 저장하지 않음. 정말 비우려면 수동 저장하세요.',
+        )
+        isUserEditingRef.current = false
+        return
+      }
+
       prevMarkdownRef.current = markdown
       setMeetingNotes(markdown)
       onNotesChange?.(markdown)
@@ -124,12 +158,12 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
     isUserEditingRef.current = true
     setIsDirty(true)
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-    debounceTimerRef.current = setTimeout(saveNow, 2000)
+    debounceTimerRef.current = setTimeout(() => saveNow('auto'), 2000)
   }, [saveNow])
 
   const handleManualSave = useCallback(async () => {
     setIsSaving(true)
-    await saveNow()
+    await saveNow('manual')
     setIsSaving(false)
   }, [saveNow])
 
@@ -165,6 +199,16 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
         </div>
         <div className="flex items-center gap-2">
           {headerExtra}
+          {!hideExpand && (
+            <button
+              onClick={() => setShowFullView(true)}
+              aria-label="전체보기"
+              title="전체보기"
+              className="p-1.5 min-h-[44px] flex items-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+          )}
         {editable && (
           isRecording ? (
             <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-green-100 text-green-600">
@@ -234,6 +278,13 @@ export function AiSummaryPanel({ meetingId: _meetingId, isRecording = false, edi
           />
         )}
       </div>
+      {showFullView && (
+        <AiSummaryFullViewModal
+          meetingId={meetingId}
+          editable={false}
+          onClose={() => setShowFullView(false)}
+        />
+      )}
     </>
   )
 }

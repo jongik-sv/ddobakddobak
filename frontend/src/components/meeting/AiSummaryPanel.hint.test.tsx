@@ -7,6 +7,7 @@ vi.mock('@blocknote/react', () => ({
   useCreateBlockNote: vi.fn(() => ({
     document: [],
     replaceBlocks: vi.fn(),
+    transact: vi.fn((cb: any) => cb({ setMeta: vi.fn() })),
     tryParseMarkdownToBlocks: vi.fn().mockResolvedValue([]),
     blocksToMarkdownLossy: vi.fn().mockResolvedValue(''),
   })),
