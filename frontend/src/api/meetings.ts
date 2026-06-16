@@ -50,6 +50,8 @@ export interface Meeting {
   brief_summary: string | null
   source?: 'live' | 'upload'
   has_audio_file?: boolean
+  /** 이 회의가 속한 프로젝트 id (프로젝트 스코핑). */
+  project_id?: number | null
   folder_id: number | null
   /** 이 회의가 속한 폴더의 공유 여부(상세 응답에만 포함). false면 폴더가 비공개라 회의도 숨겨진다. */
   folder_shared?: boolean | null
@@ -127,6 +129,8 @@ export interface GetMeetingsParams {
   date_from?: string
   date_to?: string
   folder_id?: number | null
+  /** 프로젝트 스코핑. 지정 시 해당 프로젝트의 회의만 조회한다. */
+  project_id?: number | null
   /** true면 중요 필터를 해제하고 전체 회의를 가져온다(show_all=1). 미지정/false면 important=true만. */
   show_all?: boolean
 }
@@ -142,11 +146,12 @@ export async function getMeetings(params: GetMeetingsParams): Promise<MeetingLis
   if (params.folder_id !== undefined) {
     searchParams.folder_id = params.folder_id === null ? 'null' : params.folder_id
   }
+  if (params.project_id != null) searchParams.project_id = params.project_id
   if (params.show_all) searchParams.show_all = 1
   return apiClient.get('meetings', { searchParams }).json()
 }
 
-export async function createMeeting(data: { title: string; meeting_type?: string; folder_id?: number | null; shared?: boolean; previous_meeting_id?: number | null }): Promise<Meeting> {
+export async function createMeeting(data: { title: string; meeting_type?: string; folder_id?: number | null; shared?: boolean; previous_meeting_id?: number | null; project_id?: number | null }): Promise<Meeting> {
   const res: { meeting: Meeting } = await apiClient.post('meetings', { json: data }).json()
   return res.meeting
 }
@@ -323,6 +328,8 @@ export async function uploadAudioFile(data: {
   title: string
   meeting_type?: string
   audio: File
+  /** 프로젝트 스코핑. 업로드로 생성되는 회의가 속할 프로젝트. */
+  project_id?: number | null
   /** 생략하면 서버가 직전 회의 설정을 승계한다 */
   summary_verbosity?: SummaryVerbosity
   summary_restructure?: boolean
@@ -330,6 +337,7 @@ export async function uploadAudioFile(data: {
   const formData = new FormData()
   formData.append('title', data.title)
   if (data.meeting_type) formData.append('meeting_type', data.meeting_type)
+  if (data.project_id != null) formData.append('project_id', String(data.project_id))
   if (data.summary_verbosity) formData.append('summary_verbosity', data.summary_verbosity)
   if (data.summary_restructure !== undefined) formData.append('summary_restructure', String(data.summary_restructure))
   formData.append('audio', data.audio)

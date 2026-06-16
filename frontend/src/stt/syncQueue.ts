@@ -35,6 +35,7 @@ import {
   promoteAudio,
   type BulkTranscriptItem,
 } from '../api/meetings'
+import { useProjectStore } from '../stores/projectStore'
 
 export interface FlushResult {
   ok: boolean
@@ -67,7 +68,10 @@ export async function flush(localId: string): Promise<FlushResult> {
     let serverId = meta.serverId
     let serverHasAudio = false
     if (serverId == null) {
-      const meeting = await createMeeting({ title: meta.title })
+      const meeting = await createMeeting({
+        title: meta.title,
+        project_id: useProjectStore.getState().currentProjectId,
+      })
       serverId = meeting.id
       serverHasAudio = meeting.has_audio_file === true // 신규라 항상 false
       await setServerId(localId, serverId)

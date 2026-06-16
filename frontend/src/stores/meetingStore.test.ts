@@ -9,6 +9,10 @@ vi.mock('../api/meetings', () => ({
   getMeetings: mockGetMeetings,
 }))
 
+vi.mock('./projectStore', () => ({
+  useProjectStore: { getState: () => ({ currentProjectId: null }) },
+}))
+
 const mockMeeting = {
   id: 1,
   title: '회의1',

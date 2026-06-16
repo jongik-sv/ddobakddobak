@@ -14,6 +14,10 @@ vi.mock('../api/folders', () => ({
   deleteFolder: vi.fn(),
 }))
 
+vi.mock('./projectStore', () => ({
+  useProjectStore: { getState: () => ({ currentProjectId: 1 }) },
+}))
+
 function makeFolder(overrides: Partial<FolderNode> = {}): FolderNode {
   return {
     id: 1,

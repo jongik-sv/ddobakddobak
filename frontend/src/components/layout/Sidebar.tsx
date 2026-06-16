@@ -6,6 +6,7 @@ import { getMode, IS_MOBILE, IS_TAURI } from '../../config'
 import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
 import FolderTree from '../folder/FolderTree'
+import ProjectSwitcher from '../project/ProjectSwitcher'
 
 function navLinkClass({ isActive }: { isActive: boolean }) {
   const base = 'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors'
@@ -54,7 +55,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
   return (
     <aside className="flex flex-col w-60 min-h-0 h-full bg-sidebar border-r border-border shrink-0">
       <div className="flex items-center justify-between min-h-14 px-4 border-b border-border shrink-0 pt-safe">
-        <span className="text-lg font-bold text-foreground">또박또박</span>
+        <div className="flex-1 min-w-0 mr-2"><ProjectSwitcher /></div>
         <button
           onClick={() => (mobile ? onClose?.() : toggleSidebar())}
           className="p-2.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"

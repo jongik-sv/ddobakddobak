@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { uploadAudioFile, updateMeeting } from '../../api/meetings'
 import type { Meeting, SummaryVerbosity } from '../../api/meetings'
+import { useProjectStore } from '../../stores/projectStore'
 import { IS_TAURI, IS_MOBILE } from '../../config'
 import { errorToMessage } from '../../lib/errors'
 import { Dialog } from '../ui/Dialog'
@@ -84,6 +85,7 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
         title: title.trim(),
         meeting_type: meetingType,
         audio: file,
+        project_id: useProjectStore.getState().currentProjectId,
         ...(verbosity ? { summary_verbosity: verbosity } : {}),
         ...(restructure ? { summary_restructure: restructure === 'true' } : {}),
       })

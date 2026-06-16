@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { createMeeting, getMeetings } from '../../api/meetings'
 import type { Meeting } from '../../api/meetings'
+import { useProjectStore } from '../../stores/projectStore'
 import { useMeetingTemplateStore } from '../../stores/meetingTemplateStore'
 import { Dialog } from '../ui/Dialog'
 import { MeetingTypeSelector } from './MeetingListUI'
@@ -52,6 +53,7 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
         folder_id: folderId,
         shared,
         previous_meeting_id: previousMeetingId ? Number(previousMeetingId) : null,
+        project_id: useProjectStore.getState().currentProjectId,
       })
       onCreated(meeting)
       onClose()

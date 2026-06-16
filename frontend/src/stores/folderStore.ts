@@ -6,6 +6,7 @@ import {
   deleteFolder as apiDeleteFolder,
 } from '../api/folders'
 import type { FolderNode } from '../api/folders'
+import { useProjectStore } from './projectStore'
 
 export type SelectedFolder = number | null | 'all'
 // number = 특정 폴더, null = 미분류(폴더 없는 회의), 'all' = 전체
@@ -37,9 +38,14 @@ export const useFolderStore = create<FolderState>()((set, get) => ({
   error: null,
 
   fetchFolders: async () => {
+    const projectId = useProjectStore.getState().currentProjectId
+    if (projectId == null) {
+      set({ folders: [], isLoading: false })
+      return
+    }
     set({ isLoading: true, error: null })
     try {
-      const folders = await getFolderTree()
+      const folders = await getFolderTree(projectId)
       set({ folders, isLoading: false })
     } catch {
       set({ error: '폴더 목록을 불러오지 못했습니다.', isLoading: false })
@@ -58,7 +64,8 @@ export const useFolderStore = create<FolderState>()((set, get) => ({
 
   createFolder: async (name, parentId) => {
     try {
-      await apiCreateFolder({ name, parent_id: parentId })
+      const projectId = useProjectStore.getState().currentProjectId
+      await apiCreateFolder({ name, parent_id: parentId, project_id: projectId })
       await get().fetchFolders()
     } catch {
       set({ error: '폴더 생성에 실패했습니다.' })

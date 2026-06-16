@@ -7,6 +7,7 @@ import {
 } from '../api/meetings'
 import type { Meeting, MeetingListMeta, GetMeetingsParams } from '../api/meetings'
 import type { SelectedFolder } from './folderStore'
+import { useProjectStore } from './projectStore'
 
 interface MeetingState {
   meetings: Meeting[]
@@ -77,6 +78,8 @@ export const useMeetingStore = create<MeetingState>()((set, get) => ({
       }
       // 특정 폴더 안에서는 중요하지 않은 회의도 보여준다. 전체(all) 뷰에서만 important 필터 유지(showAll로 해제).
       if (showAll || folderId !== 'all') params.show_all = true
+      const projectId = useProjectStore.getState().currentProjectId
+      if (projectId != null) params.project_id = projectId
       const data = await getMeetings(params)
       set({ meetings: data.meetings, meta: data.meta, isLoading: false, isRefreshing: false })
     } catch {

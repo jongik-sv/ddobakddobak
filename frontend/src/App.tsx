@@ -23,6 +23,8 @@ const load = {
   MeetingPage: () => import('./pages/MeetingPage'),
   MeetingViewerPage: () => import('./pages/MeetingViewerPage'),
   SearchPage: () => import('./pages/SearchPage'),
+  ProjectsPage: () => import('./pages/ProjectsPage'),
+  InviteRedeemPage: () => import('./pages/InviteRedeemPage'),
 }
 
 const DashboardPage = lazy(load.DashboardPage)
@@ -33,6 +35,8 @@ const LocalMeetingsHome = lazy(load.LocalMeetingsHome)
 const MeetingPage = lazy(load.MeetingPage)
 const MeetingViewerPage = lazy(load.MeetingViewerPage)
 const SearchPage = lazy(load.SearchPage)
+const ProjectsPage = lazy(load.ProjectsPage)
+const InviteRedeemPage = lazy(load.InviteRedeemPage)
 
 /** 지연 로드 페이지 래퍼. fallback=null — 새 스피너 UI를 도입하지 않고(셸은 그대로 렌더),
  *  청크 로딩 중 페이지 영역만 잠깐 비운다. idle prefetch로 콜드 진입 창은 사실상 사라진다. */
@@ -120,6 +124,13 @@ function App() {
         }
       />
 
+      {/* 프로젝트 초대 리딤 — GatedApp **밖**(로그아웃 상태에서도 접근 가능해야 함:
+          비회원이 초대 링크로 가입+합류). 서버 설정/인증 게이트를 거치지 않는다. */}
+      <Route
+        path="/invite/:code"
+        element={<Suspended><InviteRedeemPage /></Suspended>}
+      />
+
       {/* 그 외 전부 = 기존 게이트(서버 설정 + 인증) 적용. 무변경. */}
       <Route path="*" element={<GatedApp />} />
     </Routes>
@@ -146,6 +157,14 @@ function GatedApp() {
         element={
           <AppLayout>
             <Suspended><SearchPage /></Suspended>
+          </AppLayout>
+        }
+      />
+      <Route
+        path="/projects"
+        element={
+          <AppLayout>
+            <Suspended><ProjectsPage /></Suspended>
           </AppLayout>
         }
       />

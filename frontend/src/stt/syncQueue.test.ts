@@ -25,6 +25,10 @@ vi.mock('../api/meetings', () => ({
   promoteAudio: vi.fn(),
 }))
 
+vi.mock('../stores/projectStore', () => ({
+  useProjectStore: { getState: () => ({ currentProjectId: null }) },
+}))
+
 const mGetLocal = vi.mocked(getLocal)
 const mSetServerId = vi.mocked(setServerId)
 const mMarkPendingSync = vi.mocked(markPendingSync)
@@ -121,7 +125,7 @@ describe('flush — serverId 없음', () => {
 
     const res = await flush('local-abc')
 
-    expect(mCreateMeeting).toHaveBeenCalledWith({ title: '로컬 회의' })
+    expect(mCreateMeeting).toHaveBeenCalledWith({ title: '로컬 회의', project_id: null })
     expect(mSetServerId).toHaveBeenCalledWith('local-abc', 42)
     expect(mBulkCreate).toHaveBeenCalledWith(
       42,

@@ -29,8 +29,10 @@ export interface Folder {
   updated_at: string
 }
 
-export async function getFolderTree(): Promise<FolderNode[]> {
-  const res = await apiClient.get('folders').json<{ folders: FolderNode[] }>()
+export async function getFolderTree(projectId: number): Promise<FolderNode[]> {
+  const res = await apiClient
+    .get('folders', { searchParams: { project_id: projectId } })
+    .json<{ folders: FolderNode[] }>()
   return res.folders
 }
 
@@ -44,6 +46,7 @@ export async function getFoldersFlat(): Promise<Folder[]> {
 export async function createFolder(data: {
   name: string
   parent_id?: number | null
+  project_id?: number | null
 }): Promise<Folder> {
   const res = await apiClient.post('folders', { json: data }).json<{ folder: Folder }>()
   return res.folder
