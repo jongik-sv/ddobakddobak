@@ -13,4 +13,8 @@ RSpec.describe LlmService, "#answer_question" do
   it "exposes MEETING_CHAT_SYSTEM_PROMPT" do
     expect(LlmPrompts::MEETING_CHAT_SYSTEM_PROMPT).to include("회의 어시스턴트")
   end
+
+  it "instructs the model to answer bare topic/keyword inputs instead of asking back" do
+    expect(LlmPrompts::MEETING_CHAT_SYSTEM_PROMPT).to include("주제·키워드").and include("되묻지")
+  end
 end
