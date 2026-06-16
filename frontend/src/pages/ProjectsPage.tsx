@@ -64,11 +64,11 @@ export default function ProjectsPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-foreground">프로젝트</h1>
+        <h1 className="text-xl font-bold text-zinc-900">프로젝트</h1>
       </div>
 
       {error && (
-        <div role="alert" className="mb-4 rounded-md bg-destructive/10 px-4 py-2 text-sm text-destructive">
+        <div role="alert" className="mb-4 rounded-md bg-red-50 px-4 py-2 text-sm text-red-600">
           {error}
         </div>
       )}
@@ -77,34 +77,34 @@ export default function ProjectsPage() {
         {projects.map((p) => (
           <div
             key={p.id}
-            className="group relative cursor-pointer rounded-xl border border-border bg-white p-4 shadow-sm transition-shadow hover:shadow-md dark:bg-zinc-900"
+            className="group relative cursor-pointer rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
             onClick={() => openProject(p)}
           >
             <div className="flex items-start gap-3">
               <ProjectIcon project={p} size={40} />
               <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold text-foreground">{p.name}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
+                <p className="truncate font-semibold text-zinc-900">{p.name}</p>
+                <p className="mt-0.5 text-xs text-zinc-500">
                   멤버 {p.member_count} · 회의 {p.meeting_count}
                 </p>
               </div>
               <div className="relative" onClick={(e) => e.stopPropagation()}>
                 <button
                   onClick={() => setMenuId(menuId === p.id ? null : p.id)}
-                  className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"
+                  className="rounded-md p-1 text-zinc-500 opacity-0 transition-opacity hover:bg-zinc-100 group-hover:opacity-100"
                   aria-label="프로젝트 메뉴"
                 >
                   <MoreVertical className="h-4 w-4" />
                 </button>
                 {menuId === p.id && (
-                  <div className="absolute right-0 z-50 mt-1 w-36 rounded-md border border-border bg-white py-1 shadow-lg dark:bg-zinc-900">
+                  <div className="absolute right-0 z-50 mt-1 w-36 rounded-md border border-zinc-200 bg-white py-1 text-zinc-900 shadow-lg">
                     <button
                       onClick={() => {
                         setMenuId(null)
                         setDialogProject(p)
                         setDialogOpen(true)
                       }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
                     >
                       <Pencil className="h-4 w-4" /> 편집
                     </button>
@@ -113,14 +113,14 @@ export default function ProjectsPage() {
                         setMenuId(null)
                         setMembersProject(p)
                       }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
                     >
                       <Users className="h-4 w-4" /> 멤버 관리
                     </button>
                     {!p.personal && p.role === 'admin' && (
                       <button
                         onClick={() => handleDelete(p)}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
                       >
                         <Trash2 className="h-4 w-4" /> 삭제
                       </button>
@@ -130,7 +130,7 @@ export default function ProjectsPage() {
               </div>
             </div>
             {p.description && (
-              <p className="mt-3 line-clamp-2 text-xs text-muted-foreground">{p.description}</p>
+              <p className="mt-3 line-clamp-2 text-xs text-zinc-500">{p.description}</p>
             )}
           </div>
         ))}
@@ -140,7 +140,7 @@ export default function ProjectsPage() {
             setDialogProject(null)
             setDialogOpen(true)
           }}
-          className="flex min-h-[88px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border p-4 text-sm font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+          className="flex min-h-[88px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-200 p-4 text-sm font-medium text-zinc-500 transition-colors hover:border-indigo-600 hover:text-indigo-600"
         >
           <Plus className="h-5 w-5" /> 새 프로젝트
         </button>

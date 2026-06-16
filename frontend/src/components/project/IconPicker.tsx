@@ -49,7 +49,7 @@ export default function IconPicker({ value, onChange }: IconPickerProps) {
   }
 
   return (
-    <div className="rounded-md border border-border p-3">
+    <div className="rounded-md border border-zinc-200 p-3">
       <div className="mb-3 flex gap-1">
         {TABS.map((t) => (
           <button
@@ -57,7 +57,7 @@ export default function IconPicker({ value, onChange }: IconPickerProps) {
             type="button"
             onClick={() => setTab(t.key)}
             className={`rounded-md px-3 py-1 text-sm transition-colors ${
-              tab === t.key ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'
+              tab === t.key ? 'bg-indigo-600 text-white' : 'text-zinc-700 hover:bg-zinc-100'
             }`}
           >
             {t.label}
@@ -78,7 +78,7 @@ export default function IconPicker({ value, onChange }: IconPickerProps) {
                   type="button"
                   onClick={() => onChange({ icon_type: 'lucide', icon_value: name, color })}
                   className={`flex h-10 items-center justify-center rounded-md border transition-colors ${
-                    selected ? 'border-primary ring-2 ring-ring' : 'border-border hover:bg-accent'
+                    selected ? 'border-indigo-600 ring-2 ring-indigo-500' : 'border-zinc-200 hover:bg-zinc-100'
                   }`}
                   aria-label={name}
                 >
@@ -112,7 +112,7 @@ export default function IconPicker({ value, onChange }: IconPickerProps) {
                 type="button"
                 onClick={() => onChange({ icon_type: 'emoji', icon_value: emoji, color })}
                 className={`flex h-10 items-center justify-center rounded-md border text-xl transition-colors ${
-                  selected ? 'border-primary ring-2 ring-ring' : 'border-border hover:bg-accent'
+                  selected ? 'border-indigo-600 ring-2 ring-indigo-500' : 'border-zinc-200 hover:bg-zinc-100'
                 }`}
               >
                 {emoji}
@@ -131,7 +131,7 @@ export default function IconPicker({ value, onChange }: IconPickerProps) {
               className="h-16 w-16 rounded-md object-cover"
             />
           ) : (
-            <div className="flex h-16 w-16 items-center justify-center rounded-md border border-dashed border-border text-xs text-muted-foreground">
+            <div className="flex h-16 w-16 items-center justify-center rounded-md border border-dashed border-zinc-200 text-xs text-zinc-500">
               미리보기
             </div>
           )}
@@ -145,11 +145,11 @@ export default function IconPicker({ value, onChange }: IconPickerProps) {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+            className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
           >
             이미지 선택
           </button>
-          <p className="text-center text-xs text-muted-foreground">
+          <p className="text-center text-xs text-zinc-500">
             지금은 미리보기만 지원합니다(저장은 추후 지원).
           </p>
         </div>

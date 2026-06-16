@@ -98,8 +98,8 @@ export default function InviteRedeemPage() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-zinc-50 px-4 dark:bg-zinc-950">
-      <div className="w-full max-w-sm rounded-xl border border-gray-100 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="flex min-h-dvh items-center justify-center bg-zinc-50 px-4">
+      <div className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-6 shadow-xl">
         {loading ? (
           <p className="py-8 text-center text-sm text-zinc-500">불러오는 중…</p>
         ) : loadError ? (
@@ -107,7 +107,7 @@ export default function InviteRedeemPage() {
             <p className="text-sm text-red-600">{loadError}</p>
             <button
               onClick={() => navigate('/meetings')}
-              className="mt-4 rounded-md border px-4 py-2 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              className="mt-4 rounded-md border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
             >
               홈으로
             </button>
@@ -126,7 +126,7 @@ export default function InviteRedeemPage() {
                   size={48}
                 />
               )}
-              <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
+              <h1 className="text-lg font-bold text-zinc-900">
                 {preview?.name ?? '프로젝트'}
               </h1>
               <p className="text-sm text-zinc-500">프로젝트에 초대되었습니다.</p>
@@ -153,7 +153,7 @@ export default function InviteRedeemPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="이름"
-                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
                   autoFocus
                 />
                 <input
@@ -161,14 +161,14 @@ export default function InviteRedeemPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="이메일"
-                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="비밀번호"
-                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 <button
                   type="submit"

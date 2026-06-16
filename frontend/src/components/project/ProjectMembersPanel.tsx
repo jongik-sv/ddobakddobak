@@ -101,30 +101,30 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
       className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto"
     >
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">{project.name} · 멤버 관리</h2>
-        <button onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-muted" aria-label="닫기">
+        <h2 className="text-lg font-semibold text-zinc-900">{project.name} · 멤버 관리</h2>
+        <button onClick={onClose} className="rounded-md p-1 text-zinc-500 hover:bg-zinc-100" aria-label="닫기">
           <X className="h-4 w-4" />
         </button>
       </div>
 
       {error && (
-        <div role="alert" className="mb-4 rounded-md bg-destructive/10 px-4 py-2 text-sm text-destructive">
+        <div role="alert" className="mb-4 rounded-md bg-red-50 px-4 py-2 text-sm text-red-600">
           {error}
         </div>
       )}
 
       {loading ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">불러오는 중…</p>
+        <p className="py-6 text-center text-sm text-zinc-500">불러오는 중…</p>
       ) : (
         <>
           <section className="mb-6">
-            <h3 className="mb-2 text-sm font-medium">멤버 ({members.length})</h3>
+            <h3 className="mb-2 text-sm font-medium text-zinc-700">멤버 ({members.length})</h3>
             <ul className="space-y-1">
               {members.map((m) => (
-                <li key={m.user_id} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted">
+                <li key={m.user_id} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-zinc-100">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{m.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{m.email}</p>
+                    <p className="truncate text-sm font-medium text-zinc-900">{m.name}</p>
+                    <p className="truncate text-xs text-zinc-500">{m.email}</p>
                   </div>
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs ${
@@ -136,7 +136,7 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
                   {m.role !== 'admin' && (
                     <button
                       onClick={() => handleRemove(m.user_id)}
-                      className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      className="rounded-md p-1 text-zinc-500 hover:bg-red-50 hover:text-red-600"
                       aria-label="멤버 제거"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -148,18 +148,18 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
           </section>
 
           <section>
-            <h3 className="mb-2 text-sm font-medium">초대 링크</h3>
+            <h3 className="mb-2 text-sm font-medium text-zinc-700">초대 링크</h3>
             <div className="mb-3 flex flex-wrap items-end gap-2">
-              <label className="flex flex-col text-xs text-muted-foreground">
+              <label className="flex flex-col text-xs text-zinc-500">
                 만료 (선택)
                 <input
                   type="date"
                   value={expiresAt}
                   onChange={(e) => setExpiresAt(e.target.value)}
-                  className="mt-1 rounded-md border px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  className="mt-1 rounded-md border border-zinc-200 px-2 py-1 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </label>
-              <label className="flex flex-col text-xs text-muted-foreground">
+              <label className="flex flex-col text-xs text-zinc-500">
                 최대 사용 (선택)
                 <input
                   type="number"
@@ -167,13 +167,13 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
                   value={maxUses}
                   onChange={(e) => setMaxUses(e.target.value)}
                   placeholder="무제한"
-                  className="mt-1 w-24 rounded-md border px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  className="mt-1 w-24 rounded-md border border-zinc-200 px-2 py-1 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </label>
               <button
                 onClick={handleCreateInvite}
                 disabled={creating}
-                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 disabled:opacity-50"
+                className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
               >
                 링크 생성
               </button>
@@ -181,10 +181,10 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
 
             <ul className="space-y-1">
               {invites.map((inv) => (
-                <li key={inv.id} className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5">
+                <li key={inv.id} className="flex items-center gap-2 rounded-md border border-zinc-200 px-2 py-1.5">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-mono text-xs">{inviteUrl(inv.code)}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="truncate font-mono text-xs text-zinc-900">{inviteUrl(inv.code)}</p>
+                    <p className="text-xs text-zinc-500">
                       {inv.use_count}
                       {inv.max_uses != null ? `/${inv.max_uses}` : ''}회 사용
                       {inv.expires_at ? ` · ~${new Date(inv.expires_at).toLocaleDateString()}` : ''}
@@ -193,14 +193,14 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
                   </div>
                   <button
                     onClick={() => copy(inv.code)}
-                    className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+                    className="rounded-md p-1 text-zinc-500 hover:bg-zinc-100"
                     aria-label="링크 복사"
                   >
                     {copied === inv.code ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
                   </button>
                   <button
                     onClick={() => handleRevoke(inv.id)}
-                    className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    className="rounded-md p-1 text-zinc-500 hover:bg-red-50 hover:text-red-600"
                     aria-label="초대 취소"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -208,7 +208,7 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
                 </li>
               ))}
               {invites.length === 0 && (
-                <li className="py-2 text-center text-xs text-muted-foreground">활성 초대 링크가 없습니다.</li>
+                <li className="py-2 text-center text-xs text-zinc-500">활성 초대 링크가 없습니다.</li>
               )}
             </ul>
           </section>

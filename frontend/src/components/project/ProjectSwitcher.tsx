@@ -54,7 +54,7 @@ export default function ProjectSwitcher() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent"
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-zinc-100"
         title="프로젝트 전환"
       >
         {current ? (
@@ -64,21 +64,21 @@ export default function ProjectSwitcher() {
             <FolderKanban className="h-3.5 w-3.5" />
           </span>
         )}
-        <span className="flex-1 min-w-0 truncate text-sm font-semibold text-foreground">
+        <span className="flex-1 min-w-0 truncate text-sm font-semibold text-zinc-900">
           {current?.name ?? '프로젝트 선택'}
         </span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" />
       </button>
 
       {open && (
-        <div className="absolute left-0 right-0 z-50 mt-1 max-h-80 overflow-y-auto rounded-md border border-border bg-white py-1 shadow-lg dark:bg-zinc-900">
+        <div className="absolute left-0 right-0 z-50 mt-1 max-h-80 overflow-y-auto rounded-md border border-zinc-200 bg-white py-1 text-zinc-900 shadow-lg">
           {projects.map((p) => (
             <button
               key={p.id}
               type="button"
               onClick={() => handleSelect(p.id)}
-              className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent ${
-                p.id === currentProjectId ? 'bg-accent font-medium' : ''
+              className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors hover:bg-zinc-100 ${
+                p.id === currentProjectId ? 'bg-zinc-100 font-medium' : ''
               }`}
             >
               <ProjectIcon project={p} size={22} />
@@ -86,7 +86,7 @@ export default function ProjectSwitcher() {
             </button>
           ))}
 
-          <div className="my-1 border-t border-border" />
+          <div className="my-1 border-t border-zinc-200" />
 
           <button
             type="button"
@@ -94,7 +94,7 @@ export default function ProjectSwitcher() {
               setOpen(false)
               navigate('/projects')
             }}
-            className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent"
+            className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-zinc-600 transition-colors hover:bg-zinc-100"
           >
             <FolderKanban className="h-4 w-4 shrink-0" />
             전체 프로젝트
@@ -105,7 +105,7 @@ export default function ProjectSwitcher() {
               setOpen(false)
               navigate('/projects?new=1')
             }}
-            className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent"
+            className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-zinc-600 transition-colors hover:bg-zinc-100"
           >
             <Plus className="h-4 w-4 shrink-0" />
             새 프로젝트
