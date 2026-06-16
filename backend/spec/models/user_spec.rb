@@ -159,4 +159,19 @@ RSpec.describe User, type: :model do
       expect(user.refresh_token_jti).to be_nil
     end
   end
+
+  describe "개인 프로젝트 자동 생성" do
+    it "유저 생성 시 personal 프로젝트와 admin 멤버십이 만들어진다" do
+      user = create(:user)
+      personal = user.projects.find_by(personal: true)
+      expect(personal).to be_present
+      expect(personal.admin?(user)).to be true
+    end
+
+    it "개인 프로젝트는 1개만 (재호출 멱등)" do
+      user = create(:user)
+      EnsurePersonalProject.call(user)
+      expect(user.projects.where(personal: true).count).to eq(1)
+    end
+  end
 end

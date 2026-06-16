@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_17_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_17_000002) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -217,6 +217,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000001) do
     t.check_constraint "summary_verbosity IN ('very_concise','concise','standard','detailed','very_detailed')", name: "chk_meetings_summary_verbosity"
   end
 
+  create_table "project_invites", force: :cascade do |t|
+    t.string "code", null: false
+    t.datetime "created_at", null: false
+    t.integer "created_by_id", null: false
+    t.datetime "expires_at"
+    t.integer "max_uses"
+    t.integer "project_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "use_count", default: 0, null: false
+    t.index ["code"], name: "index_project_invites_on_code", unique: true
+    t.index ["project_id"], name: "index_project_invites_on_project_id"
+  end
+
   create_table "project_memberships", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "project_id", null: false
@@ -229,11 +242,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000001) do
   end
 
   create_table "projects", force: :cascade do |t|
+    t.string "color"
     t.datetime "created_at", null: false
     t.integer "created_by_id", null: false
+    t.text "description"
+    t.string "icon_type"
+    t.string "icon_value"
     t.string "name", null: false
+    t.boolean "personal", default: false, null: false
     t.datetime "updated_at", null: false
     t.index ["created_by_id"], name: "index_projects_on_created_by_id"
+    t.index ["personal"], name: "index_projects_on_personal"
   end
 
   create_table "prompt_templates", force: :cascade do |t|
@@ -330,6 +349,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000001) do
   add_foreign_key "meetings", "meetings", column: "previous_meeting_id", on_delete: :nullify
   add_foreign_key "meetings", "projects", on_delete: :cascade
   add_foreign_key "meetings", "users", column: "created_by_id"
+  add_foreign_key "project_invites", "projects", on_delete: :cascade
   add_foreign_key "project_memberships", "projects", on_delete: :cascade
   add_foreign_key "project_memberships", "users", on_delete: :cascade
   add_foreign_key "projects", "users", column: "created_by_id"

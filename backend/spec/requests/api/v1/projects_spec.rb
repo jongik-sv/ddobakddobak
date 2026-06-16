@@ -18,17 +18,22 @@ RSpec.describe "Api::V1::Projects", type: :request do
 
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
-        expect(json.length).to eq(1)
-        expect(json.first["name"]).to eq(project.name)
-        expect(json.first["role"]).to eq("admin")
-        expect(json.first["member_count"]).to eq(1)
+        # 신규 유저는 개인 프로젝트(personal)가 자동 생성되므로 그것을 제외하고 검증한다.
+        personal_id = user.projects.find_by(personal: true).id
+        shared = json.reject { |p| p["id"] == personal_id }
+        expect(shared.length).to eq(1)
+        expect(shared.first["name"]).to eq(project.name)
+        expect(shared.first["role"]).to eq("admin")
+        expect(shared.first["member_count"]).to eq(1)
       end
 
-      it "returns empty array when no projects" do
+      it "returns only the personal project when no other projects" do
         get "/api/v1/projects"
 
         expect(response).to have_http_status(:ok)
-        expect(response.parsed_body).to eq([])
+        json = response.parsed_body
+        personal_id = user.projects.find_by(personal: true).id
+        expect(json.map { |p| p["id"] }).to eq([personal_id])
       end
     end
   end
@@ -64,6 +69,7 @@ RSpec.describe "Api::V1::Projects", type: :request do
 
     context "as admin" do
       it "adds the user to the project as member" do
+        other_user # 개인 프로젝트 멤버십(자동 생성)이 측정에 끼지 않도록 먼저 생성
         expect {
           post "/api/v1/projects/#{project.id}/invite",
                params: { email: other_user.email },

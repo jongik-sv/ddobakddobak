@@ -7,8 +7,17 @@ class User < ApplicationRecord
 
   has_many :project_memberships, dependent: :destroy
   has_many :projects, through: :project_memberships
+  has_many :created_projects, class_name: "Project", foreign_key: :created_by_id, inverse_of: :creator
   has_many :meeting_participants, dependent: :destroy
   has_many :chat_messages, dependent: :destroy
+
+  after_create { EnsurePersonalProject.call(self) }
+  # 유저 삭제 시 본인 소유 "개인" 프로젝트(personal: true)만 정리한다.
+  # personal 프로젝트는 멤버가 본인뿐이므로 안전하게 destroy 가능.
+  # 한계: 유저가 만든 "공유" 프로젝트(personal: false)는 건드리지 않는다.
+  #   projects.created_by_id FK 에 on_delete 가 없어, 그런 유저 삭제는 FK 위반(500)이 난다.
+  #   (meetings.created_by_id 도 동일) — 공유 콘텐츠 소유자 삭제는 Phase 범위 밖, 별도 처리 필요.
+  before_destroy { created_projects.where(personal: true).destroy_all }
 
   ROLES = %w[admin member].freeze
   LOCAL_EMAIL = "desktop@local".freeze
