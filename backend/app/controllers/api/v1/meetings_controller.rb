@@ -219,8 +219,7 @@ module Api
         # 삭제는 소유자/admin 전용 (라이브 host 라도 남의 회의를 삭제할 수 없다).
         return render json: { error: "삭제 권한이 없습니다" }, status: :forbidden unless @meeting.editable_by?(current_user)
 
-        FileUtils.rm_f(@meeting.audio_file_path) if @meeting.audio_file_path.present?
-        @meeting.destroy
+        Trash::SoftDeleter.call(@meeting, by: current_user)
         head :no_content
       end
 

@@ -35,11 +35,10 @@ module Api
       end
 
       def destroy
-        unless @project.deletable?
-          msg = @project.personal? ? "개인 프로젝트는 삭제할 수 없습니다" : "회의·폴더가 남아 있어 삭제할 수 없습니다"
-          return render json: { error: msg }, status: :conflict
+        if @project.personal?
+          return render json: { error: "개인 프로젝트는 삭제할 수 없습니다" }, status: :conflict
         end
-        @project.destroy
+        Trash::SoftDeleter.call(@project, by: current_user)
         head :no_content
       end
 

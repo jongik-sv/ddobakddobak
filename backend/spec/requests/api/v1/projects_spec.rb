@@ -127,12 +127,13 @@ RSpec.describe "Api::V1::Projects", type: :request do
       delete "/api/v1/projects/#{project.id}", as: :json
       expect(response).to have_http_status(:no_content)
     end
-    it "회의가 있으면 409" do
+    it "회의가 있어도 휴지통으로 소프트 삭제(204)" do
       project = create(:project)
       create(:project_membership, user: user, project: project, role: "admin")
       create(:meeting, project: project, creator: user)
       delete "/api/v1/projects/#{project.id}", as: :json
-      expect(response).to have_http_status(:conflict)
+      expect(response).to have_http_status(:no_content)
+      expect(project.reload.trashed?).to be true
     end
     it "개인 프로젝트는 삭제 불가(409)" do
       personal = user.projects.find_by(personal: true)

@@ -69,10 +69,7 @@ module Api
       end
 
       def destroy
-        parent_id = @folder.parent_id
-        @folder.children.update_all(parent_id: parent_id)
-        @folder.meetings.update_all(folder_id: parent_id)
-        @folder.destroy
+        Trash::SoftDeleter.call(@folder, by: current_user)
         head :no_content
       end
 
