@@ -38,6 +38,7 @@ function renderButtons(meeting: Meeting) {
       isDesktop
       onEdit={noop}
       onMove={noop}
+      onMoveProject={noop}
       onDelete={noop}
       onStop={noop}
     />,
@@ -67,6 +68,7 @@ describe('MeetingActionButtons 소유권 게이팅', () => {
         isDesktop
         onEdit={noop}
         onMove={noop}
+        onMoveProject={noop}
         onDelete={() => { deleted += 1 }}
         onStop={noop}
       />,

@@ -13,6 +13,8 @@ import type { Meeting } from '../api/meetings'
 import type { FolderNode } from '../api/folders'
 import FolderBreadcrumb from '../components/folder/FolderBreadcrumb'
 import MoveMeetingDialog from '../components/folder/MoveMeetingDialog'
+import MoveToProjectModal from '../components/project/MoveToProjectModal'
+import { useProjectStore } from '../stores/projectStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { JoinMeetingDialog } from '../components/meeting/JoinMeetingDialog'
 import { MeetingsGridSkeleton } from '../components/ui/Skeleton'
@@ -68,7 +70,9 @@ export default function MeetingsPage() {
   const [filterSheetOpen, setFilterSheetOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [movingMeeting, setMovingMeeting] = useState<Meeting | null>(null)
+  const [movingProjectMeeting, setMovingProjectMeeting] = useState<Meeting | null>(null)
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
+  const currentProjectId = useProjectStore((s) => s.currentProjectId)
 
   const [viewMode, setViewMode] = useState<ViewMode>(getStoredViewMode)
   const [sortField, setSortField] = useState<SortField>('created_at')
@@ -410,6 +414,7 @@ export default function MeetingsPage() {
           onMeetingOpen={handleMeetingOpen}
           onEdit={setEditingMeeting}
           onMove={setMovingMeeting}
+          onMoveProject={setMovingProjectMeeting}
           onDelete={handleDeleteMeeting}
           onStop={handleStopMeeting}
           onToggleImportant={handleToggleImportant}
@@ -430,6 +435,7 @@ export default function MeetingsPage() {
           onMeetingOpen={handleMeetingOpen}
           onEdit={setEditingMeeting}
           onMove={setMovingMeeting}
+          onMoveProject={setMovingProjectMeeting}
           onDelete={handleDeleteMeeting}
           onStop={handleStopMeeting}
           onToggleImportant={handleToggleImportant}
@@ -492,6 +498,18 @@ export default function MeetingsPage() {
           currentFolderId={movingMeeting.folder_id}
           onConfirm={handleMoveMeeting}
           onClose={() => setMovingMeeting(null)}
+        />
+      )}
+
+      {/* 프로젝트 이동 모달 */}
+      {movingProjectMeeting && currentProjectId != null && (
+        <MoveToProjectModal
+          mode="meetings"
+          meetingIds={[movingProjectMeeting.id]}
+          sourceProjectId={currentProjectId}
+          title={movingProjectMeeting.title}
+          onClose={() => setMovingProjectMeeting(null)}
+          onMoved={() => fetchMeetings(currentPage)}
         />
       )}
 

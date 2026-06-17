@@ -110,6 +110,7 @@ interface MeetingActionButtonsProps {
   isDesktop: boolean
   onEdit: (meeting: Meeting) => void
   onMove: (meeting: Meeting) => void
+  onMoveProject: (meeting: Meeting) => void
   onDelete: (meeting: Meeting) => void
   onStop: (meeting: Meeting) => void
   /** list view always uses hover-based opacity; card view uses isDesktop toggle */
@@ -120,6 +121,7 @@ export function MeetingActionButtons({
   meeting,
   onEdit,
   onMove,
+  onMoveProject,
   onDelete,
   onStop,
 }: MeetingActionButtonsProps) {
@@ -190,6 +192,17 @@ export function MeetingActionButtons({
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
             >
               <FolderInput className="w-4 h-4" /> 폴더로 이동
+            </button>
+            <button
+              aria-label="프로젝트 이동"
+              onClick={(e) => {
+                e.stopPropagation()
+                setOpen(false)
+                onMoveProject(meeting)
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
+            >
+              <FolderInput className="w-4 h-4" /> 프로젝트 이동
             </button>
             <button
               aria-label="삭제"
