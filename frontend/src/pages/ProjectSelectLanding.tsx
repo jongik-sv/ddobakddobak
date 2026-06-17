@@ -103,7 +103,7 @@ export default function ProjectSelectLanding() {
                   }`}
                 >
                   <div className="flex w-full items-start gap-3">
-                    <ProjectIcon project={p} size={40} />
+                    <ProjectIcon project={p} size={56} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold text-zinc-100">{p.name}</p>
                       <p className="mt-0.5 text-xs text-zinc-500">멤버 {p.member_count} · 회의 {p.meeting_count}</p>

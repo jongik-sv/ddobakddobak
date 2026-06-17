@@ -81,7 +81,7 @@ export default function ProjectsPage() {
             onClick={() => openProject(p)}
           >
             <div className="flex items-start gap-3">
-              <ProjectIcon project={p} size={40} />
+              <ProjectIcon project={p} size={56} />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold text-zinc-900">{p.name}</p>
                 <p className="mt-0.5 text-xs text-zinc-500">
