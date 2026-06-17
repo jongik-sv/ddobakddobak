@@ -28,6 +28,12 @@ Rails.application.routes.draw do
       get "health", to: "health#show"
       get "search", to: "search#index"
 
+      # Trash (휴지통)
+      get    "trash",                   to: "trash#index"
+      post   "trash/:type/:id/restore", to: "trash#restore"
+      delete "trash/:type/:id",         to: "trash#destroy"
+      delete "trash",                   to: "trash#empty"
+
       # Meetings CRUD + start/stop + nested resources
       resources :meetings, only: %i[index create show update destroy] do
         collection do
