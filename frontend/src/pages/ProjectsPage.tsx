@@ -73,11 +73,11 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {projects.map((p) => (
           <div
             key={p.id}
-            className="group relative cursor-pointer rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+            className="group relative h-[160px] cursor-pointer rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md md:h-[250px]"
             onClick={() => openProject(p)}
           >
             <div className="flex items-start gap-3">
@@ -140,7 +140,7 @@ export default function ProjectsPage() {
             setDialogProject(null)
             setDialogOpen(true)
           }}
-          className="flex min-h-[88px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-200 p-4 text-sm font-medium text-zinc-500 transition-colors hover:border-indigo-600 hover:text-indigo-600"
+          className="flex h-[160px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-200 p-4 text-sm font-medium text-zinc-500 transition-colors hover:border-indigo-600 hover:text-indigo-600 md:h-[250px]"
         >
           <Plus className="h-5 w-5" /> 새 프로젝트
         </button>

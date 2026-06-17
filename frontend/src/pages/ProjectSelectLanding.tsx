@@ -93,14 +93,14 @@ export default function ProjectSelectLanding() {
           {isLoading && myProjects.length === 0 ? (
             <p className="text-sm text-zinc-500">불러오는 중…</p>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {myProjects.map((p) => (
                 <button
                   key={p.id}
                   type="button"
                   aria-current={p.id === highlightId ? 'true' : undefined}
                   onClick={() => enter(p)}
-                  className={`flex flex-col items-start rounded-xl border bg-zinc-900 p-4 text-left transition-colors hover:border-indigo-500 ${
+                  className={`flex h-[160px] flex-col items-start rounded-xl border bg-zinc-900 p-4 text-left transition-colors hover:border-indigo-500 md:h-[250px] ${
                     p.id === highlightId ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-zinc-800'
                   }`}
                 >
@@ -119,7 +119,7 @@ export default function ProjectSelectLanding() {
               <button
                 type="button"
                 onClick={() => setDialogOpen(true)}
-                className="flex min-h-[88px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-700 p-4 text-sm font-medium text-zinc-400 transition-colors hover:border-indigo-500 hover:text-indigo-400"
+                className="flex h-[160px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-700 p-4 text-sm font-medium text-zinc-400 transition-colors hover:border-indigo-500 hover:text-indigo-400 md:h-[250px]"
               >
                 <Plus className="h-5 w-5" /> 새 프로젝트
               </button>
