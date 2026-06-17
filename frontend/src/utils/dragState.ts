@@ -73,6 +73,10 @@ export function initDrag(
   // 버튼/인풋 위에서 시작하면 무시
   if ((e.target as HTMLElement).closest('button, a, input')) return
 
+  // 드래그 중 네이티브 텍스트 선택 차단(카드 글자가 파랗게 잡히는 문제).
+  const preventSelect = (ev: Event) => ev.preventDefault()
+  document.addEventListener('selectstart', preventSelect)
+
   const startX = e.clientX
   const startY = e.clientY
   let started = false
@@ -120,6 +124,7 @@ export function initDrag(
     document.removeEventListener('pointermove', onMove)
     document.removeEventListener('pointerup', onUp)
     document.removeEventListener('pointercancel', onCancel)
+    document.removeEventListener('selectstart', preventSelect)
   }
 
   // 터치 스크롤 전환 등으로 브라우저가 포인터를 취소하면 pointerup이 오지 않는다.
