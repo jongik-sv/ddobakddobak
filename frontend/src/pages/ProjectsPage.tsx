@@ -68,7 +68,7 @@ export default function ProjectsPage() {
 
   const handleDelete = async (p: Project) => {
     setMenuId(null)
-    if (!window.confirm(`'${p.name}' 프로젝트를 삭제할까요? 이 작업은 되돌릴 수 없습니다.`)) return
+    if (!window.confirm(`'${p.name}' 프로젝트를 휴지통으로 이동합니다. 계속할까요?`)) return
     setError('')
     try {
       await removeProject(p.id)

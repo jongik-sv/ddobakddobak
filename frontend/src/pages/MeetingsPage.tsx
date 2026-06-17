@@ -186,9 +186,9 @@ export default function MeetingsPage() {
     let ok: boolean
     if (IS_TAURI) {
       const { confirm } = await import('@tauri-apps/plugin-dialog')
-      ok = await confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`, { title: '회의 삭제', kind: 'warning' })
+      ok = await confirm(`"${meeting.title}" 회의를 휴지통으로 이동합니다. 계속할까요?`, { title: '회의 삭제', kind: 'warning' })
     } else {
-      ok = window.confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`)
+      ok = window.confirm(`"${meeting.title}" 회의를 휴지통으로 이동합니다. 계속할까요?`)
     }
     if (!ok) return
     try {
