@@ -141,11 +141,15 @@ Rails.application.routes.draw do
 
       # Projects
       resources :projects, only: %i[index show create update destroy] do
+        collection do
+          post :import, to: "project_transfers#import"
+        end
         member do
           get  :members
           post :members, action: :add_member
           patch  "members/:user_id", action: :update_member, as: :update_member
           delete "members/:user_id", action: :remove_member, as: :remove_member
+          post :export, to: "project_transfers#export"
         end
         resources :invites, only: %i[index create destroy], controller: "project_invites"
       end

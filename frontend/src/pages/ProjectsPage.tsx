@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { HTTPError } from 'ky'
-import { Plus, MoreVertical, Pencil, Users, Trash2 } from 'lucide-react'
+import { Plus, MoreVertical, Pencil, Users, Trash2, Download } from 'lucide-react'
 import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
 import { useFolderStore } from '../stores/folderStore'
@@ -11,6 +11,8 @@ import { projectDisplayName, isHiddenClutterProject } from '../api/projects'
 import ProjectIcon from '../components/project/ProjectIcon'
 import ProjectDialog from '../components/project/ProjectDialog'
 import ProjectMembersPanel from '../components/project/ProjectMembersPanel'
+import ExportProjectDialog from '../components/project/ExportProjectDialog'
+import ImportProjectButton from '../components/project/ImportProjectButton'
 
 export default function ProjectsPage() {
   const navigate = useNavigate()
@@ -27,6 +29,7 @@ export default function ProjectsPage() {
   // ?new=1 → 생성 다이얼로그 자동 오픈. 초기값을 URL에서 1회 도출(렌더 중 setState 회피).
   const [dialogOpen, setDialogOpen] = useState(() => searchParams.get('new') === '1')
   const [membersProject, setMembersProject] = useState<Project | null>(null)
+  const [exportTarget, setExportTarget] = useState<Project | null>(null)
   const [menuId, setMenuId] = useState<number | null>(null)
   const [error, setError] = useState('')
 
@@ -44,6 +47,18 @@ export default function ProjectsPage() {
 
   const openProject = (p: Project) => {
     setCurrentProject(p.id)
+    useFolderStore.getState().setSelectedFolder('all')
+    useFolderStore.getState().fetchFolders()
+    useMeetingStore.getState().setFolderId('all')
+    useMeetingStore.getState().fetchMeetings(1)
+    navigate('/meetings')
+  }
+
+  // 가져오기 성공: 목록을 새로고침한 뒤 새 프로젝트로 진입한다.
+  const handleImported = async (projectId: number) => {
+    setError('')
+    await fetchProjects()
+    setCurrentProject(projectId)
     useFolderStore.getState().setSelectedFolder('all')
     useFolderStore.getState().fetchFolders()
     useMeetingStore.getState().setFolderId('all')
@@ -70,6 +85,7 @@ export default function ProjectsPage() {
     <div className="p-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold text-zinc-900">프로젝트</h1>
+        {isSystemAdmin && <ImportProjectButton onImported={handleImported} />}
       </div>
 
       {error && (
@@ -122,6 +138,17 @@ export default function ProjectsPage() {
                     >
                       <Users className="h-4 w-4" /> 멤버 관리
                     </button>
+                    {isSystemAdmin && (
+                      <button
+                        onClick={() => {
+                          setMenuId(null)
+                          setExportTarget(p)
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
+                      >
+                        <Download className="h-4 w-4" /> 내보내기
+                      </button>
+                    )}
                     {!p.personal && (p.role === 'admin' || isSystemAdmin) && (
                       <button
                         onClick={() => handleDelete(p)}
@@ -161,6 +188,10 @@ export default function ProjectsPage() {
 
       {membersProject && (
         <ProjectMembersPanel project={membersProject} onClose={() => setMembersProject(null)} />
+      )}
+
+      {exportTarget && (
+        <ExportProjectDialog project={exportTarget} onClose={() => setExportTarget(null)} />
       )}
     </div>
   )
