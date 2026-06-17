@@ -9,6 +9,7 @@ import {
   Pencil,
   Trash2,
   FolderPlus,
+  FolderInput,
   Globe,
   Lock,
   SpellCheck,
@@ -22,6 +23,8 @@ import type { FolderNode } from '../../api/folders'
 import type { SelectedFolder } from '../../stores/folderStore'
 import CreateFolderDialog from './CreateFolderDialog'
 import GlossaryDialog from './GlossaryDialog'
+import MoveToProjectModal from '../project/MoveToProjectModal'
+import { useProjectStore } from '../../stores/projectStore'
 import { initDrag } from '../../utils/dragState'
 
 function countAllFolders(nodes: FolderNode[]): number {
@@ -48,6 +51,8 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
   const [showRenameDialog, setShowRenameDialog] = useState(false)
   const [showSubfolderDialog, setShowSubfolderDialog] = useState(false)
   const [showGlossaryDialog, setShowGlossaryDialog] = useState(false)
+  const [showMoveProject, setShowMoveProject] = useState(false)
+  const currentProjectId = useProjectStore((s) => s.currentProjectId)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const isExpanded = expandedFolderIds.has(folder.id)
@@ -212,6 +217,16 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
               <button
                 onClick={(e) => {
                   e.stopPropagation()
+                  setShowMenu(false)
+                  setShowMoveProject(true)
+                }}
+                className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm hover:bg-muted transition-colors"
+              >
+                <FolderInput className="w-3.5 h-3.5" /> 프로젝트 이동
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
                   handleDelete()
                 }}
                 className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm text-red-600 hover:bg-red-50 transition-colors"
@@ -245,6 +260,19 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
       )}
       {showGlossaryDialog && (
         <GlossaryDialog folderId={folder.id} folderName={folder.name} onClose={() => setShowGlossaryDialog(false)} />
+      )}
+      {showMoveProject && currentProjectId != null && (
+        <MoveToProjectModal
+          mode="folder"
+          folderId={folder.id}
+          sourceProjectId={currentProjectId}
+          title={folder.name}
+          onClose={() => setShowMoveProject(false)}
+          onMoved={() => {
+            useFolderStore.getState().fetchFolders()
+            useMeetingStore.getState().fetchMeetings()
+          }}
+        />
       )}
     </>
   )
