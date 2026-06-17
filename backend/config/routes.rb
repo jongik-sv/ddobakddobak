@@ -143,6 +143,7 @@ Rails.application.routes.draw do
       resources :projects, only: %i[index show create update destroy] do
         member do
           get  :members
+          post :members, action: :add_member
           patch  "members/:user_id", action: :update_member, as: :update_member
           delete "members/:user_id", action: :remove_member, as: :remove_member
         end

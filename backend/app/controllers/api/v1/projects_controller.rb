@@ -4,8 +4,8 @@ module Api
       include ProjectScoped
 
       before_action :authenticate_user!
-      before_action :set_project, only: %i[show update destroy members update_member remove_member]
-      before_action :authorize_project_admin!, only: %i[update destroy update_member remove_member]
+      before_action :set_project, only: %i[show update destroy members add_member update_member remove_member]
+      before_action :authorize_project_admin!, only: %i[update destroy add_member update_member remove_member]
 
       def index
         projects = current_user.admin? ? Project.all.includes(:creator) : current_user.projects.includes(:creator)
@@ -45,6 +45,22 @@ module Api
 
       def members
         render json: { members: @project.project_memberships.includes(:user).map { |pm| member_json(pm) } }
+      end
+
+      def add_member
+        email = params[:email].to_s.strip.downcase
+        return render json: { error: "email is required" }, status: :unprocessable_entity if email.blank?
+
+        user = ::User.where("LOWER(email) = ?", email).first
+        return render json: { error: "해당 이메일의 사용자를 찾을 수 없습니다" }, status: :not_found unless user
+
+        existing = @project.project_memberships.find_by(user_id: user.id)
+        if existing
+          return render json: { member: member_json(existing) }, status: :ok
+        end
+
+        pm = @project.project_memberships.create!(user: user, role: "member")
+        render json: { member: member_json(pm) }, status: :created
       end
 
       def update_member
