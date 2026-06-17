@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/authStore'
 import { useProjectStore } from '../stores/projectStore'
 import { getInvitePreview, redeemInvite } from '../api/projects'
 import type { Project } from '../api/projects'
+import { loginWithCredentials } from '../api/auth'
 import ProjectIcon from '../components/project/ProjectIcon'
 
 export default function InviteRedeemPage() {
@@ -19,7 +20,8 @@ export default function InviteRedeemPage() {
   const [loadError, setLoadError] = useState('')
   const [loading, setLoading] = useState(true)
 
-  // 회원가입 폼
+  // 회원가입 / 로그인 폼
+  const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -97,6 +99,23 @@ export default function InviteRedeemPage() {
     }
   }
 
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email.trim() || !password) return
+    setSubmitting(true)
+    setSubmitError('')
+    try {
+      const res = await loginWithCredentials(email.trim(), password)
+      setTokens(res.access_token, res.refresh_token)
+      setUser(res.user)
+      await handleJoin()
+    } catch {
+      setSubmitError('로그인에 실패했습니다. 이메일·비밀번호를 확인해 주세요.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <div className="flex min-h-dvh items-center justify-center bg-zinc-50 px-4">
       <div className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-6 shadow-xl">
@@ -146,38 +165,87 @@ export default function InviteRedeemPage() {
               >
                 합류하기
               </button>
+            ) : authMode === 'signup' ? (
+              <>
+                <form onSubmit={handleSignup} className="space-y-3">
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="이름"
+                    className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
+                    autoFocus
+                  />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="이메일"
+                    className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="비밀번호"
+                    className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={submitting || !name.trim() || !email.trim() || !password}
+                    className="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    가입하고 합류하기
+                  </button>
+                </form>
+                <p className="mt-4 text-center text-xs text-zinc-500">
+                  이미 계정이 있으신가요?{' '}
+                  <button
+                    type="button"
+                    onClick={() => { setAuthMode('login'); setSubmitError('') }}
+                    className="font-medium text-indigo-600 hover:underline"
+                  >
+                    로그인
+                  </button>
+                </p>
+              </>
             ) : (
-              <form onSubmit={handleSignup} className="space-y-3">
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="이름"
-                  className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
-                  autoFocus
-                />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="이메일"
-                  className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="비밀번호"
-                  className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                <button
-                  type="submit"
-                  disabled={submitting || !name.trim() || !email.trim() || !password}
-                  className="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
-                >
-                  가입하고 합류하기
-                </button>
-              </form>
+              <>
+                <form onSubmit={handleLogin} className="space-y-3">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="이메일"
+                    className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
+                    autoFocus
+                  />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="비밀번호"
+                    className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={submitting || !email.trim() || !password}
+                    className="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    로그인하고 합류하기
+                  </button>
+                </form>
+                <p className="mt-4 text-center text-xs text-zinc-500">
+                  계정이 없으신가요?{' '}
+                  <button
+                    type="button"
+                    onClick={() => { setAuthMode('signup'); setSubmitError('') }}
+                    className="font-medium text-indigo-600 hover:underline"
+                  >
+                    가입
+                  </button>
+                </p>
+              </>
             )}
           </>
         )}

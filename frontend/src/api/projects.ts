@@ -76,6 +76,10 @@ export async function removeProjectMember(id: number, userId: number): Promise<v
   await apiClient.delete(`projects/${id}/members/${userId}`)
 }
 
+export async function addProjectMember(id: number, email: string): Promise<ProjectMember> {
+  return (await apiClient.post(`projects/${id}/members`, { json: { email } }).json<{ member: ProjectMember }>()).member
+}
+
 export async function getProjectInvites(id: number): Promise<ProjectInvite[]> {
   return (await apiClient.get(`projects/${id}/invites`).json<{ invites: ProjectInvite[] }>()).invites
 }
