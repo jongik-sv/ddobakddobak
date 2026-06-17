@@ -5,6 +5,7 @@ import { Tooltip } from '../components/ui/Tooltip'
 import { deleteMeeting, stopMeeting, updateMeeting, setMeetingImportant } from '../api/meetings'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
+import { paramToFolder } from '../lib/folderNav'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { BREAKPOINTS, IS_TAURI } from '../config'
 import { useMediaQuery } from '../hooks/useMediaQuery'
@@ -59,9 +60,10 @@ export default function MeetingsPage() {
     toggleShowAll,
     fetchMeetings,
     addMeeting,
+    setFolderId,
   } = useMeetingStore()
 
-  const { folders, selectedFolderId } = useFolderStore()
+  const { folders, selectedFolderId, setSelectedFolder } = useFolderStore()
 
   const [showModal, setShowModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
@@ -133,14 +135,23 @@ export default function MeetingsPage() {
     }
   }, [searchParams, setStatusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 필터 변경 시 디바운스 후 fetch (folderId는 클릭 핸들러에서 직접 fetch하므로 제외)
+  // URL의 folder 파라미터를 폴더 선택 상태에 반영(단일 소스).
+  // 브라우저 뒤로/앞으로가기 시 react-router가 searchParams를 갱신 → 부모 폴더로 복원.
+  // 실제 fetch는 아래 디바운스 effect(folderId 의존)가 담당한다.
+  useEffect(() => {
+    const target = paramToFolder(searchParams.get('folder'))
+    if (selectedFolderId !== target) setSelectedFolder(target)
+    if (folderId !== target) setFolderId(target)
+  }, [searchParams, selectedFolderId, folderId, setSelectedFolder, setFolderId])
+
+  // 필터 변경 시 디바운스 후 fetch (folderId 포함 — 폴더 선택은 URL→folderId로 반영됨)
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchMeetings(1)
       setCurrentPage(1)
     }, 300)
     return () => clearTimeout(timer)
-  }, [searchQuery, statusFilter, dateFrom, dateTo, fetchMeetings]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchQuery, statusFilter, dateFrom, dateTo, folderId, fetchMeetings]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrevPage = () => {
     if (currentPage > 1) {
@@ -416,7 +427,6 @@ export default function MeetingsPage() {
           meetings={meetings}
           searchQuery={searchQuery}
           folders={folders}
-          selectedFolderId={selectedFolderId}
           isDesktop={isDesktop}
           meetingTypeMap={meetingTypeMap}
           onFolderSelect={handleFolderSelect}
@@ -434,7 +444,6 @@ export default function MeetingsPage() {
           meetings={sortedMeetings}
           searchQuery={searchQuery}
           folders={folders}
-          selectedFolderId={selectedFolderId}
           isDesktop={isDesktop}
           meetingTypeMap={meetingTypeMap}
           sortField={sortField}

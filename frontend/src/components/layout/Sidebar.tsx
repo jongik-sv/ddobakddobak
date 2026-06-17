@@ -1,13 +1,12 @@
 import { useCallback } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, Mic, Search, Settings, Users, PanelLeftClose, LogOut, WifiOff, Trash2 } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
 import { useAuth } from '../../hooks/useAuth'
 import { getMode, IS_MOBILE, IS_TAURI } from '../../config'
-import { useFolderStore } from '../../stores/folderStore'
-import { useMeetingStore } from '../../stores/meetingStore'
 import FolderTree from '../folder/FolderTree'
 import ProjectSwitcher from '../project/ProjectSwitcher'
+import { folderPath } from '../../lib/folderNav'
 
 function navLinkClass({ isActive }: { isActive: boolean }) {
   const base = 'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors'
@@ -33,7 +32,6 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
   const { logout, user } = useAuth()
   const isServerMode = getMode() === 'server'
   const navigate = useNavigate()
-  const location = useLocation()
   // 사용자 관리: 설정 모달과 동일 게이팅(admin 또는 local 모드), 모바일 미노출
   const canManageUsers = (user?.role === 'admin' || getMode() === 'local') && !IS_MOBILE
 
@@ -62,10 +60,8 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
 
   const handleMeetingsClick = (e: React.MouseEvent) => {
     e.preventDefault()
-    useFolderStore.getState().setSelectedFolder('all')
-    useMeetingStore.getState().setFolderId('all')
-    useMeetingStore.getState().fetchMeetings(1)
-    navigate('/meetings')
+    // 전체 회의로 이동(URL이 폴더 선택의 단일 소스). 상태 반영·fetch는 MeetingsPage가 담당.
+    navigate(folderPath('all'))
     closeIfMobile()
   }
 
