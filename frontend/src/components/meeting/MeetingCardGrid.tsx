@@ -20,6 +20,7 @@ interface MeetingCardGridProps {
   onMeetingOpen: (id: number) => void
   onEdit: (m: Meeting) => void
   onMove: (m: Meeting) => void
+  onMoveProject: (m: Meeting) => void
   onDelete: (m: Meeting) => void
   onStop: (m: Meeting) => void
   /** 중요 표시 토글. 미지정이면 별 토글 숨김. 잠긴 회의는 비활성. */
@@ -38,6 +39,7 @@ export function MeetingCardGrid({
   onMeetingOpen,
   onEdit,
   onMove,
+  onMoveProject,
   onDelete,
   onStop,
   onToggleImportant,
@@ -153,6 +155,7 @@ export function MeetingCardGrid({
                 isDesktop={isDesktop}
                 onEdit={onEdit}
                 onMove={onMove}
+                onMoveProject={onMoveProject}
                 onDelete={onDelete}
                 onStop={onStop}
               />

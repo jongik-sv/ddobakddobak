@@ -25,6 +25,7 @@ interface MeetingListTableProps {
   onMeetingOpen: (id: number) => void
   onEdit: (m: Meeting) => void
   onMove: (m: Meeting) => void
+  onMoveProject: (m: Meeting) => void
   onDelete: (m: Meeting) => void
   onStop: (m: Meeting) => void
   /** 중요 표시 토글. 미지정이면 별 토글 숨김. 잠긴 회의는 비활성(update 경유라 막힘). */
@@ -46,6 +47,7 @@ export function MeetingListTable({
   onMeetingOpen,
   onEdit,
   onMove,
+  onMoveProject,
   onDelete,
   onStop,
   onToggleImportant,
@@ -186,6 +188,7 @@ export function MeetingListTable({
                   isDesktop={isDesktop}
                   onEdit={onEdit}
                   onMove={onMove}
+                  onMoveProject={onMoveProject}
                   onDelete={onDelete}
                   onStop={onStop}
                   forceHoverOpacity
