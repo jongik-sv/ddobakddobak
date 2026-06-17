@@ -213,7 +213,7 @@ export function MeetingActionButtons({
               }}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
             >
-              <Trash2 className="w-3.5 h-3.5" /> 삭제
+              <Trash2 className="w-3.5 h-3.5" /> 휴지통
             </button>
           </div>
         )}

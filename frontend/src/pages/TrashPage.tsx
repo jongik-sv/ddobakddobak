@@ -6,6 +6,7 @@ import {
   emptyTrash,
   type TrashItem,
 } from '../api/trash'
+import { confirmDialog } from '../lib/confirmDialog'
 
 const TYPE_LABEL: Record<string, string> = {
   meeting: '회의',
@@ -36,13 +37,13 @@ export default function TrashPage() {
   }
 
   const onPurge = async (it: TrashItem) => {
-    if (!window.confirm('영구 삭제하시겠습니까? 되돌릴 수 없습니다.')) return
+    if (!(await confirmDialog('영구 삭제하시겠습니까? 되돌릴 수 없습니다.', { title: '영구 삭제', kind: 'warning' }))) return
     await purgeTrashItem(it.type, it.id)
     void reload()
   }
 
   const onEmpty = async () => {
-    if (!window.confirm('휴지통을 비우시겠습니까? 모든 항목이 영구 삭제됩니다.')) return
+    if (!(await confirmDialog('휴지통을 비우시겠습니까? 모든 항목이 영구 삭제됩니다.', { title: '휴지통 비우기', kind: 'warning' }))) return
     await emptyTrash()
     void reload()
   }

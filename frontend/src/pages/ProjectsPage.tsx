@@ -12,6 +12,7 @@ import ProjectIcon from '../components/project/ProjectIcon'
 import ProjectDialog from '../components/project/ProjectDialog'
 import ProjectMembersPanel from '../components/project/ProjectMembersPanel'
 import ExportProjectDialog from '../components/project/ExportProjectDialog'
+import { confirmDialog } from '../lib/confirmDialog'
 import ImportProjectButton from '../components/project/ImportProjectButton'
 
 export default function ProjectsPage() {
@@ -68,7 +69,7 @@ export default function ProjectsPage() {
 
   const handleDelete = async (p: Project) => {
     setMenuId(null)
-    if (!window.confirm(`'${p.name}' 프로젝트를 휴지통으로 이동합니다. 계속할까요?`)) return
+    if (!(await confirmDialog(`'${p.name}' 프로젝트를 휴지통으로 이동합니다. 계속할까요?`, { title: '휴지통으로 이동', kind: 'warning' }))) return
     setError('')
     try {
       await removeProject(p.id)
@@ -154,7 +155,7 @@ export default function ProjectsPage() {
                         onClick={() => handleDelete(p)}
                         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
                       >
-                        <Trash2 className="h-4 w-4" /> 삭제
+                        <Trash2 className="h-4 w-4" /> 휴지통
                       </button>
                     )}
                   </div>

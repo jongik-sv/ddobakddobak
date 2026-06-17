@@ -26,6 +26,7 @@ import GlossaryDialog from './GlossaryDialog'
 import MoveToProjectModal from '../project/MoveToProjectModal'
 import { useProjectStore } from '../../stores/projectStore'
 import { initDrag } from '../../utils/dragState'
+import { confirmDialog } from '../../lib/confirmDialog'
 
 function countAllFolders(nodes: FolderNode[]): number {
   return nodes.reduce((sum, n) => sum + 1 + countAllFolders(n.children), 0)
@@ -90,6 +91,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
 
   const handleDelete = async () => {
     setShowMenu(false)
+    if (!(await confirmDialog(`'${folder.name}' 폴더를 휴지통으로 이동합니다. 폴더 안의 회의·하위폴더도 함께 이동합니다. 계속할까요?`, { title: '휴지통으로 이동', kind: 'warning' }))) return
     await removeFolder(folder.id)
   }
 
@@ -231,7 +233,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
                 }}
                 className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm text-red-600 hover:bg-red-50 transition-colors"
               >
-                <Trash2 className="w-3.5 h-3.5" /> 삭제
+                <Trash2 className="w-3.5 h-3.5" /> 휴지통
               </button>
             </div>
           )}
