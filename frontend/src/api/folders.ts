@@ -72,3 +72,12 @@ export async function moveMeetingsToFolder(
     .post('meetings/move_to_folder', { json: { meeting_ids: meetingIds, folder_id: folderId } })
     .json()
 }
+
+export async function moveFolderToProject(
+  folderId: number,
+  targetProjectId: number,
+): Promise<{ moved_folders: number; moved_meetings: number }> {
+  return apiClient
+    .post(`folders/${folderId}/move_to_project`, { json: { target_project_id: targetProjectId } })
+    .json()
+}

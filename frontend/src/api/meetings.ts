@@ -556,6 +556,15 @@ export async function claimHost(meetingId: number): Promise<Participant[]> {
   return res.participants
 }
 
+export async function moveMeetingsToProject(
+  meetingIds: number[],
+  targetProjectId: number,
+): Promise<{ moved: number }> {
+  return apiClient
+    .post('meetings/move_to_project', { json: { meeting_ids: meetingIds, target_project_id: targetProjectId } })
+    .json()
+}
+
 export async function exportMeetingData(
   meetingId: number,
   options: ExportOptions,
