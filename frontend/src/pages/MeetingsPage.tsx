@@ -6,7 +6,7 @@ import { deleteMeeting, stopMeeting, updateMeeting, setMeetingImportant } from '
 import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
-import { BREAKPOINTS } from '../config'
+import { BREAKPOINTS, IS_TAURI } from '../config'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import type { Meeting } from '../api/meetings'
@@ -183,11 +183,20 @@ export default function MeetingsPage() {
   }, [fetchMeetings, currentPage])
 
   const handleDeleteMeeting = useCallback(async (meeting: Meeting) => {
-    const { confirm } = await import('@tauri-apps/plugin-dialog')
-    const ok = await confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`, { title: '회의 삭제', kind: 'warning' })
+    let ok: boolean
+    if (IS_TAURI) {
+      const { confirm } = await import('@tauri-apps/plugin-dialog')
+      ok = await confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`, { title: '회의 삭제', kind: 'warning' })
+    } else {
+      ok = window.confirm(`"${meeting.title}" 회의를 삭제하시겠습니까?`)
+    }
     if (!ok) return
-    await deleteMeeting(meeting.id)
-    fetchMeetings(currentPage)
+    try {
+      await deleteMeeting(meeting.id)
+      fetchMeetings(currentPage)
+    } catch (e) {
+      console.error('[deleteMeeting] 실패:', e)
+    }
   }, [fetchMeetings, currentPage])
 
   // 중요 표시 토글: setMeetingImportant(update 경유) 후 목록 갱신.
