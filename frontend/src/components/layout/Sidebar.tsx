@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, Mic, Search, Settings, Users, PanelLeftClose, LogOut, WifiOff, Trash2 } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
@@ -27,6 +28,8 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
   const openUserMgmt = useUiStore((s) => s.openUserMgmt)
   const sidebarOpen = useUiStore((s) => s.sidebarOpen)
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
+  const sidebarWidth = useUiStore((s) => s.sidebarWidth)
+  const setSidebarWidth = useUiStore((s) => s.setSidebarWidth)
   const { logout, user } = useAuth()
   const isServerMode = getMode() === 'server'
   const navigate = useNavigate()
@@ -38,6 +41,24 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
   const closeIfMobile = () => {
     if (mobile) onClose?.()
   }
+
+  // 우측 경계 드래그로 사이드바 폭 조절(데스크톱). 폭은 uiStore가 localStorage에 영속.
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = useUiStore.getState().sidebarWidth
+    const onMove = (ev: MouseEvent) => setSidebarWidth(startW + (ev.clientX - startX))
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [setSidebarWidth])
 
   const handleMeetingsClick = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -52,7 +73,17 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
   if (!mobile && !sidebarOpen) return null
 
   return (
-    <aside className="flex flex-col w-60 min-h-0 h-full bg-sidebar border-r border-border shrink-0">
+    <aside
+      className={`relative flex flex-col min-h-0 h-full bg-sidebar border-r border-border shrink-0 ${mobile ? 'w-60' : ''}`}
+      style={mobile ? undefined : { width: sidebarWidth }}
+    >
+      {!mobile && (
+        <div
+          onMouseDown={startResize}
+          className="absolute top-0 right-0 z-20 h-full w-1.5 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
+          title="드래그하여 사이드바 폭 조절"
+        />
+      )}
       <div className="flex items-center justify-between min-h-14 px-4 border-b border-border shrink-0 pt-safe">
         <div className="flex-1 min-w-0 mr-2"><ProjectSwitcher /></div>
         <button
