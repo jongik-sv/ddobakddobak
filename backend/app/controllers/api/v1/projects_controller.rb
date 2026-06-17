@@ -8,7 +8,7 @@ module Api
       before_action :authorize_project_admin!, only: %i[update destroy update_member remove_member]
 
       def index
-        projects = current_user.admin? ? Project.all : current_user.projects
+        projects = current_user.admin? ? Project.all.includes(:creator) : current_user.projects.includes(:creator)
         render json: { projects: projects.distinct.map { |p| project_json(p) } }
       end
 
@@ -85,6 +85,7 @@ module Api
           id: p.id, name: p.name, description: p.description,
           icon_type: p.icon_type, icon_value: p.icon_value, color: p.color,
           personal: p.personal,
+          owner: p.creator&.name,
           role: p.project_memberships.find_by(user_id: current_user.id)&.role,
           member_count: p.project_memberships.count,
           meeting_count: p.meetings.count

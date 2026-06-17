@@ -6,6 +6,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { useFolderStore } from '../stores/folderStore'
 import { useMeetingStore } from '../stores/meetingStore'
 import type { Project } from '../api/projects'
+import { projectDisplayName } from '../api/projects'
 import ProjectIcon from '../components/project/ProjectIcon'
 import ProjectDialog from '../components/project/ProjectDialog'
 import ProjectMembersPanel from '../components/project/ProjectMembersPanel'
@@ -83,7 +84,7 @@ export default function ProjectsPage() {
             <div className="flex items-start gap-3">
               <ProjectIcon project={p} size={56} />
               <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold text-zinc-900">{p.name}</p>
+                <p className="truncate font-semibold text-zinc-900">{projectDisplayName(p)}</p>
                 <p className="mt-0.5 text-xs text-zinc-500">
                   멤버 {p.member_count} · 회의 {p.meeting_count}
                 </p>

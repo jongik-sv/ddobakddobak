@@ -5,6 +5,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { useFolderStore } from '../stores/folderStore'
 import { useMeetingStore } from '../stores/meetingStore'
 import type { Project } from '../api/projects'
+import { projectDisplayName } from '../api/projects'
 import ProjectIcon from '../components/project/ProjectIcon'
 import ProjectDialog from '../components/project/ProjectDialog'
 
@@ -64,7 +65,7 @@ export default function ProjectSelectLanding() {
               }`}
             >
               <ProjectIcon project={p} size={22} />
-              <span className="min-w-0 flex-1 truncate">{p.name}</span>
+              <span className="min-w-0 flex-1 truncate">{projectDisplayName(p)}</span>
               {p.id === highlightId && <Star className="h-3.5 w-3.5 shrink-0 text-indigo-400" />}
             </button>
           ))}
@@ -107,7 +108,7 @@ export default function ProjectSelectLanding() {
                   <div className="flex w-full items-start gap-3">
                     <ProjectIcon project={p} size={56} />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-zinc-100">{p.name}</p>
+                      <p className="truncate font-semibold text-zinc-100">{projectDisplayName(p)}</p>
                       <p className="mt-0.5 text-xs text-zinc-500">멤버 {p.member_count} · 회의 {p.meeting_count}</p>
                     </div>
                     {p.id === highlightId && <Star className="h-4 w-4 shrink-0 text-indigo-400" />}

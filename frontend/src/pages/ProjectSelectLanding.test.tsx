@@ -12,6 +12,8 @@ vi.mock('../api/projects', () => ({
   createProject: vi.fn(),
   updateProject: vi.fn(),
   deleteProject: vi.fn(),
+  projectDisplayName: (p: { name: string; personal: boolean; owner: string | null }) =>
+    p.personal ? `${p.owner ?? '알 수 없음'}의 회의` : p.name,
 }))
 // 진입 시 폴더/회의 store는 네트워크 호출 → 목으로 차단.
 vi.mock('../stores/folderStore', () => ({
@@ -30,7 +32,7 @@ vi.mock('../components/project/ProjectDialog', () => ({
 function makeProject(o: Partial<Project> = {}): Project {
   return {
     id: 1, name: 'P', description: null, icon_type: null, icon_value: null,
-    color: null, personal: false, role: 'admin', member_count: 1, meeting_count: 0, ...o,
+    color: null, personal: false, role: 'admin', member_count: 1, meeting_count: 0, owner: null, ...o,
   }
 }
 
@@ -83,10 +85,10 @@ describe('ProjectSelectLanding', () => {
     // 비개인(id9)이 fallback 디폴트 → 개인(id3)을 클릭해 "클릭이 선택을 바꿨음"을 입증.
     mockGetProjects.mockResolvedValue([
       makeProject({ id: 9, name: '기본', personal: false }),
-      makeProject({ id: 3, name: '개인', personal: true }),
+      makeProject({ id: 3, name: '개인', personal: true, owner: '홍길동' }),
     ])
     renderLanding()
-    const items = await screen.findAllByText('개인')
+    const items = await screen.findAllByText('홍길동의 회의')
     fireEvent.click(items[0])
     expect(useProjectStore.getState().currentProjectId).toBe(3)
     expect(screen.getByText('MEETINGS_SENTINEL')).toBeInTheDocument()

@@ -22,6 +22,7 @@ function makeProject(o: Partial<Project> = {}): Project {
     role: 'admin',
     member_count: 1,
     meeting_count: 0,
+    owner: null,
     ...o,
   }
 }

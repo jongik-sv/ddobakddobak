@@ -5,6 +5,7 @@ import { useProjectStore } from '../../stores/projectStore'
 import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
 import ProjectIcon from './ProjectIcon'
+import { projectDisplayName } from '../../api/projects'
 
 /**
  * 사이드바 상단 프로젝트 스위처. 현재 프로젝트(아이콘+이름) + 드롭다운으로 전환.
@@ -65,7 +66,7 @@ export default function ProjectSwitcher() {
           </span>
         )}
         <span className="flex-1 min-w-0 truncate text-sm font-semibold text-zinc-900">
-          {current?.name ?? '프로젝트 선택'}
+          {current ? projectDisplayName(current) : '프로젝트 선택'}
         </span>
         <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" />
       </button>
@@ -82,7 +83,7 @@ export default function ProjectSwitcher() {
               }`}
             >
               <ProjectIcon project={p} size={22} />
-              <span className="flex-1 min-w-0 truncate">{p.name}</span>
+              <span className="flex-1 min-w-0 truncate">{projectDisplayName(p)}</span>
             </button>
           ))}
 

@@ -35,6 +35,19 @@ RSpec.describe "Api::V1::Projects", type: :request do
         personal_id = user.projects.find_by(personal: true).id
         expect(projects.map { |p| p["id"] }).to eq([personal_id])
       end
+
+      it "프로젝트 JSON에 owner(creator 이름)를 포함한다" do
+        project = create(:project, creator: user)
+        create(:project_membership, user: user, project: project, role: "admin")
+
+        get "/api/v1/projects"
+
+        expect(response).to have_http_status(:ok)
+        projects = response.parsed_body["projects"]
+        personal_id = user.projects.find_by(personal: true).id
+        shared = projects.reject { |p| p["id"] == personal_id }
+        expect(shared.first["owner"]).to eq(user.name)
+      end
     end
   end
 

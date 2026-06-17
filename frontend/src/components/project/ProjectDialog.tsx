@@ -32,6 +32,7 @@ export default function ProjectDialog({ project, onClose, onSaved }: ProjectDial
     icon_value: icon.icon_value,
     color: icon.color,
     personal: project?.personal ?? false,
+    owner: project?.owner ?? null,
     role: project?.role ?? 'admin',
     member_count: project?.member_count ?? 1,
     meeting_count: project?.meeting_count ?? 0,

@@ -13,6 +13,11 @@ export interface Project {
   role: 'admin' | 'member' | null
   member_count: number
   meeting_count: number
+  owner: string | null
+}
+
+export function projectDisplayName(p: Pick<Project, 'name' | 'personal' | 'owner'>): string {
+  return p.personal ? `${p.owner ?? '알 수 없음'}의 회의` : p.name
 }
 
 export interface ProjectMember {
