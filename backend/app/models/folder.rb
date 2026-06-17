@@ -43,6 +43,20 @@ class Folder < ApplicationRecord
     records
   end
 
+  # 자신 + 모든 자손 폴더 id (루트 포함). BFS, seen 사이클 가드.
+  def subtree_ids
+    result = []
+    seen = {}
+    queue = [self]
+    while (node = queue.shift)
+      next if seen[node.id]
+      seen[node.id] = true
+      result << node.id
+      queue.concat(node.children.to_a)
+    end
+    result
+  end
+
   # 타인 열람 가능 폴더 = 자신과 모든 조상이 shared일 때만(상속·폴더 우선).
   # 조상 중 하나라도 비공개면 false → 이 폴더와 모든 하위가 가려진다.
   # parent_id 순환(사이클)이 있어도 visited 가드로 무한루프 없이 종료.
