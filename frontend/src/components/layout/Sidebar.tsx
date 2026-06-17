@@ -77,10 +77,6 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
           <Search className="w-4 h-4" />
           검색
         </NavLink>
-        <NavLink to="/trash" className={navLinkClass} onClick={closeIfMobile}>
-          <Trash2 className="w-4 h-4" />
-          휴지통
-        </NavLink>
         {/* 오프라인(온디바이스) 회의 전용 진입 — Android(Tauri 모바일)에서만. 전용 홈(/local-meetings). */}
         {IS_TAURI && IS_MOBILE && (
           <NavLink to="/local-meetings" className={navLinkClass} onClick={closeIfMobile}>
@@ -91,8 +87,13 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
         <div className={`pl-2 ${isMeetingsPage ? '' : 'hidden'}`}>
           <FolderTree />
         </div>
-        <button
-          onClick={() => { openSettings(); closeIfMobile() }}
+        <div className="!mt-3 pt-3 border-t border-border space-y-1">
+          <NavLink to="/trash" className={navLinkClass} onClick={closeIfMobile}>
+            <Trash2 className="w-4 h-4" />
+            휴지통
+          </NavLink>
+          <button
+            onClick={() => { openSettings(); closeIfMobile() }}
           className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
         >
           <Settings className="w-4 h-4" />
@@ -107,6 +108,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
             사용자 관리
           </button>
         )}
+        </div>
       </nav>
       {isServerMode && (
         <div className="px-3 py-3 border-t border-border shrink-0">
