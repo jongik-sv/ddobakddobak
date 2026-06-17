@@ -195,6 +195,26 @@ module Api
         render json: { updated: meetings.count }
       end
 
+      def move_to_project
+        meeting_ids = Array(params[:meeting_ids]).reject(&:blank?)
+        return render json: { error: "meeting_ids is required" }, status: :unprocessable_entity if meeting_ids.blank?
+
+        # 대상 프로젝트 멤버십/admin override 확인(require_project! 재사용: 실패 시 render 후 nil).
+        target = require_project!(params[:target_project_id])
+        return unless target
+
+        # 잠긴 회의가 하나라도 포함되면 이동 차단(move_to_folder 패턴, 부분 적용 방지).
+        if Meeting.where(id: meeting_ids).where.not(locked_at: nil).exists?
+          return render json: { error: "잠긴 회의입니다. 잠금을 해제한 뒤 다시 시도하세요." }, status: :forbidden
+        end
+
+        # update_all 은 콜백·인가를 우회하므로 editable_by 스코프가 유일한 방어선이다.
+        # folder_id: nil — 원본 폴더는 대상 프로젝트에 없으므로 분리(최상위 안착).
+        meetings = Meeting.editable_by(current_user).where(id: meeting_ids)
+        meetings.update_all(project_id: target.id, folder_id: nil)
+        render json: { moved: meetings.count }
+      end
+
       def destroy
         # 삭제는 소유자/admin 전용 (라이브 host 라도 남의 회의를 삭제할 수 없다).
         return render json: { error: "삭제 권한이 없습니다" }, status: :forbidden unless @meeting.editable_by?(current_user)

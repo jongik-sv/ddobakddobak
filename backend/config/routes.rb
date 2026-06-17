@@ -33,6 +33,7 @@ Rails.application.routes.draw do
         collection do
           post :upload_audio
           post :move_to_folder
+          post :move_to_project
           post :join, to: "meeting_shares#join"
         end
         member do
