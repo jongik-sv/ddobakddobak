@@ -33,8 +33,10 @@ export default function ProjectSelectLanding() {
 
   if (hasStored) return <Navigate to="/meetings" replace />
 
-  // 디폴트 강조 = 비개인(「기본」) 우선, 없으면 첫 번째. 자동진입 아님 — 시각 제안만.
-  const highlightId = (projects.find((p) => !p.personal) ?? projects[0])?.id ?? null
+  // 내가 멤버인(role≠null) 프로젝트만 — admin은 index가 전체를 주지만, 작업 컨텍스트 선택엔 본인 멤버 것만 노출.
+  const myProjects = projects.filter((p) => p.role != null)
+  // 디폴트 강조 = 멤버인 비개인(「기본」) 우선, 없으면 첫 번째. 자동진입 아님 — 시각 제안만.
+  const highlightId = (myProjects.find((p) => !p.personal) ?? myProjects[0])?.id ?? null
 
   const enter = (p: Project) => {
     setCurrentProject(p.id)
@@ -51,7 +53,7 @@ export default function ProjectSelectLanding() {
       <aside className="hidden w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 p-4 md:flex">
         <h2 className="mb-4 px-2 text-sm font-semibold text-zinc-400">프로젝트</h2>
         <nav className="flex-1 space-y-1 overflow-y-auto">
-          {projects.map((p) => (
+          {myProjects.map((p) => (
             <button
               key={p.id}
               type="button"
@@ -88,11 +90,11 @@ export default function ProjectSelectLanding() {
             </div>
           )}
 
-          {isLoading && projects.length === 0 ? (
+          {isLoading && myProjects.length === 0 ? (
             <p className="text-sm text-zinc-500">불러오는 중…</p>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {projects.map((p) => (
+              {myProjects.map((p) => (
                 <button
                   key={p.id}
                   type="button"

@@ -53,4 +53,13 @@ describe('projectStore', () => {
     expect(useProjectStore.getState().currentProjectId).toBe(7)
     expect(localStorage.getItem('current_project_id')).toBe('7')
   })
+
+  it('비멤버(role=null) 비개인 프로젝트보다 멤버인 비개인을 우선 선택', async () => {
+    mockGetProjects.mockResolvedValue([
+      makeProject({ id: 1, personal: false, role: null }),   // 레거시 더미(비멤버)
+      makeProject({ id: 6, personal: false, role: 'admin' }), // 「기본」(멤버)
+    ])
+    await useProjectStore.getState().fetchProjects()
+    expect(useProjectStore.getState().currentProjectId).toBe(6)
+  })
 })

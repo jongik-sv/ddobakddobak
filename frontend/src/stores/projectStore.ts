@@ -40,7 +40,9 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
       const projects = await getProjects()
       let current = get().currentProjectId
       if (!current || !projects.some((p) => p.id === current)) {
-        current = (projects.find((p) => !p.personal) ?? projects[0])?.id ?? null
+        // 멤버인(role≠null) 비개인 프로젝트(예: 「기본」) 우선 → 멤버 아무거나 → 그래도 없으면 첫 항목.
+        const mine = projects.filter((p) => p.role != null)
+        current = ((mine.find((p) => !p.personal) ?? mine[0]) ?? projects[0])?.id ?? null
         if (current) localStorage.setItem(CURRENT_KEY, String(current))
       }
       set({ projects, currentProjectId: current, isLoading: false })

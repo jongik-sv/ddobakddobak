@@ -100,4 +100,17 @@ describe('ProjectSelectLanding', () => {
     fireEvent.click(screen.getByText('DIALOG_SAVE'))
     expect(screen.getByText('MEETINGS_SENTINEL')).toBeInTheDocument()
   })
+
+  it('비멤버(role=null) 프로젝트는 목록에서 제외하고 멤버 비개인을 강조', async () => {
+    mockGetProjects.mockResolvedValue([
+      makeProject({ id: 1, name: '더미', personal: false, role: null }),
+      makeProject({ id: 6, name: '기본', personal: false, role: 'admin' }),
+      makeProject({ id: 9, name: '내회의', personal: true, role: 'admin' }),
+    ])
+    renderLanding()
+    await screen.findAllByText('기본')
+    expect(screen.queryByText('더미')).not.toBeInTheDocument()
+    const highlighted = document.querySelector('[aria-current="true"]')
+    expect(highlighted?.textContent).toContain('기본')
+  })
 })
