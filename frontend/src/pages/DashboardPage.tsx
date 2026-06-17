@@ -5,6 +5,7 @@ import { getMeetings } from '../api/meetings'
 import type { Meeting } from '../api/meetings'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { useMeetingStore } from '../stores/meetingStore'
+import { useProjectStore } from '../stores/projectStore'
 import { CreateMeetingModal } from '../components/meeting/CreateMeetingModal'
 import { DashboardStatsSkeleton, DashboardMeetingsSkeleton } from '../components/ui/Skeleton'
 import { IS_TAURI, IS_MOBILE } from '../config'
@@ -71,14 +72,17 @@ function StatusBadge({ status }: { status: string }) {
 type StatusCounts = Partial<Record<Meeting['status'], number>>
 
 // 모듈 레벨 캐시 — 페이지 전환 시 이전 데이터 즉시 표시
-let dashboardCache: { meetings: Meeting[]; totalCount: number; statusCounts: StatusCounts } | null = null
+let dashboardCache: { projectId: number | null; meetings: Meeting[]; totalCount: number; statusCounts: StatusCounts } | null = null
 
 export default function DashboardPage() {
   const navigate = useNavigate()
-  const [meetings, setMeetings] = useState<Meeting[]>(dashboardCache?.meetings ?? [])
-  const [totalCount, setTotalCount] = useState(dashboardCache?.totalCount ?? 0)
-  const [statusCounts, setStatusCounts] = useState<StatusCounts>(dashboardCache?.statusCounts ?? {})
-  const [isLoading, setIsLoading] = useState(!dashboardCache)
+  const currentProjectId = useProjectStore((s) => s.currentProjectId)
+  // 대시보드 캐시는 프로젝트 단위 — 다른 프로젝트의 캐시는 초기 표시에 쓰지 않는다(스코핑 누수 방지).
+  const cached = dashboardCache?.projectId === currentProjectId ? dashboardCache : null
+  const [meetings, setMeetings] = useState<Meeting[]>(cached?.meetings ?? [])
+  const [totalCount, setTotalCount] = useState(cached?.totalCount ?? 0)
+  const [statusCounts, setStatusCounts] = useState<StatusCounts>(cached?.statusCounts ?? {})
+  const [isLoading, setIsLoading] = useState(!cached)
   const [showModal, setShowModal] = useState(false)
   // 오프라인(온디바이스) 회의 건수 — Android에서만. null이면 통계 카드 미표시(비대상 플랫폼).
   const [offlineCount, setOfflineCount] = useState<number | null>(null)
@@ -87,18 +91,18 @@ export default function DashboardPage() {
   const addMeeting = useMeetingStore((s) => s.addMeeting)
 
   useEffect(() => {
-    if (!dashboardCache) setIsLoading(true)
-    getMeetings({ page: 1, per: 10 })
+    if (dashboardCache?.projectId !== currentProjectId) setIsLoading(true)
+    getMeetings({ page: 1, per: 10, project_id: currentProjectId ?? undefined })
       .then((data) => {
         const counts = data.meta.status_counts ?? {}
         setMeetings(data.meetings)
         setTotalCount(data.meta.total)
         setStatusCounts(counts)
-        dashboardCache = { meetings: data.meetings, totalCount: data.meta.total, statusCounts: counts }
+        dashboardCache = { projectId: currentProjectId, meetings: data.meetings, totalCount: data.meta.total, statusCounts: counts }
       })
       .catch(() => {})
       .finally(() => setIsLoading(false))
-  }, [])
+  }, [currentProjectId])
 
   // 오프라인 회의 건수(Android만). 로컬 fs 목록 길이.
   useEffect(() => {

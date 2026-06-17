@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { useProjectStore } from '../stores/projectStore'
 import DashboardPage from './DashboardPage'
 
 const { mockGetMeetings } = vi.hoisted(() => ({
@@ -88,5 +89,19 @@ describe('DashboardPage 반응형 패딩 (TSK-03-03)', () => {
     // 통계 카드 라벨 "오프라인 회의" + listLocal 3건 카운트
     expect(await screen.findByText('오프라인 회의')).toBeInTheDocument()
     expect(screen.getByText('3')).toBeInTheDocument()
+  })
+})
+
+describe('DashboardPage 프로젝트 스코핑', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetMeetings.mockResolvedValue({ meetings: [], meta: { total: 0, status_counts: {} } })
+  })
+
+  it('현재 프로젝트로 스코프해 회의를 조회한다(project_id 전달)', async () => {
+    useProjectStore.setState({ currentProjectId: 7 })
+    render(<MemoryRouter><DashboardPage /></MemoryRouter>)
+    await waitFor(() => expect(mockGetMeetings).toHaveBeenCalled())
+    expect(mockGetMeetings).toHaveBeenCalledWith(expect.objectContaining({ project_id: 7 }))
   })
 })
