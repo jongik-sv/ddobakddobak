@@ -20,6 +20,14 @@ export function projectDisplayName(p: Pick<Project, 'name' | 'personal' | 'owner
   return p.personal ? `${p.owner ?? '알 수 없음'}의 회의` : p.name
 }
 
+/**
+ * admin은 projects#index에서 전체 프로젝트를 받지만, 내가 멤버가 아닌(role==null) 빈(meeting_count===0)
+ * 개인 프로젝트("XXX의 회의")는 화면에서 숨긴다. 내 개인·내용 있는 것·팀 프로젝트는 표시.
+ */
+export function isHiddenClutterProject(p: Pick<Project, 'personal' | 'role' | 'meeting_count'>): boolean {
+  return p.personal && p.role == null && p.meeting_count === 0
+}
+
 export interface ProjectMember {
   user_id: number
   name: string

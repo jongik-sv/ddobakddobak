@@ -6,7 +6,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { useFolderStore } from '../stores/folderStore'
 import { useMeetingStore } from '../stores/meetingStore'
 import type { Project } from '../api/projects'
-import { projectDisplayName } from '../api/projects'
+import { projectDisplayName, isHiddenClutterProject } from '../api/projects'
 import ProjectIcon from '../components/project/ProjectIcon'
 import ProjectDialog from '../components/project/ProjectDialog'
 import ProjectMembersPanel from '../components/project/ProjectMembersPanel'
@@ -15,6 +15,7 @@ export default function ProjectsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const projects = useProjectStore((s) => s.projects)
+  const visibleProjects = projects.filter((p) => !isHiddenClutterProject(p))
   const fetchProjects = useProjectStore((s) => s.fetchProjects)
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject)
   const removeProject = useProjectStore((s) => s.removeProject)
@@ -75,7 +76,7 @@ export default function ProjectsPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {projects.map((p) => (
+        {visibleProjects.map((p) => (
           <div
             key={p.id}
             className="group relative h-[160px] cursor-pointer rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md md:h-[250px]"

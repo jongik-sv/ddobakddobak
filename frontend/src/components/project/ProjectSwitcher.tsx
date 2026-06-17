@@ -5,7 +5,7 @@ import { useProjectStore } from '../../stores/projectStore'
 import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
 import ProjectIcon from './ProjectIcon'
-import { projectDisplayName } from '../../api/projects'
+import { projectDisplayName, isHiddenClutterProject } from '../../api/projects'
 
 /**
  * 사이드바 상단 프로젝트 스위처. 현재 프로젝트(아이콘+이름) + 드롭다운으로 전환.
@@ -34,6 +34,7 @@ export default function ProjectSwitcher() {
   }, [open])
 
   const current = projects.find((p) => p.id === currentProjectId) ?? null
+  const visibleProjects = projects.filter((p) => !isHiddenClutterProject(p))
 
   const handleSelect = (id: number) => {
     setOpen(false)
@@ -73,7 +74,7 @@ export default function ProjectSwitcher() {
 
       {open && (
         <div className="absolute left-0 right-0 z-50 mt-1 max-h-80 overflow-y-auto rounded-md border border-zinc-200 bg-white py-1 text-zinc-900 shadow-lg">
-          {projects.map((p) => (
+          {visibleProjects.map((p) => (
             <button
               key={p.id}
               type="button"
