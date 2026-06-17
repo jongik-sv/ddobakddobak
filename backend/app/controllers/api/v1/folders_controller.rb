@@ -4,8 +4,8 @@ module Api
       include ProjectScoped
 
       before_action :authenticate_user!
-      before_action :set_folder, only: %i[update destroy]
-      before_action :authorize_folder_edit!, only: %i[update destroy]
+      before_action :set_folder, only: %i[update destroy move_to_project]
+      before_action :authorize_folder_edit!, only: %i[update destroy move_to_project]
 
       def index
         project = require_project!(params[:project_id])
@@ -74,6 +74,24 @@ module Api
         @folder.meetings.update_all(folder_id: parent_id)
         @folder.destroy
         head :no_content
+      end
+
+      def move_to_project
+        target = require_project!(params[:target_project_id])
+        return unless target
+
+        if target.id == @folder.project_id
+          return render json: { error: "이미 해당 프로젝트의 폴더입니다" }, status: :unprocessable_entity
+        end
+
+        ids = @folder.subtree_ids
+        moved_meetings = 0
+        Folder.transaction do
+          Folder.where(id: ids).update_all(project_id: target.id)
+          @folder.update_column(:parent_id, nil) # 루트만 최상위 안착, 내부구조 보존
+          moved_meetings = Meeting.where(folder_id: ids).update_all(project_id: target.id)
+        end
+        render json: { moved_folders: ids.size, moved_meetings: moved_meetings }
       end
 
       private

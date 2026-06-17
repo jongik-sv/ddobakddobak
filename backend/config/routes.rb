@@ -106,6 +106,9 @@ Rails.application.routes.draw do
 
       # Folders
       resources :folders, only: %i[index create update destroy] do
+        member do
+          post :move_to_project
+        end
         resources :glossary_entries, only: %i[index create], controller: "glossary_entries"
       end
       resources :glossary_entries, only: %i[update destroy]
