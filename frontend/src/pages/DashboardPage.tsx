@@ -92,7 +92,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (dashboardCache?.projectId !== currentProjectId) setIsLoading(true)
-    getMeetings({ page: 1, per: 10, project_id: currentProjectId ?? undefined })
+    // show_all: 대시보드 통계·최근 회의는 중요 플래그와 무관하게 전체 회의를 집계한다.
+    getMeetings({ page: 1, per: 10, project_id: currentProjectId ?? undefined, show_all: true })
       .then((data) => {
         const counts = data.meta.status_counts ?? {}
         setMeetings(data.meetings)
