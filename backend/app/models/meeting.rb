@@ -106,10 +106,10 @@ class Meeting < ApplicationRecord
 
   scope :accessible_by, ->(user) {
     if user.admin?
-      all
+      kept
     else
       member_pids = ProjectMembership.where(user_id: user.id).select(:project_id)
-      base = where(project_id: member_pids)
+      base = kept.where(project_id: member_pids)
       visible_shared = base.where(shared: true).where(
         "meetings.folder_id IS NULL OR meetings.folder_id IN (?)",
         Folder.visible_folder_ids

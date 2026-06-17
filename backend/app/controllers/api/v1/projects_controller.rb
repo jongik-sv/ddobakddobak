@@ -8,7 +8,7 @@ module Api
       before_action :authorize_project_admin!, only: %i[update destroy add_member update_member remove_member]
 
       def index
-        projects = current_user.admin? ? Project.all.includes(:creator) : current_user.projects.includes(:creator)
+        projects = current_user.admin? ? Project.kept.includes(:creator) : current_user.projects.kept.includes(:creator)
         render json: { projects: projects.distinct.map { |p| project_json(p) } }
       end
 

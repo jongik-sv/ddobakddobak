@@ -8,6 +8,8 @@ module MeetingLookup
   rescue ActiveRecord::RecordNotFound
     render json: { error: "Meeting not found" }, status: :not_found
   else
+    # 휴지통(소프트 삭제)된 회의는 일반 경로에서 존재하지 않는 것으로 취급(404).
+    return render(json: { error: "Meeting not found" }, status: :not_found) if @meeting.trashed?
     authorize_meeting_read!
   end
 

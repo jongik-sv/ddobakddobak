@@ -29,7 +29,7 @@ class SearchService
 
   def accessible_meeting_ids
     @accessible_meeting_ids ||= begin
-      scope = Meeting.all
+      scope = Meeting.kept
       scope = scope.where(folder_id: @filters[:folder_id])         if @filters[:folder_id].present?
       scope = scope.where(status: @filters[:status])               if @filters[:status].present?
       scope = scope.where("meetings.created_at >= ?", @filters[:date_from]) if @filters[:date_from].present?

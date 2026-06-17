@@ -180,13 +180,12 @@ RSpec.describe "Api::V1::Meetings 공유/비공개", type: :request do
       expect(own_shared.reload.title).to eq("새 제목")
     end
 
-    it "소유자는 본인 회의를 DELETE 할 수 있다(204)" do
+    it "소유자는 본인 회의를 DELETE(소프트 삭제) 할 수 있다(204)" do
       login_as(user)
       target = create(:meeting, creator: user)
-      expect {
-        delete "/api/v1/meetings/#{target.id}"
-      }.to change(Meeting, :count).by(-1)
+      delete "/api/v1/meetings/#{target.id}"
       expect(response).to have_http_status(:no_content)
+      expect(target.reload.trashed?).to be true
     end
 
     it "admin 은 타인 회의를 PATCH 할 수 있다(200)" do
@@ -196,13 +195,12 @@ RSpec.describe "Api::V1::Meetings 공유/비공개", type: :request do
       expect(foreign_private.reload.title).to eq("관리자수정")
     end
 
-    it "admin 은 타인 회의를 DELETE 할 수 있다(204)" do
+    it "admin 은 타인 회의를 DELETE(소프트 삭제) 할 수 있다(204)" do
       login_as(admin)
       target = create(:meeting, creator: other_user)
-      expect {
-        delete "/api/v1/meetings/#{target.id}"
-      }.to change(Meeting, :count).by(-1)
+      delete "/api/v1/meetings/#{target.id}"
       expect(response).to have_http_status(:no_content)
+      expect(target.reload.trashed?).to be true
     end
   end
 

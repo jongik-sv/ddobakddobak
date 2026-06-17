@@ -13,7 +13,7 @@ module Api
 
         if params[:flat] == "true"
           # flat은 이동-폴더 선택기용이라 비공개 폴더도 노출(숨김은 트리만). 카운트만 접근 스코프.
-          folders = Folder.ordered.where(project_id: project.id).to_a
+          folders = Folder.kept.ordered.where(project_id: project.id).to_a
           counts = Meeting.accessible_by(current_user).where(project_id: project.id)
                           .where(folder_id: folders.map(&:id)).group(:folder_id).count
           render json: { folders: folders.map { |f| folder_json(f, counts[f.id] || 0) } }

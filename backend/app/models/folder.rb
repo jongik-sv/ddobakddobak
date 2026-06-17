@@ -76,7 +76,7 @@ class Folder < ApplicationRecord
   # 타인에게 보이는(자신+모든 조상 공유) 폴더 id 배열. accessible_by/tree 공용.
   # 전 폴더를 1번만 로드해 in-memory로 조상 체인 평가(폴더당 쿼리 N+1 회피).
   def self.visible_folder_ids
-    folders = all.to_a
+    folders = kept.to_a
     by_id = folders.index_by(&:id)
     cache = {}
     visiting = {}
@@ -96,7 +96,7 @@ class Folder < ApplicationRecord
   # user를 주면 그 사용자가 접근 가능한 회의만 카운트 (admin/loopback은 전체).
   # user가 nil이면 전체 카운트(하위 호환).
   def self.tree(user = nil, project_id = nil)
-    base = ordered.includes(:tags)
+    base = kept.ordered.includes(:tags)
     base = base.where(project_id: project_id) if project_id.present?
     all_folders = base.to_a
     # non-admin: 비공개 폴더(및 비공개 조상 하위) 서브트리 통째로 숨긴다(상속).
