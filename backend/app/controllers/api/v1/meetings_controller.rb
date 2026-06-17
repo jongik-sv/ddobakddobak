@@ -211,8 +211,8 @@ module Api
         # update_all 은 콜백·인가를 우회하므로 editable_by 스코프가 유일한 방어선이다.
         # folder_id: nil — 원본 폴더는 대상 프로젝트에 없으므로 분리(최상위 안착).
         meetings = Meeting.editable_by(current_user).where(id: meeting_ids)
-        meetings.update_all(project_id: target.id, folder_id: nil)
-        render json: { moved: meetings.count }
+        moved_count = meetings.update_all(project_id: target.id, folder_id: nil)
+        render json: { moved: moved_count }
       end
 
       def destroy
