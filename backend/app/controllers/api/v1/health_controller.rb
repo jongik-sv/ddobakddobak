@@ -3,6 +3,7 @@ module Api
     class HealthController < ApplicationController
       def show
         data = { status: "ok" }
+        data[:lan_url] = ENV["LAN_WEB_URL"] if ENV["LAN_WEB_URL"].present?
         if server_mode? && request.headers["Authorization"].present?
           user = warden.authenticate(scope: :user)
           data[:user] = user_json(user) if user

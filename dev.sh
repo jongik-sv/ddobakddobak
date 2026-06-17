@@ -24,6 +24,7 @@ DEFAULT_IFACE="$(route -n get default 2>/dev/null | awk '/interface:/{print $2}'
 LAN_IP="$(ipconfig getifaddr "${DEFAULT_IFACE:-en0}" 2>/dev/null || ipconfig getifaddr en0 2>/dev/null || true)"
 
 RAILS_CMD="SERVER_MODE=true bin/rails server -p ${RAILS_PORT} -b 0.0.0.0"
+[ -n "$LAN_IP" ] && RAILS_CMD="LAN_WEB_URL=https://${LAN_IP}:${CADDY_PORT} ${RAILS_CMD}"
 SIDECAR_CMD="uv run uvicorn app.main:app --host 0.0.0.0 --port ${SIDECAR_PORT}"
 # Caddy: LAN HTTPS 단일 origin(:${CADDY_PORT}). /api·/auth·/cable→rails, 그 외→vite.
 # 다른 PC/폰 브라우저는 https://<LAN_IP>:${CADDY_PORT} 한 곳만 접속(같은 origin이라 CORS·IP입력 불필요).
