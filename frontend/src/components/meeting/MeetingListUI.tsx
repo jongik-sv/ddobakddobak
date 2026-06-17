@@ -1,5 +1,5 @@
-import { FolderInput, Pencil, Trash2 } from 'lucide-react'
-import { Tooltip } from '../ui/Tooltip'
+import { useState, useEffect, useRef } from 'react'
+import { FolderInput, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import type { Meeting } from '../../api/meetings'
 import { canEditMeeting } from '../../api/meetings'
 import { useAuthStore } from '../../stores/authStore'
@@ -118,23 +118,27 @@ interface MeetingActionButtonsProps {
 
 export function MeetingActionButtons({
   meeting,
-  isDesktop,
   onEdit,
   onMove,
   onDelete,
   onStop,
-  forceHoverOpacity = false,
 }: MeetingActionButtonsProps) {
   const me = useAuthStore((s) => s.user)
   // 소유권 게이팅: 서버가 403으로 강제하지만, 어포던스(수정/이동/삭제)는 권한이 있을 때만 노출한다.
   const canEdit = canEditMeeting(meeting, me)
-  if (!canEdit) return null
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
 
-  const opacityClass = forceHoverOpacity
-    ? 'opacity-0 group-hover:opacity-100'
-    : isDesktop
-      ? 'opacity-0 group-hover:opacity-100'
-      : 'opacity-100'
+  useEffect(() => {
+    if (!open) return
+    const onDocClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [open])
+
+  if (!canEdit) return null
 
   return (
     <>
@@ -149,42 +153,58 @@ export function MeetingActionButtons({
           종료
         </button>
       )}
-      <Tooltip text="정보 수정">
+      <div className="relative" ref={ref}>
         <button
-          aria-label="정보 수정"
+          aria-label="회의 메뉴"
           onClick={(e) => {
             e.stopPropagation()
-            onEdit(meeting)
+            setOpen((v) => !v)
           }}
-          className={`p-1 rounded hover:bg-black/5 transition-opacity ${opacityClass}`}
+          className="p-1 rounded text-zinc-500 hover:bg-black/5 transition-colors"
         >
-          <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+          <MoreVertical className="w-4 h-4" />
         </button>
-      </Tooltip>
-      <Tooltip text="폴더로 이동">
-        <button
-          aria-label="폴더로 이동"
-          onClick={(e) => {
-            e.stopPropagation()
-            onMove(meeting)
-          }}
-          className={`p-1 rounded hover:bg-black/5 transition-opacity ${opacityClass}`}
-        >
-          <FolderInput className="w-4 h-4 text-muted-foreground" />
-        </button>
-      </Tooltip>
-      <Tooltip text="삭제">
-        <button
-          aria-label="삭제"
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete(meeting)
-          }}
-          className={`p-1 rounded hover:bg-black/5 hover:bg-red-50 transition-opacity ${opacityClass}`}
-        >
-          <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
-        </button>
-      </Tooltip>
+        {open && (
+          <div
+            className="absolute bottom-full right-0 z-50 mb-1 w-36 rounded-md border border-zinc-200 bg-white py-1 text-zinc-900 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              aria-label="정보 수정"
+              onClick={(e) => {
+                e.stopPropagation()
+                setOpen(false)
+                onEdit(meeting)
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
+            >
+              <Pencil className="w-3.5 h-3.5" /> 정보 수정
+            </button>
+            <button
+              aria-label="폴더로 이동"
+              onClick={(e) => {
+                e.stopPropagation()
+                setOpen(false)
+                onMove(meeting)
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
+            >
+              <FolderInput className="w-4 h-4" /> 폴더로 이동
+            </button>
+            <button
+              aria-label="삭제"
+              onClick={(e) => {
+                e.stopPropagation()
+                setOpen(false)
+                onDelete(meeting)
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> 삭제
+            </button>
+          </div>
+        )}
+      </div>
     </>
   )
 }
