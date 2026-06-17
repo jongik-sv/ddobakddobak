@@ -1,5 +1,5 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Mic, Search, Settings, Users, PanelLeftClose, LogOut, WifiOff } from 'lucide-react'
+import { LayoutDashboard, Mic, Search, Settings, Users, PanelLeftClose, LogOut, WifiOff, Trash2 } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
 import { useAuth } from '../../hooks/useAuth'
 import { getMode, IS_MOBILE, IS_TAURI } from '../../config'
@@ -76,6 +76,10 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
         <NavLink to="/search" className={navLinkClass} onClick={closeIfMobile}>
           <Search className="w-4 h-4" />
           검색
+        </NavLink>
+        <NavLink to="/trash" className={navLinkClass} onClick={closeIfMobile}>
+          <Trash2 className="w-4 h-4" />
+          휴지통
         </NavLink>
         {/* 오프라인(온디바이스) 회의 전용 진입 — Android(Tauri 모바일)에서만. 전용 홈(/local-meetings). */}
         {IS_TAURI && IS_MOBILE && (
