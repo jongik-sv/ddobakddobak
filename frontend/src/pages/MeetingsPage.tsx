@@ -5,7 +5,7 @@ import { Tooltip } from '../components/ui/Tooltip'
 import { deleteMeeting, stopMeeting, updateMeeting, setMeetingImportant } from '../api/meetings'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
-import { paramToFolder } from '../lib/folderNav'
+import { paramToFolder, folderPath } from '../lib/folderNav'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { BREAKPOINTS, IS_TAURI } from '../config'
 import { useMediaQuery } from '../hooks/useMediaQuery'
@@ -227,11 +227,10 @@ export default function MeetingsPage() {
     fetchMeetings(1)
   }, [toggleShowAll, fetchMeetings])
 
+  // 폴더 카드 진입도 URL(?folder=) push — 뒤로가기 동작·단일 소스 유지
   const handleFolderSelect = useCallback((id: number) => {
-    useFolderStore.getState().setSelectedFolder(id)
-    useMeetingStore.getState().setFolderId(id)
-    fetchMeetings(1)
-  }, [fetchMeetings])
+    navigate(folderPath(id))
+  }, [navigate])
 
   const handleMeetingOpen = useCallback((id: number) => {
     navigate(`/meetings/${id}`)
