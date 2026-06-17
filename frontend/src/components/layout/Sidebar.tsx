@@ -31,7 +31,6 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
   const isServerMode = getMode() === 'server'
   const navigate = useNavigate()
   const location = useLocation()
-  const isMeetingsPage = location.pathname.startsWith('/meetings')
   // 사용자 관리: 설정 모달과 동일 게이팅(admin 또는 local 모드), 모바일 미노출
   const canManageUsers = (user?.role === 'admin' || getMode() === 'local') && !IS_MOBILE
 
@@ -69,14 +68,17 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
           <LayoutDashboard className="w-4 h-4" />
           대시보드
         </NavLink>
-        <NavLink to="/meetings" className={navLinkClass} onClick={handleMeetingsClick}>
-          <Mic className="w-4 h-4" />
-          회의 목록
-        </NavLink>
         <NavLink to="/search" className={navLinkClass} onClick={closeIfMobile}>
           <Search className="w-4 h-4" />
           검색
         </NavLink>
+        <NavLink to="/meetings" className={navLinkClass} onClick={handleMeetingsClick}>
+          <Mic className="w-4 h-4" />
+          회의 목록
+        </NavLink>
+        <div className="pl-2">
+          <FolderTree />
+        </div>
         {/* 오프라인(온디바이스) 회의 전용 진입 — Android(Tauri 모바일)에서만. 전용 홈(/local-meetings). */}
         {IS_TAURI && IS_MOBILE && (
           <NavLink to="/local-meetings" className={navLinkClass} onClick={closeIfMobile}>
@@ -84,16 +86,14 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
             오프라인 회의
           </NavLink>
         )}
-        <div className={`pl-2 ${isMeetingsPage ? '' : 'hidden'}`}>
-          <FolderTree />
-        </div>
-        <div className="!mt-3 pt-3 border-t border-border space-y-1">
-          <NavLink to="/trash" className={navLinkClass} onClick={closeIfMobile}>
-            <Trash2 className="w-4 h-4" />
-            휴지통
-          </NavLink>
-          <button
-            onClick={() => { openSettings(); closeIfMobile() }}
+      </nav>
+      <div className="px-3 py-3 border-t border-border shrink-0 space-y-1 pb-safe">
+        <NavLink to="/trash" className={navLinkClass} onClick={closeIfMobile}>
+          <Trash2 className="w-4 h-4" />
+          휴지통
+        </NavLink>
+        <button
+          onClick={() => { openSettings(); closeIfMobile() }}
           className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
         >
           <Settings className="w-4 h-4" />
@@ -108,22 +108,21 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
             사용자 관리
           </button>
         )}
-        </div>
-      </nav>
-      {isServerMode && (
-        <div className="px-3 py-3 border-t border-border shrink-0">
-          {user && (
-            <p className="px-3 mb-2 text-xs text-muted-foreground truncate">{user.name || user.email}</p>
-          )}
-          <button
-            onClick={logout}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
-          >
-            <LogOut className="w-4 h-4" />
-            로그아웃
-          </button>
-        </div>
-      )}
+        {isServerMode && (
+          <>
+            {user && (
+              <p className="px-3 pt-2 mb-1 text-xs text-muted-foreground truncate">{user.name || user.email}</p>
+            )}
+            <button
+              onClick={logout}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
+            >
+              <LogOut className="w-4 h-4" />
+              로그아웃
+            </button>
+          </>
+        )}
+      </div>
     </aside>
   )
 }
