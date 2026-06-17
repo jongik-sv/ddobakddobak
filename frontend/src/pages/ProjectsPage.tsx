@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { HTTPError } from 'ky'
 import { Plus, MoreVertical, Pencil, Users, Trash2 } from 'lucide-react'
 import { useProjectStore } from '../stores/projectStore'
+import { useAuthStore } from '../stores/authStore'
 import { useFolderStore } from '../stores/folderStore'
 import { useMeetingStore } from '../stores/meetingStore'
 import type { Project } from '../api/projects'
@@ -19,6 +20,8 @@ export default function ProjectsPage() {
   const fetchProjects = useProjectStore((s) => s.fetchProjects)
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject)
   const removeProject = useProjectStore((s) => s.removeProject)
+  // 시스템 admin은 비멤버(role=null) 프로젝트도 삭제 권한이 있음(백엔드 override).
+  const isSystemAdmin = useAuthStore((s) => s.user?.role === 'admin')
 
   const [dialogProject, setDialogProject] = useState<Project | null>(null)
   // ?new=1 → 생성 다이얼로그 자동 오픈. 초기값을 URL에서 1회 도출(렌더 중 setState 회피).
@@ -119,7 +122,7 @@ export default function ProjectsPage() {
                     >
                       <Users className="h-4 w-4" /> 멤버 관리
                     </button>
-                    {!p.personal && p.role === 'admin' && (
+                    {!p.personal && (p.role === 'admin' || isSystemAdmin) && (
                       <button
                         onClick={() => handleDelete(p)}
                         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
