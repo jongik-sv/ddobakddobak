@@ -145,6 +145,7 @@ function GatedApp() {
     <SetupGate>
     <AuthGuard>
     <Routes>
+      {/* 로그인 후 첫 화면 = 프로젝트 선택 랜딩. 전용 전체화면이라 의도적으로 AppLayout(사이드바 쉘) 미적용. */}
       <Route path="/" element={<Suspended><ProjectSelectLanding /></Suspended>} />
       <Route
         path="/dashboard"

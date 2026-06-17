@@ -80,11 +80,15 @@ describe('ProjectSelectLanding', () => {
   })
 
   it('프로젝트 클릭 시 setCurrentProject + /meetings 이동', async () => {
-    mockGetProjects.mockResolvedValue([makeProject({ id: 9, name: '기본', personal: false })])
+    // 비개인(id9)이 fallback 디폴트 → 개인(id3)을 클릭해 "클릭이 선택을 바꿨음"을 입증.
+    mockGetProjects.mockResolvedValue([
+      makeProject({ id: 9, name: '기본', personal: false }),
+      makeProject({ id: 3, name: '개인', personal: true }),
+    ])
     renderLanding()
-    const items = await screen.findAllByText('기본')
+    const items = await screen.findAllByText('개인')
     fireEvent.click(items[0])
-    expect(useProjectStore.getState().currentProjectId).toBe(9)
+    expect(useProjectStore.getState().currentProjectId).toBe(3)
     expect(screen.getByText('MEETINGS_SENTINEL')).toBeInTheDocument()
   })
 
