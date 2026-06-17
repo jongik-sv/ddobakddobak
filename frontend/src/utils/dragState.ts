@@ -87,6 +87,8 @@ export function initDrag(
       dragState.id = id
       dragState.active = true
       document.body.setAttribute('data-dragging', 'true')
+      // 6px 임계 전 시작된 우발적 텍스트 선택 제거(이후 선택은 위 CSS가 차단)
+      window.getSelection()?.removeAllRanges()
     }
 
     // 드롭 타겟 하이라이트
