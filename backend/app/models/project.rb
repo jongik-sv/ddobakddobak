@@ -1,4 +1,6 @@
 class Project < ApplicationRecord
+  include Trashable
+
   ICON_TYPES = %w[lucide emoji image].freeze
 
   belongs_to :creator, class_name: "User", foreign_key: :created_by_id
