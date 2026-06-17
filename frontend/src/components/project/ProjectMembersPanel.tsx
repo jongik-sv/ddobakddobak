@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { getShareBaseUrl } from '../../lib/shareUrl'
 import { Copy, Check, Trash2, X } from 'lucide-react'
 import { Dialog } from '../ui/Dialog'
 import {
@@ -24,6 +25,7 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
   const [expiresAt, setExpiresAt] = useState('')
   const [maxUses, setMaxUses] = useState('')
   const [creating, setCreating] = useState(false)
+  const [shareBase, setShareBase] = useState(window.location.origin)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -45,6 +47,8 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
   useEffect(() => {
     reload()
   }, [reload])
+
+  useEffect(() => { getShareBaseUrl().then(setShareBase) }, [])
 
   const handleRemove = async (userId: number) => {
     try {
@@ -82,7 +86,7 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
     }
   }
 
-  const inviteUrl = (code: string) => `${window.location.origin}/invite/${code}`
+  const inviteUrl = (code: string) => `${shareBase}/invite/${code}`
 
   const copy = async (code: string) => {
     try {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { getShareBaseUrl } from '../../lib/shareUrl'
 
 interface ShareLinkButtonProps {
   meetingId: number
@@ -15,7 +16,8 @@ export function ShareLinkButton({ meetingId }: ShareLinkButtonProps) {
   }, [])
 
   const handleCopy = async () => {
-    const url = `${window.location.origin}/meetings/${meetingId}`
+    const base = await getShareBaseUrl()
+    const url = `${base}/meetings/${meetingId}`
     await navigator.clipboard.writeText(url)
     setCopied(true)
     if (timerRef.current) clearTimeout(timerRef.current)

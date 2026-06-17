@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { ShareLinkButton } from './ShareLinkButton'
 
+vi.mock('../../lib/shareUrl', () => ({
+  getShareBaseUrl: () => Promise.resolve(window.location.origin),
+}))
+
 describe('ShareLinkButton', () => {
   const writeTextMock = vi.fn().mockResolvedValue(undefined)
 
