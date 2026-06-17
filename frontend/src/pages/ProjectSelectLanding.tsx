@@ -50,7 +50,7 @@ export default function ProjectSelectLanding() {
 
   return (
     <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 p-4 md:flex">
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 p-4 md:flex">
         <h2 className="mb-4 px-2 text-sm font-semibold text-zinc-400">프로젝트</h2>
         <nav className="flex-1 space-y-1 overflow-y-auto">
           {myProjects.map((p) => (
@@ -79,7 +79,7 @@ export default function ProjectSelectLanding() {
       </aside>
 
       <main className="flex-1 overflow-y-auto p-8">
-        <div className="mx-auto max-w-5xl">
+        <div>
           <h1 className="mb-1 text-2xl font-bold text-zinc-100">프로젝트 선택</h1>
           <p className="mb-6 text-sm text-zinc-400">작업할 프로젝트를 선택하세요.</p>
 

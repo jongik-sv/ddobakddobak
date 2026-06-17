@@ -62,7 +62,7 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
+    <div className="p-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold text-zinc-900">프로젝트</h1>
       </div>
