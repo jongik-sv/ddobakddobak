@@ -5,8 +5,9 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createReactBlockSpec } from '@blocknote/react'
-import { BlockNoteSchema, defaultBlockSpecs } from '@blocknote/core'
+import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from '@blocknote/core'
 import type { Block, BlockSchema, InlineContentSchema, StyleSchema } from '@blocknote/core'
+import { CitationInline } from './citationInline'
 
 // ── Mermaid 렌더러 ───────────────────────────────
 
@@ -221,6 +222,10 @@ export const editorSchema = BlockNoteSchema.create({
   blockSpecs: {
     ...defaultBlockSpecs,
     mermaid: MermaidBlock(),
+  },
+  inlineContentSpecs: {
+    ...defaultInlineContentSpecs,
+    citation: CitationInline,
   },
 })
 

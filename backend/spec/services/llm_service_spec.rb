@@ -128,4 +128,23 @@ RSpec.describe LlmService, "ok signalling" do
       expect(captured).to include("분량 지시 (간결)")
     end
   end
+
+  describe "#format_transcripts 시각(ms) 노출" do
+    it "format_transcripts에 시각(ms)을 노출한다" do
+      svc = LlmService.allocate
+      out = svc.send(:format_transcripts, [{ "speaker" => "화자 1", "text" => "결정 보류", "started_at_ms" => 125000 }])
+      expect(out).to eq("[02:05|125000ms 화자 1] 결정 보류")
+    end
+  end
+
+  describe "#refine_notes 발화근거 마커 지침" do
+    it "refine_notes 시스템 프롬프트에 마커 지침이 포함된다" do
+      svc = LlmService.new
+      captured = nil
+      allow(svc).to receive(:call_llm_raw) { |sys, _u, **| captured = sys; "결과" }
+      svc.refine_notes("", [{ "speaker" => "화자 1", "text" => "안녕", "started_at_ms" => 0 }], verbosity_context: :realtime)
+      expect(captured).to include("⟦t:<ms>/s:<화자>⟧")
+      expect(captured).to include("기존 회의록에 이미 있는")
+    end
+  end
 end

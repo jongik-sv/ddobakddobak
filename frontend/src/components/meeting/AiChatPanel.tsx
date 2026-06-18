@@ -3,7 +3,7 @@ import { useChatStore } from '../../stores/chatStore'
 import { subscribeChat } from '../../channels/chat'
 import { ChatMarkdown } from './ChatMarkdown'
 
-export function AiChatPanel({ meetingId }: { meetingId: number }) {
+export function AiChatPanel({ meetingId, onSeek }: { meetingId: number; onSeek?: (ms: number) => void }) {
   const { load, send } = useChatStore()
   const messages = useChatStore((s) => s.messages) ?? []
   const hasPending = messages.some((m) => m.status === 'pending')
@@ -59,7 +59,7 @@ export function AiChatPanel({ meetingId }: { meetingId: number }) {
                 ) : m.status === 'error' ? (
                   <span className="text-red-500">답변 실패: {m.error_message}</span>
                 ) : m.role === 'assistant' && m.status === 'complete' ? (
-                  <ChatMarkdown content={m.content} />
+                  <ChatMarkdown content={m.content} onSeek={onSeek} />
                 ) : (
                   m.content
                 )}

@@ -135,7 +135,7 @@ describe('SearchPage', () => {
 
     // 그룹 헤더의 회의 제목 클릭
     await user.click(screen.getByText('테스트 회의'))
-    expect(mockNavigate).toHaveBeenCalledWith('/meetings/42')
+    expect(mockNavigate).toHaveBeenCalledWith('/meetings/42?q=' + encodeURIComponent('테스트'))
   })
 
   it('검색 결과가 없으면 안내 문구를 표시한다', async () => {
@@ -299,7 +299,7 @@ describe('SearchPage', () => {
     })
 
     await user.click(screen.getByText('디자인 리뷰'))
-    expect(mockNavigate).toHaveBeenCalledWith('/meetings/77')
+    expect(mockNavigate).toHaveBeenCalledWith('/meetings/77?q=' + encodeURIComponent('검색어'))
   })
 
   it('서로 다른 회의 결과는 별도 그룹으로 표시된다', async () => {

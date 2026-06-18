@@ -7,6 +7,7 @@ import { insertOrUpdateBlockForSlashMenu } from '@blocknote/core'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 import { useAppSettingsStore } from '../../stores/appSettingsStore'
 import { editorSchema, codeBlocksToMermaid } from './mermaidBlock'
+import { markersToInline, inlineToMarkers } from './citationInline'
 import { AiSummaryFullViewModal } from './AiSummaryFullViewModal'
 
 /**
@@ -27,9 +28,11 @@ interface AiSummaryPanelProps {
   headerExtra?: React.ReactNode
   /** 전체보기(확대) 버튼 숨김. 전체보기 모달 안에서 마운트될 때 true로 재귀를 막는다. 기본 false. */
   hideExpand?: boolean
+  /** 오디오 점프 콜백. ms 단위. */
+  onSeek?: (ms: number) => void
 }
 
-export function AiSummaryPanel({ meetingId, isRecording = false, editable = true, onNotesChange, headerExtra, hideExpand = false }: AiSummaryPanelProps) {
+export function AiSummaryPanel({ meetingId, isRecording = false, editable = true, onNotesChange, headerExtra, hideExpand = false, onSeek }: AiSummaryPanelProps) {
   const meetingNotes = useTranscriptStore((s) => s.meetingNotes)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const isSummarizing = useTranscriptStore((s) => s.isSummarizing)
@@ -51,6 +54,15 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
   const [showFullView, setShowFullView] = useState(false)
 
   const editor = useCreateBlockNote({ schema: editorSchema })
+
+  // onSeek를 전역 핸들로 등록 — CitationInline render가 참조
+  // onSeek가 없으면(예: AiSummaryFullViewModal의 중첩 패널) 등록/해제 모두 건너뜀.
+  // 이렇게 해야 중첩 패널이 외부 패널의 핸들을 __ddobakSeek=undefined로 덮어쓰지 않는다.
+  useEffect(() => {
+    if (!onSeek) return
+    ;(window as any).__ddobakSeek = onSeek
+    return () => { if ((window as any).__ddobakSeek === onSeek) delete (window as any).__ddobakSeek }
+  }, [onSeek])
 
   useEffect(() => {
     let cancelled = false
@@ -82,7 +94,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
         isProgrammaticRef.current = true
         const blocks = await editor.tryParseMarkdownToBlocks(meetingNotes!)
         if (cancelled) return
-        const converted = codeBlocksToMermaid(blocks as any[])
+        const converted = markersToInline(codeBlocksToMermaid(blocks as any[]))
         // Defense 1: 프로그래매틱 주입을 undo 히스토리에서 제외 (Ctrl+Z로 빈 상태 복귀→소실 방지)
         editor.transact((tr: any) => {
           tr.setMeta('addToHistory', false)
@@ -123,7 +135,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
         if (g.kind === 'mermaid') {
           if (g.code.trim()) parts.push('```mermaid\n' + g.code + '\n```')
         } else {
-          const md = await editor.blocksToMarkdownLossy(g.blocks as any)
+          const md = await editor.blocksToMarkdownLossy(inlineToMarkers(g.blocks as any) as any)
           const trimmed = md.trimEnd()
           if (trimmed) parts.push(trimmed)
         }

@@ -3,6 +3,7 @@ import type { Meeting } from '../../api/meetings'
 import type { FolderNode } from '../../api/folders'
 import { initDrag } from '../../utils/dragState'
 import { StatusBadge, MeetingTypeBadge, MeetingActionButtons } from './MeetingListUI'
+import { MeetingIdBadge } from './MeetingIdBadge'
 import { formatDate, folderPath } from '../../lib/meetingFormat'
 import { Tooltip } from '../ui/Tooltip'
 
@@ -155,6 +156,9 @@ export function MeetingListTable({
                     <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" aria-label="잠긴 회의" />
                   )}
                   <span className="text-sm font-medium truncate">{meeting.title}</span>
+                  <span onClick={(e) => e.stopPropagation()} className="inline-flex shrink-0">
+                    <MeetingIdBadge meetingId={meeting.id} />
+                  </span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-0.5 shrink-0 max-w-[220px]">
                     <FolderClosed className="w-2.5 h-2.5 shrink-0" />
                     <span className="truncate">{meeting.folder_id ? (folderPath(folders, meeting.folder_id) ?? '폴더') : '미분류'}</span>

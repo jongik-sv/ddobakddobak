@@ -47,6 +47,7 @@ class LlmService
     end
     system_prompt = system_prompt + CHRONOLOGICAL_NOTES_INSTRUCTION if chronological
     system_prompt = apply_verbosity(system_prompt, verbosity, context: verbosity_context)
+    system_prompt = system_prompt + "\n\n" + LlmPrompts::CITATION_MARKER_INSTRUCTION
     # 이전 회의 통합+논의 절취선 지시는 분량 한도보다 우선해야 하므로 verbosity 뒤(맨 끝)에 붙인다.
     system_prompt = system_prompt + seeded_merge_instruction if seeded_merge
 
@@ -419,9 +420,13 @@ class LlmService
   def format_transcripts(transcripts)
     return "" if transcripts.blank?
     transcripts.map { |t|
-      speaker = t["speaker"] || t[:speaker] || "알 수 없음"
+      label = (t["speaker_label"] || t[:speaker_label]).to_s
+      name  = (t["speaker"] || t[:speaker]).to_s
+      tag   = label.empty? ? (name.empty? ? "알 수 없음" : name) : label
       text = t["text"] || t[:text] || ""
-      "#{speaker}: #{text}"
+      ms = (t["started_at_ms"] || t[:started_at_ms] || 0).to_i
+      clock = format("%02d:%02d", ms / 60000, (ms / 1000) % 60)
+      "[#{clock}|#{ms}ms #{tag}] #{text}"
     }.join("\n")
   end
 

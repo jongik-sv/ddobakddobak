@@ -1,4 +1,5 @@
 import type { MeetingExportData } from '../api/meetings'
+import { stripCitationMarkers } from './citationMarkers'
 
 /**
  * MeetingExportData를 DOCX Blob으로 변환한다.
@@ -67,7 +68,7 @@ export async function generateDocx(data: MeetingExportData): Promise<Blob> {
           children: [new TextRun({ text: 'AI 회의록' })],
         }),
       )
-      children.push(...(await markdownToDocxParagraphs(summary.notes_markdown)))
+      children.push(...(await markdownToDocxParagraphs(stripCitationMarkers(summary.notes_markdown))))
     } else if (summary.type === 'json_fields') {
       children.push(
         new Paragraph({
