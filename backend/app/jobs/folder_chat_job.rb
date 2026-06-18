@@ -1,4 +1,4 @@
-class MeetingChatJob < ApplicationJob
+class FolderChatJob < ApplicationJob
   include ChatFollowups
   queue_as :default
 
@@ -6,14 +6,16 @@ class MeetingChatJob < ApplicationJob
     answer = ChatMessage.find_by(id: assistant_message_id)
     return unless answer
 
-    meeting = answer.meeting
     user = answer.user
-    question = meeting.chat_messages.for_user(user).where(role: "user")
-                      .where("created_at <= ?", answer.created_at).order(:created_at).last
+    question = ChatMessage.for_scope(answer.scope_type, answer.scope_id).for_user(user)
+                          .where(role: "user").where("created_at <= ?", answer.created_at)
+                          .order(:created_at).last
 
-    ctx = MeetingChatContext.build(meeting: meeting, user: user, question: question&.content.to_s)
-    config = meeting.creator&.effective_chat_llm_config
-    raise "이 회의의 LLM이 설정되어 있지 않습니다." if config.blank?
+    keywords = FolderChatKeywords.extract(question&.content.to_s, user: user)
+    ctx = FolderChatContext.build(scope_type: answer.scope_type, scope_id: answer.scope_id, user: user, keywords: keywords)
+
+    config = user.effective_chat_llm_config
+    raise "LLM이 설정되어 있지 않습니다." if config.blank?
 
     raw = LlmService.new(llm_config: config).answer_question(ctx[:system_prompt], ctx[:user_content])
     content, suggestions = split_followups(raw.to_s)
@@ -28,7 +30,7 @@ class MeetingChatJob < ApplicationJob
 
   def broadcast(msg)
     ActionCable.server.broadcast(
-      "meeting_#{msg.meeting_id}_chat_#{msg.user_id}",
+      "chat_#{msg.scope_type}_#{msg.scope_id}_#{msg.user_id}",
       { type: "chat_message_update", id: msg.id, role: msg.role,
         content: msg.content, status: msg.status,
         suggestions: msg.suggestions,
