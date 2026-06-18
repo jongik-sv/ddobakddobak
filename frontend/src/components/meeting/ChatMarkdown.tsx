@@ -36,16 +36,6 @@ const MAP: Components = {
       {children}
     </pre>
   ),
-  a: ({ children, href }) => (
-    <a
-      href={href}
-      className="text-blue-600 underline"
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      {children}
-    </a>
-  ),
   table: ({ children }) => (
     <table className="w-full text-xs border-collapse my-1">{children}</table>
   ),
@@ -58,6 +48,8 @@ const MAP: Components = {
   blockquote: ({ children }) => (
     <blockquote className="border-l-2 border-gray-300 pl-2 text-gray-600">{children}</blockquote>
   ),
+  // Note: `a` is intentionally omitted from MAP — ChatMarkdown overrides it below
+  // to handle the ddobak-seek: protocol. Defining it here would be dead code.
 }
 
 export function ChatMarkdown({ content, onSeek }: { content: string; onSeek?: (ms: number) => void }) {
@@ -68,6 +60,7 @@ export function ChatMarkdown({ content, onSeek }: { content: string; onSeek?: (m
         // href format: ddobak-seek:<ms>:<encodedSpeaker>
         const withoutScheme = href.slice('ddobak-seek:'.length)
         const colonIdx = withoutScheme.indexOf(':')
+        if (colonIdx === -1) return <>{children}</>
         const ms = Number(withoutScheme.slice(0, colonIdx))
         const sp = decodeURIComponent(withoutScheme.slice(colonIdx + 1))
         return (

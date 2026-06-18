@@ -56,7 +56,10 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
   const editor = useCreateBlockNote({ schema: editorSchema })
 
   // onSeek를 전역 핸들로 등록 — CitationInline render가 참조
+  // onSeek가 없으면(예: AiSummaryFullViewModal의 중첩 패널) 등록/해제 모두 건너뜀.
+  // 이렇게 해야 중첩 패널이 외부 패널의 핸들을 __ddobakSeek=undefined로 덮어쓰지 않는다.
   useEffect(() => {
+    if (!onSeek) return
     ;(window as any).__ddobakSeek = onSeek
     return () => { if ((window as any).__ddobakSeek === onSeek) delete (window as any).__ddobakSeek }
   }, [onSeek])
