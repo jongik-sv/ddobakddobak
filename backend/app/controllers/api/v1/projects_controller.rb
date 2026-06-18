@@ -47,11 +47,24 @@ module Api
       end
 
       def add_member
-        email = params[:email].to_s.strip.downcase
-        return render json: { error: "email is required" }, status: :unprocessable_entity if email.blank?
+        email = params[:email].to_s.strip
+        name = params[:name].to_s.strip
 
-        user = ::User.where("LOWER(email) = ?", email).first
-        return render json: { error: "해당 이메일의 사용자를 찾을 수 없습니다" }, status: :not_found unless user
+        if params[:user_id].present?
+          user = ::User.find_by(id: params[:user_id])
+        elsif email.present?
+          user = ::User.where("LOWER(email) = ?", email.downcase).first
+        elsif name.present?
+          matches = ::User.where("LOWER(name) = ?", name.downcase).to_a
+          if matches.size > 1
+            return render json: { candidates: matches.map { |u| { id: u.id, name: u.name, email: u.email } } }, status: :ok
+          end
+          user = matches.first
+        else
+          return render json: { error: "name 또는 email이 필요합니다" }, status: :unprocessable_entity
+        end
+
+        return render json: { error: "해당 사용자를 찾을 수 없습니다" }, status: :not_found unless user
 
         existing = @project.project_memberships.find_by(user_id: user.id)
         if existing

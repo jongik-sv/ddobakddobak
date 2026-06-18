@@ -11,7 +11,7 @@ import {
   createProjectInvite,
   revokeProjectInvite,
 } from '../../api/projects'
-import type { Project, ProjectMember, ProjectInvite } from '../../api/projects'
+import type { Project, ProjectMember, ProjectInvite, MemberCandidate } from '../../api/projects'
 
 interface ProjectMembersPanelProps {
   project: Project
@@ -28,8 +28,9 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
   const [maxUses, setMaxUses] = useState('')
   const [creating, setCreating] = useState(false)
   const [shareBase, setShareBase] = useState(window.location.origin)
-  const [addEmail, setAddEmail] = useState('')
+  const [addInput, setAddInput] = useState('')
   const [adding, setAdding] = useState(false)
+  const [candidates, setCandidates] = useState<MemberCandidate[]>([])
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -54,21 +55,44 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
 
   useEffect(() => { getShareBaseUrl().then(setShareBase) }, [])
 
-  const handleAddByEmail = async (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!addEmail.trim()) return
+    const q = addInput.trim()
+    if (!q) return
     setAdding(true)
     setError('')
+    setCandidates([])
     try {
-      await addProjectMember(project.id, addEmail.trim())
-      setAddEmail('')
-      await reload()
+      const res = await addProjectMember(project.id, q.includes('@') ? { email: q } : { name: q })
+      if ('candidates' in res) {
+        setCandidates(res.candidates)
+      } else {
+        setAddInput('')
+        await reload()
+      }
     } catch (err) {
       if (err instanceof HTTPError && err.response.status === 404) {
-        setError('해당 이메일의 사용자를 찾을 수 없습니다.')
+        setError('해당 사용자를 찾을 수 없습니다.')
       } else {
         setError('추가에 실패했습니다.')
       }
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const handlePick = async (c: MemberCandidate) => {
+    setAdding(true)
+    setError('')
+    try {
+      const res = await addProjectMember(project.id, { user_id: c.id })
+      if ('member' in res) {
+        setAddInput('')
+        setCandidates([])
+        await reload()
+      }
+    } catch {
+      setError('추가에 실패했습니다.')
     } finally {
       setAdding(false)
     }
@@ -176,23 +200,46 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
           </section>
 
           <section className="mb-6">
-            <h3 className="mb-2 text-sm font-medium text-zinc-700">이메일로 멤버 추가</h3>
-            <form onSubmit={handleAddByEmail} className="flex gap-2">
+            <h3 className="mb-2 text-sm font-medium text-zinc-700">이름 또는 이메일로 멤버 추가</h3>
+            <form onSubmit={handleAdd} className="flex gap-2">
               <input
-                type="email"
-                value={addEmail}
-                onChange={(e) => setAddEmail(e.target.value)}
-                placeholder="이메일 주소"
+                type="text"
+                value={addInput}
+                onChange={(e) => setAddInput(e.target.value)}
+                placeholder="이름 또는 이메일"
                 className="flex-1 rounded-md border border-zinc-200 px-3 py-1.5 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <button
                 type="submit"
-                disabled={adding || !addEmail.trim()}
+                disabled={adding || !addInput.trim()}
                 className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
               >
                 추가
               </button>
             </form>
+
+            {candidates.length > 0 && (
+              <div className="mt-3 rounded-md border border-zinc-200 p-2">
+                <p className="mb-2 text-xs font-medium text-zinc-600">동명이인 — 추가할 사람을 선택하세요</p>
+                <ul className="space-y-1">
+                  {candidates.map((c) => (
+                    <li key={c.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-zinc-100">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-zinc-900">{c.name}</p>
+                        <p className="truncate text-xs text-zinc-500">{c.email}</p>
+                      </div>
+                      <button
+                        onClick={() => handlePick(c)}
+                        disabled={adding}
+                        className="rounded-md bg-indigo-600 px-3 py-1 text-xs font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        추가
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </section>
 
           <section>
