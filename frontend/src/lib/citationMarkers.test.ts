@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseCitationMarkers, stripCitationMarkers, dedupeMarkers } from './citationMarkers'
+import { parseCitationMarkers, stripCitationMarkers, dedupeMarkers, FOLDER_CITATION_RE } from './citationMarkers'
 
 describe('citationMarkers', () => {
   it('parses ms and speaker from a marker', () => {
@@ -24,5 +24,15 @@ describe('citationMarkers', () => {
   it('dedupes identical ms+speaker', () => {
     const r = dedupeMarkers([{ ms: 1, speaker: '화자 1' }, { ms: 1, speaker: '화자 1' }, { ms: 2, speaker: '화자 1' }])
     expect(r).toEqual([{ ms: 1, speaker: '화자 1' }, { ms: 2, speaker: '화자 1' }])
+  })
+})
+
+describe('FOLDER_CITATION_RE', () => {
+  it('회의ID 포함 마커를 m/ms/speaker로 파싱한다', () => {
+    const re = new RegExp(FOLDER_CITATION_RE.source, 'g')
+    const m = re.exec('예산 확정. ⟦m:142/t:125000/s:화자 1⟧')
+    expect(m?.[1]).toBe('142')
+    expect(m?.[2]).toBe('125000')
+    expect(m?.[3]).toBe('화자 1')
   })
 })

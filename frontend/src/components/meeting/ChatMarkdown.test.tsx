@@ -10,4 +10,12 @@ describe('ChatMarkdown citation', () => {
     fireEvent.click(badge.closest('button')!)
     expect(onSeek).toHaveBeenCalledWith(125000)
   })
+
+  it('회의ID 마커는 onSeekMeeting으로 라우팅되는 배지를 만든다', () => {
+    const onSeekMeeting = vi.fn()
+    render(<ChatMarkdown content={'결정. ⟦m:142/t:5000/s:화자 1⟧'} onSeekMeeting={onSeekMeeting} />)
+    const badge = screen.getByRole('button')
+    fireEvent.click(badge)
+    expect(onSeekMeeting).toHaveBeenCalledWith(142, 5000)
+  })
 })
