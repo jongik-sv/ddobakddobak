@@ -1,5 +1,19 @@
-import ReactMarkdown, { type Components } from 'react-markdown'
+import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { CITATION_RE } from '../../lib/citationMarkers'
+import { TimestampBadge } from './TimestampBadge'
+
+// 마커 → 마크다운 링크 치환: ⟦t:125000|s:화자 1⟧ → [⏱](ddobak-seek:125000:화자%201)
+function markersToSeekLinks(text: string): string {
+  return text.replace(new RegExp(CITATION_RE.source, 'g'), (_m, ms, sp) =>
+    `[⏱](ddobak-seek:${ms}:${encodeURIComponent(sp)})`)
+}
+
+// ddobak-seek: 프로토콜은 내부 전용 — URL sanitizer에서 허용
+function urlTransform(url: string): string {
+  if (url.startsWith('ddobak-seek:')) return url
+  return defaultUrlTransform(url)
+}
 
 // Compact chat-bubble markdown styles. No @tailwindcss/typography is installed,
 // so every element is styled explicitly via component overrides.
@@ -46,11 +60,36 @@ const MAP: Components = {
   ),
 }
 
-export function ChatMarkdown({ content }: { content: string }) {
+export function ChatMarkdown({ content, onSeek }: { content: string; onSeek?: (ms: number) => void }) {
+  const components: Components = {
+    ...MAP,
+    a: ({ children, href }) => {
+      if (href && href.startsWith('ddobak-seek:')) {
+        // href format: ddobak-seek:<ms>:<encodedSpeaker>
+        const withoutScheme = href.slice('ddobak-seek:'.length)
+        const colonIdx = withoutScheme.indexOf(':')
+        const ms = Number(withoutScheme.slice(0, colonIdx))
+        const sp = decodeURIComponent(withoutScheme.slice(colonIdx + 1))
+        return (
+          <TimestampBadge
+            ms={ms}
+            speaker={sp}
+            onSeek={onSeek ?? (() => {})}
+            isAudioReady={!!onSeek}
+          />
+        )
+      }
+      return (
+        <a href={href} className="text-blue-600 underline" target="_blank" rel="noopener noreferrer">
+          {children}
+        </a>
+      )
+    },
+  }
   return (
     <div className="text-sm leading-relaxed break-words space-y-1">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MAP}>
-        {content}
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={urlTransform}>
+        {markersToSeekLinks(content)}
       </ReactMarkdown>
     </div>
   )
