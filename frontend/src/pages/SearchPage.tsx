@@ -283,7 +283,9 @@ export default function SearchPage() {
                 <MeetingResultGroup
                   key={group.meeting_id}
                   group={group}
-                  onNavigate={(id) => navigate(`/meetings/${id}`)}
+                  onNavigate={(id) =>
+                    navigate(query ? `/meetings/${id}?q=${encodeURIComponent(query)}` : `/meetings/${id}`)
+                  }
                 />
               ))}
             </div>

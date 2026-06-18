@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMeetingStore } from '../stores/meetingStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMeeting } from '../hooks/useMeeting'
@@ -208,6 +208,27 @@ export default function MeetingPage() {
     if (isDesktop || !currentMatchType || !search.effectiveQuery) return
     setMobileTab(currentMatchType === 'transcript' ? 'transcript' : 'summary')
   }, [isDesktop, currentMatchType, search.currentIndex, search.effectiveQuery])
+
+  // 전역 검색에서 넘어온 경우(?q=) 회의내 검색을 자동 실행 — 1회만.
+  // URL의 q는 적용 후 제거(replace)해 새로고침/뒤로가기 시 재발동·재포커스 방지.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const appliedSearchQ = useRef(false)
+  useEffect(() => {
+    if (appliedSearchQ.current) return
+    const q = searchParams.get('q')
+    if (!q) return
+    appliedSearchQ.current = true
+    search.open()
+    search.setQuery(q)
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('q')
+        return next
+      },
+      { replace: true }
+    )
+  }, [searchParams, search, setSearchParams])
 
   // meeting 상태가 completed로 바뀌면 트랜스크립트도 리로드 (파일 업로드 완료 시)
   useEffect(() => {
