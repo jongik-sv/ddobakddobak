@@ -56,17 +56,30 @@ class MeetingChatContext
   end
 
   def transcript_block(budget)
+    roster = {}
     lines = @meeting.transcripts.order(:sequence_number).map do |t|
       ms = t.started_at_ms.to_i
-      "[#{ms_to_clock(ms)}|#{ms}ms #{t.speaker_label}] #{t.content}"
+      label = t.speaker_label.to_s
+      name = t.speaker_name.to_s
+      bracket = label.empty? ? (name.empty? ? "알 수 없음" : name) : label
+      if !name.empty? && name != bracket
+        roster[bracket] ||= name
+        prefix = "#{name}: "
+      else
+        prefix = ""
+      end
+      "[#{ms_to_clock(ms)}|#{ms}ms #{bracket}] #{prefix}#{t.content}"
     end
     body = lines.join("\n")
     return "" if body.blank?
     return "" unless budget.positive?
-    if body.length > budget
-      body = body[0, budget] + TRANSCRIPT_OMISSION
+    roster_header = roster.empty? ? "" : "[화자 안내] #{roster.map { |l, n| "#{l}=#{n}" }.join(', ')}\n\n"
+    eff = budget - roster_header.length
+    return "" unless eff.positive?
+    if body.length > eff
+      body = body[0, eff] + TRANSCRIPT_OMISSION
     end
-    "#{TRANSCRIPT_HEADER}#{body}"
+    "#{TRANSCRIPT_HEADER}#{roster_header}#{body}"
   end
 
   def history_block

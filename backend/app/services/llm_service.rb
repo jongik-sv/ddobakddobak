@@ -419,15 +419,24 @@ class LlmService
 
   def format_transcripts(transcripts)
     return "" if transcripts.blank?
-    transcripts.map { |t|
+    roster = {}
+    lines = transcripts.map { |t|
       label = (t["speaker_label"] || t[:speaker_label]).to_s
       name  = (t["speaker"] || t[:speaker]).to_s
-      tag   = label.empty? ? (name.empty? ? "알 수 없음" : name) : label
       text = t["text"] || t[:text] || ""
       ms = (t["started_at_ms"] || t[:started_at_ms] || 0).to_i
       clock = format("%02d:%02d", ms / 60000, (ms / 1000) % 60)
-      "[#{clock}|#{ms}ms #{tag}] #{text}"
-    }.join("\n")
+      bracket = label.empty? ? (name.empty? ? "알 수 없음" : name) : label
+      if !name.empty? && name != bracket
+        roster[bracket] ||= name
+        prefix = "#{name}: "
+      else
+        prefix = ""
+      end
+      "[#{clock}|#{ms}ms #{bracket}] #{prefix}#{text}"
+    }
+    header = roster.empty? ? "" : "[화자 안내] #{roster.map { |l, n| "#{l}=#{n}" }.join(', ')}\n\n"
+    header + lines.join("\n")
   end
 
   def extract_json(text)

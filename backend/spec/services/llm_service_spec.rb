@@ -135,6 +135,12 @@ RSpec.describe LlmService, "ok signalling" do
       out = svc.send(:format_transcripts, [{ "speaker" => "화자 1", "text" => "결정 보류", "started_at_ms" => 125000 }])
       expect(out).to eq("[02:05|125000ms 화자 1] 결정 보류")
     end
+
+    it "라벨과 이름이 둘 다 있으면 대괄호=라벨, 콜론앞=이름" do
+      svc = LlmService.allocate
+      out = svc.send(:format_transcripts, [{ "speaker_label" => "화자 3", "speaker" => "장종익", "text" => "제안", "started_at_ms" => 53000 }])
+      expect(out).to eq("[화자 안내] 화자 3=장종익\n\n[00:53|53000ms 화자 3] 장종익: 제안")
+    end
   end
 
   describe "#refine_notes 발화근거 마커 지침" do

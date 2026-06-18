@@ -75,16 +75,26 @@ class LLMSummarizer:
         """트랜스크립트 목록을 프롬프트용 텍스트로 포맷한다(발화 시각 포함)."""
         if not transcripts:
             return ""
+        roster: dict[str, str] = {}
         lines = []
         for item in transcripts:
             label = item.get("speaker_label") or ""
             name = item.get("speaker") or ""
-            tag = label or name or "알 수 없음"
+            bracket = label or name or "알 수 없음"
             text = item.get("text", "")
             ms = int(item.get("started_at_ms", 0) or 0)
             clock = f"{ms // 60000:02d}:{(ms // 1000) % 60:02d}"
-            lines.append(f"[{clock}|{ms}ms {tag}] {text}")
-        return "\n".join(lines)
+            if name and name != bracket:
+                roster.setdefault(bracket, name)
+                prefix = f"{name}: "
+            else:
+                prefix = ""
+            lines.append(f"[{clock}|{ms}ms {bracket}] {prefix}{text}")
+        header = ""
+        if roster:
+            mapping = ", ".join(f"{l}={n}" for l, n in roster.items())
+            header = f"[화자 안내] {mapping}\n\n"
+        return header + "\n".join(lines)
 
     # ── CLI 파이프 모드 호출 ──────────────────────────────────────────────────
 
