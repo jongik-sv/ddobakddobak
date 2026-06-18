@@ -107,7 +107,7 @@ export function buildMeetingDetailTabs({
       content: (
         <div data-search-region="summary" className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-            <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={!locked} onNotesChange={onNotesChange} headerExtra={summaryOptions} />
+            <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={!locked} onNotesChange={onNotesChange} headerExtra={summaryOptions} onSeek={onSeek} />
           </div>
           {belowSummary}
         </div>

@@ -491,6 +491,7 @@ export default function MeetingPage() {
                   editable={!locked}
                   onNotesChange={handleNotesChange}
                   headerExtra={summaryOptionsControl}
+                  onSeek={handleSeek}
                 />
               </div>
               {typoSections}
