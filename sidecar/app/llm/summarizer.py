@@ -77,11 +77,13 @@ class LLMSummarizer:
             return ""
         lines = []
         for item in transcripts:
-            speaker = item.get("speaker", "알 수 없음")
+            label = item.get("speaker_label") or ""
+            name = item.get("speaker") or ""
+            tag = label or name or "알 수 없음"
             text = item.get("text", "")
             ms = int(item.get("started_at_ms", 0) or 0)
             clock = f"{ms // 60000:02d}:{(ms // 1000) % 60:02d}"
-            lines.append(f"[{clock}|{ms}ms {speaker}] {text}")
+            lines.append(f"[{clock}|{ms}ms {tag}] {text}")
         return "\n".join(lines)
 
     # ── CLI 파이프 모드 호출 ──────────────────────────────────────────────────

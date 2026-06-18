@@ -5,8 +5,8 @@ require "rails_helper"
 RSpec.describe LlmPrompts do
   describe "MEETING_CHAT_SYSTEM_PROMPT" do
     it "챗 프롬프트에 마커 형식 지침이 있다" do
-      expect(LlmPrompts::MEETING_CHAT_SYSTEM_PROMPT).to include("⟦t:")
-      expect(LlmPrompts::MEETING_CHAT_SYSTEM_PROMPT).to include("화자 N")
+      expect(LlmPrompts::MEETING_CHAT_SYSTEM_PROMPT).to include("⟦t:<ms>/s:<화자>⟧")
+      expect(LlmPrompts::MEETING_CHAT_SYSTEM_PROMPT).to include("화자값")
     end
 
     it "FOLLOWUPS 센티넬 지시를 포함한다" do

@@ -11,6 +11,6 @@ class Summary < ApplicationRecord
 
   def fts_value_for(col)
     v = super
-    col.to_s == "notes_markdown" ? v.to_s.gsub(/⟦t:\d+\|s:[^⟧]+⟧/, "") : v
+    col.to_s == "notes_markdown" ? v.to_s.gsub(/⟦t:\d+[|\/]s:[^⟧]+⟧/, "") : v
   end
 end

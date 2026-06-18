@@ -420,11 +420,13 @@ class LlmService
   def format_transcripts(transcripts)
     return "" if transcripts.blank?
     transcripts.map { |t|
-      speaker = t["speaker"] || t[:speaker] || "알 수 없음"
+      label = (t["speaker_label"] || t[:speaker_label]).to_s
+      name  = (t["speaker"] || t[:speaker]).to_s
+      tag   = label.empty? ? (name.empty? ? "알 수 없음" : name) : label
       text = t["text"] || t[:text] || ""
       ms = (t["started_at_ms"] || t[:started_at_ms] || 0).to_i
       clock = format("%02d:%02d", ms / 60000, (ms / 1000) % 60)
-      "[#{clock}|#{ms}ms #{speaker}] #{text}"
+      "[#{clock}|#{ms}ms #{tag}] #{text}"
     }.join("\n")
   end
 

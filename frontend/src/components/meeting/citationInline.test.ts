@@ -10,8 +10,8 @@ describe('citation inline round-trip', () => {
     const para = withInline[0]
     expect(para.content.some((c: any) => c.type === 'citation' && c.props.ms === 60000)).toBe(true)
     const back = inlineToMarkers(withInline)
-    const joined = back[0].content.map((c: any) => c.type === 'citation' ? `⟦t:${c.props.ms}|s:${c.props.speaker}⟧` : c.text).join('')
-    expect(joined).toBe('확정 ⟦t:60000|s:화자 1⟧')
+    const joined = back[0].content.map((c: any) => c.type === 'text' ? c.text : `⟦t:${c.props.ms}/s:${c.props.speaker}⟧`).join('')
+    expect(joined).toBe('확정 ⟦t:60000/s:화자 1⟧')
   })
 
   it('handles multiple markers in a single text node', () => {
@@ -26,8 +26,8 @@ describe('citation inline round-trip', () => {
     expect(citations[1].props.speaker).toBe('화자 2')
 
     const back = inlineToMarkers(withInline)
-    const joined = back[0].content.map((c: any) => c.type === 'citation' ? `⟦t:${c.props.ms}|s:${c.props.speaker}⟧` : c.text).join('')
-    expect(joined).toBe('시작 ⟦t:1000|s:화자 1⟧ 중간 ⟦t:2000|s:화자 2⟧ 끝')
+    const joined = back[0].content.map((c: any) => c.type === 'text' ? c.text : `⟦t:${c.props.ms}/s:${c.props.speaker}⟧`).join('')
+    expect(joined).toBe('시작 ⟦t:1000/s:화자 1⟧ 중간 ⟦t:2000/s:화자 2⟧ 끝')
   })
 
   it('preserves text nodes without markers unchanged', () => {

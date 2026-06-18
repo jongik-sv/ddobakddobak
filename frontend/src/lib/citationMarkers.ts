@@ -1,6 +1,6 @@
-/** 인라인 발화 근거 마커 ⟦t:<ms>|s:<speaker>⟧ 파싱·직렬화 공용 유틸 (요약·챗 공유). */
+/** 인라인 발화 근거 마커 ⟦t:<ms>[|/]s:<speaker>⟧ 파싱·직렬화 공용 유틸 (요약·챗 공유). */
 
-export const CITATION_RE = /⟦t:(\d+)\|s:([^⟧]+)⟧/g
+export const CITATION_RE = /⟦t:(\d+)[|/]s:([^⟧]+)⟧/g
 
 export interface CitationMarker {
   ms: number

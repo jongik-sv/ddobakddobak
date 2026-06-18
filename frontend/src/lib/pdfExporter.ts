@@ -1,4 +1,5 @@
 import type { MeetingExportData } from '../api/meetings'
+import { stripCitationMarkers } from './citationMarkers'
 
 // ── Public API ──────────────────────────────────
 
@@ -347,7 +348,7 @@ function renderSummary(summary: MeetingExportData['summary']): string {
   if (!summary) return ''
 
   if (summary.type === 'notes_markdown' && summary.notes_markdown) {
-    return `<h2>회의록</h2>\n${markdownToHtml(summary.notes_markdown)}`
+    return `<h2>회의록</h2>\n${markdownToHtml(stripCitationMarkers(summary.notes_markdown))}`
   }
 
   // json_fields

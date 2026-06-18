@@ -56,7 +56,7 @@ class MarkdownExporter
       lines = []
       lines << "## AI 회의록"
       lines << ""
-      lines << summary.notes_markdown
+      lines << summary.notes_markdown.to_s.gsub(/[ \t]*⟦t:\d+[|\/]s:[^⟧]+⟧/, "")
 
       action_items_lines = render_action_items
       if action_items_lines

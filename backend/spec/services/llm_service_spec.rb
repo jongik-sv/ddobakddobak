@@ -143,7 +143,7 @@ RSpec.describe LlmService, "ok signalling" do
       captured = nil
       allow(svc).to receive(:call_llm_raw) { |sys, _u, **| captured = sys; "결과" }
       svc.refine_notes("", [{ "speaker" => "화자 1", "text" => "안녕", "started_at_ms" => 0 }], verbosity_context: :realtime)
-      expect(captured).to include("⟦t:<ms>|s:<화자>⟧")
+      expect(captured).to include("⟦t:<ms>/s:<화자>⟧")
       expect(captured).to include("기존 회의록에 이미 있는")
     end
   end

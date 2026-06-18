@@ -1,4 +1,4 @@
-const SPEAKER_COLORS = [
+export const SPEAKER_COLORS = [
   'bg-blue-100 text-blue-800',
   'bg-green-100 text-green-800',
   'bg-purple-100 text-purple-800',
@@ -24,9 +24,20 @@ const SPEAKER_BORDER_COLORS = [
   'border-cyan-400',
 ]
 
+function hashString(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0
+  }
+  return Math.abs(h)
+}
+
 function speakerIndex(speakerLabel: string): number {
   const match = speakerLabel.match(/(\d+)$/)
-  return match ? parseInt(match[1], 10) % SPEAKER_COLORS.length : 0
+  if (match) return parseInt(match[1], 10) % SPEAKER_COLORS.length
+  const key = speakerLabel.trim()
+  if (!key) return 0
+  return hashString(key) % SPEAKER_COLORS.length
 }
 
 export function speakerColor(speakerLabel: string): string {
