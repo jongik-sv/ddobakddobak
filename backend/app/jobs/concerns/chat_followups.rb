@@ -2,6 +2,8 @@
 module ChatFollowups
   FOLLOWUPS_SENTINEL = "<<<FOLLOWUPS>>>".freeze
 
+  private
+
   def split_followups(raw)
     return [raw.to_s.strip, []] unless raw.to_s.include?(FOLLOWUPS_SENTINEL)
 
