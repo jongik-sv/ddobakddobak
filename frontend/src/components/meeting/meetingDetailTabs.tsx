@@ -132,7 +132,7 @@ export function buildMeetingDetailTabs({
       id: 'chat',
       label: 'AI 챗',
       icon: MessageCircle,
-      content: <AiChatPanel meetingId={meetingId} onSeek={onSeek} />,
+      content: <AiChatPanel scopeId={meetingId} onSeek={onSeek} />,
     },
   ]
 }

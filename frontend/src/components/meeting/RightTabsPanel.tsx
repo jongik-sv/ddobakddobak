@@ -41,7 +41,7 @@ export function RightTabsPanel({
           ? memo
           : tab === 'corrections'
             ? corrections
-            : <AiChatPanel meetingId={meetingId} onSeek={onSeek} />}
+            : <AiChatPanel scopeId={meetingId} onSeek={onSeek} />}
       </div>
     </div>
   )
