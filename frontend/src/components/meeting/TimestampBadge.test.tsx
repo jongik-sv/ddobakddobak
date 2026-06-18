@@ -13,6 +13,7 @@ describe('TimestampBadge', () => {
   it('does not call onSeek when audio not ready', () => {
     const onSeek = vi.fn()
     render(<TimestampBadge ms={1000} speaker="화자 1" onSeek={onSeek} isAudioReady={false} />)
+    expect(screen.getByRole('button')).toBeDisabled()
     fireEvent.click(screen.getByRole('button'))
     expect(onSeek).not.toHaveBeenCalled()
   })

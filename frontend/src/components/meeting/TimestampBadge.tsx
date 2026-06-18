@@ -19,7 +19,7 @@ export function TimestampBadge({ ms, speaker, speakerName, onSeek, isAudioReady 
       title={title}
       aria-label={title}
       disabled={!isAudioReady}
-      onClick={() => { if (isAudioReady) onSeek(ms) }}
+      onClick={() => { if (isAudioReady) onSeek(ms) }} // guard for programmatic calls; disabled attr handles browser clicks
       className={`inline-flex items-center gap-0.5 align-baseline mx-0.5 px-1 py-0 rounded text-[10px] font-medium ${color} ${isAudioReady ? 'cursor-pointer hover:brightness-95' : 'opacity-40 cursor-default'}`}
     >
       <Clock className="w-2.5 h-2.5" />
