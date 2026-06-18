@@ -421,7 +421,9 @@ class LlmService
     transcripts.map { |t|
       speaker = t["speaker"] || t[:speaker] || "알 수 없음"
       text = t["text"] || t[:text] || ""
-      "#{speaker}: #{text}"
+      ms = (t["started_at_ms"] || t[:started_at_ms] || 0).to_i
+      clock = format("%02d:%02d", ms / 60000, (ms / 1000) % 60)
+      "[#{clock}|#{ms}ms #{speaker}] #{text}"
     }.join("\n")
   end
 

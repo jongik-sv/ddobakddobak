@@ -72,14 +72,16 @@ class LLMSummarizer:
         return AsyncOpenAI(**kwargs)
 
     def _format_transcripts(self, transcripts: list[dict]) -> str:
-        """트랜스크립트 목록을 프롬프트용 텍스트로 포맷한다."""
+        """트랜스크립트 목록을 프롬프트용 텍스트로 포맷한다(발화 시각 포함)."""
         if not transcripts:
             return ""
         lines = []
         for item in transcripts:
             speaker = item.get("speaker", "알 수 없음")
             text = item.get("text", "")
-            lines.append(f"{speaker}: {text}")
+            ms = int(item.get("started_at_ms", 0) or 0)
+            clock = f"{ms // 60000:02d}:{(ms // 1000) % 60:02d}"
+            lines.append(f"[{clock}|{ms}ms {speaker}] {text}")
         return "\n".join(lines)
 
     # ── CLI 파이프 모드 호출 ──────────────────────────────────────────────────

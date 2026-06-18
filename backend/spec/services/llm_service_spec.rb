@@ -128,4 +128,12 @@ RSpec.describe LlmService, "ok signalling" do
       expect(captured).to include("분량 지시 (간결)")
     end
   end
+
+  describe "#format_transcripts 시각(ms) 노출" do
+    it "format_transcripts에 시각(ms)을 노출한다" do
+      svc = LlmService.allocate
+      out = svc.send(:format_transcripts, [{ "speaker" => "화자 1", "text" => "결정 보류", "started_at_ms" => 125000 }])
+      expect(out).to eq("[02:05|125000ms 화자 1] 결정 보류")
+    end
+  end
 end
