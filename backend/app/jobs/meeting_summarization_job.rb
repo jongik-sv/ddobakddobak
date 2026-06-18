@@ -11,7 +11,10 @@ class MeetingSummarizationJob < ApplicationJob
   # dev/:async 환경에서 SolidQueue 락이 작동하지 않을 때의 안전망.
   MEETING_LOCKS = Concurrent::Map.new
 
-  def perform(meeting_id, type: "realtime")
+  FINAL_REENQUEUE_CAP = 5
+  FINAL_REENQUEUE_WAIT = 30.seconds
+
+  def perform(meeting_id, type: "realtime", attempt: 0)
     meeting = Meeting.find_by(id: meeting_id)
     return unless meeting
 
@@ -22,7 +25,7 @@ class MeetingSummarizationJob < ApplicationJob
         # 실전 재현: stop 직후 realtime 틱(LLM 수십 초)이 락 점유 → final try_lock 실패 → 무음 드랍.
         # 락 해제 후 재시도하도록 재enqueue (realtime은 매분 cron이 다시 오므로 드랍 OK).
         Rails.logger.info "[MeetingSummarizationJob] final re-enqueued (lock busy) meeting=#{meeting_id}"
-        self.class.set(wait: 30.seconds).perform_later(meeting_id, type: "final")
+        self.class.set(wait: 30.seconds).perform_later(meeting_id, type: "final", attempt: attempt)
       else
         Rails.logger.info "[MeetingSummarizationJob] skipped (in-process lock busy) meeting=#{meeting_id} type=#{type}"
       end
@@ -32,7 +35,7 @@ class MeetingSummarizationJob < ApplicationJob
     begin
       case type
       when "final"
-        generate_minutes_final(meeting)
+        generate_minutes_final(meeting, attempt: attempt)
       else
         generate_minutes_realtime(meeting)
       end
@@ -202,10 +205,29 @@ class MeetingSummarizationJob < ApplicationJob
     broadcast_finished(meeting, "realtime", ok: ok) if started
   end
 
-  def generate_minutes_final(meeting)
+  # 전사 편집 등으로 stale라 이번 final 결과를 버려야 하지만, 정본(final summary)이 아직 없으면
+  # 그냥 드랍하면 "영영 안 생김"(stop이 final을 1회만 enqueue). 최신 전사로 재생성하도록 재enqueue한다.
+  # 이미 정본이 있으면(사용자 수동 편집 가능성) 덮어쓰지 않도록 기존대로 드랍.
+  def reenqueue_final_if_minutes_missing(meeting, attempt)
+    if meeting.summaries.exists?(summary_type: "final")
+      Rails.logger.info "[MeetingSummarizationJob] final skipped (reset or user-edit during LLM; minutes exist) meeting=#{meeting.id}"
+      return
+    end
+    if attempt >= FINAL_REENQUEUE_CAP
+      Rails.logger.warn "[MeetingSummarizationJob] final giving up (still stale after #{attempt} retries) meeting=#{meeting.id}"
+      return
+    end
+    Rails.logger.info "[MeetingSummarizationJob] final re-enqueued (stale during LLM, no minutes yet) meeting=#{meeting.id} attempt=#{attempt + 1}"
+    self.class.set(wait: FINAL_REENQUEUE_WAIT).perform_later(meeting.id, type: "final", attempt: attempt + 1)
+  end
+
+  def generate_minutes_final(meeting, attempt: 0)
     meeting.reload
     return if meeting.pending?
-    return if stale_relative_to_user_action?(meeting)
+    if stale_relative_to_user_action?(meeting)
+      reenqueue_final_if_minutes_missing(meeting, attempt)
+      return
+    end
 
     transcripts = meeting.transcripts.order(:sequence_number)
     return if transcripts.empty?
@@ -266,8 +288,13 @@ class MeetingSummarizationJob < ApplicationJob
     end
 
     meeting.reload
-    if meeting.pending? || stale_relative_to_user_action?(meeting)
-      Rails.logger.info "[MeetingSummarizationJob] final skipped (reset or user-edit during LLM) meeting=#{meeting.id}"
+    if meeting.pending?
+      Rails.logger.info "[MeetingSummarizationJob] final skipped (reset during LLM) meeting=#{meeting.id}"
+      return
+    end
+    if stale_relative_to_user_action?(meeting)
+      Rails.logger.info "[MeetingSummarizationJob] final skipped (user-edit during LLM) meeting=#{meeting.id}"
+      reenqueue_final_if_minutes_missing(meeting, attempt)
       return
     end
 
