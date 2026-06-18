@@ -2,6 +2,9 @@
 
 export const CITATION_RE = /⟦t:(\d+)[|/]s:([^⟧]+)⟧/g
 
+/** cross-meeting 인용 마커 ⟦m:<meetingId>/t:<ms>/s:<speaker>⟧ — 폴더/프로젝트 챗 전용. */
+export const FOLDER_CITATION_RE = /⟦m:(\d+)\/t:(\d+)[|/]s:([^⟧]+)⟧/g
+
 export interface CitationMarker {
   ms: number
   speaker: string

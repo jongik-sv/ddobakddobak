@@ -30,3 +30,21 @@ export async function sendChatMessage(
 ): Promise<{ user_message: ChatMessage; assistant_message: ChatMessage }> {
   return apiClient.post(`meetings/${meetingId}/chat_messages`, { json: { content } }).json()
 }
+
+export type ChatScopeType = 'meeting' | 'folder' | 'project'
+
+function scopePath(scopeType: ChatScopeType, scopeId: number): string {
+  if (scopeType === 'folder') return `folders/${scopeId}/chat_messages`
+  if (scopeType === 'project') return `projects/${scopeId}/chat_messages`
+  return `meetings/${scopeId}/chat_messages`
+}
+
+export async function getScopedChatMessages(scopeType: ChatScopeType, scopeId: number): Promise<ChatMessage[]> {
+  return apiClient.get(scopePath(scopeType, scopeId)).json()
+}
+
+export async function sendScopedChatMessage(
+  scopeType: ChatScopeType, scopeId: number, content: string,
+): Promise<{ user_message: ChatMessage; assistant_message: ChatMessage }> {
+  return apiClient.post(scopePath(scopeType, scopeId), { json: { content } }).json()
+}

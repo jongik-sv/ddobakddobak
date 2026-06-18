@@ -19,7 +19,7 @@ describe('AiChatPanel', () => {
         { id: 2, role: 'assistant', content: '답변이요', status: 'complete', created_at: '' },
       ],
     })
-    render(<AiChatPanel meetingId={7} />)
+    render(<AiChatPanel scopeId={7} />)
     expect(screen.getByText('질문이요')).toBeInTheDocument()
     expect(screen.getByText('답변이요')).toBeInTheDocument()
   })
@@ -27,17 +27,17 @@ describe('AiChatPanel', () => {
   it('calls send on submit', () => {
     const send = vi.fn().mockResolvedValue(undefined)
     useChatStore.setState({ send } as any)
-    render(<AiChatPanel meetingId={7} />)
+    render(<AiChatPanel scopeId={7} />)
     fireEvent.change(screen.getByPlaceholderText(/질문/), { target: { value: '뭐 결정됐어?' } })
     fireEvent.click(screen.getByRole('button', { name: '전송' }))
-    expect(send).toHaveBeenCalledWith(7, '뭐 결정됐어?')
+    expect(send).toHaveBeenCalledWith('meeting', 7, '뭐 결정됐어?')
   })
 
   it('shows typing indicator for pending assistant', () => {
     useChatStore.setState({
       messages: [{ id: 2, role: 'assistant', content: '', status: 'pending', created_at: '' }],
     })
-    render(<AiChatPanel meetingId={7} />)
+    render(<AiChatPanel scopeId={7} />)
     expect(screen.getByTestId('chat-typing')).toBeInTheDocument()
   })
 
@@ -54,7 +54,7 @@ describe('AiChatPanel', () => {
         },
       ],
     })
-    render(<AiChatPanel meetingId={7} />)
+    render(<AiChatPanel scopeId={7} />)
     expect(screen.getByRole('button', { name: '다음질문1' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '다음질문2' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '다음질문3' })).toBeInTheDocument()
@@ -75,9 +75,9 @@ describe('AiChatPanel', () => {
         },
       ],
     } as any)
-    render(<AiChatPanel meetingId={7} />)
+    render(<AiChatPanel scopeId={7} />)
     fireEvent.click(screen.getByRole('button', { name: '다음질문2' }))
-    expect(send).toHaveBeenCalledWith(7, '다음질문2')
+    expect(send).toHaveBeenCalledWith('meeting', 7, '다음질문2')
   })
 
   it('disables chips while an assistant message is pending and does not call send on click', () => {
@@ -96,7 +96,7 @@ describe('AiChatPanel', () => {
         { id: 3, role: 'assistant', content: '', status: 'pending', created_at: '' },
       ],
     } as any)
-    render(<AiChatPanel meetingId={7} />)
+    render(<AiChatPanel scopeId={7} />)
     const chip = screen.getByRole('button', { name: '다음질문1' })
     expect(chip).toBeDisabled()
     fireEvent.click(chip)
@@ -110,7 +110,7 @@ describe('AiChatPanel', () => {
         { id: 3, role: 'assistant', content: '답변2', status: 'complete', created_at: '' },
       ],
     })
-    render(<AiChatPanel meetingId={7} />)
+    render(<AiChatPanel scopeId={7} />)
     expect(screen.queryByTestId('chat-suggestions')).not.toBeInTheDocument()
   })
 
@@ -122,7 +122,7 @@ describe('AiChatPanel', () => {
         { id: 2, role: 'assistant', content: '답변이요', status: 'complete', created_at: '' },
       ],
     })
-    render(<AiChatPanel meetingId={7} />)
+    render(<AiChatPanel scopeId={7} />)
     expect(scrollIntoView).toHaveBeenCalled()
   })
 
@@ -132,7 +132,7 @@ describe('AiChatPanel', () => {
         { id: 2, role: 'assistant', content: '### H\n\n**b**', status: 'complete', created_at: '' },
       ],
     })
-    render(<AiChatPanel meetingId={7} />)
+    render(<AiChatPanel scopeId={7} />)
     // heading present
     expect(screen.getByRole('heading', { name: 'H' })).toBeInTheDocument()
     // bold text inside <strong>
@@ -149,7 +149,7 @@ describe('AiChatPanel', () => {
         { id: 1, role: 'user', content: '**x**', status: 'complete', created_at: '' },
       ],
     })
-    render(<AiChatPanel meetingId={7} />)
+    render(<AiChatPanel scopeId={7} />)
     expect(screen.getByText('**x**')).toBeInTheDocument()
     expect(screen.queryByText('x')).not.toBeInTheDocument()
   })
@@ -167,7 +167,7 @@ describe('AiChatPanel', () => {
         },
       ],
     })
-    render(<AiChatPanel meetingId={7} />)
+    render(<AiChatPanel scopeId={7} />)
     expect(screen.queryByRole('button', { name: '질문' })).not.toBeInTheDocument()
   })
 })

@@ -1,4 +1,4 @@
-import { Search, X, Filter, UserPlus, Upload } from 'lucide-react'
+import { Search, X, Filter, UserPlus, Upload, MessagesSquare } from 'lucide-react'
 
 interface MeetingsHeaderProps {
   isDesktop: boolean
@@ -12,6 +12,9 @@ interface MeetingsHeaderProps {
   onJoinMeeting: () => void
   onUploadAudio: () => void
   onCreateMeeting: () => void
+  /** "폴더에게 묻기" 진입점 — 폴더/프로젝트가 선택됐을 때만 노출. */
+  onAskFolder?: () => void
+  canAsk?: boolean
 }
 
 /** MeetingsPage 상단 헤더 (제목 + 모바일/데스크톱 액션 버튼, 모바일 검색 바). */
@@ -27,6 +30,8 @@ export function MeetingsHeader({
   onJoinMeeting,
   onUploadAudio,
   onCreateMeeting,
+  onAskFolder,
+  canAsk,
 }: MeetingsHeaderProps) {
   if (!isDesktop && searchExpanded) {
     return (
@@ -88,10 +93,31 @@ export function MeetingsHeader({
             >
               <Upload className="w-5 h-5" />
             </button>
+            {canAsk && (
+              <button
+                data-testid="mobile-ask-folder"
+                type="button"
+                onClick={onAskFolder}
+                className="p-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                title="폴더에게 묻기"
+                aria-label="폴더에게 묻기"
+              >
+                <MessagesSquare className="w-5 h-5" />
+              </button>
+            )}
           </>
         )}
         {isDesktop && (
           <>
+            {canAsk && (
+              <button
+                type="button"
+                onClick={onAskFolder}
+                className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+              >
+                <MessagesSquare size={16} /> 폴더에게 묻기
+              </button>
+            )}
             <button
               onClick={onJoinMeeting}
               className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"

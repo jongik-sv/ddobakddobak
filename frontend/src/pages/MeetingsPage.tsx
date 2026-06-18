@@ -13,6 +13,7 @@ import { BottomSheet } from '../components/ui/BottomSheet'
 import type { Meeting } from '../api/meetings'
 import type { FolderNode } from '../api/folders'
 import FolderBreadcrumb from '../components/folder/FolderBreadcrumb'
+import { FolderChatDrawer } from '../components/folder/FolderChatDrawer'
 import MoveMeetingDialog from '../components/folder/MoveMeetingDialog'
 import MoveToProjectModal from '../components/project/MoveToProjectModal'
 import { useProjectStore } from '../stores/projectStore'
@@ -74,7 +75,12 @@ export default function MeetingsPage() {
   const [movingMeeting, setMovingMeeting] = useState<Meeting | null>(null)
   const [movingProjectMeeting, setMovingProjectMeeting] = useState<Meeting | null>(null)
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
+  const [askOpen, setAskOpen] = useState(false)
   const currentProjectId = useProjectStore((s) => s.currentProjectId)
+
+  // "폴더에게 묻기" 대상 폴더 id — selectedFolderId가 'all'/null이면 폴더 스코프 없음(프로젝트 전체).
+  const askFolderId = typeof selectedFolderId === 'number' ? selectedFolderId : null
+  const canAsk = !!(askFolderId || currentProjectId)
 
   const [viewMode, setViewMode] = useState<ViewMode>(getStoredViewMode)
   const [sortField, setSortField] = useState<SortField>('created_at')
@@ -252,6 +258,8 @@ export default function MeetingsPage() {
         onJoinMeeting={() => setShowJoinDialog(true)}
         onUploadAudio={() => setShowUploadModal(true)}
         onCreateMeeting={() => setShowModal(true)}
+        onAskFolder={() => setAskOpen(true)}
+        canAsk={canAsk}
       />
 
       {/* 폴더 경로 */}
@@ -544,6 +552,15 @@ export default function MeetingsPage() {
       <JoinMeetingDialog
         open={showJoinDialog}
         onClose={() => setShowJoinDialog(false)}
+      />
+
+      {/* 폴더/프로젝트에게 묻기 드로어 */}
+      <FolderChatDrawer
+        open={askOpen}
+        onClose={() => setAskOpen(false)}
+        folderId={askFolderId}
+        projectId={currentProjectId}
+        folderName={askFolderId != null ? folderName(folders, askFolderId) ?? undefined : undefined}
       />
 
       {/* 모바일 FAB (새 회의) */}

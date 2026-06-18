@@ -2,8 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 import { useChatStore } from '../../stores/chatStore'
 import { subscribeChat } from '../../channels/chat'
 import { ChatMarkdown } from './ChatMarkdown'
+import type { ChatScopeType } from '../../api/chat'
 
-export function AiChatPanel({ meetingId, onSeek }: { meetingId: number; onSeek?: (ms: number) => void }) {
+export function AiChatPanel({
+  scopeType = 'meeting',
+  scopeId,
+  onSeek,
+  onSeekMeeting,
+  emptyHint,
+}: {
+  scopeType?: ChatScopeType
+  scopeId: number
+  onSeek?: (ms: number) => void
+  onSeekMeeting?: (meetingId: number, ms: number) => void
+  emptyHint?: string
+}) {
   const { load, send } = useChatStore()
   const messages = useChatStore((s) => s.messages) ?? []
   const hasPending = messages.some((m) => m.status === 'pending')
@@ -11,10 +24,10 @@ export function AiChatPanel({ meetingId, onSeek }: { meetingId: number; onSeek?:
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    load(meetingId)
-    const unsub = subscribeChat(meetingId)
+    load(scopeType, scopeId)
+    const unsub = subscribeChat(scopeType, scopeId)
     return unsub
-  }, [meetingId, load])
+  }, [scopeType, scopeId, load])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
@@ -24,14 +37,14 @@ export function AiChatPanel({ meetingId, onSeek }: { meetingId: number; onSeek?:
     const q = draft.trim()
     if (!q) return
     setDraft('')
-    void send(meetingId, q)
+    void send(scopeType, scopeId, q)
   }
 
   return (
     <div className="flex flex-col h-full bg-white">
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.length === 0 && (
-          <p className="text-sm text-gray-400">이 회의 내용에 대해 무엇이든 물어보세요.</p>
+          <p className="text-sm text-gray-400">{emptyHint ?? '이 회의 내용에 대해 무엇이든 물어보세요.'}</p>
         )}
         {messages.map((m) => {
           const suggestions =
@@ -59,7 +72,7 @@ export function AiChatPanel({ meetingId, onSeek }: { meetingId: number; onSeek?:
                 ) : m.status === 'error' ? (
                   <span className="text-red-500">답변 실패: {m.error_message}</span>
                 ) : m.role === 'assistant' && m.status === 'complete' ? (
-                  <ChatMarkdown content={m.content} onSeek={onSeek} />
+                  <ChatMarkdown content={m.content} onSeek={onSeek} onSeekMeeting={onSeekMeeting} />
                 ) : (
                   m.content
                 )}
@@ -73,7 +86,7 @@ export function AiChatPanel({ meetingId, onSeek }: { meetingId: number; onSeek?:
                       disabled={hasPending}
                       onClick={() => {
                         if (hasPending) return
-                        void send(meetingId, q)
+                        void send(scopeType, scopeId, q)
                       }}
                       className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >

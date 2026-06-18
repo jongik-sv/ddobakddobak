@@ -127,7 +127,7 @@ export function useLiveMobileTabs({
       id: 'chat',
       label: 'AI 챗',
       icon: MessageCircle,
-      content: <AiChatPanel meetingId={meetingId} />,
+      content: <AiChatPanel scopeId={meetingId} />,
     },
   ], [meetingId, isActive, isSharing, isHost, currentUserId, onTransferRequest, onNotesChange, onSaveMemo, isSavingMemo, memoEditorRef, corrections, isApplyingCorrections, onUpdateCorrection, onAddCorrection, onRemoveCorrection, onApplyCorrections, summaryOptions])
 }

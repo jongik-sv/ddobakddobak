@@ -1,17 +1,20 @@
 import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { CITATION_RE } from '../../lib/citationMarkers'
+import { CITATION_RE, FOLDER_CITATION_RE } from '../../lib/citationMarkers'
 import { TimestampBadge } from './TimestampBadge'
 
-// 마커 → 마크다운 링크 치환: ⟦t:125000|s:화자 1⟧ → [⏱](ddobak-seek:125000:화자%201)
+// 마커 → 마크다운 링크 치환. FOLDER(m:) 먼저 치환해야 CITATION_RE 오매칭 방지.
 function markersToSeekLinks(text: string): string {
-  return text.replace(new RegExp(CITATION_RE.source, 'g'), (_m, ms, sp) =>
-    `[⏱](ddobak-seek:${ms}:${encodeURIComponent(sp)})`)
+  return text
+    .replace(new RegExp(FOLDER_CITATION_RE.source, 'g'), (_m, mid, ms, sp) =>
+      `[⏱](ddobak-seek-meeting:${mid}:${ms}:${encodeURIComponent(sp)})`)
+    .replace(new RegExp(CITATION_RE.source, 'g'), (_m, ms, sp) =>
+      `[⏱](ddobak-seek:${ms}:${encodeURIComponent(sp)})`)
 }
 
-// ddobak-seek: 프로토콜은 내부 전용 — URL sanitizer에서 허용
+// ddobak-seek: / ddobak-seek-meeting: 프로토콜은 내부 전용 — URL sanitizer에서 허용
 function urlTransform(url: string): string {
-  if (url.startsWith('ddobak-seek:')) return url
+  if (url.startsWith('ddobak-seek:') || url.startsWith('ddobak-seek-meeting:')) return url
   return defaultUrlTransform(url)
 }
 
@@ -52,10 +55,38 @@ const MAP: Components = {
   // to handle the ddobak-seek: protocol. Defining it here would be dead code.
 }
 
-export function ChatMarkdown({ content, onSeek }: { content: string; onSeek?: (ms: number) => void }) {
+export function ChatMarkdown({
+  content,
+  onSeek,
+  onSeekMeeting,
+}: {
+  content: string
+  onSeek?: (ms: number) => void
+  onSeekMeeting?: (meetingId: number, ms: number) => void
+}) {
   const components: Components = {
     ...MAP,
     a: ({ children, href }) => {
+      if (href && href.startsWith('ddobak-seek-meeting:')) {
+        // href format: ddobak-seek-meeting:<meetingId>:<ms>:<encodedSpeaker>
+        const withoutScheme = href.slice('ddobak-seek-meeting:'.length)
+        const firstColon = withoutScheme.indexOf(':')
+        if (firstColon === -1) return <>{children}</>
+        const meetingId = Number(withoutScheme.slice(0, firstColon))
+        const rest = withoutScheme.slice(firstColon + 1)
+        const secondColon = rest.indexOf(':')
+        if (secondColon === -1) return <>{children}</>
+        const ms = Number(rest.slice(0, secondColon))
+        const sp = decodeURIComponent(rest.slice(secondColon + 1))
+        return (
+          <TimestampBadge
+            ms={ms}
+            speaker={sp}
+            onSeek={() => onSeekMeeting?.(meetingId, ms)}
+            isAudioReady={!!onSeekMeeting}
+          />
+        )
+      }
       if (href && href.startsWith('ddobak-seek:')) {
         // href format: ddobak-seek:<ms>:<encodedSpeaker>
         const withoutScheme = href.slice('ddobak-seek:'.length)

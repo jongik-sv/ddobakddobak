@@ -17,7 +17,7 @@ vi.mock('../../channels/chat', () => ({ subscribeChat: () => () => {} }))
 describe('AiChatPanel onSeek', () => {
   it('passes onSeek to badge', () => {
     const onSeek = vi.fn()
-    render(<AiChatPanel meetingId={1} onSeek={onSeek} />)
+    render(<AiChatPanel scopeId={1} onSeek={onSeek} />)
     fireEvent.click(screen.getByText('01:00').closest('button')!)
     expect(onSeek).toHaveBeenCalledWith(60000)
   })

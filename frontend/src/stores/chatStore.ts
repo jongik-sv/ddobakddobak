@@ -1,11 +1,11 @@
 import { create } from 'zustand'
-import { getChatMessages, sendChatMessage, type ChatMessage } from '../api/chat'
+import { getScopedChatMessages, sendScopedChatMessage, type ChatMessage, type ChatScopeType } from '../api/chat'
 
 interface ChatState {
   messages: ChatMessage[]
   loading: boolean
-  load: (meetingId: number) => Promise<void>
-  send: (meetingId: number, content: string) => Promise<void>
+  load: (scopeType: ChatScopeType, scopeId: number) => Promise<void>
+  send: (scopeType: ChatScopeType, scopeId: number, content: string) => Promise<void>
   applyUpdate: (msg: ChatMessage) => void
   reset: () => void
 }
@@ -13,16 +13,16 @@ interface ChatState {
 export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   loading: false,
-  load: async (meetingId) => {
+  load: async (scopeType, scopeId) => {
     set({ loading: true })
     try {
-      set({ messages: await getChatMessages(meetingId) })
+      set({ messages: await getScopedChatMessages(scopeType, scopeId) })
     } finally {
       set({ loading: false })
     }
   },
-  send: async (meetingId, content) => {
-    const res = await sendChatMessage(meetingId, content)
+  send: async (scopeType, scopeId, content) => {
+    const res = await sendScopedChatMessage(scopeType, scopeId, content)
     set((s) => ({ messages: [...s.messages, res.user_message, res.assistant_message] }))
   },
   applyUpdate: (msg) =>
