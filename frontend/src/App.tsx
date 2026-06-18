@@ -24,6 +24,7 @@ const load = {
   MeetingViewerPage: () => import('./pages/MeetingViewerPage'),
   SearchPage: () => import('./pages/SearchPage'),
   ProjectsPage: () => import('./pages/ProjectsPage'),
+  TrashPage: () => import('./pages/TrashPage'),
   InviteRedeemPage: () => import('./pages/InviteRedeemPage'),
   ProjectSelectLanding: () => import('./pages/ProjectSelectLanding'),
 }
@@ -37,6 +38,7 @@ const MeetingPage = lazy(load.MeetingPage)
 const MeetingViewerPage = lazy(load.MeetingViewerPage)
 const SearchPage = lazy(load.SearchPage)
 const ProjectsPage = lazy(load.ProjectsPage)
+const TrashPage = lazy(load.TrashPage)
 const InviteRedeemPage = lazy(load.InviteRedeemPage)
 const ProjectSelectLanding = lazy(load.ProjectSelectLanding)
 
@@ -192,6 +194,14 @@ function GatedApp() {
         element={
           <AppLayout>
             <Suspended><MeetingViewerPage /></Suspended>
+          </AppLayout>
+        }
+      />
+      <Route
+        path="/trash"
+        element={
+          <AppLayout>
+            <Suspended><TrashPage /></Suspended>
           </AppLayout>
         }
       />

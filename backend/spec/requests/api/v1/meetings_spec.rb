@@ -394,12 +394,12 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     let!(:meeting) { create(:meeting, project: project, creator: user) }
 
     context "as meeting creator" do
-      it "deletes the meeting" do
-        expect {
-          delete "/api/v1/meetings/#{meeting.id}"
-        }.to change(Meeting, :count).by(-1)
+      it "soft-deletes the meeting (moves to trash)" do
+        delete "/api/v1/meetings/#{meeting.id}"
 
         expect(response).to have_http_status(:no_content)
+        expect(Meeting.exists?(meeting.id)).to be true
+        expect(meeting.reload.trashed?).to be true
       end
     end
   end

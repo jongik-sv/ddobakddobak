@@ -4,7 +4,7 @@
 }
 
 # LAN HTTPS 단일 진입점 (폰에서 https://<mac-ip>:13443 접속)
-https://10.110.14.219:13443, https://jangjong-ig-ui-MacBookAir.local:13443 {
+https://localhost:13443, https://127.0.0.1:13443, https://10.110.14.219:13443, https://jangjong-ig-ui-MacBookAir.local:13443 {
 	tls /Users/jji/project/ddobakddobak/certs/10.110.14.219+3.pem /Users/jji/project/ddobakddobak/certs/10.110.14.219+3-key.pem
 
 	# 온디바이스 STT 모델(~2.7GB) 정적 제공 (T11 / 자동결정 A19·A22).

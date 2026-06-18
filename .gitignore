@@ -90,3 +90,8 @@ _*/
 
 # superpowers brainstorm visual companion
 .superpowers/
+
+# dev.sh 런타임 생성물 (현재 LAN IP에 맞춰 자동 생성)
+Caddyfile.local
+certs/lan.pem
+certs/lan-key.pem

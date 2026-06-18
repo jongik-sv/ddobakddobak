@@ -52,9 +52,38 @@ RSpec.describe "POST /api/v1/projects/:id/members", type: :request do
     expect(response).to have_http_status(:forbidden)
   end
 
-  it "email 누락이면 422" do
+  it "name 또는 email 누락이면 422" do
     login_as(admin_user)
     add({})
     expect(response).to have_http_status(:unprocessable_entity)
+  end
+
+  it "이름이 유일하게 일치하면 멤버로 추가(201)" do
+    login_as(admin_user)
+    add(name: "뉴비")
+    expect(response).to have_http_status(:created)
+    body = JSON.parse(response.body)
+    expect(body["member"]["name"]).to eq("뉴비")
+    expect(project.reload.project_memberships.exists?(user_id: target.id)).to be true
+  end
+
+  it "동명이인이면 candidates 반환(200, 멤버십 생성 안 함)" do
+    other = create(:user, email: "newbie2@example.com", name: "뉴비")
+    login_as(admin_user)
+    expect { add(name: "뉴비") }.not_to change { project.project_memberships.count }
+    expect(response).to have_http_status(:ok)
+    body = JSON.parse(response.body)
+    expect(body["candidates"].length).to eq(2)
+    ids = body["candidates"].map { |c| c["id"] }
+    expect(ids).to contain_exactly(target.id, other.id)
+    body["candidates"].each do |c|
+      expect(c.keys).to include("id", "name", "email")
+    end
+  end
+
+  it "일치하는 이름이 없으면 404" do
+    login_as(admin_user)
+    add(name: "없는사람")
+    expect(response).to have_http_status(:not_found)
   end
 end

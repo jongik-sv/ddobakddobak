@@ -1,7 +1,6 @@
 import { FolderClosed, Star, Lock } from 'lucide-react'
 import type { Meeting } from '../../api/meetings'
 import type { FolderNode } from '../../api/folders'
-import type { SelectedFolder } from '../../stores/folderStore'
 import { initDrag } from '../../utils/dragState'
 import { StatusBadge, MeetingTypeBadge, MeetingActionButtons } from './MeetingListUI'
 import { formatDate, folderPath } from '../../lib/meetingFormat'
@@ -13,7 +12,6 @@ interface MeetingCardGridProps {
   meetings: Meeting[]
   searchQuery: string
   folders: FolderNode[]
-  selectedFolderId: SelectedFolder
   isDesktop: boolean
   meetingTypeMap: Record<string, string>
   onFolderSelect: (id: number) => void
@@ -32,7 +30,6 @@ export function MeetingCardGrid({
   meetings,
   searchQuery,
   folders,
-  selectedFolderId,
   isDesktop,
   meetingTypeMap,
   onFolderSelect,
@@ -118,12 +115,10 @@ export function MeetingCardGrid({
             </div>
             <div className="flex items-center gap-1.5 flex-wrap mb-2">
               <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
-              {meeting.folder_id && selectedFolderId === 'all' && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-1 min-w-0 max-w-[180px]">
-                  <FolderClosed className="w-3 h-3 shrink-0" />
-                  <span className="truncate">{folderPath(folders, meeting.folder_id) ?? '폴더'}</span>
-                </span>
-              )}
+              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-1 min-w-0 max-w-[180px]">
+                <FolderClosed className="w-3 h-3 shrink-0" />
+                <span className="truncate">{meeting.folder_id ? (folderPath(folders, meeting.folder_id) ?? '폴더') : '미분류'}</span>
+              </span>
               {meeting.tags?.map((tag) => (
                 <span
                   key={tag.id}

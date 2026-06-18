@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_17_000004) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_18_000001) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -69,16 +69,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000004) do
 
   create_table "folders", force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.datetime "deleted_at"
+    t.integer "deleted_by_id"
     t.boolean "important", default: false, null: false
     t.string "name", null: false
     t.integer "parent_id"
     t.integer "position", default: 0, null: false
     t.integer "project_id", null: false
     t.boolean "shared", default: true, null: false
+    t.string "trash_group_id"
+    t.boolean "trashed_as_root", default: false, null: false
     t.datetime "updated_at", null: false
+    t.index ["deleted_at"], name: "index_folders_on_deleted_at"
     t.index ["parent_id"], name: "index_folders_on_parent_id"
     t.index ["project_id", "parent_id", "position"], name: "index_folders_on_project_id_and_parent_id_and_position"
     t.index ["shared"], name: "index_folders_on_shared"
+    t.index ["trash_group_id"], name: "index_folders_on_trash_group_id"
   end
 
   create_table "glossary_entries", force: :cascade do |t|
@@ -180,6 +186,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000004) do
     t.string "brief_summary"
     t.datetime "created_at", null: false
     t.integer "created_by_id", null: false
+    t.datetime "deleted_at"
+    t.integer "deleted_by_id"
     t.float "diarization_threshold"
     t.datetime "ended_at"
     t.integer "expected_participants"
@@ -205,13 +213,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000004) do
     t.string "summary_verbosity", default: "standard", null: false
     t.string "title", null: false
     t.integer "transcription_progress", default: 0, null: false
+    t.string "trash_group_id"
+    t.boolean "trashed_as_root", default: false, null: false
     t.datetime "updated_at", null: false
     t.index ["created_by_id", "shared"], name: "index_meetings_on_created_by_id_and_shared"
+    t.index ["deleted_at"], name: "index_meetings_on_deleted_at"
     t.index ["folder_id"], name: "index_meetings_on_folder_id"
     t.index ["important"], name: "index_meetings_on_important"
     t.index ["previous_meeting_id"], name: "index_meetings_on_previous_meeting_id"
     t.index ["project_id", "status"], name: "index_meetings_on_project_id_and_status"
     t.index ["share_code"], name: "index_meetings_on_share_code", unique: true
+    t.index ["trash_group_id"], name: "index_meetings_on_trash_group_id"
     t.check_constraint "source IN ('live','upload')", name: "chk_meetings_source"
     t.check_constraint "status IN ('pending','recording','transcribing','completed')", name: "chk_meetings_status"
     t.check_constraint "summary_verbosity IN ('very_concise','concise','standard','detailed','very_detailed')", name: "chk_meetings_summary_verbosity"
@@ -245,14 +257,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000004) do
     t.string "color"
     t.datetime "created_at", null: false
     t.integer "created_by_id", null: false
+    t.datetime "deleted_at"
+    t.integer "deleted_by_id"
     t.text "description"
     t.string "icon_type"
     t.string "icon_value"
     t.string "name", null: false
     t.boolean "personal", default: false, null: false
+    t.string "trash_group_id"
+    t.boolean "trashed_as_root", default: false, null: false
     t.datetime "updated_at", null: false
     t.index ["created_by_id"], name: "index_projects_on_created_by_id"
+    t.index ["deleted_at"], name: "index_projects_on_deleted_at"
     t.index ["personal"], name: "index_projects_on_personal"
+    t.index ["trash_group_id"], name: "index_projects_on_trash_group_id"
   end
 
   create_table "prompt_templates", force: :cascade do |t|

@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import { useFolderStore } from '../../stores/folderStore'
-import { useMeetingStore } from '../../stores/meetingStore'
 import type { FolderNode } from '../../api/folders'
+import { folderPath } from '../../lib/folderNav'
 
 function buildPath(folders: FolderNode[], id: number): { id: number; name: string }[] {
   // 부모 경로를 재귀적으로 구성
@@ -17,18 +18,17 @@ function buildPath(folders: FolderNode[], id: number): { id: number; name: strin
 }
 
 export default function FolderBreadcrumb() {
-  const { folders, selectedFolderId, setSelectedFolder } = useFolderStore()
-  const { setFolderId, fetchMeetings } = useMeetingStore()
+  const { folders, selectedFolderId } = useFolderStore()
+  const navigate = useNavigate()
 
   const path = useMemo(() => {
     if (selectedFolderId === 'all' || selectedFolderId === null) return []
     return buildPath(folders, selectedFolderId)
   }, [folders, selectedFolderId])
 
+  // URL(?folder=)로 이동 → 뒤로가기가 부모 폴더로 동작
   const handleNavigate = (id: number | null | 'all') => {
-    setSelectedFolder(id)
-    setFolderId(id)
-    fetchMeetings(1)
+    navigate(folderPath(id))
   }
 
   if (selectedFolderId === 'all') return null

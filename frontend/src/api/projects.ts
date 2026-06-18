@@ -76,8 +76,18 @@ export async function removeProjectMember(id: number, userId: number): Promise<v
   await apiClient.delete(`projects/${id}/members/${userId}`)
 }
 
-export async function addProjectMember(id: number, email: string): Promise<ProjectMember> {
-  return (await apiClient.post(`projects/${id}/members`, { json: { email } }).json<{ member: ProjectMember }>()).member
+export interface MemberCandidate {
+  id: number
+  name: string
+  email: string
+}
+export type AddMemberResult = { member: ProjectMember } | { candidates: MemberCandidate[] }
+
+export async function addProjectMember(
+  id: number,
+  query: { name?: string; email?: string; user_id?: number },
+): Promise<AddMemberResult> {
+  return apiClient.post(`projects/${id}/members`, { json: query }).json<AddMemberResult>()
 }
 
 export async function getProjectInvites(id: number): Promise<ProjectInvite[]> {

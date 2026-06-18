@@ -15,7 +15,7 @@ import {
   SpellCheck,
   Star,
 } from 'lucide-react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -26,6 +26,8 @@ import GlossaryDialog from './GlossaryDialog'
 import MoveToProjectModal from '../project/MoveToProjectModal'
 import { useProjectStore } from '../../stores/projectStore'
 import { initDrag } from '../../utils/dragState'
+import { confirmDialog } from '../../lib/confirmDialog'
+import { folderPath } from '../../lib/folderNav'
 
 function countAllFolders(nodes: FolderNode[]): number {
   return nodes.reduce((sum, n) => sum + 1 + countAllFolders(n.children), 0)
@@ -90,6 +92,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
 
   const handleDelete = async () => {
     setShowMenu(false)
+    if (!(await confirmDialog(`'${folder.name}' 폴더를 휴지통으로 이동합니다. 폴더 안의 회의·하위폴더도 함께 이동합니다. 계속할까요?`, { title: '휴지통으로 이동', kind: 'warning' }))) return
     await removeFolder(folder.id)
   }
 
@@ -231,7 +234,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
                 }}
                 className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm text-red-600 hover:bg-red-50 transition-colors"
               >
-                <Trash2 className="w-3.5 h-3.5" /> 삭제
+                <Trash2 className="w-3.5 h-3.5" /> 휴지통
               </button>
             </div>
           )}
@@ -281,14 +284,10 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
 export default function FolderTree() {
   const folders = useFolderStore((s) => s.folders)
   const selectedFolderId = useFolderStore((s) => s.selectedFolderId)
-  const setSelectedFolder = useFolderStore((s) => s.setSelectedFolder)
   const fetchFolders = useFolderStore((s) => s.fetchFolders)
   const createFolder = useFolderStore((s) => s.createFolder)
-  const setFolderId = useMeetingStore((s) => s.setFolderId)
-  const fetchMeetings = useMeetingStore((s) => s.fetchMeetings)
   const isRecordingActive = useUiStore((s) => s.isRecordingActive)
   const navigate = useNavigate()
-  const location = useLocation()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [rootExpanded, setRootExpanded] = useState(true)
 
@@ -296,15 +295,11 @@ export default function FolderTree() {
     fetchFolders()
   }, [fetchFolders])
 
+  // 폴더 선택은 URL(?folder=)로 push → 뒤로가기가 부모 폴더로 동작. 상태 반영·fetch는 MeetingsPage가 담당.
   const handleSelectFolder = useCallback((id: SelectedFolder) => {
     if (isRecordingActive) return
-    setSelectedFolder(id)
-    setFolderId(id)
-    fetchMeetings(1)
-    if (location.pathname !== '/meetings') {
-      navigate('/meetings')
-    }
-  }, [isRecordingActive, setSelectedFolder, setFolderId, fetchMeetings, location.pathname, navigate])
+    navigate(folderPath(id))
+  }, [isRecordingActive, navigate])
 
   const handleSelectRoot = () => {
     if (isRecordingActive) return
