@@ -30,7 +30,7 @@ module FtsIndexable
       [ "DELETE FROM #{fts_table_name} WHERE source_id = ?", id ]
     ))
     cols = fts_columns.map(&:to_s)
-    vals = cols.map { |c| send(c) }
+    vals = cols.map { |c| fts_value_for(c) }
     placeholders = ([ "?" ] * (cols.size + 1)).join(", ")
     conn.execute(ActiveRecord::Base.sanitize_sql_array(
       [ "INSERT INTO #{fts_table_name}(#{cols.join(', ')}, source_id) VALUES (#{placeholders})" ] + vals + [ id ]
@@ -46,5 +46,9 @@ module FtsIndexable
     ))
   rescue => e
     Rails.logger.warn("FtsIndexable: delete failed for #{self.class.name}##{id}: #{e.message}")
+  end
+
+  def fts_value_for(col)
+    send(col)
   end
 end
