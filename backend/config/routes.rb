@@ -116,6 +116,8 @@ Rails.application.routes.draw do
           post :move_to_project
         end
         resources :glossary_entries, only: %i[index create], controller: "glossary_entries"
+        resources :chat_messages, only: %i[index create],
+                  controller: "scoped_chat_messages", defaults: { scope_type: "folder" }
       end
       resources :glossary_entries, only: %i[update destroy]
 
@@ -158,6 +160,8 @@ Rails.application.routes.draw do
           post :export, to: "project_transfers#export"
         end
         resources :invites, only: %i[index create destroy], controller: "project_invites"
+        resources :chat_messages, only: %i[index create],
+                  controller: "scoped_chat_messages", defaults: { scope_type: "project" }
       end
 
       # 공개 초대(인증 불필요 — 미리보기 / redeem(가입 가능))
