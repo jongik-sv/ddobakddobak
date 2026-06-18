@@ -47,6 +47,7 @@ class LlmService
     end
     system_prompt = system_prompt + CHRONOLOGICAL_NOTES_INSTRUCTION if chronological
     system_prompt = apply_verbosity(system_prompt, verbosity, context: verbosity_context)
+    system_prompt = system_prompt + "\n\n" + LlmPrompts::CITATION_MARKER_INSTRUCTION
     # 이전 회의 통합+논의 절취선 지시는 분량 한도보다 우선해야 하므로 verbosity 뒤(맨 끝)에 붙인다.
     system_prompt = system_prompt + seeded_merge_instruction if seeded_merge
 
