@@ -159,7 +159,7 @@ RSpec.describe MeetingSummarizationJob do
       begin
         expect {
           described_class.perform_now(meeting.id, type: "final")
-        }.to have_enqueued_job(described_class).with(meeting.id, type: "final")
+        }.to have_enqueued_job(described_class).with(meeting.id, type: "final", attempt: 0)
       ensure
         mutex.unlock
         described_class::MEETING_LOCKS.delete(meeting.id)
@@ -187,6 +187,77 @@ RSpec.describe MeetingSummarizationJob do
     it "does not call LLM when meeting is paused" do
       expect(LlmService).not_to receive(:new)
       described_class.new.perform(meeting.id, type: "realtime")
+    end
+  end
+
+  # 실전 재현(meeting 68 = 0 summaries): stop이 final을 1회만 enqueue → LLM(~3분) 중 사용자가
+  # 전사 편집 → post-LLM stale 가드가 결과를 드랍 → 정본이 영영 안 생김.
+  # 수정: stale인데 정본(final summary)이 아직 없으면 최신 전사로 재생성하도록 재enqueue.
+  describe "final stale re-enqueue (LLM 중 사용자 편집)" do
+    let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
+
+    # job 인스턴스에 enqueued_at 을 과거로 박아, LLM 도중 갱신된 last_user_edit_at 이
+    # enqueued_at 보다 뒤가 되도록(=stale) 만든다. refine_notes 통짜 경로를 쓰려고
+    # latest_notes 가 비도록(요약 0건) 둔다.
+    def run_final_with_user_edit_during_llm(attempt: 0, enqueued_at: 10.minutes.ago)
+      job = described_class.new(meeting.id, type: "final", attempt: attempt)
+      job.enqueued_at = enqueued_at.iso8601
+
+      allow_any_instance_of(LlmService).to receive(:refine_notes) do
+        # 사용자가 LLM 호출 도중 전사를 편집 → last_user_edit_at 이 enqueued_at 보다 뒤로 점프
+        meeting.update!(last_user_edit_at: enqueued_at + 5.minutes)
+        { "notes_markdown" => "## LLM이 만든 회의록", "ok" => true }
+      end
+
+      job.perform(meeting.id, type: "final", attempt: attempt)
+    end
+
+    # T1: stale + 정본 없음 → 저장 안 함 AND type:"final", attempt:1 로 재enqueue
+    it "re-enqueues final (attempt:1) and saves no summary when stale and no minutes yet" do
+      expect {
+        run_final_with_user_edit_during_llm(attempt: 0)
+      }.to have_enqueued_job(described_class).with(meeting.id, type: "final", attempt: 1)
+
+      expect(meeting.summaries.find_by(summary_type: "final")).to be_nil
+    end
+
+    # T2: stale + 정본 이미 존재 → 드랍(재enqueue 안 함), 기존 요약 불변(덮어쓰기 금지)
+    it "drops (no re-enqueue) and leaves the existing final summary untouched when minutes exist" do
+      existing = create(:summary, meeting: meeting, summary_type: "final",
+                        notes_markdown: "## 사용자가 직접 쓴 정본", generated_at: 1.hour.ago)
+
+      expect {
+        run_final_with_user_edit_during_llm(attempt: 0)
+      }.not_to have_enqueued_job(described_class)
+
+      expect(meeting.summaries.where(summary_type: "final").count).to eq(1)
+      expect(existing.reload.notes_markdown).to eq("## 사용자가 직접 쓴 정본")
+    end
+
+    # T3: attempt >= CAP + stale + 정본 없음 → 포기(드랍, 재enqueue 안 함)
+    it "gives up (no re-enqueue) when attempt reaches FINAL_REENQUEUE_CAP" do
+      cap = described_class::FINAL_REENQUEUE_CAP
+
+      expect {
+        run_final_with_user_edit_during_llm(attempt: cap)
+      }.not_to have_enqueued_job(described_class)
+
+      expect(meeting.summaries.find_by(summary_type: "final")).to be_nil
+    end
+
+    # T4 회귀: stale 아님 → 정상 저장(재enqueue 없음)
+    it "saves the final summary normally when not stale" do
+      job = described_class.new(meeting.id, type: "final", attempt: 0)
+      job.enqueued_at = Time.current.iso8601
+
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "## 정상 종료 회의록", "ok" => true })
+
+      expect {
+        job.perform(meeting.id, type: "final", attempt: 0)
+      }.not_to have_enqueued_job(described_class)
+
+      expect(meeting.summaries.find_by(summary_type: "final").notes_markdown).to eq("## 정상 종료 회의록")
     end
   end
 end
