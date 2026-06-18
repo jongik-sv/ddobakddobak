@@ -188,7 +188,7 @@ export default function ProjectsPage() {
       )}
 
       {membersProject && (
-        <ProjectMembersPanel project={membersProject} onClose={() => setMembersProject(null)} />
+        <ProjectMembersPanel project={membersProject} onClose={() => { setMembersProject(null); void fetchProjects() }} />
       )}
 
       {exportTarget && (
