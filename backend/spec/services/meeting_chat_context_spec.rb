@@ -43,4 +43,18 @@ RSpec.describe MeetingChatContext do
     expect(out[:user_content].length).to be <= described_class::MAX_CHARS
     expect(out[:user_content]).to include("요약 일부 생략")
   end
+
+  it "transcript_block 라인에 ms 원값을 노출한다" do
+    create(:transcript, meeting: meeting, speaker_label: "화자 1", content: "테스트 내용", started_at_ms: 100_000)
+    ctx = MeetingChatContext.new(meeting, user, "질문")
+    block = ctx.send(:transcript_block, 100_000)
+    expect(block).to include("|100000ms ")
+  end
+
+  it "summary_text는 마커를 제거한다" do
+    create(:summary, meeting: meeting, summary_type: "final",
+      notes_markdown: "결정 보류. ⟦t:125000|s:화자 1⟧")
+    ctx = MeetingChatContext.new(meeting.reload, user, "질문")
+    expect(ctx.send(:summary_text)).not_to include("⟦t:")
+  end
 end
