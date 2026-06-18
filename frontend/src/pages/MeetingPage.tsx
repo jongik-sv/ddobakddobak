@@ -230,6 +230,26 @@ export default function MeetingPage() {
     )
   }, [searchParams, search, setSearchParams])
 
+  // 폴더/프로젝트 챗 인용 클릭으로 ?t=<ms> 와 함께 진입한 경우 — 오디오 준비 후 1회 자동 seek.
+  // audioLoaded(=canplay)가 떠야 seekTo+자동재생이 실제로 먹는다. 적용 후 t 파라미터 제거(새로고침/뒤로가기 재발동 방지).
+  const appliedSeekT = useRef(false)
+  useEffect(() => {
+    if (appliedSeekT.current) return
+    const t = Number(searchParams.get('t'))
+    if (!(t > 0)) return
+    if (!audio.audioLoaded) return
+    appliedSeekT.current = true
+    setSeekMs(t)
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('t')
+        return next
+      },
+      { replace: true }
+    )
+  }, [searchParams, audio.audioLoaded, setSearchParams])
+
   // meeting 상태가 completed로 바뀌면 트랜스크립트도 리로드 (파일 업로드 완료 시)
   useEffect(() => {
     if (meeting?.status === 'transcribing') return
