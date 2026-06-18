@@ -8,11 +8,13 @@ export function RightTabsPanel({
   meetingId,
   memo,
   corrections,
+  onSeek,
 }: {
   meetingId: number
   memo: ReactNode
   /** 오타수정 탭 콘텐츠. 제공 시 메모와 AI 챗 사이에 3번째 탭으로 노출. 미제공 시 2탭(메모/AI 챗). */
   corrections?: ReactNode
+  onSeek?: (ms: number) => void
 }) {
   const [tab, setTab] = useState<Tab>('memo')
   const btn = (t: Tab) =>
@@ -39,7 +41,7 @@ export function RightTabsPanel({
           ? memo
           : tab === 'corrections'
             ? corrections
-            : <AiChatPanel meetingId={meetingId} />}
+            : <AiChatPanel meetingId={meetingId} onSeek={onSeek} />}
       </div>
     </div>
   )

@@ -515,6 +515,7 @@ export default function MeetingPage() {
                       readOnly={locked}
                     />
                   }
+                  onSeek={handleSeek}
                 />
               </Panel>
             </>
