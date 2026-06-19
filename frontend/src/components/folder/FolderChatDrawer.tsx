@@ -19,8 +19,14 @@ export function FolderChatDrawer({
 
   if (!open) return null
 
-  const scopeType: ChatScopeType = scope
-  const scopeId = scope === 'folder' ? folderId : projectId
+  // scope는 마운트 시 한 번 초기화되므로 stale일 수 있음(드로어는 항상 마운트, open만 토글).
+  // 선택 스코프의 id가 없으면 다른 스코프로 폴백 → 빈 드로어로 안 뜨는 버그 방지.
+  const effectiveScope: 'folder' | 'project' =
+    scope === 'folder' && folderId ? 'folder'
+      : scope === 'project' && projectId ? 'project'
+        : folderId ? 'folder' : 'project'
+  const scopeType: ChatScopeType = effectiveScope
+  const scopeId = effectiveScope === 'folder' ? folderId : projectId
   if (!scopeId) return null
 
   // cross-meeting 인용 클릭 → 해당 회의 페이지로 이동(+seek 파라미터). 자동 seek는 Task 12.
@@ -34,7 +40,7 @@ export function FolderChatDrawer({
       type="button"
       disabled={disabled}
       onClick={() => setScope(val)}
-      className={`px-2 py-1 text-xs rounded ${scope === val ? 'bg-blue-600 text-white' : 'text-gray-600'} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+      className={`px-2 py-1 text-xs rounded ${effectiveScope === val ? 'bg-blue-600 text-white' : 'text-gray-600'} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
     >
       {label}
     </button>
@@ -43,7 +49,7 @@ export function FolderChatDrawer({
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white shadow-xl flex flex-col h-full">
+      <div className="relative w-full max-w-md bg-white shadow-xl flex flex-col h-full pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
         <div className="flex items-center justify-between border-b px-3 py-2">
           <div className="flex items-center gap-1">
             {tabBtn('folder', folderName ? `이 폴더: ${folderName}` : '이 폴더', !folderId)}
@@ -57,7 +63,7 @@ export function FolderChatDrawer({
             scopeType={scopeType}
             scopeId={scopeId}
             onSeekMeeting={onSeekMeeting}
-            emptyHint={scope === 'folder' ? '이 폴더의 회의들에 대해 물어보세요.' : '이 프로젝트의 회의들에 대해 물어보세요.'}
+            emptyHint={effectiveScope === 'folder' ? '이 폴더의 회의들에 대해 물어보세요.' : '이 프로젝트의 회의들에 대해 물어보세요.'}
           />
         </div>
       </div>

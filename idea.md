@@ -72,7 +72,9 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
   - 화자들이 발화한 시각을 요약의 각 문장 마지막에 같이 받는다.
   - 회의록 표시는 그냥 간단한 타이머 아이콘 또는 화자번호별로 ⓿, ❶, ❷, ❸, ❹, ❺, ❻, ❼, ❽, ❾, ❿ 또는 [화자1], [장종익][장종익] 형식으로 표시(한 사람이 여러번 나올 수도 있음)
   - 발화 근거를 누르면 해당 시각으로 점프한다.
-  8. 프로젝트/폴더 안에서 묻기 Top picks의 1번 항목
+8. 프로젝트/폴더 안에서 묻기 Top picks의 1번 항목
+  - 의미검색(임베딩) 보강: KURE-v1(MIT, 1024dim) 임베딩 + FTS5 하이브리드(RRF). 런타임=PyTorch+transformers(AutoModel, CLS풀+L2정규화), device 자동감지(기본 CPU, Nvidia 서버=CUDA). 저장=`transcript_embeddings` plain BLOB 테이블(transcript 행 단위), 검색=numo-narray exact cosine(브루트포스). 인가=FTS와 동일 `accessible_by` meeting_id 필터.
+  - **벡터 스토어 스케일 로드맵(미래계획)**: 검색을 `VectorIndex` 추상화 뒤에 두어 교체 가능하게 설계. 현 규모(전사 ~24k행)에선 브루트포스가 더 빠르고·정확(exact)·단순. **회의록 규모가 크게 늘거나(수십만~수백만 벡터) 상용화(중앙 멀티유저 서버) 시 → PostgreSQL+pgvector(HNSW + meeting_id 필터)로 이전.** 그때 임베딩 BLOB은 모델 안 바뀌면 재임베딩 없이 재인덱싱만. sqlite-vec는 "지금 하기엔 무겁고 스케일 가선 pgvector한테 밀리는" 중간 단계라 건너뜀. (서버 전환=Nvidia GPU라 PyTorch 런타임 그대로 device=cuda로 이전, [[project_refactor_roadmap]] #12 Postgres 계획과 연계.)
 
 ## 또박또박 추천 기능 — 경쟁사 대비 갭 분석
 
@@ -82,14 +84,33 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
 
 **핵심 진단:** 현 기능은 강하나 사후(post)·배치·텍스트 출력에 편중. 최대 빈틈 = 라이브(in-meeting) 가치 — 가장 어려운 전제(LivePage+ActionCable+per-user 챗 RAG)를 이미 깔아놓고 안 쓰는 중.
 
+### 🔄 2026-06-18 재조사 갱신 (라이트 deep-research 2라운드, 전 단계 haiku)
+
+> 방법·전체결과: `docs/competitor-gap-2026-06-18.md`. 합산 44소스·196클레임·31확정. 라이트모델 → **시그널 갱신용(전수 아님)**.
+
+**이미 구현됨(이 챕터 대비):** #1 폴더 교차 Q&A ✅머지(`b73e718`) · #4 인라인 인용+오디오점프 ✅머지(`c7dfd01`). 둘 다 경쟁사(Granola Spaces·Avoma)가 *지금* 따라오는 영역 → 선점.
+
+**2026 재확인·신규 (검증 통과):**
+- 라이브 in-meeting 어시(실시간 액션·"누가 뭐랬나") = **enterprise table-stakes**(MS Teams Copilot 3-0). #2 그대로 최대 미사용 자산.
+- 발언 분석(talk-time·모놀로그·질문수·코칭) = Fathom 스코어카드·Read AI 코치 **차별점화**(3-0). #3 데이터 보유·미가공.
+- **웹훅 + 스코프드 API 토큰 = 이제 table-stakes**(Otter·Avoma·Fireflies 전부 outbound webhook+Bearer). → 또박또박 미구현은 *경쟁 결손*으로 격상. 자체호스팅에 최적합 통합.
+- **액션아이템 담당자·마감·태스크툴/CRM 푸시 = 표준**(Otter·Avoma·Sembly). `action_item` 모델만 존재 → 제품표면 격차.
+- SRT/VTT 자막 = 녹음기반 table-stakes(Otter·Avoma), 노트중심(Notion·Sembly)엔 부재. 데이터 완비 → 시리얼라이저만.
+- 라이브 음성번역 KR↔EN = Zoom 2026-04 진입. 한국팀 실수요.
+- Teams **에이전트형 워크플로**(자동 상태보고·CRM·다음안건·음성에이전트) = 신규 프런티어, 또박또박 전무.
+
+**경쟁사도 안 하는 것(=결손 아닌 도약 기회):** 트랜스크립트 코멘트/@멘션 · 자동 챕터분할 — Otter/Avoma/Fireflies/Sembly/Notion 5종 모두 미문서. 또박또박이 하면 catch-up 아닌 차별화.
+
+**우선순위 재조정:** ① 발언 점유율(#3, effort low) ② 라이브 in-meeting(#2) ③ **웹훅+API**(결손 격상) ④ 번역 ⑤ 액션아이템 제품표면. 코멘트/@멘션·챕터분할은 "남들도 없음" → 도약카드로 후순위.
+
 ### Top picks (가치×적합도 최상)
 
 | # | 기능 | 한 줄 가치 | 경쟁사 | value/effort |
 |---|------|-----------|--------|--------------|
-| 1 | 폴더/팀 교차 AI Q&A("폴더에게 묻기") | "지난달 주간회의에서 X 뭘 정했지?" — 회의 1건 묶인 챗을 폴더·팀 전체로. FTS5+RAG+chat_llm_model 이미 보유, 스코프만 확대 | Otter, Fireflies, Granola, Fathom, Zoom, Notion | high / med |
+| 1 ✅ | 폴더/팀 교차 AI Q&A("폴더에게 묻기") | "지난달 주간회의에서 X 뭘 정했지?" — 회의 1건 묶인 챗을 폴더·팀 전체로. FTS5+RAG+chat_llm_model 이미 보유, 스코프만 확대 | Otter, Fireflies, Granola, Fathom, Zoom, Notion | high / med |
 | 2 | 라이브 in-meeting 어시스턴트(catch me up) | 진행 중 "내가 놓친 것/지금까지 액션/내 이름 언급됐나" 실시간. 라이브 인프라 이미 있음 → RAG를 라이브 트랜스크립트로만 돌리면 됨. 최대 미사용 자산 | Zoom Companion, Teams Copilot, Otter | high / med |
 | 3 | 화자별 발언 점유율(발언 %·발언/경청비·최장 독백) | 저장된 diarization 데이터 순수 후처리. 신규 캡처·클라우드·LLM 비용 0 | Fireflies, tl;dv, Avoma, Read.ai | high / low |
-| 4 | 요약·챗 답변 인라인 출처 인용 | 요약 줄 클릭 → 트랜스크립트+오디오 정확 지점 점프. 한국어 STT 불완전 → 원문대조 가치 큼. 환각 신뢰 직격. timestamp_ms+플레이어 보유 | Granola, Fireflies, Lilys, Notion | high / med |
+| 4 ✅ | 요약·챗 답변 인라인 출처 인용 | 요약 줄 클릭 → 트랜스크립트+오디오 정확 지점 점프. 한국어 STT 불완전 → 원문대조 가치 큼. 환각 신뢰 직격. timestamp_ms+플레이어 보유 | Granola, Fireflies, Lilys, Notion | high / med |
 | 5 | 즉석 다포맷 재구성 + 한국어 템플릿 | 같은 회의를 임원보고/화자별/한줄로 재성형 + 주간/1on1/킥오프/인터뷰 기성 템플릿. llm 인프라 위 얇은 레이어 | Fathom, Teams, Granola, 클로바노트 | high / low |
 
 ### 카테고리별 나머지

@@ -27,4 +27,17 @@ describe('FolderChatDrawer', () => {
     render(<MemoryRouter><FolderChatDrawer {...base} open={false} /></MemoryRouter>)
     expect(screen.queryByTestId('panel')).toBeNull()
   })
+
+  // 회귀: 마운트 시 projectId만 있어 scope='project'로 굳은 뒤, 프로젝트 없이 폴더만
+  // 선택되면(projectId=null) stale scope로 빈 드로어가 뜨던 버그. 폴더로 폴백해야 함.
+  it('마운트 후 프로젝트→폴더만으로 바뀌어도 패널을 렌더한다', () => {
+    const { rerender } = render(
+      <MemoryRouter><FolderChatDrawer open onClose={vi.fn()} folderId={null} projectId={3} /></MemoryRouter>,
+    )
+    expect(screen.getByTestId('panel').textContent).toBe('project:3')
+    rerender(
+      <MemoryRouter><FolderChatDrawer open onClose={vi.fn()} folderId={7} projectId={null} /></MemoryRouter>,
+    )
+    expect(screen.getByTestId('panel').textContent).toBe('folder:7')
+  })
 })
