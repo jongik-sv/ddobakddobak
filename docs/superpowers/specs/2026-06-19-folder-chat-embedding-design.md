@@ -182,3 +182,68 @@ created_at / updated_at
 - ✅ `numo-narray` 0.9.2.1 Mac arm64 빌드 OK. 향후 Linux 서버 빌드는 배포 시 재확인.
 - 라이브 STT 고볼륨 시 잡 수 — v1 허용, 압박 시 coalesce.
 - 백필 24k 소요 시간 실측(CPU) — 허용 범위 확인.
+
+## 13. 구현 결과(2026-06-19)
+
+### 구현된 컴포넌트
+
+**Sidecar (Python):**
+- `sidecar/app/embeddings/__init__.py` — 모듈 패키지
+- `sidecar/app/embeddings/encoder.py` — `pool_cls_normalize` + `KureEncoder`(lazy load, encode)
+- `sidecar/app/routers/embeddings.py` — `POST /embed` 라우터(asyncio.Lock 직렬화)
+- `sidecar/app/schemas.py` — `EmbedRequest`, `EmbedResponse` 스키마 추가
+- `sidecar/app/config.py` — `EMBED_MODEL`, `EMBED_MODEL_VERSION`, `EMBED_DEVICE` 설정 추가
+- `sidecar/app/main.py` — lifespan에 `app.state.embedder`/`embed_lock` 초기화, 라우터 등록
+- `sidecar/pyproject.toml` — `torch>=2.4` 정식 선언 (Task 12)
+- Tests: `tests/test_embeddings_pool.py`(2), `tests/test_embeddings_router.py`(4)
+
+**Backend (Rails):**
+- `backend/Gemfile` — `gem "numo-narray"` 추가
+- `backend/db/migrate/20260619000001_create_transcript_embeddings.rb` — 마이그레이션
+- `backend/app/models/transcript_embedding.rb` — BLOB 저장 모델(pack/unpack, vector)
+- `backend/app/models/concerns/embeddable.rb` — content dirty-check after_commit 콜백
+- `backend/app/models/transcript.rb` — `include Embeddable` 추가
+- `backend/app/services/sidecar_client.rb` — `#embed` 메서드 추가
+- `backend/app/jobs/embed_transcript_job.rb` — 단건 임베딩 upsert 잡
+- `backend/app/jobs/embed_backfill_job.rb` — 배치 백필 잡(idempotent, 구버전 재처리)
+- `backend/lib/tasks/embeddings.rake` — `embeddings:backfill` rake
+- `backend/app/services/transcript_vector_search.rb` — numo-narray 브루트포스 cosine(인가 필터)
+- `backend/app/services/folder_chat_context.rb` — 하이브리드 FTS+벡터 RRF(graceful fallback)
+- `backend/app/jobs/folder_chat_job.rb` — `query_text` 전달 추가
+- Tests: 7개 스펙 파일(transcript_embedding, transcript_embeddable, sidecar_client_embed, embed_transcript_job, embed_backfill_job, transcript_vector_search, folder_chat_context_hybrid)
+
+### 자동 선택된 설계값
+
+| 항목 | 값 | 결정 근거 |
+|------|-----|---------|
+| `RRF_K` | 60 | 표준값(Cormack 2009), TREC 검증된 default |
+| `EXCERPT_LEN` | 160 | 벡터 전용 히트의 본문 절단 길이(snippet 없을 때) |
+| `torch` 핀 | `>=2.4` | uv lock 해소 = 2.12.1, venv 상주 = 2.11.0. transformers 5.3.0 유지 확인 |
+| `MODEL_VERSION` | `kure-v1` | Phase 0 확정. 상수 `TranscriptEmbedding::MODEL_VERSION` |
+| 풀링 | CLS + L2 normalize | Phase 0 실측: self-cosine 1.0, sim_sim 0.856 > sim_un 0.38 |
+| 저장 | fp32 LE BLOB (`e*`) | roundtrip 정확성 검증, 향후 fp16 최적화 가능 |
+
+### mlx 공존 검증
+
+```
+coexist OK 5.3.0 2.11.0
+```
+(mlx_lm + mlx_audio + transformers 5.3.0 + torch 2.11.0 동시 import 성공)
+
+### 전체 테스트 결과
+
+- **Backend (RSpec)**: **1153 passed, 0 failed** (임베딩 신규 스펙 전부 포함, 회귀 0).
+- **Sidecar (pytest)**: 131 passed, 24 failed(모두 pre-existing — SpeakerDiarizer import error·MLX Stream GPU error). 임베딩 신규 6 tests 전부 통과.
+- 사전존재 sidecar 실패: `test_speaker_diarization`(13), `test_ws_transcribe`(9), `test_speakers_router`(2) — main 동일 버그, 이번 구현과 무관.
+
+### 백필 결과
+
+sidecar 기동 확인됨(health 200) 하지만 `/embed` 라우터가 없는 **구버전**으로 동작 중(404 반환). 백필은 sidecar 재시작 후 `bundle exec rails embeddings:backfill` 재실행 필요.
+- sidecar 재시작: tmux에서 sidecar 프로세스 kill 후 `cd sidecar && uv run uvicorn app.main:app --port 13324 ...`
+- 또는 `dev.sh` 재실행으로 전체 스택 재시작
+
+### 잔여 작업
+
+- sidecar 재시작 → `bundle exec rails embeddings:backfill` 실행(24k건 백필, CPU 소요 시간 실측)
+- 수동 E2E: 폴더 챗에서 동의어 쿼리 → 의미 히트 발췌 확인
+- `feat/folder-chat-embedding` → `main` 머지(사용자 명시 후)
