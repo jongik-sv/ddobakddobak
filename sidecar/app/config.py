@@ -145,6 +145,10 @@ class Settings(BaseSettings):
     # [재시작 필요] 오디오 최소 청크 길이 (초). 이보다 짧으면 환각 방지로 STT 스킵
     MIN_CHUNK_SEC: float = 1.0
 
+    EMBED_MODEL: str = "nlpai-lab/KURE-v1"
+    EMBED_MODEL_VERSION: str = "kure-v1"
+    EMBED_DEVICE: str = "auto"  # auto -> cuda if available else cpu
+
 
 settings = Settings()
 

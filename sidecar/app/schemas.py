@@ -212,3 +212,13 @@ class CorrectTermsRequest(BaseModel):
 class CorrectTermsResponse(BaseModel):
     """POST /feedback-notes 응답 스키마."""
     notes_markdown: str
+
+
+class EmbedRequest(BaseModel):
+    texts: list[str]
+
+
+class EmbedResponse(BaseModel):
+    embeddings: list[list[float]]
+    model: str
+    dim: int
