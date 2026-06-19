@@ -12,7 +12,7 @@ class FolderChatJob < ApplicationJob
                           .order(:created_at).last
 
     keywords = FolderChatKeywords.extract(question&.content.to_s, user: user)
-    ctx = FolderChatContext.build(scope_type: answer.scope_type, scope_id: answer.scope_id, user: user, keywords: keywords)
+    ctx = FolderChatContext.build(scope_type: answer.scope_type, scope_id: answer.scope_id, user: user, keywords: keywords, query_text: question&.content)
 
     config = user.effective_chat_llm_config
     raise "LLM이 설정되어 있지 않습니다." if config.blank?

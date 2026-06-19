@@ -54,4 +54,11 @@ RSpec.describe FolderChatJob, type: :job do
     expect(answer.content).to eq("본문")
     expect(answer.suggestions).to eq(%w[q1 q2 q3])
   end
+
+  it "질문 content를 query_text로 FolderChatContext에 넘긴다" do
+    expect(FolderChatContext).to receive(:build).with(
+      hash_including(query_text: "예산?")
+    ).and_return({ system_prompt: "sp", user_content: "uc" })
+    FolderChatJob.perform_now(answer.id)
+  end
 end
