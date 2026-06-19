@@ -61,7 +61,7 @@ class KureEncoder:
         import torch
         self.load()
         enc = self._tok(texts, padding=True, truncation=True, max_length=512, return_tensors="pt")
-        enc = {k: v.to(self.device) for k, v in enc.items()} if hasattr(enc, "items") else enc.to(self.device)
+        enc = {k: v.to(self.device) for k, v in enc.items()}
         with torch.no_grad():
             out = self._model(**enc)
         vecs = pool_cls_normalize(out.last_hidden_state)
