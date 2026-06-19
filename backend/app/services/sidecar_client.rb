@@ -92,6 +92,15 @@ class SidecarClient
     delete("/speakers?meeting_id=#{meeting_id}")
   end
 
+  # ── Embeddings ──
+
+  # 텍스트 배열 → 임베딩 벡터 배열. folder-chat 의미검색용.
+  def embed(texts)
+    resp = post("/embed", { texts: Array(texts) },
+                timeout: ENV.fetch("SIDECAR_EMBED_TIMEOUT", "120").to_i)
+    resp["embeddings"]
+  end
+
   # ── HuggingFace ──
 
   def get_hf_settings
