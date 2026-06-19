@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_18_000002) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_19_000001) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -319,6 +319,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_18_000002) do
     t.index ["project_id", "name"], name: "index_tags_on_project_id_and_name", unique: true
   end
 
+  create_table "transcript_embeddings", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "dim", null: false
+    t.binary "embedding", null: false
+    t.integer "meeting_id", null: false
+    t.string "model_version", null: false
+    t.integer "transcript_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["meeting_id", "model_version"], name: "index_transcript_embeddings_on_meeting_id_and_model_version"
+    t.index ["transcript_id"], name: "index_transcript_embeddings_on_transcript_id", unique: true
+  end
+
   create_table "transcripts", force: :cascade do |t|
     t.boolean "applied_to_minutes", default: false, null: false
     t.string "audio_source", default: "mic", null: false
@@ -377,6 +389,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_18_000002) do
   add_foreign_key "summaries", "meetings", on_delete: :cascade
   add_foreign_key "taggings", "tags"
   add_foreign_key "tags", "projects"
+  add_foreign_key "transcript_embeddings", "transcripts", on_delete: :cascade
   add_foreign_key "transcripts", "meetings", on_delete: :cascade
 
   # Virtual tables defined in this database.
