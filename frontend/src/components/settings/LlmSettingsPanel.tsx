@@ -42,6 +42,9 @@ export function LlmSettingsPanel() {
   const [chatBaseUrl, setChatBaseUrl] = useState('')
   const [chatModel, setChatModel] = useState('')
   const [chatMaskedToken, setChatMaskedToken] = useState('')
+  const [chatOllamaModels, setChatOllamaModels] = useState<string[]>([])
+  const [chatOllamaLoading, setChatOllamaLoading] = useState(false)
+  const [chatOllamaError, setChatOllamaError] = useState<string | null>(null)
 
   useEffect(() => {
     getLlmSettings().then((llm) => {
@@ -127,6 +130,30 @@ export function LlmSettingsPanel() {
     }
   }, [selectedPreset, currentForm.base_url, loadOllamaModels])
 
+  const loadChatOllamaModels = useCallback(async (baseUrl: string) => {
+    setChatOllamaLoading(true)
+    setChatOllamaError(null)
+    try {
+      const models = await fetchOllamaModels(baseUrl)
+      setChatOllamaModels(models)
+      if (models.length > 0 && !chatModel) {
+        setChatModel(models[0])
+      }
+    } catch {
+      setChatOllamaError('Ollama에 연결할 수 없습니다. 실행 중인지 확인하세요.')
+      setChatOllamaModels([])
+    } finally {
+      setChatOllamaLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatModel])
+
+  useEffect(() => {
+    if (chatPresetId === 'ollama' && chatBaseUrl) {
+      loadChatOllamaModels(chatBaseUrl)
+    }
+  }, [chatPresetId, chatBaseUrl, loadChatOllamaModels])
+
   const currentPreset = SERVICE_PRESETS.find((p) => p.id === selectedPreset)!
   const modelOptions = selectedPreset === 'ollama' ? ollamaModels : currentPreset.suggestedModels
   const showModelSelect = modelOptions.length > 0 && !useCustomModel
@@ -135,7 +162,7 @@ export function LlmSettingsPanel() {
   const chatActualProvider = chatPreset?.provider ?? ''
   const chatIsCli = chatPresetId !== '' && CLI_PRESET_IDS.has(chatPresetId)
   const chatRequiresKey = chatPreset?.requiresApiKey ?? false
-  const chatModelSuggestions: readonly string[] = chatPreset?.suggestedModels ?? []
+  const chatModelSuggestions: readonly string[] = chatPresetId === 'ollama' ? chatOllamaModels : (chatPreset?.suggestedModels ?? [])
 
   const handleChatServiceSelect = (id: string) => {
     setChatPresetId(id)
@@ -455,7 +482,20 @@ export function LlmSettingsPanel() {
             </div>
           )}
 
-          <label htmlFor="chat-model" className="block text-xs text-gray-600 mb-1">챗 모델</label>
+          <div className="flex items-center justify-between mb-1">
+            <label htmlFor="chat-model" className="block text-xs text-gray-600">챗 모델</label>
+            {chatPresetId === 'ollama' && (
+              <button
+                type="button"
+                onClick={() => loadChatOllamaModels(chatBaseUrl)}
+                disabled={chatOllamaLoading}
+                className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                aria-label="모델 새로고침"
+              >
+                {chatOllamaLoading ? '감지 중...' : '모델 새로고침'}
+              </button>
+            )}
+          </div>
           {chatModelSuggestions.length > 0 ? (
             <select
               id="chat-model"
@@ -479,6 +519,12 @@ export function LlmSettingsPanel() {
               placeholder="모델명을 입력하세요 (비우면 요약 모델)"
               className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]"
             />
+          )}
+          {chatPresetId === 'ollama' && chatOllamaError && (
+            <p className="text-xs text-yellow-600 mt-1">{chatOllamaError}</p>
+          )}
+          {chatPresetId === 'ollama' && chatOllamaModels.length === 0 && !chatOllamaLoading && !chatOllamaError && (
+            <p className="text-xs text-muted-foreground mt-1">설치된 모델이 없습니다. ollama pull로 모델을 설치하세요.</p>
           )}
           <p className="text-xs text-muted-foreground mt-1">비우면 요약 모델을 사용합니다</p>
         </section>

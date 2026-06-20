@@ -124,4 +124,22 @@ describe('LlmSettingsPanel - AI 챗 독립 섹션', () => {
     const keyInput = screen.getByLabelText('챗 API 키') as HTMLInputElement
     expect(keyInput.placeholder).toContain('sk-c****9999')
   })
+
+  it('챗 서비스=Ollama 선택 시 설치 모델 목록을 fetch해 챗 모델 SELECT로 렌더링', async () => {
+    mockFetchOllamaModels.mockResolvedValue(['gemma4:e2b', 'llama3.2'])
+    mockGetLlmSettings.mockResolvedValue(settingsResponse)
+    render(<LlmSettingsPanel />)
+    await waitFor(() => screen.getByText('LLM 모델 설정'))
+
+    const chatGrid = screen.getByTestId('chat-service-grid')
+    fireEvent.click(within(chatGrid).getByText('Ollama').closest('button')!)
+
+    await waitFor(() => {
+      const chatModelEl = screen.getByLabelText('챗 모델')
+      expect(chatModelEl.tagName).toBe('SELECT')
+      const options = Array.from((chatModelEl as HTMLSelectElement).options).map((o) => o.value)
+      expect(options).toContain('gemma4:e2b')
+      expect(options).toContain('llama3.2')
+    })
+  })
 })
