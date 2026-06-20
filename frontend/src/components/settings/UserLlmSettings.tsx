@@ -75,6 +75,11 @@ export default function UserLlmSettings() {
   const [baseUrl, setBaseUrl] = useState('')
   const [useCustomModel, setUseCustomModel] = useState(false)
 
+  const [chatProvider, setChatProvider] = useState('')
+  const [chatApiKey, setChatApiKey] = useState('')
+  const [chatProviderModel, setChatProviderModel] = useState('')
+  const [chatBaseUrl, setChatBaseUrl] = useState('')
+
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [toggling, setToggling] = useState(false)
@@ -102,6 +107,11 @@ export default function UserLlmSettings() {
     setApiKey('')
     setUseCustomModel(false)
     setTestResult(null)
+    // Independent chat provider settings
+    setChatProvider(ls.chat_provider || '')
+    setChatProviderModel(ls.chat_model || '')
+    setChatBaseUrl(ls.chat_base_url || '')
+    setChatApiKey('')
   }, [])
 
   useEffect(() => {
@@ -151,6 +161,10 @@ export default function UserLlmSettings() {
           model,
           chat_llm_model: chatModel || null,
           base_url: baseUrl || null,
+          chat_provider: chatProvider || null,
+          chat_base_url: chatBaseUrl || null,
+          chat_model: chatProviderModel || null,
+          chat_api_key: chatApiKey,
         },
       })
       setSettings(result)
@@ -383,6 +397,52 @@ export default function UserLlmSettings() {
               <p className="text-xs text-muted-foreground mt-1">비우면 요약 모델을 사용합니다</p>
             </div>
           )}
+
+          {/* AI 챗 모델 독립 섹션 */}
+          <section className="mt-6 border-t border-gray-200 pt-4">
+            <h3 className="text-sm font-semibold text-gray-800">AI 챗 모델 (선택)</h3>
+            <p className="mb-2 text-xs text-gray-500">비워두면 회의록 작성 모델과 동일하게 사용합니다. 로컬(Ollama/LM Studio)은 제공자=openai + 엔드포인트만 입력(키 선택).</p>
+
+            <label className="block text-xs text-gray-600" htmlFor="chat-provider">챗 제공자</label>
+            <select
+              id="chat-provider"
+              value={chatProvider}
+              onChange={(e) => setChatProvider(e.target.value)}
+              className="mb-2 w-full rounded border px-2 py-1 text-sm"
+            >
+              <option value="">요약 모델과 동일</option>
+              <option value="anthropic">anthropic</option>
+              <option value="openai">openai (로컬 포함)</option>
+            </select>
+
+            <label className="block text-xs text-gray-600" htmlFor="chat-base">챗 엔드포인트 (base URL)</label>
+            <input
+              id="chat-base"
+              value={chatBaseUrl}
+              onChange={(e) => setChatBaseUrl(e.target.value)}
+              placeholder="http://localhost:11434/v1 (Ollama)"
+              className="mb-2 w-full rounded border px-2 py-1 text-sm"
+            />
+
+            <label className="block text-xs text-gray-600" htmlFor="chat-key">챗 API 키 (로컬이면 선택)</label>
+            <input
+              id="chat-key"
+              type="password"
+              value={chatApiKey}
+              onChange={(e) => setChatApiKey(e.target.value)}
+              placeholder={settings.llm_settings.chat_api_key_masked ?? ''}
+              className="mb-2 w-full rounded border px-2 py-1 text-sm"
+            />
+
+            <label className="block text-xs text-gray-600" htmlFor="chat-model">챗 모델</label>
+            <input
+              id="chat-model"
+              value={chatProviderModel}
+              onChange={(e) => setChatProviderModel(e.target.value)}
+              placeholder="예: gpt-4o / llama-3.1-8b"
+              className="w-full rounded border px-2 py-1 text-sm"
+            />
+          </section>
 
           {provider === 'none' && (
             <div className="flex items-center gap-2">

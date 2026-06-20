@@ -271,4 +271,30 @@ describe('UserLlmSettings', () => {
       expect(screen.getByText(/불러오지 못했습니다/)).toBeInTheDocument()
     })
   })
+
+  // AI 챗 모델 섹션
+  it('AI 챗 모델 섹션을 표시하고 저장 payload 에 chat_* 를 담는다', async () => {
+    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
+    mockUpdateUserLlmSettings.mockResolvedValue(configuredResponse)
+    render(<UserLlmSettings />)
+    await waitFor(() => screen.getByText('Anthropic'))
+
+    const chatProvider = screen.getByLabelText(/챗 제공자/i)
+    fireEvent.change(chatProvider, { target: { value: 'openai' } })
+
+    const chatBase = screen.getByLabelText(/챗 엔드포인트/i)
+    fireEvent.change(chatBase, { target: { value: 'http://localhost:11434/v1' } })
+
+    fireEvent.click(screen.getAllByRole('button', { name: /저장/ })[0])
+    await waitFor(() => {
+      expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          llm_settings: expect.objectContaining({
+            chat_provider: 'openai',
+            chat_base_url: 'http://localhost:11434/v1',
+          }),
+        }),
+      )
+    })
+  })
 })
