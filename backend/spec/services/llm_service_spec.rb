@@ -214,4 +214,32 @@ RSpec.describe LlmService, "streaming" do
     expect(seen).to eq(["부분1 ", "부분2"])
     expect(full).to eq("부분1 부분2")
   end
+
+  describe "#take_utf8_prefix! (readpartial 바이트 경계 안전)" do
+    let(:svc) { LlmService.new(llm_config: { provider: "claude_cli" }) }
+
+    it "청크 경계서 잘린 멀티바이트(한글)를 유효 UTF-8 만 방출하고 잔여 바이트는 보류한다" do
+      ga = "가".b # EA B0 80
+      # 첫 청크: "AB" + '가'의 앞 2바이트
+      buf = (+"AB").force_encoding(Encoding::BINARY) << ga.byteslice(0, 2)
+      out1 = svc.send(:take_utf8_prefix!, buf)
+      expect(out1).to eq("AB")
+      expect(out1.encoding).to eq(Encoding::UTF_8)
+      expect(buf.bytesize).to eq(2) # 미완 2바이트 보류
+
+      # 둘째 청크: '가'의 마지막 바이트 도착 → 완성
+      buf << ga.byteslice(2, 1)
+      out2 = svc.send(:take_utf8_prefix!, buf)
+      expect(out2).to eq("가")
+      expect(buf).to be_empty
+    end
+
+    it "완전한 UTF-8 바이트는 그대로 방출한다" do
+      buf = "안녕".b
+      out = svc.send(:take_utf8_prefix!, buf)
+      expect(out).to eq("안녕")
+      expect(out.valid_encoding?).to be true
+      expect(buf).to be_empty
+    end
+  end
 end

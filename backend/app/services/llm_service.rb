@@ -429,7 +429,12 @@ class LlmService
 
       if block
         # 스트리밍: stdout 을 청크로 읽어 방출. IO.select 로 전체 한도 감시.
+        # readpartial 은 ASCII-8BIT(바이트) 청크를 주므로 멀티바이트(한글)가 청크 경계에서
+        # 잘릴 수 있다. pending 에 모아 유효 UTF-8 접두부만 떼어 방출하고(미완 바이트는 보류),
+        # 누적본(stdout_str)은 마지막에 UTF-8 로 재해석한다. 이렇게 하지 않으면 BINARY 문자열이
+        # strip_think 의 UTF-8 정규식 gsub 에서 Encoding::CompatibilityError 를 낸다.
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + CLI_TIMEOUT
+        pending = (+"").force_encoding(Encoding::BINARY)
         begin
           loop do
             remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -440,11 +445,20 @@ class LlmService
             end
             chunk = stdout.readpartial(4096)
             stdout_str << chunk
-            block.call(chunk)
+            pending << chunk
+            emit = take_utf8_prefix!(pending)
+            block.call(emit) unless emit.empty?
           end
         rescue EOFError
           # 정상 종료
         end
+        # 정상 종료 시 pending 은 비어 있어야 하나, 잔여 바이트가 있으면 UTF-8 로 방출(불완전분 제거).
+        unless pending.empty?
+          tail = pending.dup.force_encoding(Encoding::UTF_8)
+          tail = tail.scrub("") unless tail.valid_encoding?
+          block.call(tail) unless tail.empty?
+        end
+        stdout_str.force_encoding(Encoding::UTF_8)
         stderr_str = stderr.read.to_s
         status = wait_thr.value
       else
@@ -463,7 +477,25 @@ class LlmService
       err = stderr_str.to_s.strip
       raise LlmError, "CLI 오류 (코드 #{status&.exitstatus}): #{err.presence || '원인 불명'}"
     end
-    stdout_str.strip
+    # 스트리밍 경로는 위에서 UTF-8 로 재해석했으나, 강제로 한 번 더 보정(킬/절단 대비).
+    stdout_str.dup.force_encoding(Encoding::UTF_8).scrub("").strip
+  end
+
+  # 바이트 버퍼(ASCII-8BIT)에서 유효 UTF-8 접두부만 떼어 UTF-8 문자열로 반환한다.
+  # 끝의 불완전한 멀티바이트 바이트(최대 3바이트)는 buf 에 남겨 다음 청크와 합쳐 처리한다.
+  # 유효 접두부가 없으면("" 미완 바이트만) 빈 UTF-8 문자열을 반환한다. buf 는 제자리 변경된다.
+  def take_utf8_prefix!(buf)
+    whole = buf.dup.force_encoding(Encoding::UTF_8)
+    return buf.slice!(0, buf.bytesize).force_encoding(Encoding::UTF_8) if whole.valid_encoding?
+
+    1.upto(3) do |n|
+      break if n >= buf.bytesize
+      cand = buf.byteslice(0, buf.bytesize - n)
+      next unless cand&.dup&.force_encoding(Encoding::UTF_8)&.valid_encoding?
+
+      return buf.slice!(0, buf.bytesize - n).force_encoding(Encoding::UTF_8)
+    end
+    (+"").force_encoding(Encoding::UTF_8)
   end
 
   def call_llm_json(system, user_content)
