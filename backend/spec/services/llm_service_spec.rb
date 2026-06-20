@@ -192,4 +192,18 @@ RSpec.describe LlmService, "streaming" do
     expect(seen).to eq(["안녕", "하세", "요"])
     expect(full).to eq("안녕하세요")
   end
+
+  it "CLI provider 도 stdout 청크를 방출한다" do
+    s = LlmService.new(llm_config: { provider: "claude_cli", model: "claude-sonnet-4-20250514" })
+    # run_cli 를 청크 스텁: 블록에 두 청크 전달, 전체 반환
+    allow(s).to receive(:run_cli) do |_cmd, _stdin, &blk|
+      blk&.call("부분1 ")
+      blk&.call("부분2")
+      "부분1 부분2"
+    end
+    seen = []
+    full = s.answer_question("sys", "user") { |d| seen << d }
+    expect(seen).to eq(["부분1 ", "부분2"])
+    expect(full).to eq("부분1 부분2")
+  end
 end

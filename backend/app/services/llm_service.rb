@@ -288,11 +288,11 @@ class LlmService
     when "openai"
       block ? call_openai_stream(system, user_content, max_tokens, &block) : call_openai(system, user_content, max_tokens)
     when "claude_cli"
-      call_claude_cli(system, user_content)
+      call_claude_cli(system, user_content, &block)
     when "gemini_cli"
-      call_gemini_cli(system, user_content)
+      call_gemini_cli(system, user_content, &block)
     when "codex_cli"
-      call_codex_cli(system, user_content)
+      call_codex_cli(system, user_content, &block)
     else
       block ? call_anthropic_stream(system, user_content, max_tokens, &block) : call_anthropic(system, user_content, max_tokens)
     end
@@ -363,7 +363,7 @@ class LlmService
 
   # ── 로컬 CLI 실행 (Claude Code / Gemini / Codex) ──
 
-  def call_claude_cli(system, user_content)
+  def call_claude_cli(system, user_content, &block)
     cli = ENV.fetch("CLAUDE_CLI_PATH", "claude")
     ensure_cli!(cli, "Claude Code CLI", "npm install -g @anthropic-ai/claude-code")
     # 요약은 순수 텍스트 생성 — 툴/플러그인/스킬/MCP/훅 전부 불필요.
@@ -375,7 +375,7 @@ class LlmService
     cmd = [ cli, "-p", "--output-format", "text", "--system-prompt", system,
             "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands" ]
     cmd.push("--model", @config[:model].to_s) if @config[:model].present?
-    run_cli(cmd, user_content)
+    run_cli(cmd, user_content, &block)
   end
 
   # Gemini CLI는 2026-06-18 종료 → Antigravity CLI(agy)로 대체.
@@ -384,22 +384,22 @@ class LlmService
   #     미지정/잘못된 값이면 agy 기본값으로 fallback(크래시 없음).
   #   - --dangerously-skip-permissions: 요약 작업은 비대화형이라 툴 권한 프롬프트로 멈추지 않게 함
   # GEMINI_CLI_PATH 도 하위호환으로 인정. provider 이름은 gemini_cli 유지.
-  def call_gemini_cli(system, user_content)
+  def call_gemini_cli(system, user_content, &block)
     cli = ENV["AGY_CLI_PATH"].presence || ENV.fetch("GEMINI_CLI_PATH", "agy")
     ensure_cli!(cli, "Antigravity CLI", "curl -fsSL https://antigravity.google/cli/install.sh | bash")
     merged = "[시스템 지시]\n#{system}\n\n[사용자 입력]\n#{user_content}"
     cmd = [ cli, "-p", merged, "--dangerously-skip-permissions" ]
     cmd.push("--model", @config[:model].to_s) if @config[:model].present?
-    run_cli(cmd, "")
+    run_cli(cmd, "", &block)
   end
 
-  def call_codex_cli(system, user_content)
+  def call_codex_cli(system, user_content, &block)
     cli = ENV.fetch("CODEX_CLI_PATH", "codex")
     ensure_cli!(cli, "Codex CLI", "npm install -g @openai/codex")
     cmd = [ cli, "exec", "-" ]
     cmd.push("--model", @config[:model].to_s) if @config[:model].present?
     merged = "[시스템 지시]\n#{system}\n\n[사용자 입력]\n#{user_content}"
-    run_cli(cmd, merged)
+    run_cli(cmd, merged, &block)
   end
 
   def ensure_cli!(cli, display_name, install_hint)
@@ -415,11 +415,11 @@ class LlmService
     end
   end
 
-  def run_cli(cmd, stdin_text)
+  def run_cli(cmd, stdin_text, &block)
     require "open3"
     Rails.logger.info "[LlmService] CLI exec: #{cmd.first} (#{stdin_text.length}자 stdin)"
 
-    stdout_str = nil
+    stdout_str = +""
     stderr_str = nil
     status = nil
 
@@ -427,15 +427,34 @@ class LlmService
       stdin.write(stdin_text) unless stdin_text.to_s.empty?
       stdin.close
 
-      unless wait_thr.join(CLI_TIMEOUT)
-        Process.kill("KILL", wait_thr.pid) rescue nil
-        wait_thr.join
-        raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{cmd.first}"
+      if block
+        # 스트리밍: stdout 을 청크로 읽어 방출. 타임아웃은 전체 한도로 별도 감시.
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + CLI_TIMEOUT
+        begin
+          loop do
+            chunk = stdout.readpartial(4096)
+            stdout_str << chunk
+            block.call(chunk)
+            if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+              Process.kill("KILL", wait_thr.pid) rescue nil
+              raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{cmd.first}"
+            end
+          end
+        rescue EOFError
+          # 정상 종료
+        end
+        stderr_str = stderr.read.to_s
+        status = wait_thr.value
+      else
+        unless wait_thr.join(CLI_TIMEOUT)
+          Process.kill("KILL", wait_thr.pid) rescue nil
+          wait_thr.join
+          raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{cmd.first}"
+        end
+        stdout_str = stdout.read.to_s
+        stderr_str = stderr.read.to_s
+        status = wait_thr.value
       end
-
-      stdout_str = stdout.read.to_s
-      stderr_str = stderr.read.to_s
-      status = wait_thr.value
     end
 
     unless status&.success?
