@@ -63,4 +63,26 @@ RSpec.describe FolderChatJob, type: :job do
     ).and_return({ system_prompt: "sp", user_content: "uc" })
     FolderChatJob.perform_now(answer.id)
   end
+
+  it "스트리밍으로 답변을 누적하고 complete 시 model_name 을 저장한다" do
+    user.update!(
+      llm_provider: "anthropic",
+      llm_api_key: "sk-test-key",
+      llm_model: "claude-haiku-4-5"
+    )
+    fake = instance_double(LlmService)
+    allow(LlmService).to receive(:new).and_return(fake)
+    allow(fake).to receive(:answer_question) do |_sys, _user, &blk|
+      blk.call("답변 ")
+      blk.call("내용")
+      "답변 내용"
+    end
+    allow(FolderChatContext).to receive(:build).and_return({ system_prompt: "s", user_content: "u" })
+
+    FolderChatJob.perform_now(answer.id)
+    answer.reload
+    expect(answer.status).to eq("complete")
+    expect(answer.content).to eq("답변 내용")
+    expect(answer.model_name).to be_present
+  end
 end

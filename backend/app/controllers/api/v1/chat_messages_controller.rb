@@ -30,7 +30,7 @@ module Api
 
       def serialize(m)
         { id: m.id, role: m.role, content: m.content, status: m.status,
-          suggestions: m.suggestions,
+          suggestions: m.suggestions, model_name: m.model_name,
           error_message: m.error_message, created_at: m.created_at }
       end
     end
