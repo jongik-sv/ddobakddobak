@@ -1,4 +1,4 @@
-# AI 챗 실시간 스트리밍 + 모델명 표시 — 설계
+# AI 챗 실시간 스트리밍 + 모델명 표시 + 챗 모델 독립 설정 — 설계
 
 - 날짜: 2026-06-20
 - 브랜치: `feat/chat-streaming-model` (off main)
@@ -8,8 +8,9 @@
 
 1. **모델명 표시**: 답변하는 LLM의 친절한 모델명을 assistant 버블 헤더에 봇 아바타와 함께 표시.
 2. **실시간 스트리밍**: 답변이 완성되기를 기다리지 않고 토큰이 도착하는 대로 출력. 전 provider(anthropic/openai SDK, claude/agy/codex CLI) 균일 지원.
+3. **챗 모델 독립 설정**: 회의록 작성(요약) 모델과 AI 챗 모델을 provider·키·base_url·모델까지 완전 분리. 예: 요약=Anthropic Sonnet, 챗=로컬 Ollama/LM Studio(openai 호환). (§8)
 
-비목표(YAGNI): user 메시지 아바타/이름(현행 우측 파란 버블 유지), provider별 색상 아바타, 마커 실시간 파싱.
+비목표(YAGNI): user 메시지 아바타/이름(현행 우측 파란 버블 유지), provider별 색상 아바타, 마커 실시간 파싱, CLI provider를 설정 UI에 노출(로컬=openai 호환 base_url로 충분).
 
 ## 2. 핵심 결정 (확정)
 
@@ -116,13 +117,71 @@ ensure:
 - `spec/services/llm_model_name_spec.rb` — opus/sonnet/haiku/gpt/CLI친절명/미매핑폴백/nil.
 - `spec/services/llm_service_spec.rb` — 블록 주면 델타 누적=전체 반환(fake provider stub), 블록 없으면 현행 동기 무회귀.
 - `spec/jobs/meeting_chat_job_spec.rb` / `folder_chat_job_spec.rb` — streaming→complete 전이, 스로틀 broadcast(≥1회 streaming + 1회 complete), model_name 저장, error 경로.
+- `spec/models/user_spec.rb` — `effective_chat_llm_config` 독립 설정 우선/폴백(§8), 로컬(키 빈값+base_url) 허용.
+- `spec/controllers/.../llm_settings_controller_spec.rb` — chat_* 파라미터 저장/마스킹/초기화, 로컬 키 옵셔널.
 
 **프론트**
 - `AiChatPanel.test.tsx` — streaming시 평문 렌더(ChatMarkdown 미사용), complete시 포맷 스왑, assistant 헤더에 model_name 표시, model_name 없으면 'AI'.
+- `UserLlmSettings.test.tsx` — 챗 모델 섹션 표시/저장, 빈 챗 설정=요약 상속, 로컬 base_url+키 옵셔널.
 
 ## 7. 하위호환·무회귀
 
 - `answer_question` 블록 없는 호출(요약·안건압축·test_connection 등) 전부 현행 동기 경로 유지.
 - 기존 status 값(pending/complete/error) 불변, streaming만 추가.
 - 마이그레이션 nullable → 기존 행 영향 0.
+- §8 챗 설정 비어있으면 `effective_chat_llm_config` 현행 동작(요약 config + `chat_llm_model` override) 그대로.
 - 머지 전 풀 백엔드 rspec + 프론트 vitest green 필수.
+
+## 8. AI 챗 모델 독립 설정
+
+회의록 작성(요약) 모델과 AI 챗 모델을 **provider·키·base_url·모델까지 완전 분리**. 비어 있으면 현행처럼 요약 설정을 상속(하위호환).
+
+### 8.1 데이터 모델 (User 신규 컬럼)
+
+마이그레이션 `add_chat_llm_config_to_users`:
+- `chat_llm_provider` (string, nullable)
+- `chat_llm_api_key` (text, nullable)
+- `chat_llm_base_url` (string, nullable)
+- `chat_llm_model` (string) — **기존 컬럼 재사용**
+
+### 8.2 `User#effective_chat_llm_config` (재정의)
+
+```
+우선순위:
+1. chat_llm_provider 가 present → 독립 챗 config 빌드:
+     { provider: chat_llm_provider,
+       auth_token: chat_llm_api_key,        # 로컬이면 nil 가능
+       model: chat_llm_model,
+       base_url: chat_llm_base_url }.compact
+2. 아니면 현행 폴백: effective_llm_config(요약) + (chat_llm_model.presence || ENV["CHAT_LLM_MODEL"]) 모델 override
+```
+
+- `chat_llm_configured?` (신규): `chat_llm_provider.present?`. **로컬(openai 호환 base_url 존재)이면 api_key 빈값 허용** — anthropic/openai 클라우드는 키 필요, 로컬은 base_url만으로 인정.
+- 키 검증: provider=openai + base_url present → 키 옵셔널. provider=anthropic 또는 base_url 없음 → 키 필수.
+
+### 8.3 로컬 모델(Ollama/LM Studio)
+
+둘 다 **openai 호환 API** 노출 → `provider: "openai"` + `base_url`로 통합 지원(신규 provider enum 불요).
+- Ollama: `base_url: http://localhost:11434/v1`, 키 불요(더미 허용).
+- LM Studio: `base_url: http://localhost:1234/v1`, 키 불요.
+- `LlmService#build_client`(openai)는 이미 `uri_base: base_url` 지원. **키 nil 대응**: openai 클라이언트 `access_token`에 빈값/더미 허용되게 — nil이면 `"local"` 더미 주입(서버가 무시).
+
+### 8.4 설정 API/컨트롤러 (`llm_settings_controller`)
+
+- `normalize_params` permit 확장: `:chat_provider, :chat_api_key, :chat_base_url, :chat_model`.
+- 매핑: `chat_llm_provider/api_key/base_url/model`. api_key는 기존 규약(빈문자열=유지, nil=삭제, 값=갱신) 동일 적용.
+- provider 빈값 초기화 시 chat_llm_* 도 함께 nil.
+- `chat_provider` 검증: blank(상속) 또는 VALID_PROVIDERS(anthropic/openai) 중 하나. 로컬은 openai+base_url.
+- `build_response`에 `chat_settings` 블록 추가: provider, model, base_url, api_key_masked, has_chat_settings.
+- `test` 액션 확장 또는 신규 `chat_test`: chat config로 `test_connection`(로컬 연결 확인).
+
+### 8.5 설정 UI (`UserLlmSettings.tsx`)
+
+- 기존 "LLM 설정"(요약) 아래 **"AI 챗 모델"** 별도 섹션(접이식 카드).
+- 필드: provider(드롭다운: 상속/anthropic/openai), api_key(로컬이면 "선택"), base_url(로컬 엔드포인트 안내 placeholder), model, 연결 테스트 버튼.
+- 빈 provider = "요약 모델과 동일" 안내 라벨.
+- `api/userLlmSettings.ts` 타입·요청에 chat_* 필드 추가.
+
+### 8.6 모델명 표시 연동(§1)
+
+`model_name`은 **챗 잡이 쓰는 `effective_chat_llm_config[:model]`**에서 도출 → 독립 설정 시 로컬 모델명(예 `Llama 3.1 8B`)이 헤더에 표시. `LlmModelName.humanize`에 로컬/llama/qwen 계열 prettify 폴백 포함.
