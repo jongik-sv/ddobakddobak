@@ -428,17 +428,19 @@ class LlmService
       stdin.close
 
       if block
-        # 스트리밍: stdout 을 청크로 읽어 방출. 타임아웃은 전체 한도로 별도 감시.
+        # 스트리밍: stdout 을 청크로 읽어 방출. IO.select 로 전체 한도 감시.
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + CLI_TIMEOUT
         begin
           loop do
+            remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            if remaining <= 0 || IO.select([stdout], nil, nil, remaining).nil?
+              Process.kill("KILL", wait_thr.pid) rescue nil
+              wait_thr.join
+              raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{cmd.first}"
+            end
             chunk = stdout.readpartial(4096)
             stdout_str << chunk
             block.call(chunk)
-            if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-              Process.kill("KILL", wait_thr.pid) rescue nil
-              raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{cmd.first}"
-            end
           end
         rescue EOFError
           # 정상 종료
