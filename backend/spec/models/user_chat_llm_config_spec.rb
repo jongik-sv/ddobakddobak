@@ -146,6 +146,30 @@ RSpec.describe User, "chat LLM config", type: :model do
         expect(cfg[:model]).to eq("llama-3.1-8b")
       end
     end
+
+    context "personal summary present but disabled (llm_enabled: false)" do
+      around do |example|
+        keys = %w[CHAT_LLM_PROVIDER CHAT_LLM_AUTH_TOKEN CHAT_LLM_BASE_URL CHAT_LLM_MODEL]
+        prev = keys.index_with { |k| ENV[k] }
+        example.run
+        keys.each { |k| prev[k].nil? ? ENV.delete(k) : ENV[k] = prev[k] }
+      end
+
+      it "skips tier 2 and uses global chat (tier 3) when CHAT_LLM_PROVIDER set, ignoring chat_llm_model column" do
+        ENV["CHAT_LLM_PROVIDER"]   = "openai"
+        ENV["CHAT_LLM_AUTH_TOKEN"] = "global-key"
+        ENV["CHAT_LLM_MODEL"]      = "global-model"
+        ENV.delete("CHAT_LLM_BASE_URL")
+        user = build(:user, llm_provider: "anthropic", llm_api_key: "sk-user",
+                     llm_model: "claude-sonnet-4-6", llm_enabled: false,
+                     chat_llm_model: "personal-chat-model")
+
+        cfg = user.effective_chat_llm_config
+        expect(cfg[:provider]).to eq("openai")            # global chat, not personal anthropic
+        expect(cfg[:auth_token]).to eq("global-key")
+        expect(cfg[:model]).to eq("global-model")          # NOT "personal-chat-model"
+      end
+    end
   end
 
   describe ".server_default_chat_llm_config" do

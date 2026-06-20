@@ -42,7 +42,7 @@ export default function SettingsContent({ offline = false }: Props = {}) {
     )
   }
 
-  // 일반 사용자는 전역 탭이 없으므로 탭바 없이 개인 설정만 노출
+  // 일반 사용자는 관리자 탭이 없으므로 탭바 없이 개인 설정만 노출
   if (!showAdminSettings) {
     return <PersonalSettingsTab showPasswordSection={showPasswordSection} />
   }
