@@ -1,15 +1,15 @@
 import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { CITATION_RE, FOLDER_CITATION_RE } from '../../lib/citationMarkers'
+import { CITATION_RE, FOLDER_CITATION_RE, markerTimeToMs } from '../../lib/citationMarkers'
 import { TimestampBadge } from './TimestampBadge'
 
 // 마커 → 마크다운 링크 치환. FOLDER(m:) 먼저 치환해야 CITATION_RE 오매칭 방지.
 function markersToSeekLinks(text: string): string {
   return text
     .replace(new RegExp(FOLDER_CITATION_RE.source, 'g'), (_m, mid, ms, sp) =>
-      `[⏱](ddobak-seek-meeting:${mid}:${ms}:${encodeURIComponent(sp)})`)
+      `[⏱](ddobak-seek-meeting:${mid}:${markerTimeToMs(ms)}:${encodeURIComponent(sp)})`)
     .replace(new RegExp(CITATION_RE.source, 'g'), (_m, ms, sp) =>
-      `[⏱](ddobak-seek:${ms}:${encodeURIComponent(sp)})`)
+      `[⏱](ddobak-seek:${markerTimeToMs(ms)}:${encodeURIComponent(sp)})`)
 }
 
 // ddobak-seek: / ddobak-seek-meeting: 프로토콜은 내부 전용 — URL sanitizer에서 허용

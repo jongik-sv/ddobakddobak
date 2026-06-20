@@ -1,7 +1,7 @@
 // frontend/src/components/meeting/citationInline.tsx
 import { createReactInlineContentSpec } from '@blocknote/react'
 import type { Block, BlockSchema, InlineContentSchema, StyleSchema } from '@blocknote/core'
-import { CITATION_RE } from '../../lib/citationMarkers'
+import { CITATION_RE, markerTimeToMs } from '../../lib/citationMarkers'
 import { TimestampBadge } from './TimestampBadge'
 
 export const CitationInline = createReactInlineContentSpec(
@@ -29,7 +29,7 @@ function inlineMarkersToCitations(content: any[]): any[] {
       let m: RegExpExecArray | null
       while ((m = re.exec(node.text)) !== null) {
         if (m.index > last) rebuilt.push({ type: 'text', text: node.text.slice(last, m.index), styles: node.styles ?? {} })
-        rebuilt.push({ type: 'citation', props: { ms: Number(m[1]), speaker: m[2] } })
+        rebuilt.push({ type: 'citation', props: { ms: markerTimeToMs(m[1]), speaker: m[2] } })
         last = m.index + m[0].length
       }
       if (last < node.text.length) rebuilt.push({ type: 'text', text: node.text.slice(last), styles: node.styles ?? {} })
