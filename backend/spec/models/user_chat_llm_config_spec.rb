@@ -146,23 +146,23 @@ RSpec.describe User, "chat LLM config", type: :model do
         expect(cfg[:model]).to eq("llama-3.1-8b")
       end
     end
+  end
 
-    describe ".server_default_chat_llm_config" do
-      around do |example|
-        keys = %w[CHAT_LLM_PROVIDER CHAT_LLM_AUTH_TOKEN CHAT_LLM_BASE_URL CHAT_LLM_MODEL]
-        prev = keys.index_with { |k| ENV[k] }
-        example.run
-        keys.each { |k| prev[k].nil? ? ENV.delete(k) : ENV[k] = prev[k] }
-      end
+  describe ".server_default_chat_llm_config" do
+    around do |example|
+      keys = %w[CHAT_LLM_PROVIDER CHAT_LLM_AUTH_TOKEN CHAT_LLM_BASE_URL CHAT_LLM_MODEL]
+      prev = keys.index_with { |k| ENV[k] }
+      example.run
+      keys.each { |k| prev[k].nil? ? ENV.delete(k) : ENV[k] = prev[k] }
+    end
 
-      it "builds a compact config from CHAT_LLM_* ENV" do
-        ENV["CHAT_LLM_PROVIDER"]   = "openai"
-        ENV["CHAT_LLM_AUTH_TOKEN"] = "k"
-        ENV["CHAT_LLM_BASE_URL"]   = "http://x/v1"
-        ENV["CHAT_LLM_MODEL"]      = "m"
-        cfg = User.server_default_chat_llm_config
-        expect(cfg).to eq(provider: "openai", auth_token: "k", base_url: "http://x/v1", model: "m")
-      end
+    it "builds a compact config from CHAT_LLM_* ENV" do
+      ENV["CHAT_LLM_PROVIDER"]   = "openai"
+      ENV["CHAT_LLM_AUTH_TOKEN"] = "k"
+      ENV["CHAT_LLM_BASE_URL"]   = "http://x/v1"
+      ENV["CHAT_LLM_MODEL"]      = "m"
+      cfg = User.server_default_chat_llm_config
+      expect(cfg).to eq(provider: "openai", auth_token: "k", base_url: "http://x/v1", model: "m")
     end
   end
 end
