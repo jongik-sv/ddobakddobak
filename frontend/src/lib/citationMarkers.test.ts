@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseCitationMarkers, stripCitationMarkers, dedupeMarkers, FOLDER_CITATION_RE, CITATION_RE, markerTimeToMs } from './citationMarkers'
+import { parseCitationMarkers, stripCitationMarkers, dedupeMarkers, FOLDER_CITATION_RE, CITATION_RE, markerTimeToMs, speakerAtMs } from './citationMarkers'
 
 describe('citationMarkers', () => {
   it('parses ms and speaker from a marker', () => {
@@ -72,5 +72,67 @@ describe('FOLDER_CITATION_RE', () => {
     expect(m?.[1]).toBe('142')
     expect(m?.[2]).toBe('125000')
     expect(m?.[3]).toBe('화자 1')
+  })
+})
+
+describe('speakerAtMs', () => {
+  const finals = [
+    { started_at_ms: 0, ended_at_ms: 1000, speaker_label: '화자 1', speaker_name: '홍길동' },
+    { started_at_ms: 2000, ended_at_ms: 3000, speaker_label: '화자 2', speaker_name: null },
+    { started_at_ms: 5000, ended_at_ms: 6000, speaker_label: '화자 3', speaker_name: '김철수' },
+  ]
+
+  it('범위 안의 ms → 해당 final 반환 (speaker_label·speaker_name)', () => {
+    expect(speakerAtMs(finals, 2500)).toEqual({ speaker_label: '화자 2', speaker_name: null })
+    expect(speakerAtMs(finals, 5500)).toEqual({ speaker_label: '화자 3', speaker_name: '김철수' })
+  })
+
+  it('경계값 포함 (started/ended 양끝)', () => {
+    expect(speakerAtMs(finals, 0)).toEqual({ speaker_label: '화자 1', speaker_name: '홍길동' })
+    expect(speakerAtMs(finals, 1000)).toEqual({ speaker_label: '화자 1', speaker_name: '홍길동' })
+  })
+
+  it('범위 사이(gap) → started_at_ms가 가장 가까운 final 반환', () => {
+    // 1400은 1000(화자1 끝)보다 2000(화자2 시작)에 가깝다 → 화자 2
+    expect(speakerAtMs(finals, 1400)).toEqual({ speaker_label: '화자 2', speaker_name: null })
+    // 1300: |1300-0|=1300 vs |1300-2000|=700 → 화자 2가 더 가까움
+    expect(speakerAtMs(finals, 1300)).toEqual({ speaker_label: '화자 2', speaker_name: null })
+    // 1700: |1700-0|=1700 vs |1700-2000|=300 → 화자 2가 더 가까움
+    expect(speakerAtMs(finals, 1700)).toEqual({ speaker_label: '화자 2', speaker_name: null })
+  })
+
+  it('모든 범위 밖(끝보다 큰 ms) → started_at_ms 최근접 final', () => {
+    expect(speakerAtMs(finals, 100000)).toEqual({ speaker_label: '화자 3', speaker_name: '김철수' })
+  })
+
+  it('모든 범위 밖(시작보다 작은 ms) → started_at_ms 최근접 final', () => {
+    const shifted = [
+      { started_at_ms: 10000, ended_at_ms: 11000, speaker_label: '화자 1', speaker_name: null },
+      { started_at_ms: 12000, ended_at_ms: 13000, speaker_label: '화자 2', speaker_name: null },
+    ]
+    expect(speakerAtMs(shifted, 0)).toEqual({ speaker_label: '화자 1', speaker_name: null })
+  })
+
+  it('finals 비어있으면 null', () => {
+    expect(speakerAtMs([], 1000)).toBeNull()
+  })
+
+  it('ended_at_ms가 null이면 ms===started_at_ms일 때만 in-range', () => {
+    const nullEnded = [
+      { started_at_ms: 5000, ended_at_ms: null, speaker_label: '화자 9', speaker_name: '나' },
+    ]
+    // 정확히 일치 → in-range hit
+    expect(speakerAtMs(nullEnded, 5000)).toEqual({ speaker_label: '화자 9', speaker_name: '나' })
+    // 불일치 → nearest fallback (단일 final이므로 동일 final)
+    expect(speakerAtMs(nullEnded, 5001)).toEqual({ speaker_label: '화자 9', speaker_name: '나' })
+  })
+
+  it('겹침 구간(overlap): ms 포함 구간이 여럿이면 started_at_ms MAX(가장 늦게 시작) 선택', () => {
+    // seqA·seqB가 overlap. ms=28000은 둘 다 포함하지만 정확히 seqB.started_at_ms → 화자 2가 정답.
+    const seqA = { started_at_ms: 25500, ended_at_ms: 30000, speaker_label: '화자 1', speaker_name: null }
+    const seqB = { started_at_ms: 28000, ended_at_ms: 40720, speaker_label: '화자 2', speaker_name: null }
+    expect(speakerAtMs([seqA, seqB], 28000)).toEqual({ speaker_label: '화자 2', speaker_name: null })
+    // MAX 선택은 배열 순서와 무관 — [seqB, seqA]로 줘도 동일하게 화자 2.
+    expect(speakerAtMs([seqB, seqA], 28000)).toEqual({ speaker_label: '화자 2', speaker_name: null })
   })
 })

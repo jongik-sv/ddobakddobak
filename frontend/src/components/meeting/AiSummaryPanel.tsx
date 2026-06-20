@@ -8,6 +8,7 @@ import { useTranscriptStore } from '../../stores/transcriptStore'
 import { useAppSettingsStore } from '../../stores/appSettingsStore'
 import { editorSchema, codeBlocksToMermaid } from './mermaidBlock'
 import { markersToInline, inlineToMarkers } from './citationInline'
+import { speakerAtMs } from '../../lib/citationMarkers'
 import { AiSummaryFullViewModal } from './AiSummaryFullViewModal'
 
 /**
@@ -63,6 +64,15 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
     ;(window as any).__ddobakSeek = onSeek
     return () => { if ((window as any).__ddobakSeek === onSeek) delete (window as any).__ddobakSeek }
   }, [onSeek])
+
+  // 현재(화자분리 후) 화자 해석기를 전역 핸들로 등록 — CitationInline render가 배지 시각으로 호출.
+  // 마커에 박힌 옛 화자 대신 finals 기준 최신 화자를 색·툴팁에 반영하기 위함.
+  // finals가 매 렌더 새 클로저이므로 const fn으로 캡처해 cleanup의 ref 비교가 일치하게 한다.
+  useEffect(() => {
+    const fn = (ms: number) => speakerAtMs(finals, ms)
+    ;(window as any).__ddobakSpeakerAt = fn
+    return () => { if ((window as any).__ddobakSpeakerAt === fn) delete (window as any).__ddobakSpeakerAt }
+  }, [finals])
 
   useEffect(() => {
     let cancelled = false

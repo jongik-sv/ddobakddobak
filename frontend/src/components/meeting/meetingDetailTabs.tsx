@@ -43,7 +43,7 @@ interface BuildMeetingDetailTabsArgs {
   belowSummary?: React.ReactNode
 }
 
-/** 회의 상세 모바일 탭(기록/요약/메모) 정의를 생성한다. (순수 함수 — 훅 아님) */
+/** 회의 상세 모바일 탭(기록/요약/AI챗/메모) 정의를 생성한다. (순수 함수 — 훅 아님) */
 export function buildMeetingDetailTabs({
   meetingId,
   bookmarksVisible,
@@ -114,6 +114,12 @@ export function buildMeetingDetailTabs({
       ),
     },
     {
+      id: 'chat',
+      label: 'AI 챗',
+      icon: MessageCircle,
+      content: <AiChatPanel scopeId={meetingId} onSeek={onSeek} />,
+    },
+    {
       id: 'memo',
       label: '메모',
       icon: StickyNote,
@@ -127,12 +133,6 @@ export function buildMeetingDetailTabs({
           readOnly={locked}
         />
       ),
-    },
-    {
-      id: 'chat',
-      label: 'AI 챗',
-      icon: MessageCircle,
-      content: <AiChatPanel scopeId={meetingId} onSeek={onSeek} />,
     },
   ]
 }

@@ -7,13 +7,20 @@ import { TimestampBadge } from './TimestampBadge'
 export const CitationInline = createReactInlineContentSpec(
   { type: 'citation' as const, propSchema: { ms: { default: 0 }, speaker: { default: '' } }, content: 'none' },
   {
-    render: ({ inlineContent }) => (
-      <TimestampBadge
-        ms={inlineContent.props.ms as number}
-        speaker={inlineContent.props.speaker as string}
-        onSeek={(window as any).__ddobakSeek ?? (() => {})}
-      />
-    ),
+    render: ({ inlineContent }) => {
+      const ms = inlineContent.props.ms as number
+      // 배지 시각으로 현재(화자분리 후) 화자를 해석 — 없으면 마커에 박힌 옛 화자로 폴백.
+      const resolver = (window as any).__ddobakSpeakerAt
+      const actual = resolver ? resolver(ms) : null
+      return (
+        <TimestampBadge
+          ms={ms}
+          speaker={actual?.speaker_label || (inlineContent.props.speaker as string)}
+          speakerName={actual?.speaker_name ?? null}
+          onSeek={(window as any).__ddobakSeek ?? (() => {})}
+        />
+      )
+    },
   },
 )
 
