@@ -37,14 +37,29 @@ export function LlmSettingsPanel() {
   const [ollamaLoading, setOllamaLoading] = useState(false)
   const [ollamaError, setOllamaError] = useState<string | null>(null)
   const [useCustomModel, setUseCustomModel] = useState(false)
+  const [chatPresetId, setChatPresetId] = useState('')      // '' = 요약과 동일
+  const [chatAuthToken, setChatAuthToken] = useState('')
+  const [chatBaseUrl, setChatBaseUrl] = useState('')
   const [chatModel, setChatModel] = useState('')
+  const [chatMaskedToken, setChatMaskedToken] = useState('')
 
   useEffect(() => {
     getLlmSettings().then((llm) => {
       if (!llm) return
       setLlmSettings(llm)
       setSelectedPreset(llm.active_preset || 'anthropic')
-      setChatModel(llm.chat_model || '')
+      const chat = llm.chat
+      if (chat && chat.provider) {
+        setChatPresetId(chat.preset_id || '')
+        setChatBaseUrl(chat.base_url || '')
+        setChatModel(chat.model || '')
+        setChatMaskedToken(chat.auth_token_masked || '')
+      } else {
+        setChatPresetId('')
+        setChatModel(llm.chat_model || '')
+        setChatMaskedToken('')
+      }
+      setChatAuthToken('')
       const cache: Record<string, PresetFormState> = {}
       for (const [id, preset] of Object.entries(llm.presets || {})) {
         cache[id] = {
@@ -82,9 +97,6 @@ export function LlmSettingsPanel() {
         },
       }))
     }
-    // 서비스 전환 시 챗 모델을 새 프리셋의 첫 제안 모델로 재설정
-    // (ollama/custom처럼 제안 모델이 없으면 '' = "요약 모델과 동일")
-    setChatModel(presetDef?.suggestedModels[0] ?? '')
     setUseCustomModel(false)
     setLlmTestResult(null)
     setOllamaModels([])
@@ -119,13 +131,20 @@ export function LlmSettingsPanel() {
   const modelOptions = selectedPreset === 'ollama' ? ollamaModels : currentPreset.suggestedModels
   const showModelSelect = modelOptions.length > 0 && !useCustomModel
 
-  // AI 챗 모델: 요약 모델과 동일한 프리셋별 목록을 사용 (커스텀 입력 토글 없음)
-  const chatModelOptions = modelOptions
-  // 저장된 값이 목록에 없으면(이전 자유 입력값 등) 보존 옵션으로 추가
-  const chatModelSelectOptions =
-    chatModel && !chatModelOptions.includes(chatModel)
-      ? [...chatModelOptions, chatModel]
-      : chatModelOptions
+  const chatPreset = SERVICE_PRESETS.find((p) => p.id === chatPresetId)
+  const chatActualProvider = chatPreset?.provider ?? ''
+  const chatIsCli = chatPresetId !== '' && CLI_PRESET_IDS.has(chatPresetId)
+  const chatRequiresKey = chatPreset?.requiresApiKey ?? false
+  const chatModelSuggestions = chatPreset?.suggestedModels ?? []
+
+  const handleChatServiceSelect = (id: string) => {
+    setChatPresetId(id)
+    const def = SERVICE_PRESETS.find((p) => p.id === id)
+    setChatBaseUrl(def?.defaultBaseUrl ?? '')
+    setChatModel(def?.suggestedModels[0] ?? '')
+    setChatAuthToken('')
+    setChatMaskedToken('')
+  }
 
   const handleLlmTest = async () => {
     setLlmTesting(true)
@@ -163,14 +182,38 @@ export function LlmSettingsPanel() {
         presetData.auth_token = currentForm.auth_token
       }
 
+      const chatPayload =
+        chatPresetId === ''
+          ? { provider: '' }
+          : {
+              preset_id: chatPresetId,
+              provider: chatActualProvider,
+              base_url: chatBaseUrl,
+              model: chatModel,
+              ...(chatAuthToken ? { auth_token: chatAuthToken } : {}),
+            }
+
       const result = await updateLlmSettings({
         active_preset: selectedPreset,
-        chat_model: chatModel.trim() || '',
+        chat_model: chatPresetId === '' ? (chatModel.trim() || '') : '',
+        chat: chatPayload,
         preset_id: selectedPreset,
         preset_data: presetData,
       })
       setLlmSettings(result)
-      setChatModel(result.chat_model || '')
+      // 저장 응답으로 챗 폼 재초기화
+      const rc = result.chat
+      if (rc && rc.provider) {
+        setChatPresetId(rc.preset_id || '')
+        setChatBaseUrl(rc.base_url || '')
+        setChatModel(rc.model || '')
+        setChatMaskedToken(rc.auth_token_masked || '')
+      } else {
+        setChatPresetId('')
+        setChatModel(result.chat_model || '')
+        setChatMaskedToken('')
+      }
+      setChatAuthToken('')
       updateCurrentForm({ auth_token: '' })
       setLlmSuccess('AI 설정이 저장되었습니다.')
     } catch {
@@ -341,33 +384,84 @@ export function LlmSettingsPanel() {
           사용 중인 모델의 스펙에 맞게 설정하세요. 모르겠으면 기본값을 유지하면 됩니다.
         </p>
 
-        {/* AI 챗 모델명 (전역 설정) */}
-        <div>
-          <label htmlFor="llm-chat-model" className="block text-sm font-medium mb-1">AI 챗 모델명</label>
-          {chatModelOptions.length > 0 ? (
+        {/* AI 챗 모델 (독립 섹션) */}
+        <section className="mt-6 border-t border-gray-200 pt-4">
+          <h3 className="text-sm font-semibold text-gray-800">AI 챗 모델 (독립)</h3>
+          <p className="mb-2 text-xs text-gray-500">
+            비우면(요약과 동일) 요약 모델을 사용합니다. 실시간 챗에 CLI(Claude Code·Antigravity·Codex)는 6~7초 지연으로 부적합합니다.
+          </p>
+
+          <label htmlFor="chat-service" className="block text-xs text-gray-600 mb-1">챗 서비스</label>
+          <select
+            id="chat-service"
+            value={chatPresetId}
+            onChange={(e) => handleChatServiceSelect(e.target.value)}
+            className="mb-2 w-full rounded-md border px-3 py-2 text-sm bg-white min-h-[44px]"
+          >
+            <option value="">요약과 동일</option>
+            {SERVICE_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+
+          {chatPresetId !== '' && chatRequiresKey && (
+            <div className="mb-2">
+              <label htmlFor="chat-key" className="block text-xs text-gray-600 mb-1">챗 API 키</label>
+              <input
+                id="chat-key"
+                type="password"
+                value={chatAuthToken}
+                onChange={(e) => setChatAuthToken(e.target.value)}
+                placeholder={chatMaskedToken || '토큰을 입력하세요'}
+                className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]"
+              />
+              {chatMaskedToken && !chatAuthToken && (
+                <p className="text-xs text-muted-foreground mt-1">현재: {chatMaskedToken}</p>
+              )}
+            </div>
+          )}
+
+          {chatPresetId !== '' && !chatIsCli && (
+            <div className="mb-2">
+              <label htmlFor="chat-base" className="block text-xs text-gray-600 mb-1">챗 base URL</label>
+              <input
+                id="chat-base"
+                type="text"
+                value={chatBaseUrl}
+                onChange={(e) => setChatBaseUrl(e.target.value)}
+                placeholder={chatPreset?.defaultBaseUrl || 'https://api.anthropic.com'}
+                className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]"
+              />
+            </div>
+          )}
+
+          <label htmlFor="chat-model" className="block text-xs text-gray-600 mb-1">챗 모델</label>
+          {chatModelSuggestions.length > 0 ? (
             <select
-              id="llm-chat-model"
+              id="chat-model"
               value={chatModel}
               onChange={(e) => setChatModel(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono bg-white min-h-[44px]"
+              className="w-full rounded-md border px-3 py-2 text-sm bg-white font-mono min-h-[44px]"
             >
-              <option value="">요약 모델과 동일</option>
-              {chatModelSelectOptions.map((m) => (
+              {(chatModel && !chatModelSuggestions.includes(chatModel)
+                ? [...chatModelSuggestions, chatModel]
+                : chatModelSuggestions
+              ).map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
           ) : (
             <input
-              id="llm-chat-model"
+              id="chat-model"
               type="text"
               value={chatModel}
               onChange={(e) => setChatModel(e.target.value)}
-              placeholder="모델명을 입력하세요"
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
+              placeholder="모델명을 입력하세요 (비우면 요약 모델)"
+              className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]"
             />
           )}
           <p className="text-xs text-muted-foreground mt-1">비우면 요약 모델을 사용합니다</p>
-        </div>
+        </section>
 
         {/* 버튼 + 결과 */}
         <div className="flex items-center gap-2">

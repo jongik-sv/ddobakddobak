@@ -52,9 +52,18 @@ export interface LlmPreset {
   max_output_tokens?: number
 }
 
+export interface LlmChatConfig {
+  preset_id?: string
+  provider?: string
+  auth_token_masked?: string
+  base_url?: string
+  model?: string
+}
+
 export interface LlmSettings {
   active_preset: string
   chat_model?: string | null
+  chat?: LlmChatConfig | null
   presets: Record<string, LlmPreset>
   offline?: boolean
   sidecar?: Record<string, unknown>
@@ -67,6 +76,13 @@ export async function getLlmSettings(): Promise<LlmSettings> {
 export async function updateLlmSettings(params: {
   active_preset?: string
   chat_model?: string | null
+  chat?: {
+    preset_id?: string
+    provider?: string
+    auth_token?: string
+    base_url?: string
+    model?: string
+  }
   preset_id?: string
   preset_data?: {
     provider?: string
