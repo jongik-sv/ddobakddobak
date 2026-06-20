@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { getMode } from '../../config'
 import { useAuthStore } from '../../stores/authStore'
 import PersonalSettingsTab from './PersonalSettingsTab'
-import GlobalSettingsTab from './GlobalSettingsTab'
+import { LlmSettingsPanel } from './LlmSettingsPanel'
+import VoiceSettingsTab from './VoiceSettingsTab'
+import MeetingSettingsTab from './MeetingSettingsTab'
 import UserSttSettings from './UserSttSettings'
 
 interface Props {
@@ -22,7 +24,7 @@ export default function SettingsContent({ offline = false }: Props = {}) {
   // 로컬모드/로컬계정(desktop@local)은 자동 로그인이라 비밀번호 변경 불필요
   const showPasswordSection = getMode() !== 'local' && user?.email !== 'desktop@local'
 
-  const [tab, setTab] = useState<'personal' | 'global'>('personal')
+  const [tab, setTab] = useState<'personal' | 'llm' | 'voice' | 'meeting'>('personal')
 
   // 오프라인: 서버 fetch 패널은 모두 행/에러를 내므로 클라이언트-디바이스 전용 패널만 단일 컬럼으로.
   // UserSttSettings 안에 ModelManager(모델 다운로드·관리)가 포함되어 있다.
@@ -45,40 +47,37 @@ export default function SettingsContent({ offline = false }: Props = {}) {
     return <PersonalSettingsTab showPasswordSection={showPasswordSection} />
   }
 
+  const TABS = [
+    { id: 'personal', label: '개인설정' },
+    { id: 'llm', label: 'LLM' },
+    { id: 'voice', label: '음성·인식' },
+    { id: 'meeting', label: '회의록 설정' },
+  ] as const
+
   return (
     <div className="space-y-6">
       <div role="tablist" className="flex gap-1 border-b">
-        <button
-          role="tab"
-          aria-selected={tab === 'personal'}
-          onClick={() => setTab('personal')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            tab === 'personal'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          개인설정
-        </button>
-        <button
-          role="tab"
-          aria-selected={tab === 'global'}
-          onClick={() => setTab('global')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            tab === 'global'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          전역설정
-        </button>
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === t.id
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {tab === 'personal' ? (
-        <PersonalSettingsTab showPasswordSection={showPasswordSection} />
-      ) : (
-        <GlobalSettingsTab />
-      )}
+      {tab === 'personal' && <PersonalSettingsTab showPasswordSection={showPasswordSection} />}
+      {tab === 'llm' && <div className="max-w-2xl"><LlmSettingsPanel /></div>}
+      {tab === 'voice' && <VoiceSettingsTab />}
+      {tab === 'meeting' && <MeetingSettingsTab />}
     </div>
   )
 }
