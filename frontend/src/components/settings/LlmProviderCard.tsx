@@ -58,7 +58,7 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
   const showModelSelect = modelOptions.length > 0 && !useCustomModel
 
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className="rounded-lg border bg-card p-4" data-testid={`${idPrefix}-card`}>
       <h3 className="text-sm font-semibold mb-2">{title}</h3>
       <div role="group" data-testid={`${idPrefix}-service-grid`} className="grid grid-cols-4 gap-2 mb-3">
         {noneOption && (
