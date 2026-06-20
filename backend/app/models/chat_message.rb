@@ -6,6 +6,12 @@ class ChatMessage < ApplicationRecord
   STATUSES = %w[pending complete error].freeze
   SCOPE_TYPES = %w[meeting folder project].freeze
 
+  # model_name は ActiveRecord の予約語だが、LLM モデル名保存用カラムとして許容する.
+  def self.dangerous_attribute_method?(name)
+    return false if name.to_s == "model_name"
+    super
+  end
+
   validates :role, inclusion: { in: ROLES }
   validates :status, inclusion: { in: STATUSES }
   validates :scope_type, inclusion: { in: SCOPE_TYPES }
