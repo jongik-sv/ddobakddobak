@@ -1,13 +1,15 @@
 import apiClient from './client'
 
 export type ChatRole = 'user' | 'assistant'
-export type ChatStatus = 'pending' | 'complete' | 'error'
+export type ChatStatus = 'pending' | 'streaming' | 'complete' | 'error'
 
 export interface ChatMessage {
   id: number
   role: ChatRole
   content: string
   status: ChatStatus
+  /** 답변 LLM 친절명(예: "Claude Sonnet 4"). 어시스턴트만. */
+  model_name?: string | null
   /** 어시스턴트 답변 뒤 예상질문(한국어, 최대 3개). 클릭 시 즉시 자동 질문. */
   suggestions?: string[]
   error_message?: string | null
