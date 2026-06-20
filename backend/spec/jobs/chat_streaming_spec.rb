@@ -29,7 +29,7 @@ RSpec.describe ChatStreaming do
     broadcasts = []
     allow(job).to receive(:broadcast_chat) { |a, model_name:| broadcasts << [a.status, model_name] }
 
-    full = job.stream_answer(answer, config, "sys", "q", "Claude Sonnet 4")
+    full = job.send(:stream_answer, answer, config, "sys", "q", "Claude Sonnet 4")
     expect(full).to eq("a" * 200)
     expect(broadcasts.size).to be >= 1
     expect(broadcasts.all? { |s, m| s == "streaming" && m == "Claude Sonnet 4" }).to be true

@@ -4,6 +4,8 @@ module ChatStreaming
   THROTTLE_MS = 150
   THROTTLE_CHARS = 80
 
+  private
+
   def stream_answer(answer, config, system_prompt, user_content, model_name)
     buffer = +""
     last_flush = now_ms
