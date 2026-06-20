@@ -48,4 +48,34 @@ RSpec.describe TranscriptVectorSearch, type: :service do
     expect(described_class.search(query_text: "", meeting_ids: [meeting.id])).to eq([])
     expect(described_class.search(query_text: "q", meeting_ids: [])).to eq([])
   end
+
+  describe ".search_multi" do
+    it "쿼리 N개당 리스트 N개를 반환하고 쿼리별로 상위가 다르다" do
+      # embed가 쿼리별 다른 벡터 반환: q1=[1,0]→t_near 우선, q2=[0,1]→t_far 우선
+      allow(sidecar).to receive(:embed).with(["q1", "q2"]).and_return([[1.0, 0.0], [0.0, 1.0]])
+      res = described_class.search_multi(queries: ["q1", "q2"], meeting_ids: [meeting.id], limit: 10)
+
+      expect(res.size).to eq(2)
+      expect(res[0]).to be_an(Array)
+      expect(res[1]).to be_an(Array)
+      expect(res[0].first).to include(:transcript_id, :score)
+      expect(res[0].first[:transcript_id]).to eq(t_near.id)
+      expect(res[1].first[:transcript_id]).to eq(t_far.id)
+    end
+
+    it "meeting_ids 밖 전사는 search_multi에도 포함하지 않는다 (인가)" do
+      other_mtg = create(:meeting)
+      other_t = create(:transcript, meeting: other_mtg, content: "타인")
+      embed_row(other_t, [1.0, 0.0]) # 쿼리와 완벽 일치하지만 스코프 밖
+      allow(sidecar).to receive(:embed).and_return([[1.0, 0.0], [0.0, 1.0]])
+      res = described_class.search_multi(queries: ["q1", "q2"], meeting_ids: [meeting.id], limit: 10)
+      ids = res.flatten.map { |r| r[:transcript_id] }
+      expect(ids).not_to include(other_t.id)
+    end
+
+    it "빈 입력은 빈 배열" do
+      expect(described_class.search_multi(queries: [], meeting_ids: [meeting.id])).to eq([])
+      expect(described_class.search_multi(queries: ["q1"], meeting_ids: [])).to eq([])
+    end
+  end
 end

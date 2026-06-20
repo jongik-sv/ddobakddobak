@@ -3,20 +3,21 @@
 # ⚠️ FTS·벡터 두 경로 모두 동일 meeting_ids로 필터 — privilege escalation 방지.
 class FolderChatContext
   MAX_CHARS   = 120_000
-  TOP_K       = 40       # 융합 후 발췌 행 상한
+  TOP_K       = 60       # 융합 후 발췌 행 상한
   SNIPPET_LEN = 32
   EXCERPT_LEN = 160      # 벡터 전용 히트(FTS snippet 없음) 본문 절단 길이
   RRF_K       = 60       # Reciprocal Rank Fusion 상수
 
-  def self.build(scope_type:, scope_id:, user:, keywords:, query_text: nil)
-    new(scope_type, scope_id, user, keywords, query_text).build
+  def self.build(scope_type:, scope_id:, user:, keywords:, expansions: [], query_text: nil)
+    new(scope_type, scope_id, user, keywords, expansions, query_text).build
   end
 
-  def initialize(scope_type, scope_id, user, keywords, query_text = nil)
+  def initialize(scope_type, scope_id, user, keywords, expansions = [], query_text = nil)
     @scope_type = scope_type
     @scope_id   = scope_id
     @user       = user
-    @keywords   = Array(keywords).reject(&:blank?)
+    @keywords   = Array(keywords).map(&:to_s).reject(&:blank?)
+    @expansions = Array(expansions).map(&:to_s).reject(&:blank?)
     @query_text = query_text.to_s
   end
 
@@ -46,13 +47,19 @@ class FolderChatContext
     end
   end
 
+  # FTS 검색어: 키워드 ∪ 확장어(토큰 분해). 다중어 확장은 토큰별 prefix OR(phrase-prefix 모호성 회피).
+  def fts_terms
+    @fts_terms ||= (@keywords + @expansions.flat_map { |e| e.split(/\s+/) })
+                     .map(&:strip).reject(&:blank?).uniq
+  end
+
   def fts_query
-    @keywords.map { |w| "\"#{w.gsub('"', '')}\"*" }.join(" OR ")
+    fts_terms.map { |w| "\"#{w.gsub('"', '')}\"*" }.join(" OR ")
   end
 
   # FTS 랭크: [transcript_id, ...] 순위. snippet은 @fts_snippets[id]에 저장.
   def fts_ranked_ids
-    return [] if meeting_ids.empty? || @keywords.empty?
+    return [] if meeting_ids.empty? || fts_terms.empty?
 
     placeholders = meeting_ids.map { "?" }.join(",")
     sql = <<~SQL
@@ -72,12 +79,17 @@ class FolderChatContext
     rows.map { |r| id = r["tid"].to_i; @fts_snippets[id] = r["snippet"]; id }
   end
 
-  # 벡터 랭크: [transcript_id, ...]. sidecar/벡터 실패 시 [] (FTS-only fallback).
-  def vector_ranked_ids
-    return [] if meeting_ids.empty? || @query_text.blank?
+  # 벡터 검색 쿼리: 확장어 우선, 없으면 원문(query_text)으로 폴백(하위호환).
+  def vector_queries
+    (@expansions.presence || [ @query_text ]).map(&:to_s).reject(&:blank?)
+  end
 
-    TranscriptVectorSearch.search(query_text: @query_text, meeting_ids: meeting_ids, limit: TOP_K)
-                          .map { |h| h[:transcript_id] }
+  # 벡터 랭크 리스트들: 쿼리(확장어)별 [transcript_id,...]. sidecar 실패 시 [] (FTS-only fallback).
+  def vector_ranked_lists
+    return [] if meeting_ids.empty? || vector_queries.empty?
+
+    TranscriptVectorSearch.search_multi(queries: vector_queries, meeting_ids: meeting_ids, limit: TOP_K)
+                          .map { |list| list.map { |h| h[:transcript_id] } }
   rescue => e
     Rails.logger.warn("[FolderChatContext] 벡터검색 실패 → FTS-only: #{e.message}")
     []
@@ -97,11 +109,11 @@ class FolderChatContext
     return @excerpts_block = "" if meeting_ids.empty?
 
     @fts_snippets = {}
-    fts_ids = fts_ranked_ids
-    vec_ids = vector_ranked_ids
-    return @excerpts_block = "" if fts_ids.empty? && vec_ids.empty?
+    fts_ids   = fts_ranked_ids
+    vec_lists = vector_ranked_lists
+    return @excerpts_block = "" if fts_ids.empty? && vec_lists.all?(&:empty?)
 
-    ranked = rrf_merge(fts_ids, vec_ids).first(TOP_K)
+    ranked = rrf_merge(fts_ids, *vec_lists).first(TOP_K)
     @excerpts_block = build_excerpt_lines(ranked)
   end
 

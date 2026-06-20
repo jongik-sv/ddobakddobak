@@ -8,7 +8,9 @@ RSpec.describe FolderChatJob, type: :job do
   let!(:answer) { create(:chat_message, meeting: nil, scope_type: "folder", scope_id: folder.id, user: user, role: "assistant", status: "pending", content: "") }
 
   before do
-    allow(FolderChatKeywords).to receive(:extract).and_return(%w[예산])
+    allow(FolderChatQueryExpansion).to receive(:expand).and_return(
+      FolderChatQueryExpansion::Result.new(keywords: %w[예산], expansions: %w[예산])
+    )
     fake = instance_double(LlmService, answer_question: "예산은 오천입니다.")
     allow(LlmService).to receive(:new).and_return(fake)
   end
