@@ -154,31 +154,34 @@ module LlmPrompts
     "very_detailed" => "아주 상세"
   }.freeze
 
-  # 문체 지시. standard 는 문체 지시 없음(현행 보존), very_detailed 는 분량 캡 없음.
+  # 문체 지시. standard 는 문체 지시 없음(현행 보존).
+  # very_detailed 도 유한 캡(final 20,000/realtime 10,000)을 가지므로(아래 VERBOSITY_CHAR_LIMITS),
+  # 문체 문구에서 "분량 제한 없이" 표현은 제거한다 — apply_verbosity 가 append 하는 "약 N자 이내" 캡과 모순되기 때문.
   VERBOSITY_STYLES = {
     "very_concise"  => "핵심 결정·액션아이템 위주로만 기록하세요. 각 항목은 한 문장, 부연·배경 설명 생략. 표는 꼭 필요할 때만.",
     "concise"       => "각 항목을 1문장으로 기록하세요. 표는 최소화하고 부연 설명은 생략하세요.",
     "standard"      => nil,
     "detailed"      => "논의의 맥락과 근거를 충실히 기록하세요. 표를 적극 활용하세요.",
-    "very_detailed" => "발언 흐름·근거·반론까지 모두 기록하세요. 표·mermaid 를 적극 활용하고 분량 제한 없이 충실하게 작성하세요."
+    "very_detailed" => "발언 흐름·근거·반론까지 모두 기록하세요. 표·mermaid 를 적극 활용하고 가능한 한 충실하게 작성하세요."
   }.freeze
 
   # 회의록 전체 글자수 캡(약). realtime 틱은 작게(지연 직결), final/파일전사는 여유.
-  # nil = 캡 없음. ~95자/s 기준: realtime standard 4,000자 ≈ 42초.
+  # nil = 캡 없음(현재 모든 항목에 유한 캡 부여). ~95자/s 기준: realtime standard 4,000자 ≈ 42초.
+  # very_detailed 도 유한 캡: 무한(nil)이면 큰 회의에서 claude CLI 360초 타임아웃 → 요약 미저장.
   VERBOSITY_CHAR_LIMITS = {
     realtime: {
       "very_concise"  => 1_000,
       "concise"       => 2_000,
       "standard"      => 4_000,
       "detailed"      => 8_000,
-      "very_detailed" => nil
+      "very_detailed" => 10_000
     }.freeze,
     final: {
       "very_concise"  => 2_000,
       "concise"       => 4_000,
       "standard"      => 10_000,
       "detailed"      => 15_000,
-      "very_detailed" => nil
+      "very_detailed" => 20_000
     }.freeze
   }.freeze
 

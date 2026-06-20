@@ -8,7 +8,7 @@ class LlmService
 
   class LlmError < StandardError; end
 
-  CLI_TIMEOUT = ENV.fetch("LLM_CLI_TIMEOUT", "360").to_i # seconds — Claude/Gemini/Codex/GLM CLI 실행 제한
+  CLI_TIMEOUT = ENV.fetch("LLM_CLI_TIMEOUT", "600").to_i # seconds — Claude/Gemini/Codex/GLM CLI 실행 제한
 
   CLI_PROVIDERS = %w[claude_cli gemini_cli codex_cli].freeze
 
