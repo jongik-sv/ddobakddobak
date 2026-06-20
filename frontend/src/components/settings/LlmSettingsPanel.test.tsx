@@ -125,6 +125,17 @@ describe('LlmSettingsPanel - AI 챗 독립 섹션', () => {
     expect(keyInput.placeholder).toContain('sk-c****9999')
   })
 
+  it('챗 서비스=LM Studio 선택 시 base URL에 1234 포함, API 키 필드 없음', async () => {
+    mockGetLlmSettings.mockResolvedValue(settingsResponse)
+    render(<LlmSettingsPanel />)
+    await waitFor(() => screen.getByText('LLM 모델 설정'))
+
+    const chatGrid = screen.getByTestId('chat-service-grid')
+    fireEvent.click(within(chatGrid).getByText('LM Studio').closest('button')!)
+    expect((screen.getByLabelText('챗 base URL') as HTMLInputElement).value).toContain('1234')
+    expect(screen.queryByLabelText('챗 API 키')).toBeNull()
+  })
+
   it('챗 서비스=Ollama 선택 시 설치 모델 목록을 fetch해 챗 모델 SELECT로 렌더링', async () => {
     mockFetchOllamaModels.mockResolvedValue(['gemma4:e2b', 'llama3.2'])
     mockGetLlmSettings.mockResolvedValue(settingsResponse)

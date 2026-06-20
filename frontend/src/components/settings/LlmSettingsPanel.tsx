@@ -10,6 +10,7 @@ const SERVICE_PRESETS = [
   { id: 'zai', name: 'Z.AI', provider: 'anthropic' as const, defaultBaseUrl: 'https://api.z.ai/api/anthropic', requiresApiKey: true, suggestedModels: ['glm-5.1', 'glm-5-turbo', 'glm-4.5-air'], description: 'GLM 모델 (Anthropic 호환)' },
   { id: 'openai', name: 'OpenAI', provider: 'openai' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: ['gpt-4o', 'gpt-4o-mini'], description: 'GPT 모델 (키 필요)' },
   { id: 'ollama', name: 'Ollama', provider: 'openai' as const, defaultBaseUrl: 'http://localhost:11434/v1', requiresApiKey: false, suggestedModels: [], description: '로컬 실행 (키 불필요)' },
+  { id: 'lmstudio', name: 'LM Studio', provider: 'openai' as const, defaultBaseUrl: 'http://localhost:1234/v1', requiresApiKey: false, suggestedModels: [], description: '로컬 실행 (키 불필요)' },
   { id: 'custom', name: '직접 입력', provider: 'openai' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: [], description: '호환 API 직접 설정' },
 ] as const
 
