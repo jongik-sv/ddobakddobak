@@ -41,13 +41,20 @@ class User < ApplicationRecord
     email == LOCAL_EMAIL
   end
 
+  # LlmService::CLI_PROVIDERS 와 동일(키·base 불요 CLI 프로바이더). 모델 자기완결성 위해 미러.
+  CLI_LLM_PROVIDERS = %w[claude_cli gemini_cli codex_cli].freeze
+
+  def llm_provider_cli?
+    CLI_LLM_PROVIDERS.include?(llm_provider)
+  end
+
   def llm_configured?
-    llm_provider.present? && llm_api_key.present? && llm_enabled?
+    llm_provider.present? && (llm_api_key.present? || llm_provider_cli?) && llm_enabled?
   end
 
   # 설정 자체가 존재하는지 (활성 여부와 무관)
   def llm_has_settings?
-    llm_provider.present? && llm_api_key.present?
+    llm_provider.present? && (llm_api_key.present? || llm_provider_cli?)
   end
 
   def effective_llm_config

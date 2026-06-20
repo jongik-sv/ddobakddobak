@@ -6,7 +6,7 @@ module Api
 
         before_action :authenticate_user!
 
-        VALID_PROVIDERS = %w[anthropic openai].freeze
+        VALID_PROVIDERS = (%w[anthropic openai] + LlmService::CLI_PROVIDERS).freeze
 
         # GET /api/v1/user/llm_settings
         def show
@@ -48,8 +48,13 @@ module Api
         # POST /api/v1/user/llm_settings/test
         def test
           provider = params.require(:provider)
-          model = params.require(:model)
 
+          # CLI 프로바이더는 API 연결 테스트 불필요 (전역 test_llm 과 동일 처리)
+          if LlmService::CLI_PROVIDERS.include?(provider)
+            return render json: { "success" => true, "note" => "CLI 프로바이더는 별도 연결 테스트가 필요 없습니다." }
+          end
+
+          model = params.require(:model)
           api_key = params[:api_key].presence || current_user.llm_api_key
           base_url = params[:base_url].presence || current_user.llm_base_url
 
