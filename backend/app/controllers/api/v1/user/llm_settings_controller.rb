@@ -71,7 +71,7 @@ module Api
 
         def normalize_params
           p = params.require(:llm_settings).permit(
-            :provider, :api_key, :model, :base_url, :chat_llm_model,
+            :provider, :api_key, :model, :base_url,
             :chat_provider, :chat_api_key, :chat_model, :chat_base_url
           )
 
@@ -79,7 +79,7 @@ module Api
             llm_provider: p[:provider],
             llm_model: p[:model],
             llm_base_url: p[:base_url].presence,
-            chat_llm_model: (p[:chat_model].presence || p[:chat_llm_model].presence),
+            chat_llm_model: p[:chat_model].presence,
             chat_llm_provider: p[:chat_provider].presence,
             chat_llm_base_url: p[:chat_base_url].presence
           }
