@@ -167,3 +167,29 @@ RSpec.describe LlmService, "ok signalling" do
     end
   end
 end
+
+RSpec.describe LlmService, "streaming" do
+  # anthropic 스트림 흉내: stream.text 가 델타 enumerable 을 반환.
+  let(:fake_stream) do
+    Struct.new(:deltas) do
+      def text = deltas
+    end.new(["안녕", "하세", "요"])
+  end
+
+  def svc
+    s = LlmService.new(llm_config: { provider: "anthropic", auth_token: "k", model: "claude-sonnet-4-20250514" })
+    client = instance_double("Anthropic::Client")
+    messages = instance_double("Anthropic::Resources::Messages")
+    allow(client).to receive(:messages).and_return(messages)
+    allow(messages).to receive(:stream).and_return(fake_stream)
+    s.instance_variable_set(:@client, client)
+    s
+  end
+
+  it "블록을 주면 델타를 순서대로 방출하고 전체를 반환한다" do
+    seen = []
+    full = svc.answer_question("sys", "user") { |d| seen << d }
+    expect(seen).to eq(["안녕", "하세", "요"])
+    expect(full).to eq("안녕하세요")
+  end
+end

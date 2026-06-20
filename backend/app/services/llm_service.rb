@@ -163,9 +163,11 @@ class LlmService
     }
   end
 
-  # 회의 Q&A: 컨텍스트 빌더가 만든 system/user를 batch 호출. (스트리밍은 후속)
-  def answer_question(system_prompt, user_content)
-    call_llm_raw(system_prompt, user_content)
+  # 회의 Q&A: 컨텍스트 빌더가 만든 system/user를 호출.
+  # 블록을 주면 텍스트 델타를 순서대로 yield하고 전체 텍스트를 반환 (스트리밍).
+  # 블록 없으면 기존 동기 경로 그대로.
+  def answer_question(system_prompt, user_content, &block)
+    call_llm_raw(system_prompt, user_content, &block)
   end
 
   # 안건 자료 압축: 업로드 시점에 LLM 으로 요약해 max_chars 미만으로 줄인다.
@@ -274,7 +276,7 @@ class LlmService
 
   # ── LLM 호출 ──
 
-  def call_llm_raw(system, user_content, max_tokens: max_output_tokens)
+  def call_llm_raw(system, user_content, max_tokens: max_output_tokens, &block)
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
     # 추론(thinking) 모델은 요약에 불필요 — 비활성 지시 주입(속도·본문 회복)
@@ -284,7 +286,7 @@ class LlmService
 
     result = case @config[:provider]
     when "openai"
-      call_openai(system, user_content, max_tokens)
+      block ? call_openai_stream(system, user_content, max_tokens, &block) : call_openai(system, user_content, max_tokens)
     when "claude_cli"
       call_claude_cli(system, user_content)
     when "gemini_cli"
@@ -292,7 +294,7 @@ class LlmService
     when "codex_cli"
       call_codex_cli(system, user_content)
     else
-      call_anthropic(system, user_content, max_tokens)
+      block ? call_anthropic_stream(system, user_content, max_tokens, &block) : call_anthropic(system, user_content, max_tokens)
     end
 
     result = strip_think(result) # 새는 <think> 블록 제거(안전망)
@@ -309,6 +311,41 @@ class LlmService
       messages: [ { role: "user", content: user_content } ]
     )
     response.content.first.text
+  end
+
+  def call_anthropic_stream(system, user_content, max_tokens, &block)
+    stream = @client.messages.stream(
+      model: @config[:model],
+      max_tokens: max_tokens,
+      system: system,
+      messages: [ { role: "user", content: user_content } ]
+    )
+    full = +""
+    stream.text.each do |delta|
+      next if delta.nil? || delta.empty?
+      full << delta
+      block.call(delta)
+    end
+    full
+  end
+
+  def call_openai_stream(system, user_content, max_tokens, &block)
+    full = +""
+    @client.chat(parameters: {
+      model: @config[:model],
+      max_tokens: max_tokens,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user_content }
+      ],
+      stream: proc do |chunk, _bytesize|
+        delta = chunk.dig("choices", 0, "delta", "content")
+        next if delta.nil? || delta.empty?
+        full << delta
+        block.call(delta)
+      end
+    })
+    full
   end
 
   def call_openai(system, user_content, max_tokens)
