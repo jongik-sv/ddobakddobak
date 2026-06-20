@@ -135,7 +135,7 @@ export function LlmSettingsPanel() {
   const chatActualProvider = chatPreset?.provider ?? ''
   const chatIsCli = chatPresetId !== '' && CLI_PRESET_IDS.has(chatPresetId)
   const chatRequiresKey = chatPreset?.requiresApiKey ?? false
-  const chatModelSuggestions = chatPreset?.suggestedModels ?? []
+  const chatModelSuggestions: readonly string[] = chatPreset?.suggestedModels ?? []
 
   const handleChatServiceSelect = (id: string) => {
     setChatPresetId(id)
