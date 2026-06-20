@@ -10,74 +10,17 @@ import type {
   UserLlmTestResult,
 } from '../../api/userLlmSettings'
 import { UserLlmStatusBanner } from './UserLlmStatusBanner'
-import { ProviderRadioGroup } from './ProviderRadioGroup'
-
-interface ProviderOption {
-  readonly id: string
-  readonly name: string
-  readonly description: string
-  readonly suggestedModels: readonly string[]
-  readonly isCustom: boolean
-  readonly actualProvider: string
-}
-
-const PROVIDER_OPTIONS: readonly ProviderOption[] = [
-  {
-    id: 'none',
-    name: '선택 안함',
-    description: '서버 기본 LLM 사용',
-    suggestedModels: [],
-    isCustom: false,
-    actualProvider: '',
-  },
-  {
-    id: 'anthropic',
-    name: 'Anthropic',
-    description: 'Claude 시리즈',
-    suggestedModels: ['claude-sonnet-4-6', 'claude-haiku-4-5'],
-    isCustom: false,
-    actualProvider: 'anthropic',
-  },
-  {
-    id: 'anthropic_custom',
-    name: 'Anthropic 호환',
-    description: 'Z.AI 등 커스텀 엔드포인트',
-    suggestedModels: [],
-    isCustom: true,
-    actualProvider: 'anthropic',
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    description: 'GPT 시리즈',
-    suggestedModels: ['gpt-4o', 'gpt-4o-mini'],
-    isCustom: false,
-    actualProvider: 'openai',
-  },
-  {
-    id: 'openai_custom',
-    name: 'OpenAI 호환',
-    description: 'Ollama, vLLM 등',
-    suggestedModels: [],
-    isCustom: true,
-    actualProvider: 'openai',
-  },
-]
+import LlmProviderCard from './LlmProviderCard'
+import { SERVICE_PRESETS, presetIdFromUserConfig } from './llmServicePresets'
 
 export default function UserLlmSettings() {
   const [settings, setSettings] = useState<UserLlmSettingsResponse | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const [provider, setProvider] = useState<string>('')
-  const [apiKey, setApiKey] = useState('')
-  const [model, setModel] = useState('')
-  const [baseUrl, setBaseUrl] = useState('')
-  const [useCustomModel, setUseCustomModel] = useState(false)
-
-  const [chatProvider, setChatProvider] = useState('')
-  const [chatApiKey, setChatApiKey] = useState('')
-  const [chatProviderModel, setChatProviderModel] = useState('')
-  const [chatBaseUrl, setChatBaseUrl] = useState('')
+  const [summaryPresetId, setSummaryPresetId] = useState('none')
+  const [summaryForm, setSummaryForm] = useState({ base_url: '', model: '', auth_token: '' })
+  const [chatPresetId, setChatPresetId] = useState('')
+  const [chatForm, setChatForm] = useState({ base_url: '', model: '', auth_token: '' })
 
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -88,27 +31,13 @@ export default function UserLlmSettings() {
 
   const initFormFromSettings = useCallback((data: UserLlmSettingsResponse) => {
     const ls = data.llm_settings
-    if (ls.has_settings && ls.provider) {
-      if (ls.provider === 'openai' && ls.base_url) {
-        setProvider('openai_custom')
-      } else if (ls.provider === 'anthropic' && ls.base_url) {
-        setProvider('anthropic_custom')
-      } else {
-        setProvider(ls.provider)
-      }
-      setModel(ls.model || '')
-      setBaseUrl(ls.base_url || '')
-    } else {
-      setProvider('')
-    }
-    setApiKey('')
-    setUseCustomModel(false)
+    const sid = presetIdFromUserConfig(ls.provider ?? null, ls.base_url ?? null) ?? 'none'
+    setSummaryPresetId(sid)
+    setSummaryForm({ base_url: ls.base_url ?? '', model: ls.model ?? '', auth_token: '' })
+    const cid = presetIdFromUserConfig(ls.chat_provider ?? null, ls.chat_base_url ?? null) ?? ''
+    setChatPresetId(cid)
+    setChatForm({ base_url: ls.chat_base_url ?? '', model: ls.chat_model ?? '', auth_token: '' })
     setTestResult(null)
-    // Independent chat provider settings
-    setChatProvider(ls.chat_provider || '')
-    setChatProviderModel(ls.chat_model || '')
-    setChatBaseUrl(ls.chat_base_url || '')
-    setChatApiKey('')
   }, [])
 
   useEffect(() => {
@@ -123,47 +52,61 @@ export default function UserLlmSettings() {
       .finally(() => setLoading(false))
   }, [initFormFromSettings])
 
-  const currentProviderOption = PROVIDER_OPTIONS.find((p) => p.id === provider)
-  const actualProvider = currentProviderOption?.actualProvider ?? provider
-
-  const handleProviderSelect = (id: string) => {
-    setProvider(id)
-    const opt = PROVIDER_OPTIONS.find((p) => p.id === id)
-    setModel(opt?.suggestedModels[0] ?? '')
-    setBaseUrl('')
+  const handleSummarySelect = (id: string) => {
+    setSummaryPresetId(id)
+    if (id === 'none') {
+      setSummaryForm({ base_url: '', model: '', auth_token: '' })
+    } else {
+      const preset = SERVICE_PRESETS.find((p) => p.id === id)
+      setSummaryForm({ base_url: preset?.defaultBaseUrl ?? '', model: preset?.suggestedModels[0] ?? '', auth_token: '' })
+    }
     setTestResult(null)
-    setUseCustomModel(false)
+    setError(null)
+    setSuccess(null)
+  }
+
+  const handleChatSelect = (id: string) => {
+    setChatPresetId(id)
+    if (id === '') {
+      setChatForm({ base_url: '', model: '', auth_token: '' })
+    } else {
+      const preset = SERVICE_PRESETS.find((p) => p.id === id)
+      setChatForm({ base_url: preset?.defaultBaseUrl ?? '', model: preset?.suggestedModels[0] ?? '', auth_token: '' })
+    }
     setError(null)
     setSuccess(null)
   }
 
   const handleSave = async () => {
-    if (!provider) return
     setSaving(true)
     setError(null)
     setSuccess(null)
     try {
-      if (provider === 'none') {
+      if (summaryPresetId === 'none') {
         const result = await updateUserLlmSettings({ llm_settings: { provider: '' } })
         setSettings(result)
         initFormFromSettings(result)
         setSuccess('서버 기본 LLM을 사용합니다.')
         return
       }
+      const sp = SERVICE_PRESETS.find((p) => p.id === summaryPresetId)!
+      const cp = chatPresetId === '' ? null : SERVICE_PRESETS.find((p) => p.id === chatPresetId) ?? null
       const result = await updateUserLlmSettings({
         llm_settings: {
-          provider: actualProvider,
-          ...(apiKey ? { api_key: apiKey } : {}),
-          model,
-          base_url: baseUrl || null,
-          chat_provider: chatProvider || null,
-          chat_base_url: chatBaseUrl || null,
-          chat_model: chatProviderModel || null,
-          chat_api_key: chatApiKey,
+          provider: sp.provider,
+          ...(summaryForm.auth_token ? { api_key: summaryForm.auth_token } : {}),
+          model: summaryForm.model,
+          base_url: summaryForm.base_url || null,
+          chat_provider: cp ? cp.provider : null,
+          chat_base_url: cp ? (chatForm.base_url || null) : null,
+          // chat_model은 cp 유무 무관하게 chatForm.model(레거시 보존)
+          chat_model: chatForm.model || null,
+          chat_api_key: chatForm.auth_token,
         },
       })
       setSettings(result)
-      setApiKey('')
+      setSummaryForm((f) => ({ ...f, auth_token: '' }))
+      setChatForm((f) => ({ ...f, auth_token: '' }))
       setSuccess('저장되었습니다.')
     } catch {
       setError('저장에 실패했습니다.')
@@ -173,15 +116,16 @@ export default function UserLlmSettings() {
   }
 
   const handleTest = async () => {
-    if (!provider) return
+    if (summaryPresetId === 'none') return
     setTesting(true)
     setTestResult(null)
+    const sp = SERVICE_PRESETS.find((p) => p.id === summaryPresetId)
     try {
       const result = await testUserLlmConnection({
-        provider: actualProvider,
-        model,
-        ...(apiKey ? { api_key: apiKey } : {}),
-        ...(baseUrl ? { base_url: baseUrl } : {}),
+        provider: sp?.provider ?? summaryPresetId,
+        model: summaryForm.model,
+        ...(summaryForm.auth_token ? { api_key: summaryForm.auth_token } : {}),
+        ...(summaryForm.base_url ? { base_url: summaryForm.base_url } : {}),
       })
       setTestResult(result)
     } catch {
@@ -222,10 +166,6 @@ export default function UserLlmSettings() {
       setToggling(false)
     }
   }
-
-  const modelOptions = currentProviderOption?.suggestedModels ?? []
-  const showModelSelect = modelOptions.length > 0 && !useCustomModel
-  const showBaseUrl = provider === 'openai_custom' || provider === 'anthropic_custom'
 
   const hasSettings = settings?.llm_settings.has_settings ?? false
   const isEnabled = settings?.llm_settings.enabled ?? true
@@ -279,131 +219,45 @@ export default function UserLlmSettings() {
           <UserLlmStatusBanner settings={settings} hasSettings={hasSettings} isEnabled={isEnabled} />
 
           {showForm && (<>
-          <ProviderRadioGroup
-            options={PROVIDER_OPTIONS}
-            selected={provider}
-            onSelect={handleProviderSelect}
+          {/* 요약 모델 카드 */}
+          <LlmProviderCard
+            title="요약 모델"
+            idPrefix="user-summary"
+            presets={SERVICE_PRESETS}
+            noneOption={{ id: 'none', label: '선택 안함', description: '서버 기본 LLM 사용' }}
+            value={{ presetId: summaryPresetId, ...summaryForm }}
+            maskedToken={settings.llm_settings.api_key_masked ?? undefined}
+            onSelectPreset={handleSummarySelect}
+            onChange={(p) => setSummaryForm((f) => ({ ...f, ...p }))}
           />
 
-          {provider && provider !== 'none' && (
-            <div>
-              <label htmlFor="user-llm-api-key" className="block text-sm font-medium mb-1">API Key</label>
-              <input
-                id="user-llm-api-key"
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={settings.llm_settings.api_key_masked || 'API 키를 입력하세요'}
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
-              />
-              {settings.llm_settings.api_key_masked && !apiKey && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  현재: {settings.llm_settings.api_key_masked}
-                </p>
-              )}
-            </div>
-          )}
+          {/* AI 챗 모델 카드 */}
+          <LlmProviderCard
+            title="AI 챗 모델"
+            idPrefix="user-chat"
+            presets={SERVICE_PRESETS}
+            noneOption={{ id: '', label: '요약과 동일', description: '요약 모델 그대로 사용' }}
+            value={{ presetId: chatPresetId, ...chatForm }}
+            maskedToken={settings.llm_settings.chat_api_key_masked ?? undefined}
+            onSelectPreset={handleChatSelect}
+            onChange={(p) => setChatForm((f) => ({ ...f, ...p }))}
+          />
 
-          {showBaseUrl && (
-            <div>
-              <label htmlFor="user-llm-base-url" className="block text-sm font-medium mb-1">Base URL</label>
+          {/* 레거시 챗 모델 입력 — chatPresetId='' 일 때만 표시 */}
+          {chatPresetId === '' && (
+            <div className="mt-2">
+              <label htmlFor="user-chat-legacy-model" className="block text-xs text-gray-600 mb-1">챗 모델 (AI 챗에만 적용)</label>
               <input
-                id="user-llm-base-url"
-                type="text"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder={provider === 'anthropic_custom' ? 'https://api.z.ai/api/anthropic' : 'http://localhost:11434/v1'}
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
+                id="user-chat-legacy-model"
+                value={chatForm.model}
+                onChange={(e) => setChatForm((f) => ({ ...f, model: e.target.value }))}
+                placeholder="예: gpt-4o / llama-3.1-8b"
+                className="w-full rounded border px-2 py-1 text-sm"
               />
             </div>
           )}
 
-          {provider && provider !== 'none' && (
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label htmlFor="user-llm-model" className="block text-sm font-medium">회의록 작성 모델명</label>
-                {modelOptions.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setUseCustomModel(!useCustomModel)}
-                    className="text-xs text-blue-600 hover:text-blue-800"
-                  >
-                    {useCustomModel ? '목록에서 선택' : '직접 입력'}
-                  </button>
-                )}
-              </div>
-              {showModelSelect ? (
-                <select
-                  id="user-llm-model"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
-                >
-                  {modelOptions.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  id="user-llm-model"
-                  type="text"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder="모델명을 입력하세요"
-                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
-                />
-              )}
-            </div>
-          )}
-
-          {/* AI 챗 모델 독립 섹션 — 챗 모델의 단일 입력원 */}
-          <section className="mt-6 border-t border-gray-200 pt-4">
-            <h3 className="text-sm font-semibold text-gray-800">AI 챗 모델 (선택)</h3>
-            <p className="mb-2 text-xs text-gray-500">비워두면 회의록 작성 모델과 동일하게 사용합니다. 로컬(Ollama/LM Studio)은 제공자=openai + 엔드포인트만 입력(키 선택).</p>
-
-            <label className="block text-xs text-gray-600" htmlFor="chat-provider">챗 제공자</label>
-            <select
-              id="chat-provider"
-              value={chatProvider}
-              onChange={(e) => setChatProvider(e.target.value)}
-              className="mb-2 w-full rounded border px-2 py-1 text-sm"
-            >
-              <option value="">요약 모델과 동일</option>
-              <option value="anthropic">anthropic</option>
-              <option value="openai">openai (로컬 포함)</option>
-            </select>
-
-            <label className="block text-xs text-gray-600" htmlFor="chat-base">챗 엔드포인트 (base URL)</label>
-            <input
-              id="chat-base"
-              value={chatBaseUrl}
-              onChange={(e) => setChatBaseUrl(e.target.value)}
-              placeholder="http://localhost:11434/v1 (Ollama)"
-              className="mb-2 w-full rounded border px-2 py-1 text-sm"
-            />
-
-            <label className="block text-xs text-gray-600" htmlFor="chat-key">챗 API 키 (로컬이면 선택)</label>
-            <input
-              id="chat-key"
-              type="password"
-              value={chatApiKey}
-              onChange={(e) => setChatApiKey(e.target.value)}
-              placeholder={settings.llm_settings.chat_api_key_masked ?? ''}
-              className="mb-2 w-full rounded border px-2 py-1 text-sm"
-            />
-
-            <label className="block text-xs text-gray-600" htmlFor="chat-model">챗 모델 (AI 챗에만 적용)</label>
-            <input
-              id="chat-model"
-              value={chatProviderModel}
-              onChange={(e) => setChatProviderModel(e.target.value)}
-              placeholder="예: gpt-4o / llama-3.1-8b"
-              className="w-full rounded border px-2 py-1 text-sm"
-            />
-            <p className="text-xs text-gray-400 mt-1">비우면 회의록 작성 모델을 그대로 사용합니다</p>
-          </section>
-
-          {provider === 'none' && (
+          {summaryPresetId === 'none' && (
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -416,12 +270,12 @@ export default function UserLlmSettings() {
             </div>
           )}
 
-          {provider && provider !== 'none' && (
+          {summaryPresetId && summaryPresetId !== 'none' && (
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleTest}
-                disabled={testing || !model}
+                disabled={testing || !summaryForm.model}
                 className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors min-h-[44px]"
               >
                 {testing ? '테스트 중...' : '연결 테스트'}
@@ -429,7 +283,7 @@ export default function UserLlmSettings() {
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={saving || !model}
+                disabled={saving || !summaryForm.model}
                 className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors min-h-[44px]"
               >
                 {saving ? '저장 중...' : '저장'}
