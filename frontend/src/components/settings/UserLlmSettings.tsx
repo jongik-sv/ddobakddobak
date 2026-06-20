@@ -71,9 +71,13 @@ export default function UserLlmSettings() {
   const [provider, setProvider] = useState<string>('')
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('')
-  const [chatModel, setChatModel] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [useCustomModel, setUseCustomModel] = useState(false)
+
+  const [chatProvider, setChatProvider] = useState('')
+  const [chatApiKey, setChatApiKey] = useState('')
+  const [chatProviderModel, setChatProviderModel] = useState('')
+  const [chatBaseUrl, setChatBaseUrl] = useState('')
 
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -93,15 +97,18 @@ export default function UserLlmSettings() {
         setProvider(ls.provider)
       }
       setModel(ls.model || '')
-      setChatModel(ls.chat_llm_model || '')
       setBaseUrl(ls.base_url || '')
     } else {
       setProvider('')
-      setChatModel('')
     }
     setApiKey('')
     setUseCustomModel(false)
     setTestResult(null)
+    // Independent chat provider settings
+    setChatProvider(ls.chat_provider || '')
+    setChatProviderModel(ls.chat_model || '')
+    setChatBaseUrl(ls.chat_base_url || '')
+    setChatApiKey('')
   }, [])
 
   useEffect(() => {
@@ -123,7 +130,6 @@ export default function UserLlmSettings() {
     setProvider(id)
     const opt = PROVIDER_OPTIONS.find((p) => p.id === id)
     setModel(opt?.suggestedModels[0] ?? '')
-    setChatModel('')
     setBaseUrl('')
     setTestResult(null)
     setUseCustomModel(false)
@@ -149,8 +155,11 @@ export default function UserLlmSettings() {
           provider: actualProvider,
           ...(apiKey ? { api_key: apiKey } : {}),
           model,
-          chat_llm_model: chatModel || null,
           base_url: baseUrl || null,
+          chat_provider: chatProvider || null,
+          chat_base_url: chatBaseUrl || null,
+          chat_model: chatProviderModel || null,
+          chat_api_key: chatApiKey,
         },
       })
       setSettings(result)
@@ -217,14 +226,6 @@ export default function UserLlmSettings() {
   const modelOptions = currentProviderOption?.suggestedModels ?? []
   const showModelSelect = modelOptions.length > 0 && !useCustomModel
   const showBaseUrl = provider === 'openai_custom' || provider === 'anthropic_custom'
-
-  // AI 챗 모델: 요약 모델과 동일한 provider별 목록 (커스텀 입력 토글 없음)
-  const chatModelOptions = modelOptions
-  // 저장된 값이 목록에 없으면 보존 옵션으로 추가
-  const chatModelSelectOptions =
-    chatModel && !chatModelOptions.includes(chatModel)
-      ? [...chatModelOptions, chatModel]
-      : chatModelOptions
 
   const hasSettings = settings?.llm_settings.has_settings ?? false
   const isEnabled = settings?.llm_settings.enabled ?? true
@@ -355,34 +356,52 @@ export default function UserLlmSettings() {
             </div>
           )}
 
-          {provider && provider !== 'none' && (
-            <div>
-              <label htmlFor="user-llm-chat-model" className="block text-sm font-medium mb-1">AI 챗 모델명</label>
-              {chatModelOptions.length > 0 ? (
-                <select
-                  id="user-llm-chat-model"
-                  value={chatModel}
-                  onChange={(e) => setChatModel(e.target.value)}
-                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
-                >
-                  <option value="">요약 모델과 동일</option>
-                  {chatModelSelectOptions.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  id="user-llm-chat-model"
-                  type="text"
-                  value={chatModel}
-                  onChange={(e) => setChatModel(e.target.value)}
-                  placeholder="모델명을 입력하세요"
-                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
-                />
-              )}
-              <p className="text-xs text-muted-foreground mt-1">비우면 요약 모델을 사용합니다</p>
-            </div>
-          )}
+          {/* AI 챗 모델 독립 섹션 — 챗 모델의 단일 입력원 */}
+          <section className="mt-6 border-t border-gray-200 pt-4">
+            <h3 className="text-sm font-semibold text-gray-800">AI 챗 모델 (선택)</h3>
+            <p className="mb-2 text-xs text-gray-500">비워두면 회의록 작성 모델과 동일하게 사용합니다. 로컬(Ollama/LM Studio)은 제공자=openai + 엔드포인트만 입력(키 선택).</p>
+
+            <label className="block text-xs text-gray-600" htmlFor="chat-provider">챗 제공자</label>
+            <select
+              id="chat-provider"
+              value={chatProvider}
+              onChange={(e) => setChatProvider(e.target.value)}
+              className="mb-2 w-full rounded border px-2 py-1 text-sm"
+            >
+              <option value="">요약 모델과 동일</option>
+              <option value="anthropic">anthropic</option>
+              <option value="openai">openai (로컬 포함)</option>
+            </select>
+
+            <label className="block text-xs text-gray-600" htmlFor="chat-base">챗 엔드포인트 (base URL)</label>
+            <input
+              id="chat-base"
+              value={chatBaseUrl}
+              onChange={(e) => setChatBaseUrl(e.target.value)}
+              placeholder="http://localhost:11434/v1 (Ollama)"
+              className="mb-2 w-full rounded border px-2 py-1 text-sm"
+            />
+
+            <label className="block text-xs text-gray-600" htmlFor="chat-key">챗 API 키 (로컬이면 선택)</label>
+            <input
+              id="chat-key"
+              type="password"
+              value={chatApiKey}
+              onChange={(e) => setChatApiKey(e.target.value)}
+              placeholder={settings.llm_settings.chat_api_key_masked ?? ''}
+              className="mb-2 w-full rounded border px-2 py-1 text-sm"
+            />
+
+            <label className="block text-xs text-gray-600" htmlFor="chat-model">챗 모델 (AI 챗에만 적용)</label>
+            <input
+              id="chat-model"
+              value={chatProviderModel}
+              onChange={(e) => setChatProviderModel(e.target.value)}
+              placeholder="예: gpt-4o / llama-3.1-8b"
+              className="w-full rounded border px-2 py-1 text-sm"
+            />
+            <p className="text-xs text-gray-400 mt-1">비우면 회의록 작성 모델을 그대로 사용합니다</p>
+          </section>
 
           {provider === 'none' && (
             <div className="flex items-center gap-2">

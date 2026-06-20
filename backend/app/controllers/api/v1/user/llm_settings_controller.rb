@@ -20,11 +20,8 @@ module Api
           # provider가 빈값이면 전체 초기화 (서버 기본값 폴백)
           if attrs[:llm_provider].blank?
             current_user.update!(
-              llm_provider: nil,
-              llm_api_key: nil,
-              llm_model: nil,
-              llm_base_url: nil,
-              chat_llm_model: nil,
+              llm_provider: nil, llm_api_key: nil, llm_model: nil, llm_base_url: nil,
+              chat_llm_model: nil, chat_llm_provider: nil, chat_llm_api_key: nil, chat_llm_base_url: nil,
               llm_enabled: true
             )
             return render json: build_response
@@ -73,18 +70,26 @@ module Api
         private
 
         def normalize_params
-          p = params.require(:llm_settings).permit(:provider, :api_key, :model, :base_url, :chat_llm_model)
+          p = params.require(:llm_settings).permit(
+            :provider, :api_key, :model, :base_url,
+            :chat_provider, :chat_api_key, :chat_model, :chat_base_url
+          )
 
           attrs = {
             llm_provider: p[:provider],
             llm_model: p[:model],
             llm_base_url: p[:base_url].presence,
-            chat_llm_model: p[:chat_llm_model].presence
+            chat_llm_model: p[:chat_model].presence,
+            chat_llm_provider: p[:chat_provider].presence,
+            chat_llm_base_url: p[:chat_base_url].presence
           }
 
           # api_key 처리: 빈 문자열 → 기존 유지, nil → 삭제, 값 있으면 갱신
           empty_string = p.key?(:api_key) && p[:api_key] == ""
           attrs[:llm_api_key] = p[:api_key] if p.key?(:api_key) && !empty_string
+
+          # chat_llm_api_key: 동일 규약
+          attrs[:chat_llm_api_key] = p[:chat_api_key] if p.key?(:chat_api_key) && p[:chat_api_key] != ""
 
           attrs
         end
@@ -97,11 +102,15 @@ module Api
               provider: current_user.llm_provider,
               api_key_masked: mask_token(current_user.llm_api_key),
               model: current_user.llm_model,
-              chat_llm_model: current_user.chat_llm_model,
               base_url: current_user.llm_base_url,
               configured: current_user.llm_configured?,
               enabled: current_user.llm_enabled?,
-              has_settings: current_user.llm_has_settings?
+              has_settings: current_user.llm_has_settings?,
+              chat_provider: current_user.chat_llm_provider,
+              chat_model: current_user.chat_llm_model,
+              chat_base_url: current_user.chat_llm_base_url,
+              chat_api_key_masked: mask_token(current_user.chat_llm_api_key),
+              chat_configured: current_user.chat_llm_configured?
             },
             server_default: {
               provider: server_default[:provider],

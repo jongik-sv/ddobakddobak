@@ -5,11 +5,15 @@ export interface UserLlmSettingsResponse {
     provider: string | null
     api_key_masked: string | null
     model: string | null
-    chat_llm_model?: string | null
     base_url: string | null
     configured: boolean
     enabled: boolean
     has_settings: boolean
+    chat_provider?: string | null
+    chat_model?: string | null
+    chat_base_url?: string | null
+    chat_api_key_masked?: string | null
+    chat_configured?: boolean
   }
   server_default: {
     provider: string | null
@@ -23,8 +27,11 @@ export interface UserLlmSettingsUpdateParams {
     provider: string
     api_key?: string
     model?: string
-    chat_llm_model?: string | null
     base_url?: string | null
+    chat_provider?: string | null
+    chat_api_key?: string
+    chat_model?: string | null
+    chat_base_url?: string | null
   }
 }
 

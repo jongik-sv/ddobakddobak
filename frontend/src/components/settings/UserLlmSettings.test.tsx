@@ -24,7 +24,7 @@ const configuredResponse: UserLlmSettingsResponse = {
     provider: 'anthropic',
     api_key_masked: 'sk-a****5678',
     model: 'claude-sonnet-4-6',
-    chat_llm_model: 'claude-haiku-4-5',
+    chat_model: 'claude-haiku-4-5',
     base_url: null,
     configured: true,
     enabled: true,
@@ -152,25 +152,24 @@ describe('UserLlmSettings', () => {
     })
   })
 
-  // AI 챗 모델명 표시
-  it('설정 응답의 chat_llm_model로 "AI 챗 모델명" 필드를 채운다', async () => {
+  // 챗 모델 표시 (독립 섹션 - 단일 입력원)
+  it('설정 응답의 chat_model로 "챗 모델" 필드를 채운다', async () => {
     mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
     render(<UserLlmSettings />)
     await waitFor(() => screen.getByText('Anthropic'))
 
-    const chatModelInput = screen.getByLabelText('AI 챗 모델명') as HTMLInputElement
+    const chatModelInput = screen.getByLabelText(/챗 모델 \(AI 챗에만 적용\)/i) as HTMLInputElement
     expect(chatModelInput.value).toBe('claude-haiku-4-5')
   })
 
-  // AI 챗 모델명 저장
-  it('저장 시 PUT payload에 chat_llm_model을 포함한다', async () => {
+  // 챗 모델 저장 (독립 섹션 - chat_model 파라미터)
+  it('저장 시 PUT payload에 chat_model을 포함한다', async () => {
     mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
     mockUpdateUserLlmSettings.mockResolvedValue(configuredResponse)
     render(<UserLlmSettings />)
     await waitFor(() => screen.getByText('Anthropic'))
 
-    // 챗 모델은 이제 select: provider 제안 목록의 옵션을 선택
-    const chatModelInput = screen.getByLabelText('AI 챗 모델명')
+    const chatModelInput = screen.getByLabelText(/챗 모델 \(AI 챗에만 적용\)/i)
     fireEvent.change(chatModelInput, { target: { value: 'claude-sonnet-4-6' } })
 
     fireEvent.click(screen.getByText('저장'))
@@ -179,37 +178,20 @@ describe('UserLlmSettings', () => {
     })
     expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        llm_settings: expect.objectContaining({ chat_llm_model: 'claude-sonnet-4-6' }),
+        llm_settings: expect.objectContaining({ chat_model: 'claude-sonnet-4-6' }),
       })
     )
   })
 
-  // AI 챗 모델 select 렌더 (목록 있는 provider)
-  it('모델 목록이 있는 provider(anthropic)에서 챗 모델 필드를 select(combobox)로 렌더한다', async () => {
-    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
-    render(<UserLlmSettings />)
-    await waitFor(() => screen.getByText('Anthropic'))
-
-    const chatSelect = screen.getByLabelText('AI 챗 모델명')
-    expect(chatSelect.tagName).toBe('SELECT')
-
-    const options = Array.from((chatSelect as HTMLSelectElement).options)
-    expect(options[0].value).toBe('')
-    expect(options[0].textContent).toBe('요약 모델과 동일')
-    const optionValues = options.map((o) => o.value)
-    expect(optionValues).toContain('claude-sonnet-4-6')
-    expect(optionValues).toContain('claude-haiku-4-5')
-  })
-
-  // 빈 옵션 선택 시 null 저장
-  it('빈 옵션(요약 모델과 동일) 선택 시 chat_llm_model을 null로 저장한다', async () => {
+  // 챗 모델 빈 값 시 null 저장
+  it('챗 모델 입력 비움 시 chat_model을 null로 저장한다', async () => {
     mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
     mockUpdateUserLlmSettings.mockResolvedValue(configuredResponse)
     render(<UserLlmSettings />)
     await waitFor(() => screen.getByText('Anthropic'))
 
-    const chatSelect = screen.getByLabelText('AI 챗 모델명')
-    fireEvent.change(chatSelect, { target: { value: '' } })
+    const chatModelInput = screen.getByLabelText(/챗 모델 \(AI 챗에만 적용\)/i)
+    fireEvent.change(chatModelInput, { target: { value: '' } })
 
     fireEvent.click(screen.getByText('저장'))
     await waitFor(() => {
@@ -217,41 +199,9 @@ describe('UserLlmSettings', () => {
     })
     expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        llm_settings: expect.objectContaining({ chat_llm_model: null }),
+        llm_settings: expect.objectContaining({ chat_model: null }),
       })
     )
-  })
-
-  // 값 보존: 목록에 없는 저장값도 선택된 옵션으로 표시
-  it('저장된 챗 모델 값이 목록에 없어도 옵션으로 보존되어 선택된다', async () => {
-    const customChatResponse: UserLlmSettingsResponse = {
-      ...configuredResponse,
-      llm_settings: {
-        ...configuredResponse.llm_settings,
-        chat_llm_model: 'gpt-4o-mini', // anthropic 제안 목록에 없음
-      },
-    }
-    mockGetUserLlmSettings.mockResolvedValue(customChatResponse)
-    render(<UserLlmSettings />)
-    await waitFor(() => screen.getByText('Anthropic'))
-
-    const chatSelect = screen.getByLabelText('AI 챗 모델명') as HTMLSelectElement
-    expect(chatSelect.value).toBe('gpt-4o-mini')
-    const optionValues = Array.from(chatSelect.options).map((o) => o.value)
-    expect(optionValues).toContain('gpt-4o-mini')
-    expect(optionValues.filter((v) => v === 'gpt-4o-mini')).toHaveLength(1)
-  })
-
-  // 폴백: 목록 없는 provider는 텍스트 입력
-  it('모델 목록이 없는 provider(anthropic_custom)에서는 챗 모델 필드를 텍스트 입력으로 폴백한다', async () => {
-    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
-    render(<UserLlmSettings />)
-    await waitFor(() => screen.getByText('Anthropic'))
-
-    fireEvent.click(screen.getByText('Anthropic 호환'))
-
-    const chatField = screen.getByLabelText('AI 챗 모델명')
-    expect(chatField.tagName).toBe('INPUT')
   })
 
   // 6.2.9 API 키 마스킹 표시
@@ -269,6 +219,32 @@ describe('UserLlmSettings', () => {
     render(<UserLlmSettings />)
     await waitFor(() => {
       expect(screen.getByText(/불러오지 못했습니다/)).toBeInTheDocument()
+    })
+  })
+
+  // AI 챗 모델 섹션
+  it('AI 챗 모델 섹션을 표시하고 저장 payload 에 chat_* 를 담는다', async () => {
+    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
+    mockUpdateUserLlmSettings.mockResolvedValue(configuredResponse)
+    render(<UserLlmSettings />)
+    await waitFor(() => screen.getByText('Anthropic'))
+
+    const chatProvider = screen.getByLabelText(/챗 제공자/i)
+    fireEvent.change(chatProvider, { target: { value: 'openai' } })
+
+    const chatBase = screen.getByLabelText(/챗 엔드포인트/i)
+    fireEvent.change(chatBase, { target: { value: 'http://localhost:11434/v1' } })
+
+    fireEvent.click(screen.getAllByRole('button', { name: /저장/ })[0])
+    await waitFor(() => {
+      expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          llm_settings: expect.objectContaining({
+            chat_provider: 'openai',
+            chat_base_url: 'http://localhost:11434/v1',
+          }),
+        }),
+      )
     })
   })
 })

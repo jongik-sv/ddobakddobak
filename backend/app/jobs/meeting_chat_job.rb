@@ -1,5 +1,6 @@
 class MeetingChatJob < ApplicationJob
   include ChatFollowups
+  include ChatStreaming
   queue_as :default
 
   def perform(assistant_message_id)
@@ -15,9 +16,10 @@ class MeetingChatJob < ApplicationJob
     config = meeting.creator&.effective_chat_llm_config
     raise "이 회의의 LLM이 설정되어 있지 않습니다." if config.blank?
 
-    raw = LlmService.new(llm_config: config).answer_question(ctx[:system_prompt], ctx[:user_content])
-    content, suggestions = split_followups(raw.to_s)
-    answer.update!(content: content, suggestions: suggestions, status: "complete")
+    model_name = LlmModelName.humanize(config[:model])
+    raw = stream_answer(answer, config, ctx[:system_prompt], ctx[:user_content], model_name)
+    content, suggestions = split_followups(raw)
+    answer.update!(content: content, suggestions: suggestions, model_name: model_name, status: "complete")
   rescue => e
     answer&.update(status: "error", error_message: e.message)
   ensure
@@ -26,13 +28,11 @@ class MeetingChatJob < ApplicationJob
 
   private
 
+  def broadcast_topic(msg)
+    "meeting_#{msg.meeting_id}_chat_#{msg.user_id}"
+  end
+
   def broadcast(msg)
-    ActionCable.server.broadcast(
-      "meeting_#{msg.meeting_id}_chat_#{msg.user_id}",
-      { type: "chat_message_update", id: msg.id, role: msg.role,
-        content: msg.content, status: msg.status,
-        suggestions: msg.suggestions,
-        error_message: msg.error_message, created_at: msg.created_at }
-    )
+    broadcast_chat(msg, model_name: msg.model_name)
   end
 end

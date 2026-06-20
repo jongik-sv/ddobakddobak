@@ -90,9 +90,16 @@ module Api
           ).except("auth_token")
         end
 
+        chat = llm_cfg["chat"]
+        masked_chat =
+          if chat.present?
+            chat.merge("auth_token_masked" => mask_token(chat["auth_token"].to_s)).except("auth_token")
+          end
+
         render json: {
           active_preset: active,
           chat_model: llm_cfg["chat_model"],
+          chat: masked_chat,
           presets: masked_presets
         }
       end
@@ -111,6 +118,23 @@ module Api
         # 전역 AI Chat 모델 (active_preset 형제 필드). 빈 문자열은 nil 로 저장해 클리어한다.
         if params.key?(:chat_model)
           llm_cfg["chat_model"] = params[:chat_model].to_s.presence
+        end
+
+        # 전역 AI Chat 독립 설정 (llm.chat sub-hash). provider 빈값이면 독립 해제(삭제).
+        if params.key?(:chat)
+          chat_params = params[:chat].respond_to?(:to_unsafe_h) ? params[:chat].to_unsafe_h : (params[:chat] || {})
+          if chat_params["provider"].to_s.present?
+            existing_chat = llm_cfg["chat"] || {}
+            existing_chat["preset_id"] = chat_params["preset_id"] if chat_params.key?("preset_id")
+            existing_chat["provider"]  = chat_params["provider"]
+            existing_chat["base_url"]  = chat_params["base_url"] if chat_params.key?("base_url")
+            existing_chat["model"]     = chat_params["model"] if chat_params.key?("model")
+            # 마스킹된 값 재전송 방지: present일 때만 키 갱신
+            existing_chat["auth_token"] = chat_params["auth_token"] if chat_params["auth_token"].to_s.present?
+            llm_cfg["chat"] = existing_chat
+          else
+            llm_cfg.delete("chat")
+          end
         end
 
         # 프리셋별 설정 업데이트
@@ -302,11 +326,26 @@ module Api
         ENV["LLM_MAX_INPUT_TOKENS"] = (preset["max_input_tokens"] || 200_000).to_s
         ENV["LLM_MAX_OUTPUT_TOKENS"] = (preset["max_output_tokens"] || 10_000).to_s
 
-        # 전역 AI Chat 모델. 지정 시 ENV 설정, 비면 삭제(요약 모델로 폴백).
-        if llm["chat_model"].present?
-          ENV["CHAT_LLM_MODEL"] = llm["chat_model"].to_s
+        # 전역 AI Chat. llm.chat(독립) 우선, 없으면 레거시 chat_model(모델만 override).
+        chat = llm["chat"] || {}
+        if chat["provider"].to_s.present?
+          ENV["CHAT_LLM_PROVIDER"]   = chat["provider"].to_s
+          ENV["CHAT_LLM_AUTH_TOKEN"] = chat["auth_token"].to_s
+          ENV["CHAT_LLM_MODEL"]      = chat["model"].to_s
+          if chat["base_url"].to_s.present?
+            ENV["CHAT_LLM_BASE_URL"] = chat["base_url"].to_s
+          else
+            ENV.delete("CHAT_LLM_BASE_URL")
+          end
         else
-          ENV.delete("CHAT_LLM_MODEL")
+          ENV.delete("CHAT_LLM_PROVIDER")
+          ENV.delete("CHAT_LLM_AUTH_TOKEN")
+          ENV.delete("CHAT_LLM_BASE_URL")
+          if llm["chat_model"].present?
+            ENV["CHAT_LLM_MODEL"] = llm["chat_model"].to_s
+          else
+            ENV.delete("CHAT_LLM_MODEL")
+          end
         end
 
         if provider == "openai"

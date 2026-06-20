@@ -3,8 +3,16 @@ class ChatMessage < ApplicationRecord
   belongs_to :user
 
   ROLES = %w[user assistant].freeze
+  # "streaming" 은 일시적 브로드캐스트 전용 상태(stream_answer 내부에서 update_column + 인메모리 status= 으로
+  # 와이어 페이로드만 설정)이며 DB에 저장되지 않으므로 STATUSES에 포함하지 않는다.
   STATUSES = %w[pending complete error].freeze
   SCOPE_TYPES = %w[meeting folder project].freeze
+
+  # model_name 은 ActiveRecord 예약 메서드명과 충돌하나, LLM 모델명 저장 컬럼으로 명시 허용한다.
+  def self.dangerous_attribute_method?(name)
+    return false if name.to_s == "model_name"
+    super
+  end
 
   validates :role, inclusion: { in: ROLES }
   validates :status, inclusion: { in: STATUSES }

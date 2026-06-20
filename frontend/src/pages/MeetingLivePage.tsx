@@ -434,7 +434,7 @@ export default function MeetingLivePage() {
           <div className="flex-1 min-h-0">
             <MobileTabLayout
               tabs={mobileTabs}
-              defaultTab="transcript"
+              defaultTab="chat"
             />
           </div>
         </>

@@ -160,6 +160,41 @@ RSpec.describe User, type: :model do
     end
   end
 
+  describe "#effective_chat_llm_config (독립 설정)" do
+    let(:user) do
+      create(:user, llm_provider: "anthropic", llm_api_key: "sumkey",
+                    llm_model: "claude-sonnet-4-20250514", llm_enabled: true)
+    end
+
+    it "챗 설정이 없으면 요약 config(+chat_llm_model override)로 폴백한다" do
+      user.update!(chat_llm_model: "claude-3-5-haiku-20241022")
+      cfg = user.effective_chat_llm_config
+      expect(cfg[:provider]).to eq("anthropic")
+      expect(cfg[:auth_token]).to eq("sumkey")
+      expect(cfg[:model]).to eq("claude-3-5-haiku-20241022")
+    end
+
+    it "chat_llm_provider 가 있으면 독립 config 를 쓴다" do
+      user.update!(chat_llm_provider: "openai", chat_llm_api_key: "chatkey",
+                   chat_llm_model: "gpt-4o", chat_llm_base_url: "https://api.openai.com/v1")
+      cfg = user.effective_chat_llm_config
+      expect(cfg[:provider]).to eq("openai")
+      expect(cfg[:auth_token]).to eq("chatkey")
+      expect(cfg[:model]).to eq("gpt-4o")
+      expect(cfg[:base_url]).to eq("https://api.openai.com/v1")
+    end
+
+    it "로컬(키 없음 + base_url)도 인정한다" do
+      user.update!(chat_llm_provider: "openai", chat_llm_api_key: nil,
+                   chat_llm_model: "llama-3.1-8b", chat_llm_base_url: "http://localhost:11434/v1")
+      expect(user.chat_llm_configured?).to be true
+      cfg = user.effective_chat_llm_config
+      expect(cfg[:provider]).to eq("openai")
+      expect(cfg[:base_url]).to eq("http://localhost:11434/v1")
+      expect(cfg[:model]).to eq("llama-3.1-8b")
+    end
+  end
+
   describe "개인 프로젝트 자동 생성" do
     it "유저 생성 시 personal 프로젝트와 admin 멤버십이 만들어진다" do
       user = create(:user)

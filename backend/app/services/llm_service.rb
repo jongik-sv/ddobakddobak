@@ -163,9 +163,11 @@ class LlmService
     }
   end
 
-  # 회의 Q&A: 컨텍스트 빌더가 만든 system/user를 batch 호출. (스트리밍은 후속)
-  def answer_question(system_prompt, user_content)
-    call_llm_raw(system_prompt, user_content)
+  # 회의 Q&A: 컨텍스트 빌더가 만든 system/user를 호출.
+  # 블록을 주면 텍스트 델타를 순서대로 yield하고 전체 텍스트를 반환 (스트리밍).
+  # 블록 없으면 기존 동기 경로 그대로.
+  def answer_question(system_prompt, user_content, &block)
+    call_llm_raw(system_prompt, user_content, &block)
   end
 
   # 안건 자료 압축: 업로드 시점에 LLM 으로 요약해 max_chars 미만으로 줄인다.
@@ -259,7 +261,7 @@ class LlmService
     case @config[:provider]
     when "openai"
       OpenAI::Client.new(
-        access_token: @config[:auth_token],
+        access_token: @config[:auth_token].presence || "local",
         uri_base: @config[:base_url].presence,
         request_timeout: ENV.fetch("LLM_REQUEST_TIMEOUT", "600").to_i
       )
@@ -274,7 +276,7 @@ class LlmService
 
   # ── LLM 호출 ──
 
-  def call_llm_raw(system, user_content, max_tokens: max_output_tokens)
+  def call_llm_raw(system, user_content, max_tokens: max_output_tokens, &block)
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
     # 추론(thinking) 모델은 요약에 불필요 — 비활성 지시 주입(속도·본문 회복)
@@ -284,15 +286,15 @@ class LlmService
 
     result = case @config[:provider]
     when "openai"
-      call_openai(system, user_content, max_tokens)
+      block ? call_openai_stream(system, user_content, max_tokens, &block) : call_openai(system, user_content, max_tokens)
     when "claude_cli"
-      call_claude_cli(system, user_content)
+      call_claude_cli(system, user_content, &block)
     when "gemini_cli"
-      call_gemini_cli(system, user_content)
+      call_gemini_cli(system, user_content, &block)
     when "codex_cli"
-      call_codex_cli(system, user_content)
+      call_codex_cli(system, user_content, &block)
     else
-      call_anthropic(system, user_content, max_tokens)
+      block ? call_anthropic_stream(system, user_content, max_tokens, &block) : call_anthropic(system, user_content, max_tokens)
     end
 
     result = strip_think(result) # 새는 <think> 블록 제거(안전망)
@@ -311,6 +313,41 @@ class LlmService
     response.content.first.text
   end
 
+  def call_anthropic_stream(system, user_content, max_tokens, &block)
+    stream = @client.messages.stream(
+      model: @config[:model],
+      max_tokens: max_tokens,
+      system: system,
+      messages: [ { role: "user", content: user_content } ]
+    )
+    full = +""
+    stream.text.each do |delta|
+      next if delta.nil? || delta.empty?
+      full << delta
+      block.call(delta)
+    end
+    full
+  end
+
+  def call_openai_stream(system, user_content, max_tokens, &block)
+    full = +""
+    @client.chat(parameters: {
+      model: @config[:model],
+      max_tokens: max_tokens,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user_content }
+      ],
+      stream: proc do |chunk, _bytesize|
+        delta = chunk.dig("choices", 0, "delta", "content")
+        next if delta.nil? || delta.empty?
+        full << delta
+        block.call(delta)
+      end
+    })
+    full
+  end
+
   def call_openai(system, user_content, max_tokens)
     params = {
       model: @config[:model],
@@ -326,7 +363,7 @@ class LlmService
 
   # ── 로컬 CLI 실행 (Claude Code / Gemini / Codex) ──
 
-  def call_claude_cli(system, user_content)
+  def call_claude_cli(system, user_content, &block)
     cli = ENV.fetch("CLAUDE_CLI_PATH", "claude")
     ensure_cli!(cli, "Claude Code CLI", "npm install -g @anthropic-ai/claude-code")
     # 요약은 순수 텍스트 생성 — 툴/플러그인/스킬/MCP/훅 전부 불필요.
@@ -338,7 +375,7 @@ class LlmService
     cmd = [ cli, "-p", "--output-format", "text", "--system-prompt", system,
             "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands" ]
     cmd.push("--model", @config[:model].to_s) if @config[:model].present?
-    run_cli(cmd, user_content)
+    run_cli(cmd, user_content, &block)
   end
 
   # Gemini CLI는 2026-06-18 종료 → Antigravity CLI(agy)로 대체.
@@ -347,22 +384,22 @@ class LlmService
   #     미지정/잘못된 값이면 agy 기본값으로 fallback(크래시 없음).
   #   - --dangerously-skip-permissions: 요약 작업은 비대화형이라 툴 권한 프롬프트로 멈추지 않게 함
   # GEMINI_CLI_PATH 도 하위호환으로 인정. provider 이름은 gemini_cli 유지.
-  def call_gemini_cli(system, user_content)
+  def call_gemini_cli(system, user_content, &block)
     cli = ENV["AGY_CLI_PATH"].presence || ENV.fetch("GEMINI_CLI_PATH", "agy")
     ensure_cli!(cli, "Antigravity CLI", "curl -fsSL https://antigravity.google/cli/install.sh | bash")
     merged = "[시스템 지시]\n#{system}\n\n[사용자 입력]\n#{user_content}"
     cmd = [ cli, "-p", merged, "--dangerously-skip-permissions" ]
     cmd.push("--model", @config[:model].to_s) if @config[:model].present?
-    run_cli(cmd, "")
+    run_cli(cmd, "", &block)
   end
 
-  def call_codex_cli(system, user_content)
+  def call_codex_cli(system, user_content, &block)
     cli = ENV.fetch("CODEX_CLI_PATH", "codex")
     ensure_cli!(cli, "Codex CLI", "npm install -g @openai/codex")
     cmd = [ cli, "exec", "-" ]
     cmd.push("--model", @config[:model].to_s) if @config[:model].present?
     merged = "[시스템 지시]\n#{system}\n\n[사용자 입력]\n#{user_content}"
-    run_cli(cmd, merged)
+    run_cli(cmd, merged, &block)
   end
 
   def ensure_cli!(cli, display_name, install_hint)
@@ -378,11 +415,11 @@ class LlmService
     end
   end
 
-  def run_cli(cmd, stdin_text)
+  def run_cli(cmd, stdin_text, &block)
     require "open3"
     Rails.logger.info "[LlmService] CLI exec: #{cmd.first} (#{stdin_text.length}자 stdin)"
 
-    stdout_str = nil
+    stdout_str = +""
     stderr_str = nil
     status = nil
 
@@ -390,22 +427,75 @@ class LlmService
       stdin.write(stdin_text) unless stdin_text.to_s.empty?
       stdin.close
 
-      unless wait_thr.join(CLI_TIMEOUT)
-        Process.kill("KILL", wait_thr.pid) rescue nil
-        wait_thr.join
-        raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{cmd.first}"
+      if block
+        # 스트리밍: stdout 을 청크로 읽어 방출. IO.select 로 전체 한도 감시.
+        # readpartial 은 ASCII-8BIT(바이트) 청크를 주므로 멀티바이트(한글)가 청크 경계에서
+        # 잘릴 수 있다. pending 에 모아 유효 UTF-8 접두부만 떼어 방출하고(미완 바이트는 보류),
+        # 누적본(stdout_str)은 마지막에 UTF-8 로 재해석한다. 이렇게 하지 않으면 BINARY 문자열이
+        # strip_think 의 UTF-8 정규식 gsub 에서 Encoding::CompatibilityError 를 낸다.
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + CLI_TIMEOUT
+        pending = (+"").force_encoding(Encoding::BINARY)
+        begin
+          loop do
+            remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            if remaining <= 0 || IO.select([stdout], nil, nil, remaining).nil?
+              Process.kill("KILL", wait_thr.pid) rescue nil
+              wait_thr.join
+              raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{cmd.first}"
+            end
+            chunk = stdout.readpartial(4096)
+            stdout_str << chunk
+            pending << chunk
+            emit = take_utf8_prefix!(pending)
+            block.call(emit) unless emit.empty?
+          end
+        rescue EOFError
+          # 정상 종료
+        end
+        # 정상 종료 시 pending 은 비어 있어야 하나, 잔여 바이트가 있으면 UTF-8 로 방출(불완전분 제거).
+        unless pending.empty?
+          tail = pending.dup.force_encoding(Encoding::UTF_8)
+          tail = tail.scrub("") unless tail.valid_encoding?
+          block.call(tail) unless tail.empty?
+        end
+        stdout_str.force_encoding(Encoding::UTF_8)
+        stderr_str = stderr.read.to_s
+        status = wait_thr.value
+      else
+        unless wait_thr.join(CLI_TIMEOUT)
+          Process.kill("KILL", wait_thr.pid) rescue nil
+          wait_thr.join
+          raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{cmd.first}"
+        end
+        stdout_str = stdout.read.to_s
+        stderr_str = stderr.read.to_s
+        status = wait_thr.value
       end
-
-      stdout_str = stdout.read.to_s
-      stderr_str = stderr.read.to_s
-      status = wait_thr.value
     end
 
     unless status&.success?
       err = stderr_str.to_s.strip
       raise LlmError, "CLI 오류 (코드 #{status&.exitstatus}): #{err.presence || '원인 불명'}"
     end
-    stdout_str.strip
+    # 스트리밍 경로는 위에서 UTF-8 로 재해석했으나, 강제로 한 번 더 보정(킬/절단 대비).
+    stdout_str.dup.force_encoding(Encoding::UTF_8).scrub("").strip
+  end
+
+  # 바이트 버퍼(ASCII-8BIT)에서 유효 UTF-8 접두부만 떼어 UTF-8 문자열로 반환한다.
+  # 끝의 불완전한 멀티바이트 바이트(최대 3바이트)는 buf 에 남겨 다음 청크와 합쳐 처리한다.
+  # 유효 접두부가 없으면("" 미완 바이트만) 빈 UTF-8 문자열을 반환한다. buf 는 제자리 변경된다.
+  def take_utf8_prefix!(buf)
+    whole = buf.dup.force_encoding(Encoding::UTF_8)
+    return buf.slice!(0, buf.bytesize).force_encoding(Encoding::UTF_8) if whole.valid_encoding?
+
+    1.upto(3) do |n|
+      break if n >= buf.bytesize
+      cand = buf.byteslice(0, buf.bytesize - n)
+      next unless cand&.dup&.force_encoding(Encoding::UTF_8)&.valid_encoding?
+
+      return buf.slice!(0, buf.bytesize - n).force_encoding(Encoding::UTF_8)
+    end
+    (+"").force_encoding(Encoding::UTF_8)
   end
 
   def call_llm_json(system, user_content)

@@ -52,9 +52,18 @@ export interface LlmPreset {
   max_output_tokens?: number
 }
 
+export interface LlmChatConfig {
+  preset_id?: string
+  provider?: string
+  auth_token_masked?: string
+  base_url?: string
+  model?: string
+}
+
 export interface LlmSettings {
   active_preset: string
   chat_model?: string | null
+  chat?: LlmChatConfig | null
   presets: Record<string, LlmPreset>
   offline?: boolean
   sidecar?: Record<string, unknown>
@@ -67,6 +76,13 @@ export async function getLlmSettings(): Promise<LlmSettings> {
 export async function updateLlmSettings(params: {
   active_preset?: string
   chat_model?: string | null
+  chat?: {
+    preset_id?: string
+    provider?: string
+    auth_token?: string
+    base_url?: string
+    model?: string
+  }
   preset_id?: string
   preset_data?: {
     provider?: string
@@ -96,6 +112,14 @@ export async function fetchOllamaModels(baseUrl: string): Promise<string[]> {
   if (!res.ok) return []
   const data = await res.json()
   return (data.models ?? []).map((m: { name: string }) => m.name)
+}
+
+export async function fetchLmStudioModels(baseUrl: string): Promise<string[]> {
+  const url = baseUrl.replace(/\/$/, '')
+  const res = await fetch(`${url}/models`, { signal: AbortSignal.timeout(3000) })
+  if (!res.ok) return []
+  const data = await res.json()
+  return (data.data ?? []).map((m: { id: string }) => m.id)
 }
 
 // HuggingFace 설정

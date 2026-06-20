@@ -37,13 +37,13 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
         expect(body["llm_settings"]["api_key_masked"]).to include("*")
       end
 
-      it "show 응답에 chat_llm_model을 포함한다" do
+      it "show 응답에 chat_model을 포함한다" do
         user.update!(chat_llm_model: "claude-haiku-4-5")
 
         get "/api/v1/user/llm_settings"
 
         body = response.parsed_body
-        expect(body["llm_settings"]["chat_llm_model"]).to eq("claude-haiku-4-5")
+        expect(body["llm_settings"]["chat_model"]).to eq("claude-haiku-4-5")
       end
     end
 
@@ -183,13 +183,13 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(user.reload.llm_base_url).to be_nil
     end
 
-    it "chat_llm_model을 저장하고 응답에 포함한다(마스킹 없음)" do
+    it "chat_model을 저장하고 응답에 포함한다(마스킹 없음)" do
       put "/api/v1/user/llm_settings", params: {
         llm_settings: {
           provider: "anthropic",
           api_key: "sk-ant-key-12345678",
           model: "claude-sonnet-4-6",
-          chat_llm_model: "claude-haiku-4-5"
+          chat_model: "claude-haiku-4-5"
         }
       }, as: :json
 
@@ -197,7 +197,7 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(user.reload.chat_llm_model).to eq("claude-haiku-4-5")
 
       body = response.parsed_body
-      expect(body["llm_settings"]["chat_llm_model"]).to eq("claude-haiku-4-5")
+      expect(body["llm_settings"]["chat_model"]).to eq("claude-haiku-4-5")
     end
 
     it "provider 빈값 시 chat_llm_model도 초기화한다" do
@@ -212,6 +212,57 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(user.reload.chat_llm_model).to be_nil
+    end
+
+    it "챗 독립 설정을 저장하고 응답에 노출한다" do
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: {
+          provider: "anthropic", api_key: "sumkey", model: "claude-sonnet-4-20250514",
+          chat_provider: "openai", chat_api_key: "chatkey",
+          chat_model: "gpt-4o", chat_base_url: "http://localhost:11434/v1"
+        }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.chat_llm_provider).to eq("openai")
+      expect(user.chat_llm_api_key).to eq("chatkey")
+      expect(user.chat_llm_base_url).to eq("http://localhost:11434/v1")
+      expect(user.chat_llm_model).to eq("gpt-4o")
+      body = response.parsed_body
+      expect(body.dig("llm_settings", "chat_provider")).to eq("openai")
+      expect(body.dig("llm_settings", "chat_api_key_masked")).to be_present
+      expect(body.dig("llm_settings", "chat_configured")).to be true
+    end
+
+    it "provider 빈값 시 chat_llm_* 도 모두 초기화한다" do
+      user.update!(
+        llm_provider: "anthropic", llm_api_key: "sk-xxx",
+        chat_llm_provider: "openai", chat_llm_api_key: "chatkey",
+        chat_llm_model: "gpt-4o", chat_llm_base_url: "http://localhost:11434/v1"
+      )
+
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "" }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.chat_llm_provider).to be_nil
+      expect(user.chat_llm_api_key).to be_nil
+      expect(user.chat_llm_base_url).to be_nil
+    end
+
+    it "chat_model 파라미터가 chat_llm_model 파라미터보다 우선한다" do
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: {
+          provider: "anthropic", api_key: "sk-key",
+          chat_model: "gpt-4o", chat_llm_model: "claude-haiku-4-5"
+        }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(user.reload.chat_llm_model).to eq("gpt-4o")
     end
   end
 

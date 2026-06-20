@@ -1,19 +1,26 @@
 // frontend/src/components/meeting/citationInline.tsx
 import { createReactInlineContentSpec } from '@blocknote/react'
 import type { Block, BlockSchema, InlineContentSchema, StyleSchema } from '@blocknote/core'
-import { CITATION_RE } from '../../lib/citationMarkers'
+import { CITATION_RE, markerTimeToMs } from '../../lib/citationMarkers'
 import { TimestampBadge } from './TimestampBadge'
 
 export const CitationInline = createReactInlineContentSpec(
   { type: 'citation' as const, propSchema: { ms: { default: 0 }, speaker: { default: '' } }, content: 'none' },
   {
-    render: ({ inlineContent }) => (
-      <TimestampBadge
-        ms={inlineContent.props.ms as number}
-        speaker={inlineContent.props.speaker as string}
-        onSeek={(window as any).__ddobakSeek ?? (() => {})}
-      />
-    ),
+    render: ({ inlineContent }) => {
+      const ms = inlineContent.props.ms as number
+      // 배지 시각으로 현재(화자분리 후) 화자를 해석 — 없으면 마커에 박힌 옛 화자로 폴백.
+      const resolver = (window as any).__ddobakSpeakerAt
+      const actual = resolver ? resolver(ms) : null
+      return (
+        <TimestampBadge
+          ms={ms}
+          speaker={actual?.speaker_label || (inlineContent.props.speaker as string)}
+          speakerName={actual?.speaker_name ?? null}
+          onSeek={(window as any).__ddobakSeek ?? (() => {})}
+        />
+      )
+    },
   },
 )
 
@@ -29,7 +36,7 @@ function inlineMarkersToCitations(content: any[]): any[] {
       let m: RegExpExecArray | null
       while ((m = re.exec(node.text)) !== null) {
         if (m.index > last) rebuilt.push({ type: 'text', text: node.text.slice(last, m.index), styles: node.styles ?? {} })
-        rebuilt.push({ type: 'citation', props: { ms: Number(m[1]), speaker: m[2] } })
+        rebuilt.push({ type: 'citation', props: { ms: markerTimeToMs(m[1]), speaker: m[2] } })
         last = m.index + m[0].length
       }
       if (last < node.text.length) rebuilt.push({ type: 'text', text: node.text.slice(last), styles: node.styles ?? {} })

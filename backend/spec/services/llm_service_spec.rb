@@ -167,3 +167,79 @@ RSpec.describe LlmService, "ok signalling" do
     end
   end
 end
+
+RSpec.describe LlmService, "openai 로컬(Ollama/LM Studio)" do
+  it "openai 로컬(키 없음 + base_url)도 클라이언트를 만든다" do
+    svc = LlmService.new(llm_config: { provider: "openai", model: "llama-3.1-8b",
+                                       base_url: "http://localhost:11434/v1" })
+    expect { svc.send(:build_client) }.not_to raise_error
+  end
+end
+
+RSpec.describe LlmService, "streaming" do
+  # anthropic 스트림 흉내: stream.text 가 델타 enumerable 을 반환.
+  let(:fake_stream) do
+    Struct.new(:deltas) do
+      def text = deltas
+    end.new(["안녕", "하세", "요"])
+  end
+
+  def svc
+    s = LlmService.new(llm_config: { provider: "anthropic", auth_token: "k", model: "claude-sonnet-4-20250514" })
+    client = instance_double("Anthropic::Client")
+    messages = instance_double("Anthropic::Resources::Messages")
+    allow(client).to receive(:messages).and_return(messages)
+    allow(messages).to receive(:stream).and_return(fake_stream)
+    s.instance_variable_set(:@client, client)
+    s
+  end
+
+  it "블록을 주면 델타를 순서대로 방출하고 전체를 반환한다" do
+    seen = []
+    full = svc.answer_question("sys", "user") { |d| seen << d }
+    expect(seen).to eq(["안녕", "하세", "요"])
+    expect(full).to eq("안녕하세요")
+  end
+
+  it "CLI provider 도 stdout 청크를 방출한다" do
+    s = LlmService.new(llm_config: { provider: "claude_cli", model: "claude-sonnet-4-20250514" })
+    # run_cli 를 청크 스텁: 블록에 두 청크 전달, 전체 반환
+    allow(s).to receive(:run_cli) do |_cmd, _stdin, &blk|
+      blk&.call("부분1 ")
+      blk&.call("부분2")
+      "부분1 부분2"
+    end
+    seen = []
+    full = s.answer_question("sys", "user") { |d| seen << d }
+    expect(seen).to eq(["부분1 ", "부분2"])
+    expect(full).to eq("부분1 부분2")
+  end
+
+  describe "#take_utf8_prefix! (readpartial 바이트 경계 안전)" do
+    let(:svc) { LlmService.new(llm_config: { provider: "claude_cli" }) }
+
+    it "청크 경계서 잘린 멀티바이트(한글)를 유효 UTF-8 만 방출하고 잔여 바이트는 보류한다" do
+      ga = "가".b # EA B0 80
+      # 첫 청크: "AB" + '가'의 앞 2바이트
+      buf = (+"AB").force_encoding(Encoding::BINARY) << ga.byteslice(0, 2)
+      out1 = svc.send(:take_utf8_prefix!, buf)
+      expect(out1).to eq("AB")
+      expect(out1.encoding).to eq(Encoding::UTF_8)
+      expect(buf.bytesize).to eq(2) # 미완 2바이트 보류
+
+      # 둘째 청크: '가'의 마지막 바이트 도착 → 완성
+      buf << ga.byteslice(2, 1)
+      out2 = svc.send(:take_utf8_prefix!, buf)
+      expect(out2).to eq("가")
+      expect(buf).to be_empty
+    end
+
+    it "완전한 UTF-8 바이트는 그대로 방출한다" do
+      buf = "안녕".b
+      out = svc.send(:take_utf8_prefix!, buf)
+      expect(out).to eq("안녕")
+      expect(out.valid_encoding?).to be true
+      expect(buf).to be_empty
+    end
+  end
+end

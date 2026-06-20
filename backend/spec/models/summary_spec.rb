@@ -32,6 +32,20 @@ RSpec.describe Summary, type: :model do
       expect(row["notes_markdown"]).to eq("일반 결정 사항 내용")
     end
 
+    it "mm:ss 형식 마커도 FTS 인덱싱에서 제거된다" do
+      Summary.ensure_fts_tables!
+      s = meeting.summaries.create!(
+        summary_type: "final",
+        generated_at: Time.current,
+        notes_markdown: "결정 사항 ⟦t:30:47/s:화자 1⟧ 내용"
+      )
+      row = ActiveRecord::Base.connection.execute(
+        "SELECT notes_markdown FROM summaries_fts WHERE source_id = #{s.id}"
+      ).first
+      expect(row["notes_markdown"]).not_to include("⟦t:")
+      expect(row["notes_markdown"]).to include("결정 사항")
+    end
+
     it "마커가 여러 개 있을 때 모두 제거된다" do
       Summary.ensure_fts_tables!
       s = meeting.summaries.create!(

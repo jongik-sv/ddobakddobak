@@ -262,6 +262,8 @@ describe('MeetingLivePage', () => {
       renderPage()
       expect(screen.getByTestId('live-transcript')).toBeInTheDocument()
       expect(screen.getByTestId('ai-summary')).toBeInTheDocument()
+      // 데스크톱 우측 패널 기본 활성 탭이 'AI 챗'으로 바뀌어 메모 에디터가 기본 렌더되지 않음 → 메모 탭 클릭
+      fireEvent.click(screen.getByRole('button', { name: '메모' }))
       expect(screen.getByTestId('meeting-editor')).toBeInTheDocument()
     })
 
@@ -292,9 +294,13 @@ describe('MeetingLivePage', () => {
       expect(screen.getByRole('tab', { name: /메모/i })).toBeInTheDocument()
     })
 
-    it('기본 탭은 전사 탭이며 기록 영역이 보임', () => {
+    it('기본 탭은 AI 챗이며 챗 영역이 보임', () => {
       renderPage()
-      expect(screen.getByTestId('live-transcript')).toBeInTheDocument()
+      // 모바일 기본 활성 탭이 'AI 챗'으로 변경됨 → 챗 입력창이 보이는 tabpanel이 활성
+      const chatInput = screen.getByPlaceholderText('회의에 질문하기…')
+      expect(chatInput).toBeInTheDocument()
+      const tabPanel = chatInput.closest('[role="tabpanel"]')
+      expect(tabPanel).toHaveStyle({ visibility: 'visible' })
     })
 
     it('전사 탭에 화자 관리 accordion이 포함됨', () => {

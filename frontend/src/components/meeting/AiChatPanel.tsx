@@ -4,6 +4,17 @@ import { subscribeChat } from '../../channels/chat'
 import { ChatMarkdown } from './ChatMarkdown'
 import type { ChatScopeType } from '../../api/chat'
 
+function ModelBadge() {
+  return (
+    <span
+      aria-hidden
+      className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-gray-600 text-[11px]"
+    >
+      🤖
+    </span>
+  )
+}
+
 export function AiChatPanel({
   scopeType = 'meeting',
   scopeId,
@@ -58,6 +69,12 @@ export function AiChatPanel({
                   : 'flex flex-col items-start'
               }
             >
+              {m.role === 'assistant' && (
+                <div className="mb-1 flex items-center gap-1.5 text-xs text-gray-500">
+                  <ModelBadge />
+                  <span>{m.model_name ?? 'AI'}</span>
+                </div>
+              )}
               <div
                 className={
                   m.role === 'user'
@@ -69,6 +86,8 @@ export function AiChatPanel({
                   <span data-testid="chat-typing" className="text-gray-400">
                     …답변 작성 중
                   </span>
+                ) : m.status === 'streaming' && m.role === 'assistant' ? (
+                  <span className="whitespace-pre-wrap">{m.content}</span>
                 ) : m.status === 'error' ? (
                   <span className="text-red-500">답변 실패: {m.error_message}</span>
                 ) : m.role === 'assistant' && m.status === 'complete' ? (

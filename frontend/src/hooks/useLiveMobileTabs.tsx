@@ -36,7 +36,7 @@ interface UseLiveMobileTabsArgs {
   summaryOptions?: React.ReactNode
 }
 
-/** MeetingLivePage 모바일 탭(기록/요약/메모) 정의를 생성한다. */
+/** MeetingLivePage 모바일 탭(기록/요약/AI챗/메모) 정의를 생성한다. */
 export function useLiveMobileTabs({
   meetingId,
   isActive,
@@ -100,6 +100,12 @@ export function useLiveMobileTabs({
       ),
     },
     {
+      id: 'chat',
+      label: 'AI 챗',
+      icon: MessageCircle,
+      content: <AiChatPanel scopeId={meetingId} />,
+    },
+    {
       id: 'memo',
       label: '메모',
       icon: PenLine,
@@ -122,12 +128,6 @@ export function useLiveMobileTabs({
           </div>
         </div>
       ),
-    },
-    {
-      id: 'chat',
-      label: 'AI 챗',
-      icon: MessageCircle,
-      content: <AiChatPanel scopeId={meetingId} />,
     },
   ], [meetingId, isActive, isSharing, isHost, currentUserId, onTransferRequest, onNotesChange, onSaveMemo, isSavingMemo, memoEditorRef, corrections, isApplyingCorrections, onUpdateCorrection, onAddCorrection, onRemoveCorrection, onApplyCorrections, summaryOptions])
 }

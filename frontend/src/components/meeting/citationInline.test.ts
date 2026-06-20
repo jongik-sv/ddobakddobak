@@ -30,6 +30,12 @@ describe('citation inline round-trip', () => {
     expect(joined).toBe('시작 ⟦t:1000/s:화자 1⟧ 중간 ⟦t:2000/s:화자 2⟧ 끝')
   })
 
+  it('mm:ss 마커를 ms로 변환해 citation 노드 생성', () => {
+    const withInline = markersToInline(block('확정 ⟦t:30:47/s:화자 1⟧'))
+    const para = withInline[0]
+    expect((para.content as any[]).some((c: any) => c.type === 'citation' && c.props.ms === 1847000)).toBe(true)
+  })
+
   it('preserves text nodes without markers unchanged', () => {
     const input = block('마커 없는 텍스트')
     const result = markersToInline(input)

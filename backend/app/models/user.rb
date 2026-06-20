@@ -63,15 +63,48 @@ class User < ApplicationRecord
     end
   end
 
-  # AI Chat용 LLM 설정. 요약과 같은 provider/key를 쓰되, 채팅 모델을 덮어쓴다.
-  # 우선순위: 사용자 개인 chat_llm_model(컬럼) > 전역 ENV["CHAT_LLM_MODEL"] > 요약 모델.
-  # 모두 비어 있으면 요약 모델(effective_llm_config)로 폴백한다.
+  # AI Chat용 LLM 설정. 우선순위:
+  #   1) 개인 챗 설정(chat_llm_*) → 완전 독립
+  #   2) 개인 요약 있음 → 요약 config + (chat_llm_model || ENV["CHAT_LLM_MODEL"]) 모델 override
+  #   3) 전역 챗 설정(ENV["CHAT_LLM_PROVIDER"]) → 전역 독립
+  #   4) 전역 요약 + ENV["CHAT_LLM_MODEL"] 모델 override
   def effective_chat_llm_config
-    cfg = effective_llm_config
-    return cfg if cfg.blank?
+    if chat_llm_configured?
+      return {
+        provider: chat_llm_provider,
+        auth_token: chat_llm_api_key,
+        model: chat_llm_model,
+        base_url: chat_llm_base_url
+      }.compact
+    end
 
-    chat_model = chat_llm_model.presence || ENV["CHAT_LLM_MODEL"].presence
+    if llm_configured?
+      cfg = effective_llm_config
+      chat_model = chat_llm_model.presence || ENV["CHAT_LLM_MODEL"].presence
+      return chat_model ? cfg.merge(model: chat_model) : cfg
+    end
+
+    return self.class.server_default_chat_llm_config if ENV["CHAT_LLM_PROVIDER"].present?
+
+    cfg = self.class.server_default_llm_config
+    return cfg if cfg.blank?
+    chat_model = ENV["CHAT_LLM_MODEL"].presence
     chat_model ? cfg.merge(model: chat_model) : cfg
+  end
+
+  # 전역(서버 기본) 챗 독립 config. ENV["CHAT_LLM_PROVIDER"] 가 있을 때만 의미.
+  def self.server_default_chat_llm_config
+    {
+      provider:   ENV["CHAT_LLM_PROVIDER"],
+      auth_token: ENV["CHAT_LLM_AUTH_TOKEN"],
+      model:      ENV["CHAT_LLM_MODEL"],
+      base_url:   ENV["CHAT_LLM_BASE_URL"]
+    }.compact
+  end
+
+  # 챗 독립 설정 존재 여부. provider 만 있으면 인정(로컬은 base_url 만으로 키 불요).
+  def chat_llm_configured?
+    chat_llm_provider.present?
   end
 
   # 사용자 개인 LLM 설정을 sidecar llm_config 형식으로 반환한다.
