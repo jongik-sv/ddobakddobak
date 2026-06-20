@@ -16,7 +16,7 @@ module LlmPrompts
   end
 
   SUMMARIZE_SYSTEM_PROMPT = <<~PROMPT.freeze
-    회의 내용 분석·구조화 요약 전문가. 트랜스크립트를 분석해 아래 JSON 형식으로만 응답.
+    회의 내용 분석·구조화 요약 전문가. 트랜스크립트를 분석해 반드시 아래 JSON 형식으로만 응답.
 
     응답 형식:
     {
@@ -32,7 +32,7 @@ module LlmPrompts
   PROMPT
 
   ACTION_ITEMS_SYSTEM_PROMPT = <<~PROMPT.freeze
-    회의 내용에서 Action Item 추출 전문가. 트랜스크립트를 분석해 아래 JSON 형식으로만 응답.
+    회의 내용에서 Action Item 추출 전문가. 트랜스크립트를 분석해 반드시 아래 JSON 형식으로만 응답.
 
     응답 형식:
     {
@@ -106,7 +106,7 @@ module LlmPrompts
        - 부적합: 단순 목록·짧은 정보·표로 충분한 내용
        - 형식: ```mermaid ... ``` 코드블록. 회의록 당 최대 2개, 충분히 복잡할 때만
        - 지원: flowchart·sequenceDiagram·gantt·pie·mindmap. 노드/라벨 한국어
-       - ⚠️ **[필수] 노드 라벨에 반드시 따옴표 사용**: 모든 노드 라벨을 큰따옴표로 감쌀 것.
+       - ⚠️ **[필수] 노드 라벨에 반드시 따옴표 사용**: 예외 없이 모든 노드 라벨을 큰따옴표로 감쌀 것.
          - 따옴표 없는 노드는 파싱 에러. 절대 금지.
          - ✅ 올바른 예: A["개근중량 입력"] --> B{"공정 구분"} --> C["도금 부착량 (g/m²) × 길이"]
          - ❌ 잘못된 예: A[개근중량 입력] --> B{공정 구분} --> C[도금 부착량 × 길이]
