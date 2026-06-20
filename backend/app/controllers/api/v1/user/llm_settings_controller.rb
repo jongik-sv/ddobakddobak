@@ -102,7 +102,6 @@ module Api
               provider: current_user.llm_provider,
               api_key_masked: mask_token(current_user.llm_api_key),
               model: current_user.llm_model,
-              chat_llm_model: current_user.chat_llm_model,
               base_url: current_user.llm_base_url,
               configured: current_user.llm_configured?,
               enabled: current_user.llm_enabled?,

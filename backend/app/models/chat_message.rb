@@ -3,6 +3,8 @@ class ChatMessage < ApplicationRecord
   belongs_to :user
 
   ROLES = %w[user assistant].freeze
+  # "streaming" 은 일시적 브로드캐스트 전용 상태(stream_answer 내부에서 update_column + 인메모리 status= 으로
+  # 와이어 페이로드만 설정)이며 DB에 저장되지 않으므로 STATUSES에 포함하지 않는다.
   STATUSES = %w[pending complete error].freeze
   SCOPE_TYPES = %w[meeting folder project].freeze
 

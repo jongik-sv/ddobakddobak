@@ -37,13 +37,13 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
         expect(body["llm_settings"]["api_key_masked"]).to include("*")
       end
 
-      it "show 응답에 chat_llm_model을 포함한다" do
+      it "show 응답에 chat_model을 포함한다" do
         user.update!(chat_llm_model: "claude-haiku-4-5")
 
         get "/api/v1/user/llm_settings"
 
         body = response.parsed_body
-        expect(body["llm_settings"]["chat_llm_model"]).to eq("claude-haiku-4-5")
+        expect(body["llm_settings"]["chat_model"]).to eq("claude-haiku-4-5")
       end
     end
 
@@ -183,13 +183,13 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(user.reload.llm_base_url).to be_nil
     end
 
-    it "chat_llm_model을 저장하고 응답에 포함한다(마스킹 없음)" do
+    it "chat_model을 저장하고 응답에 포함한다(마스킹 없음)" do
       put "/api/v1/user/llm_settings", params: {
         llm_settings: {
           provider: "anthropic",
           api_key: "sk-ant-key-12345678",
           model: "claude-sonnet-4-6",
-          chat_llm_model: "claude-haiku-4-5"
+          chat_model: "claude-haiku-4-5"
         }
       }, as: :json
 
@@ -197,7 +197,7 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(user.reload.chat_llm_model).to eq("claude-haiku-4-5")
 
       body = response.parsed_body
-      expect(body["llm_settings"]["chat_llm_model"]).to eq("claude-haiku-4-5")
+      expect(body["llm_settings"]["chat_model"]).to eq("claude-haiku-4-5")
     end
 
     it "provider 빈값 시 chat_llm_model도 초기화한다" do
