@@ -114,6 +114,14 @@ export async function fetchOllamaModels(baseUrl: string): Promise<string[]> {
   return (data.models ?? []).map((m: { name: string }) => m.name)
 }
 
+export async function fetchLmStudioModels(baseUrl: string): Promise<string[]> {
+  const url = baseUrl.replace(/\/$/, '')
+  const res = await fetch(`${url}/models`, { signal: AbortSignal.timeout(3000) })
+  if (!res.ok) return []
+  const data = await res.json()
+  return (data.data ?? []).map((m: { id: string }) => m.id)
+}
+
 // HuggingFace 설정
 export interface HfSettings {
   hf_token_masked: string

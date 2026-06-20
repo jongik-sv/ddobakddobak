@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getLlmSettings, updateLlmSettings, testLlmConnection, fetchOllamaModels } from '../../api/settings'
+import { getLlmSettings, updateLlmSettings, testLlmConnection, fetchOllamaModels, fetchLmStudioModels } from '../../api/settings'
 import type { LlmSettings } from '../../api/settings'
+
+const LOCAL_MODEL_FETCHERS: Record<string, (baseUrl: string) => Promise<string[]>> = {
+  ollama: fetchOllamaModels,
+  lmstudio: fetchLmStudioModels,
+}
+const isLocalListable = (presetId: string) => presetId in LOCAL_MODEL_FETCHERS
 
 const SERVICE_PRESETS = [
   { id: 'claude_cli', name: 'Claude Code', provider: 'claude_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['sonnet', 'opus', 'haiku'], description: 'Claude Code CLI (키 불필요)' },
@@ -34,18 +40,18 @@ export function LlmSettingsPanel() {
   const [llmError, setLlmError] = useState<string | null>(null)
   const [llmTesting, setLlmTesting] = useState(false)
   const [llmTestResult, setLlmTestResult] = useState<{ success: boolean; error?: string } | null>(null)
-  const [ollamaModels, setOllamaModels] = useState<string[]>([])
-  const [ollamaLoading, setOllamaLoading] = useState(false)
-  const [ollamaError, setOllamaError] = useState<string | null>(null)
+  const [localModels, setLocalModels] = useState<string[]>([])
+  const [localModelsLoading, setLocalModelsLoading] = useState(false)
+  const [localModelsError, setLocalModelsError] = useState<string | null>(null)
   const [useCustomModel, setUseCustomModel] = useState(false)
   const [chatPresetId, setChatPresetId] = useState('')      // '' = 요약과 동일
   const [chatAuthToken, setChatAuthToken] = useState('')
   const [chatBaseUrl, setChatBaseUrl] = useState('')
   const [chatModel, setChatModel] = useState('')
   const [chatMaskedToken, setChatMaskedToken] = useState('')
-  const [chatOllamaModels, setChatOllamaModels] = useState<string[]>([])
-  const [chatOllamaLoading, setChatOllamaLoading] = useState(false)
-  const [chatOllamaError, setChatOllamaError] = useState<string | null>(null)
+  const [chatLocalModels, setChatLocalModels] = useState<string[]>([])
+  const [chatLocalModelsLoading, setChatLocalModelsLoading] = useState(false)
+  const [chatLocalModelsError, setChatLocalModelsError] = useState<string | null>(null)
 
   useEffect(() => {
     getLlmSettings().then((llm) => {
@@ -103,67 +109,69 @@ export function LlmSettingsPanel() {
     }
     setUseCustomModel(false)
     setLlmTestResult(null)
-    setOllamaModels([])
-    setOllamaError(null)
+    setLocalModels([])
+    setLocalModelsError(null)
   }
 
-  const loadOllamaModels = useCallback(async (baseUrl: string) => {
-    setOllamaLoading(true)
-    setOllamaError(null)
+  const loadLocalModels = useCallback(async (presetId: string, baseUrl: string) => {
+    setLocalModelsLoading(true)
+    setLocalModelsError(null)
     try {
-      const models = await fetchOllamaModels(baseUrl)
-      setOllamaModels(models)
+      const fetcher = LOCAL_MODEL_FETCHERS[presetId]
+      const models = fetcher ? await fetcher(baseUrl) : []
+      setLocalModels(models)
       if (models.length > 0 && !currentForm.model) {
         updateCurrentForm({ model: models[0] })
       }
     } catch {
-      setOllamaError('Ollama에 연결할 수 없습니다. 실행 중인지 확인하세요.')
-      setOllamaModels([])
+      setLocalModelsError('로컬 서버에 연결할 수 없습니다. 실행 중인지 확인하세요.')
+      setLocalModels([])
     } finally {
-      setOllamaLoading(false)
+      setLocalModelsLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentForm.model, selectedPreset])
 
   useEffect(() => {
-    if (selectedPreset === 'ollama' && currentForm.base_url) {
-      loadOllamaModels(currentForm.base_url)
+    if (isLocalListable(selectedPreset) && currentForm.base_url) {
+      loadLocalModels(selectedPreset, currentForm.base_url)
     }
-  }, [selectedPreset, currentForm.base_url, loadOllamaModels])
+  }, [selectedPreset, currentForm.base_url, loadLocalModels])
 
-  const loadChatOllamaModels = useCallback(async (baseUrl: string) => {
-    setChatOllamaLoading(true)
-    setChatOllamaError(null)
+  const loadChatLocalModels = useCallback(async (presetId: string, baseUrl: string) => {
+    setChatLocalModelsLoading(true)
+    setChatLocalModelsError(null)
     try {
-      const models = await fetchOllamaModels(baseUrl)
-      setChatOllamaModels(models)
+      const fetcher = LOCAL_MODEL_FETCHERS[presetId]
+      const models = fetcher ? await fetcher(baseUrl) : []
+      setChatLocalModels(models)
       if (models.length > 0 && !chatModel) {
         setChatModel(models[0])
       }
     } catch {
-      setChatOllamaError('Ollama에 연결할 수 없습니다. 실행 중인지 확인하세요.')
-      setChatOllamaModels([])
+      setChatLocalModelsError('로컬 서버에 연결할 수 없습니다. 실행 중인지 확인하세요.')
+      setChatLocalModels([])
     } finally {
-      setChatOllamaLoading(false)
+      setChatLocalModelsLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatModel])
 
   useEffect(() => {
-    if (chatPresetId === 'ollama' && chatBaseUrl) {
-      loadChatOllamaModels(chatBaseUrl)
+    if (isLocalListable(chatPresetId) && chatBaseUrl) {
+      loadChatLocalModels(chatPresetId, chatBaseUrl)
     }
-  }, [chatPresetId, chatBaseUrl, loadChatOllamaModels])
+  }, [chatPresetId, chatBaseUrl, loadChatLocalModels])
 
   const currentPreset = SERVICE_PRESETS.find((p) => p.id === selectedPreset)!
-  const modelOptions = selectedPreset === 'ollama' ? ollamaModels : currentPreset.suggestedModels
+  const modelOptions = isLocalListable(selectedPreset) ? localModels : currentPreset.suggestedModels
   const showModelSelect = modelOptions.length > 0 && !useCustomModel
 
   const chatPreset = SERVICE_PRESETS.find((p) => p.id === chatPresetId)
   const chatActualProvider = chatPreset?.provider ?? ''
   const chatIsCli = chatPresetId !== '' && CLI_PRESET_IDS.has(chatPresetId)
   const chatRequiresKey = chatPreset?.requiresApiKey ?? false
-  const chatModelSuggestions: readonly string[] = chatPresetId === 'ollama' ? chatOllamaModels : (chatPreset?.suggestedModels ?? [])
+  const chatModelSuggestions: readonly string[] = isLocalListable(chatPresetId) ? chatLocalModels : (chatPreset?.suggestedModels ?? [])
 
   const handleChatServiceSelect = (id: string) => {
     setChatPresetId(id)
@@ -172,6 +180,8 @@ export function LlmSettingsPanel() {
     setChatModel(def?.suggestedModels[0] ?? '')
     setChatAuthToken('')
     setChatMaskedToken('')
+    setChatLocalModels([])
+    setChatLocalModelsError(null)
   }
 
   const handleLlmTest = async () => {
@@ -346,13 +356,13 @@ export function LlmSettingsPanel() {
                 {useCustomModel ? '목록에서 선택' : '직접 입력'}
               </button>
             )}
-            {selectedPreset === 'ollama' && (
+            {isLocalListable(selectedPreset) && (
               <button
-                onClick={() => loadOllamaModels(currentForm.base_url)}
-                disabled={ollamaLoading}
+                onClick={() => loadLocalModels(selectedPreset, currentForm.base_url)}
+                disabled={localModelsLoading}
                 className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
               >
-                {ollamaLoading ? '감지 중...' : '모델 새로고침'}
+                {localModelsLoading ? '감지 중...' : '모델 새로고침'}
               </button>
             )}
           </div>
@@ -375,11 +385,11 @@ export function LlmSettingsPanel() {
               className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
             />
           )}
-          {selectedPreset === 'ollama' && ollamaError && (
-            <p className="text-xs text-yellow-600 mt-1">{ollamaError}</p>
+          {isLocalListable(selectedPreset) && localModelsError && (
+            <p className="text-xs text-yellow-600 mt-1">{localModelsError}</p>
           )}
-          {selectedPreset === 'ollama' && ollamaModels.length === 0 && !ollamaLoading && !ollamaError && (
-            <p className="text-xs text-muted-foreground mt-1">설치된 모델이 없습니다. ollama pull로 모델을 설치하세요.</p>
+          {isLocalListable(selectedPreset) && localModels.length === 0 && !localModelsLoading && !localModelsError && (
+            <p className="text-xs text-muted-foreground mt-1">불러온 모델이 없습니다. 서버에 모델이 로드되어 있는지 확인하세요.</p>
           )}
         </div>
 
@@ -485,15 +495,15 @@ export function LlmSettingsPanel() {
 
           <div className="flex items-center justify-between mb-1">
             <label htmlFor="chat-model" className="block text-xs text-gray-600">챗 모델</label>
-            {chatPresetId === 'ollama' && (
+            {isLocalListable(chatPresetId) && (
               <button
                 type="button"
-                onClick={() => loadChatOllamaModels(chatBaseUrl)}
-                disabled={chatOllamaLoading}
+                onClick={() => loadChatLocalModels(chatPresetId, chatBaseUrl)}
+                disabled={chatLocalModelsLoading}
                 className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
                 aria-label="모델 새로고침"
               >
-                {chatOllamaLoading ? '감지 중...' : '모델 새로고침'}
+                {chatLocalModelsLoading ? '감지 중...' : '모델 새로고침'}
               </button>
             )}
           </div>
@@ -521,11 +531,11 @@ export function LlmSettingsPanel() {
               className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]"
             />
           )}
-          {chatPresetId === 'ollama' && chatOllamaError && (
-            <p className="text-xs text-yellow-600 mt-1">{chatOllamaError}</p>
+          {isLocalListable(chatPresetId) && chatLocalModelsError && (
+            <p className="text-xs text-yellow-600 mt-1">{chatLocalModelsError}</p>
           )}
-          {chatPresetId === 'ollama' && chatOllamaModels.length === 0 && !chatOllamaLoading && !chatOllamaError && (
-            <p className="text-xs text-muted-foreground mt-1">설치된 모델이 없습니다. ollama pull로 모델을 설치하세요.</p>
+          {isLocalListable(chatPresetId) && chatLocalModels.length === 0 && !chatLocalModelsLoading && !chatLocalModelsError && (
+            <p className="text-xs text-muted-foreground mt-1">불러온 모델이 없습니다. 서버에 모델이 로드되어 있는지 확인하세요.</p>
           )}
           <p className="text-xs text-muted-foreground mt-1">비우면 요약 모델을 사용합니다</p>
         </section>

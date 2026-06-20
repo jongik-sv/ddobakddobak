@@ -9,13 +9,15 @@ vi.mock('../../api/settings', () => ({
   updateLlmSettings: vi.fn(),
   testLlmConnection: vi.fn(),
   fetchOllamaModels: vi.fn(),
+  fetchLmStudioModels: vi.fn(),
 }))
 
-import { getLlmSettings, updateLlmSettings, fetchOllamaModels } from '../../api/settings'
+import { getLlmSettings, updateLlmSettings, fetchOllamaModels, fetchLmStudioModels } from '../../api/settings'
 
 const mockGetLlmSettings = vi.mocked(getLlmSettings)
 const mockUpdateLlmSettings = vi.mocked(updateLlmSettings)
 const mockFetchOllamaModels = vi.mocked(fetchOllamaModels)
+const mockFetchLmStudioModels = vi.mocked(fetchLmStudioModels)
 
 const settingsResponse: LlmSettings = {
   active_preset: 'anthropic',
@@ -35,6 +37,7 @@ describe('LlmSettingsPanel - AI 챗 독립 섹션', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockFetchOllamaModels.mockResolvedValue([])
+    mockFetchLmStudioModels.mockResolvedValue([])
   })
 
   it('기본(요약과 동일): 요약과 동일 카드 선택됨, 키/URL 숨김', async () => {
@@ -151,6 +154,24 @@ describe('LlmSettingsPanel - AI 챗 독립 섹션', () => {
       const options = Array.from((chatModelEl as HTMLSelectElement).options).map((o) => o.value)
       expect(options).toContain('gemma4:e2b')
       expect(options).toContain('llama3.2')
+    })
+  })
+
+  it('챗 서비스=LM Studio 선택 시 모델 목록을 fetch해 챗 모델 SELECT로 렌더링', async () => {
+    mockFetchLmStudioModels.mockResolvedValue(['qwen2.5-7b', 'phi-4'])
+    mockGetLlmSettings.mockResolvedValue(settingsResponse)
+    render(<LlmSettingsPanel />)
+    await waitFor(() => screen.getByText('LLM 모델 설정'))
+
+    const chatGrid = screen.getByTestId('chat-service-grid')
+    fireEvent.click(within(chatGrid).getByText('LM Studio').closest('button')!)
+
+    await waitFor(() => {
+      const chatModelEl = screen.getByLabelText('챗 모델')
+      expect(chatModelEl.tagName).toBe('SELECT')
+      const options = Array.from((chatModelEl as HTMLSelectElement).options).map((o) => o.value)
+      expect(options).toContain('qwen2.5-7b')
+      expect(options).toContain('phi-4')
     })
   })
 })
