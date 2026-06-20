@@ -168,6 +168,14 @@ RSpec.describe LlmService, "ok signalling" do
   end
 end
 
+RSpec.describe LlmService, "openai 로컬(Ollama/LM Studio)" do
+  it "openai 로컬(키 없음 + base_url)도 클라이언트를 만든다" do
+    svc = LlmService.new(llm_config: { provider: "openai", model: "llama-3.1-8b",
+                                       base_url: "http://localhost:11434/v1" })
+    expect { svc.send(:build_client) }.not_to raise_error
+  end
+end
+
 RSpec.describe LlmService, "streaming" do
   # anthropic 스트림 흉내: stream.text 가 델타 enumerable 을 반환.
   let(:fake_stream) do

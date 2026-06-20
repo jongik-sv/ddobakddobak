@@ -261,7 +261,7 @@ class LlmService
     case @config[:provider]
     when "openai"
       OpenAI::Client.new(
-        access_token: @config[:auth_token],
+        access_token: @config[:auth_token].presence || "local",
         uri_base: @config[:base_url].presence,
         request_timeout: ENV.fetch("LLM_REQUEST_TIMEOUT", "600").to_i
       )
