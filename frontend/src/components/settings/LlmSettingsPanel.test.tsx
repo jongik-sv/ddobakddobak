@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { LlmSettingsPanel } from './LlmSettingsPanel'
 import type { LlmSettings } from '../../api/settings'
 
@@ -37,25 +37,26 @@ describe('LlmSettingsPanel - AI 챗 독립 섹션', () => {
     mockFetchOllamaModels.mockResolvedValue([])
   })
 
-  it('기본(요약과 동일): 챗 서비스 select 첫 옵션 선택, 키/URL 숨김', async () => {
+  it('기본(요약과 동일): 요약과 동일 카드 선택됨, 키/URL 숨김', async () => {
     mockGetLlmSettings.mockResolvedValue(settingsResponse)
     render(<LlmSettingsPanel />)
     await waitFor(() => screen.getByText('LLM 모델 설정'))
 
-    const chatService = screen.getByLabelText('챗 서비스') as HTMLSelectElement
-    expect(chatService.value).toBe('')
-    expect(chatService.options[0].textContent).toBe('요약과 동일')
+    const chatGrid = screen.getByTestId('chat-service-grid')
+    const sameasBtn = within(chatGrid).getByText('요약과 동일').closest('button')!
+    expect(sameasBtn.getAttribute('aria-pressed')).toBe('true')
     // 키/URL 필드 미노출
     expect(screen.queryByLabelText('챗 API 키')).toBeNull()
     expect(screen.queryByLabelText('챗 base URL')).toBeNull()
   })
 
-  it('챗 서비스=OpenAI 선택 시 키·base URL·모델 필드 노출', async () => {
+  it('챗 서비스=OpenAI 카드 선택 시 키·base URL·모델 필드 노출', async () => {
     mockGetLlmSettings.mockResolvedValue(settingsResponse)
     render(<LlmSettingsPanel />)
     await waitFor(() => screen.getByText('LLM 모델 설정'))
 
-    fireEvent.change(screen.getByLabelText('챗 서비스'), { target: { value: 'openai' } })
+    const chatGrid = screen.getByTestId('chat-service-grid')
+    fireEvent.click(within(chatGrid).getByText('OpenAI').closest('button')!)
     expect(screen.getByLabelText('챗 API 키')).toBeInTheDocument()
     expect(screen.getByLabelText('챗 base URL')).toBeInTheDocument()
     expect(screen.getByLabelText('챗 모델')).toBeInTheDocument()
@@ -67,7 +68,8 @@ describe('LlmSettingsPanel - AI 챗 독립 섹션', () => {
     render(<LlmSettingsPanel />)
     await waitFor(() => screen.getByText('LLM 모델 설정'))
 
-    fireEvent.change(screen.getByLabelText('챗 서비스'), { target: { value: 'ollama' } })
+    const chatGrid = screen.getByTestId('chat-service-grid')
+    fireEvent.click(within(chatGrid).getByText('Ollama').closest('button')!)
     fireEvent.change(screen.getByLabelText('챗 base URL'), { target: { value: 'http://localhost:11434/v1' } })
     fireEvent.change(screen.getByLabelText('챗 모델'), { target: { value: 'llama-3.1-8b' } })
 
@@ -105,7 +107,7 @@ describe('LlmSettingsPanel - AI 챗 독립 섹션', () => {
     })
   })
 
-  it('로드: llm.chat 있으면 해당 서비스로 복원하고 마스킹 키 placeholder', async () => {
+  it('로드: llm.chat 있으면 해당 서비스 카드 aria-pressed true + 마스킹 키 placeholder', async () => {
     mockGetLlmSettings.mockResolvedValue({
       ...settingsResponse,
       chat: { preset_id: 'openai', provider: 'openai', auth_token_masked: 'sk-c****9999',
@@ -114,8 +116,11 @@ describe('LlmSettingsPanel - AI 챗 독립 섹션', () => {
     render(<LlmSettingsPanel />)
     await waitFor(() => screen.getByText('LLM 모델 설정'))
 
-    const chatService = screen.getByLabelText('챗 서비스') as HTMLSelectElement
-    await waitFor(() => expect(chatService.value).toBe('openai'))
+    const chatGrid = screen.getByTestId('chat-service-grid')
+    await waitFor(() => {
+      const openaiBtn = within(chatGrid).getByText('OpenAI').closest('button')!
+      expect(openaiBtn.getAttribute('aria-pressed')).toBe('true')
+    })
     const keyInput = screen.getByLabelText('챗 API 키') as HTMLInputElement
     expect(keyInput.placeholder).toContain('sk-c****9999')
   })

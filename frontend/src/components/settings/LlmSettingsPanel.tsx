@@ -391,18 +391,38 @@ export function LlmSettingsPanel() {
             비우면(요약과 동일) 요약 모델을 사용합니다. 실시간 챗에 CLI(Claude Code·Antigravity·Codex)는 6~7초 지연으로 부적합합니다.
           </p>
 
-          <label htmlFor="chat-service" className="block text-xs text-gray-600 mb-1">챗 서비스</label>
-          <select
-            id="chat-service"
-            value={chatPresetId}
-            onChange={(e) => handleChatServiceSelect(e.target.value)}
-            className="mb-2 w-full rounded-md border px-3 py-2 text-sm bg-white min-h-[44px]"
-          >
-            <option value="">요약과 동일</option>
-            {SERVICE_PRESETS.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+          <label id="chat-service-label" className="block text-xs text-gray-600 mb-2">챗 서비스</label>
+          <div role="group" aria-labelledby="chat-service-label" data-testid="chat-service-grid" className="mb-2 grid grid-cols-4 gap-2">
+            <button
+              type="button"
+              aria-pressed={chatPresetId === ''}
+              onClick={() => handleChatServiceSelect('')}
+              className={`rounded-lg border p-3 text-left transition-all ${
+                chatPresetId === ''
+                  ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                  : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+              }`}
+            >
+              <p className="text-sm font-medium">요약과 동일</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">요약 모델 그대로 사용</p>
+            </button>
+            {SERVICE_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                aria-pressed={chatPresetId === preset.id}
+                onClick={() => handleChatServiceSelect(preset.id)}
+                className={`rounded-lg border p-3 text-left transition-all ${
+                  chatPresetId === preset.id
+                    ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                    : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                }`}
+              >
+                <p className="text-sm font-medium">{preset.name}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{preset.description}</p>
+              </button>
             ))}
-          </select>
+          </div>
 
           {chatPresetId !== '' && chatRequiresKey && (
             <div className="mb-2">
