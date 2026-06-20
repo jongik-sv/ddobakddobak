@@ -118,4 +118,15 @@ RSpec.describe LlmPrompts do
       expect(out).to include(Meeting::PREVIOUS_MEETING_CUT_LINE)
     end
   end
+
+  describe "챗 답변 압축 (목표 B)" do
+    it "MEETING_CHAT: 체언종결 브레비티 지시 포함" do
+      expect(LlmPrompts::MEETING_CHAT_SYSTEM_PROMPT).to include("명사형/체언 종결")
+      expect(LlmPrompts::MEETING_CHAT_SYSTEM_PROMPT).to include("서론·맺음말")
+    end
+    it "FOLDER_CHAT: 체언종결 브레비티 지시 포함" do
+      expect(LlmPrompts::FOLDER_CHAT_SYSTEM_PROMPT).to include("명사형/체언 종결")
+      expect(LlmPrompts::FOLDER_CHAT_SYSTEM_PROMPT).to include("서론·맺음말")
+    end
+  end
 end
