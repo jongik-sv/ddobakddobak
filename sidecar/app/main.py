@@ -24,6 +24,10 @@ async def lifespan(app: FastAPI):
     app.state.engine_lock = asyncio.Lock()
     app.state.gpu_lock = asyncio.Lock()  # Metal GPU 동시 접근 방지
     app.state.refine_locks = {}  # 회의별 LLM 동시 호출 방지 (값=락+waiter 카운트 entry, llm.refine_notes가 관리·정리)
+    from app.embeddings.encoder import KureEncoder
+    from app.config import settings as _settings
+    app.state.embedder = KureEncoder(_settings.EMBED_MODEL, _settings.EMBED_MODEL_VERSION, _settings.EMBED_DEVICE)
+    app.state.embed_lock = asyncio.Lock()
 
     yield
 
@@ -39,10 +43,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-from app.routers import health, llm, settings as settings_router, speakers, stt
+from app.routers import embeddings, health, llm, settings as settings_router, speakers, stt
 
 app.include_router(health.router)
 app.include_router(speakers.router)
 app.include_router(settings_router.router)
 app.include_router(llm.router)
 app.include_router(stt.router)
+app.include_router(embeddings.router)

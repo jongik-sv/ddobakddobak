@@ -8,7 +8,9 @@ RSpec.describe FolderChatJob, type: :job do
   let!(:answer) { create(:chat_message, meeting: nil, scope_type: "folder", scope_id: folder.id, user: user, role: "assistant", status: "pending", content: "") }
 
   before do
-    allow(FolderChatKeywords).to receive(:extract).and_return(%w[예산])
+    allow(FolderChatQueryExpansion).to receive(:expand).and_return(
+      FolderChatQueryExpansion::Result.new(keywords: %w[예산], expansions: %w[예산])
+    )
     fake = instance_double(LlmService, answer_question: "예산은 오천입니다.")
     allow(LlmService).to receive(:new).and_return(fake)
   end
@@ -53,5 +55,12 @@ RSpec.describe FolderChatJob, type: :job do
     answer.reload
     expect(answer.content).to eq("본문")
     expect(answer.suggestions).to eq(%w[q1 q2 q3])
+  end
+
+  it "질문 content를 query_text로 FolderChatContext에 넘긴다" do
+    expect(FolderChatContext).to receive(:build).with(
+      hash_including(query_text: "예산?")
+    ).and_return({ system_prompt: "sp", user_content: "uc" })
+    FolderChatJob.perform_now(answer.id)
   end
 end

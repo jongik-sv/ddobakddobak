@@ -19,4 +19,27 @@ RSpec.describe LlmPrompts do
       expect(LlmPrompts::CITATION_MARKER_INSTRUCTION).to be_frozen
     end
   end
+
+  describe "VERBOSITY_CHAR_LIMITS very_detailed 유한 캡" do
+    it "final very_detailed 캡이 20,000자다(타임아웃 방지)" do
+      expect(LlmPrompts::VERBOSITY_CHAR_LIMITS.dig(:final, "very_detailed")).to eq(20_000)
+    end
+
+    it "realtime very_detailed 캡이 10,000자다" do
+      expect(LlmPrompts::VERBOSITY_CHAR_LIMITS.dig(:realtime, "very_detailed")).to eq(10_000)
+    end
+
+    it "기존 detailed/standard 값은 불변이다" do
+      expect(LlmPrompts::VERBOSITY_CHAR_LIMITS.dig(:final, "detailed")).to eq(15_000)
+      expect(LlmPrompts::VERBOSITY_CHAR_LIMITS.dig(:final, "standard")).to eq(10_000)
+      expect(LlmPrompts::VERBOSITY_CHAR_LIMITS.dig(:realtime, "detailed")).to eq(8_000)
+    end
+  end
+
+  describe "VERBOSITY_STYLES very_detailed" do
+    it "'분량 제한 없이' 표현이 캡과 모순되지 않게 제거됐다" do
+      expect(LlmPrompts::VERBOSITY_STYLES["very_detailed"]).not_to include("분량 제한 없이")
+      expect(LlmPrompts::VERBOSITY_STYLES["very_detailed"]).to include("충실하게")
+    end
+  end
 end

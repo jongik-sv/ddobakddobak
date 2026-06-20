@@ -154,31 +154,34 @@ module LlmPrompts
     "very_detailed" => "아주 상세"
   }.freeze
 
-  # 문체 지시. standard 는 문체 지시 없음(현행 보존), very_detailed 는 분량 캡 없음.
+  # 문체 지시. standard 는 문체 지시 없음(현행 보존).
+  # very_detailed 도 유한 캡(final 20,000/realtime 10,000)을 가지므로(아래 VERBOSITY_CHAR_LIMITS),
+  # 문체 문구에서 "분량 제한 없이" 표현은 제거한다 — apply_verbosity 가 append 하는 "약 N자 이내" 캡과 모순되기 때문.
   VERBOSITY_STYLES = {
     "very_concise"  => "핵심 결정·액션아이템 위주로만 기록하세요. 각 항목은 한 문장, 부연·배경 설명 생략. 표는 꼭 필요할 때만.",
     "concise"       => "각 항목을 1문장으로 기록하세요. 표는 최소화하고 부연 설명은 생략하세요.",
     "standard"      => nil,
     "detailed"      => "논의의 맥락과 근거를 충실히 기록하세요. 표를 적극 활용하세요.",
-    "very_detailed" => "발언 흐름·근거·반론까지 모두 기록하세요. 표·mermaid 를 적극 활용하고 분량 제한 없이 충실하게 작성하세요."
+    "very_detailed" => "발언 흐름·근거·반론까지 모두 기록하세요. 표·mermaid 를 적극 활용하고 가능한 한 충실하게 작성하세요."
   }.freeze
 
   # 회의록 전체 글자수 캡(약). realtime 틱은 작게(지연 직결), final/파일전사는 여유.
-  # nil = 캡 없음. ~95자/s 기준: realtime standard 4,000자 ≈ 42초.
+  # nil = 캡 없음(현재 모든 항목에 유한 캡 부여). ~95자/s 기준: realtime standard 4,000자 ≈ 42초.
+  # very_detailed 도 유한 캡: 무한(nil)이면 큰 회의에서 claude CLI 360초 타임아웃 → 요약 미저장.
   VERBOSITY_CHAR_LIMITS = {
     realtime: {
       "very_concise"  => 1_000,
       "concise"       => 2_000,
       "standard"      => 4_000,
       "detailed"      => 8_000,
-      "very_detailed" => nil
+      "very_detailed" => 10_000
     }.freeze,
     final: {
       "very_concise"  => 2_000,
       "concise"       => 4_000,
       "standard"      => 10_000,
       "detailed"      => 15_000,
-      "very_detailed" => nil
+      "very_detailed" => 20_000
     }.freeze
   }.freeze
 
@@ -305,14 +308,15 @@ module LlmPrompts
     - 센티넬 줄은 답변 본문이 아니므로, 본문 안에서는 절대 언급하거나 설명하지 마세요.
   PROMPT
 
-  # 폴더/프로젝트 챗: 자연어 질문에서 FTS 검색 키워드를 뽑는다(경량 호출).
-  FOLDER_CHAT_KEYWORD_PROMPT = <<~PROMPT.freeze
-    너는 한국어 회의 검색 도우미다. 사용자의 질문에서 전문(full-text) 검색에 쓸 핵심 키워드만 뽑아라.
+  # 폴더/프로젝트 챗 쿼리 확장: 한 번의 호출로 FTS 키워드 + 의미검색 확장어를 함께 뽑는다.
+  FOLDER_CHAT_EXPANSION_PROMPT = <<~PROMPT.freeze
+    너는 한국어 회의 검색 도우미다. 사용자 질문을 검색용으로 확장한다.
+    아래 두 가지를 JSON 객체 하나로만 출력한다:
+    - "keywords": 전문(full-text) 검색용 핵심 키워드. 명사·고유명사·핵심 동사 어근 위주, 조사·어미·불용어 제거. 각 키워드는 공백 없는 단어 1개. 5개 이하.
+    - "expansions": 질문의 핵심 의미를 나타내는 동의어·약어·다른 표현 3~5개. 원문 표현을 반드시 포함한다. 기술 용어는 표준 약어/풀네임을 함께 넣어라(예: "시리얼 통신" → "RS232","UART","직렬 통신"). 각 항목은 검색 쿼리로 쓸 짧은 구.
     규칙:
-    - 명사·고유명사·핵심 동사 어근 위주. 조사·어미·불용어(그/저/뭐/어떻게/했어 등)는 제거한다.
-    - 동의어·약어가 떠오르면 함께 넣어 recall을 높인다(예: "예산" → "예산","비용").
-    - 5개 이하. 각 키워드는 공백 없는 단어 1개.
-    - 출력은 JSON 배열만. 설명·코드펜스 금지. 예: ["예산","일정","포항공장"]
+    - 출력은 JSON 객체만. 설명·코드펜스 금지.
+    - 예: {"keywords":["시리얼","통신"],"expansions":["시리얼 통신","RS232","UART","직렬 통신"]}
   PROMPT
 
   # 폴더/프로젝트 챗 시스템 프롬프트: 여러 회의의 검색 스니펫을 근거로 답한다(회의ID 인용).

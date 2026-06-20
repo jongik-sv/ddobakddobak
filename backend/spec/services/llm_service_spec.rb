@@ -46,10 +46,15 @@ RSpec.describe LlmService, "ok signalling" do
       expect(captured_system_prompt("very_concise", verbosity_context: :realtime)).to include("약 1,000자")
     end
 
-    it "very_detailed has style but no char cap" do
-      prompt = captured_system_prompt("very_detailed")
-      expect(prompt).to include("분량 지시 (아주 상세)")
-      expect(prompt).not_to include("자 이내로 유지")
+    it "very_detailed now carries a finite cap (final 20,000 / realtime 10,000) to avoid CLI timeout" do
+      final_prompt = captured_system_prompt("very_detailed")
+      expect(final_prompt).to include("분량 지시 (아주 상세)")
+      expect(final_prompt).to include("약 20,000자")
+      expect(final_prompt).to include("자 이내로 유지")
+      expect(final_prompt).not_to include("분량 제한 없이")
+
+      realtime_prompt = captured_system_prompt("very_detailed", verbosity_context: :realtime)
+      expect(realtime_prompt).to include("약 10,000자")
     end
 
     it "leaves the prompt unchanged for unknown levels" do
@@ -140,6 +145,14 @@ RSpec.describe LlmService, "ok signalling" do
       svc = LlmService.allocate
       out = svc.send(:format_transcripts, [{ "speaker_label" => "화자 3", "speaker" => "장종익", "text" => "제안", "started_at_ms" => 53000 }])
       expect(out).to eq("[화자 안내] 화자 3=장종익\n\n[00:53|53000ms 화자 3] 장종익: 제안")
+    end
+  end
+
+  # CLI_TIMEOUT 기본값: ENV(LLM_CLI_TIMEOUT) 미설정 시 600초 (긴 요약의 CLI 타임아웃 방지)
+  describe "CLI_TIMEOUT default" do
+    it "defaults to 600 seconds when LLM_CLI_TIMEOUT is unset" do
+      skip "LLM_CLI_TIMEOUT is set in this env (#{ENV['LLM_CLI_TIMEOUT']})" if ENV.key?("LLM_CLI_TIMEOUT")
+      expect(LlmService::CLI_TIMEOUT).to eq(600)
     end
   end
 

@@ -2,6 +2,9 @@ class Transcript < ApplicationRecord
   include FtsIndexable
   fts_table :transcripts_fts, columns: %i[content speaker_label speaker_name]
 
+  include Embeddable
+  embeddable content_column: :content
+
   belongs_to :meeting
 
   validates :content, presence: true
