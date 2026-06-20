@@ -40,8 +40,7 @@ export function presetIdFromUserConfig(provider: string | null, baseUrl: string 
   const b = (baseUrl ?? '').trim()
   if (provider === 'anthropic') {
     if (!b) return 'anthropic'
-    if (b.includes('z.ai')) return 'zai'
-    return 'zai'
+    return b.includes('z.ai') ? 'zai' : 'anthropic'
   }
   if (provider === 'openai') {
     if (!b) return 'openai'

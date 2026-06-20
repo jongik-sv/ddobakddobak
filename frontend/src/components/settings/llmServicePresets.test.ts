@@ -24,6 +24,7 @@ describe('llmServicePresets', () => {
     expect(presetIdFromUserConfig('codex_cli', '')).toBe('codex_cli')
     expect(presetIdFromUserConfig('anthropic', null)).toBe('anthropic')
     expect(presetIdFromUserConfig('anthropic', 'https://api.z.ai/api/anthropic')).toBe('zai')
+    expect(presetIdFromUserConfig('anthropic', 'https://my-proxy.example/anthropic')).toBe('anthropic')
     expect(presetIdFromUserConfig('openai', '')).toBe('openai')
     expect(presetIdFromUserConfig('openai', 'http://localhost:11434/v1')).toBe('ollama')
     expect(presetIdFromUserConfig('openai', 'http://localhost:1234/v1')).toBe('lmstudio')
