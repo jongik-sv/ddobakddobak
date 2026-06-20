@@ -106,5 +106,63 @@ RSpec.describe User, "chat LLM config", type: :model do
         expect(user.effective_chat_llm_config).to eq(user.effective_llm_config)
       end
     end
+
+    context "global chat tier (no personal LLM at all)" do
+      # 전역 챗 ENV. CHAT_LLM_MODEL 외 키도 보존/복원.
+      around do |example|
+        keys = %w[CHAT_LLM_PROVIDER CHAT_LLM_AUTH_TOKEN CHAT_LLM_BASE_URL]
+        prev = keys.index_with { |k| ENV[k] }
+        example.run
+        keys.each { |k| prev[k].nil? ? ENV.delete(k) : ENV[k] = prev[k] }
+      end
+
+      it "uses server_default_chat_llm_config when ENV[CHAT_LLM_PROVIDER] is set and user has no personal LLM" do
+        ENV["CHAT_LLM_PROVIDER"]   = "openai"
+        ENV["CHAT_LLM_AUTH_TOKEN"] = "global-chat-key"
+        ENV["CHAT_LLM_BASE_URL"]   = "http://localhost:11434/v1"
+        ENV["CHAT_LLM_MODEL"]      = "llama-3.1-8b"
+        user = build(:user, llm_provider: nil, llm_api_key: nil)
+
+        cfg = user.effective_chat_llm_config
+        expect(cfg[:provider]).to eq("openai")
+        expect(cfg[:auth_token]).to eq("global-chat-key")
+        expect(cfg[:base_url]).to eq("http://localhost:11434/v1")
+        expect(cfg[:model]).to eq("llama-3.1-8b")
+      end
+
+      it "personal summary wins over global chat tier (tier 2 before tier 3)" do
+        ENV["CHAT_LLM_PROVIDER"]   = "openai"
+        ENV["CHAT_LLM_AUTH_TOKEN"] = "global-chat-key"
+        ENV["CHAT_LLM_MODEL"]      = "llama-3.1-8b"
+        user = build(:user,
+          llm_provider: "anthropic", llm_api_key: "sk-user", llm_model: "claude-sonnet-4-6", llm_enabled: true,
+          chat_llm_model: nil
+        )
+
+        cfg = user.effective_chat_llm_config
+        # 개인 요약 프로바이더를 따르고, 모델만 ENV override
+        expect(cfg[:provider]).to eq("anthropic")
+        expect(cfg[:auth_token]).to eq("sk-user")
+        expect(cfg[:model]).to eq("llama-3.1-8b")
+      end
+    end
+
+    describe ".server_default_chat_llm_config" do
+      around do |example|
+        keys = %w[CHAT_LLM_PROVIDER CHAT_LLM_AUTH_TOKEN CHAT_LLM_BASE_URL CHAT_LLM_MODEL]
+        prev = keys.index_with { |k| ENV[k] }
+        example.run
+        keys.each { |k| prev[k].nil? ? ENV.delete(k) : ENV[k] = prev[k] }
+      end
+
+      it "builds a compact config from CHAT_LLM_* ENV" do
+        ENV["CHAT_LLM_PROVIDER"]   = "openai"
+        ENV["CHAT_LLM_AUTH_TOKEN"] = "k"
+        ENV["CHAT_LLM_BASE_URL"]   = "http://x/v1"
+        ENV["CHAT_LLM_MODEL"]      = "m"
+        cfg = User.server_default_chat_llm_config
+        expect(cfg).to eq(provider: "openai", auth_token: "k", base_url: "http://x/v1", model: "m")
+      end
+    end
   end
 end
