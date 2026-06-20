@@ -151,6 +151,22 @@ RSpec.describe User, "LLM settings", type: :model do
     end
   end
 
+  describe "CLI provider (키 없음)" do
+    it "claude_cli + 키 없음이면 configured로 인정하고 effective_llm_config가 CLI config를 빌드한다" do
+      user = create(:user, llm_provider: "claude_cli", llm_api_key: nil, llm_model: "sonnet", llm_enabled: true)
+      expect(user.llm_configured?).to be(true)
+      expect(user.llm_has_settings?).to be(true)
+      cfg = user.effective_llm_config
+      expect(cfg[:provider]).to eq("claude_cli")
+      expect(cfg[:model]).to eq("sonnet")
+    end
+
+    it "비-CLI provider는 여전히 키를 요구한다(회귀 가드)" do
+      user = create(:user, llm_provider: "anthropic", llm_api_key: nil, llm_enabled: true)
+      expect(user.llm_configured?).to be(false)
+    end
+  end
+
   describe "factory traits" do
     it "creates user with :with_llm_config trait" do
       user = create(:user, :with_llm_config)

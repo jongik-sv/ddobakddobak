@@ -359,6 +359,37 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
   end
 
   # ============================================================
+  # CLI provider 저장/테스트
+  # ============================================================
+  describe "CLI provider 저장/테스트" do
+    it "claude_cli를 키 없이 저장하고 provider를 영속한다" do
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "claude_cli", model: "sonnet" }
+      }, as: :json
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_provider).to eq("claude_cli")
+      expect(user.llm_configured?).to be(true)
+      expect(user.effective_llm_config[:provider]).to eq("claude_cli")
+      expect(user.effective_llm_config[:model]).to eq("sonnet")
+    end
+
+    it "POST test: CLI provider는 LlmService 호출 없이 success skip" do
+      expect(LlmService).not_to receive(:new)
+      post "/api/v1/user/llm_settings/test", params: { provider: "gemini_cli", model: "x" }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["success"]).to be(true)
+    end
+
+    it "여전히 알 수 없는 provider는 422" do
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "bogus_provider" }
+      }, as: :json
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+  end
+
+  # ============================================================
   # API 키 마스킹 검증
   # ============================================================
   describe "API 키 마스킹" do

@@ -1,26 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
-import { getLlmSettings, updateLlmSettings, testLlmConnection, fetchOllamaModels, fetchLmStudioModels } from '../../api/settings'
+import { useState, useEffect } from 'react'
+import { getLlmSettings, updateLlmSettings, testLlmConnection } from '../../api/settings'
 import type { LlmSettings } from '../../api/settings'
-
-const LOCAL_MODEL_FETCHERS: Record<string, (baseUrl: string) => Promise<string[]>> = {
-  ollama: fetchOllamaModels,
-  lmstudio: fetchLmStudioModels,
-}
-const isLocalListable = (presetId: string) => presetId in LOCAL_MODEL_FETCHERS
-
-const SERVICE_PRESETS = [
-  { id: 'claude_cli', name: 'Claude Code', provider: 'claude_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['sonnet', 'opus', 'haiku'], description: 'Claude Code CLI (키 불필요)' },
-  { id: 'gemini_cli', name: 'Antigravity CLI', provider: 'gemini_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['Gemini 3.5 Flash (Medium)', 'Gemini 3.5 Flash (High)', 'Gemini 3.5 Flash (Low)', 'Gemini 3.1 Pro (Low)', 'Gemini 3.1 Pro (High)', 'Claude Sonnet 4.6 (Thinking)', 'Claude Opus 4.6 (Thinking)', 'GPT-OSS 120B (Medium)'], description: 'Antigravity CLI(agy) — Gemini CLI 후속. agy models 기준' },
-  { id: 'codex_cli', name: 'Codex CLI', provider: 'codex_cli' as const, defaultBaseUrl: '', requiresApiKey: false, suggestedModels: ['gpt-5.5', 'gpt-5.4-mini'], description: 'Codex CLI (키 불필요)' },
-  { id: 'anthropic', name: 'Anthropic', provider: 'anthropic' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: ['claude-sonnet-4-6', 'claude-haiku-4-5'], description: 'Claude API (키 필요)' },
-  { id: 'zai', name: 'Z.AI', provider: 'anthropic' as const, defaultBaseUrl: 'https://api.z.ai/api/anthropic', requiresApiKey: true, suggestedModels: ['glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-5v-turbo', 'glm-4.7', 'glm-4.5-air'], description: 'GLM 모델 (Anthropic 호환)' },
-  { id: 'openai', name: 'OpenAI', provider: 'openai' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: ['gpt-4o', 'gpt-4o-mini'], description: 'GPT 모델 (키 필요)' },
-  { id: 'ollama', name: 'Ollama', provider: 'openai' as const, defaultBaseUrl: 'http://localhost:11434/v1', requiresApiKey: false, suggestedModels: [], description: '로컬 실행 (키 불필요)' },
-  { id: 'lmstudio', name: 'LM Studio', provider: 'openai' as const, defaultBaseUrl: 'http://localhost:1234/v1', requiresApiKey: false, suggestedModels: [], description: '로컬 실행 (키 불필요)' },
-  { id: 'custom', name: '직접 입력', provider: 'openai' as const, defaultBaseUrl: '', requiresApiKey: true, suggestedModels: [], description: '호환 API 직접 설정' },
-] as const
-
-const CLI_PRESET_IDS = new Set<string>(SERVICE_PRESETS.filter((p) => !p.requiresApiKey && !p.defaultBaseUrl).map((p) => p.id))
+import { SERVICE_PRESETS } from './llmServicePresets'
+import LlmProviderCard from './LlmProviderCard'
+import type { LlmProviderCardValue } from './LlmProviderCard'
 
 interface PresetFormState {
   auth_token: string
@@ -30,7 +13,7 @@ interface PresetFormState {
   max_output_tokens: number
 }
 
-/** AI(LLM) 요약 모델 설정 카드: 서비스 프리셋 선택 + 키/모델/토큰 제한 + 연결 테스트/저장. */
+/** AI(LLM) 요약/챗 모델 설정 카드: 요약 카드 + AI 챗 카드 2분할. */
 export function LlmSettingsPanel() {
   const [llmSettings, setLlmSettings] = useState<LlmSettings | null>(null)
   const [presetCache, setPresetCache] = useState<Record<string, PresetFormState>>({})
@@ -40,18 +23,11 @@ export function LlmSettingsPanel() {
   const [llmError, setLlmError] = useState<string | null>(null)
   const [llmTesting, setLlmTesting] = useState(false)
   const [llmTestResult, setLlmTestResult] = useState<{ success: boolean; error?: string } | null>(null)
-  const [localModels, setLocalModels] = useState<string[]>([])
-  const [localModelsLoading, setLocalModelsLoading] = useState(false)
-  const [localModelsError, setLocalModelsError] = useState<string | null>(null)
-  const [useCustomModel, setUseCustomModel] = useState(false)
   const [chatPresetId, setChatPresetId] = useState('')      // '' = 요약과 동일
   const [chatAuthToken, setChatAuthToken] = useState('')
   const [chatBaseUrl, setChatBaseUrl] = useState('')
   const [chatModel, setChatModel] = useState('')
   const [chatMaskedToken, setChatMaskedToken] = useState('')
-  const [chatLocalModels, setChatLocalModels] = useState<string[]>([])
-  const [chatLocalModelsLoading, setChatLocalModelsLoading] = useState(false)
-  const [chatLocalModelsError, setChatLocalModelsError] = useState<string | null>(null)
 
   useEffect(() => {
     getLlmSettings().then((llm) => {
@@ -85,7 +61,7 @@ export function LlmSettingsPanel() {
   }, [])
 
   const currentForm = presetCache[selectedPreset] || { auth_token: '', base_url: '', model: '', max_input_tokens: 200000, max_output_tokens: 10000 }
-  const updateCurrentForm = (updates: Partial<PresetFormState>) => {
+  const updateCurrentForm = (updates: Partial<LlmProviderCardValue>) => {
     setPresetCache((c) => ({
       ...c,
       [selectedPreset]: { ...currentForm, ...updates },
@@ -94,8 +70,8 @@ export function LlmSettingsPanel() {
 
   const handlePresetSelect = (presetId: string) => {
     setSelectedPreset(presetId)
-    const presetDef = SERVICE_PRESETS.find((p) => p.id === presetId)
     if (!presetCache[presetId]) {
+      const presetDef = SERVICE_PRESETS.find((p) => p.id === presetId)
       setPresetCache((c) => ({
         ...c,
         [presetId]: {
@@ -107,71 +83,8 @@ export function LlmSettingsPanel() {
         },
       }))
     }
-    setUseCustomModel(false)
     setLlmTestResult(null)
-    setLocalModels([])
-    setLocalModelsError(null)
   }
-
-  const loadLocalModels = useCallback(async (presetId: string, baseUrl: string) => {
-    setLocalModelsLoading(true)
-    setLocalModelsError(null)
-    try {
-      const fetcher = LOCAL_MODEL_FETCHERS[presetId]
-      const models = fetcher ? await fetcher(baseUrl) : []
-      setLocalModels(models)
-      if (models.length > 0 && !currentForm.model) {
-        updateCurrentForm({ model: models[0] })
-      }
-    } catch {
-      setLocalModelsError('로컬 서버에 연결할 수 없습니다. 실행 중인지 확인하세요.')
-      setLocalModels([])
-    } finally {
-      setLocalModelsLoading(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentForm.model, selectedPreset])
-
-  useEffect(() => {
-    if (isLocalListable(selectedPreset) && currentForm.base_url) {
-      loadLocalModels(selectedPreset, currentForm.base_url)
-    }
-  }, [selectedPreset, currentForm.base_url, loadLocalModels])
-
-  const loadChatLocalModels = useCallback(async (presetId: string, baseUrl: string) => {
-    setChatLocalModelsLoading(true)
-    setChatLocalModelsError(null)
-    try {
-      const fetcher = LOCAL_MODEL_FETCHERS[presetId]
-      const models = fetcher ? await fetcher(baseUrl) : []
-      setChatLocalModels(models)
-      if (models.length > 0 && !chatModel) {
-        setChatModel(models[0])
-      }
-    } catch {
-      setChatLocalModelsError('로컬 서버에 연결할 수 없습니다. 실행 중인지 확인하세요.')
-      setChatLocalModels([])
-    } finally {
-      setChatLocalModelsLoading(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatModel])
-
-  useEffect(() => {
-    if (isLocalListable(chatPresetId) && chatBaseUrl) {
-      loadChatLocalModels(chatPresetId, chatBaseUrl)
-    }
-  }, [chatPresetId, chatBaseUrl, loadChatLocalModels])
-
-  const currentPreset = SERVICE_PRESETS.find((p) => p.id === selectedPreset)!
-  const modelOptions = isLocalListable(selectedPreset) ? localModels : currentPreset.suggestedModels
-  const showModelSelect = modelOptions.length > 0 && !useCustomModel
-
-  const chatPreset = SERVICE_PRESETS.find((p) => p.id === chatPresetId)
-  const chatActualProvider = chatPreset?.provider ?? ''
-  const chatIsCli = chatPresetId !== '' && CLI_PRESET_IDS.has(chatPresetId)
-  const chatRequiresKey = chatPreset?.requiresApiKey ?? false
-  const chatModelSuggestions: readonly string[] = isLocalListable(chatPresetId) ? chatLocalModels : (chatPreset?.suggestedModels ?? [])
 
   const handleChatServiceSelect = (id: string) => {
     setChatPresetId(id)
@@ -180,9 +93,11 @@ export function LlmSettingsPanel() {
     setChatModel(def?.suggestedModels[0] ?? '')
     setChatAuthToken('')
     setChatMaskedToken('')
-    setChatLocalModels([])
-    setChatLocalModelsError(null)
   }
+
+  const currentPreset = SERVICE_PRESETS.find((p) => p.id === selectedPreset)!
+  const chatPreset = SERVICE_PRESETS.find((p) => p.id === chatPresetId)
+  const chatActualProvider = chatPreset?.provider ?? ''
 
   const handleLlmTest = async () => {
     setLlmTesting(true)
@@ -269,276 +184,54 @@ export function LlmSettingsPanel() {
       </p>
 
       <div className="space-y-4">
-        {/* 서비스 프리셋 카드 */}
-        <div>
-          <label className="block text-sm font-medium mb-2">서비스 선택</label>
-          <div className="grid grid-cols-4 gap-2">
-            {SERVICE_PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                onClick={() => handlePresetSelect(preset.id)}
-                className={`
-                  rounded-lg border p-3 text-left transition-all
-                  ${selectedPreset === preset.id
-                    ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
-                    : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                  }
-                `}
-              >
-                <div className="flex items-center gap-1">
-                  <p className="text-sm font-medium">{preset.name}</p>
-                  {llmSettings?.active_preset === preset.id && (
-                    <span className="text-[10px] text-green-600 font-medium">●</span>
-                  )}
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{preset.description}</p>
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* 요약 모델 카드 */}
+        <LlmProviderCard
+          title="요약 모델"
+          idPrefix="summary"
+          presets={SERVICE_PRESETS}
+          showTokenLimits
+          value={{
+            presetId: selectedPreset,
+            base_url: currentForm.base_url,
+            model: currentForm.model,
+            auth_token: currentForm.auth_token,
+            max_input_tokens: currentForm.max_input_tokens,
+            max_output_tokens: currentForm.max_output_tokens,
+          }}
+          maskedToken={llmSettings?.presets?.[selectedPreset]?.auth_token_masked ?? undefined}
+          onSelectPreset={handlePresetSelect}
+          onChange={updateCurrentForm}
+        />
 
-        {/* CLI 프로바이더 안내 */}
-        {CLI_PRESET_IDS.has(selectedPreset) && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            <p className="font-medium mb-1">CLI 모드 안내</p>
-            <p className="text-xs leading-relaxed">
-              CLI 모드는 호출마다 프로세스를 새로 시작하여 <strong>약 6~7초의 지연</strong>이 발생합니다.
-              실시간 회의록에는 부적합하며, <strong>일회성 테스트나 배치 작업</strong>에 적합합니다.
-              실시간 요약이 필요하면 API 키 방식(Anthropic, Z.AI, OpenAI 등)을 사용하세요.
-            </p>
-          </div>
-        )}
+        {/* AI 챗 모델 카드 */}
+        <LlmProviderCard
+          title="AI 챗 모델"
+          idPrefix="chat"
+          presets={SERVICE_PRESETS}
+          noneOption={{ id: '', label: '요약과 동일', description: '요약 모델 그대로 사용' }}
+          value={{ presetId: chatPresetId, base_url: chatBaseUrl, model: chatModel, auth_token: chatAuthToken }}
+          maskedToken={chatMaskedToken || undefined}
+          onSelectPreset={handleChatServiceSelect}
+          onChange={(p) => {
+            if (p.base_url !== undefined) setChatBaseUrl(p.base_url)
+            if (p.model !== undefined) setChatModel(p.model)
+            if (p.auth_token !== undefined) setChatAuthToken(p.auth_token)
+          }}
+        />
 
-        {/* API Base URL (CLI 프로바이더에서는 불필요) */}
-        {!CLI_PRESET_IDS.has(selectedPreset) && (
-          <div>
-            <label className="block text-sm font-medium mb-1">API Base URL</label>
+        {/* ADDENDUM B: 레거시 챗 모델 입력 (요약과 동일일 때만) */}
+        {chatPresetId === '' && (
+          <div className="mt-2">
+            <label htmlFor="chat-legacy-model" className="block text-xs text-gray-600 mb-1">챗 모델</label>
             <input
-              type="text"
-              value={currentForm.base_url}
-              onChange={(e) => updateCurrentForm({ base_url: e.target.value })}
-              placeholder={currentPreset.defaultBaseUrl || 'https://api.anthropic.com'}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
-            />
-          </div>
-        )}
-
-        {/* API Key (Ollama이면 숨김) */}
-        {currentPreset.requiresApiKey && (() => {
-          const serverPreset = llmSettings?.presets?.[selectedPreset]
-          const tokenMasked = serverPreset?.auth_token_masked
-          return (
-            <div>
-              <label className="block text-sm font-medium mb-1">API Key</label>
-              <input
-                type="password"
-                value={currentForm.auth_token}
-                onChange={(e) => updateCurrentForm({ auth_token: e.target.value })}
-                placeholder={tokenMasked || '토큰을 입력하세요'}
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
-              />
-              {tokenMasked && !currentForm.auth_token && (
-                <p className="text-xs text-muted-foreground mt-1">현재: {tokenMasked}</p>
-              )}
-            </div>
-          )
-        })()}
-
-        {/* 모델명 */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="block text-sm font-medium">회의록 작성 모델명</label>
-            {modelOptions.length > 0 && (
-              <button
-                onClick={() => setUseCustomModel(!useCustomModel)}
-                className="text-xs text-blue-600 hover:text-blue-800"
-              >
-                {useCustomModel ? '목록에서 선택' : '직접 입력'}
-              </button>
-            )}
-            {isLocalListable(selectedPreset) && (
-              <button
-                onClick={() => loadLocalModels(selectedPreset, currentForm.base_url)}
-                disabled={localModelsLoading}
-                className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
-              >
-                {localModelsLoading ? '감지 중...' : '모델 새로고침'}
-              </button>
-            )}
-          </div>
-          {showModelSelect ? (
-            <select
-              value={currentForm.model}
-              onChange={(e) => updateCurrentForm({ model: e.target.value })}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono bg-white min-h-[44px]"
-            >
-              {modelOptions.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          ) : (
-            <input
-              type="text"
-              value={currentForm.model}
-              onChange={(e) => updateCurrentForm({ model: e.target.value })}
-              placeholder="모델명을 입력하세요"
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
-            />
-          )}
-          {isLocalListable(selectedPreset) && localModelsError && (
-            <p className="text-xs text-yellow-600 mt-1">{localModelsError}</p>
-          )}
-          {isLocalListable(selectedPreset) && localModels.length === 0 && !localModelsLoading && !localModelsError && (
-            <p className="text-xs text-muted-foreground mt-1">불러온 모델이 없습니다. 서버에 모델이 로드되어 있는지 확인하세요.</p>
-          )}
-        </div>
-
-        {/* 토큰 제한 */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">최대 입력 토큰</label>
-            <input
-              type="number"
-              value={currentForm.max_input_tokens}
-              onChange={(e) => updateCurrentForm({ max_input_tokens: parseInt(e.target.value) || 0 })}
-              placeholder="200000"
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
-            />
-            <p className="text-xs text-muted-foreground mt-1">기본: 200,000</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">최대 출력 토큰</label>
-            <input
-              type="number"
-              value={currentForm.max_output_tokens}
-              onChange={(e) => updateCurrentForm({ max_output_tokens: parseInt(e.target.value) || 0 })}
-              placeholder="32768"
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring font-mono min-h-[44px]"
-            />
-            <p className="text-xs text-muted-foreground mt-1">기본: 32,768 (회의록이 길면 늘리세요)</p>
-          </div>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          사용 중인 모델의 스펙에 맞게 설정하세요. 모르겠으면 기본값을 유지하면 됩니다.
-        </p>
-
-        {/* AI 챗 모델 (독립 섹션) */}
-        <section className="mt-6 border-t border-gray-200 pt-4">
-          <h3 className="text-sm font-semibold text-gray-800">AI 챗 모델 (독립)</h3>
-          <p className="mb-2 text-xs text-gray-500">
-            비우면(요약과 동일) 요약 모델을 사용합니다. 실시간 챗에 CLI(Claude Code·Antigravity·Codex)는 6~7초 지연으로 부적합합니다.
-          </p>
-
-          <label id="chat-service-label" className="block text-xs text-gray-600 mb-2">챗 서비스</label>
-          <div role="group" aria-labelledby="chat-service-label" data-testid="chat-service-grid" className="mb-2 grid grid-cols-4 gap-2">
-            <button
-              type="button"
-              aria-pressed={chatPresetId === ''}
-              onClick={() => handleChatServiceSelect('')}
-              className={`rounded-lg border p-3 text-left transition-all ${
-                chatPresetId === ''
-                  ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
-                  : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-              }`}
-            >
-              <p className="text-sm font-medium">요약과 동일</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">요약 모델 그대로 사용</p>
-            </button>
-            {SERVICE_PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                aria-pressed={chatPresetId === preset.id}
-                onClick={() => handleChatServiceSelect(preset.id)}
-                className={`rounded-lg border p-3 text-left transition-all ${
-                  chatPresetId === preset.id
-                    ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
-                    : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                }`}
-              >
-                <p className="text-sm font-medium">{preset.name}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{preset.description}</p>
-              </button>
-            ))}
-          </div>
-
-          {chatPresetId !== '' && chatRequiresKey && (
-            <div className="mb-2">
-              <label htmlFor="chat-key" className="block text-xs text-gray-600 mb-1">챗 API 키</label>
-              <input
-                id="chat-key"
-                type="password"
-                value={chatAuthToken}
-                onChange={(e) => setChatAuthToken(e.target.value)}
-                placeholder={chatMaskedToken || '토큰을 입력하세요'}
-                className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]"
-              />
-              {chatMaskedToken && !chatAuthToken && (
-                <p className="text-xs text-muted-foreground mt-1">현재: {chatMaskedToken}</p>
-              )}
-            </div>
-          )}
-
-          {chatPresetId !== '' && !chatIsCli && (
-            <div className="mb-2">
-              <label htmlFor="chat-base" className="block text-xs text-gray-600 mb-1">챗 base URL</label>
-              <input
-                id="chat-base"
-                type="text"
-                value={chatBaseUrl}
-                onChange={(e) => setChatBaseUrl(e.target.value)}
-                placeholder={chatPreset?.defaultBaseUrl || 'https://api.anthropic.com'}
-                className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]"
-              />
-            </div>
-          )}
-
-          <div className="flex items-center justify-between mb-1">
-            <label htmlFor="chat-model" className="block text-xs text-gray-600">챗 모델</label>
-            {isLocalListable(chatPresetId) && (
-              <button
-                type="button"
-                onClick={() => loadChatLocalModels(chatPresetId, chatBaseUrl)}
-                disabled={chatLocalModelsLoading}
-                className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
-                aria-label="모델 새로고침"
-              >
-                {chatLocalModelsLoading ? '감지 중...' : '모델 새로고침'}
-              </button>
-            )}
-          </div>
-          {chatModelSuggestions.length > 0 ? (
-            <select
-              id="chat-model"
-              value={chatModel}
-              onChange={(e) => setChatModel(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm bg-white font-mono min-h-[44px]"
-            >
-              {(chatModel && !chatModelSuggestions.includes(chatModel)
-                ? [...chatModelSuggestions, chatModel]
-                : chatModelSuggestions
-              ).map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          ) : (
-            <input
-              id="chat-model"
-              type="text"
+              id="chat-legacy-model"
               value={chatModel}
               onChange={(e) => setChatModel(e.target.value)}
               placeholder="모델명을 입력하세요 (비우면 요약 모델)"
               className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]"
             />
-          )}
-          {isLocalListable(chatPresetId) && chatLocalModelsError && (
-            <p className="text-xs text-yellow-600 mt-1">{chatLocalModelsError}</p>
-          )}
-          {isLocalListable(chatPresetId) && chatLocalModels.length === 0 && !chatLocalModelsLoading && !chatLocalModelsError && (
-            <p className="text-xs text-muted-foreground mt-1">불러온 모델이 없습니다. 서버에 모델이 로드되어 있는지 확인하세요.</p>
-          )}
-          <p className="text-xs text-muted-foreground mt-1">비우면 요약 모델을 사용합니다</p>
-        </section>
+          </div>
+        )}
 
         {/* 버튼 + 결과 */}
         <div className="flex items-center gap-2">
