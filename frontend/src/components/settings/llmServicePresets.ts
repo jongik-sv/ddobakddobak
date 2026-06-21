@@ -29,6 +29,12 @@ export const LOCAL_MODEL_FETCHERS: Record<string, (baseUrl: string) => Promise<s
 
 export const isLocalListable = (presetId: string): boolean => presetId in LOCAL_MODEL_FETCHERS
 
+/** 프리셋 선택 시 폼 기본값(base_url/model/auth_token). 알 수 없는 id면 빈 폼. */
+export function presetFormDefaults(id: string): { base_url: string; model: string; auth_token: string } {
+  const p = SERVICE_PRESETS.find((x) => x.id === id)
+  return { base_url: p?.defaultBaseUrl ?? '', model: p?.suggestedModels[0] ?? '', auth_token: '' }
+}
+
 export const CLI_PRESET_IDS = new Set<string>(
   SERVICE_PRESETS.filter((p) => !p.requiresApiKey && !p.defaultBaseUrl).map((p) => p.id),
 )

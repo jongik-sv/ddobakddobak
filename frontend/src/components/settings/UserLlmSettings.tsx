@@ -11,7 +11,7 @@ import type {
 } from '../../api/userLlmSettings'
 import { UserLlmStatusBanner } from './UserLlmStatusBanner'
 import LlmProviderCard from './LlmProviderCard'
-import { SERVICE_PRESETS, presetIdFromUserConfig } from './llmServicePresets'
+import { SERVICE_PRESETS, presetIdFromUserConfig, presetFormDefaults } from './llmServicePresets'
 
 export default function UserLlmSettings() {
   const [settings, setSettings] = useState<UserLlmSettingsResponse | null>(null)
@@ -54,12 +54,7 @@ export default function UserLlmSettings() {
 
   const handleSummarySelect = (id: string) => {
     setSummaryPresetId(id)
-    if (id === 'none') {
-      setSummaryForm({ base_url: '', model: '', auth_token: '' })
-    } else {
-      const preset = SERVICE_PRESETS.find((p) => p.id === id)
-      setSummaryForm({ base_url: preset?.defaultBaseUrl ?? '', model: preset?.suggestedModels[0] ?? '', auth_token: '' })
-    }
+    setSummaryForm(id === 'none' ? { base_url: '', model: '', auth_token: '' } : presetFormDefaults(id))
     setTestResult(null)
     setError(null)
     setSuccess(null)
@@ -67,12 +62,7 @@ export default function UserLlmSettings() {
 
   const handleChatSelect = (id: string) => {
     setChatPresetId(id)
-    if (id === '') {
-      setChatForm({ base_url: '', model: '', auth_token: '' })
-    } else {
-      const preset = SERVICE_PRESETS.find((p) => p.id === id)
-      setChatForm({ base_url: preset?.defaultBaseUrl ?? '', model: preset?.suggestedModels[0] ?? '', auth_token: '' })
-    }
+    setChatForm(id === '' ? { base_url: '', model: '', auth_token: '' } : presetFormDefaults(id))
     setError(null)
     setSuccess(null)
   }

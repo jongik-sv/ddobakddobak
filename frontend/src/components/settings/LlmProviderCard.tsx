@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { type ServicePreset, LOCAL_MODEL_FETCHERS, isLocalListable, CLI_PRESET_IDS } from './llmServicePresets'
 
 export interface LlmProviderCardValue {
@@ -18,17 +18,18 @@ export interface LlmProviderCardProps {
   value: LlmProviderCardValue
   maskedToken?: string
   showTokenLimits?: boolean
-  showCliBanner?: boolean
   onSelectPreset: (presetId: string) => void
   onChange: (partial: Partial<LlmProviderCardValue>) => void
 }
 
 export function LlmProviderCard(props: LlmProviderCardProps) {
-  const { title, idPrefix, presets, noneOption, value, maskedToken, showTokenLimits, showCliBanner = true, onSelectPreset, onChange } = props
+  const { title, idPrefix, presets, noneOption, value, maskedToken, showTokenLimits, onSelectPreset, onChange } = props
   const [useCustomModel, setUseCustomModel] = useState(false)
   const [localModels, setLocalModels] = useState<string[]>([])
   const [localLoading, setLocalLoading] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
+  const modelRef = useRef(value.model)
+  modelRef.current = value.model
 
   const preset = presets.find((p) => p.id === value.presetId)
   const isNone = !!noneOption && value.presetId === noneOption.id
@@ -41,13 +42,13 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
       const fetcher = LOCAL_MODEL_FETCHERS[value.presetId]
       const models = fetcher ? await fetcher(baseUrl) : []
       setLocalModels(models)
-      if (models.length > 0 && !value.model) onChange({ model: models[0] })
+      if (models.length > 0 && !modelRef.current) onChange({ model: models[0] })
     } catch {
       setLocalError('로컬 서버에 연결할 수 없습니다. 실행 중인지 확인하세요.')
       setLocalModels([])
     } finally { setLocalLoading(false) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value.presetId, value.model])
+  }, [value.presetId])
 
   useEffect(() => {
     if (isLocalListable(value.presetId) && value.base_url) loadLocal(value.base_url)
@@ -77,14 +78,15 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
         ))}
       </div>
 
-      {!isNone && showCliBanner && isCli && (
+      {!isNone && (<>
+      {isCli && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 mb-3">
           <p className="font-medium mb-1">CLI 모드 안내</p>
           <p className="text-xs leading-relaxed">CLI 모드는 호출마다 프로세스를 새로 시작하여 <strong>약 6~7초 지연</strong>이 발생합니다. 실시간에는 부적합하며 일회성 테스트·배치에 적합합니다.</p>
         </div>
       )}
 
-      {!isNone && !isCli && (
+      {!isCli && (
         <div className="mb-3">
           <label htmlFor={`${idPrefix}-base`} className="block text-sm font-medium mb-1">API Base URL</label>
           <input id={`${idPrefix}-base`} type="text" value={value.base_url}
@@ -94,7 +96,7 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
         </div>
       )}
 
-      {!isNone && requiresKey && (
+      {requiresKey && (
         <div className="mb-3">
           <label htmlFor={`${idPrefix}-key`} className="block text-sm font-medium mb-1">API Key</label>
           <input id={`${idPrefix}-key`} type="password" value={value.auth_token}
@@ -105,40 +107,38 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
         </div>
       )}
 
-      {!isNone && (
-        <div className="mb-3">
-          <div className="flex items-center justify-between mb-1">
-            <label htmlFor={`${idPrefix}-model`} className="block text-sm font-medium">모델명</label>
-            <div className="flex gap-2">
-              {modelOptions.length > 0 && (
-                <button type="button" onClick={() => setUseCustomModel((v) => !v)} className="text-xs text-blue-600 hover:text-blue-800">
-                  {useCustomModel ? '목록에서 선택' : '직접 입력'}
-                </button>
-              )}
-              {isLocalListable(value.presetId) && (
-                <button type="button" aria-label="모델 새로고침" disabled={localLoading}
-                  onClick={() => loadLocal(value.base_url)} className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50">
-                  {localLoading ? '감지 중...' : '모델 새로고침'}
-                </button>
-              )}
-            </div>
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-1">
+          <label htmlFor={`${idPrefix}-model`} className="block text-sm font-medium">모델명</label>
+          <div className="flex gap-2">
+            {modelOptions.length > 0 && (
+              <button type="button" onClick={() => setUseCustomModel((v) => !v)} className="text-xs text-blue-600 hover:text-blue-800">
+                {useCustomModel ? '목록에서 선택' : '직접 입력'}
+              </button>
+            )}
+            {isLocalListable(value.presetId) && (
+              <button type="button" aria-label="모델 새로고침" disabled={localLoading}
+                onClick={() => loadLocal(value.base_url)} className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50">
+                {localLoading ? '감지 중...' : '모델 새로고침'}
+              </button>
+            )}
           </div>
-          {showModelSelect ? (
-            <select id={`${idPrefix}-model`} value={value.model} onChange={(e) => onChange({ model: e.target.value })}
-              className="w-full rounded-md border px-3 py-2 text-sm bg-white font-mono min-h-[44px]">
-              {(value.model && !modelOptions.includes(value.model) ? [...modelOptions, value.model] : modelOptions).map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          ) : (
-            <input id={`${idPrefix}-model`} type="text" value={value.model} onChange={(e) => onChange({ model: e.target.value })}
-              placeholder="모델명을 입력하세요" className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]" />
-          )}
-          {isLocalListable(value.presetId) && localError && <p className="text-xs text-yellow-600 mt-1">{localError}</p>}
         </div>
-      )}
+        {showModelSelect ? (
+          <select id={`${idPrefix}-model`} value={value.model} onChange={(e) => onChange({ model: e.target.value })}
+            className="w-full rounded-md border px-3 py-2 text-sm bg-white font-mono min-h-[44px]">
+            {(value.model && !modelOptions.includes(value.model) ? [...modelOptions, value.model] : modelOptions).map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        ) : (
+          <input id={`${idPrefix}-model`} type="text" value={value.model} onChange={(e) => onChange({ model: e.target.value })}
+            placeholder="모델명을 입력하세요" className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]" />
+        )}
+        {isLocalListable(value.presetId) && localError && <p className="text-xs text-yellow-600 mt-1">{localError}</p>}
+      </div>
 
-      {!isNone && showTokenLimits && (
+      {showTokenLimits && (
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label htmlFor={`${idPrefix}-maxin`} className="block text-sm font-medium mb-1">최대 입력 토큰</label>
@@ -154,6 +154,7 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
           </div>
         </div>
       )}
+      </>)}
     </div>
   )
 }
