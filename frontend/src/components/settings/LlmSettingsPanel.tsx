@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getLlmSettings, updateLlmSettings, testLlmConnection } from '../../api/settings'
 import type { LlmSettings } from '../../api/settings'
-import { SERVICE_PRESETS } from './llmServicePresets'
+import { SERVICE_PRESETS, presetFormDefaults } from './llmServicePresets'
 import LlmProviderCard from './LlmProviderCard'
 import type { LlmProviderCardValue } from './LlmProviderCard'
 
@@ -24,9 +24,7 @@ export function LlmSettingsPanel() {
   const [llmTesting, setLlmTesting] = useState(false)
   const [llmTestResult, setLlmTestResult] = useState<{ success: boolean; error?: string } | null>(null)
   const [chatPresetId, setChatPresetId] = useState('')      // '' = 요약과 동일
-  const [chatAuthToken, setChatAuthToken] = useState('')
-  const [chatBaseUrl, setChatBaseUrl] = useState('')
-  const [chatModel, setChatModel] = useState('')
+  const [chatForm, setChatForm] = useState({ base_url: '', model: '', auth_token: '' })
   const [chatMaskedToken, setChatMaskedToken] = useState('')
 
   useEffect(() => {
@@ -37,15 +35,13 @@ export function LlmSettingsPanel() {
       const chat = llm.chat
       if (chat && chat.provider) {
         setChatPresetId(chat.preset_id || '')
-        setChatBaseUrl(chat.base_url || '')
-        setChatModel(chat.model || '')
+        setChatForm({ base_url: chat.base_url || '', model: chat.model || '', auth_token: '' })
         setChatMaskedToken(chat.auth_token_masked || '')
       } else {
         setChatPresetId('')
-        setChatModel(llm.chat_model || '')
+        setChatForm({ base_url: '', model: llm.chat_model || '', auth_token: '' })
         setChatMaskedToken('')
       }
-      setChatAuthToken('')
       const cache: Record<string, PresetFormState> = {}
       for (const [id, preset] of Object.entries(llm.presets || {})) {
         cache[id] = {
@@ -62,25 +58,20 @@ export function LlmSettingsPanel() {
 
   const currentForm = presetCache[selectedPreset] || { auth_token: '', base_url: '', model: '', max_input_tokens: 200000, max_output_tokens: 10000 }
   const updateCurrentForm = (updates: Partial<LlmProviderCardValue>) => {
+    // 함수형 업데이터: 렌더 시점 스냅샷(currentForm)이 아니라 최신 캐시(c)에 병합한다.
+    // 비동기 onChange(로컬 모델 자동채움 등)가 동시 편집(base_url/token)을 덮어쓰는 것을 방지.
     setPresetCache((c) => ({
       ...c,
-      [selectedPreset]: { ...currentForm, ...updates },
+      [selectedPreset]: { ...(c[selectedPreset] ?? currentForm), ...updates },
     }))
   }
 
   const handlePresetSelect = (presetId: string) => {
     setSelectedPreset(presetId)
     if (!presetCache[presetId]) {
-      const presetDef = SERVICE_PRESETS.find((p) => p.id === presetId)
       setPresetCache((c) => ({
         ...c,
-        [presetId]: {
-          auth_token: '',
-          base_url: presetDef?.defaultBaseUrl ?? '',
-          model: presetDef?.suggestedModels[0] ?? '',
-          max_input_tokens: 200000,
-          max_output_tokens: 10000,
-        },
+        [presetId]: { ...presetFormDefaults(presetId), max_input_tokens: 200000, max_output_tokens: 10000 },
       }))
     }
     setLlmTestResult(null)
@@ -88,14 +79,16 @@ export function LlmSettingsPanel() {
 
   const handleChatServiceSelect = (id: string) => {
     setChatPresetId(id)
-    const def = SERVICE_PRESETS.find((p) => p.id === id)
-    setChatBaseUrl(def?.defaultBaseUrl ?? '')
-    setChatModel(def?.suggestedModels[0] ?? '')
-    setChatAuthToken('')
+    setChatForm(presetFormDefaults(id))
     setChatMaskedToken('')
   }
 
-  const currentPreset = SERVICE_PRESETS.find((p) => p.id === selectedPreset)!
+  // selectedPreset이 SERVICE_PRESETS에 없는 id(예: 백엔드의 out-of-band active_preset)일 수 있으므로
+  // non-null 단언 대신 안전한 기본 프리셋(anthropic, 없으면 첫 항목)으로 폴백한다. 유효 프리셋 동작은 불변.
+  const currentPreset =
+    SERVICE_PRESETS.find((p) => p.id === selectedPreset) ??
+    SERVICE_PRESETS.find((p) => p.id === 'anthropic') ??
+    SERVICE_PRESETS[0]
   const chatPreset = SERVICE_PRESETS.find((p) => p.id === chatPresetId)
   const chatActualProvider = chatPreset?.provider ?? ''
 
@@ -141,14 +134,14 @@ export function LlmSettingsPanel() {
           : {
               preset_id: chatPresetId,
               provider: chatActualProvider,
-              base_url: chatBaseUrl,
-              model: chatModel,
-              ...(chatAuthToken ? { auth_token: chatAuthToken } : {}),
+              base_url: chatForm.base_url,
+              model: chatForm.model,
+              ...(chatForm.auth_token ? { auth_token: chatForm.auth_token } : {}),
             }
 
       const result = await updateLlmSettings({
         active_preset: selectedPreset,
-        chat_model: chatPresetId === '' ? (chatModel.trim() || '') : '',
+        chat_model: chatPresetId === '' ? (chatForm.model.trim() || '') : '',
         chat: chatPayload,
         preset_id: selectedPreset,
         preset_data: presetData,
@@ -158,15 +151,13 @@ export function LlmSettingsPanel() {
       const rc = result.chat
       if (rc && rc.provider) {
         setChatPresetId(rc.preset_id || '')
-        setChatBaseUrl(rc.base_url || '')
-        setChatModel(rc.model || '')
+        setChatForm({ base_url: rc.base_url || '', model: rc.model || '', auth_token: '' })
         setChatMaskedToken(rc.auth_token_masked || '')
       } else {
         setChatPresetId('')
-        setChatModel(result.chat_model || '')
+        setChatForm({ base_url: '', model: result.chat_model || '', auth_token: '' })
         setChatMaskedToken('')
       }
-      setChatAuthToken('')
       updateCurrentForm({ auth_token: '' })
       setLlmSuccess('AI 설정이 저장되었습니다.')
     } catch {
@@ -209,14 +200,10 @@ export function LlmSettingsPanel() {
           idPrefix="chat"
           presets={SERVICE_PRESETS}
           noneOption={{ id: '', label: '요약과 동일', description: '요약 모델 그대로 사용' }}
-          value={{ presetId: chatPresetId, base_url: chatBaseUrl, model: chatModel, auth_token: chatAuthToken }}
+          value={{ presetId: chatPresetId, ...chatForm }}
           maskedToken={chatMaskedToken || undefined}
           onSelectPreset={handleChatServiceSelect}
-          onChange={(p) => {
-            if (p.base_url !== undefined) setChatBaseUrl(p.base_url)
-            if (p.model !== undefined) setChatModel(p.model)
-            if (p.auth_token !== undefined) setChatAuthToken(p.auth_token)
-          }}
+          onChange={(p) => setChatForm((f) => ({ ...f, ...p }))}
         />
 
         {/* ADDENDUM B: 레거시 챗 모델 입력 (요약과 동일일 때만) */}
@@ -225,8 +212,8 @@ export function LlmSettingsPanel() {
             <label htmlFor="chat-legacy-model" className="block text-xs text-gray-600 mb-1">챗 모델</label>
             <input
               id="chat-legacy-model"
-              value={chatModel}
-              onChange={(e) => setChatModel(e.target.value)}
+              value={chatForm.model}
+              onChange={(e) => setChatForm((f) => ({ ...f, model: e.target.value }))}
               placeholder="모델명을 입력하세요 (비우면 요약 모델)"
               className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]"
             />

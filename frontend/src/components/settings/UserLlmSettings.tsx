@@ -11,7 +11,7 @@ import type {
 } from '../../api/userLlmSettings'
 import { UserLlmStatusBanner } from './UserLlmStatusBanner'
 import LlmProviderCard from './LlmProviderCard'
-import { SERVICE_PRESETS, presetIdFromUserConfig } from './llmServicePresets'
+import { SERVICE_PRESETS, presetIdFromUserConfig, presetFormDefaults } from './llmServicePresets'
 
 export default function UserLlmSettings() {
   const [settings, setSettings] = useState<UserLlmSettingsResponse | null>(null)
@@ -54,12 +54,7 @@ export default function UserLlmSettings() {
 
   const handleSummarySelect = (id: string) => {
     setSummaryPresetId(id)
-    if (id === 'none') {
-      setSummaryForm({ base_url: '', model: '', auth_token: '' })
-    } else {
-      const preset = SERVICE_PRESETS.find((p) => p.id === id)
-      setSummaryForm({ base_url: preset?.defaultBaseUrl ?? '', model: preset?.suggestedModels[0] ?? '', auth_token: '' })
-    }
+    setSummaryForm(id === 'none' ? { base_url: '', model: '', auth_token: '' } : presetFormDefaults(id))
     setTestResult(null)
     setError(null)
     setSuccess(null)
@@ -67,12 +62,7 @@ export default function UserLlmSettings() {
 
   const handleChatSelect = (id: string) => {
     setChatPresetId(id)
-    if (id === '') {
-      setChatForm({ base_url: '', model: '', auth_token: '' })
-    } else {
-      const preset = SERVICE_PRESETS.find((p) => p.id === id)
-      setChatForm({ base_url: preset?.defaultBaseUrl ?? '', model: preset?.suggestedModels[0] ?? '', auth_token: '' })
-    }
+    setChatForm(id === '' ? { base_url: '', model: '', auth_token: '' } : presetFormDefaults(id))
     setError(null)
     setSuccess(null)
   }
@@ -140,8 +130,10 @@ export default function UserLlmSettings() {
     setError(null)
     setSuccess(null)
     try {
+      // 전체 초기화: 요약과 챗을 모두 비운다. 백엔드 계약상 빈 provider 저장은
+      // 기본적으로 chat_llm_* 를 보존하므로, 완전 초기화엔 reset_all:true 가 필요하다.
       const result = await updateUserLlmSettings({
-        llm_settings: { provider: '' },
+        llm_settings: { provider: '', reset_all: true },
       })
       setSettings(result)
       initFormFromSettings(result)
@@ -169,6 +161,20 @@ export default function UserLlmSettings() {
 
   const hasSettings = settings?.llm_settings.has_settings ?? false
   const isEnabled = settings?.llm_settings.enabled ?? true
+
+  // 저장된 provider와 현재 선택한 카드가 일치할 때만 마스크를 넘긴다.
+  // 다른 provider로 전환하면 stale 마스크가 키 placeholder/"현재:" 로 잘못 노출되어
+  // 키 없이 저장하도록 유도하는 버그를 막는다.
+  const savedSummaryPresetId = settings
+    ? presetIdFromUserConfig(settings.llm_settings.provider ?? null, settings.llm_settings.base_url ?? null) ?? 'none'
+    : 'none'
+  const savedChatPresetId = settings
+    ? presetIdFromUserConfig(settings.llm_settings.chat_provider ?? null, settings.llm_settings.chat_base_url ?? null) ?? ''
+    : ''
+  const summaryMask =
+    summaryPresetId === savedSummaryPresetId ? settings?.llm_settings.api_key_masked ?? undefined : undefined
+  const chatMask =
+    chatPresetId === savedChatPresetId ? settings?.llm_settings.chat_api_key_masked ?? undefined : undefined
   // 토글 OFF이고 설정이 있으면 폼을 숨긴다 (배너만 표시)
   const showForm = !hasSettings || isEnabled
 
@@ -226,7 +232,7 @@ export default function UserLlmSettings() {
             presets={SERVICE_PRESETS}
             noneOption={{ id: 'none', label: '선택 안함', description: '서버 기본 LLM 사용' }}
             value={{ presetId: summaryPresetId, ...summaryForm }}
-            maskedToken={settings.llm_settings.api_key_masked ?? undefined}
+            maskedToken={summaryMask}
             onSelectPreset={handleSummarySelect}
             onChange={(p) => setSummaryForm((f) => ({ ...f, ...p }))}
           />
@@ -238,7 +244,7 @@ export default function UserLlmSettings() {
             presets={SERVICE_PRESETS}
             noneOption={{ id: '', label: '요약과 동일', description: '요약 모델 그대로 사용' }}
             value={{ presetId: chatPresetId, ...chatForm }}
-            maskedToken={settings.llm_settings.chat_api_key_masked ?? undefined}
+            maskedToken={chatMask}
             onSelectPreset={handleChatSelect}
             onChange={(p) => setChatForm((f) => ({ ...f, ...p }))}
           />
