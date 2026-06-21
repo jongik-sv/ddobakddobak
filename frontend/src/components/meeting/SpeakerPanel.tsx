@@ -111,7 +111,7 @@ export function SpeakerPanel({
     clearSpeakerNames()
   }
 
-  // 마지막 점프 ms(전역) — 빠른 연타로 timeupdate가 아직 안 온 경우 base 보강용
+  // 마지막 점프 ms(이 인스턴스 한정) — 빠른 연타로 timeupdate가 아직 안 온 경우 base 보강용
   const lastJumpMsRef = useRef<number>(-1)
   function jumpToSpeaker(speakerId: string) {
     if (!onSpeakerSeek) return
@@ -149,23 +149,22 @@ export function SpeakerPanel({
           </button>
         </div>
 
-        {visibleSpeakers.map((speaker) => (
+        {visibleSpeakers.map((speaker) => {
+          // 배지 공통 클래스 — span/button 두 분기 드리프트 방지
+          const badgeClass = `shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold ${speakerColor(speaker.id)}`
+          return (
           <div key={speaker.id} className="flex items-center gap-2 min-h-[44px]">
             {onSpeakerSeek ? (
               <button
                 type="button"
                 onClick={() => jumpToSpeaker(speaker.id)}
                 title="이 화자 발화로 이동"
-                className={`shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold cursor-pointer hover:ring-1 hover:ring-blue-300 ${speakerColor(speaker.id)}`}
+                className={`${badgeClass} cursor-pointer hover:ring-1 hover:ring-blue-300`}
               >
                 {speaker.id}
               </button>
             ) : (
-              <span
-                className={`shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold ${speakerColor(speaker.id)}`}
-              >
-                {speaker.id}
-              </span>
+              <span className={badgeClass}>{speaker.id}</span>
             )}
 
             {editingId === speaker.id ? (
@@ -189,7 +188,8 @@ export function SpeakerPanel({
               </button>
             )}
           </div>
-        ))}
+          )
+        })}
       </div>
     )
 

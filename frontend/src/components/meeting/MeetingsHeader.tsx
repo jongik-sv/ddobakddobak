@@ -1,4 +1,5 @@
 import { Search, X, Filter, UserPlus, Upload, MessagesSquare } from 'lucide-react'
+import { Tooltip } from '../ui/Tooltip'
 
 interface MeetingsHeaderProps {
   isDesktop: boolean
@@ -61,49 +62,58 @@ export function MeetingsHeader({
       <div className="flex items-center gap-2">
         {!isDesktop && (
           <>
-            <button
-              data-testid="mobile-search-toggle"
-              onClick={onSearchExpand}
-              className="p-2 rounded-md hover:bg-muted transition-colors"
-            >
-              <Search className="w-5 h-5" />
-            </button>
-            <button
-              data-testid="mobile-filter-toggle"
-              onClick={onOpenFilterSheet}
-              className="p-2 rounded-md hover:bg-muted transition-colors"
-            >
-              <Filter className="w-5 h-5" />
-            </button>
-            <button
-              data-testid="mobile-join-meeting"
-              onClick={onJoinMeeting}
-              className="p-2 rounded-md hover:bg-muted transition-colors"
-              title="회의 참여 (공유 코드)"
-              aria-label="회의 참여"
-            >
-              <UserPlus className="w-5 h-5" />
-            </button>
-            <button
-              data-testid="mobile-upload-audio"
-              onClick={onUploadAudio}
-              className="p-2 rounded-md hover:bg-muted transition-colors"
-              title="오디오 파일 업로드"
-              aria-label="오디오 업로드"
-            >
-              <Upload className="w-5 h-5" />
-            </button>
-            {canAsk && (
+            <Tooltip text="검색">
               <button
-                data-testid="mobile-ask-folder"
-                type="button"
-                onClick={onAskFolder}
-                className="p-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                title="폴더에게 묻기"
-                aria-label="폴더에게 묻기"
+                data-testid="mobile-search-toggle"
+                onClick={onSearchExpand}
+                className="p-2 rounded-md hover:bg-muted transition-colors"
+                aria-label="검색"
               >
-                <MessagesSquare className="w-5 h-5" />
+                <Search className="w-5 h-5" />
               </button>
+            </Tooltip>
+            <Tooltip text="필터">
+              <button
+                data-testid="mobile-filter-toggle"
+                onClick={onOpenFilterSheet}
+                className="p-2 rounded-md hover:bg-muted transition-colors"
+                aria-label="필터"
+              >
+                <Filter className="w-5 h-5" />
+              </button>
+            </Tooltip>
+            <Tooltip text="회의 참여 (공유 코드)">
+              <button
+                data-testid="mobile-join-meeting"
+                onClick={onJoinMeeting}
+                className="p-2 rounded-md hover:bg-muted transition-colors"
+                aria-label="회의 참여"
+              >
+                <UserPlus className="w-5 h-5" />
+              </button>
+            </Tooltip>
+            <Tooltip text="오디오 파일 업로드">
+              <button
+                data-testid="mobile-upload-audio"
+                onClick={onUploadAudio}
+                className="p-2 rounded-md hover:bg-muted transition-colors"
+                aria-label="오디오 업로드"
+              >
+                <Upload className="w-5 h-5" />
+              </button>
+            </Tooltip>
+            {canAsk && (
+              <Tooltip text="폴더에게 묻기">
+                <button
+                  data-testid="mobile-ask-folder"
+                  type="button"
+                  onClick={onAskFolder}
+                  className="p-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                  aria-label="폴더에게 묻기"
+                >
+                  <MessagesSquare className="w-5 h-5" />
+                </button>
+              </Tooltip>
             )}
           </>
         )}

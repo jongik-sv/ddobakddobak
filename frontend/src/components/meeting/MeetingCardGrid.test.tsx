@@ -71,4 +71,23 @@ describe('MeetingCardGrid 중요/잠금 표시', () => {
     expect(screen.getByLabelText('잠긴 회의')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '중요 해제' })).toBeDisabled()
   })
+
+  it('예약된 pending 회의는 예약중 배지와 예약 정보 줄을 표시한다', () => {
+    renderGrid([
+      makeMeeting({
+        status: 'pending',
+        scheduled_start_time: '2026-03-09T07:05:00',
+        auto_start_mode: 'auto',
+      }),
+    ])
+    expect(screen.getByText('예약중')).toBeInTheDocument()
+    expect(screen.queryByText('대기중')).not.toBeInTheDocument()
+    expect(screen.getByText(/2026\.03\.09 07:05 · 자동/)).toBeInTheDocument()
+  })
+
+  it('예약 정보 없는 pending 회의는 대기중 배지를 유지한다', () => {
+    renderGrid([makeMeeting({ status: 'pending', scheduled_start_time: null })])
+    expect(screen.getByText('대기중')).toBeInTheDocument()
+    expect(screen.queryByText('예약중')).not.toBeInTheDocument()
+  })
 })

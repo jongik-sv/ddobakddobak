@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Mic, CheckCircle2, Clock, FileText, Plus, WifiOff, type LucideIcon } from 'lucide-react'
+import { Mic, CheckCircle2, Clock, FileText, Plus, WifiOff, CalendarClock, type LucideIcon } from 'lucide-react'
 import { getMeetings } from '../api/meetings'
 import type { Meeting } from '../api/meetings'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useProjectStore } from '../stores/projectStore'
 import { CreateMeetingModal } from '../components/meeting/CreateMeetingModal'
+import { StatusBadge } from '../components/meeting/MeetingListUI'
+import { formatScheduledStart, scheduleSummary } from '../lib/meetingFormat'
+import { MissedScheduledMeetings } from '../components/meeting/MissedScheduledMeetings'
+import { UpcomingScheduledMeetings } from '../components/meeting/UpcomingScheduledMeetings'
 import { DashboardStatsSkeleton, DashboardMeetingsSkeleton } from '../components/ui/Skeleton'
 import { IS_TAURI, IS_MOBILE } from '../config'
 import * as localStore from '../stt/localStore'
@@ -49,30 +53,10 @@ function StatCard({ icon: Icon, iconBg, iconColor, label, value, onClick }: Stat
   )
 }
 
-/* ── 상태 뱃지 ── */
-const STATUS_BADGE: Record<string, { bg: string; text: string; label: string; pulse?: boolean }> = {
-  recording: { bg: 'bg-red-100', text: 'text-red-700', label: '녹음중', pulse: true },
-  completed: { bg: 'bg-green-100', text: 'text-green-700', label: '완료' },
-  pending:   { bg: 'bg-gray-100', text: 'text-gray-500', label: '대기중' },
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_BADGE[status]
-  if (!cfg) return null
-  return (
-    <span className={`text-xs px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text} flex items-center gap-1`}>
-      {cfg.pulse && (
-        <span className="inline-block w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-      )}
-      {cfg.label}
-    </span>
-  )
-}
-
 type StatusCounts = Partial<Record<Meeting['status'], number>>
 
 // 모듈 레벨 캐시 — 페이지 전환 시 이전 데이터 즉시 표시
-let dashboardCache: { projectId: number | null; meetings: Meeting[]; totalCount: number; statusCounts: StatusCounts } | null = null
+let dashboardCache: { projectId: number | null; meetings: Meeting[]; totalCount: number; statusCounts: StatusCounts; scheduledCount: number } | null = null
 
 export default function DashboardPage() {
   const navigate = useNavigate()
@@ -82,6 +66,8 @@ export default function DashboardPage() {
   const [meetings, setMeetings] = useState<Meeting[]>(cached?.meetings ?? [])
   const [totalCount, setTotalCount] = useState(cached?.totalCount ?? 0)
   const [statusCounts, setStatusCounts] = useState<StatusCounts>(cached?.statusCounts ?? {})
+  // 예약된(pending) 회의 수 — meta.scheduled_count(백엔드 추가 중). 없으면 0.
+  const [scheduledCount, setScheduledCount] = useState(cached?.scheduledCount ?? 0)
   const [isLoading, setIsLoading] = useState(!cached)
   const [showModal, setShowModal] = useState(false)
   // 오프라인(온디바이스) 회의 건수 — Android에서만. null이면 통계 카드 미표시(비대상 플랫폼).
@@ -96,10 +82,13 @@ export default function DashboardPage() {
     getMeetings({ page: 1, per: 10, project_id: currentProjectId ?? undefined, show_all: true })
       .then((data) => {
         const counts = data.meta.status_counts ?? {}
+        // scheduled_count는 백엔드에서 추가 중 — 타입에 없을 수 있어 안전하게 옵셔널 접근.
+        const scheduled = (data.meta as { scheduled_count?: number }).scheduled_count ?? 0
         setMeetings(data.meetings)
         setTotalCount(data.meta.total)
         setStatusCounts(counts)
-        dashboardCache = { projectId: currentProjectId, meetings: data.meetings, totalCount: data.meta.total, statusCounts: counts }
+        setScheduledCount(scheduled)
+        dashboardCache = { projectId: currentProjectId, meetings: data.meetings, totalCount: data.meta.total, statusCounts: counts, scheduledCount: scheduled }
       })
       .catch(() => {})
       .finally(() => setIsLoading(false))
@@ -116,20 +105,27 @@ export default function DashboardPage() {
   const recordingCount = statusCounts.recording ?? 0
   const completedCount = statusCounts.completed ?? 0
   const pendingCount = statusCounts.pending ?? 0
-  const recentMeetings = meetings.slice(0, 5)
+  // 대기중에서 예약 회의는 분리 — 예약중 카드로 따로 집계한다.
+  const adjustedPending = Math.max(0, pendingCount - scheduledCount)
+  // 예약 회의는 전용 "예약된 회의" 섹션에만 노출 → 최근 회의에서 제외(중복 방지).
+  const recentMeetings = meetings
+    .filter((m) => !(m.status === 'pending' && m.scheduled_start_time))
+    .slice(0, 5)
   const showSkeleton = isLoading && meetings.length === 0
 
   const statCards: Omit<StatCardProps, 'onClick'>[] = [
     { icon: FileText,    iconBg: 'bg-blue-50',  iconColor: 'text-blue-600',  label: '전체 회의', value: totalCount },
     { icon: Mic,         iconBg: 'bg-red-50',   iconColor: 'text-red-500',   label: '녹음중',    value: recordingCount },
     { icon: CheckCircle2,iconBg: 'bg-green-50', iconColor: 'text-green-600', label: '완료',      value: completedCount },
-    { icon: Clock,       iconBg: 'bg-amber-50', iconColor: 'text-amber-600', label: '대기중',    value: pendingCount },
+    { icon: Clock,       iconBg: 'bg-amber-50', iconColor: 'text-amber-600', label: '대기중',    value: adjustedPending },
+    { icon: CalendarClock, iconBg: 'bg-indigo-50', iconColor: 'text-indigo-600', label: '예약중', value: scheduledCount },
     // 오프라인 회의 건수(Android만). 클릭 시 전용 홈으로.
     ...(offlineCount !== null
       ? [{ icon: WifiOff, iconBg: 'bg-slate-100', iconColor: 'text-slate-600', label: '오프라인 회의', value: offlineCount }]
       : []),
   ]
   const statLinks = ['/meetings', '/meetings?status=recording', '/meetings?status=completed', '/meetings?status=pending',
+    '/meetings?status=pending',
     ...(offlineCount !== null ? ['/local-meetings'] : [])]
 
   return (
@@ -150,18 +146,24 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {/* 놓친 예약 회의 안내 (없으면 미표시) */}
+      <MissedScheduledMeetings />
+
       {/* 통계 카드 */}
       {showSkeleton ? (
         <DashboardStatsSkeleton />
       ) : (
       <div className="overflow-x-auto mb-8">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-6">
         {statCards.map((card, i) => (
           <StatCard key={card.label} {...card} onClick={() => navigate(statLinks[i])} />
         ))}
       </div>
       </div>
       )}
+
+      {/* 예약된 회의 (다가오는 예약, 없으면 미표시) */}
+      {!showSkeleton && <UpcomingScheduledMeetings />}
 
       {/* 최근 회의 */}
       <div>
@@ -203,12 +205,17 @@ export default function DashboardPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <StatusBadge status={meeting.status} />
+                    <StatusBadge status={meeting.status} scheduled={meeting.status === 'pending' && !!meeting.scheduled_start_time} />
                     <span className="text-xs text-muted-foreground">
                       {formatDate(meeting.created_at)}
                     </span>
                   </div>
                 </div>
+                {meeting.status === 'pending' && meeting.scheduled_start_time && (
+                  <p className="text-xs text-indigo-600 mt-1">
+                    ⏰ {formatScheduledStart(meeting.scheduled_start_time)} · {scheduleSummary(meeting)}
+                  </p>
+                )}
                 {meeting.brief_summary && (
                   <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
                     {meeting.brief_summary}
@@ -227,7 +234,8 @@ export default function DashboardPage() {
           onClose={() => setShowModal(false)}
           onCreated={(meeting) => {
             addMeeting(meeting)
-            navigate(`/meetings/${meeting.id}/live`)
+            // 예약 회의는 라이브로 점프하지 않고 목록에 추가만(스케줄러가 예약 시각에 시작).
+            if (!meeting.scheduled_start_time) navigate(`/meetings/${meeting.id}/live`)
           }}
         />
       )}

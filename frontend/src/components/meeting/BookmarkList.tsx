@@ -88,7 +88,7 @@ export function BookmarkList({
           </button>
         )}
       </div>
-      {collapsible && !open ? null : bookmarks.length === 0 ? (
+      {(!collapsible || open) && (bookmarks.length === 0 ? (
         <p className="px-3 py-3 text-xs text-gray-400 leading-relaxed">
           {readOnly ? (
             '북마크가 없습니다.'
@@ -189,7 +189,7 @@ export function BookmarkList({
             )
           })}
         </ul>
-      )}
+      ))}
     </div>
   )
 }

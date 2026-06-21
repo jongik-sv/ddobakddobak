@@ -42,6 +42,7 @@ RSpec.describe "Api::V1::MeetingLock", type: :request do
       [:post,   "/api/v1/meetings/#{m}/feedback",                       { feedback: "x" }],
       [:post,   "/api/v1/meetings/#{m}/reapply_glossary",              {}],
       [:post,   "/api/v1/meetings/#{m}/apply_glossary_entry",          {}],
+      [:post,   "/api/v1/meetings/#{m}/dismiss_schedule",              {}],
       [:post,   "/api/v1/meetings/move_to_folder",                      { meeting_ids: [m] }],
 
       # transcripts

@@ -2,15 +2,32 @@ import { useState, useEffect } from 'react'
 import { X, Plus } from 'lucide-react'
 import { Dialog } from '../ui/Dialog'
 import { getMeetings } from '../../api/meetings'
-import type { Meeting } from '../../api/meetings'
+import type { Meeting, RecurrenceRule } from '../../api/meetings'
 import type { Tag } from '../../api/tags'
 import { getTags, createTag } from '../../api/tags'
 import { ENGINE_LABELS } from '../../config'
+import { ScheduleFields } from './ScheduleFields'
+import { scheduleStateFromMeeting, scheduleToPayload, type ScheduleFormState } from '../../lib/schedulePayload'
+
+export interface EditMeetingData {
+  title: string
+  meeting_type: string
+  tag_ids: number[]
+  brief_summary: string | null
+  attendees: string | null
+  expected_participants: number | null
+  shared: boolean
+  previous_meeting_id: number | null
+  /** 예약 시작(예약 회의만). pending 일 때 포함되며 null=예약 해제. */
+  scheduled_start_time?: string | null
+  auto_start_mode?: 'auto' | 'manual' | null
+  recurrence_rule?: RecurrenceRule | null
+}
 
 interface EditMeetingDialogProps {
   meeting: Meeting
   meetingTypeList: { value: string; label: string }[]
-  onConfirm: (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null; attendees: string | null; expected_participants: number | null; shared: boolean; previous_meeting_id: number | null }) => void
+  onConfirm: (data: EditMeetingData) => void
   onClose: () => void
   /** 공유 토글 비활성화 (비소유자가 여는 경우). 기본 false. */
   disabled?: boolean
@@ -39,6 +56,9 @@ export default function EditMeetingDialog({
     meeting.previous_meeting_id != null ? String(meeting.previous_meeting_id) : ''
   )
   const [folderMeetings, setFolderMeetings] = useState<Meeting[]>([])
+  // 예약 수정은 아직 시작하지 않은 회의(pending)에서만 노출/전송한다.
+  const isPending = meeting.status === 'pending'
+  const [schedule, setSchedule] = useState<ScheduleFormState>(() => scheduleStateFromMeeting(meeting))
 
   useEffect(() => {
     getTags().then(setAllTags).catch(() => {})
@@ -63,6 +83,8 @@ export default function EditMeetingDialog({
       expected_participants: expectedParticipants.trim() ? Number(expectedParticipants) : null,
       shared,
       previous_meeting_id: previousMeetingId ? Number(previousMeetingId) : null,
+      // pending 회의만 예약(풀 트리플=null로 해제 가능)을 함께 보낸다. 비pending은 키 미포함.
+      ...(isPending ? scheduleToPayload(schedule) : {}),
     })
   }
 
@@ -196,6 +218,9 @@ export default function EditMeetingDialog({
               지정하면 이전 회의록을 이어받아 그 뒤에 이번 회의 내용을 작성합니다 (같은 폴더 회의만).
             </p>
           </div>
+
+          {/* 예약 시작 (아직 시작하지 않은 회의만 수정 가능) */}
+          {isPending && <ScheduleFields value={schedule} onChange={setSchedule} />}
 
           {/* 공유/비공개 */}
           <div>

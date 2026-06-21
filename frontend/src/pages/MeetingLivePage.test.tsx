@@ -128,6 +128,18 @@ function renderPage(meetingId = '1') {
   )
 }
 
+/** 예약 스케줄러가 넘기는 navigation state(autoStart)를 실은 채 렌더한다. */
+function renderPageWithState(state: unknown, meetingId = '1') {
+  return render(
+    <MemoryRouter initialEntries={[{ pathname: `/meetings/${meetingId}/live`, state }]}>
+      <Routes>
+        <Route path="/meetings/:id/live" element={<MeetingLivePage />} />
+        <Route path="/meetings/:id/viewer" element={<div data-testid="viewer-route">VIEWER</div>} />
+      </Routes>
+    </MemoryRouter>
+  )
+}
+
 describe('MeetingLivePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -246,6 +258,28 @@ describe('MeetingLivePage', () => {
     })
     await waitFor(() => {
       expect(meetingsApi.stopMeeting).toHaveBeenCalledWith(1, { skipSummary: true })
+    })
+  })
+
+  // ──────────────────────────────────────────────
+  // 예약 자동시작 (autoStart)
+  // ──────────────────────────────────────────────
+
+  describe('예약 자동시작 (autoStart)', () => {
+    it('state.autoStart=true면 클릭 없이 마운트 시 startMeeting 호출', async () => {
+      renderPageWithState({ autoStart: true })
+      await waitFor(() => {
+        expect(meetingsApi.startMeeting).toHaveBeenCalledWith(1)
+      })
+    })
+
+    it('state.autoStart가 없으면 자동시작하지 않는다(수동 버튼 경로 보존)', async () => {
+      renderPage()
+      // 마운트가 정착할 시간을 준 뒤에도 startMeeting 미호출
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /회의 시작/i })).toBeInTheDocument()
+      })
+      expect(meetingsApi.startMeeting).not.toHaveBeenCalled()
     })
   })
 

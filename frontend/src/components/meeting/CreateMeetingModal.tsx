@@ -5,6 +5,8 @@ import { useProjectStore } from '../../stores/projectStore'
 import { useMeetingTemplateStore } from '../../stores/meetingTemplateStore'
 import { Dialog } from '../ui/Dialog'
 import { MeetingTypeSelector } from './MeetingListUI'
+import { ScheduleFields } from './ScheduleFields'
+import { emptyScheduleState, scheduleToPayload, type ScheduleFormState } from '../../lib/schedulePayload'
 
 interface CreateMeetingModalProps {
   folderId: number | null
@@ -18,6 +20,10 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
   const [meetingType, setMeetingType] = useState('general')
   const [shared, setShared] = useState(true)
   const [previousMeetingId, setPreviousMeetingId] = useState('')
+  // 예약 시작: 명시적 토글로 켜야만 예약된다(기본 OFF=즉시 회의, 기존 동작).
+  // native date input 의 placeholder("2026. 06. 21.")가 입력된 것처럼 보이는 혼동을 없애려고
+  // 토글을 둔다 — 토글 OFF면 어떤 예약 키도 전송하지 않는다.
+  const [schedule, setSchedule] = useState<ScheduleFormState>(emptyScheduleState())
   const [recentMeetings, setRecentMeetings] = useState<Meeting[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -47,6 +53,16 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
     setLoading(true)
     setError('')
     try {
+      // 예약 토글이 켜져 있고 날짜가 있을 때만 예약 키를 전송 → 토글 OFF면 기존과 완전히 동일(키 없음).
+      // recurrence_rule 은 null(1회성)이면 키 자체를 빼서 기존 동작(비반복 시 키 미전송)을 보존한다.
+      const sched = schedule.enabled && schedule.date ? scheduleToPayload(schedule) : null
+      const scheduleKeys = sched
+        ? {
+            scheduled_start_time: sched.scheduled_start_time,
+            auto_start_mode: sched.auto_start_mode,
+            ...(sched.recurrence_rule ? { recurrence_rule: sched.recurrence_rule } : {}),
+          }
+        : {}
       const meeting = await createMeeting({
         title: title.trim(),
         meeting_type: meetingType,
@@ -54,6 +70,7 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
         shared,
         previous_meeting_id: previousMeetingId ? Number(previousMeetingId) : null,
         project_id: useProjectStore.getState().currentProjectId,
+        ...scheduleKeys,
       })
       onCreated(meeting)
       onClose()
@@ -132,6 +149,9 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
             지정하면 이전 회의록을 이어받아 그 뒤에 이번 회의 내용을 작성합니다.
           </p>
         </div>
+
+        {/* 예약 시작: 명시적 토글. 켜야만 날짜/시각/시작방식/반복이 나타나고 예약 키가 전송된다. */}
+        <ScheduleFields value={schedule} onChange={setSchedule} />
 
         <div>
           <label className="flex items-center gap-2 cursor-pointer select-none">

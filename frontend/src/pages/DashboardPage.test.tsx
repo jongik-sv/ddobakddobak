@@ -4,12 +4,16 @@ import { MemoryRouter } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import DashboardPage from './DashboardPage'
 
-const { mockGetMeetings } = vi.hoisted(() => ({
+const { mockGetMeetings, mockGetScheduledMeetings, mockDismissSchedule } = vi.hoisted(() => ({
   mockGetMeetings: vi.fn(),
+  mockGetScheduledMeetings: vi.fn(),
+  mockDismissSchedule: vi.fn(),
 }))
 
 vi.mock('../api/meetings', () => ({
   getMeetings: mockGetMeetings,
+  getScheduledMeetings: mockGetScheduledMeetings,
+  dismissSchedule: mockDismissSchedule,
 }))
 
 // 오프라인 건수 통계 카드: Android 환경 강제 + listLocal(3건) 모킹.
@@ -41,6 +45,7 @@ function renderPage() {
 describe('DashboardPage 반응형 패딩 (TSK-03-03)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockGetScheduledMeetings.mockResolvedValue([])
     mockGetMeetings.mockResolvedValue({
       meetings: [],
       meta: { total: 0, page: 1, per: 10 },
@@ -95,6 +100,7 @@ describe('DashboardPage 반응형 패딩 (TSK-03-03)', () => {
 describe('DashboardPage 프로젝트 스코핑', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockGetScheduledMeetings.mockResolvedValue([])
     mockGetMeetings.mockResolvedValue({ meetings: [], meta: { total: 0, status_counts: {} } })
   })
 
@@ -103,5 +109,38 @@ describe('DashboardPage 프로젝트 스코핑', () => {
     render(<MemoryRouter><DashboardPage /></MemoryRouter>)
     await waitFor(() => expect(mockGetMeetings).toHaveBeenCalled())
     expect(mockGetMeetings).toHaveBeenCalledWith(expect.objectContaining({ project_id: 7 }))
+  })
+})
+
+describe('DashboardPage 예약중 통계 분리', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useProjectStore.setState({ currentProjectId: null })
+    mockGetScheduledMeetings.mockResolvedValue([])
+  })
+
+  it('예약중 카드를 분리하고 대기중에서 예약 회의를 제외한다', async () => {
+    // pending 9 중 예약 2 → 대기중 7, 예약중 2 (오프라인=3, 기타=0과 겹치지 않는 값 선택)
+    mockGetMeetings.mockResolvedValue({
+      meetings: [],
+      meta: { total: 12, page: 1, per: 10, status_counts: { pending: 9 }, scheduled_count: 2 },
+    })
+    renderPage()
+    expect(await screen.findByText('예약중')).toBeInTheDocument()
+    expect(screen.getByText('대기중')).toBeInTheDocument()
+    expect(screen.getByText('7')).toBeInTheDocument() // 대기중 = 9 - 2
+    expect(screen.getByText('2')).toBeInTheDocument() // 예약중
+  })
+
+  it('scheduled_count가 없으면 0으로 폴백한다(대기중=pending 그대로)', async () => {
+    mockGetMeetings.mockResolvedValue({
+      meetings: [],
+      meta: { total: 5, page: 1, per: 10, status_counts: { pending: 5 } },
+    })
+    renderPage()
+    expect(await screen.findByText('예약중')).toBeInTheDocument()
+    // 예약중 카드 value = 0
+    const scheduledCard = screen.getByText('예약중').closest('div')?.parentElement
+    expect(scheduledCard?.querySelector('p')?.textContent).toBe('0')
   })
 })

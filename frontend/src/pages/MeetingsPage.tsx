@@ -17,7 +17,7 @@ import { FolderChatDrawer } from '../components/folder/FolderChatDrawer'
 import MoveMeetingDialog from '../components/folder/MoveMeetingDialog'
 import MoveToProjectModal from '../components/project/MoveToProjectModal'
 import { useProjectStore } from '../stores/projectStore'
-import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
+import EditMeetingDialog, { type EditMeetingData } from '../components/meeting/EditMeetingDialog'
 import { JoinMeetingDialog } from '../components/meeting/JoinMeetingDialog'
 import { MeetingsGridSkeleton } from '../components/ui/Skeleton'
 import { CreateMeetingModal } from '../components/meeting/CreateMeetingModal'
@@ -152,10 +152,12 @@ export default function MeetingsPage() {
     fetchMeetings(currentPage)
   }
 
-  const handleEditMeeting = async (data: { title: string; meeting_type: string; tag_ids: number[]; brief_summary: string | null; attendees: string | null; expected_participants: number | null; shared: boolean }) => {
+  const handleEditMeeting = async (data: EditMeetingData) => {
     if (!editingMeeting) return
+    // EditMeetingData 는 예약 트리플(pending 시)을 포함 → updateMeeting(PATCH)에 그대로 전달.
     await updateMeeting(editingMeeting.id, data)
     setEditingMeeting(null)
+    // 목록 재조회 → 예약 배지/시각이 새로고침 없이 갱신된다.
     fetchMeetings(currentPage)
   }
 
@@ -459,7 +461,8 @@ export default function MeetingsPage() {
           onClose={() => setShowModal(false)}
           onCreated={(meeting) => {
             addMeeting(meeting)
-            navigate(`/meetings/${meeting.id}/live`)
+            // 예약 회의는 라이브로 점프하지 않고 목록에 추가만(스케줄러가 예약 시각에 시작).
+            if (!meeting.scheduled_start_time) navigate(`/meetings/${meeting.id}/live`)
           }}
         />
       )}

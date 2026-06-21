@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import EditMeetingDialog from './EditMeetingDialog'
 import type { Meeting } from '../../api/meetings'
@@ -173,5 +173,99 @@ describe('EditMeetingDialog 공유 토글', () => {
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalled())
     expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ shared: true }))
+  })
+})
+
+describe('EditMeetingDialog 예약 수정', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('비pending(completed) 회의는 예약 섹션을 노출하지 않는다', () => {
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting({ status: 'completed' })}
+        meetingTypeList={meetingTypeList}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.queryByLabelText('예약 시작')).not.toBeInTheDocument()
+  })
+
+  it('비pending 회의 저장 시 예약 키(트리플)를 포함하지 않는다', async () => {
+    const onConfirm = vi.fn()
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting({ status: 'completed' })}
+        meetingTypeList={meetingTypeList}
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled())
+    const arg = onConfirm.mock.calls[0][0]
+    expect(arg).not.toHaveProperty('scheduled_start_time')
+    expect(arg).not.toHaveProperty('auto_start_mode')
+    expect(arg).not.toHaveProperty('recurrence_rule')
+  })
+
+  it('pending 회의는 예약 섹션을 노출하고 기존 예약 상태를 복원한다', () => {
+    const iso = new Date('2026-06-25T10:00').toISOString()
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting({ status: 'pending', scheduled_start_time: iso, auto_start_mode: 'auto' })}
+        meetingTypeList={meetingTypeList}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    const toggle = screen.getByLabelText('예약 시작') as HTMLInputElement
+    expect(toggle.checked).toBe(true)
+    expect((screen.getByLabelText('예약 날짜') as HTMLInputElement).value).toBe('2026-06-25')
+    expect((screen.getByLabelText('자동') as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('pending 예약 회의의 예약 토글을 끄고 저장하면 트리플 전부 null(해제)을 전달한다', async () => {
+    const onConfirm = vi.fn()
+    const iso = new Date('2026-06-25T10:00').toISOString()
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting({ status: 'pending', scheduled_start_time: iso, auto_start_mode: 'auto' })}
+        meetingTypeList={meetingTypeList}
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    )
+    await userEvent.click(screen.getByLabelText('예약 시작')) // OFF
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled())
+    const arg = onConfirm.mock.calls[0][0]
+    expect(arg.scheduled_start_time).toBeNull()
+    expect(arg.auto_start_mode).toBeNull()
+    expect(arg.recurrence_rule).toBeNull()
+  })
+
+  it('pending 회의에 예약을 새로 켜고 저장하면 scheduled_start_time+auto_start_mode를 전달한다', async () => {
+    const onConfirm = vi.fn()
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting({ status: 'pending' })}
+        meetingTypeList={meetingTypeList}
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    )
+    await userEvent.click(screen.getByLabelText('예약 시작')) // ON → 날짜 오늘 기본
+    fireEvent.change(screen.getByLabelText('예약 날짜'), { target: { value: '2026-06-30' } })
+    fireEvent.change(screen.getByLabelText('시'), { target: { value: '14' } })
+    fireEvent.change(screen.getByLabelText('분'), { target: { value: '15' } })
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled())
+    const arg = onConfirm.mock.calls[0][0]
+    expect(arg.scheduled_start_time).toBe(new Date('2026-06-30T14:15').toISOString())
+    expect(arg.auto_start_mode).toBe('manual')
+    expect(arg.recurrence_rule).toBeNull()
   })
 })

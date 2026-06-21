@@ -37,6 +37,7 @@ Rails.application.routes.draw do
       # Meetings CRUD + start/stop + nested resources
       resources :meetings, only: %i[index create show update destroy] do
         collection do
+          get  :scheduled
           post :upload_audio
           post :move_to_folder
           post :move_to_project
@@ -74,6 +75,7 @@ Rails.application.routes.draw do
           post :claim_host, to: "meeting_shares#claim_host"
           post :lock
           delete :lock, to: "meetings#unlock"
+          post :dismiss_schedule
         end
         resources :action_items,
           only: %i[index create],

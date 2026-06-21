@@ -6,6 +6,8 @@ import type {
   MeetingDetail,
   MeetingListResponse,
   GetMeetingsParams,
+  RecurrenceRule,
+  ScheduledMeeting,
 } from './types'
 
 export async function getMeetingDetail(id: number): Promise<MeetingAccessResult> {
@@ -37,7 +39,7 @@ export async function getMeetings(params: GetMeetingsParams): Promise<MeetingLis
   return apiClient.get('meetings', { searchParams }).json()
 }
 
-export async function createMeeting(data: { title: string; meeting_type?: string; folder_id?: number | null; shared?: boolean; previous_meeting_id?: number | null; project_id?: number | null }): Promise<Meeting> {
+export async function createMeeting(data: { title: string; meeting_type?: string; folder_id?: number | null; shared?: boolean; previous_meeting_id?: number | null; project_id?: number | null; scheduled_start_time?: string | null; auto_start_mode?: 'auto' | 'manual' | null; recurrence_rule?: RecurrenceRule | null }): Promise<Meeting> {
   const res: { meeting: Meeting } = await apiClient.post('meetings', { json: data }).json()
   return res.meeting
 }
@@ -49,6 +51,18 @@ export async function getMeeting(id: number): Promise<Meeting> {
 
 export async function startMeeting(id: number): Promise<Meeting> {
   const res: { meeting: Meeting } = await apiClient.post(`meetings/${id}/start`).json()
+  return res.meeting
+}
+
+/** 현재 사용자 접근 가능 + 예약 + pending + 미dismiss 회의를 반환(missed 플래그 포함). 스케줄러가 폴링한다. */
+export async function getScheduledMeetings(): Promise<ScheduledMeeting[]> {
+  const res: { meetings: ScheduledMeeting[] } = await apiClient.get('meetings/scheduled').json()
+  return res.meetings
+}
+
+/** 놓친/예약 회의 안내를 닫는다(schedule_dismissed_at 설정 → 목록에서 숨김). */
+export async function dismissSchedule(id: number): Promise<Meeting> {
+  const res: { meeting: Meeting } = await apiClient.post(`meetings/${id}/dismiss_schedule`).json()
   return res.meeting
 }
 

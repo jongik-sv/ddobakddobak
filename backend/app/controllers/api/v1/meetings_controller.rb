@@ -10,11 +10,11 @@ module Api
 
       before_action :authenticate_user!
       before_action :require_create_project!, only: %i[create upload_audio]
-      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry lock unlock]
-      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary apply_glossary_entry]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry lock unlock dismiss_schedule]
+      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary apply_glossary_entry dismiss_schedule]
       before_action :authorize_lock!, only: %i[lock unlock]
-      # 잠긴 회의 변조 차단. lock/unlock 은 제외(아니면 영원히 못 풂). create/upload_audio/index/show/move_to_folder 제외.
-      before_action :reject_if_locked!, only: %i[update destroy start stop reopen pause resume reset_content summarize regenerate_stt re_diarize regenerate_notes update_notes feedback reapply_glossary apply_glossary_entry]
+      # 잠긴 회의 변조 차단. lock/unlock 은 제외(아니면 영원히 못 풂). create/upload_audio/index/show/move_to_folder/scheduled 제외.
+      before_action :reject_if_locked!, only: %i[update destroy start stop reopen pause resume reset_content summarize regenerate_stt re_diarize regenerate_notes update_notes feedback reapply_glossary apply_glossary_entry dismiss_schedule]
       # 멈춘 화자분리-재실행 자가복구: 조회/재실행 시 stale 면 completed 로 되돌려 버튼이 다시 보이게 함
       before_action -> { @meeting&.heal_stale_re_diarize! }, only: %i[show re_diarize]
 
@@ -34,14 +34,20 @@ module Api
           end
         end
 
-        # 중요 플래그 필터: show_all 이 truthy 가 아니면 important=true 회의만 노출(기본).
-        # 검색·상태필터가 걸려도 AND 로 함께 적용된다(1차 스펙은 단순 — 항상 important=true).
+        # 중요 플래그 필터: show_all 이 truthy 가 아니면 기본 목록을 큐레이션한다.
+        # 완료 회의만 important 필터로 거르고, 예약(pending)·진행중(recording/transcribing)은
+        # important=false 라도 항상 노출한다 (방금 만든 회의/예약 회의가 기본 목록에서 사라지는 혼동 방지).
+        # 검색·날짜·폴더·프로젝트 조건과는 AND 로 함께 적용된다.
         unless ActiveModel::Type::Boolean.new.cast(params[:show_all])
-          scope = scope.where(important: true)
+          scope = scope.where("meetings.important = ? OR meetings.status != ?", true, "completed")
         end
 
         # 상태별 카운트는 status 필터 적용 전 스코프에서 계산 (탭 선택과 무관하게 정확)
         status_counts = scope.group(:status).count
+
+        # 예약된 pending 회의 수 (대시보드 "대기중 = pending - scheduled_count", "예약중 = scheduled_count" 분리용).
+        # status_counts 와 동일한 큐레이션 스코프 기준이라 일관. 별도 키로만 추가(status_counts 오염 금지).
+        scheduled_count = scope.scheduled.pending.count
 
         # total은 status_counts에서 파생 — 별도 COUNT 쿼리(비싼 search/date WHERE 재실행) 제거.
         # by_status는 scope에 where(status:)만 더하므로 동일 집합이고, status는 NOT NULL이라
@@ -56,7 +62,23 @@ module Api
 
         render json: {
           meetings: meetings.map { |m| meeting_json(m) },
-          meta: { total: total, page: pagination_page, per: pagination_per, status_counts: status_counts }
+          meta: { total: total, page: pagination_page, per: pagination_per, status_counts: status_counts, scheduled_count: scheduled_count }
+        }
+      end
+
+      # GET /api/v1/meetings/scheduled — 클라이언트 스케줄러 폴링용.
+      # 접근가능 + 예약 + pending + 미dismiss 회의를 시간창 없이 반환한다(임박·놓침 모두).
+      # 각 회의에 missed 플래그를 파생한다 — 예약 시각이 트리거 유예(SCHEDULE_TRIGGER_GRACE)까지
+      # 지났을 때만 true. 유예 안은 아직 스케줄러가 자동시작을 시도하는 구간이라 missed 가 아니다.
+      def scheduled
+        missed_before = Meeting::SCHEDULE_TRIGGER_GRACE.ago
+        meetings = Meeting.accessible_by(current_user)
+                          .scheduled.pending.where(schedule_dismissed_at: nil)
+                          .includes(:creator, :tags, :meeting_attachments)
+                          .order(:scheduled_start_time)
+
+        render json: {
+          meetings: meetings.map { |m| meeting_json(m).merge(missed: m.scheduled_start_time < missed_before) }
         }
       end
 
@@ -69,7 +91,8 @@ module Api
           project_id: @create_project.id,
           shared: params.key?(:shared) ? ActiveModel::Type::Boolean.new.cast(params[:shared]) : true,
           previous_meeting_id: accessible_previous_meeting_id(params[:previous_meeting_id], params[:folder_id].presence&.to_i),
-          **summary_options_for_create
+          **summary_options_for_create,
+          **scheduling_attrs_for_create
         )
         apply_explicit_importance!(meeting)
 
@@ -162,6 +185,24 @@ module Api
           @meeting.tag_ids = tag_ids
         end
 
+        # 예약 필드는 pending 회의에서만 편집 가능. 비pending(녹음중/완료 등)은 조용히 무시한다
+        # — 이미 시작/종료된 회의에 stray scheduled_start_time 을 심어 자동시작 대상이 되는 것 방지.
+        # create 의 parse/normalize 헬퍼를 재사용한다(중복 구현 금지).
+        if @meeting.status == "pending" && params.key?(:scheduled_start_time)
+          st = parse_scheduled_start_time(params[:scheduled_start_time])
+          attrs[:scheduled_start_time] = st
+          if st.nil?
+            # 예약 해제: 부속 필드(모드·반복 규칙)도 함께 정리한다.
+            attrs[:auto_start_mode] = nil
+            attrs[:recurrence_rule] = nil
+          else
+            attrs[:auto_start_mode] = params[:auto_start_mode].presence if params.key?(:auto_start_mode)
+            attrs[:recurrence_rule] = normalize_recurrence_rule(params[:recurrence_rule]) if params.key?(:recurrence_rule)
+          end
+          # 예약 시각 변경(설정·해제 모두): 놓침/닫힘 상태를 리셋해 다시 스케줄 대상이 되게 한다.
+          attrs[:schedule_dismissed_at] = nil
+        end
+
         if @meeting.update(attrs)
           render json: { meeting: meeting_json(@meeting) }
         else
@@ -228,6 +269,8 @@ module Api
         return if performed?
 
         @meeting.update!(status: :recording, started_at: Time.current)
+        # 반복 시리즈: 시작 성공 후 다음 occurrence 를 미리 예약(미래 형제 없을 때만, 멱등).
+        @meeting.materialize_next_occurrence! if @meeting.recurring?
         render json: { meeting: meeting_json(@meeting) }
       end
 
@@ -586,6 +629,13 @@ module Api
         render json: { meeting: meeting_json(@meeting) }
       end
 
+      # POST /api/v1/meetings/:id/dismiss_schedule — 놓친/예약 회의 안내 닫기.
+      # schedule_dismissed_at 을 채워 scheduled 목록에서 숨긴다. 제어 권한·잠금 가드 적용.
+      def dismiss_schedule
+        @meeting.update!(schedule_dismissed_at: Time.current)
+        render json: { meeting: meeting_json(@meeting) }
+      end
+
       private
 
       # 잠금/해제 권한: 소유자·admin 만(editable_by?). 라이브 host 라도 잠금은 못 건다.
@@ -623,6 +673,31 @@ module Api
             restructure_param
           end
         }
+      end
+
+      # 예약 회의 생성 속성. 미지정 시 전부 nil — 즉시 회의(기존 경로)와 동일.
+      # auto_start_mode 는 inclusion(allow_nil) 검증이라 ""(빈 문자열)는 422 → presence 로 nil 정규화.
+      # recurrence_rule 은 JSON 문자열은 그대로, 해시/Parameters 는 .to_json 으로 text 저장.
+      def scheduling_attrs_for_create
+        {
+          scheduled_start_time: parse_scheduled_start_time(params[:scheduled_start_time]),
+          auto_start_mode: params[:auto_start_mode].presence,
+          recurrence_rule: normalize_recurrence_rule(params[:recurrence_rule])
+        }
+      end
+
+      def parse_scheduled_start_time(raw)
+        return nil if raw.blank?
+        Time.zone.parse(raw.to_s)
+      rescue ArgumentError, TypeError
+        nil
+      end
+
+      def normalize_recurrence_rule(raw)
+        return nil if raw.blank?
+        return raw if raw.is_a?(String)
+        # ActionController::Parameters / Hash → JSON 텍스트
+        (raw.respond_to?(:to_unsafe_h) ? raw.to_unsafe_h : raw).to_json
       end
 
       # 이전 회의 참고 id 정규화: 현재 사용자가 열람 가능 + 대상과 같은 폴더인 회의만 통과.
