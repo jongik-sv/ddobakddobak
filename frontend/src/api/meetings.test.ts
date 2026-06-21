@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { HTTPError } from 'ky'
-import { getMeeting, getMeetings, createMeeting, getMeetingDetail } from './meetings'
+import {
+  getMeeting,
+  getMeetings,
+  createMeeting,
+  getMeetingDetail,
+  getScheduledMeetings,
+  dismissSchedule,
+} from './meetings'
 
 const { mockJson, mockGet, mockPost } = vi.hoisted(() => {
   const mockJson = vi.fn()
@@ -110,6 +117,50 @@ describe('meetings API', () => {
       const result = await createMeeting({ title: '새 회의' })
       expect(result.id).toBe(2)
       expect(result.title).toBe('새 회의')
+    })
+
+    it('예약 필드를 json body로 전달', async () => {
+      mockJson.mockResolvedValue({
+        meeting: { id: 3, title: '예약 회의', status: 'pending' },
+      })
+      await createMeeting({
+        title: '예약 회의',
+        scheduled_start_time: '2026-06-21T10:00:00.000Z',
+        auto_start_mode: 'manual',
+        recurrence_rule: { freq: 'weekly', days: [1, 3], time: '10:00', tz: 'Asia/Seoul' },
+      })
+      expect(mockPost).toHaveBeenCalledWith('meetings', {
+        json: {
+          title: '예약 회의',
+          scheduled_start_time: '2026-06-21T10:00:00.000Z',
+          auto_start_mode: 'manual',
+          recurrence_rule: { freq: 'weekly', days: [1, 3], time: '10:00', tz: 'Asia/Seoul' },
+        },
+      })
+    })
+  })
+
+  describe('getScheduledMeetings', () => {
+    it('meetings/scheduled 엔드포인트로 GET 요청하고 배열을 반환', async () => {
+      const meetings = [
+        { id: 1, title: '예약1', status: 'pending', missed: false },
+        { id: 2, title: '놓친 회의', status: 'pending', missed: true },
+      ]
+      mockJson.mockResolvedValue({ meetings })
+      const result = await getScheduledMeetings()
+      expect(mockGet).toHaveBeenCalledWith('meetings/scheduled')
+      expect(result).toHaveLength(2)
+      expect(result[1].missed).toBe(true)
+    })
+  })
+
+  describe('dismissSchedule', () => {
+    it('meetings/:id/dismiss_schedule 로 POST 요청하고 meeting을 반환', async () => {
+      const meeting = { id: 7, title: '예약 회의', status: 'pending' }
+      mockJson.mockResolvedValue({ meeting })
+      const result = await dismissSchedule(7)
+      expect(mockPost).toHaveBeenCalledWith('meetings/7/dismiss_schedule')
+      expect(result.id).toBe(7)
     })
   })
 })

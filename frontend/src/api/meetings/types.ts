@@ -71,7 +71,26 @@ export interface Meeting {
   previous_meeting_title?: string | null
   /** 배치 재전사에 실제 사용된 STT 엔진(실시간 녹음은 null). 회의 정보 표시용 */
   stt_engine?: string | null
+  /** 예약 시작 시각 (ISO 문자열, UTC). null=즉시 회의(기존 동작). */
+  scheduled_start_time?: string | null
+  /** 예약 회의 시작 방식. auto=묻지 않고 자동 시작, manual=1분 전 확인 프롬프트. */
+  auto_start_mode?: 'auto' | 'manual' | null
+  /** 반복 예약 규칙. null=1회성. */
+  recurrence_rule?: RecurrenceRule | null
+  /** 사용자가 놓친 예약 안내를 닫은 시각 (목록에서 숨김). */
+  schedule_dismissed_at?: string | null
 }
+
+/** 반복 예약 규칙. days: 0=일~6=토 (weekly에서만 사용). time: "HH:MM". tz: IANA 타임존. */
+export interface RecurrenceRule {
+  freq: 'weekly' | 'daily'
+  days?: number[]
+  time: string
+  tz: string
+}
+
+/** GET meetings/scheduled 응답 항목: 예약 회의 + 놓침 여부 플래그. */
+export type ScheduledMeeting = Meeting & { missed: boolean }
 
 export type SummaryVerbosity = 'very_concise' | 'concise' | 'standard' | 'detailed' | 'very_detailed'
 
@@ -138,6 +157,12 @@ export interface UpdateMeetingParams {
   summary_restructure?: boolean
   /** 이전 회의 참고. null/빈값이면 해제 */
   previous_meeting_id?: number | null
+  /** 예약 시작 시각 (ISO UTC). null=예약 해제. pending 회의 수정에서만 의미 있음. */
+  scheduled_start_time?: string | null
+  /** 예약 시작 방식. null=예약 해제. */
+  auto_start_mode?: 'auto' | 'manual' | null
+  /** 반복 예약 규칙. null=1회성/해제. */
+  recurrence_rule?: RecurrenceRule | null
 }
 
 export interface TermCorrection {

@@ -4,7 +4,7 @@ import type { FolderNode } from '../../api/folders'
 import { initDrag } from '../../utils/dragState'
 import { StatusBadge, MeetingTypeBadge, MeetingActionButtons } from './MeetingListUI'
 import { MeetingIdBadge } from './MeetingIdBadge'
-import { formatDate, folderPath } from '../../lib/meetingFormat'
+import { formatDate, folderPath, formatScheduledStart, scheduleSummary } from '../../lib/meetingFormat'
 import { Tooltip } from '../ui/Tooltip'
 
 type SortField = 'created_at' | 'title'
@@ -173,13 +173,21 @@ export function MeetingListTable({
                     </span>
                   ))}
                 </div>
+                {meeting.status === 'pending' && meeting.scheduled_start_time && (
+                  <div className="text-xs text-indigo-600 mt-0.5 flex items-center gap-1 min-w-0">
+                    <span aria-hidden>⏰</span>
+                    <span className="truncate">
+                      {formatScheduledStart(meeting.scheduled_start_time)} · {scheduleSummary(meeting)}
+                    </span>
+                  </div>
+                )}
                 {meeting.brief_summary && (
                   <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{meeting.brief_summary}</p>
                 )}
               </div>
               <span className="text-xs text-muted-foreground truncate">{meeting.created_by?.name || '-'}</span>
               <span className="text-xs text-muted-foreground">{formatDate(meeting.created_at)}</span>
-              <StatusBadge status={meeting.status} />
+              <StatusBadge status={meeting.status} scheduled={meeting.status === 'pending' && !!meeting.scheduled_start_time} />
               <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
               <div className="flex items-center justify-end gap-1">
                 <MeetingActionButtons

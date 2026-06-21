@@ -11,9 +11,11 @@ RSpec.describe "Api::V1::Meetings importance", type: :request do
   # GET /api/v1/meetings — important 필터
   # ============================================================
   describe "GET /api/v1/meetings (importance filter)" do
-    it "기본 목록은 important=true 회의만 반환한다" do
-      important = create(:meeting, project: project, creator: user, important: true)
-      create(:meeting, project: project, creator: user, important: false)
+    it "기본 목록은 완료 회의 중 important=true 만 반환한다" do
+      important = create(:meeting, project: project, creator: user, status: "completed", important: true)
+      # 완료 회의에만 important 필터가 적용되므로, 제외 검증은 completed 로 만들어야 한다
+      # (pending/recording 은 important=false 라도 항상 노출됨).
+      create(:meeting, project: project, creator: user, status: "completed", important: false)
 
       get "/api/v1/meetings"
 
@@ -41,9 +43,10 @@ RSpec.describe "Api::V1::Meetings importance", type: :request do
       expect(response.parsed_body["meetings"].length).to eq(2)
     end
 
-    it "검색(q)에도 important 필터가 AND 로 적용된다 (show_all 없으면 important=false 제외)" do
-      hit_important = create(:meeting, project: project, creator: user, title: "발사대 점검", important: true)
-      create(:meeting, project: project, creator: user, title: "발사대 정비", important: false)
+    it "검색(q)에도 important 필터가 AND 로 적용된다 (완료 회의는 show_all 없으면 important=false 제외)" do
+      hit_important = create(:meeting, project: project, creator: user, title: "발사대 점검", status: "completed", important: true)
+      # 완료 회의에만 important 필터가 적용되므로 제외 대상도 completed 로 만든다.
+      create(:meeting, project: project, creator: user, title: "발사대 정비", status: "completed", important: false)
 
       get "/api/v1/meetings", params: { q: "발사대" }
 
@@ -57,7 +60,8 @@ RSpec.describe "Api::V1::Meetings importance", type: :request do
   # ============================================================
   describe "PATCH /api/v1/meetings/:id (toggle important)" do
     it "important false→true 토글 후 기본 목록에 나타난다" do
-      meeting = create(:meeting, project: project, creator: user, important: false)
+      # 완료 회의여야 important=false 일 때 기본 목록에서 숨겨진다(미완료는 항상 노출).
+      meeting = create(:meeting, project: project, creator: user, status: "completed", important: false)
 
       get "/api/v1/meetings"
       expect(response.parsed_body["meetings"].map { |m| m["id"] }).not_to include(meeting.id)
@@ -71,7 +75,8 @@ RSpec.describe "Api::V1::Meetings importance", type: :request do
     end
 
     it "important true→false 토글 후 기본 목록에서 사라진다" do
-      meeting = create(:meeting, project: project, creator: user, important: true)
+      # 완료 회의여야 important=false 토글 시 기본 목록에서 사라진다(미완료는 항상 노출).
+      meeting = create(:meeting, project: project, creator: user, status: "completed", important: true)
 
       patch "/api/v1/meetings/#{meeting.id}", params: { important: false }
       expect(response).to have_http_status(:ok)

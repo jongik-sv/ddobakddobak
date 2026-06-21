@@ -4,7 +4,7 @@ import type { FolderNode } from '../../api/folders'
 import { initDrag } from '../../utils/dragState'
 import { StatusBadge, MeetingTypeBadge, MeetingActionButtons } from './MeetingListUI'
 import { MeetingIdBadge } from './MeetingIdBadge'
-import { formatDate, folderPath } from '../../lib/meetingFormat'
+import { formatDate, folderPath, formatScheduledStart, scheduleSummary } from '../../lib/meetingFormat'
 import { useAuthStore } from '../../stores/authStore'
 import { Tooltip } from '../ui/Tooltip'
 
@@ -112,8 +112,16 @@ export function MeetingCardGrid({
                 )}
                 <h3 className="font-medium text-sm line-clamp-2">{meeting.title}</h3>
               </div>
-              <StatusBadge status={meeting.status} />
+              <StatusBadge status={meeting.status} scheduled={meeting.status === 'pending' && !!meeting.scheduled_start_time} />
             </div>
+            {meeting.status === 'pending' && meeting.scheduled_start_time && (
+              <div className="text-xs text-indigo-600 mb-2 flex items-center gap-1 min-w-0">
+                <span aria-hidden>⏰</span>
+                <span className="truncate">
+                  {formatScheduledStart(meeting.scheduled_start_time)} · {scheduleSummary(meeting)}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-1.5 flex-wrap mb-2">
               <span onClick={(e) => e.stopPropagation()} className="inline-flex">
                 <MeetingIdBadge meetingId={meeting.id} />

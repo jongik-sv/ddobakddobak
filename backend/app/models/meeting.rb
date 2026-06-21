@@ -24,6 +24,11 @@ class Meeting < ApplicationRecord
   # 회의록 압축율 5단계 (회의 화면·미리보기에서 회의별 지정)
   SUMMARY_VERBOSITY_LEVELS = %w[very_concise concise standard detailed very_detailed].freeze
 
+  # 예약 회의 자동시작 트리거 유예. 프론트 스케줄러는 scheduled_start_time + 이 시간까지 트리거를
+  # 시도하므로, 그 안에는 아직 "놓침"이 아니다 — missed 판정은 이 유예가 지난 뒤에야 true.
+  # ⚠️ 프론트 computeScheduleActions 의 GRACE(60s)와 반드시 일치해야 한다(문서화된 결합).
+  SCHEDULE_TRIGGER_GRACE = 60.seconds
+
   # 이전 회의 시드 절취선. 증분(append) 모드에서만 이전 회의록 뒤에 붙어 이전/현재를 구분한다.
   # (재구조화 모드는 이전+현재를 한 회의로 병합하므로 절취선을 넣지 않는다.)
   PREVIOUS_MEETING_CUT_LINE = "**✂ ─ ─ ─ ─ ─ 이전 회의 / 현재 회의 ─ ─ ─ ─ ─**".freeze
@@ -35,6 +40,8 @@ class Meeting < ApplicationRecord
   validates :summary_restructure, inclusion: { in: [ true, false ] } # NOT NULL 컬럼 — nil 이 500 대신 422 가 되게
   validates :source, inclusion: { in: %w[live upload] }
   validates :expected_participants, numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 100 }, allow_nil: true
+  # 예약 회의 시작 방식. 예약(scheduled_start_time) 회의에만 의미. nil = 예약 미지정(기존 즉시 회의).
+  validates :auto_start_mode, inclusion: { in: %w[auto manual] }, allow_nil: true
   validate :previous_meeting_not_self
 
   enum :status, { pending: "pending", recording: "recording", transcribing: "transcribing", completed: "completed" }
@@ -42,6 +49,58 @@ class Meeting < ApplicationRecord
   # 회의 잠금: locked_at 가 채워져 있으면 잠긴(읽기전용) 회의. 가드는 별도 task.
   def locked?
     locked_at.present?
+  end
+
+  # 반복 예약 회의 여부. recurrence_rule(JSON)이 있으면 반복 시리즈.
+  def recurring?
+    recurrence_rule.present?
+  end
+
+  # recurrence_rule(JSON 텍스트)을 파싱한 해시. 비반복/파싱불가면 nil.
+  def parsed_recurrence_rule
+    return nil if recurrence_rule.blank?
+    JSON.parse(recurrence_rule)
+  rescue JSON::ParserError
+    nil
+  end
+
+  # 반복 시리즈의 다음 occurrence(미래) pending 회의를 복제 생성한다.
+  # - 비반복이면 no-op(nil).
+  # - 멱등: 이미 이 회의를 시드로 한 예약(scheduled) successor 가 있으면 중복 생성하지 않는다.
+  # - 다음 occurrence 가 없으면(규칙 불완전 등) no-op(nil).
+  # title/유형/폴더/프로젝트/공유/중요/모드/규칙·요약옵션만 승계하고, started_at·ended_at·locked_at·
+  # 오디오·dismiss 같은 상태 필드는 깨끗하게 둔다(새 pending 회의). previous_meeting_id 로 체이닝해
+  # "이전 회의 참고" 시드가 시리즈를 따라 이어진다.
+  # 중요(important)는 원본값을 명시 승계한다 — important_explicitly_set=true 로 표시해
+  # before_create :seed_importance_from_folder 가 폴더값으로 덮어쓰지 않게 한다(컨트롤러
+  # apply_explicit_importance! 와 동일 패턴). 그래야 중요한 반복 시리즈의 후속 occurrence 가
+  # important=true 를 유지해 기본(important 필터) 회의 목록에서 사라지지 않는다.
+  def materialize_next_occurrence!
+    return unless recurring?
+    # 이미 미래 형제(이 회의를 시드로 한 예약 successor)가 있으면 중복 방지(every-minute 롤오버 멱등).
+    return if Meeting.where(previous_meeting_id: id).scheduled.exists?
+
+    next_time = Recurrence.next_occurrence(parsed_recurrence_rule, after: Time.current)
+    return if next_time.nil?
+
+    successor = Meeting.new(
+      title: title,
+      meeting_type: meeting_type,
+      folder_id: folder_id,
+      project_id: project_id,
+      shared: shared,
+      important: important,
+      created_by_id: created_by_id,
+      summary_verbosity: summary_verbosity,
+      summary_restructure: summary_restructure,
+      auto_start_mode: auto_start_mode,
+      recurrence_rule: recurrence_rule,
+      previous_meeting_id: id,
+      scheduled_start_time: next_time
+    )
+    successor.important_explicitly_set = true # 폴더값 override 방지(중요 플래그 명시 승계)
+    successor.save!
+    successor
   end
 
   # 중요 플래그 상속: 회의 생성 시 important 를 명시 지정하지 않았으면 소속 폴더값을 상속한다.
@@ -95,6 +154,20 @@ class Meeting < ApplicationRecord
   scope :created_after, ->(date) { where("created_at >= ?", date) if date.present? }
   scope :created_before, ->(date) { where("created_at <= ?", Date.parse(date).end_of_day) if date.present? }
   scope :by_status, ->(status) { where(status: status) if status.present? }
+
+  # ── 예약 회의(scheduled meeting) 스코프 ──
+  # 예약 시각이 지정된 회의(즉시 회의 제외).
+  scope :scheduled, -> { where.not(scheduled_start_time: nil) }
+  # 클라이언트 스케줄러 폴링용: 곧 시작할(within 창 안) + 아직 안 닫은 pending 예약.
+  # 지난(놓친) 예약도 포함한다 — 놓침/임박 판정은 클라이언트/뷰가 한다.
+  scope :upcoming_scheduled, ->(within: 1.hour) {
+    scheduled.pending.where(schedule_dismissed_at: nil).where(scheduled_start_time: ..(Time.current + within))
+  }
+  # 놓친 예약: 예약 시각이 트리거 유예(SCHEDULE_TRIGGER_GRACE)까지 지난 pending·미dismiss 예약.
+  # 유예 안(예: 30초 전)은 아직 자동시작 트리거 대상이라 missed 가 아니다.
+  scope :missed_scheduled, -> {
+    scheduled.pending.where(schedule_dismissed_at: nil).where(scheduled_start_time: ...SCHEDULE_TRIGGER_GRACE.ago)
+  }
 
   # 열람 가능한 회의 목록 범위: admin은 전체, 그 외는 본인 소유분 + "공유로 보이는" 회의.
   # 유효 공유 가시성 = meetings.shared AND (폴더 없음 OR 폴더와 모든 조상이 shared). 즉 상위

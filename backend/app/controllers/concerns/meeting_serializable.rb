@@ -34,6 +34,10 @@ module MeetingSerializable
       summary_verbosity: meeting.summary_verbosity,
       summary_restructure: meeting.summary_restructure,
       stt_engine: meeting.stt_engine,
+      scheduled_start_time: meeting.scheduled_start_time,
+      auto_start_mode: meeting.auto_start_mode,
+      recurrence_rule: parse_recurrence_rule(meeting.recurrence_rule),
+      schedule_dismissed_at: meeting.schedule_dismissed_at,
       tags: meeting.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
       attachment_counts: {
         agenda: attachment_counts["agenda"] || 0,
@@ -104,6 +108,14 @@ module MeetingSerializable
     JSON.parse(value)
   rescue JSON::ParserError
     []
+  end
+
+  # 반복 규칙(JSON 텍스트)을 객체/해시로 파싱한다. 없거나 깨진 값은 nil(배열 기본인 parse_json_field 와 다름).
+  def parse_recurrence_rule(value)
+    return nil if value.blank?
+    JSON.parse(value)
+  rescue JSON::ParserError
+    nil
   end
 
   def serialize_action_items(meeting)

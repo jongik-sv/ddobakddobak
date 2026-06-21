@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_000002) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_21_000001) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -187,6 +187,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000002) do
     t.text "attendees"
     t.integer "audio_duration_ms"
     t.string "audio_file_path"
+    t.string "auto_start_mode"
     t.string "brief_summary"
     t.datetime "created_at", null: false
     t.integer "created_by_id", null: false
@@ -207,6 +208,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000002) do
     t.integer "previous_meeting_id"
     t.integer "project_id", null: false
     t.datetime "re_diarize_started_at"
+    t.text "recurrence_rule"
+    t.datetime "schedule_dismissed_at"
+    t.datetime "scheduled_start_time"
     t.string "share_code"
     t.boolean "shared", default: true, null: false
     t.string "source", default: "live", null: false
@@ -226,6 +230,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000002) do
     t.index ["important"], name: "index_meetings_on_important"
     t.index ["previous_meeting_id"], name: "index_meetings_on_previous_meeting_id"
     t.index ["project_id", "status"], name: "index_meetings_on_project_id_and_status"
+    t.index ["scheduled_start_time"], name: "index_meetings_on_scheduled_start_time"
     t.index ["share_code"], name: "index_meetings_on_share_code", unique: true
     t.index ["trash_group_id"], name: "index_meetings_on_trash_group_id"
     t.check_constraint "source IN ('live','upload')", name: "chk_meetings_source"

@@ -11,8 +11,16 @@ export const STATUS_FILTER_TABS = [
   { value: 'pending', label: '대기중' },
 ] as const
 
-export function StatusBadge({ status }: { status: Meeting['status'] }) {
+export function StatusBadge({ status, scheduled }: { status: Meeting['status']; scheduled?: boolean }) {
   if (status === 'pending') {
+    if (scheduled === true) {
+      return (
+        <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 flex items-center gap-1">
+          <span aria-hidden>⏰</span>
+          예약중
+        </span>
+      )
+    }
     return (
       <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
         대기중

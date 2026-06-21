@@ -199,6 +199,40 @@ describe('MeetingsPage', () => {
     })
   })
 
+  it('예약 미지정 회의 생성 시 라이브로 이동한다 (기존 동작)', async () => {
+    mockCreateMeeting.mockResolvedValue({ ...meetings[0], id: 4, title: '즉시 회의', scheduled_start_time: null })
+
+    renderPage()
+
+    await userEvent.click(screen.getByRole('button', { name: /새 회의/i }))
+    await waitFor(() => screen.getByRole('dialog'))
+    await userEvent.type(screen.getByPlaceholderText(/회의 제목/i), '즉시 회의')
+    await userEvent.click(screen.getByRole('button', { name: /^생성$/i }))
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/meetings/4/live'))
+  })
+
+  it('예약된 회의 생성 시 라이브로 이동하지 않는다 (목록 유지)', async () => {
+    mockCreateMeeting.mockResolvedValue({
+      ...meetings[0],
+      id: 4,
+      title: '예약 회의',
+      scheduled_start_time: '2026-06-25T01:00:00Z',
+    })
+
+    renderPage()
+
+    await userEvent.click(screen.getByRole('button', { name: /새 회의/i }))
+    await waitFor(() => screen.getByRole('dialog'))
+    await userEvent.type(screen.getByPlaceholderText(/회의 제목/i), '예약 회의')
+    await userEvent.click(screen.getByRole('button', { name: /^생성$/i }))
+
+    await waitFor(() => expect(mockCreateMeeting).toHaveBeenCalled())
+    // 모달은 닫히지만 라이브로 점프하지 않는다
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(mockNavigate).not.toHaveBeenCalledWith('/meetings/4/live')
+  })
+
   it('모달 취소 버튼 클릭 시 모달이 닫힘', async () => {
     renderPage()
 

@@ -149,7 +149,10 @@ module Api
               chat_model: current_user.chat_llm_model,
               chat_base_url: current_user.chat_llm_base_url,
               chat_api_key_masked: mask_token(current_user.chat_llm_api_key),
-              chat_configured: current_user.chat_llm_configured?
+              chat_configured: current_user.chat_llm_configured?,
+              # 4-tier 카스케이드(개인챗>개인요약>전역챗>전역요약)로 실제 답변할 모델의 표시명.
+              # FolderChatJob 과 동일한 effective_chat_llm_config 을 쓰므로 폴더챗 미리보기와 일치한다.
+              effective_chat_model: LlmModelName.humanize(current_user.effective_chat_llm_config[:model])
             },
             server_default: {
               provider: server_default[:provider],

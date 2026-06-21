@@ -58,6 +58,42 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(json["meta"]["status_counts"]["pending"]).to eq(2)
       end
 
+      it "scheduled_count counts pending meetings with a scheduled_start_time" do
+        create_list(:meeting, 2, project: project, creator: user,
+                                 status: "pending", scheduled_start_time: 1.hour.from_now)
+
+        get "/api/v1/meetings"
+
+        expect(response.parsed_body["meta"]["scheduled_count"]).to eq(2)
+      end
+
+      it "scheduled_count excludes pending meetings without a scheduled_start_time" do
+        create_list(:meeting, 3, project: project, creator: user,
+                                 status: "pending", scheduled_start_time: nil)
+
+        get "/api/v1/meetings"
+
+        expect(response.parsed_body["meta"]["scheduled_count"]).to eq(0)
+      end
+
+      it "scheduled_count excludes non-pending meetings even with a scheduled_start_time" do
+        # stray: 이미 완료된 회의에 예약 시각이 남아 있어도 .pending 게이트로 제외된다.
+        create(:meeting, project: project, creator: user,
+                         status: "completed", scheduled_start_time: 1.hour.from_now)
+        create(:meeting, project: project, creator: user,
+                         status: "pending", scheduled_start_time: 1.hour.from_now)
+
+        get "/api/v1/meetings"
+
+        meta = response.parsed_body["meta"]
+        expect(meta["scheduled_count"]).to eq(1)
+        # status_counts 는 scheduled_count 와 무관하게 그대로다 (오염 없음).
+        expect(meta["status_counts"]["completed"]).to eq(1)
+        expect(meta["status_counts"]["pending"]).to eq(1)
+        # total 도 status_counts.values.sum 파생이 유지된다.
+        expect(meta["total"]).to eq(2)
+      end
+
       it "supports page and per params" do
         create_list(:meeting, 3, project: project, creator: user)
 
@@ -149,6 +185,56 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
         titles = response.parsed_body["meetings"].map { |m| m["title"] }
         expect(titles).to include("남의 회의")
+      end
+
+      # 기본 목록(show_all 없음)의 중요 필터는 완료 회의에만 적용된다.
+      # 예약(pending)·진행중(recording/transcribing)은 important=false 라도 항상 노출되어야 한다
+      # (방금 만든 회의/예약 회의가 기본 목록에서 사라지는 혼동 방지).
+      context "기본 목록의 중요 필터는 완료 회의에만 적용된다 (show_all 없음)" do
+        it "important=false 인 pending(예약) 회의도 노출된다" do
+          pending_unimportant = create(:meeting, project: project, creator: user, status: "pending", important: false)
+
+          get "/api/v1/meetings"
+
+          ids = response.parsed_body["meetings"].map { |m| m["id"] }
+          expect(ids).to include(pending_unimportant.id)
+        end
+
+        it "important=false 인 recording(진행중) 회의도 노출된다" do
+          recording_unimportant = create(:meeting, project: project, creator: user, status: "recording", important: false)
+
+          get "/api/v1/meetings"
+
+          ids = response.parsed_body["meetings"].map { |m| m["id"] }
+          expect(ids).to include(recording_unimportant.id)
+        end
+
+        it "important=false 인 completed(완료) 회의는 제외된다" do
+          completed_unimportant = create(:meeting, project: project, creator: user, status: "completed", important: false)
+
+          get "/api/v1/meetings"
+
+          ids = response.parsed_body["meetings"].map { |m| m["id"] }
+          expect(ids).not_to include(completed_unimportant.id)
+        end
+
+        it "important=true 인 completed(완료) 회의는 노출된다" do
+          completed_important = create(:meeting, project: project, creator: user, status: "completed", important: true)
+
+          get "/api/v1/meetings"
+
+          ids = response.parsed_body["meetings"].map { |m| m["id"] }
+          expect(ids).to include(completed_important.id)
+        end
+
+        it "show_all=true 이면 important=false 인 completed 회의도 노출된다 (기존 동작 유지)" do
+          completed_unimportant = create(:meeting, project: project, creator: user, status: "completed", important: false)
+
+          get "/api/v1/meetings", params: { show_all: true }
+
+          ids = response.parsed_body["meetings"].map { |m| m["id"] }
+          expect(ids).to include(completed_unimportant.id)
+        end
       end
     end
   end
@@ -385,6 +471,82 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
+
+    describe "예약 필드(scheduling)" do
+      let(:scheduled_at) { 1.hour.from_now.change(usec: 0) }
+
+      it "pending 회의는 예약 시각·모드·반복 규칙을 설정하고 직렬화한다" do
+        rule = { freq: "weekly", days: [ 2 ], time: "14:00", tz: "Asia/Seoul" }
+        patch "/api/v1/meetings/#{meeting.id}",
+              params: {
+                scheduled_start_time: scheduled_at.iso8601,
+                auto_start_mode: "manual",
+                recurrence_rule: rule.to_json
+              },
+              as: :json
+
+        expect(response).to have_http_status(:ok)
+        meeting.reload
+        expect(meeting.scheduled_start_time).to be_within(1.second).of(scheduled_at)
+        expect(meeting.auto_start_mode).to eq("manual")
+        expect(JSON.parse(meeting.recurrence_rule)).to include("freq" => "weekly", "days" => [ 2 ])
+
+        json = response.parsed_body["meeting"]
+        expect(json["scheduled_start_time"]).to be_present
+        expect(json["auto_start_mode"]).to eq("manual")
+        expect(json["recurrence_rule"]).to include("freq" => "weekly")
+      end
+
+      it "예약 시각을 빈 값으로 PATCH 하면 모드·반복 규칙까지 모두 해제(nil)된다" do
+        scheduled = create(:meeting, project: project, creator: user, status: "pending",
+                                     scheduled_start_time: scheduled_at,
+                                     auto_start_mode: "auto",
+                                     recurrence_rule: { freq: "weekly", days: [ 5 ], time: "09:00", tz: "Asia/Seoul" }.to_json)
+
+        patch "/api/v1/meetings/#{scheduled.id}",
+              params: { scheduled_start_time: "" },
+              as: :json
+
+        expect(response).to have_http_status(:ok)
+        scheduled.reload
+        expect(scheduled.scheduled_start_time).to be_nil
+        expect(scheduled.auto_start_mode).to be_nil
+        expect(scheduled.recurrence_rule).to be_nil
+      end
+
+      it "예약 시각 변경 시 schedule_dismissed_at 을 nil 로 리셋한다" do
+        dismissed = create(:meeting, project: project, creator: user, status: "pending",
+                                     scheduled_start_time: 10.minutes.ago,
+                                     schedule_dismissed_at: Time.current)
+
+        patch "/api/v1/meetings/#{dismissed.id}",
+              params: { scheduled_start_time: scheduled_at.iso8601 },
+              as: :json
+
+        expect(response).to have_http_status(:ok)
+        dismissed.reload
+        expect(dismissed.scheduled_start_time).to be_within(1.second).of(scheduled_at)
+        expect(dismissed.schedule_dismissed_at).to be_nil
+      end
+
+      it "비pending(completed) 회의의 예약 파라미터는 조용히 무시된다" do
+        completed = create(:meeting, project: project, creator: user, status: "completed")
+
+        patch "/api/v1/meetings/#{completed.id}",
+              params: {
+                scheduled_start_time: scheduled_at.iso8601,
+                auto_start_mode: "auto",
+                recurrence_rule: { freq: "daily", time: "08:00", tz: "Asia/Seoul" }.to_json
+              },
+              as: :json
+
+        expect(response).to have_http_status(:ok)
+        completed.reload
+        expect(completed.scheduled_start_time).to be_nil
+        expect(completed.auto_start_mode).to be_nil
+        expect(completed.recurrence_rule).to be_nil
+      end
+    end
   end
 
   # ============================================================
@@ -428,6 +590,35 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       it "returns 422" do
         post "/api/v1/meetings/#{recording_meeting.id}/start"
         expect(response).to have_http_status(:unprocessable_entity)
+      end
+    end
+
+    context "when meeting is recurring" do
+      let(:recurring) do
+        create(:meeting, project: project, creator: user, status: "pending",
+               recurrence_rule: '{"freq":"weekly","days":[1],"time":"10:00","tz":"Asia/Seoul"}',
+               scheduled_start_time: 1.day.ago)
+      end
+
+      it "시작하면 미래 pending successor 를 정확히 1개 생성한다(시리즈 연속)" do
+        recurring
+        expect {
+          post "/api/v1/meetings/#{recurring.id}/start"
+        }.to change { Meeting.where(previous_meeting_id: recurring.id).count }.by(1)
+
+        expect(response).to have_http_status(:ok)
+        successor = Meeting.find_by(previous_meeting_id: recurring.id)
+        expect(successor.status).to eq("pending")
+        expect(successor.scheduled_start_time).to be > Time.current
+      end
+    end
+
+    context "when meeting is not recurring" do
+      it "successor 를 만들지 않는다" do
+        expect {
+          post "/api/v1/meetings/#{meeting.id}/start"
+        }.not_to change { Meeting.where(previous_meeting_id: meeting.id).count }
+        expect(response).to have_http_status(:ok)
       end
     end
   end
@@ -718,6 +909,7 @@ end
 
 RSpec.describe "Api::V1::Meetings summary options", type: :request do
   let(:user) { create(:user) }
+  let(:other_user) { create(:user) }
   let(:project) { create(:project, creator: user) }
   let!(:admin_membership) { create(:project_membership, user: user, project: project, role: "admin") }
 
@@ -785,6 +977,171 @@ RSpec.describe "Api::V1::Meetings summary options", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(meeting.reload.summary_restructure).to be true
+    end
+  end
+
+  # ============================================================
+  # 예약 회의 자동 시작 (scheduling)
+  # ============================================================
+  describe "POST /api/v1/meetings (예약 파라미터)" do
+    let(:scheduled_at) { 1.hour.from_now.change(usec: 0) }
+
+    it "예약 파라미터를 저장한다" do
+      rule = { freq: "weekly", days: [ 1, 3 ], time: "10:00", tz: "Asia/Seoul" }
+      post "/api/v1/meetings",
+           params: {
+             title: "예약 회의", project_id: project.id,
+             scheduled_start_time: scheduled_at.iso8601,
+             auto_start_mode: "manual",
+             recurrence_rule: rule.to_json
+           },
+           as: :json
+
+      expect(response).to have_http_status(:created)
+      m = Meeting.last
+      expect(m.scheduled_start_time).to be_within(1.second).of(scheduled_at)
+      expect(m.auto_start_mode).to eq("manual")
+      expect(JSON.parse(m.recurrence_rule)).to eq("freq" => "weekly", "days" => [ 1, 3 ], "time" => "10:00", "tz" => "Asia/Seoul")
+    end
+
+    it "recurrence_rule 을 해시로 받아도 저장한다" do
+      post "/api/v1/meetings",
+           params: {
+             title: "예약 회의", project_id: project.id,
+             scheduled_start_time: scheduled_at.iso8601,
+             auto_start_mode: "auto",
+             recurrence_rule: { freq: "weekly", days: [ 5 ], time: "09:00", tz: "Asia/Seoul" }
+           },
+           as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(JSON.parse(Meeting.last.recurrence_rule)).to include("freq" => "weekly")
+    end
+
+    it "예약 파라미터 없는 생성은 기존과 동일(필드 모두 nil, 422 안 남)" do
+      post "/api/v1/meetings",
+           params: { title: "일반 회의", project_id: project.id },
+           as: :json
+
+      expect(response).to have_http_status(:created)
+      m = Meeting.last
+      expect(m.scheduled_start_time).to be_nil
+      expect(m.auto_start_mode).to be_nil
+      expect(m.recurrence_rule).to be_nil
+    end
+
+    it "빈 문자열 auto_start_mode 는 nil 로 정규화(422 방지)" do
+      post "/api/v1/meetings",
+           params: { title: "회의", project_id: project.id, auto_start_mode: "", scheduled_start_time: "" },
+           as: :json
+
+      expect(response).to have_http_status(:created)
+      m = Meeting.last
+      expect(m.auto_start_mode).to be_nil
+      expect(m.scheduled_start_time).to be_nil
+    end
+  end
+
+  describe "GET /api/v1/meetings/scheduled" do
+    it "본인 접근가능·예약·pending·미dismiss 회의만 missed 플래그와 함께 반환한다" do
+      freeze_time do
+        upcoming = create(:meeting, project: project, creator: user, status: "pending", scheduled_start_time: 30.minutes.from_now)
+        missed   = create(:meeting, project: project, creator: user, status: "pending", scheduled_start_time: 10.minutes.ago)
+        far      = create(:meeting, project: project, creator: user, status: "pending", scheduled_start_time: 5.hours.from_now)
+        # 제외 대상
+        create(:meeting, project: project, creator: user, status: "pending") # 예약 아님
+        create(:meeting, project: project, creator: user, status: "recording", scheduled_start_time: 10.minutes.from_now) # 시작됨
+        create(:meeting, project: project, creator: user, status: "pending", scheduled_start_time: 10.minutes.from_now, schedule_dismissed_at: Time.current) # dismiss
+
+        get "/api/v1/meetings/scheduled"
+
+        expect(response).to have_http_status(:ok)
+        meetings = response.parsed_body["meetings"]
+        by_id = meetings.index_by { |m| m["id"] }
+
+        # 시간창 없이 모든 예약·pending·미dismiss 반환(먼 미래 포함)
+        expect(by_id.keys).to contain_exactly(upcoming.id, missed.id, far.id)
+        expect(by_id[missed.id]["missed"]).to be true
+        expect(by_id[upcoming.id]["missed"]).to be false
+        expect(by_id[far.id]["missed"]).to be false
+      end
+    end
+
+    it "missed 플래그는 트리거 유예(60s)를 지나야 true 가 된다" do
+      freeze_time do
+        # 30초 전: 아직 자동시작 트리거 유예 안 — missed=false
+        in_grace = create(:meeting, project: project, creator: user, status: "pending", scheduled_start_time: 30.seconds.ago)
+        # 90초 전: 유예가 지남 — missed=true
+        passed   = create(:meeting, project: project, creator: user, status: "pending", scheduled_start_time: 90.seconds.ago)
+
+        get "/api/v1/meetings/scheduled"
+
+        by_id = response.parsed_body["meetings"].index_by { |m| m["id"] }
+        # 둘 다 목록에는 포함된다(하한선 없음 — 워처가 둘 다 받아 처리)
+        expect(by_id.keys).to include(in_grace.id, passed.id)
+        expect(by_id[in_grace.id]["missed"]).to be false
+        expect(by_id[passed.id]["missed"]).to be true
+      end
+    end
+
+    it "타인의 비공유 예약 회의는 반환하지 않는다(인가)" do
+      foreign = create(:meeting, :private_meeting, project: project, creator: other_user, status: "pending", scheduled_start_time: 30.minutes.from_now)
+
+      get "/api/v1/meetings/scheduled"
+
+      ids = response.parsed_body["meetings"].map { |m| m["id"] }
+      expect(ids).not_to include(foreign.id)
+    end
+  end
+
+  describe "POST /api/v1/meetings/:id/dismiss_schedule" do
+    let(:meeting) { create(:meeting, project: project, creator: user, status: "pending", scheduled_start_time: 10.minutes.ago) }
+
+    it "schedule_dismissed_at 을 채우고 meeting_json 을 반환한다" do
+      freeze_time do
+        post "/api/v1/meetings/#{meeting.id}/dismiss_schedule"
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body["meeting"]["id"]).to eq(meeting.id)
+        expect(meeting.reload.schedule_dismissed_at).to be_within(1.second).of(Time.current)
+      end
+    end
+
+    it "이후 scheduled 목록에서 사라진다" do
+      post "/api/v1/meetings/#{meeting.id}/dismiss_schedule"
+      get "/api/v1/meetings/scheduled"
+      ids = response.parsed_body["meetings"].map { |m| m["id"] }
+      expect(ids).not_to include(meeting.id)
+    end
+
+    it "제어 권한 없는 타인은 403" do
+      foreign = create(:meeting, :private_meeting, project: project, creator: other_user, status: "pending", scheduled_start_time: 10.minutes.ago)
+      post "/api/v1/meetings/#{foreign.id}/dismiss_schedule"
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "잠긴 회의는 403 + '잠긴 회의'" do
+      meeting.update_column(:locked_at, Time.current)
+      post "/api/v1/meetings/#{meeting.id}/dismiss_schedule"
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body["error"].to_s).to include("잠긴 회의")
+    end
+  end
+
+  describe "meeting_json 예약 필드(detail)" do
+    it "show 응답에 예약 필드를 포함하고 recurrence_rule 은 파싱된 객체다" do
+      rule = { "freq" => "weekly", "days" => [ 1 ], "time" => "10:00", "tz" => "Asia/Seoul" }
+      m = create(:meeting, project: project, creator: user,
+                 scheduled_start_time: 1.hour.from_now, auto_start_mode: "auto",
+                 recurrence_rule: rule.to_json, schedule_dismissed_at: nil)
+
+      get "/api/v1/meetings/#{m.id}"
+
+      json = response.parsed_body["meeting"]
+      expect(json).to have_key("scheduled_start_time")
+      expect(json["auto_start_mode"]).to eq("auto")
+      expect(json["recurrence_rule"]).to eq(rule)
+      expect(json).to have_key("schedule_dismissed_at")
     end
   end
 end

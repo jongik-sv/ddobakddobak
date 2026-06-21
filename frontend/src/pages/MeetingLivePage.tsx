@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useMemo } from 'react'
-import { useParams } from 'react-router-dom'
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
+import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { Settings, Monitor, Timer, Pencil, RotateCcw } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
 import { useUiStore } from '../stores/uiStore'
@@ -47,6 +47,8 @@ import { Dialog } from '../components/ui/Dialog'
 export default function MeetingLivePage() {
   const { id } = useParams<{ id: string }>()
   const meetingId = Number(id)
+  const location = useLocation()
+  const navigate = useNavigate()
 
   // 상태 메시지 (하단 상태바)
   const { statusMessage, showStatus } = useStatusMessage()
@@ -78,6 +80,20 @@ export default function MeetingLivePage() {
     showStopConfirm, confirmStopSummarize, confirmStopSkip, cancelStop,
     handleResetClick, handleResetConfirm, handleNavigateBack,
   } = live
+
+  // 예약 회의 자동시작: 스케줄러가 state.autoStart=true로 네비게이트 → 마운트 후 1회 handleStart().
+  // ref 가드로 리렌더 간 중복 호출 방지 + nav state 소비(뒤로/새로고침 재트리거 차단).
+  const autoStartFiredRef = useRef(false)
+  useEffect(() => {
+    const autoStart = (location.state as { autoStart?: boolean } | null)?.autoStart
+    if (!autoStart || autoStartFiredRef.current) return
+    if (meetingApiStatus === 'recording' || isActive) return
+    autoStartFiredRef.current = true
+    handleStart()
+    showStatus('회의를 시작합니다', 4000)
+    // nav state 소비: 같은 경로로 replace 해 history 항목에서 autoStart 제거.
+    navigate(location.pathname, { replace: true, state: {} })
+  }, [location.state, location.pathname, meetingApiStatus, isActive, handleStart, showStatus, navigate])
 
   // 메모 에디터
   const memoCallbacks = useMemo(() => ({
