@@ -5,6 +5,10 @@
 # 회의록 요약, 정제, Action Item 추출을 수행한다.
 class LlmService
   include LlmPrompts
+  # 순수 텍스트 유틸은 TextFormatter 모듈로 추출. include 로 기존 private 인스턴스 메서드 계약도 보존.
+  include LlmService::TextFormatter
+  # 설정 해석 + 클라이언트 구성은 ClientFactory 모듈로 추출(동일 패턴).
+  include LlmService::ClientFactory
 
   class LlmError < StandardError; end
 
@@ -22,7 +26,7 @@ class LlmService
   # 회의록 정제: 기존 노트 + 새 자막 → 통합 회의록.
   # chronological: 증분(흐름) 회의의 통짜 생성 시 주제별 재구성 대신 시간순 요약 지시.
   def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil, verbosity: "standard", verbosity_context: :final, chronological: false, seeded_merge: false, agenda_reference: nil)
-    transcript_text = format_transcripts(transcripts)
+    transcript_text = TextFormatter.format_transcripts(transcripts)
     return { "notes_markdown" => current_notes, "ok" => true } if transcript_text.blank?
 
     parts = []
@@ -52,7 +56,7 @@ class LlmService
     system_prompt = system_prompt + seeded_merge_instruction if seeded_merge
 
     result = call_llm_raw(system_prompt, user_content, max_tokens: max_tokens)
-    notes = fix_mermaid_quotes(strip_markdown_fence(result))
+    notes = TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(result))
     { "notes_markdown" => notes, "ok" => true }
   rescue => e
     Rails.logger.error "[LlmService] refine_notes failed: #{e.message}"
@@ -64,7 +68,7 @@ class LlmService
   # 시간 헤딩은 호출부(job)가 붙인다. 출력이 새 블록뿐이라 작음 → 틱 빠름.
   # 반환: { "block_markdown" =>, "ok" => }. ok:false 면 호출부가 transcript 미소비(무음 손실 차단).
   def append_notes(current_notes, transcripts, meeting_title: "", attendees: nil, verbosity: "standard", agenda_reference: nil)
-    transcript_text = format_transcripts(transcripts)
+    transcript_text = TextFormatter.format_transcripts(transcripts)
     return { "block_markdown" => "", "ok" => true } if transcript_text.blank?
 
     parts = []
@@ -78,7 +82,7 @@ class LlmService
     system_prompt = apply_verbosity(APPEND_NOTES_SYSTEM_PROMPT, verbosity, context: :append)
 
     raw = call_llm_raw(system_prompt, user_content, max_tokens: max_output_tokens)
-    block = fix_mermaid_quotes(strip_markdown_fence(raw))
+    block = TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(raw))
     { "block_markdown" => block, "ok" => true }
   rescue => e
     Rails.logger.error "[LlmService] append_notes failed: #{e.message}"
@@ -87,7 +91,7 @@ class LlmService
 
   # 구조화된 요약 (JSON): key_points, decisions, discussion_details, action_items
   def summarize(transcripts, type: "realtime", context: nil)
-    transcript_text = format_transcripts(transcripts)
+    transcript_text = TextFormatter.format_transcripts(transcripts)
     user_content = "요약 유형: #{type}\n\n회의 트랜스크립트:\n#{transcript_text}"
     user_content += "\n\n이전 요약 컨텍스트:\n#{context}" if context.present?
 
@@ -107,7 +111,7 @@ class LlmService
 
   # Action Item 추출
   def summarize_action_items(transcripts)
-    transcript_text = format_transcripts(transcripts)
+    transcript_text = TextFormatter.format_transcripts(transcripts)
     user_content = "회의 트랜스크립트:\n#{transcript_text}"
 
     data = call_llm_json(ACTION_ITEMS_SYSTEM_PROMPT, user_content)
@@ -130,7 +134,7 @@ class LlmService
     parts << "사용자 피드백:\n#{feedback}"
 
     result = call_llm_raw(FEEDBACK_NOTES_SYSTEM_PROMPT, parts.join("\n\n"), max_tokens: max_output_tokens)
-    { "notes_markdown" => fix_mermaid_quotes(strip_markdown_fence(result)) }
+    { "notes_markdown" => TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(result)) }
   rescue => e
     Rails.logger.error "[LlmService] apply_feedback failed: #{e.message}"
     { "notes_markdown" => current_notes }
@@ -147,7 +151,7 @@ class LlmService
     system_prompt = system_prompt + CHRONOLOGICAL_NOTES_INSTRUCTION unless restructure
     system_prompt = apply_verbosity(system_prompt, verbosity, context: :final)
 
-    transcript_text = format_transcripts(transcripts)
+    transcript_text = TextFormatter.format_transcripts(transcripts)
     parts = []
     parts << "회의 제목: #{meeting_title}" if meeting_title.present?
     parts << "참석자: #{attendees}" if attendees.present?
@@ -178,11 +182,11 @@ class LlmService
     return "" if text.strip.blank?
 
     compressed = call_llm_raw(COMPRESS_AGENDA_SYSTEM_PROMPT, text)
-    truncate_chars(strip_markdown_fence(compressed), max_chars)
+    TextFormatter.truncate_chars(TextFormatter.strip_markdown_fence(compressed), max_chars)
   rescue => e
     Rails.logger.error "[LlmService] compress_agenda failed: #{e.message}"
     # 압축 실패 시 원본을 캡까지 잘라 폴백(주입 자체는 가능하게).
-    truncate_chars(text, max_chars)
+    TextFormatter.truncate_chars(text, max_chars)
   end
 
   # LLM 연결 테스트
@@ -200,12 +204,6 @@ class LlmService
   # 안건 자료 블록: 회의록 작성 시 참고만 하고 그대로 베끼지 말라는 가드를 라벨에 명시한다.
   def agenda_reference_block(agenda_reference)
     "안건 자료(참고용 — 회의 내용 우선, 그대로 복사하지 말 것):\n#{agenda_reference}"
-  end
-
-  # 글자수 하드 캡(멀티바이트 안전). nil 은 "" 로.
-  def truncate_chars(text, max_chars)
-    text = text.to_s
-    text.length > max_chars ? text[0, max_chars] : text
   end
 
   # 압축율(verbosity) 분량 지시를 system 프롬프트 뒤에 append.
@@ -228,50 +226,16 @@ class LlmService
     system_prompt + lines.join("\n") + "\n"
   end
 
-  def resolve_config(llm_config)
-    if llm_config.present?
-      {
-        provider: llm_config[:provider] || llm_config["provider"] || "anthropic",
-        auth_token: llm_config[:auth_token] || llm_config["auth_token"],
-        model: llm_config[:model] || llm_config["model"],
-        base_url: llm_config[:base_url] || llm_config["base_url"],
-        max_output_tokens: (llm_config[:max_output_tokens] || llm_config["max_output_tokens"])&.to_i
-      }
-    else
-      server_default_config
-    end
-  end
-
-  def server_default_config
-    provider = ENV.fetch("LLM_PROVIDER", "anthropic")
-    {
-      provider: provider,
-      auth_token: provider == "openai" ? ENV["OPENAI_API_KEY"] : ENV["ANTHROPIC_AUTH_TOKEN"],
-      model: ENV.fetch("LLM_MODEL", "claude-sonnet-4-20250514"),
-      base_url: provider == "openai" ? ENV["OPENAI_BASE_URL"] : ENV["ANTHROPIC_BASE_URL"],
-      max_output_tokens: ENV.fetch("LLM_MAX_OUTPUT_TOKENS", "10000").to_i
-    }
-  end
-
+  # @config[:max_output_tokens] 런타임 접근자 — call_llm_raw 기본인자/여러 호출부에서 bare 로
+  # 쓰여 인스턴스에 남겨둔다(설정 구성이 아니라 @config 접근). resolve_config/build_client 만 추출.
   def max_output_tokens
     @config[:max_output_tokens] || 10_000
   end
 
+  # @config 로 클라이언트를 만드는 zero-arg 래퍼. 본문은 ClientFactory.build_client(config) 로 추출.
+  # include 된 1-arg build_client(config) 를 이 인스턴스 메서드가 가려, 기존 zero-arg 계약을 보존한다.
   def build_client
-    case @config[:provider]
-    when "openai"
-      OpenAI::Client.new(
-        access_token: @config[:auth_token].presence || "local",
-        uri_base: @config[:base_url].presence,
-        request_timeout: ENV.fetch("LLM_REQUEST_TIMEOUT", "600").to_i
-      )
-    when *CLI_PROVIDERS
-      nil # CLI 프로바이더는 SDK 클라이언트 불필요 — 실행 시점에 Open3 로 호출
-    else # anthropic (default)
-      kwargs = { api_key: @config[:auth_token] }
-      kwargs[:base_url] = @config[:base_url] if @config[:base_url].present?
-      Anthropic::Client.new(**kwargs)
-    end
+    ClientFactory.build_client(@config)
   end
 
   # ── LLM 호출 ──
@@ -500,50 +464,9 @@ class LlmService
 
   def call_llm_json(system, user_content)
     text = call_llm_raw(system, user_content)
-    JSON.parse(extract_json(text))
+    JSON.parse(TextFormatter.extract_json(text))
   rescue JSON::ParserError
     nil
-  end
-
-  # ── 텍스트 처리 ──
-
-  def format_transcripts(transcripts)
-    return "" if transcripts.blank?
-    roster = {}
-    lines = transcripts.map { |t|
-      label = (t["speaker_label"] || t[:speaker_label]).to_s
-      name  = (t["speaker"] || t[:speaker]).to_s
-      text = t["text"] || t[:text] || ""
-      ms = (t["started_at_ms"] || t[:started_at_ms] || 0).to_i
-      clock = format("%02d:%02d", ms / 60000, (ms / 1000) % 60)
-      bracket = label.empty? ? (name.empty? ? "알 수 없음" : name) : label
-      if !name.empty? && name != bracket
-        roster[bracket] ||= name
-        prefix = "#{name}: "
-      else
-        prefix = ""
-      end
-      "[#{clock}|#{ms}ms #{bracket}] #{prefix}#{text}"
-    }
-    header = roster.empty? ? "" : "[화자 안내] #{roster.map { |l, n| "#{l}=#{n}" }.join(', ')}\n\n"
-    header + lines.join("\n")
-  end
-
-  def extract_json(text)
-    if (match = text.match(/```(?:json)?\s*([\s\S]*?)```/))
-      match[1].strip
-    else
-      text.strip
-    end
-  end
-
-  def strip_markdown_fence(text)
-    text = text.strip
-    if text.match?(/\A```(?:markdown)?\s*\n/)
-      text = text.sub(/\A```(?:markdown)?\s*\n/, "")
-      text = text.sub(/\n```\s*\z/, "")
-    end
-    text
   end
 
   # 추론 모델별 thinking 비활성 지시 (없으면 nil)
@@ -562,37 +485,6 @@ class LlmService
         .gsub(/<think>.*?<\/think>/m, "")
         .gsub(/<thinking>.*?<\/thinking>/m, "")
         .strip
-  end
-
-  # Mermaid 코드블록 내 노드 라벨에 큰따옴표 자동 보정 + 줄바꿈 처리
-  def fix_mermaid_quotes(text)
-    text.gsub(/(```mermaid\s*\n)([\s\S]*?)(```)/) do
-      prefix, body, suffix = $1, $2, $3
-      body = quote_mermaid_labels(body)
-      "#{prefix}#{body}#{suffix}"
-    end
-  end
-
-  def quote_mermaid_labels(block)
-    # Square brackets: A[label] → A["label"]
-    block = block.gsub(/(^|\s|>|\|)(\w+)\[([^\]]+)\]/m) do
-      "#{$1}#{$2}#{clean_label($3, '[', ']')}"
-    end
-    # Curly braces: A{label} → A{"label"}
-    block = block.gsub(/(^|\s|>|\|)(\w+)\{([^}]+)\}/m) do
-      "#{$1}#{$2}#{clean_label($3, '{', '}')}"
-    end
-    # Parentheses: A(label) → A("label")
-    block.gsub(/(^|\s|>|\|)(\w+)\(([^)]+)\)/m) do
-      "#{$1}#{$2}#{clean_label($3, '(', ')')}"
-    end
-  end
-
-  def clean_label(content, open_b, close_b)
-    clean = content.delete('"')
-    clean = clean.gsub('\\n', "<br/>")
-    clean = clean.gsub("\n", "<br/>").delete("\r")
-    "#{open_b}\"#{clean}\"#{close_b}"
   end
 
   def empty_summary
