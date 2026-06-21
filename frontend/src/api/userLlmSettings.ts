@@ -32,6 +32,8 @@ export interface UserLlmSettingsUpdateParams {
     chat_api_key?: string
     chat_model?: string | null
     chat_base_url?: string | null
+    // true 면 요약·챗 전체 초기화. 생략/false 면 요약만 비우고 챗 설정은 보존.
+    reset_all?: boolean
   }
 }
 

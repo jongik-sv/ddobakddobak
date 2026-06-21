@@ -30,6 +30,9 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
   const [localError, setLocalError] = useState<string | null>(null)
   const modelRef = useRef(value.model)
   modelRef.current = value.model
+  const loadGenRef = useRef(0)
+  const baseUrlRef = useRef(value.base_url)
+  baseUrlRef.current = value.base_url
 
   const preset = presets.find((p) => p.id === value.presetId)
   const isNone = !!noneOption && value.presetId === noneOption.id
@@ -37,23 +40,33 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
   const requiresKey = preset?.requiresApiKey ?? false
 
   const loadLocal = useCallback(async (baseUrl: string) => {
+    const gen = ++loadGenRef.current
     setLocalLoading(true); setLocalError(null)
     try {
       const fetcher = LOCAL_MODEL_FETCHERS[value.presetId]
       const models = fetcher ? await fetcher(baseUrl) : []
+      if (gen !== loadGenRef.current) return // out-of-order: a newer load superseded this one
       setLocalModels(models)
       if (models.length > 0 && !modelRef.current) onChange({ model: models[0] })
     } catch {
+      if (gen !== loadGenRef.current) return
       setLocalError('로컬 서버에 연결할 수 없습니다. 실행 중인지 확인하세요.')
       setLocalModels([])
-    } finally { setLocalLoading(false) }
+    } finally { if (gen === loadGenRef.current) setLocalLoading(false) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value.presetId])
 
   useEffect(() => {
-    if (isLocalListable(value.presetId) && value.base_url) loadLocal(value.base_url)
-    else { setLocalModels([]); setLocalError(null) }
-  }, [value.presetId, value.base_url, loadLocal])
+    // Auto-fetch on preset-change/mount only; base_url is intentionally excluded so
+    // typing in the URL field does not fire a request per keystroke (use 모델 새로고침).
+    if (isLocalListable(value.presetId) && baseUrlRef.current) loadLocal(baseUrlRef.current)
+    else if (!isLocalListable(value.presetId) && localModels.length > 0) { setLocalModels([]); setLocalError(null) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value.presetId, loadLocal])
+
+  // Reset '직접 입력' (custom model) toggle when the preset changes, so a switched-to
+  // preset shows its model SELECT instead of a stale free-text input.
+  useEffect(() => { setUseCustomModel(false) }, [value.presetId])
 
   const modelOptions = isLocalListable(value.presetId) ? localModels : (preset?.suggestedModels ?? [])
   const showModelSelect = modelOptions.length > 0 && !useCustomModel
@@ -63,14 +76,16 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
       <h3 className="text-sm font-semibold mb-2">{title}</h3>
       <div role="group" data-testid={`${idPrefix}-service-grid`} className="grid grid-cols-4 gap-2 mb-3">
         {noneOption && (
-          <button type="button" aria-pressed={isNone} onClick={() => onSelectPreset(noneOption.id)}
+          <button type="button" aria-pressed={isNone}
+            onClick={() => { if (noneOption.id !== value.presetId) onSelectPreset(noneOption.id) }}
             className={cardCls(isNone)}>
             <p className="text-sm font-medium">{noneOption.label}</p>
             <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{noneOption.description}</p>
           </button>
         )}
         {presets.map((p) => (
-          <button key={p.id} type="button" aria-pressed={value.presetId === p.id} onClick={() => onSelectPreset(p.id)}
+          <button key={p.id} type="button" aria-pressed={value.presetId === p.id}
+            onClick={() => { if (p.id !== value.presetId) onSelectPreset(p.id) }}
             className={cardCls(value.presetId === p.id)}>
             <p className="text-sm font-medium">{p.name}</p>
             <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{p.description}</p>
@@ -142,14 +157,14 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label htmlFor={`${idPrefix}-maxin`} className="block text-sm font-medium mb-1">최대 입력 토큰</label>
-            <input id={`${idPrefix}-maxin`} type="number" value={value.max_input_tokens ?? 200000}
-              onChange={(e) => onChange({ max_input_tokens: parseInt(e.target.value) || 0 })}
+            <input id={`${idPrefix}-maxin`} type="number" min={1} value={value.max_input_tokens ?? 200000}
+              onChange={(e) => { const v = e.target.value; const n = v === '' ? undefined : parseInt(v, 10); onChange({ max_input_tokens: Number.isNaN(n) ? undefined : n }) }}
               className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]" />
           </div>
           <div>
             <label htmlFor={`${idPrefix}-maxout`} className="block text-sm font-medium mb-1">최대 출력 토큰</label>
-            <input id={`${idPrefix}-maxout`} type="number" value={value.max_output_tokens ?? 10000}
-              onChange={(e) => onChange({ max_output_tokens: parseInt(e.target.value) || 0 })}
+            <input id={`${idPrefix}-maxout`} type="number" min={1} value={value.max_output_tokens ?? 10000}
+              onChange={(e) => { const v = e.target.value; const n = v === '' ? undefined : parseInt(v, 10); onChange({ max_output_tokens: Number.isNaN(n) ? undefined : n }) }}
               className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]" />
           </div>
         </div>

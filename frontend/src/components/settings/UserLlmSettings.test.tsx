@@ -318,4 +318,64 @@ describe('UserLlmSettings', () => {
     const chatGrid = await screen.findByTestId('user-chat-service-grid')
     expect(within(chatGrid).getByText('요약과 동일').closest('button')!.getAttribute('aria-pressed')).toBe('true')
   })
+
+  // #1: 저장된 provider와 일치하면 마스크를 넘긴다 (Anthropic 기본 로드 == 저장값)
+  it('선택 provider가 저장값과 같으면 요약 카드에 마스크("현재:")를 표시한다', async () => {
+    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
+    render(<UserLlmSettings />)
+    const summaryCard = await screen.findByTestId('user-summary-card')
+    await waitFor(() => {
+      expect(within(summaryCard).getByText('Anthropic').closest('button')!.getAttribute('aria-pressed')).toBe('true')
+    })
+    // 저장값(anthropic)과 선택값이 일치하므로 마스크가 노출된다
+    expect(within(summaryCard).getByText(/현재:/)).toBeInTheDocument()
+    expect(within(summaryCard).getByText(/sk-a\*+5678/)).toBeInTheDocument()
+  })
+
+  // #1: 저장값과 다른 provider로 전환하면 stale 마스크를 넘기지 않는다
+  it('다른 provider로 전환하면 요약 카드에 마스크("현재:")를 표시하지 않는다', async () => {
+    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
+    render(<UserLlmSettings />)
+    const summaryCard = await screen.findByTestId('user-summary-card')
+    // 저장값은 anthropic. 키가 필요한 다른 provider(OpenAI)로 전환 — 키 필드는 그대로 렌더되어 마스크 로직을 실제로 검증
+    fireEvent.click(within(summaryCard).getByText('OpenAI'))
+    await waitFor(() => {
+      expect(within(summaryCard).getByText('OpenAI').closest('button')!.getAttribute('aria-pressed')).toBe('true')
+    })
+    // 키 필드는 여전히 존재하지만 stale 마스크는 노출되지 않아야 한다
+    expect(within(summaryCard).getByLabelText('API Key')).toBeInTheDocument()
+    expect(within(summaryCard).queryByText(/현재:/)).toBeNull()
+  })
+
+  // #2: 설정 초기화 payload 는 reset_all:true 를 포함한다 (전체 초기화)
+  it('설정 초기화 payload 에 reset_all:true 를 담는다', async () => {
+    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
+    mockUpdateUserLlmSettings.mockResolvedValue(unconfiguredResponse)
+    render(<UserLlmSettings />)
+    await screen.findByTestId('user-summary-card')
+
+    fireEvent.click(screen.getByText('설정 초기화'))
+    await waitFor(() => {
+      expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith({
+        llm_settings: { provider: '', reset_all: true },
+      })
+    })
+  })
+
+  // #2: 요약='선택 안함' 저장 payload 는 reset_all 을 포함하지 않는다 (챗 보존)
+  it('요약=선택 안함 저장 payload 는 reset_all 을 담지 않는다', async () => {
+    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
+    mockUpdateUserLlmSettings.mockResolvedValue(unconfiguredResponse)
+    render(<UserLlmSettings />)
+    const summaryGrid = await screen.findByTestId('user-summary-service-grid')
+
+    // 요약 카드에서 '선택 안함' 선택 → 빈 provider 저장 경로
+    fireEvent.click(within(summaryGrid).getByText('선택 안함').closest('button')!)
+    fireEvent.click(screen.getByText('저장'))
+    await waitFor(() => {
+      expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith({
+        llm_settings: { provider: '' },
+      })
+    })
+  })
 })

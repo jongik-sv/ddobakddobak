@@ -58,9 +58,11 @@ export function LlmSettingsPanel() {
 
   const currentForm = presetCache[selectedPreset] || { auth_token: '', base_url: '', model: '', max_input_tokens: 200000, max_output_tokens: 10000 }
   const updateCurrentForm = (updates: Partial<LlmProviderCardValue>) => {
+    // 함수형 업데이터: 렌더 시점 스냅샷(currentForm)이 아니라 최신 캐시(c)에 병합한다.
+    // 비동기 onChange(로컬 모델 자동채움 등)가 동시 편집(base_url/token)을 덮어쓰는 것을 방지.
     setPresetCache((c) => ({
       ...c,
-      [selectedPreset]: { ...currentForm, ...updates },
+      [selectedPreset]: { ...(c[selectedPreset] ?? currentForm), ...updates },
     }))
   }
 
@@ -81,7 +83,12 @@ export function LlmSettingsPanel() {
     setChatMaskedToken('')
   }
 
-  const currentPreset = SERVICE_PRESETS.find((p) => p.id === selectedPreset)!
+  // selectedPreset이 SERVICE_PRESETS에 없는 id(예: 백엔드의 out-of-band active_preset)일 수 있으므로
+  // non-null 단언 대신 안전한 기본 프리셋(anthropic, 없으면 첫 항목)으로 폴백한다. 유효 프리셋 동작은 불변.
+  const currentPreset =
+    SERVICE_PRESETS.find((p) => p.id === selectedPreset) ??
+    SERVICE_PRESETS.find((p) => p.id === 'anthropic') ??
+    SERVICE_PRESETS[0]
   const chatPreset = SERVICE_PRESETS.find((p) => p.id === chatPresetId)
   const chatActualProvider = chatPreset?.provider ?? ''
 
