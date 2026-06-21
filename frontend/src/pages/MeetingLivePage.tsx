@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { Settings, Monitor, Timer, Pencil, RotateCcw } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
@@ -8,6 +8,7 @@ import { useMemoEditor } from '../hooks/useMemoEditor'
 import { useStatusMessage } from '../hooks/useStatusMessage'
 import { useLiveRecording } from '../hooks/useLiveRecording'
 import { useLiveTermCorrections } from '../hooks/useLiveTermCorrections'
+import { useLiveBookmark } from '../hooks/useLiveBookmark'
 import { useLiveMobileTabs } from '../hooks/useLiveMobileTabs'
 import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
@@ -24,7 +25,6 @@ import { ParticipantList } from '../components/meeting/ParticipantList'
 import { HostTransferDialog } from '../components/meeting/HostTransferDialog'
 import HostDisconnectedBanner from '../components/meeting/HostDisconnectedBanner'
 import { useAuthStore } from '../stores/authStore'
-import { createBookmark } from '../api/bookmarks'
 import { useMeetingTemplateStore } from '../stores/meetingTemplateStore'
 import SaveTemplateDialog from '../components/meeting/SaveTemplateDialog'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
@@ -100,44 +100,11 @@ export default function MeetingLivePage() {
   // 호스트 위임 다이얼로그
   const [transferTarget, setTransferTarget] = useState<Participant | null>(null)
 
-  // 북마크 팝오버
-  const [showBookmarkPopover, setShowBookmarkPopover] = useState(false)
-  const [bookmarkLabel, setBookmarkLabel] = useState('')
-  const bookmarkTimestampRef = useRef<number>(0)
-
-  // 북마크 추가
-  const handleOpenBookmark = useCallback(() => {
-    bookmarkTimestampRef.current = elapsedSeconds * 1000
-    setBookmarkLabel('')
-    setShowBookmarkPopover(true)
-  }, [elapsedSeconds])
-
-  const handleSaveBookmark = async () => {
-    setShowBookmarkPopover(false)
-    try {
-      await createBookmark(meetingId, {
-        timestamp_ms: bookmarkTimestampRef.current,
-        label: bookmarkLabel.trim() || undefined,
-      })
-      showStatus('북마크가 추가되었습니다')
-    } catch {
-      showStatus('북마크 추가에 실패했습니다')
-    }
-  }
-
-  // Ctrl+B 단축키로 북마크 추가
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-        e.preventDefault()
-        if (isActive) {
-          handleOpenBookmark()
-        }
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [isActive, handleOpenBookmark])
+  // 북마크 팝오버 + Ctrl+B 단축키
+  const {
+    showBookmarkPopover, setShowBookmarkPopover, bookmarkLabel, setBookmarkLabel,
+    bookmarkTimestampRef, handleOpenBookmark, handleSaveBookmark,
+  } = useLiveBookmark({ meetingId, elapsedSeconds, isActive, showStatus })
 
   // 사용자가 AI 회의록을 직접 편집 시 백엔드에 저장
   const markUserEdit = useTranscriptStore((s) => s.markUserEdit)
