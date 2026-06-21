@@ -41,8 +41,8 @@ class User < ApplicationRecord
     email == LOCAL_EMAIL
   end
 
-  # LlmService::CLI_PROVIDERS 와 동일(키·base 불요 CLI 프로바이더). 모델 자기완결성 위해 미러.
-  CLI_LLM_PROVIDERS = %w[claude_cli gemini_cli codex_cli].freeze
+  # 키·base 불요 CLI 프로바이더. 정본은 AppSettings(부팅 안전)에 두고 별칭한다 — 단일 출처(드리프트 방지).
+  CLI_LLM_PROVIDERS = AppSettings::CLI_LLM_PROVIDERS
 
   def llm_provider_cli?
     CLI_LLM_PROVIDERS.include?(llm_provider)
@@ -114,7 +114,8 @@ class User < ApplicationRecord
   #   키 없는 클라우드를 인정하면 effective_chat_llm_config tier-1이 토큰리스 config를
   #   반환해 정상 동작하는 tier-2(요약) 폴백을 우회하고 401이 난다.
   #   단, CLI 프로바이더와 로컬(loopback base_url) 프로바이더는 키 없이도 정당하게 인정한다.
-  CHAT_LOCAL_HOST_RE = /localhost|127\.0\.0\.1|0\.0\.0\.0|::1/i
+  # 정본은 AppSettings(부팅 안전)에 두고 별칭한다 — 전역 챗 게이트(AppSettings.chat_usable?)와 동일 규약.
+  CHAT_LOCAL_HOST_RE = AppSettings::CHAT_LOCAL_HOST_RE
 
   def chat_llm_configured?
     return false if chat_llm_provider.blank?

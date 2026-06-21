@@ -200,6 +200,46 @@ RSpec.describe User, "LLM settings", type: :model do
     end
   end
 
+  describe "#effective_chat_llm_config (전역 no-key cloud 챗 → 요약 폴백; AppSettings 게이트)" do
+    # 전역 경로: 부팅/런타임이 AppSettings.chat_llm_env(llm) 를 CHAT_LLM_* ENV 로 적용한다.
+    # 그 ENV 를 그대로 흉내 내어 리졸버(tier-3/tier-4) 동작을 검증한다.
+    def stub_chat_env!(llm_cfg, summary:)
+      env = AppSettings.chat_llm_env(llm_cfg)
+      allow(ENV).to receive(:fetch).and_call_original
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:fetch).with("LLM_PROVIDER", "anthropic").and_return(summary[:provider])
+      allow(ENV).to receive(:[]).with("ANTHROPIC_AUTH_TOKEN").and_return(summary[:auth_token])
+      allow(ENV).to receive(:[]).with("ANTHROPIC_BASE_URL").and_return(nil)
+      allow(ENV).to receive(:[]).with("LLM_MODEL").and_return(summary[:model])
+      allow(ENV).to receive(:[]).with("OPENAI_API_KEY").and_return(nil)
+      allow(ENV).to receive(:[]).with("OPENAI_BASE_URL").and_return(nil)
+      %w[CHAT_LLM_PROVIDER CHAT_LLM_AUTH_TOKEN CHAT_LLM_MODEL CHAT_LLM_BASE_URL].each do |k|
+        allow(ENV).to receive(:[]).with(k).and_return(env[k])
+      end
+    end
+
+    it "키 없는 클라우드 전역 챗(anthropic, no token)은 CHAT_LLM_* 미방출 → tier-4 순수 요약 모델 폴백" do
+      user = build(:user) # 개인 설정 없음
+      llm = { "chat" => { "provider" => "anthropic", "model" => "claude-haiku-4-5", "auth_token" => "", "base_url" => "" } }
+      stub_chat_env!(llm, summary: { provider: "anthropic", auth_token: "sk-sum", model: "claude-sonnet-4-6" })
+
+      cfg = user.effective_chat_llm_config
+      expect(cfg[:provider]).to eq("anthropic")
+      expect(cfg[:model]).to eq("claude-sonnet-4-6") # 요약 모델, haiku 누수 없음
+      expect(cfg[:auth_token]).to eq("sk-sum")       # 토큰리스 anthropic 아님
+    end
+
+    it "CLI 전역 챗(gemini_cli, no token)은 tier-3 로 gemini_cli config 를 반환한다" do
+      user = build(:user)
+      llm = { "chat" => { "provider" => "gemini_cli", "model" => "Gemini 3.5 Flash (Medium)" } }
+      stub_chat_env!(llm, summary: { provider: "anthropic", auth_token: "sk-sum", model: "claude-sonnet-4-6" })
+
+      cfg = user.effective_chat_llm_config
+      expect(cfg[:provider]).to eq("gemini_cli")
+      expect(cfg[:model]).to eq("Gemini 3.5 Flash (Medium)")
+    end
+  end
+
   describe "factory traits" do
     it "creates user with :with_llm_config trait" do
       user = create(:user, :with_llm_config)

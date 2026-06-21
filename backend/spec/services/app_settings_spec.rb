@@ -77,5 +77,41 @@ RSpec.describe AppSettings do
       expect(described_class.chat_llm_env({})).to eq({})
       expect(described_class.chat_llm_env(nil)).to eq({})
     end
+
+    context "사용성 게이트 (no-key cloud → 요약 모델 폴백)" do
+      it "클라우드 provider + auth_token 빈값 + base_url 없음 → 빈 해시 (CHAT_LLM_* 미방출)" do
+        llm = { "chat" => { "provider" => "anthropic", "model" => "claude-haiku-4-5", "auth_token" => "", "base_url" => "" } }
+        expect(described_class.chat_llm_env(llm)).to eq({})
+      end
+
+      it "클라우드 provider + 토큰 없음 + localhost base_url → 방출 (로컬은 키 불요)" do
+        llm = { "chat" => { "provider" => "openai", "model" => "qwen", "base_url" => "http://localhost:1234/v1" } }
+        env = described_class.chat_llm_env(llm)
+        expect(env["CHAT_LLM_PROVIDER"]).to eq("openai")
+        expect(env["CHAT_LLM_BASE_URL"]).to eq("http://localhost:1234/v1")
+      end
+
+      it "CLI provider(gemini_cli) + 토큰 없음 → 방출 (CLI는 키 불요)" do
+        llm = { "chat" => { "provider" => "gemini_cli", "model" => "Gemini 3.5 Flash (Medium)" } }
+        expect(described_class.chat_llm_env(llm)["CHAT_LLM_PROVIDER"]).to eq("gemini_cli")
+      end
+
+      it "anthropic + 토큰 있음 → 방출" do
+        llm = { "chat" => { "provider" => "anthropic", "model" => "claude-haiku-4-5", "auth_token" => "k" } }
+        expect(described_class.chat_llm_env(llm)["CHAT_LLM_PROVIDER"]).to eq("anthropic")
+      end
+
+      it "openai + 토큰 있음 → 방출" do
+        llm = { "chat" => { "provider" => "openai", "model" => "gpt-4o-mini", "auth_token" => "k" } }
+        expect(described_class.chat_llm_env(llm)["CHAT_LLM_PROVIDER"]).to eq("openai")
+      end
+
+      it "사용 불가(no-key cloud)면 레거시 chat_model이 있어도 그 모델을 방출하지 않는다" do
+        # chat 서브해시가 사용 불가면 {} → 요약 모델 폴백.
+        # (레거시 chat_model 분기는 chat.provider 가 없을 때만 동작)
+        llm = { "chat" => { "provider" => "anthropic", "model" => "claude-haiku-4-5" }, "chat_model" => "opus" }
+        expect(described_class.chat_llm_env(llm)).to eq({})
+      end
+    end
   end
 end
