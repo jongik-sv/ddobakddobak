@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { triggerRealtimeSummary } from '../api/meetings'
 import { useTranscriptStore } from '../stores/transcriptStore'
+import { DEFAULT_SUMMARY_INTERVAL_SEC } from '../config'
 
 interface UseRecordingSummaryTimerOptions {
   isActive: boolean
   isPaused: boolean
   isApplyingCorrections: boolean
   meetingId: number
-  summaryIntervalSec: number
   finalsCount: number
   isSummarizing: boolean
   showStatus: (msg: string, durationMs?: number) => void
@@ -26,12 +26,12 @@ export function useRecordingSummaryTimer({
   isPaused,
   isApplyingCorrections,
   meetingId,
-  summaryIntervalSec,
   finalsCount,
   isSummarizing,
   showStatus,
 }: UseRecordingSummaryTimerOptions) {
   const [summaryCountdown, setSummaryCountdown] = useState<number>(0)
+  const [summaryIntervalSec, setSummaryIntervalSec] = useState(DEFAULT_SUMMARY_INTERVAL_SEC)
   // 요약 타이머는 틱 누산이 아니라 Date.now() 기준 deadline으로 동작 (백그라운드 throttle/일시정지에도 정확)
   const summaryDeadlineRef = useRef<number | null>(null)
   const summaryRemainingRef = useRef<number | null>(null)
@@ -117,5 +117,5 @@ export function useRecordingSummaryTimer({
     return () => clearInterval(interval)
   }, [isActive, isPaused, isApplyingCorrections, meetingId, summaryIntervalSec])
 
-  return { summaryCountdown, handleManualSummary, resetSummaryTimer }
+  return { summaryCountdown, handleManualSummary, resetSummaryTimer, summaryIntervalSec, setSummaryIntervalSec }
 }

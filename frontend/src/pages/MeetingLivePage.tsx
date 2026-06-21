@@ -1,19 +1,22 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { Settings, Monitor, Timer, Pencil, RotateCcw } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
 import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMemoEditor } from '../hooks/useMemoEditor'
+import { useStatusMessage } from '../hooks/useStatusMessage'
 import { useLiveRecording } from '../hooks/useLiveRecording'
+import { useLiveTermCorrections } from '../hooks/useLiveTermCorrections'
+import { useLiveBookmark } from '../hooks/useLiveBookmark'
 import { useLiveMobileTabs } from '../hooks/useLiveMobileTabs'
 import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SummaryOptionsControl } from '../components/meeting/SummaryOptionsControl'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
-import { updateMeeting, triggerRealtimeSummary, correctTerms, updateNotes } from '../api/meetings'
-import type { Participant, TermCorrection, UpdateMeetingParams } from '../api/meetings'
+import { updateMeeting, triggerRealtimeSummary, updateNotes } from '../api/meetings'
+import type { Participant, UpdateMeetingParams } from '../api/meetings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { IS_TAURI, IS_MOBILE, SUMMARY_INTERVAL_OPTIONS, getMode } from '../config'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
@@ -22,7 +25,6 @@ import { ParticipantList } from '../components/meeting/ParticipantList'
 import { HostTransferDialog } from '../components/meeting/HostTransferDialog'
 import HostDisconnectedBanner from '../components/meeting/HostDisconnectedBanner'
 import { useAuthStore } from '../stores/authStore'
-import { createBookmark } from '../api/bookmarks'
 import { useMeetingTemplateStore } from '../stores/meetingTemplateStore'
 import SaveTemplateDialog from '../components/meeting/SaveTemplateDialog'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
@@ -47,17 +49,13 @@ export default function MeetingLivePage() {
   const meetingId = Number(id)
 
   // 상태 메시지 (하단 상태바)
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const statusTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const showStatus = useCallback((msg: string, durationMs = 3000) => {
-    setStatusMessage(msg)
-    if (statusTimerRef.current) clearTimeout(statusTimerRef.current)
-    statusTimerRef.current = setTimeout(() => setStatusMessage(null), durationMs)
-  }, [])
+  const { statusMessage, showStatus } = useStatusMessage()
 
-  // 오타 수정 상태
-  const [corrections, setCorrections] = useState<TermCorrection[]>([{ from: '', to: '' }])
-  const [isApplyingCorrections, setIsApplyingCorrections] = useState(false)
+  // 오타 수정 (state + 핸들러) — useLiveRecording 이전에 호출(isApplyingCorrections 주입)
+  const {
+    corrections, isApplyingCorrections, handleApplyCorrections,
+    updateCorrection, addCorrectionRow, removeCorrectionRow,
+  } = useLiveTermCorrections(meetingId, showStatus)
 
   // 메모 에디터 초기화 (useMemoEditor 이후 ref로 주입 — 순환 의존 회피)
   const clearMemoEditorRef = useRef<() => void>(() => {})
@@ -102,77 +100,11 @@ export default function MeetingLivePage() {
   // 호스트 위임 다이얼로그
   const [transferTarget, setTransferTarget] = useState<Participant | null>(null)
 
-  // 북마크 팝오버
-  const [showBookmarkPopover, setShowBookmarkPopover] = useState(false)
-  const [bookmarkLabel, setBookmarkLabel] = useState('')
-  const bookmarkTimestampRef = useRef<number>(0)
-
-  // 오타 수정 적용
-  const handleApplyCorrections = async () => {
-    const valid = corrections.filter((c) => c.from.trim() && c.to.trim())
-    if (valid.length === 0 || isApplyingCorrections) return
-
-    setIsApplyingCorrections(true)
-    showStatus('오타 수정 반영 중...', 10000)
-    try {
-      const result = await correctTerms(meetingId, valid)
-      setCorrections([{ from: '', to: '' }])
-      const msg = result.corrected_transcripts > 0
-        ? `오타 수정 완료 (트랜스크립트 ${result.corrected_transcripts}건 수정)`
-        : '오타 수정이 회의록에 반영되었습니다'
-      showStatus(msg)
-    } catch {
-      showStatus('오타 수정 반영에 실패했습니다')
-    } finally {
-      setIsApplyingCorrections(false)
-    }
-  }
-
-  const updateCorrection = (index: number, field: 'from' | 'to', value: string) => {
-    setCorrections((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)))
-  }
-
-  const addCorrectionRow = () => {
-    setCorrections((prev) => [...prev, { from: '', to: '' }])
-  }
-
-  const removeCorrectionRow = (index: number) => {
-    setCorrections((prev) => (prev.length <= 1 ? [{ from: '', to: '' }] : prev.filter((_, i) => i !== index)))
-  }
-
-  // 북마크 추가
-  const handleOpenBookmark = useCallback(() => {
-    bookmarkTimestampRef.current = elapsedSeconds * 1000
-    setBookmarkLabel('')
-    setShowBookmarkPopover(true)
-  }, [elapsedSeconds])
-
-  const handleSaveBookmark = async () => {
-    setShowBookmarkPopover(false)
-    try {
-      await createBookmark(meetingId, {
-        timestamp_ms: bookmarkTimestampRef.current,
-        label: bookmarkLabel.trim() || undefined,
-      })
-      showStatus('북마크가 추가되었습니다')
-    } catch {
-      showStatus('북마크 추가에 실패했습니다')
-    }
-  }
-
-  // Ctrl+B 단축키로 북마크 추가
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-        e.preventDefault()
-        if (isActive) {
-          handleOpenBookmark()
-        }
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [isActive, handleOpenBookmark])
+  // 북마크 팝오버 + Ctrl+B 단축키
+  const {
+    showBookmarkPopover, setShowBookmarkPopover, bookmarkLabel, setBookmarkLabel,
+    bookmarkTimestampRef, handleOpenBookmark, handleSaveBookmark,
+  } = useLiveBookmark({ meetingId, elapsedSeconds, isActive, showStatus })
 
   // 사용자가 AI 회의록을 직접 편집 시 백엔드에 저장
   const markUserEdit = useTranscriptStore((s) => s.markUserEdit)
