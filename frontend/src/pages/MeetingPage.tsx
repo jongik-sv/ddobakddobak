@@ -202,7 +202,7 @@ export default function MeetingPage() {
       : null
 
   // 모바일 탭 — 검색 매치 위치에 따라 기록/요약 탭 자동 전환 (controlled)
-  const [mobileTab, setMobileTab] = useState('chat')
+  const [mobileTab, setMobileTab] = useState('summary')
   const currentMatchType = search.current?.type
   useEffect(() => {
     if (isDesktop || !currentMatchType || !search.effectiveQuery) return

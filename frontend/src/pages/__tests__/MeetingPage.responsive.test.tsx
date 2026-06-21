@@ -297,6 +297,17 @@ describe('MeetingPage 반응형 분기', () => {
       })
     })
 
+    it('기본 활성 탭이 요약(summary)이다 — AI 챗 아님', async () => {
+      renderPage()
+      await waitFor(() => {
+        expect(screen.getByText('반응형 테스트 회의')).toBeInTheDocument()
+      })
+      const summaryTab = screen.getByRole('tab', { name: /요약/ })
+      const chatTab = screen.getByRole('tab', { name: /AI 챗/ })
+      expect(summaryTab).toHaveAttribute('aria-selected', 'true')
+      expect(chatTab).toHaveAttribute('aria-selected', 'false')
+    })
+
     it('헤더 제목이 모바일에서 sr-only로 숨겨짐', async () => {
       renderPage()
       await waitFor(() => {

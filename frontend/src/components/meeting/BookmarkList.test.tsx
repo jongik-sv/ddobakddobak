@@ -95,3 +95,39 @@ describe('BookmarkList 잠금 게이팅', () => {
     expect(screen.getByTitle('삭제')).toBeInTheDocument()
   })
 })
+
+describe('BookmarkList 접기/펼치기 (collapsible)', () => {
+  it('collapsible 미지정 시 토글 없음 — 목록 항상 표시', () => {
+    render(<BookmarkList bookmarks={[bm]} onSeek={vi.fn()} onDelete={vi.fn()} />)
+    expect(screen.queryByTitle('북마크 접기')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('북마크 펼치기')).not.toBeInTheDocument()
+    expect(screen.getByText('원래 라벨')).toBeInTheDocument()
+  })
+
+  it('collapsible=true면 기본 펼침 — 헤더 클릭 시 목록 숨김, 다시 클릭 시 표시', async () => {
+    render(<BookmarkList bookmarks={[bm]} onSeek={vi.fn()} onDelete={vi.fn()} collapsible />)
+
+    // 기본 펼침: 항목 보임
+    expect(screen.getByText('원래 라벨')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByTitle('북마크 접기'))
+    expect(screen.queryByText('원래 라벨')).not.toBeInTheDocument()
+
+    // 다시 펼치기
+    await userEvent.click(screen.getByTitle('북마크 펼치기'))
+    expect(screen.getByText('원래 라벨')).toBeInTheDocument()
+  })
+
+  it('collapsible=true에서 추가 버튼 클릭은 onAdd만 호출하고 접지 않음 (stopPropagation)', async () => {
+    const onAdd = vi.fn()
+    render(
+      <BookmarkList bookmarks={[bm]} onSeek={vi.fn()} onDelete={vi.fn()} onAdd={onAdd} collapsible />,
+    )
+
+    await userEvent.click(screen.getByText('현재 지점 추가'))
+
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    // 목록은 여전히 펼쳐진 상태여야 한다
+    expect(screen.getByText('원래 라벨')).toBeInTheDocument()
+  })
+})

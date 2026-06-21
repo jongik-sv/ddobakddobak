@@ -3,6 +3,7 @@ import { Download } from 'lucide-react'
 import { exportMeeting, exportMeetingData, exportPrompt } from '../../api/meetings'
 import { downloadMarkdown } from '../../lib/markdown'
 import { downloadBlob, downloadText } from '../../lib/download'
+import { Tooltip } from '../ui/Tooltip'
 
 type ExportFormat = 'md' | 'pdf' | 'docx' | 'prompt'
 
@@ -92,15 +93,17 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
 
   return (
     <div className="relative" ref={panelRef}>
-      {/* 트리거 버튼 */}
-      <button
-        onClick={() => setIsOpen((o) => !o)}
-        className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
-        aria-label="내보내기"
-      >
-        <Download className="w-4 h-4" />
-        <span className="hidden lg:inline">내보내기</span>
-      </button>
+      {/* 트리거 버튼 — Tooltip은 트리거만 감싼다(아래 드롭다운 패널은 relative div의 형제로 유지해 앵커 위치 보존) */}
+      <Tooltip text="내보내기">
+        <button
+          onClick={() => setIsOpen((o) => !o)}
+          className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+          aria-label="내보내기"
+        >
+          <Download className="w-4 h-4" />
+          <span className="hidden lg:inline">내보내기</span>
+        </button>
+      </Tooltip>
 
       {/* 옵션 패널 */}
       {isOpen && (

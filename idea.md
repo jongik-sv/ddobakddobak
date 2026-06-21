@@ -76,6 +76,10 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
   - 의미검색(임베딩) 보강: KURE-v1(MIT, 1024dim) 임베딩 + FTS5 하이브리드(RRF). 런타임=PyTorch+transformers(AutoModel, CLS풀+L2정규화), device 자동감지(기본 CPU, Nvidia 서버=CUDA). 저장=`transcript_embeddings` plain BLOB 테이블(transcript 행 단위), 검색=numo-narray exact cosine(브루트포스). 인가=FTS와 동일 `accessible_by` meeting_id 필터.
   - **벡터 스토어 스케일 로드맵(미래계획)**: 검색을 `VectorIndex` 추상화 뒤에 두어 교체 가능하게 설계. 현 규모(전사 ~24k행)에선 브루트포스가 더 빠르고·정확(exact)·단순. **회의록 규모가 크게 늘거나(수십만~수백만 벡터) 상용화(중앙 멀티유저 서버) 시 → PostgreSQL+pgvector(HNSW + meeting_id 필터)로 이전.** 그때 임베딩 BLOB은 모델 안 바뀌면 재임베딩 없이 재인덱싱만. sqlite-vec는 "지금 하기엔 무겁고 스케일 가선 pgvector한테 밀리는" 중간 단계라 건너뜀. (서버 전환=Nvidia GPU라 PyTorch 런타임 그대로 device=cuda로 이전, [[project_refactor_roadmap]] #12 Postgres 계획과 연계.)
   - **리랭커(미래계획, Phase 3)**: v1은 KURE bi-encoder + RRF만. 검색 품질 부족 시 `dragonkue/bge-reranker-v2-m3-ko`(cross-encoder, XLM-R-large ~568M, Apache) 추가 → 하이브리드 top-K 후보를 `(질문,발췌)` 쌍으로 정밀 재정렬. 비용: 두 번째 ~1.1GB 모델 로드 + 쿼리마다 K쌍 추론(CPU선 수백ms~수초). **이상적 도입 시점 = Nvidia GPU 서버 전환 이후**(GPU면 빠름). v1 제외 = 기능 포기 아니라 GPU 가서 켜는 옵션.
+9. 화자 창에서 해당 화자가 누군지 음성을 들어야 이름을 넣을 수 있는데 지금은 아주 나중에 말한 화자는 말하는 위치로 넘어가기가 힘들어. 그래서 화자를 누르면 해당 화자의 말로 위치가 이동하면 좋겠어. 방법은 가장 위가 아닌 지금 현재 음성이 플레이 되고 있는 위치보다 아래에 있는 화자의 발화 위치로 이동하면 된다. 만약 플레이 되고 있지 않다면 가장 처음 발화 위치로 이동하면 된다. 그래서 화자 1을 계속 누르면 화자 1이 말한 것을 계속 아래로 가면서 들려주면 되는거야. '화자 1' 이렇게 되어 있는 텍스트(또는 버튼)을 누를때 마다 이동하면 된다.
+10. 자동 회의 시작 기능 
+  - 옵션 1 : '회의 시작합니다. ' 등의 말이 들리면 자동으로 회의 시작
+  - 옵션 2 : 시각을 정하면 자동으로 회의 시작 또는 알람 (회의 시작이 되었습니다. 회의를 시작하시겠습니까?)
 
 ## 또박또박 추천 기능 — 경쟁사 대비 갭 분석
 

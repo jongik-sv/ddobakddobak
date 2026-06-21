@@ -74,7 +74,7 @@ export function buildMeetingDetailTabs({
       content: (
         <div className="h-full flex flex-col overflow-hidden">
           {bookmarksVisible && (
-            <BookmarkList bookmarks={bookmarks} onSeek={onSeek} onDelete={onDeleteBookmark} onAdd={onAddBookmark} onEdit={onEditBookmark} readOnly={locked} />
+            <BookmarkList bookmarks={bookmarks} onSeek={onSeek} onDelete={onDeleteBookmark} onAdd={onAddBookmark} onEdit={onEditBookmark} readOnly={locked} collapsible />
           )}
           {/* 화자 accordion (기본 닫힘) — MeetingViewerPage 모바일과 동일 패턴 */}
           <details className="border-b">
