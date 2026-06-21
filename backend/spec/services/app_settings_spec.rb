@@ -45,4 +45,37 @@ RSpec.describe AppSettings do
     allow(File).to receive(:read).and_return(yaml_with_threshold)
     expect(described_class.diarization_config["clustering_threshold"]).to eq(0.55)
   end
+
+  describe ".chat_llm_env" do
+    it "llm.chat 독립 설정을 CHAT_LLM_* ENV 페어로 변환한다 (base_url 빈값은 생략)" do
+      llm = {
+        "chat" => {
+          "provider" => "anthropic",
+          "model" => "claude-haiku-4-5",
+          "auth_token" => "x",
+          "base_url" => ""
+        }
+      }
+      expect(described_class.chat_llm_env(llm)).to eq(
+        "CHAT_LLM_PROVIDER" => "anthropic",
+        "CHAT_LLM_AUTH_TOKEN" => "x",
+        "CHAT_LLM_MODEL" => "claude-haiku-4-5"
+      )
+    end
+
+    it "base_url이 있으면 CHAT_LLM_BASE_URL도 포함한다" do
+      llm = { "chat" => { "provider" => "anthropic", "model" => "m", "auth_token" => "x", "base_url" => "https://api.z.ai/api/anthropic" } }
+      expect(described_class.chat_llm_env(llm)["CHAT_LLM_BASE_URL"]).to eq("https://api.z.ai/api/anthropic")
+    end
+
+    it "chat 독립 설정이 없고 레거시 chat_model만 있으면 CHAT_LLM_MODEL만 반환한다" do
+      llm = { "chat_model" => "sonnet" }
+      expect(described_class.chat_llm_env(llm)).to eq("CHAT_LLM_MODEL" => "sonnet")
+    end
+
+    it "chat provider도 chat_model도 없으면 빈 해시를 반환한다" do
+      expect(described_class.chat_llm_env({})).to eq({})
+      expect(described_class.chat_llm_env(nil)).to eq({})
+    end
+  end
 end

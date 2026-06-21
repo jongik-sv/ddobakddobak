@@ -167,6 +167,39 @@ RSpec.describe User, "LLM settings", type: :model do
     end
   end
 
+  describe "#chat_llm_configured? (FIX 2: keyless cloud chat provider)" do
+    it "키 없는 클라우드 챗 프로바이더(anthropic)는 configured가 아니다" do
+      user = build(:user, chat_llm_provider: "anthropic", chat_llm_api_key: nil, chat_llm_base_url: nil)
+      expect(user.chat_llm_configured?).to be(false)
+    end
+
+    it "키 없는 클라우드 챗 프로바이더는 effective_chat_llm_config가 요약(서버) 폴백으로 떨어진다(토큰리스 anthropic 아님)" do
+      user = build(:user,
+        llm_provider: "anthropic", llm_api_key: "sk-sum", llm_enabled: true,
+        chat_llm_provider: "anthropic", chat_llm_api_key: nil, chat_llm_base_url: nil
+      )
+      cfg = user.effective_chat_llm_config
+      # tier-2(요약) 폴백이 동작하면 요약 토큰이 들어온다. tier-1(토큰리스 챗)이면 auth_token이 없다.
+      expect(cfg[:auth_token]).to eq("sk-sum")
+    end
+
+    it "로컬 챗 프로바이더(ollama + loopback base_url, 키 없음)는 configured다" do
+      user = build(:user, chat_llm_provider: "ollama", chat_llm_api_key: nil,
+                          chat_llm_base_url: "http://localhost:11434/v1")
+      expect(user.chat_llm_configured?).to be(true)
+    end
+
+    it "CLI 챗 프로바이더(claude_cli, 키 없음)는 configured다" do
+      user = build(:user, chat_llm_provider: "claude_cli", chat_llm_api_key: nil, chat_llm_base_url: nil)
+      expect(user.chat_llm_configured?).to be(true)
+    end
+
+    it "키 있는 클라우드 챗 프로바이더(anthropic)는 configured다" do
+      user = build(:user, chat_llm_provider: "anthropic", chat_llm_api_key: "sk-chat", chat_llm_base_url: nil)
+      expect(user.chat_llm_configured?).to be(true)
+    end
+  end
+
   describe "factory traits" do
     it "creates user with :with_llm_config trait" do
       user = create(:user, :with_llm_config)

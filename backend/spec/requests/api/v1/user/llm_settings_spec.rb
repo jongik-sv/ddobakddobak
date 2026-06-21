@@ -200,14 +200,14 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(body["llm_settings"]["chat_model"]).to eq("claude-haiku-4-5")
     end
 
-    it "provider 빈값 시 chat_llm_model도 초기화한다" do
+    it "provider 빈값 + reset_all 시 chat_llm_model도 초기화한다" do
       user.update!(
         llm_provider: "anthropic", llm_api_key: "sk-xxx",
         llm_model: "claude-sonnet-4-6", chat_llm_model: "claude-haiku-4-5"
       )
 
       put "/api/v1/user/llm_settings", params: {
-        llm_settings: { provider: "" }
+        llm_settings: { provider: "", reset_all: true }
       }, as: :json
 
       expect(response).to have_http_status(:ok)
@@ -235,11 +235,32 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(body.dig("llm_settings", "chat_configured")).to be true
     end
 
-    it "provider 빈값 시 chat_llm_* 도 모두 초기화한다" do
+    it "provider 빈값 + reset_all 시 chat_llm_* 도 모두 초기화한다" do
       user.update!(
         llm_provider: "anthropic", llm_api_key: "sk-xxx",
         chat_llm_provider: "openai", chat_llm_api_key: "chatkey",
         chat_llm_model: "gpt-4o", chat_llm_base_url: "http://localhost:11434/v1"
+      )
+
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "", reset_all: true }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.chat_llm_provider).to be_nil
+      expect(user.chat_llm_api_key).to be_nil
+      expect(user.chat_llm_base_url).to be_nil
+    end
+
+    # ============================================================
+    # BUG #2: 요약='선택 안함'(빈 provider, reset_all 없음) 저장이
+    #          별도 설정된 AI-챗 provider(chat_llm_*)를 보존해야 한다.
+    # ============================================================
+    it "provider 빈값(reset_all 없음) 시 chat_llm_* 를 보존한다" do
+      user.update!(
+        llm_provider: "anthropic", llm_api_key: "sk-xxx", llm_model: "claude-sonnet-4-6",
+        chat_llm_provider: "anthropic", chat_llm_api_key: "k"
       )
 
       put "/api/v1/user/llm_settings", params: {
@@ -248,9 +269,34 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
 
       expect(response).to have_http_status(:ok)
       user.reload
+      # 요약 컬럼은 비워짐
+      expect(user.llm_provider).to be_nil
+      expect(user.llm_api_key).to be_nil
+      expect(user.llm_model).to be_nil
+      expect(user.llm_base_url).to be_nil
+      # 챗 컬럼은 보존
+      expect(user.chat_llm_provider).to eq("anthropic")
+      expect(user.chat_llm_api_key).to eq("k")
+      expect(user.llm_enabled).to be(true)
+    end
+
+    it "provider 빈값 + reset_all 시 요약·챗 모두 초기화한다(전체 초기화 버튼)" do
+      user.update!(
+        llm_provider: "anthropic", llm_api_key: "sk-xxx", llm_model: "claude-sonnet-4-6",
+        chat_llm_provider: "anthropic", chat_llm_api_key: "k"
+      )
+
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "", reset_all: true }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_provider).to be_nil
+      expect(user.llm_api_key).to be_nil
       expect(user.chat_llm_provider).to be_nil
       expect(user.chat_llm_api_key).to be_nil
-      expect(user.chat_llm_base_url).to be_nil
+      expect(user.llm_enabled).to be(true)
     end
 
     it "chat_model 파라미터가 chat_llm_model 파라미터보다 우선한다" do
@@ -263,6 +309,84 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(user.reload.chat_llm_model).to eq("gpt-4o")
+    end
+  end
+
+  # ============================================================
+  # FIX 1: provider 전환 시 이전 provider의 키를 새 provider에 묶지 않는다
+  # ============================================================
+  describe "PUT provider 전환 시 stale key 처리 (FIX 1)" do
+    it "(a) anthropic+키 → openai로 전환(키 미전송) 시 llm_api_key를 nil로 비운다" do
+      user.update!(llm_provider: "anthropic", llm_api_key: "sk-x", llm_model: "claude-sonnet-4-6")
+
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "openai", model: "gpt-4o" }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_provider).to eq("openai")
+      expect(user.llm_api_key).to be_nil
+    end
+
+    it "(b) provider 전환 + 새 키 전송 시 새 키를 저장한다" do
+      user.update!(llm_provider: "anthropic", llm_api_key: "sk-x")
+
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "openai", api_key: "newkey", model: "gpt-4o" }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_provider).to eq("openai")
+      expect(user.llm_api_key).to eq("newkey")
+    end
+
+    it "(c) 동일 provider + 모델 변경(키 미전송) 시 기존 키를 보존한다" do
+      user.update!(llm_provider: "anthropic", llm_api_key: "sk-keep", llm_model: "claude-sonnet-4-6")
+
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "anthropic", model: "claude-haiku-4-5" }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_model).to eq("claude-haiku-4-5")
+      expect(user.llm_api_key).to eq("sk-keep")
+    end
+
+    it "(d) chat_provider 전환(챗 키 미전송) 시 chat_llm_api_key를 nil로 비운다" do
+      user.update!(
+        llm_provider: "anthropic", llm_api_key: "sk-sum",
+        chat_llm_provider: "anthropic", chat_llm_api_key: "sk-chat-old"
+      )
+
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "anthropic", chat_provider: "openai", chat_model: "gpt-4o" }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.chat_llm_provider).to eq("openai")
+      expect(user.chat_llm_api_key).to be_nil
+    end
+  end
+
+  # ============================================================
+  # FIX 3: provider 저장 시 개인 LLM을 (재)활성화한다
+  # ============================================================
+  describe "PUT provider 저장 시 llm_enabled 재활성화 (FIX 3)" do
+    it "llm_enabled=false 사용자가 provider+키 저장 시 enabled가 true가 되고 configured가 된다" do
+      user.update!(llm_enabled: false)
+
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "anthropic", api_key: "sk-ant-key-12345678", model: "claude-sonnet-4-6" }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_enabled).to be(true)
+      expect(user.llm_configured?).to be(true)
     end
   end
 

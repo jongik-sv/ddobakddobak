@@ -1,0 +1,465 @@
+diff --git a/frontend/src/api/userLlmSettings.ts b/frontend/src/api/userLlmSettings.ts
+index 2df47c4..af5df32 100644
+--- a/frontend/src/api/userLlmSettings.ts
++++ b/frontend/src/api/userLlmSettings.ts
+@@ -32,6 +32,8 @@ export interface UserLlmSettingsUpdateParams {
+     chat_api_key?: string
+     chat_model?: string | null
+     chat_base_url?: string | null
++    // true 면 요약·챗 전체 초기화. 생략/false 면 요약만 비우고 챗 설정은 보존.
++    reset_all?: boolean
+   }
+ }
+ 
+diff --git a/frontend/src/components/settings/LlmProviderCard.test.tsx b/frontend/src/components/settings/LlmProviderCard.test.tsx
+index fd324ef..c8a11f8 100644
+--- a/frontend/src/components/settings/LlmProviderCard.test.tsx
++++ b/frontend/src/components/settings/LlmProviderCard.test.tsx
+@@ -8,8 +8,9 @@ vi.mock('../../api/settings', () => ({
+   fetchOllamaModels: vi.fn(),
+   fetchLmStudioModels: vi.fn(),
+ }))
+-import { fetchOllamaModels } from '../../api/settings'
++import { fetchOllamaModels, fetchLmStudioModels } from '../../api/settings'
+ const mockOllama = vi.mocked(fetchOllamaModels)
++const mockLmStudio = vi.mocked(fetchLmStudioModels)
+ 
+ const baseValue: LlmProviderCardValue = { presetId: 'anthropic', base_url: '', model: 'claude-sonnet-4-6', auth_token: '' }
+ const noop = () => {}
+@@ -24,7 +25,7 @@ function renderCard(overrides: Partial<React.ComponentProps<typeof LlmProviderCa
+ }
+ 
+ describe('LlmProviderCard', () => {
+-  beforeEach(() => { vi.clearAllMocks(); mockOllama.mockResolvedValue([]) })
++  beforeEach(() => { vi.clearAllMocks(); mockOllama.mockResolvedValue([]); mockLmStudio.mockResolvedValue([]) })
+ 
+   it('title + 프리셋 그리드 렌더', () => {
+     renderCard()
+@@ -85,4 +86,97 @@ describe('LlmProviderCard', () => {
+     fireEvent.change(screen.getByLabelText('API Base URL'), { target: { value: 'https://x' } })
+     expect(onChange).toHaveBeenCalledWith({ base_url: 'https://x' })
+   })
++
++  // #4 — 이미 선택된 프리셋 재클릭은 no-op (폼 리셋 방지)
++  it('이미 선택된 프리셋 버튼을 다시 클릭하면 onSelectPreset를 호출하지 않는다', () => {
++    const onSelectPreset = vi.fn()
++    renderCard({ value: { ...baseValue, presetId: 'anthropic' }, onSelectPreset })
++    const grid = screen.getByTestId('sum-service-grid')
++    fireEvent.click(within(grid).getByText('Anthropic').closest('button')!)
++    expect(onSelectPreset).not.toHaveBeenCalled()
++    // 다른 프리셋은 정상 호출
++    fireEvent.click(within(grid).getByText('OpenAI').closest('button')!)
++    expect(onSelectPreset).toHaveBeenCalledWith('openai')
++  })
++
++  it('이미 선택된 noneOption 재클릭도 no-op', () => {
++    const onSelectPreset = vi.fn()
++    renderCard({ noneOption: { id: 'none', label: '선택 안함', description: '서버 기본' }, value: { ...baseValue, presetId: 'none' }, onSelectPreset })
++    const grid = screen.getByTestId('sum-service-grid')
++    fireEvent.click(within(grid).getByText('선택 안함').closest('button')!)
++    expect(onSelectPreset).not.toHaveBeenCalled()
++  })
++
++  // #6 — base_url 변경은 auto-fetch를 재발화하지 않는다 (프리셋 선택/마운트 시 1회만)
++  it('로컬 모델 fetch는 프리셋 선택 시 1회만, 이후 base_url 변경에는 재호출되지 않는다', async () => {
++    mockOllama.mockResolvedValue(['gemma:2b'])
++    const { rerender } = renderCard({ value: { ...baseValue, presetId: 'ollama', base_url: 'http://localhost:11434/v1', model: '' } })
++    await waitFor(() => expect(mockOllama).toHaveBeenCalledTimes(1))
++    // base_url만 바뀐 리렌더 — auto-fetch가 다시 발화되면 안 됨
++    rerender(
++      <LlmProviderCard title="요약 모델" idPrefix="sum" presets={SERVICE_PRESETS}
++        value={{ ...baseValue, presetId: 'ollama', base_url: 'http://localhost:11434/v2', model: '' }} onSelectPreset={noop} onChange={noop} />,
++    )
++    await waitFor(() => expect(mockOllama).toHaveBeenCalledTimes(1))
++  })
++
++  // #6 — 수동 새로고침 버튼은 현재 base_url로 재감지한다
++  it('모델 새로고침 버튼은 현재 base_url로 fetch를 호출한다', async () => {
++    mockOllama.mockResolvedValue(['gemma:2b'])
++    renderCard({ value: { ...baseValue, presetId: 'ollama', base_url: 'http://localhost:11434/v1', model: '' } })
++    await waitFor(() => expect(mockOllama).toHaveBeenCalledTimes(1))
++    fireEvent.click(screen.getByLabelText('모델 새로고침'))
++    await waitFor(() => expect(mockOllama).toHaveBeenCalledTimes(2))
++  })
++
++  // #7 — out-of-order 가드: 느린 이전 fetch가 새 프리셋의 목록을 덮어쓰지 않는다
++  it('out-of-order: 늦게 resolve된 이전 프리셋 fetch가 새 프리셋 목록을 덮어쓰지 않는다', async () => {
++    let resolveOllama!: (v: string[]) => void
++    mockOllama.mockImplementation(() => new Promise<string[]>((r) => { resolveOllama = r }))
++    mockLmStudio.mockResolvedValue(['lmstudio-model'])
++    const { rerender } = renderCard({ value: { ...baseValue, presetId: 'ollama', base_url: 'http://localhost:11434/v1', model: '' } })
++    await waitFor(() => expect(mockOllama).toHaveBeenCalledTimes(1))
++    // 프리셋을 lmstudio로 전환 → 새 load가 먼저 끝남
++    rerender(
++      <LlmProviderCard title="요약 모델" idPrefix="sum" presets={SERVICE_PRESETS}
++        value={{ ...baseValue, presetId: 'lmstudio', base_url: 'http://localhost:1234/v1', model: '' }} onSelectPreset={noop} onChange={noop} />,
++    )
++    await waitFor(() => {
++      const el = screen.getByLabelText('모델명') as HTMLSelectElement
++      expect(Array.from(el.options).map((o) => o.value)).toContain('lmstudio-model')
++    })
++    // 이제 stale한 ollama fetch가 뒤늦게 resolve — 목록을 덮어쓰면 안 됨
++    resolveOllama(['stale-ollama'])
++    await waitFor(() => expect(mockOllama).toHaveBeenCalled())
++    const el = screen.getByLabelText('모델명') as HTMLSelectElement
++    const opts = Array.from(el.options).map((o) => o.value)
++    expect(opts).toContain('lmstudio-model')
++    expect(opts).not.toContain('stale-ollama')
++  })
++
++  // #8 — 토큰 입력을 비우면 0이 아니라 undefined를 emit (기본값 복원 가능)
++  it('토큰 입력을 비우면 max_input_tokens=undefined를 emit (0 아님)', () => {
++    const onChange = vi.fn()
++    renderCard({ showTokenLimits: true, value: { ...baseValue, max_input_tokens: 200000, max_output_tokens: 10000 }, onChange })
++    const input = screen.getByLabelText('최대 입력 토큰') as HTMLInputElement
++    expect(input.min).toBe('1')
++    fireEvent.change(input, { target: { value: '' } })
++    expect(onChange).toHaveBeenCalledWith({ max_input_tokens: undefined })
++    expect(onChange).not.toHaveBeenCalledWith({ max_input_tokens: 0 })
++  })
++
++  // #9 — 프리셋 변경 시 '직접 입력' 토글이 리셋되어 모델 SELECT가 다시 보인다
++  it('프리셋 변경 시 직접 입력 토글이 리셋되어 SELECT 모드로 복귀한다', () => {
++    const { rerender } = renderCard({ value: { ...baseValue, presetId: 'anthropic' } })
++    // anthropic은 suggestedModels가 있어 SELECT + 직접 입력 토글 노출
++    // (그리드의 custom 프리셋 카드와 텍스트가 겹치므로 정확한 accessible name으로 토글 버튼만 타겟)
++    fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
++    expect((screen.getByLabelText('모델명') as HTMLElement).tagName).toBe('INPUT')
++    // 다른 프리셋으로 전환 → 토글 리셋 → 다시 SELECT
++    rerender(
++      <LlmProviderCard title="요약 모델" idPrefix="sum" presets={SERVICE_PRESETS}
++        value={{ ...baseValue, presetId: 'openai' }} onSelectPreset={noop} onChange={noop} />,
++    )
++    expect((screen.getByLabelText('모델명') as HTMLElement).tagName).toBe('SELECT')
++  })
+ })
+diff --git a/frontend/src/components/settings/LlmProviderCard.tsx b/frontend/src/components/settings/LlmProviderCard.tsx
+index 85c3364..a52d391 100644
+--- a/frontend/src/components/settings/LlmProviderCard.tsx
++++ b/frontend/src/components/settings/LlmProviderCard.tsx
+@@ -30,6 +30,9 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
+   const [localError, setLocalError] = useState<string | null>(null)
+   const modelRef = useRef(value.model)
+   modelRef.current = value.model
++  const loadGenRef = useRef(0)
++  const baseUrlRef = useRef(value.base_url)
++  baseUrlRef.current = value.base_url
+ 
+   const preset = presets.find((p) => p.id === value.presetId)
+   const isNone = !!noneOption && value.presetId === noneOption.id
+@@ -37,23 +40,33 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
+   const requiresKey = preset?.requiresApiKey ?? false
+ 
+   const loadLocal = useCallback(async (baseUrl: string) => {
++    const gen = ++loadGenRef.current
+     setLocalLoading(true); setLocalError(null)
+     try {
+       const fetcher = LOCAL_MODEL_FETCHERS[value.presetId]
+       const models = fetcher ? await fetcher(baseUrl) : []
++      if (gen !== loadGenRef.current) return // out-of-order: a newer load superseded this one
+       setLocalModels(models)
+       if (models.length > 0 && !modelRef.current) onChange({ model: models[0] })
+     } catch {
++      if (gen !== loadGenRef.current) return
+       setLocalError('로컬 서버에 연결할 수 없습니다. 실행 중인지 확인하세요.')
+       setLocalModels([])
+-    } finally { setLocalLoading(false) }
++    } finally { if (gen === loadGenRef.current) setLocalLoading(false) }
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [value.presetId])
+ 
+   useEffect(() => {
+-    if (isLocalListable(value.presetId) && value.base_url) loadLocal(value.base_url)
+-    else { setLocalModels([]); setLocalError(null) }
+-  }, [value.presetId, value.base_url, loadLocal])
++    // Auto-fetch on preset-change/mount only; base_url is intentionally excluded so
++    // typing in the URL field does not fire a request per keystroke (use 모델 새로고침).
++    if (isLocalListable(value.presetId) && baseUrlRef.current) loadLocal(baseUrlRef.current)
++    else if (!isLocalListable(value.presetId) && localModels.length > 0) { setLocalModels([]); setLocalError(null) }
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [value.presetId, loadLocal])
++
++  // Reset '직접 입력' (custom model) toggle when the preset changes, so a switched-to
++  // preset shows its model SELECT instead of a stale free-text input.
++  useEffect(() => { setUseCustomModel(false) }, [value.presetId])
+ 
+   const modelOptions = isLocalListable(value.presetId) ? localModels : (preset?.suggestedModels ?? [])
+   const showModelSelect = modelOptions.length > 0 && !useCustomModel
+@@ -63,14 +76,16 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
+       <h3 className="text-sm font-semibold mb-2">{title}</h3>
+       <div role="group" data-testid={`${idPrefix}-service-grid`} className="grid grid-cols-4 gap-2 mb-3">
+         {noneOption && (
+-          <button type="button" aria-pressed={isNone} onClick={() => onSelectPreset(noneOption.id)}
++          <button type="button" aria-pressed={isNone}
++            onClick={() => { if (noneOption.id !== value.presetId) onSelectPreset(noneOption.id) }}
+             className={cardCls(isNone)}>
+             <p className="text-sm font-medium">{noneOption.label}</p>
+             <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{noneOption.description}</p>
+           </button>
+         )}
+         {presets.map((p) => (
+-          <button key={p.id} type="button" aria-pressed={value.presetId === p.id} onClick={() => onSelectPreset(p.id)}
++          <button key={p.id} type="button" aria-pressed={value.presetId === p.id}
++            onClick={() => { if (p.id !== value.presetId) onSelectPreset(p.id) }}
+             className={cardCls(value.presetId === p.id)}>
+             <p className="text-sm font-medium">{p.name}</p>
+             <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{p.description}</p>
+@@ -142,14 +157,14 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
+         <div className="grid grid-cols-2 gap-3">
+           <div>
+             <label htmlFor={`${idPrefix}-maxin`} className="block text-sm font-medium mb-1">최대 입력 토큰</label>
+-            <input id={`${idPrefix}-maxin`} type="number" value={value.max_input_tokens ?? 200000}
+-              onChange={(e) => onChange({ max_input_tokens: parseInt(e.target.value) || 0 })}
++            <input id={`${idPrefix}-maxin`} type="number" min={1} value={value.max_input_tokens ?? 200000}
++              onChange={(e) => { const v = e.target.value; const n = v === '' ? undefined : parseInt(v, 10); onChange({ max_input_tokens: Number.isNaN(n) ? undefined : n }) }}
+               className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]" />
+           </div>
+           <div>
+             <label htmlFor={`${idPrefix}-maxout`} className="block text-sm font-medium mb-1">최대 출력 토큰</label>
+-            <input id={`${idPrefix}-maxout`} type="number" value={value.max_output_tokens ?? 10000}
+-              onChange={(e) => onChange({ max_output_tokens: parseInt(e.target.value) || 0 })}
++            <input id={`${idPrefix}-maxout`} type="number" min={1} value={value.max_output_tokens ?? 10000}
++              onChange={(e) => { const v = e.target.value; const n = v === '' ? undefined : parseInt(v, 10); onChange({ max_output_tokens: Number.isNaN(n) ? undefined : n }) }}
+               className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]" />
+           </div>
+         </div>
+diff --git a/frontend/src/components/settings/LlmSettingsPanel.test.tsx b/frontend/src/components/settings/LlmSettingsPanel.test.tsx
+index a364e9f..836059c 100644
+--- a/frontend/src/components/settings/LlmSettingsPanel.test.tsx
++++ b/frontend/src/components/settings/LlmSettingsPanel.test.tsx
+@@ -12,10 +12,11 @@ vi.mock('../../api/settings', () => ({
+   fetchLmStudioModels: vi.fn(),
+ }))
+ 
+-import { getLlmSettings, updateLlmSettings, fetchOllamaModels, fetchLmStudioModels } from '../../api/settings'
++import { getLlmSettings, updateLlmSettings, testLlmConnection, fetchOllamaModels, fetchLmStudioModels } from '../../api/settings'
+ 
+ const mockGetLlmSettings = vi.mocked(getLlmSettings)
+ const mockUpdateLlmSettings = vi.mocked(updateLlmSettings)
++const mockTestLlmConnection = vi.mocked(testLlmConnection)
+ const mockFetchOllamaModels = vi.mocked(fetchOllamaModels)
+ const mockFetchLmStudioModels = vi.mocked(fetchLmStudioModels)
+ 
+@@ -217,4 +218,67 @@ describe('LlmSettingsPanel - AI 챗 독립 섹션', () => {
+     expect(within(summaryGrid).getByText('Ollama')).toBeInTheDocument()
+     expect(within(summaryGrid).getByText('Anthropic')).toBeInTheDocument()
+   })
++
++  // #5: 비동기 onChange(로컬 모델 자동채움)가 동시 base_url 편집을 덮어쓰지 않아야 한다.
++  // updateCurrentForm이 렌더 시점 스냅샷이 아니라 최신 캐시에 병합하므로 두 편집이 모두 유지된다.
++  it('#5 동시성: in-flight 로컬 모델 자동채움이 직후 base_url 편집을 되돌리지 않음', async () => {
++    // fetchOllamaModels를 수동 제어 가능한 promise로: resolve를 보류해 base_url 편집을 끼워넣는다.
++    let resolveFetch!: (models: string[]) => void
++    const fetchGate = new Promise<string[]>((res) => { resolveFetch = res })
++    mockFetchOllamaModels.mockReturnValue(fetchGate)
++    mockGetLlmSettings.mockResolvedValue(settingsResponse)
++
++    render(<LlmSettingsPanel />)
++    await waitFor(() => screen.getByText('LLM 모델 설정'))
++
++    const summaryGrid = screen.getByTestId('summary-service-grid')
++    const summaryCard = screen.getByTestId('summary-card')
++
++    // Ollama 선택 → base_url 기본값으로 loadLocal(useEffect) 발화, fetch는 게이트에서 대기
++    fireEvent.click(within(summaryGrid).getByText('Ollama').closest('button')!)
++
++    const baseInput = () => within(summaryCard).getByLabelText('API Base URL') as HTMLInputElement
++    await waitFor(() => expect(baseInput()).toBeInTheDocument())
++
++    // fetch가 아직 resolve되지 않은 사이(stale onChange 보유) base_url을 편집
++    fireEvent.change(baseInput(), { target: { value: 'http://localhost:11434/v1/custom' } })
++    await waitFor(() => expect(baseInput().value).toBe('http://localhost:11434/v1/custom'))
++
++    // 이제 보류된 fetch가 resolve → loadLocal이 onChange({ model: models[0] }) 호출(model 비어있었음)
++    resolveFetch(['gemma:2b'])
++
++    // 모델은 자동채움되지만 base_url 편집은 유지되어야 한다(되돌림 없음)
++    await waitFor(() => {
++      const modelEl = within(summaryCard).getByLabelText('모델명') as HTMLSelectElement
++      expect(modelEl.value).toBe('gemma:2b')
++    })
++    expect(baseInput().value).toBe('http://localhost:11434/v1/custom')
++  })
++
++  // #13: SERVICE_PRESETS에 없는 active_preset이어도 Test/Save 핸들러가 TypeError로 죽지 않아야 한다.
++  it('#13 안전성: 알 수 없는 selectedPreset이어도 Test/Save 핸들러가 크래시하지 않음', async () => {
++    mockGetLlmSettings.mockResolvedValue({ ...settingsResponse, active_preset: 'totally_unknown_preset' })
++    mockUpdateLlmSettings.mockResolvedValue(settingsResponse)
++    mockTestLlmConnection.mockResolvedValue({ success: true })
++    render(<LlmSettingsPanel />)
++    await waitFor(() => screen.getByText('LLM 모델 설정'))
++
++    // 저장: currentPreset이 undefined였다면 currentPreset.provider에서 TypeError로 크래시했을 것
++    fireEvent.click(screen.getByText('저장'))
++    await waitFor(() => expect(mockUpdateLlmSettings).toHaveBeenCalled())
++    // 폴백 프리셋(anthropic)의 provider로 전송되며 active_preset은 원래 id 유지
++    expect(mockUpdateLlmSettings).toHaveBeenCalledWith(
++      expect.objectContaining({
++        active_preset: 'totally_unknown_preset',
++        preset_data: expect.objectContaining({ provider: 'anthropic' }),
++      }),
++    )
++
++    // 연결 테스트: 모델 입력 후(버튼 활성화) 클릭해도 크래시 없이 결과 표시
++    const summaryCard = screen.getByTestId('summary-card')
++    fireEvent.change(within(summaryCard).getByLabelText('모델명'), { target: { value: 'some-model' } })
++    fireEvent.click(screen.getByText('연결 테스트'))
++    await waitFor(() => expect(mockTestLlmConnection).toHaveBeenCalled())
++    expect(screen.getByText('연결 성공')).toBeInTheDocument()
++  })
+ })
+diff --git a/frontend/src/components/settings/LlmSettingsPanel.tsx b/frontend/src/components/settings/LlmSettingsPanel.tsx
+index 54fbf51..38bf970 100644
+--- a/frontend/src/components/settings/LlmSettingsPanel.tsx
++++ b/frontend/src/components/settings/LlmSettingsPanel.tsx
+@@ -58,9 +58,11 @@ export function LlmSettingsPanel() {
+ 
+   const currentForm = presetCache[selectedPreset] || { auth_token: '', base_url: '', model: '', max_input_tokens: 200000, max_output_tokens: 10000 }
+   const updateCurrentForm = (updates: Partial<LlmProviderCardValue>) => {
++    // 함수형 업데이터: 렌더 시점 스냅샷(currentForm)이 아니라 최신 캐시(c)에 병합한다.
++    // 비동기 onChange(로컬 모델 자동채움 등)가 동시 편집(base_url/token)을 덮어쓰는 것을 방지.
+     setPresetCache((c) => ({
+       ...c,
+-      [selectedPreset]: { ...currentForm, ...updates },
++      [selectedPreset]: { ...(c[selectedPreset] ?? currentForm), ...updates },
+     }))
+   }
+ 
+@@ -81,7 +83,12 @@ export function LlmSettingsPanel() {
+     setChatMaskedToken('')
+   }
+ 
+-  const currentPreset = SERVICE_PRESETS.find((p) => p.id === selectedPreset)!
++  // selectedPreset이 SERVICE_PRESETS에 없는 id(예: 백엔드의 out-of-band active_preset)일 수 있으므로
++  // non-null 단언 대신 안전한 기본 프리셋(anthropic, 없으면 첫 항목)으로 폴백한다. 유효 프리셋 동작은 불변.
++  const currentPreset =
++    SERVICE_PRESETS.find((p) => p.id === selectedPreset) ??
++    SERVICE_PRESETS.find((p) => p.id === 'anthropic') ??
++    SERVICE_PRESETS[0]
+   const chatPreset = SERVICE_PRESETS.find((p) => p.id === chatPresetId)
+   const chatActualProvider = chatPreset?.provider ?? ''
+ 
+diff --git a/frontend/src/components/settings/UserLlmSettings.test.tsx b/frontend/src/components/settings/UserLlmSettings.test.tsx
+index d14e9ad..61a7fdf 100644
+--- a/frontend/src/components/settings/UserLlmSettings.test.tsx
++++ b/frontend/src/components/settings/UserLlmSettings.test.tsx
+@@ -318,4 +318,64 @@ describe('UserLlmSettings', () => {
+     const chatGrid = await screen.findByTestId('user-chat-service-grid')
+     expect(within(chatGrid).getByText('요약과 동일').closest('button')!.getAttribute('aria-pressed')).toBe('true')
+   })
++
++  // #1: 저장된 provider와 일치하면 마스크를 넘긴다 (Anthropic 기본 로드 == 저장값)
++  it('선택 provider가 저장값과 같으면 요약 카드에 마스크("현재:")를 표시한다', async () => {
++    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
++    render(<UserLlmSettings />)
++    const summaryCard = await screen.findByTestId('user-summary-card')
++    await waitFor(() => {
++      expect(within(summaryCard).getByText('Anthropic').closest('button')!.getAttribute('aria-pressed')).toBe('true')
++    })
++    // 저장값(anthropic)과 선택값이 일치하므로 마스크가 노출된다
++    expect(within(summaryCard).getByText(/현재:/)).toBeInTheDocument()
++    expect(within(summaryCard).getByText(/sk-a\*+5678/)).toBeInTheDocument()
++  })
++
++  // #1: 저장값과 다른 provider로 전환하면 stale 마스크를 넘기지 않는다
++  it('다른 provider로 전환하면 요약 카드에 마스크("현재:")를 표시하지 않는다', async () => {
++    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
++    render(<UserLlmSettings />)
++    const summaryCard = await screen.findByTestId('user-summary-card')
++    // 저장값은 anthropic. 키가 필요한 다른 provider(OpenAI)로 전환 — 키 필드는 그대로 렌더되어 마스크 로직을 실제로 검증
++    fireEvent.click(within(summaryCard).getByText('OpenAI'))
++    await waitFor(() => {
++      expect(within(summaryCard).getByText('OpenAI').closest('button')!.getAttribute('aria-pressed')).toBe('true')
++    })
++    // 키 필드는 여전히 존재하지만 stale 마스크는 노출되지 않아야 한다
++    expect(within(summaryCard).getByLabelText('API Key')).toBeInTheDocument()
++    expect(within(summaryCard).queryByText(/현재:/)).toBeNull()
++  })
++
++  // #2: 설정 초기화 payload 는 reset_all:true 를 포함한다 (전체 초기화)
++  it('설정 초기화 payload 에 reset_all:true 를 담는다', async () => {
++    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
++    mockUpdateUserLlmSettings.mockResolvedValue(unconfiguredResponse)
++    render(<UserLlmSettings />)
++    await screen.findByTestId('user-summary-card')
++
++    fireEvent.click(screen.getByText('설정 초기화'))
++    await waitFor(() => {
++      expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith({
++        llm_settings: { provider: '', reset_all: true },
++      })
++    })
++  })
++
++  // #2: 요약='선택 안함' 저장 payload 는 reset_all 을 포함하지 않는다 (챗 보존)
++  it('요약=선택 안함 저장 payload 는 reset_all 을 담지 않는다', async () => {
++    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
++    mockUpdateUserLlmSettings.mockResolvedValue(unconfiguredResponse)
++    render(<UserLlmSettings />)
++    const summaryGrid = await screen.findByTestId('user-summary-service-grid')
++
++    // 요약 카드에서 '선택 안함' 선택 → 빈 provider 저장 경로
++    fireEvent.click(within(summaryGrid).getByText('선택 안함').closest('button')!)
++    fireEvent.click(screen.getByText('저장'))
++    await waitFor(() => {
++      expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith({
++        llm_settings: { provider: '' },
++      })
++    })
++  })
+ })
+diff --git a/frontend/src/components/settings/UserLlmSettings.tsx b/frontend/src/components/settings/UserLlmSettings.tsx
+index 605fb09..b9b3466 100644
+--- a/frontend/src/components/settings/UserLlmSettings.tsx
++++ b/frontend/src/components/settings/UserLlmSettings.tsx
+@@ -130,8 +130,10 @@ export default function UserLlmSettings() {
+     setError(null)
+     setSuccess(null)
+     try {
++      // 전체 초기화: 요약과 챗을 모두 비운다. 백엔드 계약상 빈 provider 저장은
++      // 기본적으로 chat_llm_* 를 보존하므로, 완전 초기화엔 reset_all:true 가 필요하다.
+       const result = await updateUserLlmSettings({
+-        llm_settings: { provider: '' },
++        llm_settings: { provider: '', reset_all: true },
+       })
+       setSettings(result)
+       initFormFromSettings(result)
+@@ -159,6 +161,20 @@ export default function UserLlmSettings() {
+ 
+   const hasSettings = settings?.llm_settings.has_settings ?? false
+   const isEnabled = settings?.llm_settings.enabled ?? true
++
++  // 저장된 provider와 현재 선택한 카드가 일치할 때만 마스크를 넘긴다.
++  // 다른 provider로 전환하면 stale 마스크가 키 placeholder/"현재:" 로 잘못 노출되어
++  // 키 없이 저장하도록 유도하는 버그를 막는다.
++  const savedSummaryPresetId = settings
++    ? presetIdFromUserConfig(settings.llm_settings.provider ?? null, settings.llm_settings.base_url ?? null) ?? 'none'
++    : 'none'
++  const savedChatPresetId = settings
++    ? presetIdFromUserConfig(settings.llm_settings.chat_provider ?? null, settings.llm_settings.chat_base_url ?? null) ?? ''
++    : ''
++  const summaryMask =
++    summaryPresetId === savedSummaryPresetId ? settings?.llm_settings.api_key_masked ?? undefined : undefined
++  const chatMask =
++    chatPresetId === savedChatPresetId ? settings?.llm_settings.chat_api_key_masked ?? undefined : undefined
+   // 토글 OFF이고 설정이 있으면 폼을 숨긴다 (배너만 표시)
+   const showForm = !hasSettings || isEnabled
+ 
+@@ -216,7 +232,7 @@ export default function UserLlmSettings() {
+             presets={SERVICE_PRESETS}
+             noneOption={{ id: 'none', label: '선택 안함', description: '서버 기본 LLM 사용' }}
+             value={{ presetId: summaryPresetId, ...summaryForm }}
+-            maskedToken={settings.llm_settings.api_key_masked ?? undefined}
++            maskedToken={summaryMask}
+             onSelectPreset={handleSummarySelect}
+             onChange={(p) => setSummaryForm((f) => ({ ...f, ...p }))}
+           />
+@@ -228,7 +244,7 @@ export default function UserLlmSettings() {
+             presets={SERVICE_PRESETS}
+             noneOption={{ id: '', label: '요약과 동일', description: '요약 모델 그대로 사용' }}
+             value={{ presetId: chatPresetId, ...chatForm }}
+-            maskedToken={settings.llm_settings.chat_api_key_masked ?? undefined}
++            maskedToken={chatMask}
+             onSelectPreset={handleChatSelect}
+             onChange={(p) => setChatForm((f) => ({ ...f, ...p }))}
+           />

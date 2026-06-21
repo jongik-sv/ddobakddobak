@@ -1,6 +1,9 @@
 # settings.yaml에서 환경 변수를 로드한다.
 # 이미 설정된 ENV 값은 덮어쓰지 않는다 (Tauri 등에서 직접 전달한 값 우선).
 require "yaml"
+# CHAT_LLM_* 매핑은 AppSettings.chat_llm_env 로 일원화한다(런타임 동기화와 공유).
+# Rails 8 은 초기화 중 app/ 상수 autoload 를 금지하므로 명시적으로 로드한다.
+require Rails.root.join("app/services/app_settings").to_s
 
 settings_path = Rails.root.join("..", "settings.yaml")
 
@@ -28,9 +31,10 @@ if File.exist?(settings_path)
     ENV["LLM_MAX_INPUT_TOKENS"] ||= (preset["max_input_tokens"] || 200_000).to_s
     ENV["LLM_MAX_OUTPUT_TOKENS"] ||= (preset["max_output_tokens"] || 10_000).to_s
 
-    # 전역 AI Chat 모델 (active_preset 형제 필드, ENV["CHAT_LLM_MODEL"]).
-    # 지정 시 부팅 시점에 설정한다. 비어 있으면 설정하지 않아 요약 모델로 폴백한다.
-    ENV["CHAT_LLM_MODEL"] ||= llm["chat_model"].to_s if llm["chat_model"].present?
+    # 전역 AI Chat(llm.chat 독립 설정 / 레거시 chat_model) → CHAT_LLM_* ENV.
+    # 매핑 규칙은 AppSettings.chat_llm_env 로 일원화(런타임 sync_active_llm_to_env 와 공유).
+    # ||= 로 적용해 Tauri 등에서 미리 주입한 ENV 는 덮어쓰지 않는다.
+    AppSettings.chat_llm_env(llm).each { |k, v| ENV[k] ||= v }
 
     if provider == "openai"
       ENV["OPENAI_API_KEY"] ||= preset["auth_token"].to_s if preset["auth_token"]

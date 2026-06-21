@@ -49,7 +49,7 @@ class User < ApplicationRecord
   end
 
   def llm_configured?
-    llm_provider.present? && (llm_api_key.present? || llm_provider_cli?) && llm_enabled?
+    llm_has_settings? && llm_enabled?
   end
 
   # 설정 자체가 존재하는지 (활성 여부와 무관)
@@ -109,9 +109,19 @@ class User < ApplicationRecord
     }.compact
   end
 
-  # 챗 독립 설정 존재 여부. provider 만 있으면 인정(로컬은 base_url 만으로 키 불요).
+  # 챗 독립 설정 존재 여부.
+  #   클라우드 프로바이더(anthropic/openai 등)는 키가 있어야 인정한다.
+  #   키 없는 클라우드를 인정하면 effective_chat_llm_config tier-1이 토큰리스 config를
+  #   반환해 정상 동작하는 tier-2(요약) 폴백을 우회하고 401이 난다.
+  #   단, CLI 프로바이더와 로컬(loopback base_url) 프로바이더는 키 없이도 정당하게 인정한다.
+  CHAT_LOCAL_HOST_RE = /localhost|127\.0\.0\.1|0\.0\.0\.0|::1/i
+
   def chat_llm_configured?
-    chat_llm_provider.present?
+    return false if chat_llm_provider.blank?
+
+    chat_llm_api_key.present? ||
+      CLI_LLM_PROVIDERS.include?(chat_llm_provider) ||
+      chat_llm_base_url.to_s.match?(CHAT_LOCAL_HOST_RE)
   end
 
   # 사용자 개인 LLM 설정을 sidecar llm_config 형식으로 반환한다.

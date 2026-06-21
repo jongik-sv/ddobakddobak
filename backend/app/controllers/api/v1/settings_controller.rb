@@ -326,26 +326,11 @@ module Api
         ENV["LLM_MAX_INPUT_TOKENS"] = (preset["max_input_tokens"] || 200_000).to_s
         ENV["LLM_MAX_OUTPUT_TOKENS"] = (preset["max_output_tokens"] || 10_000).to_s
 
-        # 전역 AI Chat. llm.chat(독립) 우선, 없으면 레거시 chat_model(모델만 override).
-        chat = llm["chat"] || {}
-        if chat["provider"].to_s.present?
-          ENV["CHAT_LLM_PROVIDER"]   = chat["provider"].to_s
-          ENV["CHAT_LLM_AUTH_TOKEN"] = chat["auth_token"].to_s
-          ENV["CHAT_LLM_MODEL"]      = chat["model"].to_s
-          if chat["base_url"].to_s.present?
-            ENV["CHAT_LLM_BASE_URL"] = chat["base_url"].to_s
-          else
-            ENV.delete("CHAT_LLM_BASE_URL")
-          end
-        else
-          ENV.delete("CHAT_LLM_PROVIDER")
-          ENV.delete("CHAT_LLM_AUTH_TOKEN")
-          ENV.delete("CHAT_LLM_BASE_URL")
-          if llm["chat_model"].present?
-            ENV["CHAT_LLM_MODEL"] = llm["chat_model"].to_s
-          else
-            ENV.delete("CHAT_LLM_MODEL")
-          end
+        # 전역 AI Chat. 매핑은 AppSettings.chat_llm_env 로 일원화 — 부팅(load_env.rb)과 공유.
+        # 런타임 저장: 해시에 있는 키는 set, 없는 키는 삭제(설정 해제 반영).
+        chat_env = AppSettings.chat_llm_env(llm)
+        AppSettings::CHAT_LLM_ENV_KEYS.each do |k|
+          chat_env.key?(k) ? ENV[k] = chat_env[k] : ENV.delete(k)
         end
 
         if provider == "openai"

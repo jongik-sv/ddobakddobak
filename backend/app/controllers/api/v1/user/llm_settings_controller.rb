@@ -17,13 +17,25 @@ module Api
         def update
           attrs = normalize_params
 
-          # provider가 빈값이면 전체 초기화 (서버 기본값 폴백)
+          # provider가 빈값이면 초기화 분기.
+          #   - reset_all(전체 초기화 버튼) → 요약 + 챗 모두 초기화
+          #   - reset_all 아님(요약='선택 안함' 저장) → 요약 컬럼만 초기화, 챗은 보존
+          #     (BUG #2: 챗 provider가 별도 설정돼 있을 때 조용히 지워지는 것을 막는다)
           if attrs[:llm_provider].blank?
-            current_user.update!(
-              llm_provider: nil, llm_api_key: nil, llm_model: nil, llm_base_url: nil,
-              chat_llm_model: nil, chat_llm_provider: nil, chat_llm_api_key: nil, chat_llm_base_url: nil,
-              llm_enabled: true
-            )
+            reset_all = ActiveModel::Type::Boolean.new.cast(params.dig(:llm_settings, :reset_all))
+
+            if reset_all
+              current_user.update!(
+                llm_provider: nil, llm_api_key: nil, llm_model: nil, llm_base_url: nil,
+                chat_llm_model: nil, chat_llm_provider: nil, chat_llm_api_key: nil, chat_llm_base_url: nil,
+                llm_enabled: true
+              )
+            else
+              current_user.update!(
+                llm_provider: nil, llm_api_key: nil, llm_model: nil, llm_base_url: nil,
+                llm_enabled: true
+              )
+            end
             return render json: build_response
           end
 
@@ -89,12 +101,34 @@ module Api
             chat_llm_base_url: p[:chat_base_url].presence
           }
 
-          # api_key 처리: 빈 문자열 → 기존 유지, nil → 삭제, 값 있으면 갱신
-          empty_string = p.key?(:api_key) && p[:api_key] == ""
-          attrs[:llm_api_key] = p[:api_key] if p.key?(:api_key) && !empty_string
+          # provider 저장(빈값 아님) 시 개인 LLM을 (재)활성화한다.
+          # 빈 provider 초기화 분기는 자체 update! 로 처리하므로 이 attrs 를 읽지 않는다.
+          attrs[:llm_enabled] = true if p[:provider].present?
 
-          # chat_llm_api_key: 동일 규약
-          attrs[:chat_llm_api_key] = p[:chat_api_key] if p.key?(:chat_api_key) && p[:chat_api_key] != ""
+          # api_key 처리:
+          #   - 값 있으면 → 갱신
+          #   - provider 전환(이전과 다른 provider) + 키 미전송 → 이전 키가 새 provider에 묶이는
+          #     걸 막기 위해 nil 로 비운다 (FIX 1)
+          #   - 명시적 nil → 삭제
+          #   - 빈 문자열/미전송(동일 provider) → 기존 유지
+          provider_changed = p[:provider].present? && p[:provider] != current_user.llm_provider
+          if p.key?(:api_key) && p[:api_key].present?
+            attrs[:llm_api_key] = p[:api_key]
+          elsif provider_changed
+            attrs[:llm_api_key] = nil
+          elsif p.key?(:api_key) && p[:api_key] != ""
+            attrs[:llm_api_key] = p[:api_key]
+          end
+
+          # chat_llm_api_key: 동일 규약(chat_provider 전환 기준)
+          chat_provider_changed = p[:chat_provider].present? && p[:chat_provider] != current_user.chat_llm_provider
+          if p.key?(:chat_api_key) && p[:chat_api_key].present?
+            attrs[:chat_llm_api_key] = p[:chat_api_key]
+          elsif chat_provider_changed
+            attrs[:chat_llm_api_key] = nil
+          elsif p.key?(:chat_api_key) && p[:chat_api_key] != ""
+            attrs[:chat_llm_api_key] = p[:chat_api_key]
+          end
 
           attrs
         end

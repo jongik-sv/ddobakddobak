@@ -22,6 +22,33 @@ class AppSettings
     {}
   end
 
+  # 전역 AI Chat 설정을 CHAT_LLM_* ENV 페어(Hash)로 변환한다.
+  # 두 호출부가 공유한다 — 갈라지면 부팅 후 챗 설정이 ENV에서 누락되는 버그가 재발한다:
+  #   - config/initializers/load_env.rb (부팅, ||= 로 적용 — 미리 주입된 ENV 보존)
+  #   - Api::V1::SettingsController#sync_active_llm_to_env (런타임 저장, = 로 적용 + 누락 키 삭제)
+  # 우선순위: llm.chat(독립 설정) > 레거시 chat_model(모델만 override).
+  # base_url 은 값이 있을 때만 포함한다(나머지는 런타임 시맨틱과 동일하게 항상 포함).
+  CHAT_LLM_ENV_KEYS = %w[CHAT_LLM_PROVIDER CHAT_LLM_AUTH_TOKEN CHAT_LLM_MODEL CHAT_LLM_BASE_URL].freeze
+
+  def self.chat_llm_env(llm_cfg)
+    llm_cfg ||= {}
+    chat = llm_cfg["chat"] || {}
+
+    if chat["provider"].to_s.present?
+      env = {
+        "CHAT_LLM_PROVIDER"   => chat["provider"].to_s,
+        "CHAT_LLM_AUTH_TOKEN" => chat["auth_token"].to_s,
+        "CHAT_LLM_MODEL"      => chat["model"].to_s
+      }
+      env["CHAT_LLM_BASE_URL"] = chat["base_url"].to_s if chat["base_url"].to_s.present?
+      env
+    elsif llm_cfg["chat_model"].present?
+      { "CHAT_LLM_MODEL" => llm_cfg["chat_model"].to_s }
+    else
+      {}
+    end
+  end
+
   def self.diarization_config
     d = load["diarization"] || {}
     {
