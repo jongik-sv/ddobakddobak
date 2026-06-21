@@ -45,6 +45,28 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
         body = response.parsed_body
         expect(body["llm_settings"]["chat_model"]).to eq("claude-haiku-4-5")
       end
+
+      # effective_chat_model: 4-tier 카스케이드가 실제로 답변할 모델의 표시명.
+      # tier-2(개인 챗 모델 override)는 ENV와 무관하게 chat_llm_model.presence 가 이기므로
+      # 결정적이다 → 잘못된 컬럼(예: chat_llm_model 직접)에 묶었으면 humanize 미적용으로 깨진다.
+      it "effective_chat_model이 카스케이드 모델의 표시명을 반환한다" do
+        user.update!(chat_llm_model: "claude-haiku-4-5")
+
+        get "/api/v1/user/llm_settings"
+
+        body = response.parsed_body
+        expect(body["llm_settings"]["effective_chat_model"]).to eq("Claude Haiku 4")
+      end
+    end
+
+    context "기본 사용자" do
+      it "effective_chat_model이 비어있지 않은 표시명을 반환한다" do
+        get "/api/v1/user/llm_settings"
+
+        body = response.parsed_body
+        expect(body["llm_settings"]["effective_chat_model"]).to be_a(String)
+        expect(body["llm_settings"]["effective_chat_model"]).not_to be_empty
+      end
     end
 
     context "server_default 정보" do

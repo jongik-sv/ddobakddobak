@@ -14,6 +14,8 @@ export interface UserLlmSettingsResponse {
     chat_base_url?: string | null
     chat_api_key_masked?: string | null
     chat_configured?: boolean
+    // 4-tier 카스케이드로 실제 답변할 모델의 표시명(폴더챗 미리보기용).
+    effective_chat_model?: string | null
   }
   server_default: {
     provider: string | null

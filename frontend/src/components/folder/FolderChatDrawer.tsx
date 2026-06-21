@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { AiChatPanel } from '../meeting/AiChatPanel'
 import type { ChatScopeType } from '../../api/chat'
+import { getUserLlmSettings } from '../../api/userLlmSettings'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
+import { BREAKPOINTS } from '../../config'
 
 // 우측 슬라이드오버 폴더/프로젝트 챗. 스코프 셀렉터로 '이 폴더' ↔ '프로젝트 전체' 전환.
 export function FolderChatDrawer({
@@ -16,6 +19,18 @@ export function FolderChatDrawer({
 }) {
   const navigate = useNavigate()
   const [scope, setScope] = useState<'folder' | 'project'>(folderId ? 'folder' : 'project')
+  const isDesktop = useMediaQuery(BREAKPOINTS.lg)
+
+  // 열릴 때 한 번, 실제 답변할 모델 표시명을 가져와 헤더에 미리보기. fetch 실패는 무시(드로어는 그대로).
+  const [chatModel, setChatModel] = useState<string | null>(null)
+  useEffect(() => {
+    if (!open) return
+    let alive = true
+    getUserLlmSettings()
+      .then((res) => { if (alive) setChatModel(res.llm_settings?.effective_chat_model ?? null) })
+      .catch(() => { /* 미리보기는 부가 정보 — 실패해도 챗은 동작 */ })
+    return () => { alive = false }
+  }, [open])
 
   if (!open) return null
 
@@ -46,16 +61,28 @@ export function FolderChatDrawer({
     </button>
   )
 
+  // 데스크톱(lg+)=우측 슬라이드오버, 모바일=설정 모달처럼 전체화면(safe-area 하단 패딩 유지).
+  const containerClass = isDesktop
+    ? 'relative w-full max-w-md bg-white shadow-xl flex flex-col h-full pb-0'
+    : 'fixed inset-0 w-full h-dvh bg-white flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))]'
+
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white shadow-xl flex flex-col h-full pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
+      <div className={containerClass}>
         <div className="flex items-center justify-between border-b px-3 py-2">
           <div className="flex items-center gap-1">
             {tabBtn('folder', folderName ? `이 폴더: ${folderName}` : '이 폴더', !folderId)}
             {tabBtn('project', '프로젝트 전체', !projectId)}
           </div>
-          <button type="button" aria-label="닫기" onClick={onClose}><X size={18} /></button>
+          <div className="flex items-center gap-2">
+            {chatModel && (
+              <span className="text-[11px] text-gray-400 whitespace-nowrap" title={`AI 답변 모델: ${chatModel}`}>
+                🤖 {chatModel}
+              </span>
+            )}
+            <button type="button" aria-label="닫기" onClick={onClose}><X size={18} /></button>
+          </div>
         </div>
         <div className="flex-1 min-h-0">
           <AiChatPanel
