@@ -27,17 +27,7 @@ import { MeetingCardGrid } from '../components/meeting/MeetingCardGrid'
 import { MeetingListTable } from '../components/meeting/MeetingListTable'
 import { MeetingsHeader } from '../components/meeting/MeetingsHeader'
 import { folderName } from '../lib/meetingFormat'
-
-type ViewMode = 'card' | 'list'
-type SortField = 'created_at' | 'title'
-type SortDirection = 'asc' | 'desc'
-
-const VIEW_MODE_KEY = 'meetings-view-mode'
-
-function getStoredViewMode(): ViewMode {
-  const stored = localStorage.getItem(VIEW_MODE_KEY)
-  return stored === 'list' ? 'list' : 'card'
-}
+import { VIEW_MODE_KEY, getStoredViewMode, type ViewMode, type SortField, type SortDirection } from './meetings/types'
 
 export default function MeetingsPage() {
   const navigate = useNavigate()
