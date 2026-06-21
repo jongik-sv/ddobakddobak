@@ -13,6 +13,17 @@ RSpec.describe Trash::Purger do
     expect(Folder.exists?(folder.id)).to be false
   end
 
+  it "purges the project even when a separately-trashed meeting still references it" do
+    # 프로젝트에 속한 회의를 다른 그룹으로 먼저 휴지통에 보냄 (project_id 유지, kept 아님)
+    orphan = Meeting.create!(title: "Orphan", project: project, creator: user)
+    orphan.soft_delete!(by: user, group: SecureRandom.uuid, root: false)
+
+    group = Trash::SoftDeleter.call(project, by: user)
+    Trash::Purger.call(group)
+
+    expect(Project.exists?(project.id)).to be false
+  end
+
   it "removes audio file on purge" do
     path = Rails.root.join("tmp", "purge_test_#{SecureRandom.hex(4)}.wav").to_s
     File.write(path, "x")
