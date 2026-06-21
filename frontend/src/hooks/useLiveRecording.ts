@@ -32,7 +32,7 @@ import type { Meeting, Participant } from '../api/meetings'
 import { getSttSettings, getLanguageSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useSharingStore } from '../stores/sharingStore'
-import { IS_TAURI, DEFAULT_SUMMARY_INTERVAL_SEC, getApiOrigin } from '../config'
+import { IS_TAURI, getApiOrigin } from '../config'
 import { useAuthStore } from '../stores/authStore'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 import { useNavigationGuards } from './useNavigationGuards'
@@ -90,7 +90,6 @@ export function useLiveRecording(
   const markReset = useTranscriptStore((s) => s.markReset)
   const finalsCount = useTranscriptStore((s) => s.finals.length)
   const isSummarizing = useTranscriptStore((s) => s.isSummarizing)
-  const [summaryIntervalSec, setSummaryIntervalSec] = useState(DEFAULT_SUMMARY_INTERVAL_SEC)
 
   // 공유 상태
   const isSharing = useSharingStore((s) => s.shareCode !== null)
@@ -192,12 +191,11 @@ export function useLiveRecording(
   })
 
   // 라이브 세션 보조 훅 (god 분해): 자동/수동 요약 타이머 + 이탈 차단 가드
-  const { summaryCountdown, handleManualSummary, resetSummaryTimer } = useRecordingSummaryTimer({
+  const { summaryCountdown, handleManualSummary, resetSummaryTimer, summaryIntervalSec, setSummaryIntervalSec } = useRecordingSummaryTimer({
     isActive,
     isPaused,
     isApplyingCorrections,
     meetingId,
-    summaryIntervalSec,
     finalsCount,
     isSummarizing,
     showStatus,
