@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { getSpeakers, renameSpeaker, resetSpeakers, type Speaker } from '../../api/speakers'
 import { speakerColor } from './SpeakerLabel'
 import { useTranscriptStore } from '../../stores/transcriptStore'
+import { pickSpeakerTarget } from './speakerSeek'
 
 interface SpeakerPanelProps {
   meetingId: number
@@ -10,9 +11,23 @@ interface SpeakerPanelProps {
   collapsible?: boolean
   /** 잠긴 회의면 화자명 변경·초기화를 막는다 (읽기 전용). 기본 false. */
   readOnly?: boolean
+  /** 현재 재생 위치(ms). 화자 배지 클릭 시 다음 발화 계산 기준. */
+  currentTimeMs?: number
+  /** 오디오 재생 중 여부. 콜드스타트 판정용. */
+  isPlaying?: boolean
+  /** 화자 배지 클릭 → 해당 ms로 seek(+자동재생). 미전달 시 배지는 비대화형 라벨. */
+  onSpeakerSeek?: (ms: number) => void
 }
 
-export function SpeakerPanel({ meetingId, isRecording, collapsible, readOnly = false }: SpeakerPanelProps) {
+export function SpeakerPanel({
+  meetingId,
+  isRecording,
+  collapsible,
+  readOnly = false,
+  currentTimeMs,
+  isPlaying,
+  onSpeakerSeek,
+}: SpeakerPanelProps) {
   const [speakers, setSpeakers] = useState<Speaker[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -96,6 +111,21 @@ export function SpeakerPanel({ meetingId, isRecording, collapsible, readOnly = f
     clearSpeakerNames()
   }
 
+  // 마지막 점프 ms(전역) — 빠른 연타로 timeupdate가 아직 안 온 경우 base 보강용
+  const lastJumpMsRef = useRef<number>(-1)
+  function jumpToSpeaker(speakerId: string) {
+    if (!onSpeakerSeek) return
+    const utts = finals.filter((f) => f.speaker_label === speakerId) // store는 started_at_ms asc 유지
+    const target = pickSpeakerTarget(utts, {
+      currentTimeMs: currentTimeMs ?? 0,
+      isPlaying: !!isPlaying,
+      lastJumpMs: lastJumpMsRef.current,
+    })
+    if (!target) return
+    lastJumpMsRef.current = target.started_at_ms
+    onSpeakerSeek(target.started_at_ms)
+  }
+
   // body: 기존 렌더 내용 (collapsible/비-collapsible 공통)
   const body =
     visibleSpeakers.length === 0 ? (
@@ -121,11 +151,22 @@ export function SpeakerPanel({ meetingId, isRecording, collapsible, readOnly = f
 
         {visibleSpeakers.map((speaker) => (
           <div key={speaker.id} className="flex items-center gap-2 min-h-[44px]">
-            <span
-              className={`shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold ${speakerColor(speaker.id)}`}
-            >
-              {speaker.id}
-            </span>
+            {onSpeakerSeek ? (
+              <button
+                type="button"
+                onClick={() => jumpToSpeaker(speaker.id)}
+                title="이 화자 발화로 이동"
+                className={`shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold cursor-pointer hover:ring-1 hover:ring-blue-300 ${speakerColor(speaker.id)}`}
+              >
+                {speaker.id}
+              </button>
+            ) : (
+              <span
+                className={`shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold ${speakerColor(speaker.id)}`}
+              >
+                {speaker.id}
+              </span>
+            )}
 
             {editingId === speaker.id ? (
               <input

@@ -20,6 +20,7 @@ interface BuildMeetingDetailTabsArgs {
   bookmarks: BookmarkType[]
   transcripts: Transcript[]
   currentTimeMs: number
+  isPlaying: boolean
   onSeek: (ms: number) => void
   onDeleteBookmark: (bookmarkId: number) => void
   onAddBookmark?: () => void
@@ -50,6 +51,7 @@ export function buildMeetingDetailTabs({
   bookmarks,
   transcripts,
   currentTimeMs,
+  isPlaying,
   onSeek,
   onDeleteBookmark,
   onAddBookmark,
@@ -82,7 +84,7 @@ export function buildMeetingDetailTabs({
               화자
             </summary>
             <div className="px-2 pb-2">
-              <SpeakerPanel meetingId={meetingId} isRecording={false} readOnly={locked} />
+              <SpeakerPanel meetingId={meetingId} isRecording={false} readOnly={locked} currentTimeMs={currentTimeMs} isPlaying={isPlaying} onSpeakerSeek={onSeek} />
             </div>
           </details>
           <div className="flex-1 min-h-0 overflow-y-auto">

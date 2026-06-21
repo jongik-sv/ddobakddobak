@@ -183,3 +183,158 @@ describe('collapsible', () => {
     expect(screen.queryByText('화자 목록')).toBeTruthy()
   })
 })
+
+describe('화자 배지 클릭 → 발화 점프', () => {
+  // 두 발화(화자 1): 0ms, 5000ms
+  const TWO_UTTS = [
+    {
+      id: 1,
+      content: '안녕하세요',
+      speaker_label: '화자 1',
+      started_at_ms: 0,
+      ended_at_ms: 1000,
+      sequence_number: 1,
+      applied: false,
+    },
+    {
+      id: 2,
+      content: '반갑습니다',
+      speaker_label: '화자 1',
+      started_at_ms: 5000,
+      ended_at_ms: 6000,
+      sequence_number: 2,
+      applied: false,
+    },
+  ]
+
+  beforeEach(() => {
+    useTranscriptStore.getState().reset()
+  })
+
+  it('onSpeakerSeek 미전달이면 배지는 비대화형 <span> (클릭 콜백 없음)', async () => {
+    useTranscriptStore.getState().loadFinals(TWO_UTTS)
+    render(<SpeakerPanel meetingId={1} isRecording={false} />)
+
+    // 배지 button("이 화자 발화로 이동")이 없어야 한다 — span만 존재
+    await screen.findByTitle('클릭하여 이름 편집')
+    expect(screen.queryByTitle('이 화자 발화로 이동')).toBeNull()
+  })
+
+  it('콜드스타트 클릭 → 첫 발화 ms로 onSpeakerSeek 호출', async () => {
+    useTranscriptStore.getState().loadFinals(TWO_UTTS)
+    const onSpeakerSeek = vi.fn()
+    render(
+      <SpeakerPanel
+        meetingId={1}
+        isRecording={false}
+        currentTimeMs={0}
+        isPlaying={false}
+        onSpeakerSeek={onSpeakerSeek}
+      />,
+    )
+
+    const badge = await screen.findByTitle('이 화자 발화로 이동')
+    fireEvent.click(badge)
+    expect(onSpeakerSeek).toHaveBeenCalledWith(0)
+  })
+
+  it('재생중·현재 위치가 발화1·발화2 사이 → 발화2 ms로 호출', async () => {
+    useTranscriptStore.getState().loadFinals(TWO_UTTS)
+    const onSpeakerSeek = vi.fn()
+    render(
+      <SpeakerPanel
+        meetingId={1}
+        isRecording={false}
+        currentTimeMs={3000}
+        isPlaying={true}
+        onSpeakerSeek={onSpeakerSeek}
+      />,
+    )
+
+    const badge = await screen.findByTitle('이 화자 발화로 이동')
+    fireEvent.click(badge)
+    expect(onSpeakerSeek).toHaveBeenCalledWith(5000)
+  })
+
+  it('반복 클릭 시 재생 위치(currentTimeMs)가 앞으로 갈수록 다음 발화로 진행', async () => {
+    const THREE_UTTS = [
+      ...TWO_UTTS,
+      {
+        id: 3,
+        content: '잘 부탁드립니다',
+        speaker_label: '화자 1',
+        started_at_ms: 10000,
+        ended_at_ms: 11000,
+        sequence_number: 3,
+        applied: false,
+      },
+    ]
+    useTranscriptStore.getState().loadFinals(THREE_UTTS)
+    const onSpeakerSeek = vi.fn()
+
+    // 콜드스타트: currentTimeMs=0, 정지
+    const { rerender } = render(
+      <SpeakerPanel
+        meetingId={1}
+        isRecording={false}
+        currentTimeMs={0}
+        isPlaying={false}
+        onSpeakerSeek={onSpeakerSeek}
+      />,
+    )
+
+    // 1차 클릭 → 첫 발화(0)
+    fireEvent.click(await screen.findByTitle('이 화자 발화로 이동'))
+    expect(onSpeakerSeek.mock.calls[0][0]).toBe(0)
+
+    // 실제 재생이 발화1 위치로 이동했다고 가정하고 currentTimeMs를 0 이후로 rerender
+    // (onSpeakerSeek/isPlaying을 반드시 다시 전달 — rerender는 props 전체 교체)
+    rerender(
+      <SpeakerPanel
+        meetingId={1}
+        isRecording={false}
+        currentTimeMs={1}
+        isPlaying={true}
+        onSpeakerSeek={onSpeakerSeek}
+      />,
+    )
+
+    // 2차 클릭 → 발화2(5000)
+    fireEvent.click(screen.getByTitle('이 화자 발화로 이동'))
+    expect(onSpeakerSeek.mock.calls[1][0]).toBe(5000)
+
+    // 재생이 발화2를 지나 6000ms까지 진행했다고 rerender.
+    // (lastJump=5000만 본다면 다음은 5000초과 첫 발화로 또 5000을 못 넘기지만,
+    //  실제 재생위치 6000을 base로 써야 발화3으로 건너뛴다 — playback-driven walk 증명)
+    rerender(
+      <SpeakerPanel
+        meetingId={1}
+        isRecording={false}
+        currentTimeMs={6000}
+        isPlaying={true}
+        onSpeakerSeek={onSpeakerSeek}
+      />,
+    )
+
+    // 3차 클릭 → 발화3(10000), 발화2(5000) 건너뜀
+    fireEvent.click(screen.getByTitle('이 화자 발화로 이동'))
+    expect(onSpeakerSeek.mock.calls[2][0]).toBe(10000)
+  })
+
+  it('마지막 발화 이후 클릭 → 첫 발화로 wrap', async () => {
+    useTranscriptStore.getState().loadFinals(TWO_UTTS)
+    const onSpeakerSeek = vi.fn()
+    render(
+      <SpeakerPanel
+        meetingId={1}
+        isRecording={false}
+        currentTimeMs={99999}
+        isPlaying={true}
+        onSpeakerSeek={onSpeakerSeek}
+      />,
+    )
+
+    fireEvent.click(await screen.findByTitle('이 화자 발화로 이동'))
+    expect(onSpeakerSeek).toHaveBeenCalledWith(0)
+  })
+})
