@@ -7,14 +7,15 @@ import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'reac
 import { useMemoEditor } from '../hooks/useMemoEditor'
 import { useStatusMessage } from '../hooks/useStatusMessage'
 import { useLiveRecording } from '../hooks/useLiveRecording'
+import { useLiveTermCorrections } from '../hooks/useLiveTermCorrections'
 import { useLiveMobileTabs } from '../hooks/useLiveMobileTabs'
 import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SummaryOptionsControl } from '../components/meeting/SummaryOptionsControl'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
-import { updateMeeting, triggerRealtimeSummary, correctTerms, updateNotes } from '../api/meetings'
-import type { Participant, TermCorrection, UpdateMeetingParams } from '../api/meetings'
+import { updateMeeting, triggerRealtimeSummary, updateNotes } from '../api/meetings'
+import type { Participant, UpdateMeetingParams } from '../api/meetings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { IS_TAURI, IS_MOBILE, SUMMARY_INTERVAL_OPTIONS, getMode } from '../config'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
@@ -50,9 +51,11 @@ export default function MeetingLivePage() {
   // 상태 메시지 (하단 상태바)
   const { statusMessage, showStatus } = useStatusMessage()
 
-  // 오타 수정 상태
-  const [corrections, setCorrections] = useState<TermCorrection[]>([{ from: '', to: '' }])
-  const [isApplyingCorrections, setIsApplyingCorrections] = useState(false)
+  // 오타 수정 (state + 핸들러) — useLiveRecording 이전에 호출(isApplyingCorrections 주입)
+  const {
+    corrections, isApplyingCorrections, handleApplyCorrections,
+    updateCorrection, addCorrectionRow, removeCorrectionRow,
+  } = useLiveTermCorrections(meetingId, showStatus)
 
   // 메모 에디터 초기화 (useMemoEditor 이후 ref로 주입 — 순환 의존 회피)
   const clearMemoEditorRef = useRef<() => void>(() => {})
@@ -101,39 +104,6 @@ export default function MeetingLivePage() {
   const [showBookmarkPopover, setShowBookmarkPopover] = useState(false)
   const [bookmarkLabel, setBookmarkLabel] = useState('')
   const bookmarkTimestampRef = useRef<number>(0)
-
-  // 오타 수정 적용
-  const handleApplyCorrections = async () => {
-    const valid = corrections.filter((c) => c.from.trim() && c.to.trim())
-    if (valid.length === 0 || isApplyingCorrections) return
-
-    setIsApplyingCorrections(true)
-    showStatus('오타 수정 반영 중...', 10000)
-    try {
-      const result = await correctTerms(meetingId, valid)
-      setCorrections([{ from: '', to: '' }])
-      const msg = result.corrected_transcripts > 0
-        ? `오타 수정 완료 (트랜스크립트 ${result.corrected_transcripts}건 수정)`
-        : '오타 수정이 회의록에 반영되었습니다'
-      showStatus(msg)
-    } catch {
-      showStatus('오타 수정 반영에 실패했습니다')
-    } finally {
-      setIsApplyingCorrections(false)
-    }
-  }
-
-  const updateCorrection = (index: number, field: 'from' | 'to', value: string) => {
-    setCorrections((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)))
-  }
-
-  const addCorrectionRow = () => {
-    setCorrections((prev) => [...prev, { from: '', to: '' }])
-  }
-
-  const removeCorrectionRow = (index: number) => {
-    setCorrections((prev) => (prev.length <= 1 ? [{ from: '', to: '' }] : prev.filter((_, i) => i !== index)))
-  }
 
   // 북마크 추가
   const handleOpenBookmark = useCallback(() => {
