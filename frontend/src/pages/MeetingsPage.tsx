@@ -5,13 +5,13 @@ import { Tooltip } from '../components/ui/Tooltip'
 import { deleteMeeting, stopMeeting, updateMeeting, setMeetingImportant } from '../api/meetings'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
-import { paramToFolder, folderPath } from '../lib/folderNav'
+import { paramToFolder } from '../lib/folderNav'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { BREAKPOINTS, IS_TAURI } from '../config'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+import { useMeetingsFolderView } from '../hooks/useMeetingsFolderView'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import type { Meeting } from '../api/meetings'
-import type { FolderNode } from '../api/folders'
 import FolderBreadcrumb from '../components/folder/FolderBreadcrumb'
 import { FolderChatDrawer } from '../components/folder/FolderChatDrawer'
 import MoveMeetingDialog from '../components/folder/MoveMeetingDialog'
@@ -55,6 +55,8 @@ export default function MeetingsPage() {
   } = useMeetingStore()
 
   const { folders, selectedFolderId, setSelectedFolder } = useFolderStore()
+
+  const { pageTitle, childFolders, handleFolderSelect, handleMeetingOpen } = useMeetingsFolderView({ folders, selectedFolderId, navigate })
 
   const [showModal, setShowModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
@@ -100,28 +102,6 @@ export default function MeetingsPage() {
 
   // 현재 폴더 ID (number | null), 'all'일 때는 null
   const currentFolderId = typeof folderId === 'number' ? folderId : null
-
-  // 동적 페이지 제목
-  const pageTitle = useMemo(() => {
-    if (selectedFolderId === 'all') return '전체 회의'
-    if (selectedFolderId === null) return '폴더'
-    return folderName(folders, selectedFolderId) ?? '회의 목록'
-  }, [folders, selectedFolderId])
-
-  // 하위 폴더 목록: '전체'/'폴더(null)'면 루트 폴더, 특정 폴더면 하위 폴더
-  const childFolders = useMemo(() => {
-    if (selectedFolderId === null) return folders
-    if (selectedFolderId === 'all') return folders
-    const find = (nodes: FolderNode[]): FolderNode[] => {
-      for (const f of nodes) {
-        if (f.id === selectedFolderId) return f.children
-        const found = find(f.children)
-        if (found.length > 0) return found
-      }
-      return []
-    }
-    return find(folders)
-  }, [folders, selectedFolderId])
 
   // URL의 status 파라미터를 스토어에 반영
   useEffect(() => {
@@ -222,15 +202,6 @@ export default function MeetingsPage() {
     setCurrentPage(1)
     fetchMeetings(1)
   }, [toggleShowAll, fetchMeetings])
-
-  // 폴더 카드 진입도 URL(?folder=) push — 뒤로가기 동작·단일 소스 유지
-  const handleFolderSelect = useCallback((id: number) => {
-    navigate(folderPath(id))
-  }, [navigate])
-
-  const handleMeetingOpen = useCallback((id: number) => {
-    navigate(`/meetings/${id}`)
-  }, [navigate])
 
   const totalPages = meta ? Math.ceil(meta.total / meta.per) : 0
 
