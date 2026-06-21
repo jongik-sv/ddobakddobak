@@ -5,6 +5,7 @@ import { Switch } from '../components/ui/Switch'
 import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMemoEditor } from '../hooks/useMemoEditor'
+import { useStatusMessage } from '../hooks/useStatusMessage'
 import { useLiveRecording } from '../hooks/useLiveRecording'
 import { useLiveMobileTabs } from '../hooks/useLiveMobileTabs'
 import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
@@ -47,13 +48,7 @@ export default function MeetingLivePage() {
   const meetingId = Number(id)
 
   // 상태 메시지 (하단 상태바)
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const statusTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const showStatus = useCallback((msg: string, durationMs = 3000) => {
-    setStatusMessage(msg)
-    if (statusTimerRef.current) clearTimeout(statusTimerRef.current)
-    statusTimerRef.current = setTimeout(() => setStatusMessage(null), durationMs)
-  }, [])
+  const { statusMessage, showStatus } = useStatusMessage()
 
   // 오타 수정 상태
   const [corrections, setCorrections] = useState<TermCorrection[]>([{ from: '', to: '' }])
