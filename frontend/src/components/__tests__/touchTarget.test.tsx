@@ -189,8 +189,9 @@ import { ExportButton } from '../meeting/ExportButton'
 describe('ExportButton 터치 타겟', () => {
   it('내보내기 버튼에 min-h-[44px] 클래스가 적용되어 있다', () => {
     render(<ExportButton meetingId={1} />)
-    const button = screen.getByText('내보내기').closest('button')
-    expect(button?.className).toContain('min-h-[44px]')
+    // Tooltip이 동일 텍스트("내보내기")의 role="tooltip" span을 추가하므로 버튼 role로 정확히 한정한다.
+    const button = screen.getByRole('button', { name: '내보내기' })
+    expect(button.className).toContain('min-h-[44px]')
   })
 })
 

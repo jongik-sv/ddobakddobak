@@ -202,7 +202,7 @@ export default function MeetingPage() {
       : null
 
   // 모바일 탭 — 검색 매치 위치에 따라 기록/요약 탭 자동 전환 (controlled)
-  const [mobileTab, setMobileTab] = useState('chat')
+  const [mobileTab, setMobileTab] = useState('summary')
   const currentMatchType = search.current?.type
   useEffect(() => {
     if (isDesktop || !currentMatchType || !search.effectiveQuery) return
@@ -347,6 +347,7 @@ export default function MeetingPage() {
     bookmarks,
     transcripts,
     currentTimeMs,
+    isPlaying: audio.isPlaying,
     onSeek: handleSeek,
     onDeleteBookmark: handleDeleteBookmark,
     onAddBookmark: handleOpenBookmark,
@@ -494,7 +495,7 @@ export default function MeetingPage() {
               </div>
               {/* 배치 화자분리 결과 이름 변경/초기화 (MeetingViewerPage 데스크톱과 동일 패턴) */}
               <div className="border-t shrink-0">
-                <SpeakerPanel meetingId={meetingId} isRecording={false} collapsible readOnly={locked} />
+                <SpeakerPanel meetingId={meetingId} isRecording={false} collapsible readOnly={locked} currentTimeMs={currentTimeMs} isPlaying={audio.isPlaying} onSpeakerSeek={handleSeek} />
               </div>
             </div>
           </Panel>

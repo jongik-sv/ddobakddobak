@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bookmark, Trash2, Plus, Pencil, Check, X } from 'lucide-react'
+import { Bookmark, Trash2, Plus, Pencil, Check, X, ChevronDown, ChevronRight } from 'lucide-react'
 import type { Bookmark as BookmarkType } from '../../api/bookmarks'
 
 function formatMs(ms: number) {
@@ -25,6 +25,7 @@ export function BookmarkList({
   onAdd,
   onEdit,
   readOnly = false,
+  collapsible = false,
 }: {
   bookmarks: BookmarkType[]
   onSeek: (ms: number) => void
@@ -33,9 +34,12 @@ export function BookmarkList({
   onEdit?: (bookmarkId: number, label: string) => void
   /** 잠긴 회의면 북마크 추가·편집·삭제를 막는다 (탐색·이동은 가능). 기본 false. */
   readOnly?: boolean
+  /** 모바일에서 헤더 클릭으로 목록을 접을 수 있게 한다 (기본 펼침). 데스크톱은 미사용. 기본 false. */
+  collapsible?: boolean
 }) {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [draft, setDraft] = useState('')
+  const [open, setOpen] = useState(true)
 
   if (bookmarks.length === 0 && !onAdd) return null
 
@@ -55,14 +59,27 @@ export function BookmarkList({
 
   return (
     <div className="border-b shrink-0 max-h-48 overflow-y-auto">
-      <div className="px-3 py-2 bg-amber-50 border-b flex items-center justify-between">
+      <div
+        className={`px-3 py-2 bg-amber-50 border-b flex items-center justify-between${
+          collapsible ? ' cursor-pointer hover:bg-amber-100' : ''
+        }`}
+        onClick={collapsible ? () => setOpen((v) => !v) : undefined}
+        {...(collapsible
+          ? { role: 'button', 'aria-expanded': open, title: open ? '북마크 접기' : '북마크 펼치기' }
+          : {})}
+      >
         <h3 className="text-xs font-semibold text-amber-700 flex items-center gap-1">
+          {collapsible &&
+            (open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />)}
           <Bookmark className="w-3 h-3" />
           북마크 ({bookmarks.length})
         </h3>
         {onAdd && !readOnly && (
           <button
-            onClick={onAdd}
+            onClick={(e) => {
+              e.stopPropagation()
+              onAdd()
+            }}
             className="flex items-center gap-0.5 text-xs text-amber-600 hover:text-amber-800 font-medium"
             title="현재 재생 위치에 북마크 추가"
           >
@@ -71,7 +88,7 @@ export function BookmarkList({
           </button>
         )}
       </div>
-      {bookmarks.length === 0 ? (
+      {collapsible && !open ? null : bookmarks.length === 0 ? (
         <p className="px-3 py-3 text-xs text-gray-400 leading-relaxed">
           {readOnly ? (
             '북마크가 없습니다.'
