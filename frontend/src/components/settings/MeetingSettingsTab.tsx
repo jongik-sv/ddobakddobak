@@ -28,7 +28,7 @@ export default function MeetingSettingsTab() {
         <div className="rounded-lg border bg-card p-6">
           <h2 className="text-lg font-semibold mb-1">앱 자동시작</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            로그인 시 또박또박를 자동으로 시작합니다.
+            로그인 시 또박또박을 자동으로 시작합니다.
           </p>
           <div className="flex items-center justify-between py-3 px-4 bg-slate-50 rounded-lg">
             <div>
