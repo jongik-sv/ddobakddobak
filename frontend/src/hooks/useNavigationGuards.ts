@@ -1,68 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { IS_TAURI } from '../config'
 
 /**
- * 라이브 녹음 중 페이지 이탈 차단.
+ * 라이브 녹음 중 네비게이션 정책.
  *
- * useLiveRecording god 훅에서 분리 — 순수 코드 이동, 동작 무변경.
- * 녹음 활성(isActive) 동안 브라우저 뒤로가기/새로고침/단축키/popstate를 가로채
- * 이탈 경고(showLeaveBlock)를 띄운다. 비활성 시 뒤로가기는 미리보기로 이동한다.
+ * B(백그라운드 녹음): 이탈 차단 제거 — 녹음 중에도 자유롭게 페이지를 떠날 수 있고
+ * 녹음은 앱 레벨 세션에서 계속된다. 웹(브라우저)에서만 beforeunload 경고를 유지한다
+ * (탭/창을 닫으면 JS가 죽어 녹음이 끊기므로). 데스크톱(Tauri)은 닫기=창 숨김이라 손실 없음.
  */
 export function useNavigationGuards(meetingId: number, isActive: boolean) {
   const navigate = useNavigate()
-  const [showLeaveBlock, setShowLeaveBlock] = useState(false)
 
-  // 뒤로가기 (미리보기로) — 녹음 중이면 경고
-  const handleNavigateBack = () => {
-    if (isActive) {
-      setShowLeaveBlock(true)
-      return
-    }
-    navigate(`/meetings/${meetingId}`)
-  }
+  const handleNavigateBack = () => navigate(`/meetings/${meetingId}`)
 
-  // 녹음 중 브라우저 뒤로가기/새로고침 차단
+  // 웹 한정: 녹음 중 탭/창 닫기·새로고침 경고(브라우저 기본 다이얼로그)
   useEffect(() => {
-    if (!isActive) return
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-    }
+    if (IS_TAURI || !isActive) return
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault() }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
   }, [isActive])
 
-  // 녹음 중 Option+←/→ (히스토리 뒤로/앞으로) 키보드 단축키 차단
-  useEffect(() => {
-    if (!isActive) return
-    const handler = (e: KeyboardEvent) => {
-      // Option+← 또는 Option+→ (macOS 브라우저 뒤로/앞으로)
-      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-        e.preventDefault()
-        setShowLeaveBlock(true)
-      }
-      // Cmd+[ 또는 Cmd+] (macOS 뒤로/앞으로)
-      if (e.metaKey && (e.key === '[' || e.key === ']')) {
-        e.preventDefault()
-        setShowLeaveBlock(true)
-      }
-    }
-    window.addEventListener('keydown', handler, true)
-    return () => window.removeEventListener('keydown', handler, true)
-  }, [isActive])
-
-  // 녹음 중 popstate (브라우저 뒤로/앞으로 버튼) 차단
-  useEffect(() => {
-    if (!isActive) return
-    const handler = () => {
-      // 뒤로가기가 발생하면 원래 위치로 되돌리고 경고 표시
-      window.history.pushState(null, '', window.location.href)
-      setShowLeaveBlock(true)
-    }
-    // 현재 위치를 히스토리에 한 번 더 push (popstate 감지용)
-    window.history.pushState(null, '', window.location.href)
-    window.addEventListener('popstate', handler)
-    return () => window.removeEventListener('popstate', handler)
-  }, [isActive])
-
-  return { showLeaveBlock, setShowLeaveBlock, handleNavigateBack }
+  return { handleNavigateBack }
 }
