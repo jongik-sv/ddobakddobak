@@ -33,7 +33,8 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "returns status_counts breakdown for the dashboard" do
-        create(:meeting, project: project, creator: user, status: "recording")
+        # 활성 녹음은 항상 최신 하트비트를 가진다(start 도장·채널 bump). 부재면 index lazy heal 이 종결.
+        create(:meeting, project: project, creator: user, status: "recording", recorder_heartbeat_at: Time.current)
         create_list(:meeting, 2, project: project, creator: user, status: "pending")
         create(:meeting, project: project, creator: user, status: "completed")
 
@@ -46,7 +47,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "status_counts gives the full breakdown even when filtered by status" do
-        create(:meeting, project: project, creator: user, status: "recording")
+        create(:meeting, project: project, creator: user, status: "recording", recorder_heartbeat_at: Time.current)
         create_list(:meeting, 2, project: project, creator: user, status: "pending")
 
         get "/api/v1/meetings", params: { status: "recording" }
@@ -201,7 +202,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         end
 
         it "important=false 인 recording(진행중) 회의도 노출된다" do
-          recording_unimportant = create(:meeting, project: project, creator: user, status: "recording", important: false)
+          recording_unimportant = create(:meeting, project: project, creator: user, status: "recording", important: false, recorder_heartbeat_at: Time.current)
 
           get "/api/v1/meetings"
 

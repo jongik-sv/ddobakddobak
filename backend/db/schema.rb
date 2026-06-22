@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_21_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_22_000001) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -208,6 +208,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_21_000001) do
     t.integer "previous_meeting_id"
     t.integer "project_id", null: false
     t.datetime "re_diarize_started_at"
+    t.datetime "recorder_heartbeat_at"
+    t.string "recording_client_id"
+    t.string "recording_client_platform"
     t.text "recurrence_rule"
     t.datetime "schedule_dismissed_at"
     t.datetime "scheduled_start_time"

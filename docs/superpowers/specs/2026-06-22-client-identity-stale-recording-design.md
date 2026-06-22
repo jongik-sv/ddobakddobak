@@ -117,11 +117,12 @@ end
 lazy heal은 dev·prod 양쪽에서 동작하고, 사용자가 보는 목록을 그 자리에서 청소한다. 하트비트가 DB 컬럼이므로 Puma 요청 경로에서 읽어도 정확.
 
 - `meetings#show`: `before_action -> { @meeting&.heal_stale_recording! }, only: %i[show]` (기존 `heal_stale_re_diarize!`와 동일 패턴/위치).
-- `meetings#index`: 본문 진입 시 가장 먼저 **접근 가능 스코프 내** recording 회의만 heal:
+- `meetings#index`: 본문 진입 시 가장 먼저 **본인 소유(created_by) recording 회의만** heal:
   ```ruby
-  accessible_scope.where(status: :recording).find_each(&:heal_stale_recording!)
+  Meeting.where(created_by_id: current_user.id, status: :recording).find_each(&:heal_stale_recording!)
   ```
-  이후 status_counts·페이지 쿼리는 heal 커밋 이후 상태를 읽어 일관. 권한 스코프 한정이라 타유저 회의를 건드리지 않음(admin은 전체 — 의도된 모니터링).
+  이후 status_counts·페이지 쿼리는 heal 커밋 이후 상태를 읽어 일관. (구현 리뷰 결정: `accessible_by` 전체로 돌리면 admin이 목록 한 번 열 때 전 유저 stale 회의를 대량 종결+job enqueue하는 blast가 있어 `created_by_id`로 한정. show의 단일 회의 heal은 blast 없어 그대로.)
+- `heal_stale_recording!`는 원자적: `Meeting.where(id:, status: "recording").update_all(...)` 변경행수 0이면 early return → 동시 index/show 로드의 중복 종결·job enqueue 방지. 종결 시 `stop`과 동일하게 `recording_stopped` 브로드캐스트, `ended_at = recorder_heartbeat_at || now`(마지막 presence를 종료시각으로).
 
 ### 4. 안전성 매트릭스 (presence 기준)
 

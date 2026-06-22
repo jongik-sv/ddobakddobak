@@ -258,4 +258,41 @@ RSpec.describe TranscriptionChannel, type: :channel do
       expect(RecordingLock.holder(meeting.id)).to be_nil
     end
   end
+
+  describe "#heartbeat" do
+    before { RecordingLock.reset! }
+
+    it "owner 가 recording 회의에 heartbeat → recorder_heartbeat_at 갱신(액션 자체 검증)" do
+      # subscribe 가 즉시 bump 하므로, subscribe 직후 시점을 캡처하고 throttle(10s)를
+      # travel 로 통과시킨 뒤 heartbeat 액션이 값을 '더 최신으로' 전진시키는지 검증한다.
+      # (heartbeat 부재면 be_present 만으론 subscribe bump 에 가려 액션을 검증하지 못한다.)
+      meeting.update!(status: "recording", started_at: 1.minute.ago, recorder_heartbeat_at: 11.seconds.ago)
+      subscribe(meeting_id: meeting.id)
+      after_subscribe = meeting.reload.recorder_heartbeat_at
+      expect(after_subscribe).to be_present
+
+      travel(11.seconds) do
+        perform(:heartbeat)
+        expect(meeting.reload.recorder_heartbeat_at).to be > after_subscribe
+      end
+    end
+
+    it "10초 이내 재호출은 미갱신(throttle)" do
+      ts = 3.seconds.ago
+      meeting.update!(status: "recording", started_at: 1.minute.ago, recorder_heartbeat_at: ts)
+      subscribe(meeting_id: meeting.id)
+      perform(:heartbeat)
+      expect(meeting.reload.recorder_heartbeat_at).to be_within(1.second).of(ts)
+    end
+
+    it "viewer heartbeat → 미갱신" do
+      viewer = create(:user)
+      create(:meeting_participant, meeting: meeting, user: viewer, role: "viewer", joined_at: Time.current)
+      meeting.update!(status: "recording", started_at: 1.minute.ago, recorder_heartbeat_at: nil)
+      stub_connection current_user: viewer
+      subscribe(meeting_id: meeting.id)
+      perform(:heartbeat)
+      expect(meeting.reload.recorder_heartbeat_at).to be_nil
+    end
+  end
 end

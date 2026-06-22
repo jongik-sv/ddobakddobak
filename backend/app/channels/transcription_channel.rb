@@ -16,6 +16,7 @@ class TranscriptionChannel < ApplicationCable::Channel
       stream_from meeting.transcription_stream
       handle_host_reconnection(meeting)
       notify_if_recording_in_progress(meeting)
+      bump_recorder_heartbeat
     else
       reject
     end
@@ -25,6 +26,11 @@ class TranscriptionChannel < ApplicationCable::Channel
     RecordingLock.release(@meeting_id, @lock_token) if @meeting_id && @lock_token
     stop_all_streams
     handle_host_disconnection if @meeting_id
+  end
+
+  # 녹음 클라 생존 신호. 프론트가 ~15초마다 호출(VAD/일시정지 무관).
+  def heartbeat(_data = {})
+    bump_recorder_heartbeat
   end
 
   def audio_chunk(data)
@@ -44,6 +50,9 @@ class TranscriptionChannel < ApplicationCable::Channel
       return
     end
 
+    # 실제 녹음 청크를 보내는 세션은 곧 살아 있는 recorder → 공짜 하트비트(presence).
+    bump_recorder_heartbeat
+
     # 회의 언어는 클라이언트가 아니라 회의 생성자의 개인 설정에서 결정한다
     # (viewer가 덮어쓰지 못하도록 서버 권위 소스 사용, 요약 LLM과 동일 패턴).
     lang = meeting.creator&.effective_language_config || ::User.server_default_language_config
@@ -61,6 +70,22 @@ class TranscriptionChannel < ApplicationCable::Channel
   end
 
   private
+
+  # 녹음 클라 생존 신호. owner/host + recording 일 때만, 10초 throttle 로 DB 갱신.
+  # update_column 으로 검증/콜백/updated_at 우회(쓰기 폭주 방지). presence 부재 시
+  # Meeting#heal_stale_recording! 가 stale 로 보고 종결.
+  def bump_recorder_heartbeat
+    return unless @meeting_id
+    return unless %w[owner host].include?(@role)
+
+    meeting = Meeting.find_by(id: @meeting_id)
+    return unless meeting&.recording?
+
+    last = meeting.recorder_heartbeat_at
+    return if last.present? && last > 10.seconds.ago
+
+    meeting.update_column(:recorder_heartbeat_at, Time.current)
+  end
 
   # 새로 구독한 세션에게, 이미 다른 세션이 녹음(락 보유) 중이면 알림.
   # 프론트는 이 신호를 받으면 라이브페이지 대신 읽기전용 뷰어로 라우팅한다.

@@ -47,4 +47,13 @@ class ApplicationController < ActionController::API
   def parameter_missing(exception)
     render json: { error: exception.message }, status: :bad_request
   end
+
+  # 기기/브라우저별 안정적 클라이언트 식별(B/C 토대·감사). 프론트가 HTTP 헤더로 전달.
+  def current_client_id
+    request.headers["X-Client-Id"].presence
+  end
+
+  def current_client_platform
+    request.headers["X-Client-Platform"].presence
+  end
 end
