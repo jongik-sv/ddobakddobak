@@ -1,6 +1,9 @@
 #[cfg(desktop)]
 mod audio;
 
+#[cfg(desktop)]
+mod tray;
+
 mod bridge;
 mod mdns;
 
@@ -169,6 +172,14 @@ pub fn run() {
                         app.manage(daemon);
                     }
                     Err(e) => log::warn!("mDNS advertise 실패(디스커버리만 영향): {e}"),
+                }
+            }
+
+            // 데스크톱: 메뉴바/시스템 트레이 아이콘 생성.
+            #[cfg(desktop)]
+            {
+                if let Err(e) = tray::create_tray(app.handle()) {
+                    log::warn!("트레이 생성 실패: {e}");
                 }
             }
 
