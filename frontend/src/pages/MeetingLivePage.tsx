@@ -44,6 +44,7 @@ import { BookmarkPopover } from '../components/meeting/BookmarkPopover'
 import { DesktopRecordControls } from '../components/meeting/DesktopRecordControls'
 import { LiveStatusBar } from '../components/meeting/LiveStatusBar'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { planLiveBaselineLoad } from './meetingLiveBaseline'
 
 export default function MeetingLivePage() {
   const { id } = useParams<{ id: string }>()
@@ -80,18 +81,41 @@ export default function MeetingLivePage() {
       .catch(() => {})
   }, [meetingId])
 
-  // idle(녹음 비활성)일 때만 이 회의의 기존 전사+요약을 표시용으로 로드.
-  // 녹음 중(이 회의든 다른 회의든 activeMeetingId != null)이면 transcriptStore는 세션 소유 → 건드리지 않음(클로버 방지).
+  // 이 회의의 베이스라인(전사+요약)을 DB에서 로드/복원.
+  // idle이면 reset 후 로드. 녹음 중 이 회의로 복귀하면(중간 경로 reset으로 store가 비거나
+  // 라이브 신규 발화만 남은 경우) 히스토리를 복원한다 — 판정은 planLiveBaselineLoad.
+  // finals는 라이브 신규를 보존하려 DB와 union(클로버 방지), 요약은 라이브 실시간 요약을 덮지 않게 비었을 때만.
   useEffect(() => {
-    if (rec.activeMeetingId !== null) return
+    const store = useTranscriptStore.getState()
+    const plan = planLiveBaselineLoad({
+      activeMeetingId: rec.activeMeetingId,
+      meetingId,
+      notesEmpty: store.meetingNotes === null,
+    })
+    if (!plan.loadFinals && !plan.loadSummary) return
     let cancelled = false
-    useTranscriptStore.getState().reset()
-    getTranscripts(meetingId)
-      .then((t) => { if (!cancelled) useTranscriptStore.getState().loadFinals(mapTranscriptsToFinals(t)) })
-      .catch(() => {})
-    getSummary(meetingId)
-      .then((s) => { if (!cancelled && s?.notes_markdown) useTranscriptStore.getState().setMeetingNotes(s.notes_markdown) })
-      .catch(() => {})
+    if (plan.reset) store.reset()
+    if (plan.loadFinals) {
+      getTranscripts(meetingId)
+        .then((t) => {
+          if (cancelled) return
+          const dbFinals = mapTranscriptsToFinals(t)
+          if (plan.reset) {
+            useTranscriptStore.getState().loadFinals(dbFinals)
+          } else {
+            // DB 히스토리 + 현재(라이브 신규) finals를 id로 union — 라이브가 더 최신이라 우선.
+            const byId = new Map(dbFinals.map((f) => [f.id, f] as const))
+            for (const f of useTranscriptStore.getState().finals) byId.set(f.id, f)
+            useTranscriptStore.getState().loadFinals([...byId.values()])
+          }
+        })
+        .catch(() => {})
+    }
+    if (plan.loadSummary) {
+      getSummary(meetingId)
+        .then((s) => { if (!cancelled && s?.notes_markdown) useTranscriptStore.getState().setMeetingNotes(s.notes_markdown) })
+        .catch(() => {})
+    }
     return () => { cancelled = true }
   }, [meetingId, rec.activeMeetingId])
 
