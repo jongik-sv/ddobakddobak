@@ -4,6 +4,9 @@ mod audio;
 #[cfg(desktop)]
 mod tray;
 
+#[cfg(desktop)]
+mod window_cmd;
+
 mod bridge;
 mod mdns;
 
@@ -105,13 +108,23 @@ pub fn run() {
                 audio::delete_recording,
                 audio::list_orphan_recordings,
                 audio::read_recording,
+                window_cmd::quit_app,
+                window_cmd::show_main_window,
             ])
-            .on_window_event(|window, event| {
-                if let tauri::WindowEvent::Destroyed = event {
+            .on_window_event(|window, event| match event {
+                // 닫기(빨간 X): 파괴하지 않고 숨긴다 — 프론트가 먼저 preventDefault 후
+                // 백그라운드/완전종료를 결정(Task 3). 여기서는 안전망으로 hide.
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+                // 진짜 종료(quit_app/cmd+Q → app.exit): 자식 프로세스 정리.
+                tauri::WindowEvent::Destroyed => {
                     let state = window.state::<AppState>();
                     kill_child(&state.backend_process);
                     kill_child(&state.sidecar_process);
                 }
+                _ => {}
             })
     };
 
