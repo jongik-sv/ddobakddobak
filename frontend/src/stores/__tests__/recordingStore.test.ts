@@ -21,6 +21,13 @@ describe('recordingStore', () => {
     expect(useRecordingStore.getState().pendingStart).toBe(false)
   })
 
+  it('녹음 중 다른 meeting start는 무시(activeMeetingId 안 바뀜)', () => {
+    useRecordingStore.getState().start(42)
+    useRecordingStore.getState().publish({ status: 'recording' })
+    useRecordingStore.getState().start(99)
+    expect(useRecordingStore.getState().activeMeetingId).toBe(42)
+  })
+
   it('requestStop: finals 0이면 즉시 onStop(true), 다이얼로그 안 띄움', () => {
     const calls: boolean[] = []
     useRecordingStore.getState().registerHandlers({

@@ -1,18 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { useEffect } from 'react'
 import { render } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { RecordingLayer } from '../RecordingLayer'
 import { useRecordingStore } from '../../../stores/recordingStore'
 
-// 마운트 횟수(mountCount)와 렌더 횟수(callCount)를 분리해 추적한다.
-// 마운트 = useEffect(fn, []) 발화 횟수 = 진짜 DOM 마운트.
-// 렌더 = useLiveRecording 호출 횟수 = React 렌더 함수 실행.
-// 재마운트가 없으면 mountCount는 초기 1에서 변하지 않는다.
+// 진짜 마운트(mountCount)와 언마운트(unmountCount)를 모듈 레벨 변수로 추적한다.
+// useLiveRecording 모킹 내부에서 useEffect(fn, [])를 발화시켜 마운트/언마운트를 직접 카운트한다.
+//   - mountCount  = useEffect(fn, []) 진입 횟수 = 진짜 DOM 마운트
+//   - unmountCount = cleanup 발화 횟수 = 진짜 언마운트
+// 라우트가 바뀌어도 세션이 라우트 밖 RecordingLayer에 있으면 재마운트/언마운트가 없어야 한다.
 let mountCount = 0
+let unmountCount = 0
 const liveMock = vi.fn(() => {
-  // 마운트 감지: startOnMount 여부와 무관하게 내부 useEffect 흉내 대신,
-  // 마운트 카운트는 별도로 RecordingSession의 useEffect를 통해 수집한다.
-  // 여기선 렌더 호출 수만 세고, 마운트 수는 mountCount 변수로 분리한다.
+  // useEffect(fn, [])로 진짜 마운트/언마운트를 직접 카운트한다(재렌더와 무관).
+  useEffect(() => {
+    mountCount++
+    return () => { unmountCount++ }
+  }, [])
   return {
     isActive: true,
     handleStart: vi.fn(),
@@ -44,16 +49,6 @@ vi.mock('../../../hooks/useLiveRecording', () => ({
   useLiveRecording: (...args: unknown[]) => liveMock(...(args as [])),
 }))
 
-// RecordingSession의 마운트를 감지하기 위해 useEffect를 추적한다.
-// vi.mock을 통해 RecordingSession 자체는 모킹하지 않고(그러면 호스트 테스트가 됨),
-// 대신 "라우트 변경 후 call 횟수 증가분"으로 재마운트 vs 재렌더를 구분한다.
-//
-// 재마운트(key 변경 등)이면: startedRef가 reset → consumePendingStart 재실행 → store 업데이트 → 추가 렌더 루프
-// 재렌더만 이면: 렌더 함수 1회 재실행(+1 call) — 이것은 정상이다.
-//
-// 따라서 `n` 캡처 후 route 변경 시 call이 최대 +1(재렌더)이고
-// +2 이상(재마운트 → 추가 렌더 루프)이 아님을 검증한다.
-
 function App() {
   return (
     <>
@@ -72,6 +67,7 @@ describe('녹음 지속성(라우트 변경) smoke', () => {
   beforeEach(() => {
     liveMock.mockClear()
     mountCount = 0
+    unmountCount = 0
     useRecordingStore.getState().endSession()
   })
 
@@ -82,6 +78,7 @@ describe('녹음 지속성(라우트 변경) smoke', () => {
       </MemoryRouter>,
     )
     expect(liveMock).not.toHaveBeenCalled() // idle: 미마운트
+    expect(mountCount).toBe(0)
 
     useRecordingStore.getState().start(1)
     rerender(
@@ -89,9 +86,9 @@ describe('녹음 지속성(라우트 변경) smoke', () => {
         <App />
       </MemoryRouter>,
     )
-    expect(liveMock).toHaveBeenCalled() // 마운트됨
-
-    const n = liveMock.mock.calls.length // 마운트 시점 호출 수(pendingStart 재렌더로 1+ 가능)
+    // 세션이 마운트됨 — useEffect(fn, []) 1회 발화, 언마운트 0.
+    expect(mountCount).toBe(1)
+    expect(unmountCount).toBe(0)
 
     rerender(
       <MemoryRouter initialEntries={['/b']}>
@@ -99,9 +96,8 @@ describe('녹음 지속성(라우트 변경) smoke', () => {
       </MemoryRouter>,
     ) // 라우트 변경
 
-    // 재렌더(+1)는 정상. 재마운트(+2 이상)가 없어야 한다 = 녹음 지속.
-    // 재마운트 시: key(activeMeetingId) 변경 없이도 RecordingSession 언마운트+리마운트가
-    // 발생하면 startedRef reset → consumePendingStart → store.publish 루프 → 다수 추가 호출.
-    expect(liveMock.mock.calls.length).toBeLessThanOrEqual(n + 1) // 추가 호출 최대 1(재렌더) = 재마운트 없음
+    // 라우트가 바뀌어도 세션은 라우트 밖이라 재마운트/언마운트가 없어야 한다.
+    expect(mountCount).toBe(1)    // STILL 1 — 재마운트 없음
+    expect(unmountCount).toBe(0)  // STILL 0 — 언마운트 없음
   })
 })

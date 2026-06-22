@@ -16,7 +16,7 @@ import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SummaryOptionsControl } from '../components/meeting/SummaryOptionsControl'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
-import { getMeeting, updateMeeting, triggerRealtimeSummary, updateNotes } from '../api/meetings'
+import { getMeeting, updateMeeting, triggerRealtimeSummary, updateNotes, getParticipants, resetMeetingContent } from '../api/meetings'
 import type { Meeting, Participant, UpdateMeetingParams } from '../api/meetings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useSharingStore } from '../stores/sharingStore'
@@ -64,7 +64,18 @@ export default function MeetingLivePage() {
   const [meetingMemo, setMeetingMemo] = useState<string | null>(null)
   useEffect(() => {
     getMeeting(meetingId)
-      .then((m) => { setMeeting(m); if (m.memo) setMeetingMemo(m.memo) })
+      .then((m) => {
+        setMeeting(m)
+        if (m.memo) setMeetingMemo(m.memo)
+        // 공유 상태 로드(세션 미마운트 idle 페이지도 ShareButton/ParticipantList/isHost 동작).
+        if (m.share_code) {
+          getParticipants(meetingId)
+            .then((ps) => useSharingStore.getState().startSharing(m.share_code!, ps))
+            .catch(() => {})
+        } else {
+          useSharingStore.getState().reset()
+        }
+      })
       .catch(() => {})
   }, [meetingId])
 
@@ -101,10 +112,17 @@ export default function MeetingLivePage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const handleResetClick = useCallback(() => setShowResetConfirm(true), [])
   const handleResetConfirm = useCallback(async () => {
-    await rec.resetMeeting()
+    // 페이지가 직접 초기화 — reset은 보통 세션 미마운트 상태에서만 도달 가능(activeMeetingId=null),
+    // 세션 핸들러(_handlers)가 null이라 store 인텐트 위임은 무음 실패한다.
+    await resetMeetingContent(meetingId)
+    useTranscriptStore.getState().markReset()
+    useTranscriptStore.getState().reset()
+    useTranscriptStore.getState().setMeetingNotes(null)
     clearMemoEditorRef.current()
+    const m = await getMeeting(meetingId).catch(() => null)
+    if (m) setMeeting(m)
     setShowResetConfirm(false)
-  }, [rec])
+  }, [meetingId])
 
   // 네비게이션 정책(이탈 차단 제거 — B 백그라운드 녹음). 웹 한정 beforeunload 경고만 유지.
   const { handleNavigateBack } = useNavigationGuards(meetingId, isActive)

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { useTranscriptStore } from './transcriptStore'
+import { useToastStore } from './toastStore'
 import { DEFAULT_SUMMARY_INTERVAL_SEC } from '../config'
 import type { RecordingState, RecHandlers, RecStatus } from './recordingStore.types'
 
@@ -30,7 +31,12 @@ const initial = {
 export const useRecordingStore = create<RecordingState>((set, get) => ({
   ...initial,
   start: (meetingId) => {
-    if (get().activeMeetingId === meetingId) return
+    const s = get()
+    if (s.activeMeetingId === meetingId) return
+    if (s.activeMeetingId != null && s.status === 'recording') {
+      useToastStore.getState().showStatus('다른 회의가 녹음 중입니다. 먼저 종료해주세요.', 5000)
+      return
+    }
     set({ activeMeetingId: meetingId, pendingStart: true, status: 'idle' })
   },
   pause: () => get()._handlers?.onPause(),
