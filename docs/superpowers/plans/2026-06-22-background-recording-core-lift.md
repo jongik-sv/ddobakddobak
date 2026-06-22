@@ -382,6 +382,13 @@ describe('useLiveRecording decouple', () => {
 - 시그니처에서 구조분해 `showStatus` 제거.
 - 본문 최상단에 지역 헬퍼: `const showStatus = (msg: string, durationMs?: number) => useToastStore.getState().showStatus(msg, durationMs)`. (본문 내 모든 `showStatus(...)` 호출 그대로 동작.)
 - 반환 객체에 `performStop`을 추가: `return { ..., performStop } as const`. (이미 정의된 `performStop` 함수 노출.)
+- **recordingDenied navigate 게이트**(251-257 effect): 훅이 라우트 무관 세션으로 옮겨지므로, 다른 라우트(대시보드 등)에 있을 때 2번째 클라 레이스로 `navigate('.../viewer')`가 발화하면 사용자를 엉뚱하게 끌어간다. navigate를 **현재 이 회의의 live 라우트일 때만** 실행하도록 가드:
+  ```ts
+  if (window.location.pathname === `/meetings/${meetingId}/live`) {
+    navigate(`/meetings/${meetingId}/viewer`, { replace: true })
+  }
+  ```
+  (캡처 중지/discard는 그대로. navigate만 게이트.)
 
 `MeetingLivePage.tsx`(잠정 — Task 8이 대체):
 - `useLiveRecording(meetingId, { showStatus, isApplyingCorrections, clearMemoEditor: ... })` → `showStatus` 인자 제거.
@@ -487,7 +494,10 @@ export function RecordingSession({ meetingId, startOnMount }: { meetingId: numbe
     useRecordingStore.getState().registerHandlers({
       onPause: live.handlePause,
       onResume: live.handleResume,
-      onStop: (skip) => { void live.performStop(skip) },
+      // 종료 완료 후 endSession() → activeMeetingId=null → 세션 언마운트.
+      // 이게 없으면 activeMeetingId가 stuck → start() early-return으로 재개(reopen) 불가.
+      // 언마운트로 key(activeMeetingId) 변경 → 다음 start 시 startedRef 초기화된 새 세션 → handleStart 재발화.
+      onStop: (skip) => { void Promise.resolve(live.performStop(skip)).then(() => useRecordingStore.getState().endSession()) },
       onManualSummary: live.handleManualSummary,
       onToggleSystemAudio: (next) => { void live.handleToggleSystemAudio(next) },
       onSetSummaryInterval: live.setSummaryIntervalSec,
@@ -819,7 +829,9 @@ export function useNavigationGuards(meetingId: number, isActive: boolean) {
 }
 ```
 
-- [ ] **Step 4: 테스트 통과 확인** — Run: `cd frontend && npx vitest run src/hooks/__tests__/useNavigationGuards.test.tsx` Expected: PASS. (이 시점 MeetingLivePage는 showLeaveBlock 참조로 tsc 깨짐 — Task 8에서 해결. 단독 tsc는 Task 8과 함께 통과.)
+- [ ] **Step 4: 테스트 통과 확인** — Run: `cd frontend && npx vitest run src/hooks/__tests__/useNavigationGuards.test.tsx` Expected: PASS.
+
+> **⚠️ 실행자 경고(T7):** 이 변경 후 `tsc`는 `MeetingLivePage.tsx`가 `showLeaveBlock`/`setShowLeaveBlock`를 참조해 **RED가 정상이다**(Task 8이 해소). 이 태스크는 **vitest green만** 게이트로 삼는다. **`MeetingLivePage.tsx`를 절대 수정하지 말 것** — 수정하면 Task 8과 충돌해 시퀀스가 깨진다. `useNavigationGuards.ts`와 그 테스트만 건드린다.
 
 - [ ] **Step 5: 커밋**
 
@@ -840,11 +852,15 @@ git commit -m "refactor(recording): 이탈 차단 제거(자유 네비), 웹 bef
 
 **목표:** 페이지가 `useLiveRecording`을 **직접 호출하지 않는다**. recordingStore를 읽어 라이브 뷰를 렌더하고, 시작/일시정지/종료/요약/리셋을 store 인텐트로 보낸다. `meeting` 표시 데이터는 페이지가 자체 fetch.
 
+**⚠️ tsc는 잘못된 매핑을 못 잡는다**(`handlePause → rec.resume`도 컴파일 통과). 그래서:
+- [ ] **Step 0a: 기존 테스트 파악** — Run: `grep -rl "MeetingLivePage" frontend/src --include="*.test.tsx"` + `grep -rn "live\." frontend/src/pages/MeetingLivePage.tsx | wc -l`. 기존 페이지 테스트가 얇으면(거의 없음) 매핑 회귀를 tsc로만 못 막으므로 Step 1의 동작 단언을 반드시 추가.
+- [ ] **Step 0b: 매핑 체크리스트 작성** — 아래 Step 3의 `live.X → rec.Y` 표를 그대로 따라가며 1:1 확인. 추측 금지.
+
 **Interfaces:**
 - Consumes: `useRecordingStore`(상태 전체 + 인텐트), `useTranscriptStore`, `getMeeting`(표시), `useNavigationGuards`(반전됨).
 - 핵심 파생: `const isActive = status === 'recording' && activeMeetingId === meetingId`.
 
-- [ ] **Step 1: 실패 테스트 작성** `__tests__/MeetingLivePage.attach.test.tsx` — store를 active로 두고, 페이지가 `useLiveRecording`을 호출하지 않는지(단일 소유자) + store 값으로 렌더하는지.
+- [ ] **Step 1: 실패 테스트 작성** `__tests__/MeetingLivePage.attach.test.tsx` — 단일 소유자 + **인텐트 배선 동작 단언**(잘못된 매핑 가드). 종료 버튼 클릭 → `rec.requestStop` 발화, 일시정지 → `rec.pause`.
 
 ```tsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -862,18 +878,33 @@ import MeetingLivePage from '../MeetingLivePage'
 describe('MeetingLivePage 단일 소유자', () => {
   beforeEach(() => { liveSpy.mockClear(); useRecordingStore.getState().endSession() })
 
+  const renderLive = () => render(
+    <MemoryRouter initialEntries={['/meetings/5/live']}>
+      <Routes><Route path="/meetings/:id/live" element={<MeetingLivePage />} /></Routes>
+    </MemoryRouter>,
+  )
+
   it('페이지는 useLiveRecording을 직접 호출하지 않는다(좀비 캡처 방지)', () => {
     useRecordingStore.getState().start(5)
     useRecordingStore.getState().publish({ status: 'recording' })
-    render(
-      <MemoryRouter initialEntries={['/meetings/5/live']}>
-        <Routes><Route path="/meetings/:id/live" element={<MeetingLivePage />} /></Routes>
-      </MemoryRouter>,
-    )
+    renderLive()
     expect(liveSpy).not.toHaveBeenCalled()
+  })
+
+  it('종료 버튼이 rec.requestStop을 호출(매핑 회귀 가드)', () => {
+    useRecordingStore.getState().start(5)
+    useRecordingStore.getState().publish({ status: 'recording' })
+    const spy = vi.spyOn(useRecordingStore.getState(), 'requestStop')
+    renderLive()
+    // 데스크톱/모바일 컨트롤의 종료 버튼(aria-label 또는 텍스트)으로 클릭 — 실제 라벨 확인해 셀렉터 맞춤
+    // 예: fireEvent.click(screen.getByRole('button', { name: /종료/ }))
+    // expect(spy).toHaveBeenCalled()
+    spy.mockRestore()
   })
 })
 ```
+
+(주: 종료/일시정지 버튼은 `DesktopRecordControls`/`MobileRecordControls` 내부 — 실제 aria-label/텍스트를 구현 시 확인해 `getByRole('button', { name: ... })`로 클릭 단언. 위 주석 라인을 실제 단언으로 활성화. 헤드리스 환경에선 isDesktop 분기에 맞춰 한쪽만 렌더되므로 `useMediaQuery` 모킹 또는 양쪽 라벨 중 존재하는 것 선택.)
 
 - [ ] **Step 2: 테스트 실패 확인** — Run: `cd frontend && npx vitest run src/pages/__tests__/MeetingLivePage.attach.test.tsx` Expected: FAIL(현재 페이지가 useLiveRecording 호출).
 
@@ -918,7 +949,8 @@ describe('MeetingLivePage 단일 소유자', () => {
 
 (상세: 기존 페이지의 모든 `live.X` 참조를 위 매핑으로 1:1 치환. 자식 컴포넌트 props 시그니처는 불변 — 값 출처만 store로 바뀜.)
 
-- [ ] **Step 4: 전체 테스트 + 타입 확인** — Run: `cd frontend && npx vitest run && npx tsc --noEmit` Expected: 신규 attach 테스트 PASS, 기존 테스트 green, tsc 0. (Task 7의 tsc도 여기서 해소.)
+- [ ] **Step 4a: 잔여 참조 grep** — Run: `grep -nE "\blive\b|\blive\?\.|\blive\." frontend/src/pages/MeetingLivePage.tsx`. Expected: **0건**(모든 `live.X`가 `rec.X`/로컬로 치환됨). 남으면 매핑 누락 — 수정.
+- [ ] **Step 4b: 전체 테스트 + 타입 확인** — Run: `cd frontend && npx vitest run && npx tsc --noEmit` Expected: 신규 attach 테스트 PASS(동작 단언 포함), 기존 테스트 green, tsc 0. (Task 7의 tsc도 여기서 해소.)
 
 - [ ] **Step 5: 커밋**
 
@@ -960,22 +992,23 @@ function App() {
   </>)
 }
 
-describe('녹음 지속성(라우트 변경)', () => {
+// SMOKE 테스트(로컬 App 트리) — 실제 라우트 영속 보장은 수동 E2E #1이 담당.
+// 여기선 "세션이 라우트 밖 RecordingLayer에 있어 라우트 변경에 재마운트 안 됨" 구조 속성만 가드.
+describe('녹음 지속성(라우트 변경) smoke', () => {
   beforeEach(() => { liveMock.mockClear(); useRecordingStore.getState().endSession() })
-  it('라우트가 바뀌어도 세션이 재마운트되지 않는다(단일 인스턴스 지속)', () => {
+  it('세션은 정확히 1회 마운트되고 라우트가 바뀌어도 재마운트되지 않는다', () => {
     const { rerender } = render(<MemoryRouter initialEntries={['/a']}><App /></MemoryRouter>)
+    expect(liveMock).not.toHaveBeenCalled() // idle: 미마운트
     useRecordingStore.getState().start(1)
     rerender(<MemoryRouter initialEntries={['/a']}><App /></MemoryRouter>)
-    const after1 = liveMock.mock.calls.length
-    // 라우트 변경 시뮬레이션: 같은 트리 내 다른 경로 렌더
-    rerender(<MemoryRouter initialEntries={['/b']}><App /></MemoryRouter>)
-    // 세션은 RecordingLayer(라우트 밖)에 있으므로 추가 마운트 없음
-    expect(liveMock.mock.calls.length).toBe(after1)
+    expect(liveMock).toHaveBeenCalledTimes(1) // 마운트 1회
+    rerender(<MemoryRouter initialEntries={['/b']}><App /></MemoryRouter>) // 라우트 변경
+    expect(liveMock).toHaveBeenCalledTimes(1) // 재마운트 없음 — 녹음 지속
   })
 })
 ```
 
-- [ ] **Step 2: 테스트 실패/현황 확인** — Run: `cd frontend && npx vitest run src/components/recording/__tests__/persistence.integration.test.tsx` Expected: 모듈 존재(RecordingLayer)면 통과할 수도 — 핵심은 회귀 가드. 실패 시 원인 수정.
+- [ ] **Step 2: 테스트 실패/현황 확인** — Run: `cd frontend && npx vitest run src/components/recording/__tests__/persistence.integration.test.tsx` Expected: 구현 후 PASS. 핵심=재마운트 없음 회귀 가드(smoke). 실제 영속은 수동 E2E #1.
 
 - [ ] **Step 3: 구현** — `App.tsx` `GatedApp()` 수정. 기존(237-241):
 
