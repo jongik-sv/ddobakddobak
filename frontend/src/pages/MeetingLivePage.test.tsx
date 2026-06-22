@@ -2,8 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import MeetingLivePage from './MeetingLivePage'
+import { RecordingLayer } from '../components/recording/RecordingLayer'
 import { useSharingStore } from '../stores/sharingStore'
 import { useTranscriptStore } from '../stores/transcriptStore'
+import { useRecordingStore } from '../stores/recordingStore'
 
 // ────────────────���─────────────────────────────
 // Mocks
@@ -126,6 +128,9 @@ function renderPage(meetingId = '1') {
         <Route path="/meetings/:id/live" element={<MeetingLivePage />} />
         <Route path="/meetings/:id/viewer" element={<div data-testid="viewer-route">VIEWER</div>} />
       </Routes>
+      {/* 실제 앱(GatedApp)처럼 녹음 레이어를 라우트 밖 형제로 마운트 →
+          start/stop이 실제 헤드리스 세션을 통해 흐른다. */}
+      <RecordingLayer />
     </MemoryRouter>
   )
 }
@@ -138,6 +143,7 @@ function renderPageWithState(state: unknown, meetingId = '1') {
         <Route path="/meetings/:id/live" element={<MeetingLivePage />} />
         <Route path="/meetings/:id/viewer" element={<div data-testid="viewer-route">VIEWER</div>} />
       </Routes>
+      <RecordingLayer />
     </MemoryRouter>
   )
 }
@@ -147,6 +153,8 @@ describe('MeetingLivePage', () => {
     vi.clearAllMocks()
     useSharingStore.getState().reset()
     useTranscriptStore.getState().reset()
+    // 녹음 세션 상태를 테스트 간 초기화(activeMeetingId/handlers/showStopConfirm 등)
+    useRecordingStore.getState().endSession()
     // 기본: 데스크톱 모드
     setDesktopMode(true)
     vi.mocked(useAudioRecorderModule.useAudioRecorder).mockReturnValue({
