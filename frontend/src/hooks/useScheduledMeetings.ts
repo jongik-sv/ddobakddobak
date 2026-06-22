@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { IS_TAURI } from '../config'
+import { IS_TAURI, getMode } from '../config'
 import { confirmDialog } from '../lib/confirmDialog'
 import { getScheduledMeetings } from '../api/meetings'
 import type { ScheduledMeeting } from '../api/meetings/types'
@@ -35,6 +35,30 @@ export function useScheduledMeetings() {
 
     const goLive = (id: number) => {
       navigate(`/meetings/${id}/live`, { state: { autoStart: true } })
+    }
+
+    // 데스크톱 로컬: Rust 스케줄러가 트리거 소유 → JS 폴 비활성, 이벤트만 수신.
+    if (IS_TAURI && getMode() === 'local') {
+      let unlisten: (() => void) | undefined
+      let disposed = false
+      ;(async () => {
+        const { listen } = await import('@tauri-apps/api/event')
+        const un = await listen<{ meetingId: number; mode: 'auto' | 'manual' }>(
+          'scheduled-meeting-trigger',
+          (e) => {
+            if (cancelled) return
+            if (pathnameRef.current.includes('/live')) return // 진행 중 세션 보호
+            goLive(e.payload.meetingId)
+          },
+        )
+        if (disposed) un()
+        else unlisten = un
+      })()
+      return () => {
+        cancelled = true
+        disposed = true
+        unlisten?.()
+      }
     }
 
     const handle = async (m: ScheduledMeeting, mode: 'auto' | 'manual') => {

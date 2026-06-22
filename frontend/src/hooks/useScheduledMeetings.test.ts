@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { renderHook, act } from '@testing-library/react'
 import type { ScheduledMeeting } from '../api/meetings/types'
 
 const navigate = vi.fn()
@@ -192,5 +192,32 @@ describe('useScheduledMeetings (데스크톱)', () => {
     await flush()
     expect(confirmDialog).not.toHaveBeenCalled()
     expect(navigate).toHaveBeenCalledWith('/meetings/3/live', { state: { autoStart: true } })
+  })
+
+  it('desktop(local): 폴하지 않고 트리거 이벤트로 goLive 한다', async () => {
+    const listeners: Record<string, (e: { payload: unknown }) => void> = {}
+    vi.doMock('@tauri-apps/api/event', () => ({
+      listen: (name: string, cb: (e: { payload: unknown }) => void) => {
+        listeners[name] = cb
+        return Promise.resolve(() => { delete listeners[name] })
+      },
+    }))
+    vi.doMock('../config', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('../config')>()),
+      IS_TAURI: true,
+      getMode: () => 'local',
+    }))
+    const { useScheduledMeetings } = await import('./useScheduledMeetings')
+    // act + runAllTicks로 동적 import('@tauri-apps/api/event') → listen 등록까지 보장
+    await act(async () => {
+      renderHook(() => useScheduledMeetings())
+      await vi.runAllTicks()
+    })
+    expect(getScheduledMeetings).not.toHaveBeenCalled() // desktop은 JS 폴 안 함
+    expect(listeners['scheduled-meeting-trigger']).toBeDefined()
+    await act(async () => {
+      listeners['scheduled-meeting-trigger']?.({ payload: { meetingId: 7, mode: 'auto' } })
+    })
+    expect(navigate).toHaveBeenCalledWith('/meetings/7/live', { state: { autoStart: true } })
   })
 })
