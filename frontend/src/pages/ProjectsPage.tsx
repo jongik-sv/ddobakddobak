@@ -4,6 +4,7 @@ import { HTTPError } from 'ky'
 import { Plus, MoreVertical, Pencil, Users, Trash2, Download } from 'lucide-react'
 import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
+import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
 import { useFolderStore } from '../stores/folderStore'
 import { useMeetingStore } from '../stores/meetingStore'
 import type { Project } from '../api/projects'
@@ -33,6 +34,9 @@ export default function ProjectsPage() {
   const [exportTarget, setExportTarget] = useState<Project | null>(null)
   const [menuId, setMenuId] = useState<number | null>(null)
   const [error, setError] = useState('')
+  // 아이콘을 카드 높이의 약 1/2로(카드 md:250px → 120, 모바일 160px → 80). 좌측 큰 아이콘.
+  const isMd = useMediaQuery(BREAKPOINTS.md)
+  const iconSize = isMd ? 120 : 80
 
   useEffect(() => {
     fetchProjects()
@@ -102,15 +106,9 @@ export default function ProjectsPage() {
             className="group relative h-[160px] cursor-pointer rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md md:h-[250px]"
             onClick={() => openProject(p)}
           >
-            <div className="flex items-start gap-3">
-              <ProjectIcon project={p} size={56} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold text-zinc-900">{projectDisplayName(p)}</p>
-                <p className="mt-0.5 text-xs text-zinc-500">
-                  멤버 {p.member_count} · 회의 {p.meeting_count}
-                </p>
-              </div>
-              <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-2">
+              <p className="line-clamp-2 font-semibold text-zinc-900">{projectDisplayName(p)}</p>
+              <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
                 <button
                   onClick={() => setMenuId(menuId === p.id ? null : p.id)}
                   className="rounded-md p-1 text-zinc-500 opacity-0 transition-opacity hover:bg-zinc-100 group-hover:opacity-100"
@@ -160,6 +158,13 @@ export default function ProjectsPage() {
                     )}
                   </div>
                 )}
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <ProjectIcon project={p} size={iconSize} />
+              <div className="min-w-0">
+                <p className="text-xs text-zinc-500">멤버 {p.member_count}</p>
+                <p className="text-xs text-zinc-500">회의 {p.meeting_count}</p>
               </div>
             </div>
             {p.description && (

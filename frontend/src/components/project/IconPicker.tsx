@@ -35,12 +35,13 @@ const TABS: { key: Tab; label: string }[] = [
 
 export default function IconPicker({ value, onChange }: IconPickerProps) {
   const [tab, setTab] = useState<Tab>(value.icon_type ?? 'lucide')
+  const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const color = value.color ?? COLORS[0]
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  // 이미지 파일을 data URL로 읽어 아이콘으로 설정(버튼 선택·드래그 공용).
+  const readImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return
     const reader = new FileReader()
     reader.onload = () => {
       onChange({ icon_type: 'image', icon_value: String(reader.result), color })
@@ -48,8 +49,41 @@ export default function IconPicker({ value, onChange }: IconPickerProps) {
     reader.readAsDataURL(file)
   }
 
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) readImageFile(file)
+  }
+
+  // 픽커 어디에 떨궈도 이미지면 설정 + 업로드 탭으로 전환. preventDefault로 브라우저 파일 이동 차단.
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file && file.type.startsWith('image/')) {
+      readImageFile(file)
+      setTab('image')
+    }
+  }
+  const handleDragOver = (e: React.DragEvent) => {
+    if (Array.from(e.dataTransfer.types).includes('Files')) {
+      e.preventDefault()
+      setDragOver(true)
+    }
+  }
+  const handleDragLeave = (e: React.DragEvent) => {
+    // 자식으로 들어갈 때의 leave는 무시 — 픽커 밖으로 나갈 때만 해제
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false)
+  }
+
   return (
-    <div className="rounded-md border border-zinc-200 p-3">
+    <div
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      className={`rounded-md border p-3 transition-colors ${
+        dragOver ? 'border-indigo-500 bg-indigo-50' : 'border-zinc-200'
+      }`}
+    >
       <div className="mb-3 flex gap-1">
         {TABS.map((t) => (
           <button
@@ -150,7 +184,7 @@ export default function IconPicker({ value, onChange }: IconPickerProps) {
             이미지 선택
           </button>
           <p className="text-center text-xs text-zinc-500">
-            지금은 미리보기만 지원합니다(저장은 추후 지원).
+            이미지를 끌어다 놓거나 선택하세요. 저장 시 함께 보관됩니다.
           </p>
         </div>
       )}

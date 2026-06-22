@@ -86,6 +86,22 @@ function App() {
     usePromptTemplateStore.getState().fetch()
   }, [])
 
+  // 전역 파일-드롭 가드: 파일을 창 아무 곳에나 떨궈도 WKWebView/브라우저가 그 파일로
+  // 네비게이트(파일 풀스크린 표시)하지 않게 막는다. 지정 드롭존(IconPicker·AddFileDialog 등)은
+  // 자체 onDrop에서 먼저 처리하고 이 가드로 버블되므로 영향 없음.
+  // 반드시 preventDefault만 — stopPropagation을 쓰면 안쪽 드롭존이 죽는다. 파일 드래그에만 적용.
+  useEffect(() => {
+    const guard = (e: DragEvent) => {
+      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) e.preventDefault()
+    }
+    window.addEventListener('dragover', guard)
+    window.addEventListener('drop', guard)
+    return () => {
+      window.removeEventListener('dragover', guard)
+      window.removeEventListener('drop', guard)
+    }
+  }, [])
+
   // 첫 페인트 후 idle 시간에 지연 페이지 청크를 미리 받아둔다 → 실제 네비게이션 시 스피너/공백 없음.
   useEffect(() => {
     const warm = () => { for (const fn of Object.values(load)) void fn() }
