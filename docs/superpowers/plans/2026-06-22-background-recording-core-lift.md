@@ -382,11 +382,15 @@ describe('useLiveRecording decouple', () => {
 - 시그니처에서 구조분해 `showStatus` 제거.
 - 본문 최상단에 지역 헬퍼: `const showStatus = (msg: string, durationMs?: number) => useToastStore.getState().showStatus(msg, durationMs)`. (본문 내 모든 `showStatus(...)` 호출 그대로 동작.)
 - 반환 객체에 `performStop`을 추가: `return { ..., performStop } as const`. (이미 정의된 `performStop` 함수 노출.)
-- **recordingDenied navigate 게이트**(251-257 effect): 훅이 라우트 무관 세션으로 옮겨지므로, 다른 라우트(대시보드 등)에 있을 때 2번째 클라 레이스로 `navigate('.../viewer')`가 발화하면 사용자를 엉뚱하게 끌어간다. navigate를 **현재 이 회의의 live 라우트일 때만** 실행하도록 가드:
+- **recordingDenied navigate 게이트**(251-257 effect): 훅이 라우트 무관 세션으로 옮겨지므로, 다른 라우트(대시보드 등)에 있을 때 2번째 클라 레이스로 `navigate('.../viewer')`가 발화하면 사용자를 엉뚱하게 끌어간다. navigate를 **현재 이 회의의 live 라우트일 때만** 실행하도록 가드. **반드시 React Router의 `useLocation()` 사용**(`window.location.pathname`은 jsdom/MemoryRouter에서 안 바뀌어 테스트가 깨지고, 리프트 후엔 라우터 위치를 못 읽음):
   ```ts
-  if (window.location.pathname === `/meetings/${meetingId}/live`) {
+  import { useLocation } from 'react-router-dom'
+  const location = useLocation()
+  // effect 안:
+  if (location.pathname === `/meetings/${meetingId}/live`) {
     navigate(`/meetings/${meetingId}/viewer`, { replace: true })
   }
+  // location.pathname을 effect deps에 추가.
   ```
   (캡처 중지/discard는 그대로. navigate만 게이트.)
 
