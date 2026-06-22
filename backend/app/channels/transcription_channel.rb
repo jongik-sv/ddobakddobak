@@ -16,7 +16,6 @@ class TranscriptionChannel < ApplicationCable::Channel
       stream_from meeting.transcription_stream
       handle_host_reconnection(meeting)
       notify_if_recording_in_progress(meeting)
-      bump_recorder_heartbeat
     else
       reject
     end
