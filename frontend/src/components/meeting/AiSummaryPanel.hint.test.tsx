@@ -17,6 +17,7 @@ vi.mock('@blocknote/react', () => ({
   SuggestionMenuController: () => null,
   getDefaultReactSlashMenuItems: vi.fn(() => []),
   createReactBlockSpec: vi.fn(() => ({})),
+  createReactInlineContentSpec: vi.fn(() => ({})),
 }))
 
 vi.mock('@blocknote/mantine', () => ({
@@ -74,34 +75,43 @@ function setupTranscript({
   useTranscriptStore.setState({ meetingNotes, isSummarizing })
 }
 
+// setupTranscript는 finalsCount만큼 화자라벨을 SPEAKER_00, SPEAKER_01 … 로 생성하므로
+// finalsCount>=2면 distinct 화자 2명 이상(실제 분리됨), finalsCount===1이면 단일 화자(분리 안 됨).
 describe('AiSummaryPanel 힌트 노출 조건', () => {
   beforeEach(() => {
     mockDiarizationEnabled = true
     useTranscriptStore.getState().reset()
   })
 
-  it('조건 4개 모두 충족 시 힌트 렌더', () => {
-    // diarizationEnabled=true, meetingNotes=null, finals.length>0, !isSummarizing
-    setupTranscript({ meetingNotes: null, finalsCount: 1, isSummarizing: false })
+  it('화자 2명 이상 분리 + 나머지 조건 충족 시 힌트 렌더', () => {
+    // diarizationEnabled=true, meetingNotes=null, distinct 화자>1, !isSummarizing
+    setupTranscript({ meetingNotes: null, finalsCount: 2, isSummarizing: false })
     render(<AiSummaryPanel meetingId={1} />)
     expect(screen.getByText(HINT_TEXT, { exact: false })).toBeInTheDocument()
   })
 
-  it("meetingNotes='' (빈 문자열)일 때도 힌트 렌더", () => {
-    setupTranscript({ meetingNotes: '', finalsCount: 1, isSummarizing: false })
+  it("meetingNotes='' (빈 문자열)일 때도 (화자 2명 이상) 힌트 렌더", () => {
+    setupTranscript({ meetingNotes: '', finalsCount: 2, isSummarizing: false })
     render(<AiSummaryPanel meetingId={1} />)
     expect(screen.getByText(HINT_TEXT, { exact: false })).toBeInTheDocument()
   })
 
-  it('diarizationEnabled=false면 힌트 미표시', () => {
-    mockDiarizationEnabled = false
+  it('화자가 1명뿐이면(실제 분리 안 됨) 힌트 미표시', () => {
+    // 버그 회귀: 전사가 모두 한 화자인데 "화자분리 완료" 안내가 뜨던 문제
     setupTranscript({ meetingNotes: null, finalsCount: 1, isSummarizing: false })
     render(<AiSummaryPanel meetingId={1} />)
     expect(screen.queryByText(HINT_TEXT, { exact: false })).not.toBeInTheDocument()
   })
 
+  it('diarizationEnabled=false면 힌트 미표시', () => {
+    mockDiarizationEnabled = false
+    setupTranscript({ meetingNotes: null, finalsCount: 2, isSummarizing: false })
+    render(<AiSummaryPanel meetingId={1} />)
+    expect(screen.queryByText(HINT_TEXT, { exact: false })).not.toBeInTheDocument()
+  })
+
   it('meetingNotes가 존재하면 힌트 미표시', () => {
-    setupTranscript({ meetingNotes: '기존 회의록 내용', finalsCount: 1, isSummarizing: false })
+    setupTranscript({ meetingNotes: '기존 회의록 내용', finalsCount: 2, isSummarizing: false })
     render(<AiSummaryPanel meetingId={1} />)
     expect(screen.queryByText(HINT_TEXT, { exact: false })).not.toBeInTheDocument()
   })
@@ -113,7 +123,7 @@ describe('AiSummaryPanel 힌트 노출 조건', () => {
   })
 
   it('isSummarizing=true이면 힌트 미표시', () => {
-    setupTranscript({ meetingNotes: null, finalsCount: 1, isSummarizing: true })
+    setupTranscript({ meetingNotes: null, finalsCount: 2, isSummarizing: true })
     render(<AiSummaryPanel meetingId={1} />)
     expect(screen.queryByText(HINT_TEXT, { exact: false })).not.toBeInTheDocument()
   })

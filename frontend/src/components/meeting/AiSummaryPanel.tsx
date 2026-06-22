@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react'
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react'
 import { Maximize2 } from 'lucide-react'
 import '@blocknote/mantine/style.css'
 import { BlockNoteView } from '@blocknote/mantine'
@@ -9,6 +9,7 @@ import { useAppSettingsStore } from '../../stores/appSettingsStore'
 import { editorSchema, codeBlocksToMermaid } from './mermaidBlock'
 import { markersToInline, inlineToMarkers } from './citationInline'
 import { speakerAtMs } from '../../lib/citationMarkers'
+import { shouldShowDiarizationHint } from './diarizationHint'
 import { AiSummaryFullViewModal } from './AiSummaryFullViewModal'
 
 /**
@@ -41,11 +42,11 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
   const finals = useTranscriptStore((s) => s.finals)
   const diarizationEnabled = useAppSettingsStore((s) => s.diarizationEnabled)
 
-  const showManualHint =
-    diarizationEnabled &&
-    (meetingNotes === null || meetingNotes === '') &&
-    finals.length > 0 &&
-    !isSummarizing
+  // 실제로 화자가 둘 이상 분리됐을 때만 안내(전부 같은 화자라벨이면 거짓 "분리 완료" 차단)
+  const showManualHint = useMemo(
+    () => shouldShowDiarizationHint({ diarizationEnabled, finals, meetingNotes, isSummarizing }),
+    [diarizationEnabled, finals, meetingNotes, isSummarizing],
+  )
   const prevMarkdownRef = useRef<string>('')
   const isUserEditingRef = useRef(false)
   const isProgrammaticRef = useRef(false)
