@@ -16,8 +16,9 @@ import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SummaryOptionsControl } from '../components/meeting/SummaryOptionsControl'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
-import { getMeeting, updateMeeting, triggerRealtimeSummary, updateNotes, getParticipants, resetMeetingContent } from '../api/meetings'
+import { getMeeting, updateMeeting, triggerRealtimeSummary, updateNotes, getParticipants, resetMeetingContent, getTranscripts, getSummary } from '../api/meetings'
 import type { Meeting, Participant, UpdateMeetingParams } from '../api/meetings'
+import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useSharingStore } from '../stores/sharingStore'
 import { IS_TAURI, IS_MOBILE, SUMMARY_INTERVAL_OPTIONS, getMode } from '../config'
@@ -78,6 +79,21 @@ export default function MeetingLivePage() {
       })
       .catch(() => {})
   }, [meetingId])
+
+  // idle(녹음 비활성)일 때만 이 회의의 기존 전사+요약을 표시용으로 로드.
+  // 녹음 중(이 회의든 다른 회의든 activeMeetingId != null)이면 transcriptStore는 세션 소유 → 건드리지 않음(클로버 방지).
+  useEffect(() => {
+    if (rec.activeMeetingId !== null) return
+    let cancelled = false
+    useTranscriptStore.getState().reset()
+    getTranscripts(meetingId)
+      .then((t) => { if (!cancelled) useTranscriptStore.getState().loadFinals(mapTranscriptsToFinals(t)) })
+      .catch(() => {})
+    getSummary(meetingId)
+      .then((s) => { if (!cancelled && s?.notes_markdown) useTranscriptStore.getState().setMeetingNotes(s.notes_markdown) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [meetingId, rec.activeMeetingId])
 
   // 라이브 상태(이 세션이 활성일 때만 store 값, 아니면 뷰 기본값)
   const isPaused = isThisSession ? rec.isPaused : false

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import MeetingLivePage from './MeetingLivePage'
@@ -317,6 +317,55 @@ describe('MeetingLivePage', () => {
       expect(meetingsApi.reopenMeeting).toHaveBeenCalledWith(1)
     })
     expect(meetingsApi.startMeeting).not.toHaveBeenCalled()
+  })
+
+  // ──────────────────────────────────────────────
+  // 회귀: idle 페이지 전사+요약 로드 (fix: headless 세션 이전 후 빈 패널 버그)
+  // ──────────────────────────────────────────────
+
+  describe('idle 상태에서 기존 전사+요약 표시용 로드', () => {
+    beforeEach(() => {
+      // 이 describe 블록에서만 실제 데이터를 반환하도록 오버라이드 후 afterEach에서 복원
+      vi.mocked(meetingsApi.getTranscripts).mockResolvedValue([
+        {
+          id: 10, content: '이전 전사 내용', speaker_label: 'SPEAKER_00', speaker_name: null,
+          started_at_ms: 0, ended_at_ms: 1000, sequence_number: 1, applied_to_minutes: true,
+        } as any,
+      ])
+      vi.mocked(meetingsApi.getSummary).mockResolvedValue({
+        type: 'notes_markdown', notes_markdown: '이전 회의록',
+      } as any)
+    })
+
+    afterEach(() => {
+      // 다음 테스트로 구현체가 새어나가지 않도록 기본값 복원
+      vi.mocked(meetingsApi.getTranscripts).mockResolvedValue([])
+      vi.mocked(meetingsApi.getSummary).mockResolvedValue(null)
+    })
+
+    it('activeMeetingId가 null(idle)이면 getTranscripts와 getSummary를 meetingId로 호출한다', async () => {
+      // beforeEach에서 useRecordingStore.getState().endSession() → activeMeetingId = null
+      renderPage()
+      await waitFor(() => {
+        expect(meetingsApi.getTranscripts).toHaveBeenCalledWith(1)
+        expect(meetingsApi.getSummary).toHaveBeenCalledWith(1)
+      })
+    })
+
+    it('activeMeetingId가 null(idle)이면 transcriptStore에 이전 전사가 로드된다', async () => {
+      renderPage()
+      await waitFor(() => {
+        const { finals } = useTranscriptStore.getState()
+        expect(finals.some((f) => f.id === 10 && f.content === '이전 전사 내용')).toBe(true)
+      })
+    })
+
+    it('activeMeetingId가 null(idle)이면 transcriptStore에 이전 회의록이 로드된다', async () => {
+      renderPage()
+      await waitFor(() => {
+        expect(useTranscriptStore.getState().meetingNotes).toBe('이전 회의록')
+      })
+    })
   })
 
   // ──────────────────────────────────────────────
