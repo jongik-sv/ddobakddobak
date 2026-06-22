@@ -27,13 +27,30 @@ RSpec.describe "Stale recording reaper (requests)", type: :request do
     expect(active.reload.status).to eq("recording")
   end
 
-  it "GET index 는 다른 유저가 만든 stale recording 은 종결하지 않는다(blast 한정)" do
-    # 같은 (접근 가능한) 프로젝트의 다른 유저 회의여도, index lazy heal 은 본인 소유분만 종결한다.
+  it "GET index 는 admin 이 조회하면 다른 유저가 만든 (보이는) stale recording 도 종결한다 (#213 회귀 가드)" do
+    # #213: 타신분(다른 created_by)으로 만든 stuck recording 이 본인-소유분 한정 청소에서 빠져
+    # 영구 '녹음중' 잔존했음. admin 의 accessible_by 는 전체(kept)라 이 회의가 목록에 보이므로,
+    # '보이는 것 기준' 청소로 바뀐 지금은 누가 만들었든 healed 되어야 한다.
+    admin = create(:user, :admin)
+    login_as(admin) # before 블록의 login_as(user) 위에 재스텁
     other = create(:user)
     theirs = create(:meeting, project: project, creator: other, status: "recording",
                     started_at: 10.minutes.ago, recorder_heartbeat_at: nil)
-    # 전제 확인: 이 회의는 현재 유저의 접근 스코프 안에 있다(그래서 단순 accessible_by heal 이면 종결됐을 것).
-    expect(Meeting.accessible_by(user)).to include(theirs)
+    # 전제: admin 에게 이 회의가 접근(보이는) 가능하다.
+    expect(Meeting.accessible_by(admin)).to include(theirs)
+
+    get "/api/v1/meetings"
+    expect(theirs.reload.status).to eq("completed")
+  end
+
+  it "GET index 는 접근 불가(비공유·비멤버) 타유저 stale recording 은 종결하지 않는다 (스코프 밖)" do
+    # 비admin 사용자에겐 멤버십 없는 프로젝트의 회의가 목록에 안 보인다 → 청소 대상도 아님.
+    other = create(:user)
+    other_project = create(:project, creator: other)
+    theirs = create(:meeting, project: other_project, creator: other, status: "recording",
+                    started_at: 10.minutes.ago, recorder_heartbeat_at: nil)
+    # 전제: 현재(비admin) 유저의 접근 스코프 밖이다(그래서 보이지도, 청소되지도 않아야 한다).
+    expect(Meeting.accessible_by(user)).not_to include(theirs)
 
     get "/api/v1/meetings"
     expect(theirs.reload.status).to eq("recording")

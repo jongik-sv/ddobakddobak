@@ -21,11 +21,6 @@ module Api
       before_action -> { @meeting&.heal_stale_recording! }, only: %i[show]
 
       def index
-        # 비정상 종료된 recording 회의 자가복구(본인 소유분 한정, 카운트보다 먼저).
-        # accessible_by 전체로 돌리면 admin/공유 목록 로드가 타유저 stale 회의를 대량 종결하는
-        # blast 가 있어 created_by_id 로 한정. show 의 단일 회의 heal 은 그대로(blast 없음).
-        Meeting.where(created_by_id: current_user.id, status: :recording).find_each(&:heal_stale_recording!)
-
         scope = Meeting.accessible_by(current_user)
                        .search_with_summary(params[:q])
                        .created_after(params[:date_from])
@@ -48,6 +43,11 @@ module Api
         unless ActiveModel::Type::Boolean.new.cast(params[:show_all])
           scope = scope.where("meetings.important = ? OR meetings.status != ?", true, "completed")
         end
+
+        # 사용자가 보는(접근가능·필터적용된) 녹음중 회의 중 비정상 종료된 것을 자가복구.
+        # created_by 한정은 타신분 생성 stuck 회의(#213)를 놓쳤음 → 보이는 것 기준으로 청소.
+        # recording 회의는 소수라 비용 작음. status_counts/페이지보다 먼저 실행해 카운트·뱃지 일관.
+        scope.where(status: :recording).find_each(&:heal_stale_recording!)
 
         # 상태별 카운트는 status 필터 적용 전 스코프에서 계산 (탭 선택과 무관하게 정확)
         status_counts = scope.group(:status).count
