@@ -508,6 +508,12 @@ export function useLiveRecording(
     import('@tauri-apps/api/core')
       .then(({ invoke }) => invoke('set_recording', { active: isActive }))
       .catch(() => {})
+    return () => {
+      // 언마운트 시 녹음 플래그 해제 — 안 하면 caffeinate가 앱 세션 내내 유지(역누수)
+      import('@tauri-apps/api/core')
+        .then(({ invoke }) => invoke('set_recording', { active: false }))
+        .catch(() => {})
+    }
   }, [isActive])
 
   // 경과 시간 타이머
