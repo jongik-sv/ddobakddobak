@@ -60,14 +60,18 @@
   - JS→Rust: `invoke('quit_app')`.
   - 모달은 기존 모달 패턴(React) 재사용.
 
-### 4.3 백그라운드 스케줄러 (Rust 소유 — 핵심)
+### 4.3 백그라운드 스케줄러 (Rust 소유 — 핵심, **티어 C: Rust 직접 폴**)
 
-데이터 출처는 그대로 Rails(`GET /meetings/scheduled`). 발화 주체만 Rust로 이동.
+데이터 출처도 발화 주체도 Rust. 숨김 중 웹뷰를 깨우지 않아 유휴 배터리 ≈0.
 
 데스크톱(`IS_TAURI && local`) 경로:
-1. 프론트 폴(기존 30s)이 `getScheduledMeetings()` 호출 후 **발화 대신**
-   `invoke('sync_scheduled_meetings', { meetings })`로 Rust에 목록 전달.
-2. Rust가 목록에서 다음 auto/manual 트리거 시각 계산(JS `computeScheduleActions`와 동일 규칙: GRACE 60s, manual lead 60s).
+1. Rust tokio 폴 루프가 **직접** `GET http://127.0.0.1:13323/api/v1/meetings/scheduled`
+   를 `reqwest`로 호출(이미 의존성 있음).
+   - **인증=loopback 로컬 admin, 무토큰.** `default_user_lookup.rb:12-16` — loopback 요청은
+     SERVER_MODE 여부와 무관하게 맥 본체 데스크톱 앱을 로컬 admin으로 취급.
+   - 폴 간격: 기본 60s(유휴 시 더 길게 가능). 부팅 직후 백엔드 미준비 시 재시도 가드.
+2. Rust가 응답(serde 역직렬화: `id, scheduled_start_time, auto_start_mode`)에서
+   다음 auto/manual 트리거 시각 계산(JS `computeScheduleActions`와 동일 규칙: GRACE 60s, manual lead 60s).
 3. Rust tokio 타이머가 트리거 시각 도달 시 webview로
    `emit('scheduled-meeting-trigger', { meetingId, mode })`.
 4. 프론트가 이벤트 수신 → **기존 auto 분기 로직 재사용**:
@@ -76,10 +80,12 @@
    - 알림/트레이 클릭 → 창 복원.
 5. 이중 발화 방지: 기존 triggered-set(이미 트리거된 회의) 가드 유지. Rust도 발화한 meetingId 기록.
 
-웹/서버 모드: **현행 JS 타이머 발화 그대로**(변경 0). Rust 경로는 데스크톱에서만.
+웹/서버 모드: **현행 JS 타이머 폴+발화 그대로**(변경 0). Rust 폴 경로는 데스크톱 로컬에서만.
+프론트의 desktop JS 폴은 **제거**(Rust가 폴 소유) — `useScheduledMeetings`는 desktop에서
+`scheduled-meeting-trigger` 리스너만, web에서 현행 타이머만.
 
 - 인터페이스:
-  - JS→Rust: `invoke('sync_scheduled_meetings', { meetings: [{ id, scheduled_at_ms, auto_start_mode }] })`.
+  - Rust→Rails: `reqwest GET /api/v1/meetings/scheduled` (loopback, 무토큰).
   - Rust→JS: `emit('scheduled-meeting-trigger', { meetingId, mode })`.
 - 의존성: 이 컴포넌트가 4.4(assertion)를 트리거 전후로 호출.
 
@@ -103,18 +109,18 @@
 ## 5. 데이터 흐름 요약
 
 ```
-[Rails] GET /meetings/scheduled
-   │ (프론트 30s 폴)
+데스크톱(local):
+[Rust 폴 루프] ─reqwest GET 127.0.0.1:13323/api/v1/meetings/scheduled (loopback admin)
+   │ (60s)
    ▼
-[프론트] desktop? ──yes──► invoke('sync_scheduled_meetings', meetings)
-   │                              │
-   │ no(web)                      ▼
-   ▼                       [Rust 스케줄러] 다음 트리거 계산
-[JS 타이머 직접 발화]            │  lead 전 ─► caffeinate 보유(4.4)
- (현행 유지)                     │  트리거 ─► emit('scheduled-meeting-trigger')
-                                 ▼
-                          [프론트] 창 숨김 유지 + /live autoStart
-                                   + OS 알림 "녹음 중" + 트레이 배지
+[Rust 스케줄러] 다음 트리거 계산
+   │  lead 2분 전 ─► caffeinate 보유(4.4)
+   │  트리거 ─────► emit('scheduled-meeting-trigger')
+   ▼
+[프론트] (리스너) 창 숨김 유지 + /live autoStart + OS 알림 "녹음 중" + 트레이 배지
+
+웹/서버:
+[Rails] GET /meetings/scheduled ◄─ [JS 30s 타이머 폴+직접 발화] (현행 유지, 변경 0)
 ```
 
 닫기 흐름:
@@ -148,6 +154,16 @@ cmd+Q ─► (가로채지 않음) 정상 종료
 - Windows의 슬립-웨이크 예약(Task Scheduler wake timer) = 후속.
 - 디스플레이 슬립 차단(화면 강제 ON) = 불필요(범위 밖).
 
+## 7.5 배터리 영향
+
+- **유휴 백그라운드(예약 임박 아님)**: App Nap 미해제 → 숨긴 웹뷰 nap, **Rust 폴이 웹뷰를 안 깨움
+  (티어 C)** → CPU≈0. 비용=Rails+sidecar 상주 RAM(수백 MB, idle CPU≈0, sidecar torch lazy).
+  유휴 드레인 ≈0에 수렴.
+- **예약 2분 전~회의 중**: assertion이 그 구간에만 유휴슬립 차단(상시 아님). 이때는 어차피
+  녹음(마이크+STT+요약)이 드레인 주범 — assertion 추가분은 2분 lead + 복귀 갭 정도.
+- **자동시작 ON**: 로그인부터 유휴 비용이 종일. 기본 OFF.
+- 버린 "항상 깨어있기" 대안 대비 우수 — 평소 잠들게 두고 예약 근처에서만 깨움.
+
 ## 8. 테스트 전략
 
 - **순수 로직**: 다음 트리거 시각 계산(Rust)을 JS `computeScheduleActions`와 동일 규칙으로 단위테스트(고정 입력→예상 트리거).
@@ -165,8 +181,8 @@ cmd+Q ─► (가로채지 않음) 정상 종료
 1. 트레이 아이콘 + show/hide 토글 (Rust).
 2. `quit_app` 커맨드 + `Destroyed` 정리 경로 정리.
 3. 닫기 모달 + onCloseRequested + localStorage pref (프론트).
-4. Rust 스케줄러 + `sync_scheduled_meetings`/`scheduled-meeting-trigger` + 트리거 계산 단위테스트.
-5. 프론트 `useScheduledMeetings` 분기: desktop=Rust 위임, web=현행.
+4. Rust 폴 루프(reqwest, loopback 무토큰) + serde 구조체 + 부팅 재시도 가드 + 트리거 계산 단위테스트 + `scheduled-meeting-trigger` emit.
+5. 프론트 `useScheduledMeetings` 분기: desktop=JS 폴 제거하고 이벤트 리스너만, web=현행 타이머 유지.
 6. power assertion(caffeinate) + 녹음 상태 통지.
 7. notification 플러그인 + "녹음 중" 알림.
 8. (옵션) autostart 플러그인 + 설정 토글.
