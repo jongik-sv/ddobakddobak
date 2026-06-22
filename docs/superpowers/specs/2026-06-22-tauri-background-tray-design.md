@@ -30,15 +30,15 @@
 |------|------|------|
 | 슬립 처리 | **Phase 1 무-root 유지방식** | 책상 위 열린 맥(화면만 꺼짐/유휴슬립)이 90% 케이스. root wake는 Phase 2 |
 | OS 범위 | **macOS 먼저** | 트레이/숨김/닫기다이얼로그는 크로스플랫폼 동작, 슬립차단(assertion)만 mac. Windows wake는 후속 |
-| 백그라운드 녹음 UX | **숨긴 채 녹음 + OS 알림** | auto 모드 무확인 의도 유지, 사용자 방해 최소 |
+| 백그라운드 녹음 UX | **트리거 시 창 표시 후 녹음 + OS 알림** | 시작 시 `window.show()`(네이티브, 웹뷰 suspend 무관)가 이벤트 수신·마이크 AudioContext를 한 번에 보장. 숨긴 채는 조용히 실패 가능 |
 | 트리거 소유권 | **Rust로 이전** | 숨긴 창의 JS `setInterval`은 App Nap이 스로틀 → 60s GRACE 미스 위험. Rust 타이머는 정시 발화 |
 | 닫기 동작 | 빨간 X = 다이얼로그, **cmd+Q = 진짜 종료** | 맥 관습 |
 | dock 아이콘 | **유지(Regular)** | 발견성. 트레이 + dock 둘 다 복원 경로 |
-| 숨김 녹음 마이크 | **하이브리드 보장** | 마이크=JS 캡처(`feed_recorder_mic`). 숨김 시 AudioContext suspend 가능 → 트리거 시 PCM 흐름 감시, 무음이면 창 show로 파이프라인 복원 |
-| 빈 회의 정리 | **무음 5분+ → 자동 완료** | 예약 시작했으나 아무도 없으면 빈 녹음 무한 방지. 마이크 보장과 함께라야 진짜 회의 오종료 안 함 |
+| 숨김 녹음 마이크 | **시작 시 창 표시로 해소** | 마이크=JS 캡처(`feed_recorder_mic`). show-at-trigger가 suspend 자체를 제거 → PCM 감시·폴백 불필요. "숨긴 채 녹음"은 스파이크로 입증 후의 **향후 최적화**(범위 밖) |
+| 빈 회의 정리 | **무음 5분+ → 자동 완료** | 예약 시작했으나 아무도 없으면 빈 녹음 무한 방지. show-at-trigger로 suspend 버그가 없어 *진짜 빈 회의*에만 동작 |
 | 모델 프리로드 | **예약 1분 전 STT 모델 워밍업** | sidecar STT lazy 로드 콜드스타트 제거 → 시작 즉시 전사 |
 
-## 4. 아키텍처 — 컴포넌트 5개
+## 4. 아키텍처 — 컴포넌트 7개
 
 ### 4.1 트레이 아이콘 (Rust)
 
@@ -75,12 +75,12 @@
    - 폴 간격: 기본 60s(유휴 시 더 길게 가능). 부팅 직후 백엔드 미준비 시 재시도 가드.
 2. Rust가 응답(serde 역직렬화: `id, scheduled_start_time, auto_start_mode`)에서
    다음 auto/manual 트리거 시각 계산(JS `computeScheduleActions`와 동일 규칙: GRACE 60s, manual lead 60s).
-3. Rust tokio 타이머가 트리거 시각 도달 시 webview로
+3. Rust tokio 타이머가 트리거 시각 도달 시 **메인 창을 먼저 표시**(`window.show()`+`set_focus()` —
+   네이티브 호출이라 웹뷰 suspend와 무관, 콘텐츠 프로세스·AudioContext 동시 복원)한 뒤 webview로
    `emit('scheduled-meeting-trigger', { meetingId, mode })`.
 4. 프론트가 이벤트 수신 → **기존 auto 분기 로직 재사용**:
-   - 창 숨김 유지(보이면 그대로) + `/meetings/{id}/live` autoStart.
+   - 창이 이미 표시된 상태(3에서 show) + `/meetings/{id}/live` autoStart.
    - OS 알림 "녹음 중: <회의명>" (4.5). 트레이 툴팁/배지로 "녹음 중" 표시.
-   - 알림/트레이 클릭 → 창 복원.
 5. 이중 발화 방지: 기존 triggered-set(이미 트리거된 회의) 가드 유지. Rust도 발화한 meetingId 기록.
 
 웹/서버 모드: **현행 JS 타이머 폴+발화 그대로**(변경 0). Rust 폴 경로는 데스크톱 로컬에서만.
@@ -109,23 +109,21 @@
   - 켜면 재부팅 후에도 앱이 떠서 예약 생존. 설정 UI 토글 1개.
 - 의존성: notification 필수, autostart 옵션.
 
-### 4.6 숨김 녹음 마이크 보장 + 무음 자동완료
+### 4.6 무음 자동완료 (빈 회의 정리 — 단독 기능)
 
-마이크 PCM은 JS 캡처(`useMicCapture` → `feed_recorder_mic(pcm_base64)`)라 웹뷰가 살아야 흐른다.
-숨긴 창에서 WKWebView가 AudioContext를 suspend하면 무음. 두 가지로 방어:
+> 마이크 보장은 4.3의 **show-at-trigger로 이미 해소**. 마이크 PCM은 JS 캡처(`useMicCapture` →
+> `feed_recorder_mic(pcm_base64)`)라 웹뷰가 살아야 흐르는데, 트리거 시 `window.show()`가
+> 콘텐츠 프로세스·AudioContext를 살리므로 suspend 무음이 발생하지 않는다. 따라서 PCM 감시·show 폴백은
+> **Phase 1에서 불필요(삭제)**. ("숨긴 채 녹음"은 향후 최적화 — §7 범위 밖.)
 
-- **마이크 보장(하이브리드)**: 스케줄러가 트리거해 녹음 시작 후, 프론트가 **수신 PCM 레벨(또는
-  feed 호출 빈도)을 짧게 감시**. 시작 후 N초(예: 3s) 내 PCM이 안 흐르면(=AudioContext suspend
-  추정) `getCurrentWindow().show()`로 창을 띄워 파이프라인 복원(이후 재숨김은 선택).
-  - 스파이크 선행: "숨긴 WKWebView에서 mic AudioContext가 유지되는가?" 경험 검증 → 유지되면
-    show 폴백은 발동 안 함(숨김 유지), 안 되면 폴백이 항상 발동(사실상 트리거 시 show).
-- **무음 자동완료**: 녹음 중 **연속 무음(RMS≈0)이 5분 이상**이면 회의를 자동 `handleStop()`(완료).
-  - 예약 자동시작했으나 참석자 없음 → 빈 녹음 무한 방지. 마이크 보장과 결합해야 *진짜 빈 회의*에만
-    동작(suspend로 인한 가짜 무음은 마이크 보장이 먼저 복원).
-  - RMS는 이미 STT 게이트(`RMS_GATE`)에서 계산 — 같은 신호 재사용. 5분 카운터는 무음 연속,
-    유음 1회로 리셋.
-- 인터페이스: 프론트 내부(녹음 PCM 콜백에서 레벨 누적) + `invoke('show_main_window')` 신규 커맨드(또는
-  기존 window show JS API). 자동완료는 기존 `handleStop()` 재사용.
+무음 자동완료는 그와 **독립된** 빈 회의 정리용:
+
+- 녹음 중 **연속 무음(RMS≈0)이 5분 이상**이면 회의를 자동 `handleStop()`(완료).
+- 예약 자동시작했으나 참석자가 없으면 빈 녹음이 무한정 이어지는 것을 막는다.
+  show-at-trigger로 suspend 가짜무음이 없으므로, 5분 무음은 *진짜 빈 회의*만을 의미 → 진짜 회의 오종료 위험 없음.
+- RMS는 이미 STT 게이트(`RMS_GATE`)에서 계산 — 같은 신호 재사용. 5분 카운터는 무음 연속,
+  유음 1회로 리셋(순수 함수로 분리해 단위테스트).
+- 인터페이스: 프론트 내부(녹음 PCM 콜백에서 무음 카운터 누적) → 임계 도달 시 기존 `handleStop()` 재사용.
 
 ### 4.7 모델 프리로드 (예약 1분 전 STT 워밍업)
 
@@ -152,11 +150,10 @@
 [Rust 스케줄러] 다음 트리거 계산
    │  T-120s ─► caffeinate 보유(4.4, 유휴슬립 차단)
    │  T-60s  ─► POST sidecar /warmup (4.7, 모델 커널 워밍업)
-   │  T-0    ─► emit('scheduled-meeting-trigger')
+   │  T-0    ─► window.show()+focus(웹뷰·AudioContext 복원) → emit('scheduled-meeting-trigger')
    ▼
-[프론트] (리스너) 창 숨김 유지 + /live autoStart + OS 알림 "녹음 중" + 트레이 배지
-   │  녹음 시작 후 PCM 감시(4.6): 3s 내 무음 → window.show()(suspend 복원)
-   │  녹음 중 무음 5분+ → handleStop() 자동완료(4.6)
+[프론트] (리스너) /live autoStart + OS 알림 "녹음 중" + 트레이 배지
+   │  녹음 중 무음 5분+ → handleStop() 자동완료(4.6, 빈 회의 정리)
 
 웹/서버:
 [Rails] GET /meetings/scheduled ◄─ [JS 30s 타이머 폴+직접 발화] (현행 유지, 변경 0)
@@ -172,7 +169,7 @@ cmd+Q ─► (가로채지 않음) 정상 종료
 
 ## 6. 에러 처리 / 엣지 케이스
 
-- **Rust 이벤트 발화했는데 webview가 숨김 상태로 navigation 실패**: 프론트가 `/live` 이동 후 autoStart. 숨김 창도 React 라우팅 동작(웹뷰 살아있음). 실패 시 알림에 "복원해서 확인" 안내.
+- **이벤트 미수신·마이크 무음(웹뷰 suspend)**: Rust가 트리거 시 `window.show()`+focus를 **먼저** 호출 → 콘텐츠 프로세스·AudioContext 복원 후 emit. 이벤트 수신과 마이크 PCM이 함께 보장됨(같은 원인, 한 번에 해결).
 - **이중 발화(Rust + 잔존 JS)**: triggered-set 공유 가드. 데스크톱에선 JS 직접 발화 비활성.
 - **assertion 누수**: 회의 종료/녹음 종료/앱 종료 시 caffeinate 자식 반드시 kill(`Destroyed`에서도 정리).
 - **sync 호출 빈도**: 폴 30s마다 갱신. Rust는 최신 목록으로 타이머 재설정(idempotent).
@@ -192,6 +189,9 @@ cmd+Q ─► (가로채지 않음) 정상 종료
 - 뚜껑 닫힌 딥슬립 중 자동녹음 = **Phase 2**(SMAppService root 헬퍼 + `pmset schedule wake` + 공증).
 - Windows의 슬립-웨이크 예약(Task Scheduler wake timer) = 후속.
 - 디스플레이 슬립 차단(화면 강제 ON) = 불필요(범위 밖).
+- **"숨긴 채 녹음"(트리거 시 창 안 띄움)** = 향후 최적화. 선행 스파이크 필요: 숨긴 WKWebView가
+  이벤트 루프 + 마이크 AudioContext를 유지하는가? 입증되면 show-at-trigger를 숨김 유지로 교체.
+  미입증 상태로는 조용한 미스(이벤트 미수신/무음) 위험이라 Phase 1에서 제외.
 
 ## 7.5 배터리 영향
 
@@ -211,7 +211,8 @@ cmd+Q ─► (가로채지 않음) 정상 종료
 - **프론트**: `onCloseRequested` 모달 분기(hide/quit/기억), `scheduled-meeting-trigger` 수신→navigation, 웹 모드 현행 발화 회귀(vitest).
 - **수동 E2E(기기)**:
   1. 창 닫기 → 모달 → 백그라운드 → 트레이 클릭 복원.
-  2. 창 숨긴 채 예약 시각 도달 → 자동 녹음 시작 + 알림.
+  2. 백그라운드(숨김) 앱 + 예약 시각 도달 → 창 자동 표시 + 녹음 시작 + 알림. 첫 전사 즉시(워밍업).
+  2b. 예약 자동시작 후 참석자 없음 → 무음 5분 후 자동 완료.
   3. 화면 끈 상태(디스플레이 슬립) 예약 → 실행.
   4. 유휴 방치(시스템 슬립 임박) + 예약 임박 → assertion으로 안 잠들고 실행.
   5. cmd+Q → Rails/sidecar 정리 확인.
@@ -220,14 +221,14 @@ cmd+Q ─► (가로채지 않음) 정상 종료
 ## 9. 구현 단위 (writing-plans에서 상세화)
 
 1. 트레이 아이콘 + show/hide 토글 (Rust).
-2. `quit_app` 커맨드 + `Destroyed` 정리 경로 정리.
+2. `quit_app` 커맨드 + `CloseRequested`→hide / `Destroyed` 정리 경로 정리.
 3. 닫기 모달 + onCloseRequested + localStorage pref (프론트).
-4. Rust 폴 루프(reqwest, loopback 무토큰) + serde 구조체 + 부팅 재시도 가드 + 트리거 계산 단위테스트 + `scheduled-meeting-trigger` emit.
-5. 프론트 `useScheduledMeetings` 분기: desktop=JS 폴 제거하고 이벤트 리스너만, web=현행 타이머 유지.
-6. power assertion(caffeinate) + 녹음 상태 통지(T-120s lead + 녹음 중).
-7. notification 플러그인 + "녹음 중" 알림.
-8. (옵션) autostart 플러그인 + 설정 토글.
-9. sidecar `POST /warmup` 엔드포인트(2초 무음 추론) + Rust T-60s 호출.
-10. 숨김마이크 보장: PCM 감시 + suspend 시 `show_main_window` 폴백 + 스파이크 검증.
-11. 무음 5분 자동완료(RMS 연속 무음 카운터 → handleStop).
+4. Rust 트리거 계산(chrono, 순수) 단위테스트.
+5. Rust 폴 루프(reqwest, loopback 무토큰) + serde 구조체 + 부팅 재시도 가드 + 트리거 시 `window.show()`+focus + `scheduled-meeting-trigger` emit.
+6. 프론트 `useScheduledMeetings` 분기: desktop=JS 폴 제거하고 이벤트 리스너만, web=현행 타이머 유지.
+7. power assertion(caffeinate) + 녹음 상태 통지(T-120s lead + 녹음 중).
+8. sidecar `POST /warmup` 엔드포인트(2초 무음 추론) + Rust T-60s 호출.
+9. notification 플러그인 + "녹음 중" 알림.
+10. (옵션) autostart 플러그인 + 설정 토글.
+11. 무음 5분 자동완료(RMS 연속 무음 카운터 → handleStop, 빈 회의 정리).
 12. 수동 E2E 체크리스트 실행.
