@@ -34,6 +34,9 @@
 | 트리거 소유권 | **Rust로 이전** | 숨긴 창의 JS `setInterval`은 App Nap이 스로틀 → 60s GRACE 미스 위험. Rust 타이머는 정시 발화 |
 | 닫기 동작 | 빨간 X = 다이얼로그, **cmd+Q = 진짜 종료** | 맥 관습 |
 | dock 아이콘 | **유지(Regular)** | 발견성. 트레이 + dock 둘 다 복원 경로 |
+| 숨김 녹음 마이크 | **하이브리드 보장** | 마이크=JS 캡처(`feed_recorder_mic`). 숨김 시 AudioContext suspend 가능 → 트리거 시 PCM 흐름 감시, 무음이면 창 show로 파이프라인 복원 |
+| 빈 회의 정리 | **무음 5분+ → 자동 완료** | 예약 시작했으나 아무도 없으면 빈 녹음 무한 방지. 마이크 보장과 함께라야 진짜 회의 오종료 안 함 |
+| 모델 프리로드 | **예약 1분 전 STT 모델 워밍업** | sidecar STT lazy 로드 콜드스타트 제거 → 시작 즉시 전사 |
 
 ## 4. 아키텍처 — 컴포넌트 5개
 
@@ -106,6 +109,39 @@
   - 켜면 재부팅 후에도 앱이 떠서 예약 생존. 설정 UI 토글 1개.
 - 의존성: notification 필수, autostart 옵션.
 
+### 4.6 숨김 녹음 마이크 보장 + 무음 자동완료
+
+마이크 PCM은 JS 캡처(`useMicCapture` → `feed_recorder_mic(pcm_base64)`)라 웹뷰가 살아야 흐른다.
+숨긴 창에서 WKWebView가 AudioContext를 suspend하면 무음. 두 가지로 방어:
+
+- **마이크 보장(하이브리드)**: 스케줄러가 트리거해 녹음 시작 후, 프론트가 **수신 PCM 레벨(또는
+  feed 호출 빈도)을 짧게 감시**. 시작 후 N초(예: 3s) 내 PCM이 안 흐르면(=AudioContext suspend
+  추정) `getCurrentWindow().show()`로 창을 띄워 파이프라인 복원(이후 재숨김은 선택).
+  - 스파이크 선행: "숨긴 WKWebView에서 mic AudioContext가 유지되는가?" 경험 검증 → 유지되면
+    show 폴백은 발동 안 함(숨김 유지), 안 되면 폴백이 항상 발동(사실상 트리거 시 show).
+- **무음 자동완료**: 녹음 중 **연속 무음(RMS≈0)이 5분 이상**이면 회의를 자동 `handleStop()`(완료).
+  - 예약 자동시작했으나 참석자 없음 → 빈 녹음 무한 방지. 마이크 보장과 결합해야 *진짜 빈 회의*에만
+    동작(suspend로 인한 가짜 무음은 마이크 보장이 먼저 복원).
+  - RMS는 이미 STT 게이트(`RMS_GATE`)에서 계산 — 같은 신호 재사용. 5분 카운터는 무음 연속,
+    유음 1회로 리셋.
+- 인터페이스: 프론트 내부(녹음 PCM 콜백에서 레벨 누적) + `invoke('show_main_window')` 신규 커맨드(또는
+  기존 window show JS API). 자동완료는 기존 `handleStop()` 재사용.
+
+### 4.7 모델 프리로드 (예약 1분 전 STT 워밍업)
+
+정정된 사실: sidecar(FastAPI, 127.0.0.1:13324)는 모델을 **eager 로드**(시작 시 `lifespan`에서
+`load_model()` 블로킹). 우리 설계상 sidecar는 숨김 중에도 살아있어 보통 모델은 이미 로드됨.
+콜드스타트의 실질 원인 2개: (1) 첫 추론 커널 컴파일(MLX/CUDA lazy eval — 첫 `generate()` 느림),
+(2) sidecar 재시작 직후 미로드(드묾).
+
+- sidecar 신규 **`POST /warmup`**: 실시간 어댑터(`app.state.stt_adapter`)로 **2초 무음 1회 추론**
+  실행 → 커널 컴파일 완료 + 모델 로드 보장. 200 반환(이미 warm이면 빠르게).
+  - 기존 `/transcribe`는 <2s 청크를 스킵(`MIN_CHUNK_BYTES`)해 워밍업 불가 → 전용 엔드포인트 필요.
+- Rust 스케줄러: 각 auto/manual 예약 **T-60s**에 `reqwest POST http://127.0.0.1:13324/warmup`.
+  - 실패(sidecar 미응답)는 로그만, 트리거는 그대로 진행(녹음 시작 시 자연 로드).
+- 리드 타임 정리: **T-120s** assertion 획득(4.4) · **T-60s** 모델 워밍업(4.7) · **T-0** 트리거 발화(4.3).
+- 인터페이스: Rust→sidecar `POST /warmup` (loopback, 무인증 — sidecar는 localhost 전용).
+
 ## 5. 데이터 흐름 요약
 
 ```
@@ -114,10 +150,13 @@
    │ (60s)
    ▼
 [Rust 스케줄러] 다음 트리거 계산
-   │  lead 2분 전 ─► caffeinate 보유(4.4)
-   │  트리거 ─────► emit('scheduled-meeting-trigger')
+   │  T-120s ─► caffeinate 보유(4.4, 유휴슬립 차단)
+   │  T-60s  ─► POST sidecar /warmup (4.7, 모델 커널 워밍업)
+   │  T-0    ─► emit('scheduled-meeting-trigger')
    ▼
 [프론트] (리스너) 창 숨김 유지 + /live autoStart + OS 알림 "녹음 중" + 트레이 배지
+   │  녹음 시작 후 PCM 감시(4.6): 3s 내 무음 → window.show()(suspend 복원)
+   │  녹음 중 무음 5분+ → handleStop() 자동완료(4.6)
 
 웹/서버:
 [Rails] GET /meetings/scheduled ◄─ [JS 30s 타이머 폴+직접 발화] (현행 유지, 변경 0)
@@ -167,6 +206,8 @@ cmd+Q ─► (가로채지 않음) 정상 종료
 ## 8. 테스트 전략
 
 - **순수 로직**: 다음 트리거 시각 계산(Rust)을 JS `computeScheduleActions`와 동일 규칙으로 단위테스트(고정 입력→예상 트리거).
+- **무음 자동완료 로직**: 무음 연속 카운터(5분 임계, 유음 리셋)를 순수 함수로 분리해 단위테스트.
+- **sidecar `/warmup`**: pytest로 2초 무음 입력 → 200 + 어댑터 추론 1회 호출 검증(어댑터 목).
 - **프론트**: `onCloseRequested` 모달 분기(hide/quit/기억), `scheduled-meeting-trigger` 수신→navigation, 웹 모드 현행 발화 회귀(vitest).
 - **수동 E2E(기기)**:
   1. 창 닫기 → 모달 → 백그라운드 → 트레이 클릭 복원.
@@ -183,7 +224,10 @@ cmd+Q ─► (가로채지 않음) 정상 종료
 3. 닫기 모달 + onCloseRequested + localStorage pref (프론트).
 4. Rust 폴 루프(reqwest, loopback 무토큰) + serde 구조체 + 부팅 재시도 가드 + 트리거 계산 단위테스트 + `scheduled-meeting-trigger` emit.
 5. 프론트 `useScheduledMeetings` 분기: desktop=JS 폴 제거하고 이벤트 리스너만, web=현행 타이머 유지.
-6. power assertion(caffeinate) + 녹음 상태 통지.
+6. power assertion(caffeinate) + 녹음 상태 통지(T-120s lead + 녹음 중).
 7. notification 플러그인 + "녹음 중" 알림.
 8. (옵션) autostart 플러그인 + 설정 토글.
-9. 수동 E2E 체크리스트 실행.
+9. sidecar `POST /warmup` 엔드포인트(2초 무음 추론) + Rust T-60s 호출.
+10. 숨김마이크 보장: PCM 감시 + suspend 시 `show_main_window` 폴백 + 스파이크 검증.
+11. 무음 5분 자동완료(RMS 연속 무음 카운터 → handleStop).
+12. 수동 E2E 체크리스트 실행.
