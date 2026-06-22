@@ -17,6 +17,10 @@ vi.mock('../../api/settings', () => ({
   fetchLmStudioModels: vi.fn().mockResolvedValue([]),
 }))
 
+// CLI 프리셋은 local 모드에서만 노출된다. 이 스위트는 CLI 노출(기존 동작)을 전제로
+// 하므로 getMode를 항상 'local'로 고정한다(의도 보존).
+vi.mock('../../config', async (orig) => ({ ...(await orig() as object), getMode: vi.fn(() => 'local') }))
+
 import { getUserLlmSettings, updateUserLlmSettings, testUserLlmConnection, toggleUserLlm } from '../../api/userLlmSettings'
 
 const mockGetUserLlmSettings = vi.mocked(getUserLlmSettings)

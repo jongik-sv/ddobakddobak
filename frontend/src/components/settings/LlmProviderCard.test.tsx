@@ -12,6 +12,11 @@ import { fetchOllamaModels, fetchLmStudioModels } from '../../api/settings'
 const mockOllama = vi.mocked(fetchOllamaModels)
 const mockLmStudio = vi.mocked(fetchLmStudioModels)
 
+// getMode를 모킹해 CLI 게이트(local만 노출)를 테스트한다. jsdom 기본은 'server'.
+vi.mock('../../config', async (orig) => ({ ...(await orig() as object), getMode: vi.fn(() => 'server') }))
+import { getMode } from '../../config'
+const mockGetMode = vi.mocked(getMode)
+
 const baseValue: LlmProviderCardValue = { presetId: 'anthropic', base_url: '', model: 'claude-sonnet-4-6', auth_token: '' }
 const noop = () => {}
 
@@ -25,7 +30,7 @@ function renderCard(overrides: Partial<React.ComponentProps<typeof LlmProviderCa
 }
 
 describe('LlmProviderCard', () => {
-  beforeEach(() => { vi.clearAllMocks(); mockOllama.mockResolvedValue([]); mockLmStudio.mockResolvedValue([]) })
+  beforeEach(() => { vi.clearAllMocks(); mockOllama.mockResolvedValue([]); mockLmStudio.mockResolvedValue([]); mockGetMode.mockReturnValue('server') })
 
   it('title + 프리셋 그리드 렌더', () => {
     renderCard()
@@ -43,11 +48,52 @@ describe('LlmProviderCard', () => {
     expect(onSelectPreset).toHaveBeenCalledWith('none')
   })
 
-  it('CLI 프리셋이면 배너 노출 + base/key 숨김', () => {
+  it('CLI 프리셋이면 배너 노출 + base/key 숨김 (local 모드)', () => {
+    mockGetMode.mockReturnValue('local')
     renderCard({ value: { ...baseValue, presetId: 'claude_cli' } })
     expect(screen.getByText('CLI 모드 안내')).toBeInTheDocument()
     expect(screen.queryByLabelText('API Base URL')).toBeNull()
     expect(screen.queryByLabelText('API Key')).toBeNull()
+  })
+
+  // (a) server 모드: CLI 프리셋 버튼 미표시
+  it('server 모드면 CLI 프리셋 버튼(Claude Code/Codex CLI/Antigravity CLI)을 표시하지 않는다', () => {
+    mockGetMode.mockReturnValue('server')
+    renderCard()
+    const grid = screen.getByTestId('sum-service-grid')
+    expect(within(grid).queryByText('Claude Code')).toBeNull()
+    expect(within(grid).queryByText('Codex CLI')).toBeNull()
+    expect(within(grid).queryByText('Antigravity CLI')).toBeNull()
+    // 비-CLI 프리셋은 정상 노출
+    expect(within(grid).getByText('Anthropic')).toBeInTheDocument()
+  })
+
+  // (b) local 모드: CLI 프리셋 버튼 표시됨
+  it('local 모드면 CLI 프리셋 버튼이 표시된다', () => {
+    mockGetMode.mockReturnValue('local')
+    renderCard()
+    const grid = screen.getByTestId('sum-service-grid')
+    expect(within(grid).getByText('Claude Code')).toBeInTheDocument()
+    expect(within(grid).getByText('Codex CLI')).toBeInTheDocument()
+    expect(within(grid).getByText('Antigravity CLI')).toBeInTheDocument()
+  })
+
+  // (c) server 모드 + 저장된 CLI 선택: 버튼 표시되되 비활성 + 안내 + 클릭 무시
+  it('server 모드 + 저장된 CLI 선택이면 해당 버튼은 비활성 + 안내 노출 + 클릭해도 onSelectPreset 미호출', () => {
+    mockGetMode.mockReturnValue('server')
+    const onSelectPreset = vi.fn()
+    renderCard({ value: { ...baseValue, presetId: 'claude_cli' }, onSelectPreset })
+    const grid = screen.getByTestId('sum-service-grid')
+    // 저장된 CLI(Claude Code)는 표시되되 비활성 (잠금 표식 🔒 포함)
+    const btn = within(grid).getByText(/Claude Code/).closest('button')!
+    expect(btn).toBeDisabled()
+    // 다른 CLI는 여전히 숨김
+    expect(within(grid).queryByText('Codex CLI')).toBeNull()
+    // 사용 불가 안내 노출(배너는 그리드 밖)
+    expect(screen.getByText('이 환경에서는 CLI를 사용할 수 없습니다. 다른 프로바이더를 선택하세요.')).toBeInTheDocument()
+    // 클릭해도 콜백 미호출
+    fireEvent.click(btn)
+    expect(onSelectPreset).not.toHaveBeenCalled()
   })
 
   it('requiresApiKey면 키 필드 + 마스킹 placeholder', () => {
