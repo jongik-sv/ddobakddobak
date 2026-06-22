@@ -138,14 +138,23 @@ export function MeetingActionButtons({
   const canEdit = canEditMeeting(meeting, me)
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null)
 
   useEffect(() => {
     if (!open) return
     const onDocClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
+    const onDismiss = () => setOpen(false)
     document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
+    window.addEventListener('resize', onDismiss)
+    window.addEventListener('scroll', onDismiss, true)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      window.removeEventListener('resize', onDismiss)
+      window.removeEventListener('scroll', onDismiss, true)
+    }
   }, [open])
 
   if (!canEdit) return null
@@ -165,18 +174,30 @@ export function MeetingActionButtons({
       )}
       <div className="relative" ref={ref}>
         <button
+          ref={triggerRef}
           aria-label="회의 메뉴"
           onClick={(e) => {
             e.stopPropagation()
+            if (!open && triggerRef.current) {
+              const rect = triggerRef.current.getBoundingClientRect()
+              const MENU_H = 160
+              const right = Math.max(8, window.innerWidth - rect.right)
+              setPos(
+                rect.bottom + MENU_H > window.innerHeight
+                  ? { bottom: window.innerHeight - rect.top + 4, right }
+                  : { top: rect.bottom + 4, right },
+              )
+            }
             setOpen((v) => !v)
           }}
           className="p-1 rounded text-zinc-500 hover:bg-black/5 transition-colors"
         >
           <MoreVertical className="w-4 h-4" />
         </button>
-        {open && (
+        {open && pos && (
           <div
-            className="absolute bottom-full right-0 z-50 mb-1 w-36 rounded-md border border-zinc-200 bg-white py-1 text-zinc-900 shadow-lg"
+            style={pos.top != null ? { top: pos.top, right: pos.right } : { bottom: pos.bottom, right: pos.right }}
+            className="fixed z-50 w-36 rounded-md border border-zinc-200 bg-white py-1 text-zinc-900 shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <button
