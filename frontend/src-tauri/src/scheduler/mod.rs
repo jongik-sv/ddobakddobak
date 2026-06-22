@@ -47,6 +47,9 @@ pub fn spawn(app: AppHandle) {
                                 );
                                 log::info!("예약 트리거: meeting {}", act.meeting_id);
                             }
+                            // T-120s 선제 caffeinate: ≤120s 앞 예약 감지 시 (깨어있는 동안) 획득.
+                            app.state::<crate::assertion::AssertionState>()
+                                .set_lead(assertion_due(&env.meetings, now, 120));
                         }
                     }
                 }
@@ -69,6 +72,27 @@ pub struct SchedMeeting {
 pub struct TriggerAction {
     pub meeting_id: i64,
     pub mode: String,
+}
+
+/// 예약 시작이 lead_secs 이내(아직 시작 전~+GRACE)인 회의가 하나라도 있으면 true.
+/// T-120s 선제 caffeinate 획득용. now ∈ [scheduled - lead_secs, scheduled + GRACE).
+pub fn assertion_due(meetings: &[SchedMeeting], now: DateTime<Utc>, lead_secs: i64) -> bool {
+    let now_ms = now.timestamp_millis();
+    for m in meetings {
+        match m.auto_start_mode.as_deref() {
+            Some("auto" | "manual") => {}
+            _ => continue,
+        }
+        let Some(ts) = &m.scheduled_start_time else { continue };
+        let Ok(parsed) = DateTime::parse_from_rfc3339(ts) else { continue };
+        let s = parsed.with_timezone(&Utc).timestamp_millis();
+        let lower = s - lead_secs * 1000;
+        let upper = s + GRACE_MS;
+        if now_ms >= lower && now_ms < upper {
+            return true;
+        }
+    }
+    false
 }
 
 /// JS computeScheduleActions와 동일 규칙. auto:[t, t+60s), manual:[t-60s, t+60s), 상한 배타.
@@ -150,5 +174,33 @@ mod tests {
             SchedMeeting { id: 2, scheduled_start_time: Some("2026-06-22T14:30:00.000Z".into()), auto_start_mode: None },
         ];
         assert!(compute_actions(&ms, now("2026-06-22T14:30:00.000Z"), &HashSet::new()).is_empty());
+    }
+
+    #[test]
+    fn assertion_lead_120s_before_inclusive() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        // 정확히 T-120s = 하한 포함 → true
+        assert!(assertion_due(&ms, now("2026-06-22T14:28:00.000Z"), 120));
+    }
+    #[test]
+    fn assertion_not_due_before_lead_window() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        // T-121s = 창 밖 → false
+        assert!(!assertion_due(&ms, now("2026-06-22T14:27:59.000Z"), 120));
+    }
+    #[test]
+    fn assertion_due_through_grace_then_false() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "manual")];
+        assert!(assertion_due(&ms, now("2026-06-22T14:30:00.000Z"), 120)); // 정각 = 창 안
+        // scheduled+60s = 상한 배타 → false
+        assert!(!assertion_due(&ms, now("2026-06-22T14:31:00.000Z"), 120));
+    }
+    #[test]
+    fn assertion_due_ignores_no_mode_or_no_time() {
+        let ms = vec![
+            SchedMeeting { id: 1, scheduled_start_time: None, auto_start_mode: Some("auto".into()) },
+            SchedMeeting { id: 2, scheduled_start_time: Some("2026-06-22T14:28:00.000Z".into()), auto_start_mode: None },
+        ];
+        assert!(!assertion_due(&ms, now("2026-06-22T14:28:00.000Z"), 120));
     }
 }

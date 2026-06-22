@@ -32,7 +32,7 @@ import type { Meeting, Participant } from '../api/meetings'
 import { getSttSettings, getLanguageSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useSharingStore } from '../stores/sharingStore'
-import { IS_TAURI, getApiOrigin } from '../config'
+import { IS_TAURI, getApiOrigin, getMode } from '../config'
 import { useAuthStore } from '../stores/authStore'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 import { useNavigationGuards } from './useNavigationGuards'
@@ -501,6 +501,14 @@ export function useLiveRecording(
     setRecordingActive(isActive)
     return () => setRecordingActive(false)
   }, [isActive, setRecordingActive])
+
+  // 데스크톱 로컬 전용: 녹음 on/off를 Rust AssertionState에 통지 (caffeinate 유지)
+  useEffect(() => {
+    if (!IS_TAURI || getMode() !== 'local') return
+    import('@tauri-apps/api/core')
+      .then(({ invoke }) => invoke('set_recording', { active: isActive }))
+      .catch(() => {})
+  }, [isActive])
 
   // 경과 시간 타이머
   useEffect(() => {

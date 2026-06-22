@@ -10,6 +10,9 @@ mod window_cmd;
 #[cfg(desktop)]
 mod scheduler;
 
+#[cfg(desktop)]
+mod assertion;
+
 mod bridge;
 mod mdns;
 
@@ -91,6 +94,7 @@ pub fn run() {
             })
             .manage(audio::AudioCaptureState::default())
             .manage(audio::RecorderState::default())
+            .manage(assertion::AssertionState::default())
             .invoke_handler(tauri::generate_handler![
                 environment::check_environment,
                 services::install_dependencies,
@@ -113,6 +117,7 @@ pub fn run() {
                 audio::read_recording,
                 window_cmd::quit_app,
                 window_cmd::show_main_window,
+                assertion::set_recording,
             ])
             .on_window_event(|window, event| match event {
                 // 닫기(빨간 X): 파괴하지 않고 숨긴다 — 프론트가 먼저 preventDefault 후
@@ -126,6 +131,7 @@ pub fn run() {
                     let state = window.state::<AppState>();
                     kill_child(&state.backend_process);
                     kill_child(&state.sidecar_process);
+                    window.state::<assertion::AssertionState>().force_release();
                 }
                 _ => {}
             })
