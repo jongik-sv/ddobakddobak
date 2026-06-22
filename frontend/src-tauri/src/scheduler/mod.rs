@@ -30,12 +30,32 @@ pub fn spawn(app: AppHandle) {
         let client = reqwest::Client::new();
         let mut already: HashSet<i64> = HashSet::new();
         let mut warmed: HashSet<i64> = HashSet::new();
+        let mut warned_bad_ts: HashSet<i64> = HashSet::new();
         loop {
             match client.get(SCHED_URL).send().await {
                 Ok(resp) if resp.status().is_success() => {
-                    if let Ok(bytes) = resp.bytes().await {
-                        if let Ok(env) = serde_json::from_slice::<ScheduledEnvelope>(&bytes) {
+                    let bytes = match resp.bytes().await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            log::warn!("scheduled 폴 응답 읽기 실패: {e}");
+                            tokio::time::sleep(std::time::Duration::from_secs(POLL_SECS)).await;
+                            continue;
+                        }
+                    };
+                    match serde_json::from_slice::<ScheduledEnvelope>(&bytes) {
+                        Ok(env) => {
                             let now = Utc::now();
+                            // rfc3339 파싱 실패 회의 — meeting 당 1회만 warn
+                            for m in &env.meetings {
+                                if let Some(ts) = &m.scheduled_start_time {
+                                    if let Err(e) = chrono::DateTime::parse_from_rfc3339(ts) {
+                                        if !warned_bad_ts.contains(&m.id) {
+                                            log::warn!("예약 시각 파싱 실패(스케줄 누락) meeting {} ts={:?}: {}", m.id, ts, e);
+                                            warned_bad_ts.insert(m.id);
+                                        }
+                                    }
+                                }
+                            }
                             for act in compute_actions(&env.meetings, now, &already) {
                                 already.insert(act.meeting_id);
                                 // 1) 메인 창 먼저 표시(웹뷰·AudioContext 복원)
@@ -65,6 +85,7 @@ pub fn spawn(app: AppHandle) {
                                 log::info!("모델 워밍업 요청: {due:?}");
                             }
                         }
+                        Err(e) => log::warn!("scheduled 폴 JSON 파싱 실패: {e}"),
                     }
                 }
                 Ok(resp) => log::warn!("scheduled 폴 비정상 status: {}", resp.status()),
