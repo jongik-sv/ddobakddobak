@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useTranscription } from './useTranscription'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useAppSettingsStore } from '../stores/appSettingsStore'
-import { sendAudioChunk } from '../channels/transcription'
+import { sendAudioChunk, sendHeartbeat } from '../channels/transcription'
 
 // ──────────────────────────────────────────────
 // ActionCable mock
@@ -36,6 +36,7 @@ const { mockCreateTranscriptionChannel } = vi.hoisted(() => ({
 vi.mock('../channels/transcription', () => ({
   createTranscriptionChannel: mockCreateTranscriptionChannel,
   sendAudioChunk: vi.fn(),
+  sendHeartbeat: vi.fn(),
 }))
 
 // Mock appSettingsStore
@@ -137,6 +138,22 @@ describe('useTranscription', () => {
     rerender({ id: 2 })
     // 구독이 2번 생성되어야 함 (meetingId 변경)
     expect(mockCreateTranscriptionChannel).toHaveBeenCalledTimes(2)
+  })
+
+  it('마운트만으로는 하트비트를 보내지 않는다 (시청자/2번째 탭 keep-alive 회귀 차단)', () => {
+    // 하트비트는 useLiveRecording의 활성 녹음 게이트에서만 발사돼야 한다.
+    // useTranscription 단독 마운트(시청자 MeetingViewerPage)는 0회여야 한다 —
+    // 안 그러면 다른 탭/기기가 owner 롤로 heartbeat를 보내 stale-recording 자동종결이 무력화된다.
+    renderHook(() => useTranscription(1))
+    expect(vi.mocked(sendHeartbeat)).not.toHaveBeenCalled()
+  })
+
+  it('sendHeartbeat() 호출 시 채널 하트비트를 전송한다', () => {
+    const { result } = renderHook(() => useTranscription(1))
+    expect(typeof result.current.sendHeartbeat).toBe('function')
+    expect(vi.mocked(sendHeartbeat)).not.toHaveBeenCalled()
+    result.current.sendHeartbeat()
+    expect(vi.mocked(sendHeartbeat)).toHaveBeenCalledWith(mockSubscription)
   })
 
   it('실시간 청크의 diarization enable은 토글이 ON이어도 항상 false', () => {
