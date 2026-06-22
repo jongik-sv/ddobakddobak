@@ -1,6 +1,18 @@
 #[cfg(desktop)]
 mod audio;
 
+#[cfg(desktop)]
+mod tray;
+
+#[cfg(desktop)]
+mod window_cmd;
+
+#[cfg(desktop)]
+mod scheduler;
+
+#[cfg(desktop)]
+mod assertion;
+
 mod bridge;
 mod mdns;
 
@@ -57,7 +69,8 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_dialog::init());
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init());
 
     // ── 데스크톱 전용: 프로세스 오케스트레이션 + 네이티브 오디오 ──
     #[cfg(desktop)]
@@ -82,6 +95,7 @@ pub fn run() {
             })
             .manage(audio::AudioCaptureState::default())
             .manage(audio::RecorderState::default())
+            .manage(assertion::AssertionState::default())
             .invoke_handler(tauri::generate_handler![
                 environment::check_environment,
                 services::install_dependencies,
@@ -102,13 +116,25 @@ pub fn run() {
                 audio::delete_recording,
                 audio::list_orphan_recordings,
                 audio::read_recording,
+                window_cmd::quit_app,
+                window_cmd::show_main_window,
+                assertion::set_recording,
             ])
-            .on_window_event(|window, event| {
-                if let tauri::WindowEvent::Destroyed = event {
+            .on_window_event(|window, event| match event {
+                // 닫기(빨간 X): 파괴도 숨김도 하지 않는다 — prevent_close로 OS 종료만 막고,
+                // 프론트 ClosePrompt 모달이 백그라운드(hide)/완전종료(quit_app)를 결정(Task 3).
+                // 여기서 hide하면 모달 응답 전에 창이 숨어 순서가 깨진다.
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                }
+                // 진짜 종료(quit_app/cmd+Q → app.exit): 자식 프로세스 정리.
+                tauri::WindowEvent::Destroyed => {
                     let state = window.state::<AppState>();
                     kill_child(&state.backend_process);
                     kill_child(&state.sidecar_process);
+                    window.state::<assertion::AssertionState>().force_release();
                 }
+                _ => {}
             })
     };
 
@@ -160,6 +186,13 @@ pub fn run() {
                     .build(),
             )?;
 
+            // 데스크톱: 로그인 시 자동 시작(macOS LaunchAgent). 모바일 미지원.
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                None,
+            ))?;
+
             // 데스크톱: Rails(13323)를 _ddobak._tcp 로 LAN에 광고.
             // ServiceDaemon은 manage로 보관해 앱 수명 동안 살려둔다(drop 시 unregister).
             #[cfg(desktop)]
@@ -171,6 +204,18 @@ pub fn run() {
                     Err(e) => log::warn!("mDNS advertise 실패(디스커버리만 영향): {e}"),
                 }
             }
+
+            // 데스크톱: 메뉴바/시스템 트레이 아이콘 생성.
+            #[cfg(desktop)]
+            {
+                if let Err(e) = tray::create_tray(app.handle()) {
+                    log::warn!("트레이 생성 실패: {e}");
+                }
+            }
+
+            // 데스크톱: 예약 회의 백그라운드 폴 루프 시작.
+            #[cfg(desktop)]
+            scheduler::spawn(app.handle().clone());
 
             // 모바일: 인앱 루프백 리버스 프록시 브릿지 기동.
             #[cfg(mobile)]

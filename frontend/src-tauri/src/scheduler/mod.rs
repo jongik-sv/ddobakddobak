@@ -1,0 +1,343 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use tauri::{AppHandle, Emitter, Manager};
+
+const GRACE_MS: i64 = 60_000;
+const MANUAL_LEAD_MS: i64 = 60_000;
+
+const SCHED_URL: &str = "http://127.0.0.1:13323/api/v1/meetings/scheduled";
+const WARMUP_URL: &str = "http://127.0.0.1:13324/warmup";
+const BASE_POLL_SECS: u64 = 15; // 새 예약 발견 주기(기존 60→15)
+const MIN_POLL_SECS: u64 = 1;   // busy-loop 방지 하한
+const WARMUP_LEAD_MS: i64 = 60_000;
+
+#[derive(Clone, Serialize)]
+struct TriggerPayload {
+    #[serde(rename = "meetingId")]
+    meeting_id: i64,
+    mode: String,
+}
+
+#[derive(Deserialize)]
+struct ScheduledEnvelope {
+    meetings: Vec<SchedMeeting>,
+}
+
+/// 데스크톱 전용 백그라운드 스케줄러. loopback(무토큰)으로 예약 목록을 폴하고,
+/// 트리거 시각 도달 회의는 메인 창을 표시한 뒤 scheduled-meeting-trigger 를 emit 한다.
+/// 기본 폴 주기 BASE_POLL_SECS(15s)이되, 다가오는 트리거 경계까지의 시간을 계산해
+/// 그 직전에 폴이 떨어지도록 동적 sleep — 예약시각 ~1s 내 발화.
+pub fn spawn(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let client = reqwest::Client::new();
+        let mut already: HashSet<i64> = HashSet::new();
+        let mut warmed: HashSet<i64> = HashSet::new();
+        let mut warned_bad_ts: HashSet<i64> = HashSet::new();
+        loop {
+            let mut sleep_secs = BASE_POLL_SECS;
+            match client.get(SCHED_URL).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    let bytes = match resp.bytes().await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            log::warn!("scheduled 폴 응답 읽기 실패: {e}");
+                            tokio::time::sleep(std::time::Duration::from_secs(BASE_POLL_SECS)).await;
+                            continue;
+                        }
+                    };
+                    match serde_json::from_slice::<ScheduledEnvelope>(&bytes) {
+                        Ok(env) => {
+                            let now = Utc::now();
+                            // rfc3339 파싱 실패 회의 — meeting 당 1회만 warn
+                            for m in &env.meetings {
+                                if let Some(ts) = &m.scheduled_start_time {
+                                    if let Err(e) = chrono::DateTime::parse_from_rfc3339(ts) {
+                                        if !warned_bad_ts.contains(&m.id) {
+                                            log::warn!("예약 시각 파싱 실패(스케줄 누락) meeting {} ts={:?}: {}", m.id, ts, e);
+                                            warned_bad_ts.insert(m.id);
+                                        }
+                                    }
+                                }
+                            }
+                            for act in compute_actions(&env.meetings, now, &already) {
+                                already.insert(act.meeting_id);
+                                // 1) 메인 창 먼저 표시(웹뷰·AudioContext 복원)
+                                if let Some(win) = app.get_webview_window("main") {
+                                    let _ = win.show();
+                                    let _ = win.set_focus();
+                                }
+                                // 2) 프론트로 트리거 emit
+                                let _ = app.emit(
+                                    "scheduled-meeting-trigger",
+                                    TriggerPayload { meeting_id: act.meeting_id, mode: act.mode },
+                                );
+                                log::info!("예약 트리거: meeting {}", act.meeting_id);
+                            }
+                            // T-120s 선제 caffeinate: ≤120s 앞 예약 감지 시 (깨어있는 동안) 획득.
+                            app.state::<crate::assertion::AssertionState>()
+                                .set_lead(assertion_due(&env.meetings, now, 120));
+                            // T-60s 모델 워밍업: 창에 든 회의가 있으면 /warmup 1회(공유 모델). 실패는 무시.
+                            let due = warmup_due(&env.meetings, now, &warmed);
+                            if !due.is_empty() {
+                                for id in &due {
+                                    warmed.insert(*id);
+                                }
+                                if let Err(e) = client.post(WARMUP_URL).send().await {
+                                    log::debug!("warmup 호출 실패(무시, 녹음 시 자연 로드): {e}");
+                                }
+                                log::info!("모델 워밍업 요청: {due:?}");
+                            }
+                            // 다가오는 트리거 경계까지 동적 sleep: base 이내면 경계 직전에 폴이 떨어짐.
+                            sleep_secs = next_poll_secs(&env.meetings, now, BASE_POLL_SECS);
+                        }
+                        Err(e) => log::warn!("scheduled 폴 JSON 파싱 실패: {e}"),
+                    }
+                }
+                Ok(resp) => log::warn!("scheduled 폴 비정상 status: {}", resp.status()),
+                Err(e) => log::debug!("scheduled 폴 실패(부팅 중/오프라인): {e}"),
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(sleep_secs)).await;
+        }
+    });
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SchedMeeting {
+    pub id: i64,
+    pub scheduled_start_time: Option<String>,
+    pub auto_start_mode: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TriggerAction {
+    pub meeting_id: i64,
+    pub mode: String,
+}
+
+/// 예약 시작이 lead_secs 이내(아직 시작 전~+GRACE)인 회의가 하나라도 있으면 true.
+/// T-120s 선제 caffeinate 획득용. now ∈ [scheduled - lead_secs, scheduled + GRACE).
+pub fn assertion_due(meetings: &[SchedMeeting], now: DateTime<Utc>, lead_secs: i64) -> bool {
+    let now_ms = now.timestamp_millis();
+    for m in meetings {
+        match m.auto_start_mode.as_deref() {
+            Some("auto" | "manual") => {}
+            _ => continue,
+        }
+        let Some(ts) = &m.scheduled_start_time else { continue };
+        let Ok(parsed) = DateTime::parse_from_rfc3339(ts) else { continue };
+        let s = parsed.with_timezone(&Utc).timestamp_millis();
+        let lower = s - lead_secs * 1000;
+        let upper = s + GRACE_MS;
+        if now_ms >= lower && now_ms < upper {
+            return true;
+        }
+    }
+    false
+}
+
+/// 워밍업 대상 회의 id들: now ∈ [scheduled-60s, scheduled+GRACE) 이고 아직 warmed 아닌 것.
+/// (모델 공유 자원이라 호출은 1회면 되지만, 어떤 회의들이 트리거했는지 dedup용으로 id 목록 반환.)
+pub fn warmup_due(meetings: &[SchedMeeting], now: DateTime<Utc>, warmed: &HashSet<i64>) -> Vec<i64> {
+    let now_ms = now.timestamp_millis();
+    let mut out = Vec::new();
+    for m in meetings {
+        match m.auto_start_mode.as_deref() {
+            Some("auto" | "manual") => {}
+            _ => continue,
+        }
+        if warmed.contains(&m.id) {
+            continue;
+        }
+        let Some(ts) = &m.scheduled_start_time else { continue };
+        let Ok(parsed) = DateTime::parse_from_rfc3339(ts) else { continue };
+        let s = parsed.with_timezone(&Utc).timestamp_millis();
+        if now_ms >= s - WARMUP_LEAD_MS && now_ms < s + GRACE_MS {
+            out.push(m.id);
+        }
+    }
+    out
+}
+
+/// 이번 루프 후 잠들 시간(초). 기본 base_secs이되, 곧 닥칠 트리거 경계
+/// (auto=scheduled, manual=scheduled-60s)가 base 이내면 그 경계까지만 짧게 자
+/// 예약시각에 폴이 정확히 떨어지게 한다. 이미 지난 경계는 무시. 최소 MIN_POLL_SECS.
+pub fn next_poll_secs(meetings: &[SchedMeeting], now: DateTime<Utc>, base_secs: u64) -> u64 {
+    let now_ms = now.timestamp_millis();
+    let mut wake_ms: i64 = base_secs as i64 * 1000;
+    for m in meetings {
+        let mode = match m.auto_start_mode.as_deref() {
+            Some(x @ ("auto" | "manual")) => x,
+            _ => continue,
+        };
+        let Some(ts) = &m.scheduled_start_time else { continue };
+        let Ok(parsed) = DateTime::parse_from_rfc3339(ts) else { continue };
+        let scheduled_ms = parsed.with_timezone(&Utc).timestamp_millis();
+        let boundary = if mode == "manual" { scheduled_ms - MANUAL_LEAD_MS } else { scheduled_ms };
+        let delta = boundary - now_ms;
+        if delta > 0 && delta < wake_ms {
+            wake_ms = delta;
+        }
+    }
+    let secs = (wake_ms + 999) / 1000; // ceil to seconds
+    secs.max(MIN_POLL_SECS as i64) as u64
+}
+
+/// JS computeScheduleActions와 동일 규칙. auto:[t, t+60s), manual:[t-60s, t+60s), 상한 배타.
+pub fn compute_actions(
+    meetings: &[SchedMeeting],
+    now: DateTime<Utc>,
+    already: &HashSet<i64>,
+) -> Vec<TriggerAction> {
+    let now_ms = now.timestamp_millis();
+    let mut out = Vec::new();
+    for m in meetings {
+        let mode = match m.auto_start_mode.as_deref() {
+            Some(x @ ("auto" | "manual")) => x,
+            _ => continue,
+        };
+        if already.contains(&m.id) {
+            continue;
+        }
+        let Some(ts) = &m.scheduled_start_time else { continue };
+        let Ok(parsed) = DateTime::parse_from_rfc3339(ts) else { continue };
+        let scheduled_ms = parsed.with_timezone(&Utc).timestamp_millis();
+        let lower = if mode == "manual" { scheduled_ms - MANUAL_LEAD_MS } else { scheduled_ms };
+        let upper = scheduled_ms + GRACE_MS;
+        if now_ms >= lower && now_ms < upper {
+            out.push(TriggerAction { meeting_id: m.id, mode: mode.to_string() });
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn m(id: i64, t: &str, mode: &str) -> SchedMeeting {
+        SchedMeeting { id, scheduled_start_time: Some(t.into()), auto_start_mode: Some(mode.into()) }
+    }
+    fn now(s: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
+    }
+
+    #[test]
+    fn auto_fires_at_scheduled_instant() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        let acts = compute_actions(&ms, now("2026-06-22T14:30:00.000Z"), &HashSet::new());
+        assert_eq!(acts.len(), 1);
+        assert_eq!(acts[0].meeting_id, 1);
+        assert_eq!(acts[0].mode, "auto");
+    }
+
+    #[test]
+    fn auto_not_fire_after_grace_upper_exclusive() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        // +60s 정확히 = 상한 배타 → 발화 안 함
+        let acts = compute_actions(&ms, now("2026-06-22T14:31:00.000Z"), &HashSet::new());
+        assert!(acts.is_empty());
+    }
+
+    #[test]
+    fn manual_fires_60s_before() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "manual")];
+        let acts = compute_actions(&ms, now("2026-06-22T14:29:00.000Z"), &HashSet::new());
+        assert_eq!(acts.len(), 1);
+        assert_eq!(acts[0].mode, "manual");
+    }
+
+    #[test]
+    fn already_triggered_skipped() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        let mut seen = HashSet::new();
+        seen.insert(1);
+        assert!(compute_actions(&ms, now("2026-06-22T14:30:00.000Z"), &seen).is_empty());
+    }
+
+    #[test]
+    fn no_mode_or_no_time_skipped() {
+        let ms = vec![
+            SchedMeeting { id: 1, scheduled_start_time: None, auto_start_mode: Some("auto".into()) },
+            SchedMeeting { id: 2, scheduled_start_time: Some("2026-06-22T14:30:00.000Z".into()), auto_start_mode: None },
+        ];
+        assert!(compute_actions(&ms, now("2026-06-22T14:30:00.000Z"), &HashSet::new()).is_empty());
+    }
+
+    #[test]
+    fn assertion_lead_120s_before_inclusive() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        // 정확히 T-120s = 하한 포함 → true
+        assert!(assertion_due(&ms, now("2026-06-22T14:28:00.000Z"), 120));
+    }
+    #[test]
+    fn assertion_not_due_before_lead_window() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        // T-121s = 창 밖 → false
+        assert!(!assertion_due(&ms, now("2026-06-22T14:27:59.000Z"), 120));
+    }
+    #[test]
+    fn assertion_due_through_grace_then_false() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "manual")];
+        assert!(assertion_due(&ms, now("2026-06-22T14:30:00.000Z"), 120)); // 정각 = 창 안
+        // scheduled+60s = 상한 배타 → false
+        assert!(!assertion_due(&ms, now("2026-06-22T14:31:00.000Z"), 120));
+    }
+    #[test]
+    fn assertion_due_ignores_no_mode_or_no_time() {
+        let ms = vec![
+            SchedMeeting { id: 1, scheduled_start_time: None, auto_start_mode: Some("auto".into()) },
+            SchedMeeting { id: 2, scheduled_start_time: Some("2026-06-22T14:28:00.000Z".into()), auto_start_mode: None },
+        ];
+        assert!(!assertion_due(&ms, now("2026-06-22T14:28:00.000Z"), 120));
+    }
+
+    #[test]
+    fn warmup_due_fires_within_60s_lead() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        // T-60s 정각 = 하한 포함
+        assert_eq!(warmup_due(&ms, now("2026-06-22T14:29:00.000Z"), &HashSet::new()), vec![1]);
+    }
+    #[test]
+    fn warmup_due_not_before_lead() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        // T-61s = 창 밖
+        assert!(warmup_due(&ms, now("2026-06-22T14:28:59.000Z"), &HashSet::new()).is_empty());
+    }
+    #[test]
+    fn warmup_due_skips_already_warmed() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        let mut warmed = HashSet::new();
+        warmed.insert(1);
+        assert!(warmup_due(&ms, now("2026-06-22T14:29:00.000Z"), &warmed).is_empty());
+    }
+
+    #[test]
+    fn next_poll_base_when_no_meetings() {
+        assert_eq!(next_poll_secs(&[], now("2026-06-22T14:00:00.000Z"), 15), 15);
+    }
+    #[test]
+    fn next_poll_tightens_to_upcoming_auto_boundary() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        // 경계 10s 앞 → ~10s (base 15 이내)
+        assert_eq!(next_poll_secs(&ms, now("2026-06-22T14:29:50.000Z"), 15), 10);
+    }
+    #[test]
+    fn next_poll_base_when_boundary_far() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        // 경계 100s 앞 → base 15
+        assert_eq!(next_poll_secs(&ms, now("2026-06-22T14:28:20.000Z"), 15), 15);
+    }
+    #[test]
+    fn next_poll_ignores_past_boundary() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        // 이미 지남(경계 후) → base
+        assert_eq!(next_poll_secs(&ms, now("2026-06-22T14:30:30.000Z"), 15), 15);
+    }
+    #[test]
+    fn next_poll_manual_boundary_is_lead() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "manual")];
+        // manual 경계 = scheduled-60s = 14:29:00. 그 5s 앞(14:28:55) → ~5s
+        assert_eq!(next_poll_secs(&ms, now("2026-06-22T14:28:55.000Z"), 15), 5);
+    }
+}

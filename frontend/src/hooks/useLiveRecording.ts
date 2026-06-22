@@ -32,11 +32,12 @@ import type { Meeting, Participant } from '../api/meetings'
 import { getSttSettings, getLanguageSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useSharingStore } from '../stores/sharingStore'
-import { IS_TAURI, getApiOrigin } from '../config'
+import { IS_TAURI, getApiOrigin, getMode } from '../config'
 import { useAuthStore } from '../stores/authStore'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 import { useNavigationGuards } from './useNavigationGuards'
 import { useRecordingSummaryTimer } from './useRecordingSummaryTimer'
+import { newSilenceState, tickSilence } from '../lib/silenceAutoComplete'
 
 type MeetingStatus = 'idle' | 'recording' | 'stopped'
 type ChunkMeta = { sequence: number; offsetMs: number }
@@ -147,6 +148,13 @@ export function useLiveRecording(
   const onChunkRef = useRef(sendChunk)
   onChunkRef.current = activeSttMode === 'local' ? localStt.sendChunk : sendChunk
 
+  // 무음 5분 자동완료 — timer 기반 (VAD onChunk는 유음에만 발화 → 무음 중 호출 없음)
+  const silenceRef = useRef(newSilenceState())
+  // 인터벌 틱 사이에 VAD 청크(유음)가 도착했는지 기록
+  const soundSinceTickRef = useRef(false)
+  // stale closure 방지: handleStop을 매 렌더마다 최신으로 갱신
+  const handleStopRef = useRef<() => void>(() => {})
+
   const systemChunkRef = useRef(sendSystemChunk)
   // 시스템 오디오는 로컬 모드에서도 마이크와 믹싱되어 같은 로컬 스트림으로 가므로
   // 별도 시스템 청크 전송은 서버 모드에서만 의미가 있다.
@@ -180,7 +188,11 @@ export function useLiveRecording(
 
   const { isRecording, isPaused, error, start, stop, discard, pause, resume, feedSystemAudio } = useAudioRecorder({
     meetingId,
-    onChunk: (pcm: Int16Array, meta: ChunkMeta) => onChunkRef.current(pcm, meta),
+    onChunk: (pcm: Int16Array, meta: ChunkMeta) => {
+      // VAD 청크 수신 = 유음 증거 → 무음 자동완료 카운터 플래그 세팅
+      soundSinceTickRef.current = true
+      onChunkRef.current(pcm, meta)
+    },
     onStop,
     // 모바일 청크 레코더: 녹음 중 압축 청크 연속 업로드 + 종료 시 서버 합치기/변환
     onAudioChunk: (blob, seq) => uploadAudioChunk(meetingId, blob, seq),
@@ -210,7 +222,11 @@ export function useLiveRecording(
     resume: resumeMicCapture,
     feedSystemAudio: feedMicSystemAudio,
   } = useMicCapture({
-    onChunk: (pcm: Int16Array, meta: ChunkMeta) => onChunkRef.current(pcm, meta),
+    onChunk: (pcm: Int16Array, meta: ChunkMeta) => {
+      // VAD 청크 수신 = 유음 증거 → 무음 자동완료 카운터 플래그 세팅
+      soundSinceTickRef.current = true
+      onChunkRef.current(pcm, meta)
+    },
   })
 
   // 시스템 오디오 믹싱 대상 ref (Tauri: useMicCapture, 브라우저: useAudioRecorder)
@@ -324,6 +340,10 @@ export function useLiveRecording(
     setElapsedSeconds(baseSec)
     elapsedBaseRef.current = Date.now() - baseSec * 1000
 
+    // 무음 자동완료 카운터 초기화 (재시작 포함)
+    silenceRef.current = newSilenceState()
+    soundSinceTickRef.current = false
+
     await start(offsetMs, seqNum + 1)
 
     // Tauri 모드: 네이티브 마이크 캡처 시작 (녹음 시작 후에 호출 — recorder가 먼저 존재해야 함)
@@ -371,6 +391,8 @@ export function useLiveRecording(
     }
     setShowStopConfirm(true)
   }
+  // stale closure 방지: 매 렌더마다 최신 handleStop으로 갱신 (무음 자동완료 timer에서 사용)
+  handleStopRef.current = handleStop
 
   const confirmStopSummarize = () => {
     setShowStopConfirm(false)
@@ -480,6 +502,20 @@ export function useLiveRecording(
     return () => setRecordingActive(false)
   }, [isActive, setRecordingActive])
 
+  // 데스크톱 로컬 전용: 녹음 on/off를 Rust AssertionState에 통지 (caffeinate 유지)
+  useEffect(() => {
+    if (!IS_TAURI || getMode() !== 'local') return
+    import('@tauri-apps/api/core')
+      .then(({ invoke }) => invoke('set_recording', { active: isActive }))
+      .catch(() => {})
+    return () => {
+      // 언마운트 시 녹음 플래그 해제 — 안 하면 caffeinate가 앱 세션 내내 유지(역누수)
+      import('@tauri-apps/api/core')
+        .then(({ invoke }) => invoke('set_recording', { active: false }))
+        .catch(() => {})
+    }
+  }, [isActive])
+
   // 경과 시간 타이머
   useEffect(() => {
     if (isActive && !isPaused) {
@@ -494,6 +530,22 @@ export function useLiveRecording(
       elapsedBaseRef.current = null
     }
     // 리셋은 handleStop / handleResetConfirm에서 명시적으로 처리
+  }, [isActive, isPaused])
+
+  // 무음 5분 자동완료 타이머 (5초 틱)
+  // VAD onChunk는 유음에만 발화하므로, tick 사이에 청크가 왔는지로 유/무음 판정.
+  const SILENCE_TICK_MS = 5_000
+  useEffect(() => {
+    if (!isActive || isPaused) return
+    const id = setInterval(() => {
+      const hadSound = soundSinceTickRef.current
+      soundSinceTickRef.current = false
+      if (tickSilence(silenceRef.current, SILENCE_TICK_MS, hadSound)) {
+        console.log('[silenceAutoComplete] 무음 5분 → 자동완료')
+        handleStopRef.current()
+      }
+    }, SILENCE_TICK_MS)
+    return () => clearInterval(id)
   }, [isActive, isPaused])
 
   const handleToggleSystemAudio = async (next: boolean) => {

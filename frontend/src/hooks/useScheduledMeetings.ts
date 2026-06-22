@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { IS_TAURI } from '../config'
+import { IS_TAURI, getMode } from '../config'
 import { confirmDialog } from '../lib/confirmDialog'
 import { getScheduledMeetings } from '../api/meetings'
 import type { ScheduledMeeting } from '../api/meetings/types'
@@ -35,6 +35,52 @@ export function useScheduledMeetings() {
 
     const goLive = (id: number) => {
       navigate(`/meetings/${id}/live`, { state: { autoStart: true } })
+    }
+
+    // 데스크톱 로컬: Rust 스케줄러가 트리거 소유 → JS 폴 비활성, 이벤트만 수신.
+    if (IS_TAURI && getMode() === 'local') {
+      let unlisten: (() => void) | undefined
+      let disposed = false
+      ;(async () => {
+        const { listen } = await import('@tauri-apps/api/event')
+        const un = await listen<{ meetingId: number; mode: 'auto' | 'manual' }>(
+          'scheduled-meeting-trigger',
+          async (e) => {
+            if (cancelled) return
+            if (pathnameRef.current.includes('/live')) return // 진행 중 세션 보호
+            // 창 표시(Rust도 트리거 시 show하지만 belt-and-suspenders)
+            import('@tauri-apps/api/core')
+              .then(({ invoke }) => invoke('show_main_window'))
+              .catch(() => {})
+            // 수동(manual) 예약: 자동시작 전 확인. 거절하면 시작 안 함.
+            if (e.payload.mode === 'manual') {
+              const ok = await confirmDialog('예약된 회의를 시작할까요?', {
+                title: '또박또박',
+                kind: 'info',
+              })
+              if (!ok) return
+              if (cancelled) return                       // await 후 재확인
+              if (pathnameRef.current.includes('/live')) return
+            }
+            // 녹음 시작 알림(확인 통과 후 — manual 거절 시 "녹음 중" 안 뜸)
+            import('@tauri-apps/plugin-notification')
+              .then(async ({ isPermissionGranted, requestPermission, sendNotification }) => {
+                let granted = await isPermissionGranted()
+                if (!granted) granted = (await requestPermission()) === 'granted'
+                if (granted) sendNotification({ title: '또박또박', body: '녹음 중: 예약 회의' })
+              })
+              .catch(() => {})
+            goLive(e.payload.meetingId)
+          },
+        )
+        if (disposed) un()
+        else unlisten = un
+      })()
+      return () => {
+        cancelled = true
+        disposed = true
+        unlisten?.()
+      }
     }
 
     const handle = async (m: ScheduledMeeting, mode: 'auto' | 'manual') => {

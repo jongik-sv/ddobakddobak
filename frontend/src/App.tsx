@@ -11,6 +11,7 @@ import SettingsModal from './components/settings/SettingsModal'
 import UserManagementModal from './components/settings/UserManagementModal'
 import { useRecordingRecovery } from './hooks/useRecordingRecovery'
 import { ScheduledMeetingWatcher } from './components/ScheduledMeetingWatcher'
+import { ClosePrompt } from './components/ClosePrompt'
 
 // 무거운/비랜딩 페이지는 지연 로드해 초기 App 청크에서 분리한다(@blocknote·lamejs 등).
 // 랜딩(/meetings = MeetingsPage)은 eager 유지 — 첫 페인트 경로는 그대로.
@@ -219,6 +220,7 @@ function GatedApp() {
     </Routes>
     <RecordingRecovery />
     <ScheduledMeetingWatcher />
+    <ClosePrompt />
     <SettingsModal />
     <UserManagementModal />
     </AuthGuard>

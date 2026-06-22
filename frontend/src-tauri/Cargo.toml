@@ -23,12 +23,13 @@ bindgen = "0.70"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.10", features = [] }
+tauri = { version = "2.10", features = ["tray-icon"] }
 tauri-plugin-log = "2.8"
 tauri-plugin-shell = "2.3"
 tauri-plugin-fs = "2.4"
 tauri-plugin-dialog = "2"
 tauri-plugin-deep-link = "2"
+tauri-plugin-notification = "2"
 dirs = "6"
 base64 = "0.22"
 if-addrs = "0.13"
@@ -41,15 +42,17 @@ tokio-tungstenite = "0.24"
 # reqwest 0.12는 HTTP/1을 항상 포함하므로 별도 feature 불필요 (http2만 opt-in).
 reqwest = { version = "0.12", default-features = false, features = ["stream"] }
 futures-util = "0.3"
+chrono = { version = "0.4", features = ["serde"] }
 mdns-sd = "0.11"
 hostname = "0.4"
 
-# 데스크톱 전용: GUI PATH 보정 + 네이티브 오디오 캡처 (모바일은 webview getUserMedia 사용)
+# 데스크톱 전용: GUI PATH 보정 + 네이티브 오디오 캡처 + 자동시작 (모바일은 webview getUserMedia 사용)
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }
 cpal = { version = "0.15", features = [] }
 hound = "3.5"
 rubato = "0.15"
+tauri-plugin-autostart = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 screencapturekit = "1.5"

@@ -1,6 +1,7 @@
 """헬스체크 및 STT 엔진 설정 라우터."""
 import asyncio
 import gc
+import logging
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -10,7 +11,22 @@ from app.env_utils import _persist_env
 from app.schemas import HealthResponse, UpdateSttEngineRequest
 from app.stt.factory import create_stt_adapter
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+@router.post("/warmup")
+async def warmup(request: Request) -> dict:
+    """예약 회의 1분 전 호출. 2초 무음으로 STT 어댑터를 1회 추론해
+    커널 컴파일(MLX/CUDA lazy eval)을 끝내고 모델 로드를 보장한다."""
+    adapter = getattr(request.app.state, "stt_adapter", None)
+    silence = b"\x00" * 64000  # 2s @ 16kHz int16 mono
+    try:
+        await adapter.transcribe(silence)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[warmup] 추론 실패(무시): %s", e)
+    return {"warmed": True}
 
 
 @router.get("/health", response_model=HealthResponse)
