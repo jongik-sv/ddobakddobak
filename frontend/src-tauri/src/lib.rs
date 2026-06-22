@@ -121,11 +121,11 @@ pub fn run() {
                 assertion::set_recording,
             ])
             .on_window_event(|window, event| match event {
-                // 닫기(빨간 X): 파괴하지 않고 숨긴다 — 프론트가 먼저 preventDefault 후
-                // 백그라운드/완전종료를 결정(Task 3). 여기서는 안전망으로 hide.
+                // 닫기(빨간 X): 파괴도 숨김도 하지 않는다 — prevent_close로 OS 종료만 막고,
+                // 프론트 ClosePrompt 모달이 백그라운드(hide)/완전종료(quit_app)를 결정(Task 3).
+                // 여기서 hide하면 모달 응답 전에 창이 숨어 순서가 깨진다.
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                     api.prevent_close();
-                    let _ = window.hide();
                 }
                 // 진짜 종료(quit_app/cmd+Q → app.exit): 자식 프로세스 정리.
                 tauri::WindowEvent::Destroyed => {
