@@ -7,7 +7,9 @@ const GRACE_MS: i64 = 60_000;
 const MANUAL_LEAD_MS: i64 = 60_000;
 
 const SCHED_URL: &str = "http://127.0.0.1:13323/api/v1/meetings/scheduled";
+const WARMUP_URL: &str = "http://127.0.0.1:13324/warmup";
 const POLL_SECS: u64 = 60;
+const WARMUP_LEAD_MS: i64 = 60_000;
 
 #[derive(Clone, Serialize)]
 struct TriggerPayload {
@@ -27,6 +29,7 @@ pub fn spawn(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let client = reqwest::Client::new();
         let mut already: HashSet<i64> = HashSet::new();
+        let mut warmed: HashSet<i64> = HashSet::new();
         loop {
             match client.get(SCHED_URL).send().await {
                 Ok(resp) if resp.status().is_success() => {
@@ -50,6 +53,17 @@ pub fn spawn(app: AppHandle) {
                             // T-120s 선제 caffeinate: ≤120s 앞 예약 감지 시 (깨어있는 동안) 획득.
                             app.state::<crate::assertion::AssertionState>()
                                 .set_lead(assertion_due(&env.meetings, now, 120));
+                            // T-60s 모델 워밍업: 창에 든 회의가 있으면 /warmup 1회(공유 모델). 실패는 무시.
+                            let due = warmup_due(&env.meetings, now, &warmed);
+                            if !due.is_empty() {
+                                for id in &due {
+                                    warmed.insert(*id);
+                                }
+                                if let Err(e) = client.post(WARMUP_URL).send().await {
+                                    log::debug!("warmup 호출 실패(무시, 녹음 시 자연 로드): {e}");
+                                }
+                                log::info!("모델 워밍업 요청: {due:?}");
+                            }
                         }
                     }
                 }
@@ -93,6 +107,29 @@ pub fn assertion_due(meetings: &[SchedMeeting], now: DateTime<Utc>, lead_secs: i
         }
     }
     false
+}
+
+/// 워밍업 대상 회의 id들: now ∈ [scheduled-60s, scheduled+GRACE) 이고 아직 warmed 아닌 것.
+/// (모델 공유 자원이라 호출은 1회면 되지만, 어떤 회의들이 트리거했는지 dedup용으로 id 목록 반환.)
+pub fn warmup_due(meetings: &[SchedMeeting], now: DateTime<Utc>, warmed: &HashSet<i64>) -> Vec<i64> {
+    let now_ms = now.timestamp_millis();
+    let mut out = Vec::new();
+    for m in meetings {
+        match m.auto_start_mode.as_deref() {
+            Some("auto" | "manual") => {}
+            _ => continue,
+        }
+        if warmed.contains(&m.id) {
+            continue;
+        }
+        let Some(ts) = &m.scheduled_start_time else { continue };
+        let Ok(parsed) = DateTime::parse_from_rfc3339(ts) else { continue };
+        let s = parsed.with_timezone(&Utc).timestamp_millis();
+        if now_ms >= s - WARMUP_LEAD_MS && now_ms < s + GRACE_MS {
+            out.push(m.id);
+        }
+    }
+    out
 }
 
 /// JS computeScheduleActions와 동일 규칙. auto:[t, t+60s), manual:[t-60s, t+60s), 상한 배타.
@@ -202,5 +239,25 @@ mod tests {
             SchedMeeting { id: 2, scheduled_start_time: Some("2026-06-22T14:28:00.000Z".into()), auto_start_mode: None },
         ];
         assert!(!assertion_due(&ms, now("2026-06-22T14:28:00.000Z"), 120));
+    }
+
+    #[test]
+    fn warmup_due_fires_within_60s_lead() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        // T-60s 정각 = 하한 포함
+        assert_eq!(warmup_due(&ms, now("2026-06-22T14:29:00.000Z"), &HashSet::new()), vec![1]);
+    }
+    #[test]
+    fn warmup_due_not_before_lead() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        // T-61s = 창 밖
+        assert!(warmup_due(&ms, now("2026-06-22T14:28:59.000Z"), &HashSet::new()).is_empty());
+    }
+    #[test]
+    fn warmup_due_skips_already_warmed() {
+        let ms = vec![m(1, "2026-06-22T14:30:00.000Z", "auto")];
+        let mut warmed = HashSet::new();
+        warmed.insert(1);
+        assert!(warmup_due(&ms, now("2026-06-22T14:29:00.000Z"), &warmed).is_empty());
     }
 }
