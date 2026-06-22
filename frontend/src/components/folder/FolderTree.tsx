@@ -18,7 +18,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
-import { useUiStore } from '../../stores/uiStore'
+
 import type { FolderNode } from '../../api/folders'
 import type { SelectedFolder } from '../../stores/folderStore'
 import CreateFolderDialog from './CreateFolderDialog'
@@ -36,11 +36,10 @@ function countAllFolders(nodes: FolderNode[]): number {
 interface FolderTreeItemProps {
   folder: FolderNode
   depth: number
-  isRecordingActive: boolean
   onSelectFolder: (id: SelectedFolder) => void
 }
 
-function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: FolderTreeItemProps) {
+function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) {
   const selectedFolderId = useFolderStore((s) => s.selectedFolderId)
   const expandedFolderIds = useFolderStore((s) => s.expandedFolderIds)
   const toggleExpanded = useFolderStore((s) => s.toggleExpanded)
@@ -73,7 +72,6 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
   }, [showMenu])
 
   const handleSelect = () => {
-    if (isRecordingActive) return
     onSelectFolder(folder.id)
     if (hasChildren) {
       toggleExpanded(folder.id)
@@ -120,11 +118,9 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
         data-drop-folder-id={folder.id}
         onPointerDown={(e) => initDrag('folder', folder.id, e)}
         className={`group flex items-center gap-1 px-2 py-2 min-h-[44px] rounded-md text-sm transition-colors ${
-          isRecordingActive
-            ? 'opacity-50 cursor-not-allowed'
-            : isSelected
-              ? 'bg-primary/10 text-primary font-medium cursor-pointer'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer'
+          isSelected
+            ? 'bg-primary/10 text-primary font-medium cursor-pointer'
+            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer'
         }`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={handleSelect}
@@ -243,7 +239,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
 
       {isExpanded &&
         folder.children.map((child) => (
-          <FolderTreeItem key={child.id} folder={child} depth={depth + 1} isRecordingActive={isRecordingActive} onSelectFolder={onSelectFolder} />
+          <FolderTreeItem key={child.id} folder={child} depth={depth + 1} onSelectFolder={onSelectFolder} />
         ))}
 
       {showRenameDialog && (
@@ -286,7 +282,6 @@ export default function FolderTree() {
   const selectedFolderId = useFolderStore((s) => s.selectedFolderId)
   const fetchFolders = useFolderStore((s) => s.fetchFolders)
   const createFolder = useFolderStore((s) => s.createFolder)
-  const isRecordingActive = useUiStore((s) => s.isRecordingActive)
   const navigate = useNavigate()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [rootExpanded, setRootExpanded] = useState(true)
@@ -297,12 +292,10 @@ export default function FolderTree() {
 
   // 폴더 선택은 URL(?folder=)로 push → 뒤로가기가 부모 폴더로 동작. 상태 반영·fetch는 MeetingsPage가 담당.
   const handleSelectFolder = useCallback((id: SelectedFolder) => {
-    if (isRecordingActive) return
     navigate(folderPath(id))
-  }, [isRecordingActive, navigate])
+  }, [navigate])
 
   const handleSelectRoot = () => {
-    if (isRecordingActive) return
     handleSelectFolder(null)
     setRootExpanded((v) => !v)
   }
@@ -316,11 +309,9 @@ export default function FolderTree() {
 
   const itemClass = (active: boolean) =>
     `flex items-center gap-2 px-2 py-2 min-h-[44px] rounded-md text-sm transition-colors ${
-      isRecordingActive
-        ? 'opacity-50 cursor-not-allowed'
-        : active
-          ? 'bg-primary/10 text-primary font-medium cursor-pointer'
-          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer'
+      active
+        ? 'bg-primary/10 text-primary font-medium cursor-pointer'
+        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer'
     }`
 
   return (
@@ -365,7 +356,7 @@ export default function FolderTree() {
       {/* 폴더 트리 — 최상위 폴더 펼침 시 표시 */}
       {rootExpanded &&
         folders.map((folder) => (
-          <FolderTreeItem key={folder.id} folder={folder} depth={1} isRecordingActive={isRecordingActive} onSelectFolder={handleSelectFolder} />
+          <FolderTreeItem key={folder.id} folder={folder} depth={1} onSelectFolder={handleSelectFolder} />
         ))}
 
       {showCreateDialog && (
