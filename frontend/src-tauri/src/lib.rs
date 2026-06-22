@@ -7,6 +7,9 @@ mod tray;
 #[cfg(desktop)]
 mod window_cmd;
 
+#[cfg(desktop)]
+mod scheduler;
+
 mod bridge;
 mod mdns;
 

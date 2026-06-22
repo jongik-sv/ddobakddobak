@@ -41,6 +41,7 @@ tokio-tungstenite = "0.24"
 # reqwest 0.12는 HTTP/1을 항상 포함하므로 별도 feature 불필요 (http2만 opt-in).
 reqwest = { version = "0.12", default-features = false, features = ["stream"] }
 futures-util = "0.3"
+chrono = { version = "0.4", features = ["serde"] }
 mdns-sd = "0.11"
 hostname = "0.4"
 
