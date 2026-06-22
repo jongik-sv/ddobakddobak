@@ -202,7 +202,8 @@ describe('useScheduledMeetings (데스크톱)', () => {
     expect(navigate).toHaveBeenCalledWith('/meetings/3/live', { state: { autoStart: true } })
   })
 
-  it('desktop(local): 폴하지 않고 트리거 이벤트로 goLive 한다', async () => {
+  it('desktop(local): 폴하지 않고 트리거 이벤트로 goLive 한다 (auto)', async () => {
+    confirmDialog.mockResolvedValue(true)
     const listeners: Record<string, (e: { payload: unknown }) => void> = {}
     vi.doMock('@tauri-apps/api/event', () => ({
       listen: (name: string, cb: (e: { payload: unknown }) => void) => {
@@ -225,7 +226,64 @@ describe('useScheduledMeetings (데스크톱)', () => {
     expect(listeners['scheduled-meeting-trigger']).toBeDefined()
     await act(async () => {
       listeners['scheduled-meeting-trigger']?.({ payload: { meetingId: 7, mode: 'auto' } })
+      await flush()
     })
+    // auto → confirmDialog 호출하지 않고 즉시 navigate
+    expect(confirmDialog).not.toHaveBeenCalled()
     expect(navigate).toHaveBeenCalledWith('/meetings/7/live', { state: { autoStart: true } })
+  })
+
+  it('desktop(local): manual + 승인 → navigate 한다', async () => {
+    confirmDialog.mockResolvedValue(true)
+    const listeners: Record<string, (e: { payload: unknown }) => void> = {}
+    vi.doMock('@tauri-apps/api/event', () => ({
+      listen: (name: string, cb: (e: { payload: unknown }) => void) => {
+        listeners[name] = cb
+        return Promise.resolve(() => { delete listeners[name] })
+      },
+    }))
+    vi.doMock('../config', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('../config')>()),
+      IS_TAURI: true,
+      getMode: () => 'local',
+    }))
+    const { useScheduledMeetings } = await import('./useScheduledMeetings')
+    await act(async () => {
+      renderHook(() => useScheduledMeetings())
+      await vi.runAllTicks()
+    })
+    await act(async () => {
+      listeners['scheduled-meeting-trigger']?.({ payload: { meetingId: 8, mode: 'manual' } })
+      await flush()
+    })
+    expect(confirmDialog).toHaveBeenCalledTimes(1)
+    expect(navigate).toHaveBeenCalledWith('/meetings/8/live', { state: { autoStart: true } })
+  })
+
+  it('desktop(local): manual + 거절 → navigate 하지 않는다', async () => {
+    confirmDialog.mockResolvedValue(false)
+    const listeners: Record<string, (e: { payload: unknown }) => void> = {}
+    vi.doMock('@tauri-apps/api/event', () => ({
+      listen: (name: string, cb: (e: { payload: unknown }) => void) => {
+        listeners[name] = cb
+        return Promise.resolve(() => { delete listeners[name] })
+      },
+    }))
+    vi.doMock('../config', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('../config')>()),
+      IS_TAURI: true,
+      getMode: () => 'local',
+    }))
+    const { useScheduledMeetings } = await import('./useScheduledMeetings')
+    await act(async () => {
+      renderHook(() => useScheduledMeetings())
+      await vi.runAllTicks()
+    })
+    await act(async () => {
+      listeners['scheduled-meeting-trigger']?.({ payload: { meetingId: 8, mode: 'manual' } })
+      await flush()
+    })
+    expect(confirmDialog).toHaveBeenCalledTimes(1)
+    expect(navigate).not.toHaveBeenCalled()
   })
 })

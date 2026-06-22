@@ -45,13 +45,24 @@ export function useScheduledMeetings() {
         const { listen } = await import('@tauri-apps/api/event')
         const un = await listen<{ meetingId: number; mode: 'auto' | 'manual' }>(
           'scheduled-meeting-trigger',
-          (e) => {
+          async (e) => {
             if (cancelled) return
             if (pathnameRef.current.includes('/live')) return // 진행 중 세션 보호
-            // 백그라운드 자동시작 알림 + 창 표시
+            // 창 표시(Rust도 트리거 시 show하지만 belt-and-suspenders)
             import('@tauri-apps/api/core')
               .then(({ invoke }) => invoke('show_main_window'))
               .catch(() => {})
+            // 수동(manual) 예약: 자동시작 전 확인. 거절하면 시작 안 함.
+            if (e.payload.mode === 'manual') {
+              const ok = await confirmDialog('예약된 회의를 시작할까요?', {
+                title: '또박또박',
+                kind: 'info',
+              })
+              if (!ok) return
+              if (cancelled) return                       // await 후 재확인
+              if (pathnameRef.current.includes('/live')) return
+            }
+            // 녹음 시작 알림(확인 통과 후 — manual 거절 시 "녹음 중" 안 뜸)
             import('@tauri-apps/plugin-notification')
               .then(async ({ isPermissionGranted, requestPermission, sendNotification }) => {
                 let granted = await isPermissionGranted()
