@@ -36,7 +36,6 @@ import { useSharingStore } from '../stores/sharingStore'
 import { IS_TAURI, getApiOrigin, getMode } from '../config'
 import { useAuthStore } from '../stores/authStore'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
-import { useNavigationGuards } from './useNavigationGuards'
 import { useRecordingSummaryTimer } from './useRecordingSummaryTimer'
 import { useRecorderHeartbeat } from './useRecorderHeartbeat'
 import { newSilenceState, tickSilence } from '../lib/silenceAutoComplete'
@@ -218,7 +217,6 @@ export function useLiveRecording(
     isSummarizing,
     showStatus,
   })
-  const { showLeaveBlock, setShowLeaveBlock, handleNavigateBack } = useNavigationGuards(meetingId, isActive)
 
   // Tauri 네이티브 마이크 캡처 (STT용) — 시스템 오디오도 여기서 믹싱하여 하나의 STT 스트림으로 처리
   const {
@@ -325,21 +323,25 @@ export function useLiveRecording(
     }
     setActiveSttMode(resolved)
 
-    try {
-      if (meetingApiStatus === 'completed') {
-        await reopenMeeting(meetingId)
-      }
-      if (meetingApiStatus !== 'recording') {
-        await startMeeting(meetingId)
-      }
-    } catch {
-      // 이미 recording 상태인 경우 무시
-    }
     // 재개 시 최신 오디오 길이 + 시퀀스 번호를 서버에서 가져옴.
     // 로컬 모드(auto-offline)는 서버 미도달이 정상 상태 — 실패 시 0부터 시작해
     // 녹음은 계속돼야 한다. 서버 모드에선 실패가 곧 진행 불가이므로 그대로 throw.
+    // 이 fetch는 start/reopen 분기보다 먼저 와야 한다 — 갓 마운트된 세션은
+    // meetingApiStatus state 가 아직 null(getMeeting 미해결)이라, stale closure 로
+    // 분기하면 종료된(completed) 회의를 startMeeting(422)으로 잘못 보내 녹음이
+    // 종료 상태 회의에 묶인다(조용한 데이터 손실). 갓 가져온 상태로 분기한다.
     const latest =
       resolved === 'local' ? await getMeeting(meetingId).catch(() => null) : await getMeeting(meetingId)
+
+    try {
+      if (latest?.status === 'completed') {
+        await reopenMeeting(meetingId)
+      } else if (latest?.status !== 'recording') {
+        await startMeeting(meetingId)
+      }
+    } catch {
+      // 이미 recording 등 — 무시
+    }
     const offsetMs = Math.max(latest?.audio_duration_ms ?? 0, latest?.last_transcript_end_ms ?? 0)
     const seqNum = latest?.last_sequence_number ?? 0
     setAudioDurationMs(offsetMs)
@@ -647,8 +649,6 @@ export function useLiveRecording(
     currentUserId,
     showResetConfirm,
     setShowResetConfirm,
-    showLeaveBlock,
-    setShowLeaveBlock,
     handleStart,
     handlePause,
     handleResume,
@@ -662,7 +662,6 @@ export function useLiveRecording(
     cancelStop,
     handleResetClick,
     handleResetConfirm,
-    handleNavigateBack,
   } as const
 }
 

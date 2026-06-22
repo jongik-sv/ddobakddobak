@@ -170,6 +170,10 @@ describe('MeetingLivePage', () => {
     })
     vi.mocked(meetingsApi.startMeeting).mockResolvedValue({ id: 1, status: 'recording', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' } as any)
     vi.mocked(meetingsApi.stopMeeting).mockResolvedValue({ id: 1, status: 'completed', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' } as any)
+    // getMeeting/reopenMeeting 구현체 기본값 복원 — clearAllMocks는 호출이력만 비우고
+    // mockResolvedValue 구현은 유지하므로, 한 테스트가 completed로 바꾸면 다음 테스트로 샌다.
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue({ id: 1, status: 'pending', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' } as any)
+    vi.mocked(meetingsApi.reopenMeeting).mockResolvedValue({ id: 1, status: 'recording', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' } as any)
     vi.mocked(meetingsApi.uploadAudio).mockResolvedValue(undefined)
   })
 
@@ -269,6 +273,50 @@ describe('MeetingLivePage', () => {
     await waitFor(() => {
       expect(meetingsApi.stopMeeting).toHaveBeenCalledWith(1, { skipSummary: true })
     })
+  })
+
+  it('종료 후 재시작 시 completed 회의는 reopenMeeting을 호출(startMeeting 아님)', async () => {
+    // 회귀 가드: 종료 후 세션이 언마운트되고 재시작 시 갓 마운트된 세션은
+    // meetingApiStatus state 가 아직 null 이다. start/reopen 분기가 stale closure(null)
+    // 대신 갓 가져온 status('completed')로 분기해야 reopenMeeting을 탄다.
+    renderPage()
+
+    // 1차 시작 (getMeeting=pending → startMeeting)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /회의 시작/i }))
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /회의 종료/i })).toBeInTheDocument()
+    })
+    expect(meetingsApi.startMeeting).toHaveBeenCalledWith(1)
+
+    // 종료 (전사 0건 → 다이얼로그 없이 즉시 종료 → endSession → 세션 언마운트)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /회의 종료/i }))
+    })
+    await waitFor(() => {
+      expect(meetingsApi.stopMeeting).toHaveBeenCalledWith(1, { skipSummary: true })
+    })
+
+    // 이제 회의는 종료(completed) 상태 — 재시작 직전에만 getMeeting을 completed로 전환한다.
+    // (전역으로 두면 1차 시작도 completed로 보여 셋업이 틀어진다.)
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue({ id: 1, status: 'completed', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' } as any)
+    // 1차 시작이 이미 startMeeting을 호출했으므로 카운터를 비워야 "미호출" 단언이 유효하다.
+    vi.mocked(meetingsApi.startMeeting).mockClear()
+    vi.mocked(meetingsApi.reopenMeeting).mockClear()
+
+    // 2차 시작 (갓 마운트된 세션 → meetingApiStatus=null, getMeeting=completed → reopenMeeting)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /회의 시작/i })).toBeInTheDocument()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /회의 시작/i }))
+    })
+
+    await waitFor(() => {
+      expect(meetingsApi.reopenMeeting).toHaveBeenCalledWith(1)
+    })
+    expect(meetingsApi.startMeeting).not.toHaveBeenCalled()
   })
 
   // ──────────────────────────────────────────────
