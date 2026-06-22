@@ -199,6 +199,10 @@ pub fn run() {
                 }
             }
 
+            // 데스크톱: 예약 회의 백그라운드 폴 루프 시작.
+            #[cfg(desktop)]
+            scheduler::spawn(app.handle().clone());
+
             // 모바일: 인앱 루프백 리버스 프록시 브릿지 기동.
             #[cfg(mobile)]
             {

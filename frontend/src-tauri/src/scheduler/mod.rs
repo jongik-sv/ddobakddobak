@@ -1,9 +1,62 @@
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use tauri::{AppHandle, Emitter, Manager};
 
 const GRACE_MS: i64 = 60_000;
 const MANUAL_LEAD_MS: i64 = 60_000;
+
+const SCHED_URL: &str = "http://127.0.0.1:13323/api/v1/meetings/scheduled";
+const POLL_SECS: u64 = 60;
+
+#[derive(Clone, Serialize)]
+struct TriggerPayload {
+    #[serde(rename = "meetingId")]
+    meeting_id: i64,
+    mode: String,
+}
+
+#[derive(Deserialize)]
+struct ScheduledEnvelope {
+    meetings: Vec<SchedMeeting>,
+}
+
+/// 데스크톱 전용 백그라운드 스케줄러. 60s마다 loopback(무토큰)으로 예약 목록을 폴하고,
+/// 트리거 시각 도달 회의는 메인 창을 표시한 뒤 scheduled-meeting-trigger 를 emit 한다.
+pub fn spawn(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let client = reqwest::Client::new();
+        let mut already: HashSet<i64> = HashSet::new();
+        loop {
+            match client.get(SCHED_URL).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(bytes) = resp.bytes().await {
+                        if let Ok(env) = serde_json::from_slice::<ScheduledEnvelope>(&bytes) {
+                            let now = Utc::now();
+                            for act in compute_actions(&env.meetings, now, &already) {
+                                already.insert(act.meeting_id);
+                                // 1) 메인 창 먼저 표시(웹뷰·AudioContext 복원)
+                                if let Some(win) = app.get_webview_window("main") {
+                                    let _ = win.show();
+                                    let _ = win.set_focus();
+                                }
+                                // 2) 프론트로 트리거 emit
+                                let _ = app.emit(
+                                    "scheduled-meeting-trigger",
+                                    TriggerPayload { meeting_id: act.meeting_id, mode: act.mode },
+                                );
+                                log::info!("예약 트리거: meeting {}", act.meeting_id);
+                            }
+                        }
+                    }
+                }
+                Ok(resp) => log::warn!("scheduled 폴 비정상 status: {}", resp.status()),
+                Err(e) => log::debug!("scheduled 폴 실패(부팅 중/오프라인): {e}"),
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(POLL_SECS)).await;
+        }
+    });
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SchedMeeting {
