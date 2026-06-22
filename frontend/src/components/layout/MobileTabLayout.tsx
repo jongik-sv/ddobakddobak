@@ -38,7 +38,7 @@ export default function MobileTabLayout({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       {/* 탭 바 */}
       <div
         role="tablist"
@@ -72,7 +72,7 @@ export default function MobileTabLayout({
       </div>
 
       {/* 콘텐츠 영역 */}
-      <div data-content-area className="flex-1 overflow-auto relative">
+      <div data-content-area className="flex-1 min-h-0 overflow-auto relative">
         {tabs.map((tab) => {
           const isActive = tab.id === currentTab
           return (
