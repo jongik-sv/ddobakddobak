@@ -20,6 +20,14 @@ vi.mock('../lib/confirmDialog', () => ({
   confirmDialog: () => confirmDialog(),
 }))
 
+// @tauri-apps/plugin-notification: jsdom 환경에서는 실제 플러그인이 없으므로 no-op stub.
+// 데스크톱 브랜치(dynamic import)에서 catch-swallow로 처리되지만, 타입 해결을 위해 명시적 mock 필요.
+vi.mock('@tauri-apps/plugin-notification', () => ({
+  isPermissionGranted: async () => true,
+  requestPermission: async () => 'granted',
+  sendNotification: () => {},
+}))
+
 // 기본은 웹(IS_TAURI=false). auto+데스크톱 케이스는 별도 it에서 doMock으로 덮는다.
 vi.mock('../config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../config')>()),

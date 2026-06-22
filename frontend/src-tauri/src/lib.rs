@@ -69,7 +69,8 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_dialog::init());
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init());
 
     // ── 데스크톱 전용: 프로세스 오케스트레이션 + 네이티브 오디오 ──
     #[cfg(desktop)]

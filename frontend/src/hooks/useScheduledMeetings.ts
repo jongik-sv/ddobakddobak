@@ -48,6 +48,17 @@ export function useScheduledMeetings() {
           (e) => {
             if (cancelled) return
             if (pathnameRef.current.includes('/live')) return // 진행 중 세션 보호
+            // 백그라운드 자동시작 알림 + 창 표시
+            import('@tauri-apps/api/core')
+              .then(({ invoke }) => invoke('show_main_window'))
+              .catch(() => {})
+            import('@tauri-apps/plugin-notification')
+              .then(async ({ isPermissionGranted, requestPermission, sendNotification }) => {
+                let granted = await isPermissionGranted()
+                if (!granted) granted = (await requestPermission()) === 'granted'
+                if (granted) sendNotification({ title: '또박또박', body: '녹음 중: 예약 회의' })
+              })
+              .catch(() => {})
             goLive(e.payload.meetingId)
           },
         )
