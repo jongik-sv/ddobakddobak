@@ -38,6 +38,8 @@ export function ClosePrompt() {
     }
   }, [])
 
+  const cancel = () => setOpen(false)
+
   const choose = async (action: CloseAction) => {
     if (remember) setCloseAction(action)
     setOpen(false)
@@ -49,6 +51,15 @@ export function ClosePrompt() {
     }
   }
 
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
   if (!open) return null
   return createPortal(
     <div
@@ -56,6 +67,9 @@ export function ClosePrompt() {
       aria-modal="true"
       aria-label="창 닫기"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) cancel()
+      }}
     >
       <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
         <h2 className="text-lg font-semibold">또박또박을 어떻게 할까요?</h2>
@@ -71,6 +85,12 @@ export function ClosePrompt() {
           다음부터 묻지 않기
         </label>
         <div className="mt-6 flex justify-end gap-2">
+          <button
+            className="rounded-lg border px-4 py-2 text-sm"
+            onClick={cancel}
+          >
+            취소
+          </button>
           <button
             className="rounded-lg border px-4 py-2 text-sm"
             onClick={() => void choose('quit')}
