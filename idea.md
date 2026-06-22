@@ -72,90 +72,40 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
   - 화자들이 발화한 시각을 요약의 각 문장 마지막에 같이 받는다.
   - 회의록 표시는 그냥 간단한 타이머 아이콘 또는 화자번호별로 ⓿, ❶, ❷, ❸, ❹, ❺, ❻, ❼, ❽, ❾, ❿ 또는 [화자1], [장종익][장종익] 형식으로 표시(한 사람이 여러번 나올 수도 있음)
   - 발화 근거를 누르면 해당 시각으로 점프한다.
-8. 프로젝트/폴더 안에서 묻기 Top picks의 1번 항목
-  - 의미검색(임베딩) 보강: KURE-v1(MIT, 1024dim) 임베딩 + FTS5 하이브리드(RRF). 런타임=PyTorch+transformers(AutoModel, CLS풀+L2정규화), device 자동감지(기본 CPU, Nvidia 서버=CUDA). 저장=`transcript_embeddings` plain BLOB 테이블(transcript 행 단위), 검색=numo-narray exact cosine(브루트포스). 인가=FTS와 동일 `accessible_by` meeting_id 필터.
-  - **벡터 스토어 스케일 로드맵(미래계획)**: 검색을 `VectorIndex` 추상화 뒤에 두어 교체 가능하게 설계. 현 규모(전사 ~24k행)에선 브루트포스가 더 빠르고·정확(exact)·단순. **회의록 규모가 크게 늘거나(수십만~수백만 벡터) 상용화(중앙 멀티유저 서버) 시 → PostgreSQL+pgvector(HNSW + meeting_id 필터)로 이전.** 그때 임베딩 BLOB은 모델 안 바뀌면 재임베딩 없이 재인덱싱만. sqlite-vec는 "지금 하기엔 무겁고 스케일 가선 pgvector한테 밀리는" 중간 단계라 건너뜀. (서버 전환=Nvidia GPU라 PyTorch 런타임 그대로 device=cuda로 이전, [[project_refactor_roadmap]] #12 Postgres 계획과 연계.)
-  - **리랭커(미래계획, Phase 3)**: v1은 KURE bi-encoder + RRF만. 검색 품질 부족 시 `dragonkue/bge-reranker-v2-m3-ko`(cross-encoder, XLM-R-large ~568M, Apache) 추가 → 하이브리드 top-K 후보를 `(질문,발췌)` 쌍으로 정밀 재정렬. 비용: 두 번째 ~1.1GB 모델 로드 + 쿼리마다 K쌍 추론(CPU선 수백ms~수초). **이상적 도입 시점 = Nvidia GPU 서버 전환 이후**(GPU면 빠름). v1 제외 = 기능 포기 아니라 GPU 가서 켜는 옵션.
+8. 프로젝트/폴더 안에서 묻기 — Top picks 1번(폴더/팀 교차 AI Q&A)
+
+  **✅ 완료 (main 머지·푸시)**
+  - 폴더/팀 교차 AI Q&A "폴더에게 묻기"(머지 `b73e718`): 회의 1건에 묶였던 챗을 폴더·팀 전체 스코프로 확대. 13 TDD 태스크.
+  - 의미검색(임베딩)(머지 `3d2d834`): KURE-v1(MIT, 1024dim) 임베딩 + FTS5 하이브리드(RRF). 런타임=PyTorch+transformers(AutoModel, CLS풀+L2정규화), device 자동감지(기본 CPU, Nvidia 서버=CUDA). 저장=`transcript_embeddings` plain BLOB 테이블(transcript 행 단위), 검색=numo-narray exact cosine(브루트포스, `transcript_vector_search`의 `VectorIndex` 추상화로 교체지점 마련). 인가=FTS와 동일 `accessible_by` meeting_id 필터.
+  - 쿼리 확장(머지 `3d2d834`): LLM 동의어·약어 확장 → 다중 벡터 + FTS RRF(`folder_chat_query_expansion`). 검색단 추가 LLM 호출 0.
+  - 운영 남음(코드 아님): 신규/모델교체 시 `rails embeddings:backfill`(재실행 가능) + sidecar 재시작 필요.
+
+  **🔮 미래계획**
+
+  - **① 벡터 스토어 스케일 — pgvector 이전**
+    - 현황: 검색은 이미 `VectorIndex` 추상화 뒤(교체지점 확보). 현 규모(전사 ~24k행)에선 브루트포스가 더 빠르고·정확(exact)·단순.
+    - 트리거: 회의록 규모 급증(수십만~수백만 벡터) **또는** 상용화(중앙 멀티유저 서버).
+    - 이전 대상: PostgreSQL + pgvector(HNSW 인덱스 + meeting_id 필터).
+    - 마이그 비용: 임베딩 BLOB은 모델 안 바뀌면 재임베딩 없이 재인덱싱만. PyTorch 런타임 그대로 device=cuda로(서버=Nvidia GPU).
+    - 건너뛰는 단계: sqlite-vec — "지금 하기엔 무겁고 스케일 가선 pgvector한테 밀리는" 중간 단계.
+    - 연계: [[project_refactor_roadmap]] #12 Postgres 계획.
+
+  - **② 리랭커(Phase 3) — 정밀 재정렬**
+    - 현황: v1 = KURE bi-encoder + RRF만.
+    - 트리거: 검색 품질 부족 시.
+    - 방법: `dragonkue/bge-reranker-v2-m3-ko`(cross-encoder, XLM-R-large ~568M, Apache) 추가 → 하이브리드 top-K 후보를 `(질문, 발췌)` 쌍으로 정밀 재정렬.
+    - 비용: 두 번째 ~1.1GB 모델 로드 + 쿼리마다 K쌍 추론(CPU선 수백ms~수초).
+    - 도입 시점: **Nvidia GPU 서버 전환 이후**(GPU면 빠름).
+    - 성격: 기능 포기 아님 — GPU 가서 켜는 옵션.
 9. 화자 창에서 해당 화자가 누군지 음성을 들어야 이름을 넣을 수 있는데 지금은 아주 나중에 말한 화자는 말하는 위치로 넘어가기가 힘들어. 그래서 화자를 누르면 해당 화자의 말로 위치가 이동하면 좋겠어. 방법은 가장 위가 아닌 지금 현재 음성이 플레이 되고 있는 위치보다 아래에 있는 화자의 발화 위치로 이동하면 된다. 만약 플레이 되고 있지 않다면 가장 처음 발화 위치로 이동하면 된다. 그래서 화자 1을 계속 누르면 화자 1이 말한 것을 계속 아래로 가면서 들려주면 되는거야. '화자 1' 이렇게 되어 있는 텍스트(또는 버튼)을 누를때 마다 이동하면 된다.
-10. 자동 회의 시작 기능 
-  - 옵션 1 : '회의 시작합니다. ' 등의 말이 들리면 자동으로 회의 시작
-  - 옵션 2 : 시각을 정하면 자동으로 회의 시작 또는 알람 (회의 시작이 되었습니다. 회의를 시작하시겠습니까?)
-
-## 또박또박 추천 기능 — 경쟁사 대비 갭 분석
-
-> 16-에이전트 워크플로 조사(경쟁사 12종 웹조사 + 코드베이스 실측, 2026-06-16). 경쟁사: Otter / Fireflies / Granola / Fathom / tl;dv / Avoma / Read.ai·Sembly / Notion AI / Teams Copilot / Zoom Companion / 클로바노트 / 다글로·VITO·릴리스AI.
-
-**포지셔닝:** 또박또박 = 한국어·자체호스팅 팀 회의록(Rails+SQLite/React/Tauri+Android). altalt(개인·온디바이스)·클로바노트(클라우드·개인)와 달리 공유·라이브 호스트 이양·폴더·팀을 갖춘 협업형. 전 코퍼스 로컬 → 클라우드 경쟁사가 못 내는 프라이버시·소유 우위.
-
-**핵심 진단:** 현 기능은 강하나 사후(post)·배치·텍스트 출력에 편중. 최대 빈틈 = 라이브(in-meeting) 가치 — 가장 어려운 전제(LivePage+ActionCable+per-user 챗 RAG)를 이미 깔아놓고 안 쓰는 중.
-
-### 🔄 2026-06-18 재조사 갱신 (라이트 deep-research 2라운드, 전 단계 haiku)
-
-> 방법·전체결과: `docs/competitor-gap-2026-06-18.md`. 합산 44소스·196클레임·31확정. 라이트모델 → **시그널 갱신용(전수 아님)**.
-
-**이미 구현됨(이 챕터 대비):** #1 폴더 교차 Q&A ✅머지(`b73e718`) · #4 인라인 인용+오디오점프 ✅머지(`c7dfd01`). 둘 다 경쟁사(Granola Spaces·Avoma)가 *지금* 따라오는 영역 → 선점.
-
-**2026 재확인·신규 (검증 통과):**
-- 라이브 in-meeting 어시(실시간 액션·"누가 뭐랬나") = **enterprise table-stakes**(MS Teams Copilot 3-0). #2 그대로 최대 미사용 자산.
-- 발언 분석(talk-time·모놀로그·질문수·코칭) = Fathom 스코어카드·Read AI 코치 **차별점화**(3-0). #3 데이터 보유·미가공.
-- **웹훅 + 스코프드 API 토큰 = 이제 table-stakes**(Otter·Avoma·Fireflies 전부 outbound webhook+Bearer). → 또박또박 미구현은 *경쟁 결손*으로 격상. 자체호스팅에 최적합 통합.
-- **액션아이템 담당자·마감·태스크툴/CRM 푸시 = 표준**(Otter·Avoma·Sembly). `action_item` 모델만 존재 → 제품표면 격차.
-- SRT/VTT 자막 = 녹음기반 table-stakes(Otter·Avoma), 노트중심(Notion·Sembly)엔 부재. 데이터 완비 → 시리얼라이저만.
-- 라이브 음성번역 KR↔EN = Zoom 2026-04 진입. 한국팀 실수요.
-- Teams **에이전트형 워크플로**(자동 상태보고·CRM·다음안건·음성에이전트) = 신규 프런티어, 또박또박 전무.
-
-**경쟁사도 안 하는 것(=결손 아닌 도약 기회):** 트랜스크립트 코멘트/@멘션 · 자동 챕터분할 — Otter/Avoma/Fireflies/Sembly/Notion 5종 모두 미문서. 또박또박이 하면 catch-up 아닌 차별화.
-
-**우선순위 재조정:** ① 발언 점유율(#3, effort low) ② 라이브 in-meeting(#2) ③ **웹훅+API**(결손 격상) ④ 번역 ⑤ 액션아이템 제품표면. 코멘트/@멘션·챕터분할은 "남들도 없음" → 도약카드로 후순위.
-
-### Top picks (가치×적합도 최상)
-
-| # | 기능 | 한 줄 가치 | 경쟁사 | value/effort |
-|---|------|-----------|--------|--------------|
-| 1 ✅ | 폴더/팀 교차 AI Q&A("폴더에게 묻기") | "지난달 주간회의에서 X 뭘 정했지?" — 회의 1건 묶인 챗을 폴더·팀 전체로. FTS5+RAG+chat_llm_model 이미 보유, 스코프만 확대 | Otter, Fireflies, Granola, Fathom, Zoom, Notion | high / med |
-| 2 | 라이브 in-meeting 어시스턴트(catch me up) | 진행 중 "내가 놓친 것/지금까지 액션/내 이름 언급됐나" 실시간. 라이브 인프라 이미 있음 → RAG를 라이브 트랜스크립트로만 돌리면 됨. 최대 미사용 자산 | Zoom Companion, Teams Copilot, Otter | high / med |
-| 3 | 화자별 발언 점유율(발언 %·발언/경청비·최장 독백) | 저장된 diarization 데이터 순수 후처리. 신규 캡처·클라우드·LLM 비용 0 | Fireflies, tl;dv, Avoma, Read.ai | high / low |
-| 4 ✅ | 요약·챗 답변 인라인 출처 인용 | 요약 줄 클릭 → 트랜스크립트+오디오 정확 지점 점프. 한국어 STT 불완전 → 원문대조 가치 큼. 환각 신뢰 직격. timestamp_ms+플레이어 보유 | Granola, Fireflies, Lilys, Notion | high / med |
-| 5 | 즉석 다포맷 재구성 + 한국어 템플릿 | 같은 회의를 임원보고/화자별/한줄로 재성형 + 주간/1on1/킥오프/인터뷰 기성 템플릿. llm 인프라 위 얇은 레이어 | Fathom, Teams, Granola, 클로바노트 | high / low |
-
-### 카테고리별 나머지
-
-**Intelligence**
-- 액션아이템 책임 추적(알림·마감·"내 미결 액션") — schema에 assignee_id+due_date 이미 존재, 데이터모델이 제품보다 앞섬 · high/med
-- 한국어 번역(KR↔EN, 글로사리 일관 번역이 차별점) · high/med
-- 회의 챕터/자동 토픽 분할(점프 타임스탬프) · med/med
-- 타입드 거버넌스 항목(위험/이슈/블로커/미결) · med/med
-- 사전 회의 브리프("이 폴더서 지난번 X·미결 Y개") · med/med
-- 폴더 단위 정기 AI 다이제스트(#1 의존) · med/med
-- 감정/참여 신호(보수 버전, EU-AI-Act 리스크 자체호스팅 스코핑) · med/med
-
-**Collaboration**
-- 트랜스크립트 코멘트/@멘션/스레드 — comments 모델 부재, ActionCable+팀멤버십 재사용. 팀 정체성 핵심 · high/med
-- 오디오 클립/하이라이트 공유(북마크+오디오+공유 보유 → span+ffmpeg) · med/med
-- 사후 배포: 요약+액션 자동 이메일(카드OCR 이메일+미사용 Mailer 스캐폴드+자체 SMTP) · med/med
-
-**Capture**
-- 데스크톱 시스템/루프백 오디오(봇 없이 VC 콜 캡처, macOS ScreenCaptureKit) · high/high
-- 모바일 잠금화면 백그라운드 녹음 패리티 · med/med
-
-**UX / Output**
-- 소프트 삭제/휴지통+복원+노트 버전 이력 — 문서화된 Ctrl+Z 데이터손실 + DB 와이프 사고 직격 · med/low
-- 교차회의 전문+AI 검색 결과 페이지(FTS5 확장) · med/low
-- 시각 렌더(마인드맵·타임라인 — BlockNote Mermaid 이미 렌더) · med/med
-- 콘텐츠 인제스천(YouTube/URL·PDF 요약 — 한국 경쟁사 2/3 진입로) · med/med
-
-**Accessibility**
-- 라이브 캡션 + a11y(ARIA/스크린리더) — 한국 공공/교육 조달 요건, 추천에 0이던 빈틈 · med/med
-
-**Integration**
-- 아웃바운드 웹훅 + 스코프드 API 토큰 — 회의완료/요약준비 시 웹훅, 팀이 사내메신저/Jira 자체연동. 자체호스팅에 가장 맞는 통합 · high/med
-- SRT/VTT 자막 내보내기(데이터 완비, 시리얼라이저만) · med/low
-- 관리 거버넌스 번들(보존정책·감사로그·2FA) — 클라우드는 엔터프라이즈 게이팅, ddobak 전원 제공 · med/med
-- 녹음 동의 캡처 + egress 제어(EU-AI-Act/동의 대응) · med/med
-
-### 진행 중 브랜치 연계
-- 현 브랜치 `feat/meeting-lock-importance`(미커밋: 잠금=읽기전용+중요 플래그, schema 2026_06_16): 잠금이 mutating 가드를 이미 깔아둠 → 거버넌스 번들·소프트 삭제/복원이 그 위에 자연스럽게 얹힘. 중요 플래그 ↔ "중요 회의 자동 보존" 정책으로 확장.
-- AI Chat/glossary/요약 전체보기 이미 main 병합 → #1·#2가 chat_messages/meeting_chat_context 직접 재사용, 추가 인프라 최소.
-
-### 저비용 즉효 3종 (한 스프린트 체감 최대)
-발언 점유율(#3) · 다포맷 재구성+템플릿(#5) · 소프트 삭제/복원 — value high, effort low.
+10. 자동 회의 시작 기능(완)
+  - 자동회의 옵션
+    - 옵션 1 : '회의 시작합니다. ' 등의 말이 들리면 자동으로 회의 시작
+    - 옵션 2 : 시각을 정하면 자동으로 회의 시작 또는 알람 (회의 시작 시간이 되었습니다. 회의를 시작하시겠습니까?)
+  - 예약중 상태 추가
+  - 회의 카드에 자동시작시간이 보이도록 변경
+11. 자동으로 이어지는 회의(자동으로 예약 회의 생성함, 연결되는 회의 등록)
+12. tauri는 백그라운드 실행 가능, 윈도우(시스템 트레이), 맥북(막대 메뉴)에서 누르면 화면에 팝업, 다시 닫으면 백그라운드로 실행 하도록 하자. 백그라운드에서도 예약이 자동으로 실행되어야해. 화면이 꺼지거나 슬립 시에도 실행하고 싶다.
+13. 그런데 회의 예약을 해놓으면 하나의 컴퓨터에서 자동으로 실행되게 할 방법을 찾아야함.
+14. 회의 예약하면 회의실도 예약하게 하는 것이 좋겠다.(회의실 예약 시스템이 있으면) 그리고 참석자를 미리 지정하면 참석자에게 메일이 가게 하는 것도 좋은 아이디어, 미리 회의 자료도 올릴 수 있으면 좋겠네.
+15. 회의 예약하면 미리 알림 기능할 수 있도록 추가(예 10분전 알림, 30분전 알림)

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type ServicePreset, LOCAL_MODEL_FETCHERS, isLocalListable, CLI_PRESET_IDS } from './llmServicePresets'
+import { getMode } from '../../config'
 
 export interface LlmProviderCardValue {
   presetId: string
@@ -38,6 +39,14 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
   const isNone = !!noneOption && value.presetId === noneOption.id
   const isCli = CLI_PRESET_IDS.has(value.presetId)
   const requiresKey = preset?.requiresApiKey ?? false
+
+  // CLI 프리셋은 CLI 실행 가능 환경(로컬 모드)에서만 노출한다. 그 외(웹·모바일·
+  // 데스크톱 원격 모드)에서는 숨기되, 이미 그 CLI를 저장해 둔 사용자에게는 잠금(비활성)
+  // 버튼으로 남겨 안내한다.
+  const cliAllowed = getMode() === 'local'
+  const visiblePresets = cliAllowed
+    ? presets
+    : presets.filter((p) => !CLI_PRESET_IDS.has(p.id) || p.id === value.presetId)
 
   const loadLocal = useCallback(async (baseUrl: string) => {
     const gen = ++loadGenRef.current
@@ -83,23 +92,33 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
             <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{noneOption.description}</p>
           </button>
         )}
-        {presets.map((p) => (
-          <button key={p.id} type="button" aria-pressed={value.presetId === p.id}
-            onClick={() => { if (p.id !== value.presetId) onSelectPreset(p.id) }}
-            className={cardCls(value.presetId === p.id)}>
-            <p className="text-sm font-medium">{p.name}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{p.description}</p>
-          </button>
-        ))}
+        {visiblePresets.map((p) => {
+          // CLI 잠금: server 모드에서 저장값이라 남아있는 CLI 프리셋은 선택 불가.
+          const locked = !cliAllowed && CLI_PRESET_IDS.has(p.id)
+          return (
+            <button key={p.id} type="button" aria-pressed={value.presetId === p.id}
+              disabled={locked} aria-disabled={locked}
+              onClick={() => { if (!locked && p.id !== value.presetId) onSelectPreset(p.id) }}
+              className={`${cardCls(value.presetId === p.id)}${locked ? ' opacity-60 cursor-not-allowed' : ''}`}>
+              <p className="text-sm font-medium">{p.name}{locked && ' 🔒'}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{locked ? '이 환경에서 사용 불가' : p.description}</p>
+            </button>
+          )
+        })}
       </div>
 
       {!isNone && (<>
-      {isCli && (
+      {isCli && (cliAllowed ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 mb-3">
           <p className="font-medium mb-1">CLI 모드 안내</p>
           <p className="text-xs leading-relaxed">CLI 모드는 호출마다 프로세스를 새로 시작하여 <strong>약 6~7초 지연</strong>이 발생합니다. 실시간에는 부적합하며 일회성 테스트·배치에 적합합니다.</p>
         </div>
-      )}
+      ) : (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 mb-3">
+          <p className="font-medium mb-1">CLI 사용 불가</p>
+          <p className="text-xs leading-relaxed">이 환경에서는 CLI를 사용할 수 없습니다. 다른 프로바이더를 선택하세요.</p>
+        </div>
+      ))}
 
       {!isCli && (
         <div className="mb-3">
