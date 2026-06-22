@@ -454,11 +454,15 @@ describe('RecordingHost', () => {
     expect(liveMock).not.toHaveBeenCalled()
   })
 
-  it('activeMeetingId 설정되면 useLiveRecording 1회 실행(단일 소유자)', () => {
+  it('activeMeetingId 설정되면 세션 마운트→useLiveRecording 해당 meetingId로 실행(단일 소유자)', () => {
+    // ⚠️ 렌더 카운트로 "정확히 1회"를 단언하지 말 것 — RecordingHost가 pendingStart를 구독해
+    // consumePendingStart()의 true→false가 같은 인스턴스를 재렌더(리마운트 아님)하므로 mock이 2회 발화.
+    // 단일 소유자 = "1개 인스턴스 마운트"이지 "1회 호출"이 아니다. 무리마운트는 T9가 가드.
     const { rerender } = wrap()
     useRecordingStore.getState().start(99)
     rerender(<MemoryRouter><RecordingHost /></MemoryRouter>)
-    expect(liveMock).toHaveBeenCalledTimes(1)
+    expect(liveMock).toHaveBeenCalled()
+    expect(liveMock).toHaveBeenCalledWith(99, expect.anything())
   })
 })
 ```
@@ -1000,14 +1004,15 @@ function App() {
 // 여기선 "세션이 라우트 밖 RecordingLayer에 있어 라우트 변경에 재마운트 안 됨" 구조 속성만 가드.
 describe('녹음 지속성(라우트 변경) smoke', () => {
   beforeEach(() => { liveMock.mockClear(); useRecordingStore.getState().endSession() })
-  it('세션은 정확히 1회 마운트되고 라우트가 바뀌어도 재마운트되지 않는다', () => {
+  it('세션 마운트 후 라우트가 바뀌어도 재마운트되지 않는다(녹음 지속)', () => {
     const { rerender } = render(<MemoryRouter initialEntries={['/a']}><App /></MemoryRouter>)
     expect(liveMock).not.toHaveBeenCalled() // idle: 미마운트
     useRecordingStore.getState().start(1)
     rerender(<MemoryRouter initialEntries={['/a']}><App /></MemoryRouter>)
-    expect(liveMock).toHaveBeenCalledTimes(1) // 마운트 1회
+    expect(liveMock).toHaveBeenCalled() // 마운트됨
+    const n = liveMock.mock.calls.length // 마운트 시점 호출 수(pendingStart 재렌더로 1+ 가능)
     rerender(<MemoryRouter initialEntries={['/b']}><App /></MemoryRouter>) // 라우트 변경
-    expect(liveMock).toHaveBeenCalledTimes(1) // 재마운트 없음 — 녹음 지속
+    expect(liveMock.mock.calls.length).toBe(n) // 추가 호출 0 = 재마운트 없음 = 녹음 지속
   })
 })
 ```
