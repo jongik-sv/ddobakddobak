@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useUiStore } from '../stores/uiStore'
+import { useToastStore } from '../stores/toastStore'
 import { useAudioRecorder } from './useAudioRecorder'
 import { useSystemAudioCapture } from './useSystemAudioCapture'
 import { useMicCapture } from './useMicCapture'
@@ -44,7 +45,6 @@ type MeetingStatus = 'idle' | 'recording' | 'stopped'
 type ChunkMeta = { sequence: number; offsetMs: number }
 
 interface UseLiveRecordingOptions {
-  showStatus: (msg: string, durationMs?: number) => void
   isApplyingCorrections: boolean
   clearMemoEditor: () => void
 }
@@ -55,9 +55,14 @@ interface UseLiveRecordingOptions {
  */
 export function useLiveRecording(
   meetingId: number,
-  { showStatus, isApplyingCorrections, clearMemoEditor }: UseLiveRecordingOptions
+  { isApplyingCorrections, clearMemoEditor }: UseLiveRecordingOptions
 ) {
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // 상태 토스트는 전역 스토어 경유 — 백그라운드 녹음 종료 메시지가 라우트 무관 표시되도록.
+  const showStatus = (msg: string, durationMs?: number) =>
+    useToastStore.getState().showStatus(msg, durationMs)
 
   // 회의실 진입 시 사이드바 닫기 + 이전 거부 플래그 초기화
   useEffect(() => {
@@ -253,8 +258,12 @@ export function useLiveRecording(
     if (IS_TAURI) stopMicCapture()
     stopSystemCapture()
     if (isRecording) discard()
-    navigate(`/meetings/${meetingId}/viewer`, { replace: true })
-  }, [recordingDenied, isRecording, meetingId, navigate, discard, stopMicCapture, stopSystemCapture])
+    // 훅이 라우트 무관 세션으로 옮겨지므로(B), 다른 라우트(대시보드 등)에서 2번째 클라
+    // 레이스로 navigate가 발화하면 사용자를 엉뚱하게 끌어간다. 이 회의의 live 라우트일 때만 이동.
+    if (location.pathname === `/meetings/${meetingId}/live`) {
+      navigate(`/meetings/${meetingId}/viewer`, { replace: true })
+    }
+  }, [recordingDenied, isRecording, meetingId, navigate, location.pathname, discard, stopMicCapture, stopSystemCapture])
 
   const handleStart = async () => {
     // 이전 세션 오디오 업로드 완료 대기 (중단→재시작 싱크 보장)
@@ -644,6 +653,7 @@ export function useLiveRecording(
     handlePause,
     handleResume,
     handleStop,
+    performStop,
     handleManualSummary,
     canManualSummary: isActive && !isPaused && finalsCount > 0 && !isSummarizing,
     showStopConfirm,

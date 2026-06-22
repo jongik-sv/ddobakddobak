@@ -5,7 +5,7 @@ import { Switch } from '../components/ui/Switch'
 import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMemoEditor } from '../hooks/useMemoEditor'
-import { useStatusMessage } from '../hooks/useStatusMessage'
+import { useToastStore } from '../stores/toastStore'
 import { useLiveRecording } from '../hooks/useLiveRecording'
 import { useLiveTermCorrections } from '../hooks/useLiveTermCorrections'
 import { useLiveBookmark } from '../hooks/useLiveBookmark'
@@ -50,8 +50,9 @@ export default function MeetingLivePage() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  // 상태 메시지 (하단 상태바)
-  const { statusMessage, showStatus } = useStatusMessage()
+  // 상태 메시지 (하단 상태바) — 전역 토스트 스토어 경유
+  const statusMessage = useToastStore((s) => s.message)
+  const showStatus = useToastStore((s) => s.showStatus)
 
   // 오타 수정 (state + 핸들러) — useLiveRecording 이전에 호출(isApplyingCorrections 주입)
   const {
@@ -64,7 +65,6 @@ export default function MeetingLivePage() {
 
   // 라이브 세션(녹음/캡처/요약/세션상태) 컨트롤러
   const live = useLiveRecording(meetingId, {
-    showStatus,
     isApplyingCorrections,
     clearMemoEditor: () => clearMemoEditorRef.current(),
   })
