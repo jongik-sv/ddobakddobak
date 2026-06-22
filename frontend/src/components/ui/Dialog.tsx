@@ -15,7 +15,7 @@ interface DialogProps {
   ariaLabel?: string
 }
 
-const DEFAULT_CARD = 'w-full max-w-md rounded-xl bg-white p-6 shadow-2xl border border-gray-100'
+const DEFAULT_CARD = 'w-full max-w-md rounded-xl bg-white p-6 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto'
 const BACKDROP_BASE = 'fixed inset-0 z-50 flex items-center justify-center'
 
 /**
