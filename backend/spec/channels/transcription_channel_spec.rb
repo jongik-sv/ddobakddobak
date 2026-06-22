@@ -258,4 +258,45 @@ RSpec.describe TranscriptionChannel, type: :channel do
       expect(RecordingLock.holder(meeting.id)).to be_nil
     end
   end
+
+  describe "#heartbeat" do
+    before { RecordingLock.reset! }
+
+    it "owner 가 recording 회의에 heartbeat → recorder_heartbeat_at 갱신(액션 자체 검증)" do
+      # subscribe 는 더 이상 bump 하지 않는다. recorder_heartbeat_at 를 11초+ 과거로
+      # 세팅하면 throttle(10s)를 통과하므로, heartbeat 액션이 값을 '더 최신으로'
+      # 전진시키는지 직접 검증한다.
+      stale = 11.seconds.ago
+      meeting.update!(status: "recording", started_at: 1.minute.ago, recorder_heartbeat_at: stale)
+      subscribe(meeting_id: meeting.id)
+
+      perform(:heartbeat)
+      expect(meeting.reload.recorder_heartbeat_at).to be > stale
+    end
+
+    it "10초 이내 재호출은 미갱신(throttle)" do
+      ts = 3.seconds.ago
+      meeting.update!(status: "recording", started_at: 1.minute.ago, recorder_heartbeat_at: ts)
+      subscribe(meeting_id: meeting.id)
+      perform(:heartbeat)
+      expect(meeting.reload.recorder_heartbeat_at).to be_within(1.second).of(ts)
+    end
+
+    it "viewer heartbeat → 미갱신" do
+      viewer = create(:user)
+      create(:meeting_participant, meeting: meeting, user: viewer, role: "viewer", joined_at: Time.current)
+      meeting.update!(status: "recording", started_at: 1.minute.ago, recorder_heartbeat_at: nil)
+      stub_connection current_user: viewer
+      subscribe(meeting_id: meeting.id)
+      perform(:heartbeat)
+      expect(meeting.reload.recorder_heartbeat_at).to be_nil
+    end
+
+    it "subscribe 만으로는 recorder_heartbeat_at 를 bump 하지 않는다(heartbeat 액션 필요)" do
+      meeting.update!(status: "recording", started_at: 1.minute.ago, recorder_heartbeat_at: nil)
+      subscribe(meeting_id: meeting.id)
+      # heartbeat 액션을 perform 하지 않았으므로 여전히 nil
+      expect(meeting.reload.recorder_heartbeat_at).to be_nil
+    end
+  end
 end

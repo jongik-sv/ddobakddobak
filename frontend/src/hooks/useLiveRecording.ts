@@ -37,6 +37,7 @@ import { useAuthStore } from '../stores/authStore'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 import { useNavigationGuards } from './useNavigationGuards'
 import { useRecordingSummaryTimer } from './useRecordingSummaryTimer'
+import { useRecorderHeartbeat } from './useRecorderHeartbeat'
 import { newSilenceState, tickSilence } from '../lib/silenceAutoComplete'
 
 type MeetingStatus = 'idle' | 'recording' | 'stopped'
@@ -124,7 +125,7 @@ export function useLiveRecording(
   }, [meetingId, reset, loadFinals, setMeetingNotes])
 
   const [systemAudioEnabled, setSystemAudioEnabled] = useState(false)
-  const { sendChunk, sendSystemChunk } = useTranscription(meetingId)
+  const { sendChunk, sendSystemChunk, sendHeartbeat } = useTranscription(meetingId)
 
   // ── 온디바이스(로컬) STT (Android). 서버 모드면 미사용이지만 훅 규칙상 항상 호출. ──
   const sttMode = useAppSettingsStore((s) => s.sttMode)
@@ -515,6 +516,12 @@ export function useLiveRecording(
         .catch(() => {})
     }
   }, [isActive])
+
+  // 녹음 클라 생존 하트비트: "이 클라가 활성 녹음 중"일 때만 ~15초마다 전송.
+  // 게이트(isActive && !recordingDenied)로 시청자·idle·녹음거부 컨텍스트에서는 0회.
+  // 안 그러면 2번째 탭/기기가 owner 롤로 keep-alive 를 보내 stale-recording 자동종결이 무력화된다.
+  // 일시정지(isPaused) 중에도 status 는 'recording' 이라 isActive 유지 → 하트비트 계속(클라 생존).
+  useRecorderHeartbeat(isActive && !recordingDenied, sendHeartbeat)
 
   // 경과 시간 타이머
   useEffect(() => {

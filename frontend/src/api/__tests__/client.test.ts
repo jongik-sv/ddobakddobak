@@ -7,6 +7,8 @@ const { mockRefreshAccessToken } = vi.hoisted(() => ({
 
 vi.mock('../../config', () => ({
   getApiBaseUrl: () => 'http://localhost:13323/api/v1',
+  IS_TAURI: false,
+  IS_MOBILE: false,
 }))
 
 vi.mock('../../stores/authStore', () => {
@@ -61,6 +63,29 @@ describe('apiClient', () => {
       // beforeRequest hook이 제대로 설정되었는지 확인
       // apiClient의 defaults를 확인하여 hooks가 등록되었는지 검증
       expect(apiClient).toBeDefined()
+    })
+  })
+
+  describe('client 헤더 주입', () => {
+    it('getAuthHeaders 가 X-Client-Id/Platform 을 포함한다', async () => {
+      const { getAuthHeaders } = await import('../client')
+      const headers = getAuthHeaders() as Record<string, string>
+      expect(headers['X-Client-Id']).toMatch(/[0-9a-f-]{36}/)
+      expect(headers['X-Client-Platform']).toBe('web')
+    })
+
+    it('beforeRequest 가 X-Client-Id/Platform 헤더를 세팅한다', async () => {
+      const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }))
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { apiClient } = await import('../client')
+      await apiClient.get('meetings')
+
+      const request = fetchMock.mock.calls[0][0] as Request
+      expect(request.headers.get('X-Client-Id')).toMatch(/[0-9a-f-]{36}/)
+      expect(request.headers.get('X-Client-Platform')).toBe('web')
+
+      vi.unstubAllGlobals()
     })
   })
 

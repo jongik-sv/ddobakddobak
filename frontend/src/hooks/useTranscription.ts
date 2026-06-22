@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import type { Consumer, Subscription } from '@rails/actioncable'
-import { createTranscriptionChannel, sendAudioChunk } from '../channels/transcription'
+import { createTranscriptionChannel, sendAudioChunk, sendHeartbeat as performHeartbeat } from '../channels/transcription'
 import { useAppSettingsStore } from '../stores/appSettingsStore'
 import { DIARIZATION } from '../config'
 import { createAuthenticatedConsumer } from '../lib/actionCableAuth'
@@ -9,6 +9,8 @@ import type { ChunkMeta } from './useAudioRecorder'
 export interface UseTranscriptionResult {
   sendChunk: (pcm: Int16Array, meta?: ChunkMeta) => void
   sendSystemChunk: (pcm: Int16Array, meta?: ChunkMeta) => void
+  /** 녹음 클라 생존 하트비트 1회 전송. 호출 책임은 useLiveRecording(활성 녹음 게이트). */
+  sendHeartbeat: () => void
 }
 
 /** appSettingsStore 상태에서 diarization 설정 객체를 생성한다 (실시간 /transcribe 청크 전용). */
@@ -65,5 +67,12 @@ export function useTranscription(meetingId: number): UseTranscriptionResult {
   const sendChunk = useCallback((pcm: Int16Array, meta?: ChunkMeta) => send('mic', pcm, meta), [send])
   const sendSystemChunk = useCallback((pcm: Int16Array, meta?: ChunkMeta) => send('system', pcm, meta), [send])
 
-  return { sendChunk, sendSystemChunk }
+  // 하트비트는 useLiveRecording이 "이 클라가 활성 녹음 중"일 때만 구동한다.
+  // (마운트 시 자동 발사 금지 — 시청자/2번째 탭이 owner 롤로 keep-alive 를 보내면
+  //  stale-recording 자동종결이 무력화된다.)
+  const sendHeartbeat = useCallback(() => {
+    if (subscriptionRef.current) performHeartbeat(subscriptionRef.current)
+  }, [])
+
+  return { sendChunk, sendSystemChunk, sendHeartbeat }
 }

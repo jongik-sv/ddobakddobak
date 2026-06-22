@@ -232,6 +232,48 @@ class Meeting < ApplicationRecord
     update_columns(status: "completed", transcription_progress: 100, re_diarize_started_at: nil)
   end
 
+  # 강제종료/크래시로 recording 에 고정된 회의 자가복구. recorder presence(하트비트)
+  # 부재로만 판정 — 침묵과 무관(침묵은 클라측 silenceAutoComplete 가 stop 호출).
+  # RecordingLock 미사용 이유: acquire 가 audio_chunk(발화)에서만 호출돼 시작직후 침묵에
+  # holder 가 nil → 활성 녹음 오종결. 하트비트는 VAD/일시정지 무관하게 전송돼 정확.
+  RECORDER_HEARTBEAT_STALE_AFTER = 90.seconds
+
+  def stale_recording?
+    return false unless recording?
+
+    recorder_heartbeat_at.nil? || recorder_heartbeat_at < RECORDER_HEARTBEAT_STALE_AFTER.ago
+  end
+
+  def heal_stale_recording!
+    return unless stale_recording?
+
+    # 종료시각 = 마지막 presence(하트비트). 부재(레거시/#207)면 치유 호출 시각.
+    ended = recorder_heartbeat_at || Time.current
+
+    # 원자적 종결: recording 인 행만 completed 로 전이. 변경행수 0이면(다른 요청·인스턴스가
+    # 먼저 종결) early return — stop 과 동일 시맨틱(브로드캐스트·lock·job)을 중복 실행하지 않는다.
+    # update_all 은 콜백/검증 우회(status 전이엔 콜백 불필요). reload 로 in-memory 갱신.
+    changed = Meeting.where(id: id, status: "recording")
+                     .update_all(status: "completed", ended_at: ended, paused_at: nil, updated_at: Time.current)
+    return if changed.zero?
+
+    RecordingLock.clear(id)
+
+    # stop 액션과 동일하게 녹음 종료 브로드캐스트(읽기전용 뷰어 라우팅 등 프론트 신호).
+    ActionCable.server.broadcast(
+      transcription_stream,
+      { type: "recording_stopped", meeting_id: id }
+    )
+
+    # in-memory status 갱신 — show/index serializer 가 종결 후 상태를 일관되게 읽도록.
+    reload
+
+    if transcripts.exists?
+      MeetingFinalizerJob.perform_later(id)
+      MeetingSummarizationJob.perform_later(id, type: "final")
+    end
+  end
+
   def host_participant
     active_participants.find_by(role: MeetingParticipant::ROLE_HOST)
   end

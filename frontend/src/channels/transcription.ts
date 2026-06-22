@@ -224,3 +224,12 @@ export function sendAudioChunk(
   }
   subscription.perform('audio_chunk', payload)
 }
+
+/**
+ * 녹음 클라 생존 신호(하트비트)를 채널로 전송한다.
+ * 서버는 owner/host + recording 일 때만 recorder_heartbeat_at 을 갱신(throttle).
+ * 크래시/강제종료로 하트비트가 끊기면 서버가 stale recording 으로 자동 종결한다.
+ */
+export function sendHeartbeat(subscription: Subscription): void {
+  subscription.perform('heartbeat', {})
+}

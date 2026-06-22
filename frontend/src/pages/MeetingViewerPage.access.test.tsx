@@ -19,6 +19,7 @@ vi.mock('../hooks/useTranscription', () => ({
   useTranscription: vi.fn().mockReturnValue({
     sendChunk: vi.fn(),
     sendSystemChunk: vi.fn(),
+    sendHeartbeat: vi.fn(),
   }),
 }))
 

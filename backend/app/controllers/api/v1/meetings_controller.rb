@@ -17,6 +17,8 @@ module Api
       before_action :reject_if_locked!, only: %i[update destroy start stop reopen pause resume reset_content summarize regenerate_stt re_diarize regenerate_notes update_notes feedback reapply_glossary apply_glossary_entry dismiss_schedule]
       # 멈춘 화자분리-재실행 자가복구: 조회/재실행 시 stale 면 completed 로 되돌려 버튼이 다시 보이게 함
       before_action -> { @meeting&.heal_stale_re_diarize! }, only: %i[show re_diarize]
+      # 비정상 종료(크래시/강제종료)로 recording 에 고정된 회의 자가복구: 조회 시 presence 부재면 종결.
+      before_action -> { @meeting&.heal_stale_recording! }, only: %i[show]
 
       def index
         scope = Meeting.accessible_by(current_user)
@@ -41,6 +43,11 @@ module Api
         unless ActiveModel::Type::Boolean.new.cast(params[:show_all])
           scope = scope.where("meetings.important = ? OR meetings.status != ?", true, "completed")
         end
+
+        # 사용자가 보는(접근가능·필터적용된) 녹음중 회의 중 비정상 종료된 것을 자가복구.
+        # created_by 한정은 타신분 생성 stuck 회의(#213)를 놓쳤음 → 보이는 것 기준으로 청소.
+        # recording 회의는 소수라 비용 작음. status_counts/페이지보다 먼저 실행해 카운트·뱃지 일관.
+        scope.where(status: :recording).find_each(&:heal_stale_recording!)
 
         # 상태별 카운트는 status 필터 적용 전 스코프에서 계산 (탭 선택과 무관하게 정확)
         status_counts = scope.group(:status).count
@@ -268,7 +275,14 @@ module Api
         require_meeting_status!(@meeting, :pending?, "Meeting is not in pending state")
         return if performed?
 
-        @meeting.update!(status: :recording, started_at: Time.current)
+        @meeting.update!(
+          status: :recording,
+          started_at: Time.current,
+          recording_client_id: current_client_id,
+          recording_client_platform: current_client_platform,
+          # 시작 직후 침묵으로 stale 오종결되지 않도록 즉시 presence 도장(하트비트 부재 방지).
+          recorder_heartbeat_at: Time.current
+        )
         # 반복 시리즈: 시작 성공 후 다음 occurrence 를 미리 예약(미래 형제 없을 때만, 멱등).
         @meeting.materialize_next_occurrence! if @meeting.recurring?
         render json: { meeting: meeting_json(@meeting) }
@@ -302,7 +316,9 @@ module Api
         require_meeting_status!(@meeting, :completed?, "Meeting is not completed")
         return if performed?
 
-        @meeting.update!(status: :recording, ended_at: nil)
+        # start 과 동일하게 presence 도장 — 안 찍으면 옛(완료 시점) 하트비트로 다음 show/index 의
+        # heal_stale_recording! 가 방금 reopen 한 회의를 즉시 재종결한다(회귀).
+        @meeting.update!(status: :recording, ended_at: nil, recorder_heartbeat_at: Time.current)
         render json: { meeting: meeting_json(@meeting) }
       end
 

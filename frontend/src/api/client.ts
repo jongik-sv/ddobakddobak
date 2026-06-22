@@ -2,6 +2,7 @@ import ky from 'ky'
 import { getApiBaseUrl } from '../config'
 import { useAuthStore } from '../stores/authStore'
 import { refreshAccessToken } from './auth'
+import { getClientId, getClientPlatform } from '../lib/clientId'
 
 // ── 동시 401 처리를 위한 싱글턴 refresh Promise ──
 let refreshPromise: Promise<string> | null = null
@@ -27,7 +28,11 @@ async function getOrRefreshToken(refreshToken: string): Promise<string> {
  */
 export function getAuthHeaders(): HeadersInit {
   const { accessToken } = useAuthStore.getState()
-  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+  return {
+    'X-Client-Id': getClientId(),
+    'X-Client-Platform': getClientPlatform(),
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  }
 }
 
 export const apiClient = ky.create({
@@ -39,6 +44,8 @@ export const apiClient = ky.create({
         if (accessToken) {
           request.headers.set('Authorization', `Bearer ${accessToken}`)
         }
+        request.headers.set('X-Client-Id', getClientId())
+        request.headers.set('X-Client-Platform', getClientPlatform())
       },
     ],
     afterResponse: [
