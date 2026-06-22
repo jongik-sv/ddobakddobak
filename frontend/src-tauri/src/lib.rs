@@ -186,6 +186,13 @@ pub fn run() {
                     .build(),
             )?;
 
+            // 데스크톱: 로그인 시 자동 시작(macOS LaunchAgent). 모바일 미지원.
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                None,
+            ))?;
+
             // 데스크톱: Rails(13323)를 _ddobak._tcp 로 LAN에 광고.
             // ServiceDaemon은 manage로 보관해 앱 수명 동안 살려둔다(drop 시 unregister).
             #[cfg(desktop)]
