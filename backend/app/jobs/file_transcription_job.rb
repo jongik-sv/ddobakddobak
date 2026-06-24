@@ -63,6 +63,8 @@ class FileTranscriptionJob < ApplicationJob
       ended_at: Time.current,
       stt_engine: result["engine"]
     )
+    # 전사 content 확정 — 라이브 밖에서 임베딩 일괄 reconcile(재STT 새 전사 포함).
+    meeting.reconcile_embeddings!
     ActionCable.server.broadcast(channel, {
       type: "file_transcription_complete",
       meeting_id: meeting.id

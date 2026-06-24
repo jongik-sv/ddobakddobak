@@ -52,6 +52,17 @@ RSpec.describe ProjectImporter do
     io
   end
 
+  describe "EmbedBackfillJob enqueue (reconcile_embeddings!)" do
+    include ActiveJob::TestHelper
+
+    it "전사가 있는 회의를 import하면 EmbedBackfillJob이 enqueue된다" do
+      # transcript let!(:transcript) 로 시드 회의에 전사 1건이 이미 존재한다.
+      expect {
+        described_class.new(export_io, importer).run!
+      }.to have_enqueued_job(EmbedBackfillJob)
+    end
+  end
+
   describe "#run! 라운드트립" do
     subject(:new_project) { described_class.new(export_io, importer).run! }
 
