@@ -232,6 +232,13 @@ class Meeting < ApplicationRecord
     update_columns(status: "completed", transcription_progress: 100, re_diarize_started_at: nil)
   end
 
+  # 이 회의의 전사 content가 확정된 시점에 임베딩을 일관되게 맞춘다(배치, 라이브 밖).
+  # 라이브/파일STT/import 핫패스에서 인라인 임베딩을 제거했으므로, 확정 경계에서 이 메서드로 흡수한다.
+  # diff 기반(EmbedBackfillJob)이라 신규 전사 + 무효화로 삭제된 행을 모두 재생성한다. 멱등.
+  def reconcile_embeddings!
+    EmbedBackfillJob.perform_later(meeting_id: id)
+  end
+
   # 강제종료/크래시로 recording 에 고정된 회의 자가복구. recorder presence(하트비트)
   # 부재로만 판정 — 침묵과 무관(침묵은 클라측 silenceAutoComplete 가 stop 호출).
   # RecordingLock 미사용 이유: acquire 가 audio_chunk(발화)에서만 호출돼 시작직후 침묵에
@@ -271,6 +278,7 @@ class Meeting < ApplicationRecord
     if transcripts.exists?
       MeetingFinalizerJob.perform_later(id)
       MeetingSummarizationJob.perform_later(id, type: "final")
+      reconcile_embeddings!
     end
   end
 

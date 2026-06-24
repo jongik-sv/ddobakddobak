@@ -628,6 +628,8 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # POST /api/v1/meetings/:id/stop
   # ============================================================
   describe "POST /api/v1/meetings/:id/stop" do
+    include ActiveJob::TestHelper
+
     let(:meeting) { create(:meeting, project: project, creator: user, status: "recording") }
 
     context "when meeting is recording" do
@@ -699,6 +701,16 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         post "/api/v1/meetings/#{meeting.id}/stop"
 
         expect(RecordingLock.holder(meeting.id)).to be_nil
+      end
+
+      it "전사가 있으면 EmbedBackfillJob을 meeting_id로 enqueue한다" do
+        create(:transcript, meeting: meeting)
+        allow(MeetingFinalizerJob).to receive(:perform_later)
+        allow(MeetingSummarizationJob).to receive(:perform_later)
+
+        expect {
+          post "/api/v1/meetings/#{meeting.id}/stop"
+        }.to have_enqueued_job(EmbedBackfillJob).with(meeting_id: meeting.id)
       end
     end
 

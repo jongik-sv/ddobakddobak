@@ -305,9 +305,12 @@ module Api
 
         # 사용자가 최종 요약을 건너뛰었거나(skip_summary) 라이브 기록이 없으면 요약 job 미enqueue.
         skip = params[:skip_summary].to_s == "true"
-        if !skip && @meeting.transcripts.exists?
-          MeetingFinalizerJob.perform_later(@meeting.id)
-          MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
+        if @meeting.transcripts.exists?
+          unless skip
+            MeetingFinalizerJob.perform_later(@meeting.id)
+            MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
+          end
+          @meeting.reconcile_embeddings!
         end
         render json: { meeting: meeting_json(@meeting) }
       end
