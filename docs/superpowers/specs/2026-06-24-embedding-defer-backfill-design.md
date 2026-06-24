@@ -44,12 +44,13 @@
 - 무효화 대상 컬럼 감지는 concern이 generic하게: `embeddable_content_column`(이미 정의됨) 기준 `saved_change_to_attribute?`.
 - **content 외 컬럼 update(speaker_label 등)는 무효화하지 않는다** — 임베딩은 content만 의존.
 
-### 2. `app/jobs/embed_backfill_job.rb` — 회의 스코핑
+### 2. `app/jobs/embed_backfill_job.rb` — 회의 스코핑 + 활성 회의 제외
 
 - `perform(batch_size: 64, meeting_id: nil)`.
 - `pending_transcript_ids`에 `meeting_id` 옵션 추가: 주어지면 `Transcript.where(meeting_id: meeting_id)`로 스코핑한 뒤 동일 diff(현버전 임베딩 없는 전사) 적용.
 - diff = 현버전 임베딩 없는 전사 → **신규 create + 무효화로 삭제된 행** 둘 다 자동 흡수. idempotent 유지.
 - 글로벌(meeting_id nil) 동작은 그대로 — rake/recurring 안전망용.
+- **활성 회의 제외(라이브 핫패스 보호, 필수)**: `pending_transcript_ids`는 `recording`/`transcribing` 상태 회의의 전사를 **항상 제외**한다. 전역(주기/수동) 백필이 진행 중인 녹음·전사 회의를 흡수하면, 이 변경이 제거하려던 writer-lock 경합을 그대로 재유발하기 때문. 종료 경계의 `meeting_id` 스코핑 호출은 회의가 이미 completed 라 무영향. 활성 회의 전사는 종료 후 reconcile/다음 백필이 흡수. (잡 레벨에서 강제 → recurring/rake 호출처 실수에도 견고.)
 
 ### 3. `app/models/meeting.rb` — `reconcile_embeddings!`
 

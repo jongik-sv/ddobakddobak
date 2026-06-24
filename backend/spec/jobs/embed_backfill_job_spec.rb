@@ -33,6 +33,33 @@ RSpec.describe EmbedBackfillJob, type: :job do
     expect(rec.vector.map { |x| x.round(1) }).to eq([1.0, 0.0])
   end
 
+  it "라이브/전사중 회의의 전사는 백필하지 않는다(라이브 핫패스 보호)" do
+    live   = create(:meeting, status: "recording")
+    proc_m = create(:meeting, status: "transcribing")
+    done   = create(:meeting, status: "completed")
+    create(:transcript, meeting: live, content: "라이브 내용")
+    create(:transcript, meeting: proc_m, content: "전사중 내용")
+    t_done = create(:transcript, meeting: done, content: "완료 내용")
+    TranscriptEmbedding.delete_all
+
+    described_class.perform_now
+
+    expect(TranscriptEmbedding.where(meeting_id: live.id).count).to eq(0)
+    expect(TranscriptEmbedding.where(meeting_id: proc_m.id).count).to eq(0)
+    expect(TranscriptEmbedding.exists?(transcript_id: t_done.id)).to be(true)
+  end
+
+  it "활성 회의가 하나도 없으면 NOT IN 빈집합이 전체를 막지 않는다(회귀 가드)" do
+    done = create(:meeting, status: "completed")
+    t = create(:transcript, meeting: done, content: "완료 회의 내용")
+    TranscriptEmbedding.delete_all
+    expect(Meeting.where(status: %w[recording transcribing])).to be_empty
+
+    described_class.perform_now
+
+    expect(TranscriptEmbedding.exists?(transcript_id: t.id)).to be(true)
+  end
+
   it "meeting_id 스코핑 — 그 회의 전사만 처리한다" do
     m1 = create(:meeting)
     m2 = create(:meeting)
