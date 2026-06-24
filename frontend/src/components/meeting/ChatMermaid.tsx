@@ -42,10 +42,11 @@ export function ChatMermaid({ code }: { code: string }) {
         >
           <div className="flex justify-end mb-2">
             <button
+              aria-label="닫기"
               onClick={() => setOpen(false)}
               className="text-sm text-gray-500 hover:text-gray-800"
             >
-              닫기 ✕
+              닫기 <span aria-hidden="true">✕</span>
             </button>
           </div>
           <div className="overflow-auto">

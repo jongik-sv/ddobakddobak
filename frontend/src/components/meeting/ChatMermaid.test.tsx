@@ -25,4 +25,10 @@ describe('ChatMermaid', () => {
     fireEvent.keyDown(screen.getByRole('button', { name: '다이어그램 확대' }), { key: 'Enter' })
     expect(screen.getAllByTestId('mr')).toHaveLength(2)
   })
+
+  it('Space 키로도 모달 open', () => {
+    render(<ChatMermaid code="graph TD; A-->B" />)
+    fireEvent.keyDown(screen.getByRole('button', { name: '다이어그램 확대' }), { key: ' ' })
+    expect(screen.getAllByTestId('mr')).toHaveLength(2)
+  })
 })
