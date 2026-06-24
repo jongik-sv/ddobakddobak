@@ -31,4 +31,17 @@ describe('ChatMermaid', () => {
     fireEvent.keyDown(screen.getByRole('button', { name: '다이어그램 확대' }), { key: ' ' })
     expect(screen.getAllByTestId('mr')).toHaveLength(2)
   })
+
+  it('확대 모달 줌 +/−/리셋 컨트롤', () => {
+    render(<ChatMermaid code="graph TD; A-->B" />)
+    fireEvent.click(screen.getByRole('button', { name: '다이어그램 확대' }))
+    expect(screen.getByText('150%')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '확대' }))
+    expect(screen.getByText('175%')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '축소' }))
+    fireEvent.click(screen.getByRole('button', { name: '축소' }))
+    expect(screen.getByText('125%')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '원래대로' }))
+    expect(screen.getByText('150%')).toBeInTheDocument()
+  })
 })

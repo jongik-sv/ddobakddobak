@@ -34,7 +34,9 @@ export function mermaidCodeFromNode(node: HastNode | undefined): string | null {
   const classes = Array.isArray(cls) ? cls : typeof cls === 'string' ? [cls] : []
   if (!classes.includes('language-mermaid')) return null
   const text = codeEl.children?.[0]?.value
-  return typeof text === 'string' ? text.replace(/\n$/, '') : null
+  if (typeof text !== 'string') return null
+  const trimmed = text.replace(/\n$/, '')
+  return trimmed.trim() === '' ? null : trimmed
 }
 
 // Compact chat-bubble markdown styles. No @tailwindcss/typography is installed,

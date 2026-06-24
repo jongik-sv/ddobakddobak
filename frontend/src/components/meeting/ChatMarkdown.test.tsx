@@ -59,12 +59,28 @@ describe('mermaidCodeFromNode', () => {
     expect(mermaidCodeFromNode({ tagName: 'pre', children: [] })).toBeNull()
     expect(mermaidCodeFromNode(undefined)).toBeNull()
   })
+
+  it('빈 문자열 또는 개행만 있는 경우 → null (빈 펜스 가드)', () => {
+    const makeNode = (value: string) => ({
+      tagName: 'pre',
+      children: [
+        {
+          tagName: 'code',
+          properties: { className: ['language-mermaid'] },
+          children: [{ type: 'text', value }],
+        },
+      ],
+    })
+    expect(mermaidCodeFromNode(makeNode(''))).toBeNull()
+    expect(mermaidCodeFromNode(makeNode('\n'))).toBeNull()
+  })
 })
 
 describe('ChatMarkdown mermaid 분기', () => {
   it('```mermaid 펜스 → ChatMermaid 렌더', () => {
-    render(<ChatMarkdown content={'```mermaid\ngraph TD\nA-->B\n```'} />)
+    const { container } = render(<ChatMarkdown content={'```mermaid\ngraph TD\nA-->B\n```'} />)
     expect(screen.getByTestId('chat-mermaid')).toHaveTextContent('graph TD')
+    expect(container.querySelector('pre')).toBeNull()
   })
 
   it('```js 펜스 → 기존 코드블록(pre), ChatMermaid 아님', () => {
