@@ -67,7 +67,7 @@ export function ChatMermaid({ code }: { code: string }) {
               </button>
               <button
                 type="button"
-                aria-label="원래대로"
+                aria-label="리셋"
                 onClick={() => setZoom(ZDEFAULT)}
                 className="ml-1 px-2 py-0.5 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-100"
               >

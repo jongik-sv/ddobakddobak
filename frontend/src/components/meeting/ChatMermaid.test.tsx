@@ -41,7 +41,7 @@ describe('ChatMermaid', () => {
     fireEvent.click(screen.getByRole('button', { name: '축소' }))
     fireEvent.click(screen.getByRole('button', { name: '축소' }))
     expect(screen.getByText('125%')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '원래대로' }))
+    fireEvent.click(screen.getByRole('button', { name: '리셋' }))
     expect(screen.getByText('150%')).toBeInTheDocument()
   })
 })
