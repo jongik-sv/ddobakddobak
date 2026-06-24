@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { ChatMarkdown } from './ChatMarkdown'
+import { ChatMarkdown, mermaidCodeFromNode } from './ChatMarkdown'
+
+vi.mock('./ChatMermaid', () => ({
+  ChatMermaid: ({ code }: { code: string }) => <div data-testid="chat-mermaid">{code}</div>,
+}))
 
 describe('ChatMarkdown citation', () => {
   it('renders marker as a clickable badge that seeks', () => {
@@ -25,5 +29,47 @@ describe('ChatMarkdown citation', () => {
     const badge = screen.getByRole('button')
     fireEvent.click(badge)
     expect(onSeekMeeting).toHaveBeenCalledWith(142, 5000)
+  })
+})
+
+describe('mermaidCodeFromNode', () => {
+  it('language-mermaid code 노드 → 코드 텍스트(끝 개행 제거)', () => {
+    const node = {
+      tagName: 'pre',
+      children: [
+        {
+          tagName: 'code',
+          properties: { className: ['language-mermaid'] },
+          children: [{ type: 'text', value: 'graph TD\nA-->B\n' }],
+        },
+      ],
+    }
+    expect(mermaidCodeFromNode(node)).toBe('graph TD\nA-->B')
+  })
+
+  it('비 mermaid 코드 → null', () => {
+    const node = {
+      tagName: 'pre',
+      children: [{ tagName: 'code', properties: { className: ['language-js'] }, children: [{ type: 'text', value: 'x' }] }],
+    }
+    expect(mermaidCodeFromNode(node)).toBeNull()
+  })
+
+  it('code 자식 없음 → null', () => {
+    expect(mermaidCodeFromNode({ tagName: 'pre', children: [] })).toBeNull()
+    expect(mermaidCodeFromNode(undefined)).toBeNull()
+  })
+})
+
+describe('ChatMarkdown mermaid 분기', () => {
+  it('```mermaid 펜스 → ChatMermaid 렌더', () => {
+    render(<ChatMarkdown content={'```mermaid\ngraph TD\nA-->B\n```'} />)
+    expect(screen.getByTestId('chat-mermaid')).toHaveTextContent('graph TD')
+  })
+
+  it('```js 펜스 → 기존 코드블록(pre), ChatMermaid 아님', () => {
+    const { container } = render(<ChatMarkdown content={'```js\nconst x = 1\n```'} />)
+    expect(screen.queryByTestId('chat-mermaid')).toBeNull()
+    expect(container.querySelector('pre')).toBeTruthy()
   })
 })

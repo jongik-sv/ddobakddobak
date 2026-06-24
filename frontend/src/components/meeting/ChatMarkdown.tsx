@@ -2,6 +2,7 @@ import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markd
 import remarkGfm from 'remark-gfm'
 import { CITATION_RE, FOLDER_CITATION_RE, markerTimeToMs } from '../../lib/citationMarkers'
 import { TimestampBadge } from './TimestampBadge'
+import { ChatMermaid } from './ChatMermaid'
 
 // 마커 → 마크다운 링크 치환. FOLDER(m:) 먼저 치환해야 CITATION_RE 오매칭 방지.
 function markersToSeekLinks(text: string): string {
@@ -16,6 +17,24 @@ function markersToSeekLinks(text: string): string {
 function urlTransform(url: string): string {
   if (url.startsWith('ddobak-seek:') || url.startsWith('ddobak-seek-meeting:')) return url
   return defaultUrlTransform(url)
+}
+
+type HastNode = {
+  tagName?: string
+  properties?: { className?: unknown }
+  children?: HastNode[]
+  value?: string
+}
+
+// react-markdown이 넘기는 hast node에서 ```mermaid 코드 텍스트를 추출. 아니면 null.
+export function mermaidCodeFromNode(node: HastNode | undefined): string | null {
+  const codeEl = node?.children?.[0]
+  if (!codeEl || codeEl.tagName !== 'code') return null
+  const cls = codeEl.properties?.className
+  const classes = Array.isArray(cls) ? cls : typeof cls === 'string' ? [cls] : []
+  if (!classes.includes('language-mermaid')) return null
+  const text = codeEl.children?.[0]?.value
+  return typeof text === 'string' ? text.replace(/\n$/, '') : null
 }
 
 // Compact chat-bubble markdown styles. No @tailwindcss/typography is installed,
@@ -34,11 +53,15 @@ const MAP: Components = {
   code: ({ children }) => (
     <code className="bg-black/10 rounded px-1 py-0.5 text-xs font-mono">{children}</code>
   ),
-  pre: ({ children }) => (
-    <pre className="bg-gray-800 text-gray-100 rounded p-2 overflow-x-auto text-xs my-1 [&_code]:bg-transparent [&_code]:p-0">
-      {children}
-    </pre>
-  ),
+  pre: ({ node, children }) => {
+    const mermaidCode = mermaidCodeFromNode(node as HastNode | undefined)
+    if (mermaidCode != null) return <ChatMermaid code={mermaidCode} />
+    return (
+      <pre className="bg-gray-800 text-gray-100 rounded p-2 overflow-x-auto text-xs my-1 [&_code]:bg-transparent [&_code]:p-0">
+        {children}
+      </pre>
+    )
+  },
   table: ({ children }) => (
     <table className="w-full text-xs border-collapse my-1">{children}</table>
   ),
