@@ -50,13 +50,20 @@ class ProjectImporter
     validate_manifest!(manifest)
 
     project = nil
+    meeting_map = {}
     ActiveRecord::Base.transaction do
       project = build_project(manifest)
       create_membership(project)
 
       tag_map    = import_tags(project, manifest["tags"] || [])
       folder_map = import_folders(project, manifest["folders"] || [], tag_map)
-      import_meetings(project, manifest["meetings"] || [], folder_map, tag_map)
+      meeting_map = import_meetings(project, manifest["meetings"] || [], folder_map, tag_map)
+    end
+
+    # 트랜잭션 커밋 후 임베딩 reconcile — 인-트랜잭션 enqueue(롤백 시 유령 잡) 회피.
+    # 임포트 전사는 인라인 임베딩이 없으므로(라이브 끊김 방지 정책) 회의별로 배치 흡수.
+    meeting_map.each_value do |mtg|
+      mtg.reconcile_embeddings! if mtg.transcripts.exists?
     end
 
     project

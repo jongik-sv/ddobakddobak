@@ -305,9 +305,12 @@ module Api
 
         # 사용자가 최종 요약을 건너뛰었거나(skip_summary) 라이브 기록이 없으면 요약 job 미enqueue.
         skip = params[:skip_summary].to_s == "true"
-        if !skip && @meeting.transcripts.exists?
-          MeetingFinalizerJob.perform_later(@meeting.id)
-          MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
+        if @meeting.transcripts.exists?
+          unless skip
+            MeetingFinalizerJob.perform_later(@meeting.id)
+            MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
+          end
+          @meeting.reconcile_embeddings!
         end
         render json: { meeting: meeting_json(@meeting) }
       end
@@ -460,6 +463,7 @@ module Api
 
         entries = corrections.map { |c| { from: c[:from], to: c[:to], match_type: "literal" } }
         corrected_count = MeetingGlossaryApplier.new(@meeting, entries).apply_all!
+        @meeting.reconcile_embeddings!
 
         # D2=A: 적용한 교정을 회의 사전에 자동 영속(upsert). best-effort.
         persist_corrections_to_meeting_glossary(corrections)
@@ -497,6 +501,7 @@ module Api
         entries = GlossaryResolver.for(@meeting)
         before_active_notes = @meeting.current_notes_markdown.to_s
         corrected_count = MeetingGlossaryApplier.new(@meeting, entries).apply_all!
+        @meeting.reconcile_embeddings!
 
         corrected_notes = @meeting.reload.current_notes_markdown.to_s
         if corrected_notes != before_active_notes
@@ -523,6 +528,7 @@ module Api
         payload = [{ from: entry.from_text, to: entry.to_text, match_type: entry.match_type }]
         before_active_notes = @meeting.current_notes_markdown.to_s
         corrected_count = MeetingGlossaryApplier.new(@meeting, payload).apply_all!
+        @meeting.reconcile_embeddings!
 
         corrected_notes = @meeting.reload.current_notes_markdown.to_s
         if corrected_notes != before_active_notes

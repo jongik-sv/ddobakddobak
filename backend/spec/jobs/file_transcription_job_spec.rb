@@ -127,6 +127,16 @@ RSpec.describe FileTranscriptionJob, type: :job do
     end
   end
 
+  describe "EmbedBackfillJob enqueue (reconcile_embeddings!)" do
+    include ActiveJob::TestHelper
+
+    it "perform 완료 후 EmbedBackfillJob이 meeting_id로 enqueue된다" do
+      expect {
+        described_class.perform_now(meeting.id)
+      }.to have_enqueued_job(EmbedBackfillJob).with(meeting_id: meeting.id)
+    end
+  end
+
   context "화자분리 ON" do
     before do
       allow(AppSettings).to receive(:diarization_config).and_return({ "enable" => true, "clustering_threshold" => 0.6 })

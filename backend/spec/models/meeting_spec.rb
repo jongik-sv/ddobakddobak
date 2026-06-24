@@ -199,6 +199,29 @@ RSpec.describe Meeting, type: :model do
     end
   end
 
+  describe "#reconcile_embeddings!" do
+    include ActiveJob::TestHelper
+
+    it "EmbedBackfillJob을 meeting_id로 enqueue한다" do
+      m = create(:meeting)
+      expect {
+        m.reconcile_embeddings!
+      }.to have_enqueued_job(EmbedBackfillJob).with(meeting_id: m.id)
+    end
+  end
+
+  describe "#heal_stale_recording! 임베딩 reconcile" do
+    include ActiveJob::TestHelper
+
+    it "전사가 있으면 백필을 enqueue한다" do
+      m = create(:meeting, status: "recording", recorder_heartbeat_at: 5.minutes.ago)
+      create(:transcript, meeting: m, content: "내용")
+      expect {
+        m.heal_stale_recording!
+      }.to have_enqueued_job(EmbedBackfillJob).with(meeting_id: m.id)
+    end
+  end
+
   describe ".accessible_by 프로젝트 격리" do
     let(:user)  { create(:user) }
     let(:p1)    { create(:project) }

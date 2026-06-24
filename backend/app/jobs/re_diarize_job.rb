@@ -44,6 +44,8 @@ class ReDiarizeJob < ApplicationJob
       t.update_columns(speaker_label: label, speaker_name: name_by_label[label])
     end
 
+    # 재분리는 speaker_label/speaker_name만 바꾸고 content는 불변 → 임베딩(content 파생) 유효.
+    # 따라서 reconcile_embeddings! 불필요. (content를 건드리게 바뀌면 여기에 reconcile 추가할 것.)
     meeting.update!(status: :completed, transcription_progress: 100, re_diarize_started_at: nil)
     ActionCable.server.broadcast(channel, { type: "file_transcription_complete", meeting_id: meeting.id })
     File.delete(pcm_path) if pcm_path && File.exist?(pcm_path)
