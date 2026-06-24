@@ -3,7 +3,7 @@
  *
  * AI 회의록에 ```mermaid 코드블록이 포함되면 다이어그램으로 렌더링한다.
  */
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { createReactBlockSpec } from '@blocknote/react'
 import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from '@blocknote/core'
 import type { Block, BlockSchema, InlineContentSchema, StyleSchema } from '@blocknote/core'
@@ -26,7 +26,15 @@ function loadMermaid() {
   return mermaidLoading
 }
 
-function MermaidRenderer({ code, zoom }: { code: string; zoom: number }) {
+export function MermaidRenderer({
+  code,
+  zoom,
+  fallback = null,
+}: {
+  code: string
+  zoom: number
+  fallback?: ReactNode
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
   const intrinsicWidthRef = useRef<number | null>(null)  // viewBox 자연폭 (zoom 1.0 기준)
   const [error, setError] = useState<string | null>(null)
@@ -81,7 +89,7 @@ function MermaidRenderer({ code, zoom }: { code: string; zoom: number }) {
   useEffect(() => { applyZoom(zoom) }, [zoom, applyZoom])
 
   if (error) {
-    return null
+    return <>{fallback}</>
   }
 
   return <div ref={containerRef} className="[&>svg]:h-auto w-fit mx-auto" />
