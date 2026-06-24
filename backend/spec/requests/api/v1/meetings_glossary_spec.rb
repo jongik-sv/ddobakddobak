@@ -48,6 +48,8 @@ RSpec.describe "Api::V1 meeting glossary", type: :request do
   end
 
   describe "POST /reapply_glossary — 전 표면 수동 재적용" do
+    include ActiveJob::TestHelper
+
     it "resolver 교정을 전 표면에 적용" do
       folder.glossary_entries.create!(from_text: "회진", to_text: "회의")
       create(:summary, meeting: meeting, summary_type: "final", notes_markdown: "회진 노트")
@@ -56,6 +58,14 @@ RSpec.describe "Api::V1 meeting glossary", type: :request do
       expect(response).to have_http_status(:ok)
       expect(meeting.transcripts.first.reload.content).to eq("회의 결과")
       expect(meeting.summaries.first.reload.notes_markdown).to eq("회의 노트")
+    end
+
+    it "재적용 시 EmbedBackfillJob을 meeting_id로 enqueue한다" do
+      folder.glossary_entries.create!(from_text: "회진", to_text: "회의")
+
+      expect {
+        post "/api/v1/meetings/#{meeting.id}/reapply_glossary"
+      }.to have_enqueued_job(EmbedBackfillJob).with(meeting_id: meeting.id)
     end
   end
 

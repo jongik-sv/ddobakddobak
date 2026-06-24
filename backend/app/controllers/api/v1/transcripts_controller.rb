@@ -91,6 +91,7 @@ module Api
         return render json: { error: "Transcript not found" }, status: :not_found unless transcript
 
         transcript.update!(content: content)
+        transcript.meeting.reconcile_embeddings!
         @meeting.update!(last_user_edit_at: Time.current)
 
         ActionCable.server.broadcast(

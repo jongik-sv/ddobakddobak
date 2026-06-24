@@ -97,6 +97,8 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
   # PATCH /api/v1/meetings/:meeting_id/transcripts/:id/update_content
   # ─────────────────────────────────────────────────────────
   describe "PATCH /api/v1/meetings/:meeting_id/transcripts/:id/update_content" do
+    include ActiveJob::TestHelper
+
     let!(:transcript) do
       create(:transcript, meeting: meeting, sequence_number: 1,
              content: "원본 텍스트", speaker_label: "SPEAKER_00",
@@ -135,6 +137,13 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         )
         patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_content",
               params: { content: "수정", client_id: "c1" }
+      end
+
+      it "content 수정 시 EmbedBackfillJob을 meeting_id로 enqueue한다" do
+        expect {
+          patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_content",
+                params: { content: "수정된 텍스트", client_id: "abc-123" }
+        }.to have_enqueued_job(EmbedBackfillJob).with(meeting_id: transcript.meeting_id)
       end
     end
 
