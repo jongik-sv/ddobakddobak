@@ -32,4 +32,18 @@ RSpec.describe EmbedBackfillJob, type: :job do
     expect(rec.model_version).to eq("kure-v1")
     expect(rec.vector.map { |x| x.round(1) }).to eq([1.0, 0.0])
   end
+
+  it "meeting_id 스코핑 — 그 회의 전사만 처리한다" do
+    m1 = create(:meeting)
+    m2 = create(:meeting)
+    t1 = create(:transcript, meeting: m1, content: "회의1 내용")
+    create(:transcript, meeting: m2, content: "회의2 내용")
+    TranscriptEmbedding.delete_all
+
+    described_class.perform_now(meeting_id: m1.id)
+
+    expect(TranscriptEmbedding.where(meeting_id: m1.id).count).to eq(1)
+    expect(TranscriptEmbedding.where(meeting_id: m2.id).count).to eq(0)
+    expect(TranscriptEmbedding.exists?(transcript_id: t1.id)).to be(true)
+  end
 end
