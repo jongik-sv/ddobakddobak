@@ -64,7 +64,7 @@ export default function TrashPage() {
   return (
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900">휴지통</h1>
+        <h1 className="text-xl font-bold text-foreground">휴지통</h1>
         <button
           onClick={onEmpty}
           className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
@@ -78,22 +78,22 @@ export default function TrashPage() {
         </div>
       )}
       {loading ? (
-        <p className="text-gray-500">불러오는 중…</p>
+        <p className="text-muted-foreground">불러오는 중…</p>
       ) : items.length === 0 ? (
-        <p className="text-gray-500">휴지통이 비어 있습니다.</p>
+        <p className="text-muted-foreground">휴지통이 비어 있습니다.</p>
       ) : (
-        <ul className="divide-y divide-gray-200">
+        <ul className="divide-y divide-border">
           {items.map((it) => (
             <li
               key={`${it.type}-${it.id}`}
               className="flex items-center justify-between py-3"
             >
               <div className="flex min-w-0 items-center gap-3">
-                <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                   {TYPE_LABEL[it.type] ?? it.type}
                 </span>
-                <span className="truncate text-gray-900">{it.title ?? '(제목 없음)'}</span>
-                <span className="shrink-0 text-xs text-gray-400">
+                <span className="truncate text-foreground">{it.title ?? '(제목 없음)'}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">
                   {new Date(it.deleted_at).toLocaleString()}
                 </span>
               </div>

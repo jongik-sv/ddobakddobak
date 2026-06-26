@@ -19,14 +19,14 @@ export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCance
       onClose={onCancel}
       closeOnBackdrop={false}
       closeOnEsc={false}
-      className="bg-white rounded-xl shadow-lg p-6 max-w-sm w-full mx-4"
+      className="bg-card rounded-xl shadow-lg p-6 max-w-sm w-full mx-4"
     >
-      <h3 className="text-base font-semibold text-gray-900 mb-2">{title}</h3>
-      <p className="text-sm text-gray-600 mb-4">{message}</p>
+      <h3 className="text-base font-semibold text-foreground mb-2">{title}</h3>
+      <p className="text-sm text-muted-foreground mb-4">{message}</p>
       <div className="flex justify-end gap-2">
         <button
           onClick={onCancel}
-          className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+          className="px-3 py-1.5 text-sm rounded-md bg-muted text-foreground hover:bg-accent"
         >
           취소
         </button>

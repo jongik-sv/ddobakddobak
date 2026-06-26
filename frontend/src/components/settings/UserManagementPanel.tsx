@@ -146,7 +146,7 @@ export default function UserManagementPanel() {
                                 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium transition-colors
                                 ${user.role === 'admin'
                                   ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                  : 'bg-muted text-foreground hover:bg-accent'
                                 }
                                 ${roleLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                               `}
@@ -169,7 +169,7 @@ export default function UserManagementPanel() {
                           {!user.email.endsWith('@local') && (
                             <button
                               onClick={() => setEditTarget(user)}
-                              className="p-2.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                              className="p-2.5 rounded-md text-muted-foreground hover:text-blue-600 hover:bg-blue-50 transition-all"
                               title="이름/이메일 수정"
                             >
                               <Pencil className="w-4 h-4" />
@@ -178,7 +178,7 @@ export default function UserManagementPanel() {
                           {!user.email.endsWith('@local') && (
                             <button
                               onClick={() => setResetTarget(user)}
-                              className="p-2.5 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-all"
+                              className="p-2.5 rounded-md text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-all"
                               title="비밀번호 초기화"
                             >
                               <KeyRound className="w-4 h-4" />
@@ -187,7 +187,7 @@ export default function UserManagementPanel() {
                           {!isSelf && !user.email.endsWith('@local') && (
                             <button
                               onClick={() => setDeleteTarget(user)}
-                              className="p-2.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                              className="p-2.5 rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-all"
                               title="사용자 삭제"
                             >
                               <Trash2 className="w-4 h-4" />

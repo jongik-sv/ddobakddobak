@@ -41,7 +41,7 @@ interface BottomSheetProps {
 }
 
 const SHEET_BASE_CLASS =
-  'fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-2xl bg-white max-h-[80vh] animate-slide-in-bottom'
+  'fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-2xl bg-card max-h-[80vh] animate-slide-in-bottom'
 
 export function BottomSheet({ open, onClose, title, children, className }: BottomSheetProps) {
   const stableOnClose = useCallback(() => onClose(), [onClose])

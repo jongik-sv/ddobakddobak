@@ -8,6 +8,8 @@ import { createReactBlockSpec } from '@blocknote/react'
 import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from '@blocknote/core'
 import type { Block, BlockSchema, InlineContentSchema, StyleSchema } from '@blocknote/core'
 import { CitationInline } from './citationInline'
+import { useUiStore } from '../../stores/uiStore'
+import { resolveTheme } from '../../lib/theme'
 
 // ── Mermaid 렌더러 ───────────────────────────────
 
@@ -38,6 +40,9 @@ export function MermaidRenderer({
   const containerRef = useRef<HTMLDivElement>(null)
   const intrinsicWidthRef = useRef<number | null>(null)  // viewBox 자연폭 (zoom 1.0 기준)
   const [error, setError] = useState<string | null>(null)
+  // 전역 mermaid.initialize는 export 렌더 루프와 경합하므로 건드리지 않는다.
+  // 대신 다크일 때만 코드 앞에 per-diagram theme 디렉티브를 붙여 채색한다.
+  const isDark = resolveTheme(useUiStore((s) => s.theme)) === 'dark'
 
   // svg 폭을 intrinsic × zoom 으로 적용. 높이는 [&>svg]:h-auto 로 비율 유지.
   const applyZoom = useCallback((z: number) => {
@@ -56,10 +61,12 @@ export function MermaidRenderer({
     loadMermaid().then(async ({ default: mermaid }) => {
       if (cancelled) return
       try {
+        // 다크 모드면 per-diagram theme 디렉티브를 앞에 붙여 채색(전역 init 비변경).
+        const themed = isDark ? `%%{init: {'theme':'dark'}}%%\n${code.trim()}` : code.trim()
         // 먼저 구문 검증 — 실패하면 render()를 호출하지 않아 DOM 오염 방지
-        await mermaid.parse(code.trim())
+        await mermaid.parse(themed)
         const id = `mmd-${Math.random().toString(36).slice(2, 9)}`
-        const { svg } = await mermaid.render(id, code.trim())
+        const { svg } = await mermaid.render(id, themed)
         if (!cancelled && containerRef.current) {
           containerRef.current.innerHTML = svg
           // mermaid는 width="100%" + max-width:자연폭 으로 출력 → 컨테이너 폭에 스트레치돼
@@ -83,7 +90,7 @@ export function MermaidRenderer({
     })
 
     return () => { cancelled = true }
-  }, [code, zoom, applyZoom])
+  }, [code, zoom, applyZoom, isDark])
 
   // zoom 변경 시엔 재렌더 없이 폭만 다시 적용 (code 동일하면 위 effect의 parse/render 생략됨)
   useEffect(() => { applyZoom(zoom) }, [zoom, applyZoom])
@@ -134,24 +141,24 @@ export const MermaidBlock = createReactBlockSpec(
       }, [editor, block])
 
       return (
-        <div className="border rounded-lg overflow-visible my-1 bg-white transition-all duration-200 w-full">
-          <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 border-b rounded-t-lg">
-            <span className="text-xs font-medium text-gray-500">Mermaid 다이어그램</span>
+        <div className="border rounded-lg overflow-visible my-1 bg-card transition-all duration-200 w-full">
+          <div className="flex items-center justify-between px-3 py-1.5 bg-muted border-b rounded-t-lg">
+            <span className="text-xs font-medium text-muted-foreground">Mermaid 다이어그램</span>
             <div className="flex items-center gap-2">
               {code.trim() && !isEditing && (
-                <div className="flex items-center border rounded bg-white overflow-hidden">
+                <div className="flex items-center border rounded bg-card overflow-hidden">
                   <button
                     onClick={() => setZoom(zoom - ZOOM_STEP)}
                     disabled={zoom <= ZOOM_MIN}
                     title="축소"
-                    className="px-2 py-0.5 text-xs text-gray-500 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-500"
+                    className="px-2 py-0.5 text-xs text-muted-foreground hover:text-blue-600 disabled:opacity-30 disabled:hover:text-muted-foreground"
                   >
                     −
                   </button>
                   <button
                     onClick={() => setZoom(1)}
                     title="기본 보기 (100%)"
-                    className="px-2 py-0.5 text-[10px] text-gray-500 hover:text-blue-600 border-x min-w-[44px]"
+                    className="px-2 py-0.5 text-[10px] text-muted-foreground hover:text-blue-600 border-x min-w-[44px]"
                   >
                     {Math.round(zoom * 100)}%
                   </button>
@@ -159,7 +166,7 @@ export const MermaidBlock = createReactBlockSpec(
                     onClick={() => setZoom(zoom + ZOOM_STEP)}
                     disabled={zoom >= ZOOM_MAX}
                     title="확대"
-                    className="px-2 py-0.5 text-xs text-gray-500 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-500"
+                    className="px-2 py-0.5 text-xs text-muted-foreground hover:text-blue-600 disabled:opacity-30 disabled:hover:text-muted-foreground"
                   >
                     +
                   </button>
@@ -194,10 +201,10 @@ export const MermaidBlock = createReactBlockSpec(
                   }
                 }}
                 placeholder={'graph LR\n  A[시작] --> B[끝]'}
-                className="w-full min-h-[240px] font-mono text-sm p-2 border rounded bg-gray-50 resize-y outline-none focus:ring-1 focus:ring-blue-300"
+                className="w-full min-h-[240px] font-mono text-sm p-2 border rounded bg-muted resize-y outline-none focus:ring-1 focus:ring-blue-300"
               />
               <div className="flex justify-between items-center mt-2">
-                <span className="text-xs text-gray-400">Cmd+Enter로 적용</span>
+                <span className="text-xs text-muted-foreground">Cmd+Enter로 적용</span>
                 <button
                   onClick={applyCode}
                   className="px-3 py-1 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700"
@@ -209,7 +216,7 @@ export const MermaidBlock = createReactBlockSpec(
           )}
 
           {!editor.isEditable && !code.trim() && (
-            <div className="p-3 text-sm text-gray-400">빈 Mermaid 블록</div>
+            <div className="p-3 text-sm text-muted-foreground">빈 Mermaid 블록</div>
           )}
         </div>
       )

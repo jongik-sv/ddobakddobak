@@ -160,7 +160,7 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
         </div>
         {showModelSelect ? (
           <select id={`${idPrefix}-model`} value={value.model} onChange={(e) => onChange({ model: e.target.value })}
-            className="w-full rounded-md border px-3 py-2 text-sm bg-white font-mono min-h-[44px]">
+            className="w-full rounded-md border px-3 py-2 text-sm bg-card font-mono min-h-[44px]">
             {(value.model && !modelOptions.includes(value.model) ? [...modelOptions, value.model] : modelOptions).map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
@@ -194,6 +194,6 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
 }
 
 const cardCls = (active: boolean) =>
-  `rounded-lg border p-3 text-left transition-all ${active ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}`
+  `rounded-lg border p-3 text-left transition-all ${active ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-border hover:border-blue-300 hover:bg-accent'}`
 
 export default LlmProviderCard

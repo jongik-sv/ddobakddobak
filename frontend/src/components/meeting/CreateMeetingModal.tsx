@@ -99,7 +99,7 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
             <select
               onChange={handleTemplateSelect}
               defaultValue=""
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-white"
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
             >
               <option value="">템플릿 없이 시작</option>
               {templates.map((t) => (
@@ -136,7 +136,7 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
           <select
             value={previousMeetingId}
             onChange={(e) => setPreviousMeetingId(e.target.value)}
-            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-white"
+            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
           >
             <option value="">없음</option>
             {recentMeetings.map((m) => (
@@ -159,7 +159,7 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
               type="checkbox"
               checked={shared}
               onChange={(e) => setShared(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 accent-blue-600"
+              className="h-4 w-4 rounded border-border accent-blue-600"
               aria-label="이 회의를 모든 사용자에게 공유"
             />
             <span className="text-sm font-medium">이 회의를 모든 사용자에게 공유</span>

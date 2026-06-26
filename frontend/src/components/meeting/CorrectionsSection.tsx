@@ -18,11 +18,11 @@ export function CorrectionsSection({
 }) {
   return (
     <>
-      <h2 className="px-4 py-2 text-sm font-semibold text-gray-500 border-b bg-gray-50 shrink-0">
+      <h2 className="px-4 py-2 text-sm font-semibold text-muted-foreground border-b bg-muted shrink-0">
         오타 수정
       </h2>
       <div className="flex-1 flex flex-col p-3 gap-2 overflow-auto">
-        <p className="text-xs text-gray-400 shrink-0">
+        <p className="text-xs text-muted-foreground shrink-0">
           잘못된 용어를 올바른 용어로 일괄 치환합니다
         </p>
         {corrections.map((c, i) => (
@@ -32,21 +32,21 @@ export function CorrectionsSection({
               value={c.from}
               onChange={(e) => onUpdate(i, 'from', e.target.value)}
               placeholder="잘못된 용어"
-              className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+              className="flex-1 min-w-0 rounded-md border border-border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
               disabled={isApplyingCorrections}
             />
-            <span className="text-gray-400 text-xs shrink-0">&rarr;</span>
+            <span className="text-muted-foreground text-xs shrink-0">&rarr;</span>
             <input
               type="text"
               value={c.to}
               onChange={(e) => onUpdate(i, 'to', e.target.value)}
               placeholder="올바른 용어"
-              className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+              className="flex-1 min-w-0 rounded-md border border-border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
               disabled={isApplyingCorrections}
             />
             <button
               onClick={() => onRemove(i)}
-              className="shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 text-sm"
+              className="shrink-0 w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-red-500 text-sm"
               title="삭제"
             >
               &times;

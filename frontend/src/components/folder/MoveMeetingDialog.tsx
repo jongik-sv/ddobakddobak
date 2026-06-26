@@ -65,7 +65,7 @@ export default function MoveMeetingDialog({ meetingTitle, currentFolderId, onCon
   const isChanged = useMemo(() => selected !== currentFolderId, [selected, currentFolderId])
 
   return (
-    <Dialog onClose={onClose} backdropClassName="bg-black/10 backdrop-blur-sm" className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
+    <Dialog onClose={onClose} backdropClassName="bg-black/10 backdrop-blur-sm" className="w-full max-w-sm rounded-xl bg-card p-6 shadow-2xl border border-border">
         <h2 className="text-lg font-semibold mb-1">폴더로 이동</h2>
         <p className="text-sm text-muted-foreground mb-4 truncate">{meetingTitle}</p>
 

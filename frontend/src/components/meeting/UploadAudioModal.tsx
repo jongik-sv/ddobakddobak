@@ -125,7 +125,7 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
           className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-            dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+            dragOver ? 'border-blue-500 bg-blue-50' : 'border-border hover:border-muted-foreground'
           }`}
           onClick={handleDropZoneClick}
         >
@@ -142,13 +142,13 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
               </svg>
               <div className="text-left">
-                <p className="text-sm font-medium text-gray-900 truncate max-w-[250px]">{file.name}</p>
-                <p className="text-xs text-gray-500">{formatSize(file.size)}</p>
+                <p className="text-sm font-medium text-foreground truncate max-w-[250px]">{file.name}</p>
+                <p className="text-xs text-muted-foreground">{formatSize(file.size)}</p>
               </div>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setFile(null) }}
-                className="ml-2 text-gray-400 hover:text-gray-600"
+                className="ml-2 text-muted-foreground hover:text-foreground"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -157,11 +157,11 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
             </div>
           ) : (
             <div>
-              <svg className="w-8 h-8 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-8 h-8 mx-auto text-muted-foreground mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
-              <p className="text-sm text-gray-600">오디오 파일을 드래그하거나 클릭하여 선택</p>
-              <p className="text-xs text-gray-400 mt-1">MP3, WAV, M4A, WebM, OGG, FLAC</p>
+              <p className="text-sm text-muted-foreground">오디오 파일을 드래그하거나 클릭하여 선택</p>
+              <p className="text-xs text-muted-foreground mt-1">MP3, WAV, M4A, WebM, OGG, FLAC</p>
             </div>
           )}
         </div>
@@ -195,7 +195,7 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
             id="upload-verbosity"
             value={verbosity}
             onChange={(e) => setVerbosity(e.target.value as SummaryVerbosity | '')}
-            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-blue-400"
           >
             <option value="">직전 회의 설정 따름 (기본)</option>
             {VERBOSITY_OPTIONS.map((o) => (
@@ -211,7 +211,7 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
             id="upload-restructure"
             value={restructure}
             onChange={(e) => setRestructure(e.target.value as '' | 'true' | 'false')}
-            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-blue-400"
           >
             <option value="">직전 회의 설정 따름 (기본)</option>
             <option value="true">주제별 재구성 — 전체를 주제별로 재정리</option>

@@ -127,17 +127,17 @@ export default function SetupPage({ onReady }: { onReady: () => void }) {
   }, [checkEnvironment])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-6">
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-lg p-8">
+    <div className="min-h-screen bg-gradient-to-br from-muted to-background flex items-center justify-center p-6">
+      <div className="w-full max-w-lg bg-card rounded-2xl shadow-lg p-8">
         {/* 헤더 */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">또박또박</h1>
-          <p className="text-slate-500 mt-1">AI 회의록 서비스를 준비하고 있습니다</p>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">또박또박</h1>
+          <p className="text-muted-foreground mt-1">AI 회의록 서비스를 준비하고 있습니다</p>
         </div>
 
         {/* 환경 확인 */}
         <div className="space-y-3 mb-6">
-          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+          <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide">
             환경 확인
           </h2>
           <EnvItem
@@ -197,12 +197,12 @@ export default function SetupPage({ onReady }: { onReady: () => void }) {
         {/* 셋업 진행 */}
         {(phase === 'setup' || phase === 'starting' || phase === 'health_wait' || phase === 'ready') && (
           <div className="space-y-3 mb-6">
-            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+            <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide">
               서비스 준비
             </h2>
 
             {progress && !progress.done && (
-              <div className="flex items-center gap-3 text-sm text-slate-600">
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
                 <Loader2 className="w-4 h-4 text-blue-500 animate-spin shrink-0" />
                 {progress.message}
               </div>
@@ -247,7 +247,7 @@ export default function SetupPage({ onReady }: { onReady: () => void }) {
 
         {/* 플랫폼 정보 */}
         {envStatus && (
-          <p className="text-xs text-slate-400 text-center">
+          <p className="text-xs text-muted-foreground text-center">
             {envStatus.platform}
           </p>
         )}
@@ -267,13 +267,13 @@ function EnvItem({
 }) {
   const status = !checked ? 'loading' : version ? 'ok' : 'fail'
   return (
-    <div className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg">
+    <div className="flex items-center justify-between py-2 px-3 bg-muted rounded-lg">
       <div className="flex items-center gap-2">
         <StatusIcon status={status} />
-        <span className="text-sm font-medium text-slate-700">{label}</span>
+        <span className="text-sm font-medium text-foreground">{label}</span>
       </div>
       {version && (
-        <span className="text-xs text-slate-400 font-mono truncate max-w-48">
+        <span className="text-xs text-muted-foreground font-mono truncate max-w-48">
           {version}
         </span>
       )}
@@ -283,9 +283,9 @@ function EnvItem({
 
 function ServiceItem({ label, ready }: { label: string; ready: boolean }) {
   return (
-    <div className="flex items-center gap-2 py-2 px-3 bg-slate-50 rounded-lg">
+    <div className="flex items-center gap-2 py-2 px-3 bg-muted rounded-lg">
       <StatusIcon status={ready ? 'ok' : 'loading'} />
-      <span className="text-sm text-slate-700">{label}</span>
+      <span className="text-sm text-foreground">{label}</span>
     </div>
   )
 }

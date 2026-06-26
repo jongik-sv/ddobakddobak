@@ -25,11 +25,11 @@ export function UserLlmStatusBanner({
 
   if (hasSettings && !isEnabled) {
     return (
-      <div className="border border-gray-200 bg-gray-50 rounded-md p-3" role="status">
-        <p className="text-sm font-medium text-gray-600">
+      <div className="border border-border bg-muted rounded-md p-3" role="status">
+        <p className="text-sm font-medium text-muted-foreground">
           내 LLM 비활성 — 서버 기본값 ({settings.server_default.provider} / {settings.server_default.model}) 사용 중
         </p>
-        <p className="text-xs text-gray-500 mt-0.5">
+        <p className="text-xs text-muted-foreground mt-0.5">
           토글을 켜면 내 LLM ({settings.llm_settings.provider} / {settings.llm_settings.model})으로 전환됩니다.
         </p>
       </div>

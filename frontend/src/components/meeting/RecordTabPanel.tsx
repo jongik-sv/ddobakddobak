@@ -19,13 +19,13 @@ export function RecordTabPanel({ meetingId, currentTimeMs = 0, onSeek, onApply, 
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* 탭바 */}
-      <div className="flex border-b bg-gray-50 shrink-0">
+      <div className="flex border-b bg-muted shrink-0">
         <button
           onClick={() => setTab('live')}
           className={`flex-1 px-3 py-2 min-h-[44px] text-xs font-medium transition-colors ${
             tab === 'live'
-              ? 'text-blue-600 border-b-2 border-blue-600 bg-white'
-              : 'text-gray-500 hover:text-gray-700'
+              ? 'text-blue-600 border-b-2 border-blue-600 bg-card'
+              : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           라이브 기록
@@ -34,8 +34,8 @@ export function RecordTabPanel({ meetingId, currentTimeMs = 0, onSeek, onApply, 
           onClick={() => setTab('all')}
           className={`flex-1 px-3 py-2 min-h-[44px] text-xs font-medium transition-colors ${
             tab === 'all'
-              ? 'text-blue-600 border-b-2 border-blue-600 bg-white'
-              : 'text-gray-500 hover:text-gray-700'
+              ? 'text-blue-600 border-b-2 border-blue-600 bg-card'
+              : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           전체 기록

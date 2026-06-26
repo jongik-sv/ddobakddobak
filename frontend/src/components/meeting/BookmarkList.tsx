@@ -60,15 +60,15 @@ export function BookmarkList({
   return (
     <div className="border-b shrink-0 max-h-48 overflow-y-auto">
       <div
-        className={`px-3 py-2 bg-amber-50 border-b flex items-center justify-between${
-          collapsible ? ' cursor-pointer hover:bg-amber-100' : ''
+        className={`px-3 py-2 bg-amber-500/10 border-b flex items-center justify-between${
+          collapsible ? ' cursor-pointer hover:bg-amber-500/20' : ''
         }`}
         onClick={collapsible ? () => setOpen((v) => !v) : undefined}
         {...(collapsible
           ? { role: 'button', 'aria-expanded': open, title: open ? '북마크 접기' : '북마크 펼치기' }
           : {})}
       >
-        <h3 className="text-xs font-semibold text-amber-700 flex items-center gap-1">
+        <h3 className="text-xs font-semibold text-amber-600 flex items-center gap-1">
           {collapsible &&
             (open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />)}
           <Bookmark className="w-3 h-3" />
@@ -80,7 +80,7 @@ export function BookmarkList({
               e.stopPropagation()
               onAdd()
             }}
-            className="flex items-center gap-0.5 text-xs text-amber-600 hover:text-amber-800 font-medium"
+            className="flex items-center gap-0.5 text-xs text-amber-600 hover:text-amber-500 font-medium"
             title="현재 재생 위치에 북마크 추가"
           >
             <Plus className="w-3 h-3" />
@@ -89,7 +89,7 @@ export function BookmarkList({
         )}
       </div>
       {(!collapsible || open) && (bookmarks.length === 0 ? (
-        <p className="px-3 py-3 text-xs text-gray-400 leading-relaxed">
+        <p className="px-3 py-3 text-xs text-muted-foreground leading-relaxed">
           {readOnly ? (
             '북마크가 없습니다.'
           ) : (
@@ -99,13 +99,13 @@ export function BookmarkList({
           )}
         </p>
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-border">
           {bookmarks.map((b) => {
             const editing = editingId === b.id
             return (
               <li
                 key={b.id}
-                className="flex items-center gap-2 px-3 py-1.5 hover:bg-amber-50 cursor-pointer group"
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-amber-500/10 cursor-pointer group"
                 onClick={() => {
                   if (!editing) onSeek(b.timestamp_ms)
                 }}
@@ -148,7 +148,7 @@ export function BookmarkList({
                         e.stopPropagation()
                         cancelEdit()
                       }}
-                      className="p-0.5 rounded text-gray-400 hover:text-gray-600"
+                      className="p-0.5 rounded text-muted-foreground hover:text-foreground"
                       title="취소"
                     >
                       <X className="w-3 h-3" />
@@ -156,7 +156,7 @@ export function BookmarkList({
                   </>
                 ) : (
                   <>
-                    <span className="text-xs text-gray-700 truncate flex-1">
+                    <span className="text-xs text-foreground truncate flex-1">
                       {b.label || '(라벨 없음)'}
                     </span>
                     {onEdit && !readOnly && (
@@ -165,7 +165,7 @@ export function BookmarkList({
                           e.stopPropagation()
                           startEdit(b)
                         }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-amber-600 transition-all"
+                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-muted-foreground hover:text-amber-600 transition-all"
                         title="라벨 편집"
                       >
                         <Pencil className="w-3 h-3" />
@@ -177,7 +177,7 @@ export function BookmarkList({
                           e.stopPropagation()
                           onDelete(b.id)
                         }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all"
+                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-muted-foreground hover:text-red-500 transition-all"
                         title="삭제"
                       >
                         <Trash2 className="w-3 h-3" />

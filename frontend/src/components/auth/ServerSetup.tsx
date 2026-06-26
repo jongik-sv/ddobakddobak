@@ -183,23 +183,23 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
   /** 이름/위치 인라인 편집 폼 — 저장된 서버 / 스캔 서버 양쪽에서 재사용. */
   const renderEditForm = (url: string) =>
     editingUrl === url ? (
-      <div className="px-3 pb-3 pt-1 space-y-2 border-t border-slate-100">
+      <div className="px-3 pb-3 pt-1 space-y-2 border-t border-border">
         <input
           aria-label="서버 이름"
           value={editName}
           onChange={(e) => setEditName(e.target.value)}
           placeholder="이름 (예: 사무실 서버)"
-          className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-2 py-1.5 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <input
           aria-label="서버 위치"
           value={editLocation}
           onChange={(e) => setEditLocation(e.target.value)}
           placeholder="위치 (예: 회의실 A)"
-          className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-2 py-1.5 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={cancelEdit} className="px-3 py-1 text-sm text-slate-500 hover:text-slate-700">취소</button>
+          <button type="button" onClick={cancelEdit} className="px-3 py-1 text-sm text-muted-foreground hover:text-foreground">취소</button>
           <button type="button" onClick={() => saveEdit(url)} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
         </div>
       </div>
@@ -276,11 +276,11 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
   const savedOnly = savedServers.filter((s) => !foundNormalized.has(s.url))
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-lg p-8">
+    <div className="min-h-screen bg-gradient-to-br from-muted to-background flex items-center justify-center p-4">
+      <div className="w-full max-w-lg bg-card rounded-2xl shadow-lg p-8">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">또박또박</h1>
-          <p className="text-slate-500">{IS_MOBILE ? 'AI 회의록 - 서버 주소를 입력하세요' : 'AI 회의록 - 실행 모드를 선택하세요'}</p>
+          <h1 className="text-2xl font-bold text-foreground mb-2">또박또박</h1>
+          <p className="text-muted-foreground">{IS_MOBILE ? 'AI 회의록 - 서버 주소를 입력하세요' : 'AI 회의록 - 실행 모드를 선택하세요'}</p>
         </div>
 
         {!IS_MOBILE && (
@@ -303,7 +303,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                   type="button"
                   onClick={handleScan}
                   disabled={scanning}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-accent active:bg-foreground/10 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform"
                 >
                   {scanning ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> 서버 검색 중...</>
@@ -312,7 +312,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                   )}
                 </button>
                 {scanning && (
-                  <p className="text-xs text-slate-400 text-center">같은 네트워크를 살펴보는 중… 수 초 걸려요</p>
+                  <p className="text-xs text-muted-foreground text-center">같은 네트워크를 살펴보는 중… 수 초 걸려요</p>
                 )}
                 {foundServers.map((found) => {
                   const url = found.url
@@ -339,7 +339,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                   )
                 })}
                 {scanned && !scanning && foundServers.length === 0 && (
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-muted-foreground">
                     같은 Wi-Fi에서 서버를 찾지 못했어요. 아래에 주소를 직접 입력하세요.
                   </p>
                 )}
@@ -348,7 +348,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
 
             {savedOnly.length > 0 && (
               <div className="space-y-1">
-                <p className="text-xs font-medium text-slate-500">저장된 서버</p>
+                <p className="text-xs font-medium text-muted-foreground">저장된 서버</p>
                 {savedOnly.map((srv) => {
                   const port = displayPort(srv.url)
                   const host = displayHost(srv.url)
@@ -379,7 +379,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
             <div>
               <label
                 htmlFor="server-url"
-                className="block text-sm font-medium text-slate-700 mb-2"
+                className="block text-sm font-medium text-foreground mb-2"
               >
                 서버 URL
               </label>
@@ -390,7 +390,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
                   value={serverUrl}
                   onChange={(e) => handleUrlChange(e.target.value)}
                   placeholder="192.168.0.10 또는 http://example.com:13323"
-                  className="flex-1 min-w-0 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className="flex-1 min-w-0 px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
                 <button
                   type="button"
@@ -412,7 +412,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
 
             <div role="status" aria-live="polite">
               {healthStatus === 'checking' && (
-                <div className="flex items-center gap-2 text-sm text-slate-500">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>서버에 연결 중...</span>
                 </div>
@@ -446,7 +446,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
           <button
             type="button"
             onClick={onCancel}
-            className="w-full mt-3 py-2 text-sm text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+            className="w-full mt-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           >
             취소
           </button>

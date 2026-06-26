@@ -190,7 +190,7 @@ export default function EditMeetingDialog({
                   className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
                     meetingType === t.value
                       ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                      : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                      : 'bg-card text-muted-foreground border-border hover:border-muted-foreground'
                   }`}
                 >
                   {t.label}
@@ -205,7 +205,7 @@ export default function EditMeetingDialog({
             <select
               value={previousMeetingId}
               onChange={(e) => setPreviousMeetingId(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-white"
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
             >
               <option value="">없음</option>
               {folderMeetings.map((m) => (
@@ -230,7 +230,7 @@ export default function EditMeetingDialog({
                 checked={shared}
                 disabled={disabled}
                 onChange={(e) => setShared(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 accent-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-4 w-4 rounded border-border accent-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-label="이 회의를 모든 사용자에게 공유"
               />
               <span className="text-sm font-medium">이 회의를 모든 사용자에게 공유</span>
@@ -257,7 +257,7 @@ export default function EditMeetingDialog({
                   className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
                     selectedTagIds.includes(tag.id)
                       ? 'text-white border-transparent'
-                      : 'bg-white border-gray-300 hover:border-gray-400'
+                      : 'bg-card border-border hover:border-muted-foreground'
                   }`}
                   style={
                     selectedTagIds.includes(tag.id)
@@ -272,7 +272,7 @@ export default function EditMeetingDialog({
                 <button
                   type="button"
                   onClick={() => setShowNewTag(true)}
-                  className="px-2 py-1 rounded-full text-xs text-muted-foreground border border-dashed border-gray-300 hover:border-gray-400 transition-colors flex items-center gap-1"
+                  className="px-2 py-1 rounded-full text-xs text-muted-foreground border border-dashed border-border hover:border-muted-foreground transition-colors flex items-center gap-1"
                 >
                   <Plus className="w-3 h-3" /> 새 태그
                 </button>

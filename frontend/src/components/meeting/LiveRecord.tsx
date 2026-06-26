@@ -90,7 +90,7 @@ export function LiveRecord({ meetingId, currentTimeMs = 0, onSeek, onApply, edit
 
       <div className="flex flex-col gap-3 overflow-y-auto p-4 flex-1">
       {unapplied.length === 0 && !partial && (
-        <p className="text-sm text-gray-400">새로운 기록을 기다리는 중...</p>
+        <p className="text-sm text-muted-foreground">새로운 기록을 기다리는 중...</p>
       )}
 
       {unapplied.map((item, idx) => {
@@ -102,13 +102,13 @@ export function LiveRecord({ meetingId, currentTimeMs = 0, onSeek, onApply, edit
             className={`flex flex-col gap-1 p-2 rounded transition-colors ${
               isHighlighted
                 ? 'bg-indigo-100 border-l-4 border-indigo-500'
-                : onSeek ? 'cursor-pointer hover:bg-gray-100' : ''
+                : onSeek ? 'cursor-pointer hover:bg-accent' : ''
             }`}
             onClick={() => onSeek?.(item.started_at_ms)}
           >
             <div className="flex items-center gap-2">
               <SpeakerLabel speakerLabel={item.speaker_label} speakerName={item.speaker_name} />
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-muted-foreground">
                 {/* 오프라인 재생: 무음컷 병합 오디오 타임라인(segmentOffsetsMs)으로 표시해야
                     재생 위치와 일치한다. started_at_ms는 무음 갭 포함 절대 타임라인이라 더 길다. */}
                 {formatElapsed(segmentOffsetsMs?.[idx] ?? item.started_at_ms)}
@@ -119,7 +119,7 @@ export function LiveRecord({ meetingId, currentTimeMs = 0, onSeek, onApply, edit
               meetingId={meetingId}
               content={item.content}
               editable={editable}
-              className="text-sm text-gray-900 leading-relaxed"
+              className="text-sm text-foreground leading-relaxed"
             />
           </div>
         )
@@ -130,7 +130,7 @@ export function LiveRecord({ meetingId, currentTimeMs = 0, onSeek, onApply, edit
           <SpeakerLabel speakerLabel={partial.speaker_label} />
           <p
             data-testid="partial-text"
-            className="text-sm text-gray-500 italic leading-relaxed"
+            className="text-sm text-muted-foreground italic leading-relaxed"
           >
             {partial.content}
           </p>

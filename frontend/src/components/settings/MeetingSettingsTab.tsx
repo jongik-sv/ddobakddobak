@@ -30,10 +30,10 @@ export default function MeetingSettingsTab() {
           <p className="text-sm text-muted-foreground mb-4">
             로그인 시 또박또박을 자동으로 시작합니다.
           </p>
-          <div className="flex items-center justify-between py-3 px-4 bg-slate-50 rounded-lg">
+          <div className="flex items-center justify-between py-3 px-4 bg-muted rounded-lg">
             <div>
-              <p className="text-sm font-medium text-gray-700">로그인 시 자동 시작</p>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-sm font-medium text-foreground">로그인 시 자동 시작</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
                 예약 회의를 백그라운드에서 자동 시작하려면 켜세요 (기본 꺼짐)
               </p>
             </div>

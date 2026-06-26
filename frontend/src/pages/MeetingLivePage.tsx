@@ -249,7 +249,7 @@ export default function MeetingLivePage() {
             </section>
           </Panel>
 
-          <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
+          <PanelResizeHandle className="w-1 bg-border hover:bg-blue-400 transition-colors cursor-col-resize" />
 
           {/* AI 회의록 영역 — 기본 48% */}
           <Panel defaultSize={48} minSize={20}>
@@ -268,7 +268,7 @@ export default function MeetingLivePage() {
 
           {memoVisible && (
             <>
-              <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
+              <PanelResizeHandle className="w-1 bg-border hover:bg-blue-400 transition-colors cursor-col-resize" />
 
               {/* 메모 + 오타수정 + AI 챗 탭 — 나머지 30% */}
               <Panel defaultSize={30} minSize={15}>
@@ -323,7 +323,7 @@ export default function MeetingLivePage() {
             {/* 더보기 바텀 시트 추가 옵션 */}
             <button
               onClick={() => { closeMore(); setShowEditDialog(true) }}
-              className="flex items-center gap-2 py-2 text-sm text-gray-700 hover:text-gray-900"
+              className="flex items-center gap-2 py-2 text-sm text-foreground hover:text-foreground"
             >
               <Pencil className="w-4 h-4" />
               회의 정보 수정
@@ -332,8 +332,8 @@ export default function MeetingLivePage() {
             {IS_TAURI && (
               <div className="flex items-center justify-between py-2">
                 <div className="flex items-center gap-2">
-                  <Monitor className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm text-gray-700">시스템 오디오</span>
+                  <Monitor className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm text-foreground">시스템 오디오</span>
                 </div>
                 <Switch
                   checked={systemAudioEnabled}
@@ -343,13 +343,13 @@ export default function MeetingLivePage() {
             )}
             <div className="flex items-center justify-between py-2">
               <div className="flex items-center gap-2">
-                <Timer className="w-4 h-4 text-gray-600" />
-                <span className="text-sm text-gray-700">AI 적용 주기</span>
+                <Timer className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm text-foreground">AI 적용 주기</span>
               </div>
               <select
                 value={summaryIntervalSec}
                 onChange={(e) => setSummaryIntervalSec(Number(e.target.value))}
-                className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-700"
+                className="text-sm border border-border rounded-md px-2 py-1 bg-background text-foreground"
               >
                 {SUMMARY_INTERVAL_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -360,7 +360,7 @@ export default function MeetingLivePage() {
             {!IS_MOBILE && (
               <button
                 onClick={() => { closeMore(); useUiStore.getState().openSettings() }}
-                className="flex items-center gap-2 py-2 text-sm text-gray-700 hover:text-gray-900"
+                className="flex items-center gap-2 py-2 text-sm text-foreground hover:text-foreground"
               >
                 <Settings className="w-4 h-4" />
                 설정
@@ -432,10 +432,10 @@ export default function MeetingLivePage() {
           onClose={() => setShowLeaveBlock(false)}
           closeOnBackdrop={false}
           closeOnEsc={false}
-          className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4"
+          className="bg-card rounded-lg shadow-xl p-6 max-w-sm mx-4"
         >
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">녹음 진행 중</h3>
-          <p className="text-sm text-gray-600 mb-5">
+          <h3 className="text-lg font-semibold text-foreground mb-2">녹음 진행 중</h3>
+          <p className="text-sm text-muted-foreground mb-5">
             녹음 중에는 페이지를 떠날 수 없습니다. 먼저 회의를 종료해주세요.
           </p>
           <div className="flex justify-end">

@@ -43,7 +43,7 @@ export default function MobileSidebarOverlay({ onClose }: MobileSidebarOverlayPr
       />
       {/* 사이드바 패널 */}
       <div
-        className="relative h-full w-72 max-w-[80vw] bg-white animate-slide-in-left"
+        className="relative h-full w-72 max-w-[80vw] bg-card animate-slide-in-left"
         onClick={(e) => e.stopPropagation()}
       >
         <Sidebar mobile onClose={onClose} />

@@ -127,7 +127,7 @@ export function MeetingCardGrid({
                 <MeetingIdBadge meetingId={meeting.id} />
               </span>
               <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
-              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 flex items-center gap-1 min-w-0 max-w-[180px]">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border flex items-center gap-1 min-w-0 max-w-[180px]">
                 <FolderClosed className="w-3 h-3 shrink-0" />
                 <span className="truncate">{meeting.folder_id ? (folderPath(folders, meeting.folder_id) ?? '폴더') : '미분류'}</span>
               </span>

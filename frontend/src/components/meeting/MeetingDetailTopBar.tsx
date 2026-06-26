@@ -43,22 +43,22 @@ export function MeetingDetailTopBar({
   actions,
 }: MeetingDetailTopBarProps) {
   return (
-    <div className={`bg-white border-b shrink-0 flex items-center ${isDesktop ? 'px-6 py-4 gap-3' : 'px-3 py-2 gap-2'}`}>
+    <div className={`bg-card border-b shrink-0 flex items-center ${isDesktop ? 'px-6 py-4 gap-3' : 'px-3 py-2 gap-2'}`}>
       <Tooltip text="목록으로 돌아가기">
         <button
           onClick={onBack}
-          className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
+          className="p-1.5 rounded-md hover:bg-accent transition-colors"
         >
-          <ArrowLeft className="w-5 h-5 text-gray-600" />
+          <ArrowLeft className="w-5 h-5 text-muted-foreground" />
         </button>
       </Tooltip>
       {/* 모바일은 액션 버튼들에 밀려 "회…"처럼 잘리므로 라벨을 숨김(sr-only). 데스크톱만 표시. */}
-      <h1 className={`font-bold text-gray-900 min-w-0 truncate ${isDesktop ? 'text-xl' : 'sr-only'}`}>회의 미리보기</h1>
+      <h1 className={`font-bold text-foreground min-w-0 truncate ${isDesktop ? 'text-xl' : 'sr-only'}`}>회의 미리보기</h1>
       <Tooltip text={searchOpen ? '검색 닫기' : '페이지 내 검색 (Ctrl+F)'}>
         <button
           aria-label="페이지 내 검색"
           onClick={onToggleSearch}
-          className={`p-1.5 rounded-md transition-colors ${searchOpen ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+          className={`p-1.5 rounded-md transition-colors ${searchOpen ? 'text-blue-600 bg-blue-50' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
         >
           <Search className="w-4 h-4" />
         </button>
@@ -66,7 +66,7 @@ export function MeetingDetailTopBar({
       <Tooltip text={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}>
         <button
           onClick={onToggleAttachments}
-          className={`p-1.5 rounded-md transition-colors ${attachmentsVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+          className={`p-1.5 rounded-md transition-colors ${attachmentsVisible ? 'text-blue-600 bg-blue-50' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
         >
           <Paperclip className="w-4 h-4" />
         </button>
@@ -77,7 +77,7 @@ export function MeetingDetailTopBar({
             aria-label="회의 정보 수정"
             onClick={onShowEdit}
             disabled={locked}
-            className="shrink-0 p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Pencil className="w-4 h-4" />
           </button>
@@ -89,7 +89,7 @@ export function MeetingDetailTopBar({
           <Tooltip text={memoVisible ? '메모 숨기기' : '메모 보기'}>
             <button
               onClick={onToggleMemo}
-              className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+              className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
             >
               <StickyNote className="w-4 h-4" />
             </button>
@@ -97,7 +97,7 @@ export function MeetingDetailTopBar({
           <Tooltip text={bookmarksVisible ? '북마크 숨기기' : '북마크 보기'}>
             <button
               onClick={onToggleBookmarks}
-              className={`p-1.5 rounded-md transition-colors ${bookmarksVisible ? 'text-amber-600 bg-amber-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+              className={`p-1.5 rounded-md transition-colors ${bookmarksVisible ? 'text-amber-600 bg-amber-50' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
             >
               <Bookmark className="w-4 h-4" />
             </button>

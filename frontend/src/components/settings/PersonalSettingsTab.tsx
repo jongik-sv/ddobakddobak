@@ -14,18 +14,18 @@ export default function PersonalSettingsTab({ showPasswordSection }: Props) {
       {/* 실행 모드 (Tauri에서만 표시) */}
       {IS_TAURI && (
         <section className="space-y-3 mb-8">
-          <h3 className="text-sm font-semibold text-gray-800">실행 모드</h3>
-          <div className="flex items-center justify-between py-3 px-4 bg-slate-50 rounded-lg">
+          <h3 className="text-sm font-semibold text-foreground">실행 모드</h3>
+          <div className="flex items-center justify-between py-3 px-4 bg-muted rounded-lg">
             <div>
               {(() => {
                 const isServer = getMode() === 'server'
                 return (
                   <>
-                    <p className="text-sm font-medium text-gray-700">
+                    <p className="text-sm font-medium text-foreground">
                       {isServer ? '서버 연결 모드' : '로컬 실행 모드'}
                     </p>
                     {isServer && (
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-muted-foreground mt-0.5">
                         {getServerUrl()}
                       </p>
                     )}
@@ -44,7 +44,7 @@ export default function PersonalSettingsTab({ showPasswordSection }: Props) {
               모드 재설정
             </button>
           </div>
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-muted-foreground">
             재설정 시 앱이 다시 시작되며 모드 선택 화면이 표시됩니다.
           </p>
         </section>

@@ -62,7 +62,7 @@ export function ActionItemForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-2 p-3 bg-gray-50 rounded border">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-2 p-3 bg-muted rounded border">
       <textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
@@ -86,7 +86,7 @@ export function ActionItemForm({
           ))}
         </select>
 
-        <label className="flex items-center gap-1 text-sm text-gray-600">
+        <label className="flex items-center gap-1 text-sm text-muted-foreground">
           <span className="sr-only">마감일</span>
           <input
             type="date"
@@ -101,7 +101,7 @@ export function ActionItemForm({
         <button
           type="button"
           onClick={onCancel}
-          className="text-xs px-3 py-1 min-h-[44px] rounded border text-gray-600 hover:bg-gray-100"
+          className="text-xs px-3 py-1 min-h-[44px] rounded border text-muted-foreground hover:bg-accent"
         >
           취소
         </button>

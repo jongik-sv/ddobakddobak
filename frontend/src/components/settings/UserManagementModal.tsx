@@ -6,11 +6,11 @@ import { BREAKPOINTS } from '../../config'
 import UserManagementPanel from './UserManagementPanel'
 
 const CONTAINER_DESKTOP =
-  'relative w-full max-w-3xl max-h-[90vh] rounded-xl bg-white shadow-2xl border border-gray-100 flex flex-col mx-4'
-const CONTAINER_MOBILE = 'fixed inset-0 w-full h-dvh bg-white flex flex-col'
+  'relative w-full max-w-3xl max-h-[90vh] rounded-xl bg-card shadow-2xl border border-border flex flex-col mx-4'
+const CONTAINER_MOBILE = 'fixed inset-0 w-full h-dvh bg-card flex flex-col'
 
 const CLOSE_BTN =
-  'p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors'
+  'p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors'
 
 export default function UserManagementModal() {
   const userMgmtOpen = useUiStore((s) => s.userMgmtOpen)
@@ -45,7 +45,7 @@ export default function UserManagementModal() {
         {/* 헤더: 모바일=좌측 X, 데스크톱=우측 X */}
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
           {!isDesktop && closeButton}
-          <h2 className="text-lg font-semibold text-gray-900">사용자 관리</h2>
+          <h2 className="text-lg font-semibold text-foreground">사용자 관리</h2>
           {isDesktop && closeButton}
         </div>
 

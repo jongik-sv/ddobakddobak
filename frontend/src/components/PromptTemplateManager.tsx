@@ -170,7 +170,7 @@ export default function PromptTemplateManager() {
                 w-full text-left rounded-md px-3 py-2 text-sm transition-colors
                 ${selectedId === t.id
                   ? 'bg-blue-50 text-blue-700 font-medium border border-blue-200'
-                  : 'hover:bg-gray-50 text-gray-700 border border-transparent'
+                  : 'hover:bg-accent text-foreground border border-transparent'
                 }
               `}
             >
@@ -195,7 +195,7 @@ export default function PromptTemplateManager() {
         <div className="flex-1 min-w-0">
           {showAddForm ? (
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-800">새 회의 유형 추가</h3>
+              <h3 className="text-sm font-semibold text-foreground">새 회의 유형 추가</h3>
               <div>
                 <label className="block text-sm font-medium mb-1">유형 코드</label>
                 <input
@@ -237,7 +237,7 @@ export default function PromptTemplateManager() {
                 </button>
                 <button
                   onClick={() => { setShowAddForm(false); setNewType(''); setNewLabel(''); setNewPrompt('') }}
-                  className="px-4 py-2 rounded-md text-sm font-medium border text-gray-600 hover:bg-gray-50 transition-colors"
+                  className="px-4 py-2 rounded-md text-sm font-medium border text-muted-foreground hover:bg-accent transition-colors"
                 >
                   취소
                 </button>
@@ -279,7 +279,7 @@ export default function PromptTemplateManager() {
                   <button
                     onClick={handleReset}
                     disabled={saving}
-                    className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                    className="px-4 py-2 rounded-md text-sm font-medium border border-border text-muted-foreground hover:bg-accent disabled:opacity-50 transition-colors"
                   >
                     기본값 복원
                   </button>

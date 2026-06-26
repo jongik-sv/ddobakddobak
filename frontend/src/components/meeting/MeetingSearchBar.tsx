@@ -55,9 +55,9 @@ export function MeetingSearchBar({
   return (
     <div
       data-testid="meeting-search-bar"
-      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border-b shrink-0"
+      className="flex items-center gap-1.5 px-3 py-1.5 bg-card border-b shrink-0"
     >
-      <Search className="w-4 h-4 text-gray-400 shrink-0" />
+      <Search className="w-4 h-4 text-muted-foreground shrink-0" />
       <input
         ref={inputRef}
         type="text"
@@ -70,7 +70,7 @@ export function MeetingSearchBar({
       {counterText && (
         <span
           data-testid="search-match-counter"
-          className={`text-xs tabular-nums shrink-0 ${matchCount > 0 ? 'text-gray-500' : 'text-red-400'}`}
+          className={`text-xs tabular-nums shrink-0 ${matchCount > 0 ? 'text-muted-foreground' : 'text-red-400'}`}
         >
           {counterText}
         </span>
@@ -79,24 +79,24 @@ export function MeetingSearchBar({
         aria-label="이전 매치"
         onClick={onPrev}
         disabled={matchCount === 0}
-        className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 transition-colors"
+        className="p-1 rounded hover:bg-accent disabled:opacity-30 transition-colors"
       >
-        <ChevronUp className="w-4 h-4 text-gray-600" />
+        <ChevronUp className="w-4 h-4 text-muted-foreground" />
       </button>
       <button
         aria-label="다음 매치"
         onClick={onNext}
         disabled={matchCount === 0}
-        className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 transition-colors"
+        className="p-1 rounded hover:bg-accent disabled:opacity-30 transition-colors"
       >
-        <ChevronDown className="w-4 h-4 text-gray-600" />
+        <ChevronDown className="w-4 h-4 text-muted-foreground" />
       </button>
       <button
         aria-label="검색 닫기"
         onClick={onClose}
-        className="p-1 rounded hover:bg-gray-100 transition-colors"
+        className="p-1 rounded hover:bg-accent transition-colors"
       >
-        <X className="w-4 h-4 text-gray-600" />
+        <X className="w-4 h-4 text-muted-foreground" />
       </button>
     </div>
   )

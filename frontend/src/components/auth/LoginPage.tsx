@@ -24,13 +24,13 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
+    <div className="min-h-screen bg-gradient-to-br from-muted to-background flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-card rounded-2xl shadow-lg p-8">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">또박또박</h1>
-          <p className="text-slate-500">AI 회의록 - 로그인이 필요합니다</p>
+          <h1 className="text-2xl font-bold text-foreground mb-2">또박또박</h1>
+          <p className="text-muted-foreground">AI 회의록 - 로그인이 필요합니다</p>
           {getServerUrl() && (
-            <p className="mt-2 text-xs text-slate-400 break-all">서버: {getServerUrl()}</p>
+            <p className="mt-2 text-xs text-muted-foreground break-all">서버: {getServerUrl()}</p>
           )}
         </div>
 
@@ -42,7 +42,7 @@ export function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4 mb-6">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1">
               이메일
             </label>
             <input
@@ -53,15 +53,15 @@ export function LoginPage() {
               required
               autoComplete="email"
               autoFocus
-              className="w-full px-4 py-3 border border-slate-300 rounded-lg
+              className="w-full px-4 py-3 border border-border rounded-lg
                          focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-                         transition-colors text-slate-900 placeholder-slate-400"
+                         transition-colors text-foreground placeholder-muted-foreground"
               placeholder="name@company.com"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-foreground mb-1">
               비밀번호
             </label>
             <input
@@ -71,9 +71,9 @@ export function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              className="w-full px-4 py-3 border border-slate-300 rounded-lg
+              className="w-full px-4 py-3 border border-border rounded-lg
                          focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-                         transition-colors text-slate-900 placeholder-slate-400"
+                         transition-colors text-foreground placeholder-muted-foreground"
               placeholder="비밀번호 입력"
             />
           </div>
@@ -93,18 +93,18 @@ export function LoginPage() {
 
         <div className="relative mb-6">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-200" />
+            <div className="w-full border-t border-border" />
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-white text-slate-400">또는</span>
+            <span className="px-2 bg-card text-muted-foreground">또는</span>
           </div>
         </div>
 
         <button
           type="button"
           onClick={login}
-          className="w-full py-2.5 text-sm text-slate-600 border border-slate-300
-                     rounded-lg hover:bg-slate-50 transition-colors"
+          className="w-full py-2.5 text-sm text-muted-foreground border border-border
+                     rounded-lg hover:bg-accent transition-colors"
         >
           브라우저에서 로그인
         </button>
@@ -112,7 +112,7 @@ export function LoginPage() {
         <button
           type="button"
           onClick={() => { sessionStorage.setItem('reselect_mode', '1'); window.location.reload() }}
-          className="w-full mt-4 py-2 text-sm text-slate-500 hover:text-slate-700 transition-colors"
+          className="w-full mt-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           {IS_MOBILE ? '서버 주소 변경' : '모드 선택으로 돌아가기'}
         </button>

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { IS_MOBILE } from '../config'
+import { loadTheme, saveTheme, applyTheme, type Theme } from '../lib/theme'
 
 export type MeetingTab = 'transcript' | 'summary' | 'memo'
 export type LiveTab = 'transcript' | 'summary' | 'memo'
@@ -23,6 +24,25 @@ function loadSidebarWidth(): number {
   return SIDEBAR_DEFAULT_WIDTH
 }
 
+/** 폴더챗 드로어 폭 드래그 조절 범위(px). 기본 672 = max-w-2xl(42rem) */
+export const FOLDER_CHAT_MIN_WIDTH = 360
+export const FOLDER_CHAT_MAX_WIDTH = 1000
+const FOLDER_CHAT_DEFAULT_WIDTH = 672
+
+export function clampFolderChatWidth(w: number): number {
+  return Math.min(FOLDER_CHAT_MAX_WIDTH, Math.max(FOLDER_CHAT_MIN_WIDTH, Math.round(w)))
+}
+
+function loadFolderChatWidth(): number {
+  try {
+    const raw = localStorage.getItem('folderChatWidth')
+    if (raw) return clampFolderChatWidth(Number(raw))
+  } catch {
+    // localStorage 접근 불가(SSR/프라이빗 모드) — 기본값
+  }
+  return FOLDER_CHAT_DEFAULT_WIDTH
+}
+
 interface UiState {
   settingsOpen: boolean
   openSettings: () => void
@@ -34,6 +54,8 @@ interface UiState {
   toggleSidebar: () => void
   sidebarWidth: number
   setSidebarWidth: (width: number) => void
+  folderChatWidth: number
+  setFolderChatWidth: (width: number) => void
   memoVisible: boolean
   toggleMemo: () => void
   attachmentsVisible: boolean
@@ -48,9 +70,12 @@ interface UiState {
   setMeetingActiveTab: (tab: MeetingTab) => void
   liveActiveTab: LiveTab
   setLiveActiveTab: (tab: LiveTab) => void
+  theme: Theme
+  setTheme: (t: Theme) => void
+  cycleTheme: () => void
 }
 
-export const useUiStore = create<UiState>((set) => ({
+export const useUiStore = create<UiState>((set, get) => ({
   settingsOpen: false,
   // 모바일 포함 전 클라이언트에서 설정 진입 허용 (개인 LLM·회의 언어 등 사용자별 설정).
   // 관리자 전용 섹션은 SettingsContent 내부에서 별도 게이팅된다.
@@ -68,6 +93,12 @@ export const useUiStore = create<UiState>((set) => ({
     try { localStorage.setItem('sidebarWidth', String(w)) } catch { /* 무시 */ }
     set({ sidebarWidth: w })
   },
+  folderChatWidth: loadFolderChatWidth(),
+  setFolderChatWidth: (width) => {
+    const w = clampFolderChatWidth(width)
+    try { localStorage.setItem('folderChatWidth', String(w)) } catch { /* 무시 */ }
+    set({ folderChatWidth: w })
+  },
   memoVisible: true,
   toggleMemo: () => set((s) => ({ memoVisible: !s.memoVisible })),
   attachmentsVisible: false,
@@ -82,4 +113,15 @@ export const useUiStore = create<UiState>((set) => ({
   setMeetingActiveTab: (tab) => set({ meetingActiveTab: tab }),
   liveActiveTab: 'transcript',
   setLiveActiveTab: (tab) => set({ liveActiveTab: tab }),
+  theme: loadTheme(),
+  setTheme: (t) => {
+    saveTheme(t)
+    applyTheme(t)
+    set({ theme: t })
+  },
+  cycleTheme: () => {
+    const order: Theme[] = ['light', 'dark', 'system']
+    const next = order[(order.indexOf(get().theme) + 1) % order.length]
+    get().setTheme(next)
+  },
 }))

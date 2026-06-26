@@ -49,7 +49,7 @@ export function HighlightedText({ text, query, activeOccurrence, className }: Hi
         key={i}
         ref={isActive ? (el) => { activeRef.current = el } : undefined}
         data-active={isActive ? 'true' : undefined}
-        className={`rounded-sm ${isActive ? 'bg-orange-300 text-gray-900' : 'bg-yellow-200 text-gray-900'}`}
+        className={`rounded-sm ${isActive ? 'bg-orange-300 text-foreground' : 'bg-yellow-200 text-foreground'}`}
       >
         {text.slice(start, start + query.length)}
       </mark>

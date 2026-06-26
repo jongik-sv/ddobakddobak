@@ -44,9 +44,9 @@ export default function BottomNavigation({ className }: BottomNavigationProps) {
   return (
     <nav
       className={cn(
-        // bg/border는 명시 색 사용 — Tailwind v4 @theme 매핑이 없어 bg-background/border-border가
-        // 생성되지 않아 내비가 투명해지고 뒤 콘텐츠가 비치는 문제를 막는다.
-        'fixed bottom-0 w-full h-14 bg-white border-t border-gray-200 z-40 pb-safe',
+        // 불투명 배경 필수 — 내비가 투명해지면 뒤 스크롤 콘텐츠가 비친다.
+        // @theme inline로 시맨틱 토큰이 생성되므로 bg-background/border-border 사용(다크모드 대응).
+        'fixed bottom-0 w-full h-14 bg-background border-t border-border z-40 pb-safe',
         className
       )}
       aria-label="모바일 내비게이션"

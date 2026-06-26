@@ -36,17 +36,17 @@ export function ResetPasswordDialog({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl border border-gray-100 p-6 mx-4">
+      <div className="w-full max-w-sm rounded-xl bg-card shadow-2xl border border-border p-6 mx-4">
         <h3 className="text-lg font-semibold mb-2">비밀번호 초기화</h3>
         {temp === null ? (
           <>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-muted-foreground mb-4">
               <strong>{user.name}</strong> ({user.email})의 비밀번호를 임시 비밀번호로 재설정합니다.
               해당 사용자의 모든 세션이 만료됩니다.
             </p>
             {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
             <div className="flex justify-end gap-2">
-              <button onClick={onClose} className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 min-h-[44px]">취소</button>
+              <button onClick={onClose} className="px-4 py-2 rounded-md text-sm font-medium border border-border text-foreground hover:bg-accent min-h-[44px]">취소</button>
               <button onClick={handleReset} disabled={working} className="px-4 py-2 rounded-md text-sm font-medium bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 min-h-[44px]">
                 {working ? '처리 중...' : '초기화'}
               </button>
@@ -54,12 +54,12 @@ export function ResetPasswordDialog({
           </>
         ) : (
           <>
-            <p className="text-sm text-gray-600 mb-3">
+            <p className="text-sm text-muted-foreground mb-3">
               임시 비밀번호입니다. 이 창을 닫으면 다시 볼 수 없으니 사용자에게 전달하세요.
             </p>
             <div className="flex items-center gap-2 mb-4">
-              <code className="flex-1 rounded-md bg-gray-100 px-3 py-2 text-sm font-mono break-all">{temp}</code>
-              <button onClick={handleCopy} className="px-3 py-2 rounded-md text-sm font-medium border border-gray-300 hover:bg-gray-50 min-h-[44px]">
+              <code className="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono break-all">{temp}</code>
+              <button onClick={handleCopy} className="px-3 py-2 rounded-md text-sm font-medium border border-border hover:bg-accent min-h-[44px]">
                 {copied ? '복사됨' : '복사'}
               </button>
             </div>

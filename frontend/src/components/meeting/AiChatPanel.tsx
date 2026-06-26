@@ -8,7 +8,7 @@ function ModelBadge() {
   return (
     <span
       aria-hidden
-      className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-gray-600 text-[11px]"
+      className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground text-[11px]"
     >
       🤖
     </span>
@@ -52,10 +52,10 @@ export function AiChatPanel({
   }
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-card">
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.length === 0 && (
-          <p className="text-sm text-gray-400">{emptyHint ?? '이 회의 내용에 대해 무엇이든 물어보세요.'}</p>
+          <p className="text-sm text-muted-foreground">{emptyHint ?? '이 회의 내용에 대해 무엇이든 물어보세요.'}</p>
         )}
         {messages.map((m) => {
           const suggestions =
@@ -70,7 +70,7 @@ export function AiChatPanel({
               }
             >
               {m.role === 'assistant' && (
-                <div className="mb-1 flex items-center gap-1.5 text-xs text-gray-500">
+                <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <ModelBadge />
                   <span>{m.model_name ?? 'AI'}</span>
                 </div>
@@ -79,11 +79,11 @@ export function AiChatPanel({
                 className={
                   m.role === 'user'
                     ? 'max-w-[80%] rounded-lg px-3 py-2 text-sm bg-blue-600 text-white whitespace-pre-wrap'
-                    : 'max-w-[80%] rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-800'
+                    : 'max-w-[80%] rounded-lg px-3 py-2 text-sm bg-muted text-foreground'
                 }
               >
                 {m.status === 'pending' && m.role === 'assistant' ? (
-                  <span data-testid="chat-typing" className="text-gray-400">
+                  <span data-testid="chat-typing" className="text-muted-foreground">
                     …답변 작성 중
                   </span>
                 ) : m.status === 'streaming' && m.role === 'assistant' ? (
@@ -119,9 +119,9 @@ export function AiChatPanel({
         })}
         <div ref={bottomRef} />
       </div>
-      <div className="border-t border-gray-200 p-2 flex gap-2">
+      <div className="border-t border-border p-2 flex gap-2">
         <input
-          className="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+          className="flex-1 rounded-md border border-border px-3 py-1.5 text-sm"
           placeholder="회의에 질문하기…"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}

@@ -21,7 +21,7 @@ export function MiniAudioPlayer({
   onExpand,
 }: MiniAudioPlayerProps) {
   return (
-    <div className="min-h-12 fixed bottom-0 left-0 right-0 lg:hidden z-40 bg-white border-t shadow-sm flex items-center gap-2 px-3 py-1.5 pb-safe">
+    <div className="min-h-12 fixed bottom-0 left-0 right-0 lg:hidden z-40 bg-card border-t shadow-sm flex items-center gap-2 px-3 py-1.5 pb-safe">
       {/* 재생/일시정지 */}
       <button
         onClick={(e) => {
@@ -35,7 +35,7 @@ export function MiniAudioPlayer({
       </button>
 
       {/* 현재시간 */}
-      <span className="shrink-0 text-xs text-gray-500 tabular-nums w-10 text-right">
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums w-10 text-right">
         {formatTime(currentTimeMs)}
       </span>
 
@@ -51,7 +51,7 @@ export function MiniAudioPlayer({
       />
 
       {/* 총시간 */}
-      <span className="shrink-0 text-xs text-gray-500 tabular-nums w-10">
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums w-10">
         {formatTime(durationMs)}
       </span>
 
@@ -59,7 +59,7 @@ export function MiniAudioPlayer({
       <button
         onClick={onExpand}
         aria-label="확장"
-        className="shrink-0 p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+        className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
       >
         <ChevronUp className="w-4 h-4" />
       </button>

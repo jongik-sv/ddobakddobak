@@ -136,7 +136,7 @@ export function AttachmentCard({ attachment, meetingId, onDelete, readOnly = fal
     <>
     <div
       onClick={handleOpen}
-      className="group relative flex-shrink-0 w-[180px] h-[90px] rounded-lg border bg-white p-3 cursor-pointer hover:shadow-sm hover:border-blue-300 transition-all flex flex-col justify-between"
+      className="group relative flex-shrink-0 w-[180px] h-[90px] rounded-lg border bg-card p-3 cursor-pointer hover:shadow-sm hover:border-blue-300 transition-all flex flex-col justify-between"
     >
       {/* 상단: 아이콘 + 이름 */}
       <div className="flex items-start gap-2 min-w-0">
@@ -144,17 +144,17 @@ export function AttachmentCard({ attachment, meetingId, onDelete, readOnly = fal
           {isFile ? getFileIcon(attachment.content_type) : <Link className="w-5 h-5 text-blue-500" />}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-gray-900 truncate" title={attachment.display_name}>
+          <p className="text-xs font-medium text-foreground truncate" title={attachment.display_name}>
             {attachment.display_name}
           </p>
-          <p className="text-[10px] text-gray-400 truncate">
+          <p className="text-[10px] text-muted-foreground truncate">
             {isFile ? formatFileSize(attachment.file_size) : extractDomain(attachment.url)}
           </p>
         </div>
       </div>
 
       {/* 하단: 날짜 / 상태 */}
-      <p className="text-[10px] text-gray-400">
+      <p className="text-[10px] text-muted-foreground">
         {busy ? '여는 중...' : errMsg ? <span className="text-red-500">{errMsg}</span> : formatDate(attachment.created_at)}
       </p>
 
@@ -164,7 +164,7 @@ export function AttachmentCard({ attachment, meetingId, onDelete, readOnly = fal
           <button
             onClick={handleDownload}
             disabled={busy}
-            className="p-2 rounded bg-white/90 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shadow-sm border disabled:opacity-50"
+            className="p-2 rounded bg-card/90 text-muted-foreground hover:text-blue-600 hover:bg-blue-50 transition-colors shadow-sm border disabled:opacity-50"
             title={isFile ? '다운로드' : '열기'}
           >
             {isFile ? <Download className="w-3 h-3" /> : <ExternalLink className="w-3 h-3" />}
@@ -180,7 +180,7 @@ export function AttachmentCard({ attachment, meetingId, onDelete, readOnly = fal
             </button>
             <button
               onClick={handleCancelDelete}
-              className="p-2 rounded bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors text-[10px] px-2"
+              className="p-2 rounded bg-muted text-muted-foreground hover:bg-accent transition-colors text-[10px] px-2"
             >
               취소
             </button>
@@ -190,14 +190,14 @@ export function AttachmentCard({ attachment, meetingId, onDelete, readOnly = fal
             <button
               onClick={handleDownload}
               disabled={busy}
-              className="p-2 rounded bg-white/90 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shadow-sm border disabled:opacity-50"
+              className="p-2 rounded bg-card/90 text-muted-foreground hover:text-blue-600 hover:bg-blue-50 transition-colors shadow-sm border disabled:opacity-50"
               title={isFile ? '다운로드' : '열기'}
             >
               {isFile ? <Download className="w-3 h-3" /> : <ExternalLink className="w-3 h-3" />}
             </button>
             <button
               onClick={handleDelete}
-              className="p-2 rounded bg-white/90 text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors shadow-sm border"
+              className="p-2 rounded bg-card/90 text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors shadow-sm border"
               title="삭제"
             >
               <Trash2 className="w-3 h-3" />
@@ -208,21 +208,21 @@ export function AttachmentCard({ attachment, meetingId, onDelete, readOnly = fal
     </div>
 
     {viewerUrl && (
-      <Dialog onClose={closeViewer} className="max-w-3xl w-full bg-white rounded-xl p-4 shadow-2xl">
+      <Dialog onClose={closeViewer} className="max-w-3xl w-full bg-card rounded-xl p-4 shadow-2xl">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-medium text-gray-800 truncate" title={attachment.display_name}>
+          <p className="text-sm font-medium text-foreground truncate" title={attachment.display_name}>
             {attachment.display_name}
           </p>
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={downloadFromViewer}
-              className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent"
             >
               <Download className="w-3.5 h-3.5" /> 다운로드
             </button>
             <button
               onClick={closeViewer}
-              className="rounded-md border px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              className="rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent"
             >
               닫기
             </button>

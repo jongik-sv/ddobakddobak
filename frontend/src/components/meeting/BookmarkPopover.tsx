@@ -20,10 +20,10 @@ export function BookmarkPopover({
       onClose={onClose}
       closeOnBackdrop={false}
       closeOnEsc={false}
-      className="bg-white rounded-xl shadow-lg p-5 max-w-xs w-full mx-4"
+      className="bg-card rounded-xl shadow-lg p-5 max-w-xs w-full mx-4"
     >
-      <h3 className="text-base font-semibold text-gray-900 mb-1">북마크 추가</h3>
-      <p className="text-xs text-gray-400 mb-3">
+      <h3 className="text-base font-semibold text-foreground mb-1">북마크 추가</h3>
+      <p className="text-xs text-muted-foreground mb-3">
         {formatElapsedSeconds(Math.floor(timestampMs / 1000))} 지점
       </p>
       <input
@@ -35,13 +35,13 @@ export function BookmarkPopover({
           if (e.key === 'Escape') onClose()
         }}
         placeholder="라벨 (선택사항)"
-        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent mb-3"
+        className="w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent mb-3"
         autoFocus
       />
       <div className="flex justify-end gap-2">
         <button
           onClick={onClose}
-          className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+          className="px-3 py-1.5 text-sm rounded-md bg-muted text-foreground hover:bg-accent"
         >
           취소
         </button>

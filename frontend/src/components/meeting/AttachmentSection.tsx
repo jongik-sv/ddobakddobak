@@ -39,7 +39,7 @@ export function AttachmentSection({ meetingId, readOnly = false }: AttachmentSec
   )
 
   return (
-    <div className="px-6 py-3 border-b bg-gray-50/50 shrink-0">
+    <div className="px-6 py-3 border-b bg-muted/50 shrink-0">
       {/* 상단: 카테고리 탭 + 액션 버튼 */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1">
@@ -62,7 +62,7 @@ export function AttachmentSection({ meetingId, readOnly = false }: AttachmentSec
             onClick={() => setShowFileDialog(true)}
             disabled={readOnly}
             title={readOnly ? '잠긴 회의입니다' : undefined}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-muted-foreground border border-border rounded-md hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           >
             <Upload className="w-3.5 h-3.5" />
             파일 추가
@@ -71,7 +71,7 @@ export function AttachmentSection({ meetingId, readOnly = false }: AttachmentSec
             onClick={() => setShowLinkDialog(true)}
             disabled={readOnly}
             title={readOnly ? '잠긴 회의입니다' : undefined}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-muted-foreground border border-border rounded-md hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           >
             <Link className="w-3.5 h-3.5" />
             링크 추가

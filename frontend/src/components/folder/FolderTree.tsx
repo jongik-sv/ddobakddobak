@@ -166,7 +166,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
             <MoreHorizontal className="w-3.5 h-3.5" />
           </button>
           {showMenu && (
-            <div className="absolute right-0 top-6 z-50 w-40 rounded-md border bg-white shadow-lg py-1">
+            <div className="absolute right-0 top-6 z-50 w-40 rounded-md border bg-card shadow-lg py-1">
               <button
                 onClick={(e) => {
                   e.stopPropagation()

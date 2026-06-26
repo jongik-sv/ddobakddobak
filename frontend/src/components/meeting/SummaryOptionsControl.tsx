@@ -83,7 +83,7 @@ export function SummaryOptionsControl({ meeting, onSave, disabled = false }: Sum
         disabled={disabled}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="flex items-center gap-1 px-2 py-0.5 min-h-[28px] rounded text-[11px] font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors disabled:opacity-50"
+        className="flex items-center gap-1 px-2 py-0.5 min-h-[28px] rounded text-[11px] font-medium bg-muted text-muted-foreground hover:bg-accent transition-colors disabled:opacity-50"
         title="회의록 압축율·재구조화 설정"
       >
         <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -97,9 +97,9 @@ export function SummaryOptionsControl({ meeting, onSave, disabled = false }: Sum
           role="dialog"
           aria-label="요약 옵션"
           style={{ top: pos.top, right: pos.right }}
-          className="fixed z-50 w-72 max-w-[calc(100vw-16px)] max-h-[70vh] overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg p-3"
+          className="fixed z-50 w-72 max-w-[calc(100vw-16px)] max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-card shadow-lg p-3"
         >
-          <p className="text-xs font-semibold text-gray-500 mb-1.5">회의록 압축율</p>
+          <p className="text-xs font-semibold text-muted-foreground mb-1.5">회의록 압축율</p>
           <div role="radiogroup" aria-label="회의록 압축율" className="flex flex-col">
             {VERBOSITY_OPTIONS.map((opt) => (
               <button
@@ -110,7 +110,7 @@ export function SummaryOptionsControl({ meeting, onSave, disabled = false }: Sum
                 disabled={busy}
                 onClick={() => verbosity !== opt.value && save({ summary_verbosity: opt.value })}
                 className={`flex items-start gap-2 px-2 py-1.5 rounded text-left transition-colors disabled:opacity-50 ${
-                  verbosity === opt.value ? 'bg-blue-50' : 'hover:bg-gray-50'
+                  verbosity === opt.value ? 'bg-blue-50' : 'hover:bg-accent'
                 }`}
               >
                 <span
@@ -120,23 +120,23 @@ export function SummaryOptionsControl({ meeting, onSave, disabled = false }: Sum
                   }`}
                 />
                 <span className="min-w-0">
-                  <span className={`block text-xs font-medium ${verbosity === opt.value ? 'text-blue-700' : 'text-gray-800'}`}>
+                  <span className={`block text-xs font-medium ${verbosity === opt.value ? 'text-blue-700' : 'text-foreground'}`}>
                     {opt.label}
                   </span>
-                  <span className="block text-[11px] text-gray-500">{opt.desc}</span>
+                  <span className="block text-[11px] text-muted-foreground">{opt.desc}</span>
                 </span>
               </button>
             ))}
           </div>
 
-          <div className="mt-2 pt-2 border-t border-gray-100">
+          <div className="mt-2 pt-2 border-t border-border">
             <Switch
               checked={restructure}
               disabled={busy}
               onChange={(checked) => save({ summary_restructure: checked })}
               label="지속 재구조화"
             />
-            <p className="text-[11px] text-gray-500 mt-0.5 pl-11">
+            <p className="text-[11px] text-muted-foreground mt-0.5 pl-11">
               {restructure
                 ? '매 요약마다 전체를 재정리 — 결정이 바뀌면 마지막 내용만 남음'
                 : '증분 기록 — 앞 내용은 그대로 두고 시간대별로 뒤에 추가 (빠름)'}

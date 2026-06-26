@@ -39,11 +39,11 @@ export default function ExportProjectDialog({ project, onClose }: ExportProjectD
     <Dialog
       onClose={onClose}
       backdropClassName="bg-black/20 backdrop-blur-sm"
-      className="w-full max-w-md rounded-xl border border-gray-100 bg-white p-6 shadow-2xl"
+      className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl"
       ariaLabel="프로젝트 내보내기"
     >
-      <h2 className="mb-1 text-lg font-semibold text-zinc-900">프로젝트 내보내기</h2>
-      <p className="mb-4 truncate text-sm text-zinc-500">{projectDisplayName(project)}</p>
+      <h2 className="mb-1 text-lg font-semibold text-foreground">프로젝트 내보내기</h2>
+      <p className="mb-4 truncate text-sm text-muted-foreground">{projectDisplayName(project)}</p>
 
       {error && (
         <div role="alert" className="mb-4 rounded-md bg-red-50 px-4 py-2 text-sm text-red-600">
@@ -51,7 +51,7 @@ export default function ExportProjectDialog({ project, onClose }: ExportProjectD
         </div>
       )}
 
-      <label className="flex items-start gap-3 rounded-md border border-zinc-200 p-3 text-sm">
+      <label className="flex items-start gap-3 rounded-md border border-border p-3 text-sm">
         <input
           type="checkbox"
           checked={includeAudio}
@@ -60,8 +60,8 @@ export default function ExportProjectDialog({ project, onClose }: ExportProjectD
           disabled={exporting}
         />
         <span>
-          <span className="font-medium text-zinc-900">음성 포함</span>
-          <span className="mt-0.5 block text-xs text-zinc-500">
+          <span className="font-medium text-foreground">음성 포함</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
             끄면 회의록·요약 등 메타데이터만 내보냅니다(파일 크기 작음).
           </span>
         </span>
@@ -72,7 +72,7 @@ export default function ExportProjectDialog({ project, onClose }: ExportProjectD
           type="button"
           onClick={onClose}
           disabled={exporting}
-          className="rounded-md border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50"
+          className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
         >
           취소
         </button>

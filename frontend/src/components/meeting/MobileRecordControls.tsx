@@ -46,7 +46,7 @@ export function MobileRecordControls({
       data-testid="mobile-record-controls"
       className={`lg:hidden sticky top-0 z-20 flex items-center justify-between px-2 py-1.5 border-b shadow-sm ${
         !isRecording
-          ? 'bg-white border-border'
+          ? 'bg-card border-border'
           : isPaused
             ? 'bg-amber-50 border-amber-300'
             : 'bg-red-50 border-red-300'
@@ -59,9 +59,9 @@ export function MobileRecordControls({
           aria-label="뒤로"
           className="p-1 rounded-md hover:bg-black/5 transition-colors shrink-0"
         >
-          <ArrowLeft className="w-4 h-4 text-gray-600" />
+          <ArrowLeft className="w-4 h-4 text-muted-foreground" />
         </button>
-        <span className="text-sm font-medium text-gray-900 truncate">
+        <span className="text-sm font-medium text-foreground truncate">
           {title}
         </span>
       </div>
@@ -76,7 +76,7 @@ export function MobileRecordControls({
             }`}
             style={!isPaused ? { animation: 'recording-blink 1.2s ease-in-out infinite' } : undefined}
           />
-          <span className="font-mono text-xs font-semibold text-gray-700 tabular-nums">
+          <span className="font-mono text-xs font-semibold text-foreground tabular-nums">
             {formatElapsedSeconds(elapsedSeconds)}
           </span>
         </div>
@@ -137,7 +137,7 @@ export function MobileRecordControls({
         <button
           onClick={() => setShowMore(true)}
           aria-label="더보기"
-          className="p-1.5 rounded-md text-gray-600 hover:bg-black/5 transition-colors"
+          className="p-1.5 rounded-md text-muted-foreground hover:bg-black/5 transition-colors"
         >
           <MoreHorizontal className="w-4 h-4" />
         </button>
@@ -151,15 +151,15 @@ export function MobileRecordControls({
           onClick={() => setShowMore(false)}
         >
           <div
-            className="bg-white rounded-t-2xl px-4 pt-5 pb-8 max-h-[70vh] overflow-auto"
+            className="bg-card rounded-t-2xl px-4 pt-5 pb-8 max-h-[70vh] overflow-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-gray-900">추가 옵션</h3>
+              <h3 className="text-base font-semibold text-foreground">추가 옵션</h3>
               <button
                 onClick={() => setShowMore(false)}
                 aria-label="닫기"
-                className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>

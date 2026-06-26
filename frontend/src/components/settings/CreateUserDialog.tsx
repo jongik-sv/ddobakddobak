@@ -42,7 +42,7 @@ export function CreateUserDialog({
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-md rounded-xl bg-white shadow-2xl border border-gray-100 p-6 mx-4"
+        className="w-full max-w-md rounded-xl bg-card shadow-2xl border border-border p-6 mx-4"
       >
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <UserPlus className="w-5 h-5" />
@@ -89,7 +89,7 @@ export function CreateUserDialog({
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as 'admin' | 'member')}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white min-h-[44px]"
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-background min-h-[44px]"
             >
               <option value="member">Member</option>
               <option value="admin">Admin</option>
@@ -103,7 +103,7 @@ export function CreateUserDialog({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors min-h-[44px]"
+            className="px-4 py-2 rounded-md text-sm font-medium border border-border text-foreground hover:bg-accent transition-colors min-h-[44px]"
           >
             취소
           </button>

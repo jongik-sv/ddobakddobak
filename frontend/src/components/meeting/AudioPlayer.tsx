@@ -45,9 +45,9 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
   const progress = durationMs > 0 ? (currentTimeMs / durationMs) * 100 : 0
 
   return (
-    <div className="flex items-center gap-3 px-4 py-1 bg-white border-b">
+    <div className="flex items-center gap-3 px-4 py-1 bg-card border-b">
       {!isReady ? (
-        <span className="text-sm text-gray-400">오디오 불러오는 중...</span>
+        <span className="text-sm text-muted-foreground">오디오 불러오는 중...</span>
       ) : (
         <>
           {/* 재생/정지 버튼 */}
@@ -60,7 +60,7 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
           </button>
 
           {/* 시간 (현재) */}
-          <span className="shrink-0 text-xs text-gray-500 tabular-nums text-right">
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums text-right">
             {formatTime(currentTimeMs)}
           </span>
 
@@ -68,7 +68,7 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
           <div
             ref={progressRef}
             onClick={handleProgressClick}
-            className="flex-1 h-2 bg-gray-200 rounded-full cursor-pointer relative group py-2 box-content"
+            className="flex-1 h-2 bg-muted rounded-full cursor-pointer relative group py-2 box-content"
           >
             <div
               className="h-full bg-indigo-600 rounded-full transition-[width] duration-100"
@@ -81,14 +81,14 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
           </div>
 
           {/* 시간 (전체) */}
-          <span className="shrink-0 text-xs text-gray-500 tabular-nums">
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
             {formatTime(durationMs)}
           </span>
 
           {/* 배속 */}
           <button
             onClick={cycleSpeed}
-            className="shrink-0 px-3 py-1.5 min-h-[44px] rounded text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 tabular-nums flex items-center"
+            className="shrink-0 px-3 py-1.5 min-h-[44px] rounded text-xs font-medium bg-muted text-muted-foreground hover:bg-accent tabular-nums flex items-center"
           >
             {playbackRate}x
           </button>
@@ -97,14 +97,14 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
           <button
             onClick={() => download()}
             disabled={!hasAudio}
-            className="shrink-0 p-2.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="shrink-0 p-2.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             title="다운로드"
           >
             <Download className="w-4 h-4" />
           </button>
 
           {!srcReady && (
-            <span className="text-xs text-gray-400">로딩...</span>
+            <span className="text-xs text-muted-foreground">로딩...</span>
           )}
         </>
       )}

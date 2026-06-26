@@ -38,19 +38,19 @@ export function HostTransferDialog({
   if (!open) return null
 
   return (
-    <Dialog onClose={onClose} closeOnBackdrop={false} closeOnEsc={false} className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">호스트 위임</h3>
-        <p className="text-sm text-gray-600 mb-1">
+    <Dialog onClose={onClose} closeOnBackdrop={false} closeOnEsc={false} className="bg-card rounded-lg shadow-xl p-6 max-w-sm mx-4">
+        <h3 className="text-lg font-semibold text-foreground mb-2">호스트 위임</h3>
+        <p className="text-sm text-muted-foreground mb-1">
           정말 {targetUserName}에게 호스트를 넘기시겠습니까?
         </p>
-        <p className="text-sm text-gray-600 mb-5">
+        <p className="text-sm text-muted-foreground mb-5">
           호스트를 넘기면 녹음 컨트롤 권한이 이동합니다.
         </p>
         <div className="flex justify-end gap-2">
           <button
             onClick={onClose}
             disabled={isTransferring}
-            className="px-4 py-2 rounded-md text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+            className="px-4 py-2 rounded-md text-sm font-medium text-foreground bg-muted hover:bg-accent transition-colors"
           >
             취소
           </button>

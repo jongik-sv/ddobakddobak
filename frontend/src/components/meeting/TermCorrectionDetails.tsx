@@ -19,9 +19,9 @@ export function TermCorrectionDetails({
   onApply: () => void
 }) {
   return (
-    <div className="border-t bg-white px-6 py-3 shrink-0">
+    <div className="border-t bg-card px-6 py-3 shrink-0">
       <details className="group">
-        <summary className="cursor-pointer text-sm font-semibold text-gray-500 select-none flex items-center gap-2">
+        <summary className="cursor-pointer text-sm font-semibold text-muted-foreground select-none flex items-center gap-2">
           <span className="transition-transform group-open:rotate-90">&rsaquo;</span>
           오타 수정
           {status && (
@@ -29,7 +29,7 @@ export function TermCorrectionDetails({
           )}
         </summary>
         <div className="mt-2 flex flex-col gap-2 max-w-2xl">
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-muted-foreground">
             잘못된 용어를 올바른 용어로 일괄 치환합니다 (회의록 + 트랜스크립트)
           </p>
           {corrections.map((c, i) => (
@@ -39,21 +39,21 @@ export function TermCorrectionDetails({
                 value={c.from}
                 onChange={(e) => onUpdate(i, 'from', e.target.value)}
                 placeholder="잘못된 용어"
-                className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                className="flex-1 min-w-0 rounded-md border border-border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                 disabled={isApplying}
               />
-              <span className="text-gray-400 text-xs shrink-0">&rarr;</span>
+              <span className="text-muted-foreground text-xs shrink-0">&rarr;</span>
               <input
                 type="text"
                 value={c.to}
                 onChange={(e) => onUpdate(i, 'to', e.target.value)}
                 placeholder="올바른 용어"
-                className="flex-1 min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                className="flex-1 min-w-0 rounded-md border border-border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                 disabled={isApplying}
               />
               <button
                 onClick={() => onRemove(i)}
-                className="shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 text-sm"
+                className="shrink-0 w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-red-500 text-sm"
                 title="삭제"
               >
                 &times;
