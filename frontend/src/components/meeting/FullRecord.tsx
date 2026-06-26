@@ -3,6 +3,7 @@ import { useTranscriptStore } from '../../stores/transcriptStore'
 import { SpeakerLabel } from './SpeakerLabel'
 import { EditableTranscriptText } from './EditableTranscriptText'
 import { deleteTranscripts } from '../../api/meetings'
+import { renameSpeaker } from '../../api/speakers'
 import { formatElapsedMs as formatElapsed } from '../../lib/audioUtils'
 
 interface FullRecordProps {
@@ -16,6 +17,7 @@ interface FullRecordProps {
 export function FullRecord({ meetingId, currentTimeMs = 0, onSeek, readOnly = false }: FullRecordProps) {
   const finals = useTranscriptStore((s) => s.finals)
   const removeFinals = useTranscriptStore((s) => s.removeFinals)
+  const setSpeakerName = useTranscriptStore((s) => s.setSpeakerName)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const highlightedRef = useRef<HTMLDivElement>(null)
@@ -51,6 +53,13 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek, readOnly = fa
     })
     return out
   }, [finals])
+
+  const handleRename = async (speakerLabel: string, name: string) => {
+    const updated = await renameSpeaker(meetingId, speakerLabel, name).catch(() => null)
+    if (updated) {
+      setSpeakerName(speakerLabel, updated.name === speakerLabel ? null : updated.name)
+    }
+  }
 
   useEffect(() => {
     if (highlightedIndex >= 0 && highlightedRef.current) {
@@ -104,7 +113,12 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek, readOnly = fa
             <div key={group.key} className="flex flex-col">
               {/* 그룹 헤더: 화자 칩 + 그룹 시작 타임스탬프 (연속 동일 화자 1회) */}
               <div className="flex items-center gap-2 mb-0.5 px-2">
-                <SpeakerLabel speakerLabel={first.speaker_label} speakerName={first.speaker_name} />
+                <SpeakerLabel
+                  speakerLabel={first.speaker_label}
+                  speakerName={first.speaker_name}
+                  editable={!readOnly}
+                  onRename={(name) => handleRename(first.speaker_label, name)}
+                />
                 <span className="text-xs text-gray-400">{formatElapsed(group.startedAtMs)}</span>
               </div>
               {group.segments.map(({ item, flatIdx }) => {
