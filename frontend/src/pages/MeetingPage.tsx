@@ -265,6 +265,15 @@ export default function MeetingPage() {
     setSeekMs(ms)
   }
 
+  // 폴더/프로젝트 스코프 챗의 크로스회의 인용 클릭 → 현재 회의면 in-place seek, 아니면 해당 회의로 네비.
+  function handleSeekMeeting(mid: number, ms: number) {
+    if (mid === meetingId) {
+      handleSeek(ms)
+      return
+    }
+    navigate(`/meetings/${mid}?t=${ms}`)
+  }
+
   // 권한 에러 처리
   if (!accessLoading && accessError === 'forbidden') {
     return (
@@ -538,6 +547,9 @@ export default function MeetingPage() {
                     />
                   }
                   onSeek={handleSeek}
+                  folderId={meeting?.folder_id ?? null}
+                  projectId={meeting?.project_id ?? null}
+                  onSeekMeeting={handleSeekMeeting}
                 />
               </Panel>
             </>
