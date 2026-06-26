@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { SpeakerPanel } from './SpeakerPanel'
 import { useTranscriptStore } from '../../stores/transcriptStore'
+import { getSpeakers } from '../../api/speakers'
 
 vi.mock('../../api/speakers', () => ({
   getSpeakers: vi.fn().mockResolvedValue([{ id: '화자 1', name: '화자 1' }]),
@@ -336,5 +337,56 @@ describe('화자 배지 클릭 → 발화 점프', () => {
 
     fireEvent.click(await screen.findByTitle('이 화자 발화로 이동'))
     expect(onSpeakerSeek).toHaveBeenCalledWith(0)
+  })
+})
+
+describe('트랜스크립트 인라인 편집 → 화자 목록 store 동기화', () => {
+  const FINAL = {
+    id: 1,
+    content: '안녕하세요',
+    speaker_label: '화자 1',
+    started_at_ms: 0,
+    ended_at_ms: 1000,
+    sequence_number: 1,
+    applied: false,
+  }
+
+  beforeEach(() => {
+    useTranscriptStore.getState().reset()
+    useTranscriptStore.getState().loadFinals([FINAL])
+  })
+
+  it('store finals의 speaker_name을 화자 목록 표시에 반영(getSpeakers는 이름 없음)', async () => {
+    // 인라인 편집이 store만 갱신한 상황 재현
+    useTranscriptStore.getState().setSpeakerName('화자 1', '앨리스')
+
+    render(<SpeakerPanel meetingId={1} isRecording={false} />)
+
+    expect(await screen.findByText('앨리스')).toBeTruthy()
+  })
+
+  it('렌더 후 store가 갱신돼도 화자 목록이 즉시 따라간다', async () => {
+    render(<SpeakerPanel meetingId={1} isRecording={false} />)
+
+    // 초기엔 이름 없음
+    await screen.findByTitle('클릭하여 이름 편집')
+
+    // 다른 화면(트랜스크립트)에서 인라인 편집한 것처럼 store 갱신
+    useTranscriptStore.getState().setSpeakerName('화자 1', '밥')
+
+    expect(await screen.findByText('밥')).toBeTruthy()
+  })
+
+  it('[회귀] store speaker_name이 null이어도 sidecar(getSpeakers) 이름을 표시한다', async () => {
+    // 사이드카 DB에 실제 이름 '캐럴'이 있는 상황 — id와 다른 이름이므로 구별 가능
+    vi.mocked(getSpeakers).mockResolvedValueOnce([{ id: '화자 1', name: '캐럴' }])
+
+    // beforeEach가 FINAL(speaker_name 없음)을 loadFinals — setSpeakerName 호출 안 함
+    // → nameByLabel은 '화자 1' → null 을 보유
+
+    render(<SpeakerPanel meetingId={1} isRecording={false} />)
+
+    // sidecar 이름 '캐럴'이 표시돼야 한다 ("이름 없음" 아님)
+    expect(await screen.findByText('캐럴')).toBeTruthy()
   })
 })
