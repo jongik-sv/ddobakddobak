@@ -24,6 +24,7 @@ vi.mock('@blocknote/react', () => ({
   SuggestionMenuController: () => null,
   getDefaultReactSlashMenuItems: vi.fn(() => []),
   createReactBlockSpec: vi.fn(() => ({})),
+  createReactInlineContentSpec: vi.fn(() => ({})),
 }))
 
 vi.mock('@blocknote/mantine', () => ({
