@@ -57,13 +57,14 @@ export function SpeakerPanel({
     return m
   }, [finals])
 
-  // 표시 이름 해석: store에 라벨이 있으면 store가 우선(편집 즉시 반영),
-  // 없으면 getSpeakers 응답(speaker.name)으로 fallback. 이름 없으면 id 반환.
+  // 표시 이름 해석: store에 실제 이름이 있으면 store가 우선(편집 즉시 반영),
+  // store에 라벨이 없거나 null이면 getSpeakers 응답(speaker.name)으로 fallback.
+  // (store는 null을 보유할 수 있음 — 사이드카 이름이 있어도 "이름 없음"으로 덮지 않도록)
   const resolveName = useCallback(
     (speaker: Speaker): string => {
       if (nameByLabel.has(speaker.id)) {
         const sn = nameByLabel.get(speaker.id)
-        return sn && sn !== speaker.id ? sn : speaker.id
+        if (sn && sn !== speaker.id) return sn
       }
       return speaker.name
     },

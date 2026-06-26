@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { SpeakerPanel } from './SpeakerPanel'
 import { useTranscriptStore } from '../../stores/transcriptStore'
+import { getSpeakers } from '../../api/speakers'
 
 vi.mock('../../api/speakers', () => ({
   getSpeakers: vi.fn().mockResolvedValue([{ id: '화자 1', name: '화자 1' }]),
@@ -374,5 +375,18 @@ describe('트랜스크립트 인라인 편집 → 화자 목록 store 동기화'
     useTranscriptStore.getState().setSpeakerName('화자 1', '밥')
 
     expect(await screen.findByText('밥')).toBeTruthy()
+  })
+
+  it('[회귀] store speaker_name이 null이어도 sidecar(getSpeakers) 이름을 표시한다', async () => {
+    // 사이드카 DB에 실제 이름 '캐럴'이 있는 상황 — id와 다른 이름이므로 구별 가능
+    vi.mocked(getSpeakers).mockResolvedValueOnce([{ id: '화자 1', name: '캐럴' }])
+
+    // beforeEach가 FINAL(speaker_name 없음)을 loadFinals — setSpeakerName 호출 안 함
+    // → nameByLabel은 '화자 1' → null 을 보유
+
+    render(<SpeakerPanel meetingId={1} isRecording={false} />)
+
+    // sidecar 이름 '캐럴'이 표시돼야 한다 ("이름 없음" 아님)
+    expect(await screen.findByText('캐럴')).toBeTruthy()
   })
 })
