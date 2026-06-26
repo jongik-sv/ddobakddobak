@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Transcript } from '../../api/meetings'
+import { renameSpeaker } from '../../api/speakers'
 import { EditableTranscriptText } from './EditableTranscriptText'
 import { HighlightedText } from './HighlightedText'
 import { SpeakerLabel, speakerBorderColor } from './SpeakerLabel'
@@ -43,6 +44,7 @@ export function TranscriptPanel({
   // MeetingPage는 transcripts를 자체 useState로 관리하므로, 갱신된 content를
   // 화면에 반영하려면 store에서 우선 조회한다.
   const storeFinals = useTranscriptStore((s) => s.finals)
+  const setSpeakerName = useTranscriptStore((s) => s.setSpeakerName)
   const contentOverrides = useMemo(() => {
     const map = new Map<number, string>()
     for (const f of storeFinals) map.set(f.id, f.content)
@@ -88,6 +90,13 @@ export function TranscriptPanel({
     return out
   }, [transcripts, speakerNameOverrides])
 
+  async function handleRename(speakerLabel: string, name: string) {
+    const updated = await renameSpeaker(meetingId, speakerLabel, name).catch(() => null)
+    if (updated) {
+      setSpeakerName(speakerLabel, updated.name === speakerLabel ? null : updated.name)
+    }
+  }
+
   // suppressAutoScroll은 ref로 읽는다 — deps에 넣으면 검색 종료(해제) 시점에
   // 오디오 위치로 뷰포트가 튀는 스크롤이 발화한다. 인덱스가 실제로 바뀔 때만 스크롤.
   const suppressRef = useRef(suppressAutoScroll)
@@ -119,6 +128,8 @@ export function TranscriptPanel({
               speakerLabel={group.segments[0].transcript.speaker_label}
               speakerName={group.name}
               size="md"
+              editable={!readOnly}
+              onRename={(name) => handleRename(group.segments[0].transcript.speaker_label, name)}
             />
             <span className="text-[10px] text-gray-400 tabular-nums">
               {formatTimestamp(group.startedAtMs)}
