@@ -47,11 +47,34 @@ export function SpeakerPanel({
     [speakers, usedSpeakerIds]
   )
 
+  // store finals의 speaker_name을 라벨→이름으로 매핑.
+  // 트랜스크립트 인라인 편집이 store만 갱신해도 화자 목록 표시가 따라오도록.
+  const nameByLabel = useMemo(() => {
+    const m = new Map<string, string | null>()
+    for (const f of finals) {
+      if (!m.has(f.speaker_label)) m.set(f.speaker_label, f.speaker_name ?? null)
+    }
+    return m
+  }, [finals])
+
+  // 표시 이름 해석: store에 라벨이 있으면 store가 우선(편집 즉시 반영),
+  // 없으면 getSpeakers 응답(speaker.name)으로 fallback. 이름 없으면 id 반환.
+  const resolveName = useCallback(
+    (speaker: Speaker): string => {
+      if (nameByLabel.has(speaker.id)) {
+        const sn = nameByLabel.get(speaker.id)
+        return sn && sn !== speaker.id ? sn : speaker.id
+      }
+      return speaker.name
+    },
+    [nameByLabel],
+  )
+
   // 화자 "수"는 이름 기준 distinct: 다른 라벨이라도 같은 이름이면 1명.
   // 이름 없는 라벨(name===id)은 각자 id로 구분되어 별개 카운트.
   const distinctSpeakerCount = useMemo(
-    () => new Set(visibleSpeakers.map((s) => s.name || s.id)).size,
-    [visibleSpeakers]
+    () => new Set(visibleSpeakers.map((s) => resolveName(s))).size,
+    [visibleSpeakers, resolveName],
   )
 
   const fetchSpeakers = useCallback(() => {
@@ -82,7 +105,8 @@ export function SpeakerPanel({
 
   function startEdit(speaker: Speaker) {
     setEditingId(speaker.id)
-    setEditValue(speaker.name === speaker.id ? '' : speaker.name)
+    const resolved = resolveName(speaker)
+    setEditValue(resolved === speaker.id ? '' : resolved)
   }
 
   async function submitEdit(speaker: Speaker) {
@@ -152,6 +176,7 @@ export function SpeakerPanel({
         {visibleSpeakers.map((speaker) => {
           // 배지 공통 클래스 — span/button 두 분기 드리프트 방지
           const badgeClass = `shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold ${speakerColor(speaker.id)}`
+          const display = resolveName(speaker)
           return (
           <div key={speaker.id} className="flex items-center gap-2 min-h-[44px]">
             {onSpeakerSeek ? (
@@ -184,7 +209,7 @@ export function SpeakerPanel({
                 className="flex-1 text-left text-xs text-gray-700 hover:text-blue-600 truncate disabled:hover:text-gray-700 disabled:cursor-not-allowed"
                 title={readOnly ? '잠긴 회의입니다' : '클릭하여 이름 편집'}
               >
-                {speaker.name !== speaker.id ? speaker.name : <span className="text-gray-400 italic">이름 없음</span>}
+                {display !== speaker.id ? display : <span className="text-gray-400 italic">이름 없음</span>}
               </button>
             )}
           </div>
