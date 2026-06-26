@@ -54,7 +54,7 @@ export function RightTabsPanel({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex border-b border-gray-200 shrink-0">
+      <div className="flex border-b border-border shrink-0">
         <button className={btn('chat')} onClick={() => setTab('chat')}>
           AI 챗
         </button>
@@ -68,7 +68,7 @@ export function RightTabsPanel({
         </button>
       </div>
       {tab === 'chat' && (
-        <div className="flex items-center gap-1 border-b border-gray-200 px-3 py-2 shrink-0">
+        <div className="flex items-center gap-1 border-b border-border px-3 py-2 shrink-0">
           {scopeBtn('meeting', '이 회의')}
           {scopeBtn('folder', '폴더', !folderId)}
           {scopeBtn('project', '프로젝트 전체', !projectId)}

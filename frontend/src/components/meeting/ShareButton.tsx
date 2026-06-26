@@ -55,7 +55,7 @@ export function ShareButton({ meetingId }: ShareButtonProps) {
       <button
         onClick={handleShare}
         disabled={isLoading}
-        className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-sm font-medium text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+        className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-sm font-medium text-muted-foreground border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-50"
       >
         <Share2 className="w-4 h-4" />
         공유

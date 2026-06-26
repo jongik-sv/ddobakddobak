@@ -24,7 +24,7 @@ export default function SaveTemplateDialog({ onSave, onClose }: SaveTemplateDial
   }
 
   return (
-    <Dialog onClose={onClose} backdropClassName="bg-black/10 backdrop-blur-sm" className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
+    <Dialog onClose={onClose} backdropClassName="bg-black/10 backdrop-blur-sm" className="w-full max-w-sm rounded-xl bg-card p-6 shadow-2xl border border-border">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">템플릿으로 저장</h2>
           <button onClick={onClose} className="p-2.5 rounded hover:bg-muted transition-colors">

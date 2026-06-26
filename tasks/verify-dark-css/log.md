@@ -32,3 +32,10 @@
 체계성: 시맨틱토큰 전략과 충돌無(escape hatch 정당)·가이드 권고 / 칩 하드코딩=유채색이라 정당(amber선례 일관) / 동일패턴 다른 컴포넌트 다수(부록 스윕) / color-scheme 기존스타일 충돌無
 
 [2026-06-26] [VERIFICATION] color-scheme 충돌 점검(브리프 체계성 마지막 항목, advisor 지적으로 실증화): grep -rnE '::-webkit-scrollbar|scrollbar-(color|width)|appearance:' frontend/src = 0건(EXIT=1). 커스텀 스크롤바/폼 오버라이드 부재 → color-scheme 충돌 대상 없음. '충돌無' 주장 → 실증 PASS로 격상. 전 체크리스트 검증 완료.
+
+[2026-06-26] [BACKFILL] 다크 미대응 구조색 보강(Workflow wf_a10e949b-93e, 4그룹 병렬, 14편집/12파일, 0스킵). 전부 중성 gray→시맨틱토큰 치환(다크 1~4차 연장, dark: 변형 아님):
+- bg-white→bg-card, bg-gray-50/100→bg-muted, text-gray-700/800→text-foreground, text-gray-500/600→text-muted-foreground, border-gray-100/200/300→border-border. hover:bg-gray-50→hover:bg-muted.
+- 파일: MemoHeader/MemoEditorPanel/meetingDetailTabs(83·110)/ShareLinkButton/ShareButton/MeetingListUI(25·80)/MeetingListTable/RightTabsPanel(57·71)/useLiveMobileTabs/DecisionList/SaveTemplateDialog/TranscriptBlock.
+- 보존(오탐): Switch/MeetingSettingsTab/UserLlmSettings/DiarizationPanel의 bg-white=토글 흰노브. chromatic(blue/green/red/amber/yellow)·hover:border-blue-400 전부 보존.
+검증: ① grep 잔여 light-only 구조색=0(노브만). ② tsc -p tsconfig.app.json=24에러(전부 test/pdfExporter/InviteRedeemPage 기준선, 내 12파일 신규0)→게이트 PASS. ③ 브라우저 실측(caddy 13443, vite HMR 13325): 다크=bg-muted rgb(39,39,42)·bg-card rgb(9,9,11)·text-muted-foreground rgb(161,161,170)·border-border rgb(64,64,69) 정상 해상, 회의목록+회의상세 밝은블록 없음. 라이트 회귀 없음. 다크 복원.
+미커밋(feedback_no_auto_commit).

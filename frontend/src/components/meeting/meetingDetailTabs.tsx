@@ -80,7 +80,7 @@ export function buildMeetingDetailTabs({
           )}
           {/* 화자 accordion (기본 닫힘) — MeetingViewerPage 모바일과 동일 패턴 */}
           <details className="border-b">
-            <summary className="px-4 py-2 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-50">
+            <summary className="px-4 py-2 text-sm font-medium text-foreground cursor-pointer hover:bg-muted">
               화자
             </summary>
             <div className="px-2 pb-2">
@@ -107,7 +107,7 @@ export function buildMeetingDetailTabs({
       label: '요약',
       icon: Bot,
       content: (
-        <div data-search-region="summary" className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
+        <div data-search-region="summary" className="h-full bg-muted overflow-hidden flex flex-col min-h-0">
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
             <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={!locked} onNotesChange={onNotesChange} headerExtra={summaryOptions} onSeek={onSeek} />
           </div>

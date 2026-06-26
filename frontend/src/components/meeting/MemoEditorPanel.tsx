@@ -24,7 +24,7 @@ export function MemoEditorPanel({
 }) {
   return (
     <section data-testid="memo-editor" className="h-full flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-muted shrink-0">
         <h2 className="text-sm font-semibold text-gray-500">메모</h2>
         {!readOnly && (
           <button

@@ -20,7 +20,7 @@ export const TranscriptBlock = createReactBlockSpec(
       return (
         <div className="flex gap-2 items-start py-1" data-testid="transcript-block">
           <SpeakerLabel speakerLabel={speakerLabel} />
-          <span className="text-sm text-gray-800 leading-relaxed">{text}</span>
+          <span className="text-sm text-foreground leading-relaxed">{text}</span>
         </div>
       )
     },

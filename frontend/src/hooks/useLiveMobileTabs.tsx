@@ -65,7 +65,7 @@ export function useLiveMobileTabs({
         <div className="h-full flex flex-col">
           {/* 화자 관리 accordion (기본 닫힘) */}
           <details className="border-b">
-            <summary className="px-4 py-2 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-50">
+            <summary className="px-4 py-2 text-sm font-medium text-foreground cursor-pointer hover:bg-muted">
               화자 관리
             </summary>
             <div className="px-2 pb-2">

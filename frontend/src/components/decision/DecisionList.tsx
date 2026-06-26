@@ -22,7 +22,7 @@ const STATUS_LABELS: Record<Decision['status'], string> = {
 const STATUS_COLORS: Record<Decision['status'], string> = {
   active: 'bg-green-100 text-green-700',
   revised: 'bg-yellow-100 text-yellow-700',
-  cancelled: 'bg-gray-100 text-gray-500',
+  cancelled: 'bg-muted text-muted-foreground',
 }
 
 export function DecisionList({ meetingId, readOnly = false }: DecisionListProps) {
