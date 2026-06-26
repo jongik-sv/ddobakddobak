@@ -479,7 +479,7 @@ export default function MeetingPage() {
           <Panel defaultSize={22} minSize={15}>
             <div className="h-full flex flex-col overflow-hidden">
               {bookmarksVisible && (
-                <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} onAdd={handleOpenBookmark} onEdit={handleEditBookmark} readOnly={locked} />
+                <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} onAdd={handleOpenBookmark} onEdit={handleEditBookmark} readOnly={locked} collapsible />
               )}
               <div className="flex-1 overflow-y-auto">
                 <TranscriptPanel

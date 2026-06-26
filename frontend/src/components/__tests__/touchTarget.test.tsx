@@ -122,6 +122,7 @@ const mockAudio: AudioPlayerResult = {
   isPlaying: false,
   hasAudio: true,
   audioLoaded: true,
+  srcReady: true,
   currentTimeMs: 0,
   durationMs: 60000,
   playbackRate: 1,
@@ -185,13 +186,15 @@ describe('ShareButton 터치 타겟', () => {
 
 // ── 7. ExportButton 터치 타겟 ──
 import { ExportButton } from '../meeting/ExportButton'
+import { ACTION_NEUTRAL } from '../meeting/actionButtonStyles'
 
-describe('ExportButton 터치 타겟', () => {
-  it('내보내기 버튼에 min-h-[44px] 클래스가 적용되어 있다', () => {
+describe('ExportButton 스타일', () => {
+  it('내보내기 버튼이 헤더 공용 액션 알약 스타일(ACTION_NEUTRAL)을 사용한다', () => {
     render(<ExportButton meetingId={1} />)
     // Tooltip이 동일 텍스트("내보내기")의 role="tooltip" span을 추가하므로 버튼 role로 정확히 한정한다.
+    // 사용자 결정(컴팩트 ~30px 통일)에 따라 min-h-[44px] 대신 다른 헤더 액션 버튼과 동일한 알약 스타일을 공유한다.
     const button = screen.getByRole('button', { name: '내보내기' })
-    expect(button.className).toContain('min-h-[44px]')
+    expect(button.className).toBe(ACTION_NEUTRAL)
   })
 })
 

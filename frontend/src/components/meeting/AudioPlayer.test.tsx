@@ -15,6 +15,7 @@ function makeAudio(overrides: Partial<AudioPlayerResult> = {}): AudioPlayerResul
     isPlaying: false,
     hasAudio: true,
     audioLoaded: true,
+    srcReady: true,
     currentTimeMs: 0,
     durationMs: 60000,
     playbackRate: 1,
