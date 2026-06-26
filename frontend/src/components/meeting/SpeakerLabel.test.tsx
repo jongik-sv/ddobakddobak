@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { SpeakerLabel, speakerColor, SPEAKER_COLORS } from './SpeakerLabel'
 
 describe('SpeakerLabel', () => {
@@ -60,5 +61,60 @@ describe('speakerColor', () => {
 
   it('숫자형 화자 회귀: 화자 3은 SPEAKER_COLORS[3]', () => {
     expect(speakerColor('화자 3')).toBe(SPEAKER_COLORS[3])
+  })
+})
+
+describe('SpeakerLabel 인라인 편집', () => {
+  it('editable + 더블클릭 → 입력 노출, Enter → onRename(trim된 값)', async () => {
+    const user = userEvent.setup()
+    const onRename = vi.fn()
+    render(<SpeakerLabel speakerLabel="화자1" editable onRename={onRename} />)
+    await user.dblClick(screen.getByText('화자1'))
+    const input = screen.getByRole('textbox', { name: '화자 이름 편집' })
+    await user.type(input, '  김철수  ')
+    await user.keyboard('{Enter}')
+    expect(onRename).toHaveBeenCalledWith('김철수')
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  it('커스텀 이름 있으면 입력 시작값 = 그 이름', async () => {
+    const user = userEvent.setup()
+    render(<SpeakerLabel speakerLabel="화자1" speakerName="김철수" editable onRename={vi.fn()} />)
+    await user.dblClick(screen.getByText('김철수'))
+    expect(screen.getByRole('textbox', { name: '화자 이름 편집' })).toHaveValue('김철수')
+  })
+
+  it('커스텀 이름 없으면(라벨로 fallback) 입력 시작값 = 빈칸', async () => {
+    const user = userEvent.setup()
+    render(<SpeakerLabel speakerLabel="화자1" speakerName="화자1" editable onRename={vi.fn()} />)
+    await user.dblClick(screen.getByText('화자1'))
+    expect(screen.getByRole('textbox', { name: '화자 이름 편집' })).toHaveValue('')
+  })
+
+  it('Esc → onRename 미호출, 입력 종료', async () => {
+    const user = userEvent.setup()
+    const onRename = vi.fn()
+    render(<SpeakerLabel speakerLabel="화자1" editable onRename={onRename} />)
+    await user.dblClick(screen.getByText('화자1'))
+    await user.type(screen.getByRole('textbox'), '버릴값')
+    await user.keyboard('{Escape}')
+    expect(onRename).not.toHaveBeenCalled()
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  it('값이 현재와 같으면 onRename 미호출', async () => {
+    const user = userEvent.setup()
+    const onRename = vi.fn()
+    render(<SpeakerLabel speakerLabel="화자1" speakerName="김철수" editable onRename={onRename} />)
+    await user.dblClick(screen.getByText('김철수'))
+    await user.keyboard('{Enter}')
+    expect(onRename).not.toHaveBeenCalled()
+  })
+
+  it('비-editable이면 더블클릭해도 입력 안 뜸', async () => {
+    const user = userEvent.setup()
+    render(<SpeakerLabel speakerLabel="화자1" />)
+    await user.dblClick(screen.getByText('화자1'))
+    expect(screen.queryByRole('textbox')).toBeNull()
   })
 })
