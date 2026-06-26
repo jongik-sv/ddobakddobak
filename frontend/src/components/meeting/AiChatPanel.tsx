@@ -107,7 +107,7 @@ export function AiChatPanel({
                         if (hasPending) return
                         void send(scopeType, scopeId, q)
                       }}
-                      className="rounded-full border border-slate-600 bg-slate-700 px-3 py-1.5 text-xs font-bold text-yellow-300 hover:bg-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-700 hover:bg-blue-100 dark:border-slate-600 dark:bg-slate-700 dark:font-bold dark:text-yellow-300 dark:hover:bg-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {q}
                     </button>

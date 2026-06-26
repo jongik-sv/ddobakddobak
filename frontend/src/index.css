@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:is(.dark, .dark *));
 
 /* shadcn HSL 디자인 토큰(:root/.dark)을 Tailwind v4 색 유틸로 연결.
    inline이라 bg-primary 등은 hsl(var(--primary))를 use-site에서 평가 → .dark 오버라이드 동작. */
