@@ -24,7 +24,7 @@ export default function CreateFolderDialog({
   }
 
   return (
-    <Dialog onClose={onClose} backdropClassName="bg-black/10 backdrop-blur-sm" className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
+    <Dialog onClose={onClose} backdropClassName="bg-black/10 backdrop-blur-sm" className="w-full max-w-sm rounded-xl bg-card p-6 shadow-2xl border border-border">
         <h2 className="text-lg font-semibold mb-4">{title}</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input

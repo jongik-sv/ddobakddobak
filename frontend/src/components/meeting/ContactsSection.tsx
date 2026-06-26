@@ -39,11 +39,11 @@ export function ContactsSection({ meetingId, readOnly = false }: ContactsSection
   if (contacts.length === 0 && !failed) return null
 
   return (
-    <div className="border-b bg-gray-50 px-4 py-3">
-      <div className="flex items-center gap-2 mb-2 text-sm font-medium text-gray-700">
+    <div className="border-b bg-muted px-4 py-3">
+      <div className="flex items-center gap-2 mb-2 text-sm font-medium text-foreground">
         <Users className="w-4 h-4" />
         참석자 (명함)
-        {contacts.length > 0 && <span className="text-xs text-gray-400">{contacts.length}</span>}
+        {contacts.length > 0 && <span className="text-xs text-muted-foreground">{contacts.length}</span>}
       </div>
 
       {failed && (

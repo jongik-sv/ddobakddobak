@@ -252,7 +252,7 @@ export default function UserLlmSettings() {
           {/* 레거시 챗 모델 입력 — chatPresetId='' 일 때만 표시 */}
           {chatPresetId === '' && (
             <div className="mt-2">
-              <label htmlFor="user-chat-legacy-model" className="block text-xs text-gray-600 mb-1">챗 모델 (AI 챗에만 적용)</label>
+              <label htmlFor="user-chat-legacy-model" className="block text-xs text-muted-foreground mb-1">챗 모델 (AI 챗에만 적용)</label>
               <input
                 id="user-chat-legacy-model"
                 value={chatForm.model}
@@ -282,7 +282,7 @@ export default function UserLlmSettings() {
                 type="button"
                 onClick={handleTest}
                 disabled={testing || !summaryForm.model}
-                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors min-h-[44px]"
+                className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50 transition-colors min-h-[44px]"
               >
                 {testing ? '테스트 중...' : '연결 테스트'}
               </button>
@@ -299,7 +299,7 @@ export default function UserLlmSettings() {
                   type="button"
                   onClick={handleReset}
                   disabled={saving}
-                  className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors min-h-[44px]"
+                  className="rounded-md border border-red-300 bg-card px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors min-h-[44px]"
                 >
                   설정 초기화
                 </button>

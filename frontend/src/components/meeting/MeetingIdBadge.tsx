@@ -32,7 +32,7 @@ export function MeetingIdBadge({ meetingId }: MeetingIdBadgeProps) {
   return (
     <button
       onClick={handleCopy}
-      className="shrink-0 text-xs text-gray-400 hover:text-gray-600 tabular-nums"
+      className="shrink-0 text-xs text-muted-foreground hover:text-foreground tabular-nums"
       title="회의 ID 복사"
     >
       {copied ? '복사됨' : `#${meetingId}`}

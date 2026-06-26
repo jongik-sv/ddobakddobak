@@ -114,14 +114,14 @@ export default function DashboardPage() {
   const showSkeleton = isLoading && meetings.length === 0
 
   const statCards: Omit<StatCardProps, 'onClick'>[] = [
-    { icon: FileText,    iconBg: 'bg-blue-50',  iconColor: 'text-blue-600',  label: '전체 회의', value: totalCount },
-    { icon: Mic,         iconBg: 'bg-red-50',   iconColor: 'text-red-500',   label: '녹음중',    value: recordingCount },
-    { icon: CheckCircle2,iconBg: 'bg-green-50', iconColor: 'text-green-600', label: '완료',      value: completedCount },
-    { icon: Clock,       iconBg: 'bg-amber-50', iconColor: 'text-amber-600', label: '대기중',    value: adjustedPending },
-    { icon: CalendarClock, iconBg: 'bg-indigo-50', iconColor: 'text-indigo-600', label: '예약중', value: scheduledCount },
+    { icon: FileText,    iconBg: 'bg-muted',  iconColor: 'text-blue-600',  label: '전체 회의', value: totalCount },
+    { icon: Mic,         iconBg: 'bg-muted',   iconColor: 'text-red-500',   label: '녹음중',    value: recordingCount },
+    { icon: CheckCircle2,iconBg: 'bg-muted', iconColor: 'text-green-600', label: '완료',      value: completedCount },
+    { icon: Clock,       iconBg: 'bg-muted', iconColor: 'text-amber-600', label: '대기중',    value: adjustedPending },
+    { icon: CalendarClock, iconBg: 'bg-muted', iconColor: 'text-indigo-600', label: '예약중', value: scheduledCount },
     // 오프라인 회의 건수(Android만). 클릭 시 전용 홈으로.
     ...(offlineCount !== null
-      ? [{ icon: WifiOff, iconBg: 'bg-slate-100', iconColor: 'text-slate-600', label: '오프라인 회의', value: offlineCount }]
+      ? [{ icon: WifiOff, iconBg: 'bg-muted', iconColor: 'text-slate-600', label: '오프라인 회의', value: offlineCount }]
       : []),
   ]
   const statLinks = ['/meetings', '/meetings?status=recording', '/meetings?status=completed', '/meetings?status=pending',

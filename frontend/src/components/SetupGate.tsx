@@ -44,7 +44,7 @@ export default function SetupGate({ children }: { children: React.ReactNode }) {
         />
         {/* 완전 오프라인 탈출구: 서버 없이 온디바이스 회의로 진입(Android만). */}
         {IS_TAURI && IS_MOBILE && (
-          <div className="fixed bottom-0 inset-x-0 p-4 pb-safe bg-white/90 backdrop-blur border-t text-center">
+          <div className="fixed bottom-0 inset-x-0 p-4 pb-safe bg-card/90 backdrop-blur border-t text-center">
             <a
               href="/local-meetings"
               className="inline-block text-sm font-medium text-primary underline"

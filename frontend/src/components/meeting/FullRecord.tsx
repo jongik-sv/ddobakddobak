@@ -104,7 +104,7 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek, readOnly = fa
       {/* 전체 기록 리스트 */}
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
         {finals.length === 0 && (
-          <p className="text-sm text-gray-400">기록이 없습니다.</p>
+          <p className="text-sm text-muted-foreground">기록이 없습니다.</p>
         )}
 
         {groups.map((group) => {
@@ -119,7 +119,7 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek, readOnly = fa
                   editable={!readOnly}
                   onRename={(name) => handleRename(first.speaker_label, name)}
                 />
-                <span className="text-xs text-gray-400">{formatElapsed(group.startedAtMs)}</span>
+                <span className="text-xs text-muted-foreground">{formatElapsed(group.startedAtMs)}</span>
               </div>
               {group.segments.map(({ item, flatIdx }) => {
                 const isHighlighted = flatIdx === highlightedIndex
@@ -130,7 +130,7 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek, readOnly = fa
                     className={`flex items-start gap-2 p-2 rounded transition-colors ${
                       isHighlighted
                         ? 'bg-indigo-100 border-l-4 border-indigo-500'
-                        : selected.has(item.id) ? 'bg-red-50' : 'hover:bg-gray-50'
+                        : selected.has(item.id) ? 'bg-red-50' : 'hover:bg-muted'
                     } ${onSeek ? 'cursor-pointer' : ''}`}
                     onClick={() => onSeek?.(item.started_at_ms)}
                   >
@@ -156,7 +156,7 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek, readOnly = fa
                         meetingId={meetingId}
                         content={item.content}
                         editable={!readOnly}
-                        className="text-sm text-gray-900 leading-relaxed"
+                        className="text-sm text-foreground leading-relaxed"
                       />
                     </div>
                   </div>
@@ -169,8 +169,8 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek, readOnly = fa
 
       {/* 하단 선택 삭제 바 */}
       {finals.length > 0 && !readOnly && (
-        <div className="border-t bg-gray-50 px-4 py-2 flex items-center justify-between shrink-0">
-          <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
+        <div className="border-t bg-muted px-4 py-2 flex items-center justify-between shrink-0">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
             <input
               type="checkbox"
               checked={selected.size === finals.length && finals.length > 0}
@@ -180,7 +180,7 @@ export function FullRecord({ meetingId, currentTimeMs = 0, onSeek, readOnly = fa
           </label>
           <div className="flex items-center gap-2">
             {selected.size > 0 && (
-              <span className="text-xs text-gray-500">{selected.size}개 선택</span>
+              <span className="text-xs text-muted-foreground">{selected.size}개 선택</span>
             )}
             <button
               onClick={handleDelete}

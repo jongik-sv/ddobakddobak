@@ -214,13 +214,13 @@ export default function LocalMeetingDetailPage() {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* 헤더: 뒤로 + 제목(인라인 rename) + 더보기 */}
-      <div className="sticky top-0 z-20 flex items-center gap-2 px-2 py-1.5 border-b bg-white shadow-sm">
+      <div className="sticky top-0 z-20 flex items-center gap-2 px-2 py-1.5 border-b bg-card shadow-sm">
         <button
           onClick={() => navigate('/local-meetings')}
           aria-label="뒤로"
           className="p-1 rounded-md hover:bg-black/5 transition-colors shrink-0"
         >
-          <ArrowLeft className="w-4 h-4 text-gray-600" />
+          <ArrowLeft className="w-4 h-4 text-muted-foreground" />
         </button>
 
         {editingTitle ? (
@@ -246,20 +246,20 @@ export default function LocalMeetingDetailPage() {
             <button
               onClick={() => setEditingTitle(false)}
               aria-label="취소"
-              className="p-1.5 rounded-md text-gray-500 hover:bg-black/5 transition-colors"
+              className="p-1.5 rounded-md text-muted-foreground hover:bg-black/5 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         ) : (
           <>
-            <span className="text-sm font-medium text-gray-900 truncate flex-1 min-w-0">
+            <span className="text-sm font-medium text-foreground truncate flex-1 min-w-0">
               {meta?.title ?? '오프라인 회의'}
             </span>
             <button
               onClick={startRename}
               aria-label="이름 수정"
-              className="p-1.5 rounded-md text-gray-500 hover:bg-black/5 transition-colors shrink-0"
+              className="p-1.5 rounded-md text-muted-foreground hover:bg-black/5 transition-colors shrink-0"
             >
               <Pencil className="w-4 h-4" />
             </button>
@@ -271,7 +271,7 @@ export default function LocalMeetingDetailPage() {
           onClick={() => navigate(`/local-meetings/${localId}/live`)}
           aria-label="녹음 이어하기"
           title="이 회의에 이어서 녹음"
-          className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-black/5 transition-colors shrink-0"
+          className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium text-foreground hover:bg-black/5 transition-colors shrink-0"
         >
           <Mic className="w-4 h-4" />
           <span className="hidden sm:inline">녹음 이어하기</span>
@@ -283,7 +283,7 @@ export default function LocalMeetingDetailPage() {
             disabled={retranscribing}
             aria-label="STT 재전사"
             title="녹음을 다시 인식(STT 재전사)"
-            className="p-1.5 rounded-md text-gray-600 hover:bg-black/5 transition-colors shrink-0 disabled:opacity-50"
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-black/5 transition-colors shrink-0 disabled:opacity-50"
           >
             <RotateCw className={`w-4 h-4 ${retranscribing ? 'animate-spin' : ''}`} />
           </button>
@@ -295,7 +295,7 @@ export default function LocalMeetingDetailPage() {
             disabled={uploading}
             aria-label="서버로 업로드"
             title="이 오프라인 회의를 서버로 업로드"
-            className="p-1.5 rounded-md text-gray-600 hover:bg-black/5 transition-colors shrink-0 disabled:opacity-50"
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-black/5 transition-colors shrink-0 disabled:opacity-50"
           >
             <UploadCloud className="w-4 h-4" />
           </button>
@@ -304,7 +304,7 @@ export default function LocalMeetingDetailPage() {
         <button
           onClick={() => setShowMore(true)}
           aria-label="더보기"
-          className="p-1.5 rounded-md text-gray-600 hover:bg-black/5 transition-colors shrink-0"
+          className="p-1.5 rounded-md text-muted-foreground hover:bg-black/5 transition-colors shrink-0"
         >
           <MoreHorizontal className="w-4 h-4" />
         </button>
@@ -320,7 +320,7 @@ export default function LocalMeetingDetailPage() {
         <div className="fixed inset-0 z-50 lg:hidden" onClick={() => setShowFullPlayer(false)}>
           <div className="absolute inset-0 bg-black/30" />
           <div
-            className="absolute bottom-0 left-0 right-0 bg-white border-t shadow-lg rounded-t-xl p-3 pb-safe"
+            className="absolute bottom-0 left-0 right-0 bg-card border-t shadow-lg rounded-t-xl p-3 pb-safe"
             onClick={(e) => e.stopPropagation()}
           >
             <AudioPlayer audio={audio} onTimeUpdate={setCurrentTimeMs} seekMs={seekMs} autoPlayOnSeek />
@@ -373,15 +373,15 @@ export default function LocalMeetingDetailPage() {
           onClick={() => setShowMore(false)}
         >
           <div
-            className="bg-white rounded-t-2xl px-4 pt-5 pb-8 max-h-[70vh] overflow-auto"
+            className="bg-card rounded-t-2xl px-4 pt-5 pb-8 max-h-[70vh] overflow-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-gray-900">내보내기</h3>
+              <h3 className="text-base font-semibold text-foreground">내보내기</h3>
               <button
                 onClick={() => setShowMore(false)}
                 aria-label="닫기"
-                className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -395,9 +395,9 @@ export default function LocalMeetingDetailPage() {
                     setShowMore(false)
                   }}
                   disabled={a.disabled}
-                  className="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm text-gray-800 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed text-left"
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm text-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed text-left"
                 >
-                  <a.icon className="w-4 h-4 text-gray-500" />
+                  <a.icon className="w-4 h-4 text-muted-foreground" />
                   {a.label}
                 </button>
               ))}

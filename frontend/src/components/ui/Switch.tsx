@@ -24,7 +24,7 @@ export function Switch({ checked, onChange, label, disabled }: SwitchProps) {
           }`}
         />
       </button>
-      {label && <span className="text-sm text-gray-700">{label}</span>}
+      {label && <span className="text-sm text-foreground">{label}</span>}
     </label>
   )
 }

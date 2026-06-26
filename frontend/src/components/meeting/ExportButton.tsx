@@ -108,8 +108,8 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
 
       {/* 옵션 패널 */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-50">
-          <p className="text-sm font-medium text-gray-800 mb-3">회의록 내보내기</p>
+        <div className="absolute right-0 top-full mt-1 w-64 bg-card border border-border rounded-lg shadow-lg p-4 z-50">
+          <p className="text-sm font-medium text-foreground mb-3">회의록 내보내기</p>
 
           {/* 형식 선택 */}
           <div className="flex gap-1.5 mb-3">
@@ -120,7 +120,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
                 className={`flex-1 px-2 py-1.5 min-h-[44px] text-xs font-medium rounded-md border transition-colors ${
                   format === f
                     ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                    : 'bg-card text-muted-foreground border-border hover:border-blue-400'
                 }`}
               >
                 {f === 'prompt' ? '프롬프트' : `.${f}`}
@@ -130,7 +130,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
 
           {format !== 'prompt' && (
             <>
-              <label className="flex items-center gap-2 text-sm text-gray-700 mb-2 cursor-pointer min-h-[44px]">
+              <label className="flex items-center gap-2 text-sm text-foreground mb-2 cursor-pointer min-h-[44px]">
                 <input
                   type="checkbox"
                   checked={includeSummary}
@@ -141,7 +141,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
                 AI 요약 포함
               </label>
 
-              <label className="flex items-center gap-2 text-sm text-gray-700 mb-2 cursor-pointer min-h-[44px]">
+              <label className="flex items-center gap-2 text-sm text-foreground mb-2 cursor-pointer min-h-[44px]">
                 <input
                   type="checkbox"
                   checked={includeMemo}
@@ -152,7 +152,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
                 메모 포함
               </label>
 
-              <label className="flex items-center gap-2 text-sm text-gray-700 mb-4 cursor-pointer min-h-[44px]">
+              <label className="flex items-center gap-2 text-sm text-foreground mb-4 cursor-pointer min-h-[44px]">
                 <input
                   type="checkbox"
                   checked={includeTranscript}
@@ -166,7 +166,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
           )}
 
           {format === 'prompt' && (
-            <p className="text-xs text-gray-500 mb-4">
+            <p className="text-xs text-muted-foreground mb-4">
               시스템 프롬프트 + 자막 데이터를 포함한 텍스트 파일을 다운로드합니다.
               ChatGPT, Claude 등에 붙여넣어 회의록을 생성할 수 있습니다.
             </p>
@@ -179,7 +179,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
           <div className="flex gap-2">
             <button
               onClick={() => setIsOpen(false)}
-              className="flex-1 px-3 py-2 min-h-[44px] text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50"
+              className="flex-1 px-3 py-2 min-h-[44px] text-sm text-muted-foreground border border-border rounded-md hover:bg-accent"
             >
               취소
             </button>

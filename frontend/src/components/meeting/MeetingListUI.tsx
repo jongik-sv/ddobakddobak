@@ -190,14 +190,14 @@ export function MeetingActionButtons({
             }
             setOpen((v) => !v)
           }}
-          className="p-1 rounded text-zinc-500 hover:bg-black/5 transition-colors"
+          className="p-1 rounded text-muted-foreground hover:bg-muted transition-colors"
         >
           <MoreVertical className="w-4 h-4" />
         </button>
         {open && pos && (
           <div
             style={pos.top != null ? { top: pos.top, right: pos.right } : { bottom: pos.bottom, right: pos.right }}
-            className="fixed z-50 w-36 rounded-md border border-zinc-200 bg-white py-1 text-zinc-900 shadow-lg"
+            className="fixed z-50 w-36 rounded-md border border-border bg-card py-1 text-card-foreground shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -207,7 +207,7 @@ export function MeetingActionButtons({
                 setOpen(false)
                 onEdit(meeting)
               }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted"
             >
               <Pencil className="w-3.5 h-3.5" /> 정보 수정
             </button>
@@ -218,7 +218,7 @@ export function MeetingActionButtons({
                 setOpen(false)
                 onMove(meeting)
               }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted"
             >
               <FolderInput className="w-4 h-4" /> 폴더로 이동
             </button>
@@ -229,7 +229,7 @@ export function MeetingActionButtons({
                 setOpen(false)
                 onMoveProject(meeting)
               }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted"
             >
               <FolderInput className="w-4 h-4" /> 프로젝트 이동
             </button>

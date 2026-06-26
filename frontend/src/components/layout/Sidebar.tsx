@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { getMode, IS_MOBILE, IS_TAURI } from '../../config'
 import FolderTree from '../folder/FolderTree'
 import ProjectSwitcher from '../project/ProjectSwitcher'
+import ThemeToggle from './ThemeToggle'
 import { folderPath } from '../../lib/folderNav'
 
 function navLinkClass({ isActive }: { isActive: boolean }) {
@@ -115,6 +116,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
         )}
       </nav>
       <div className="px-3 py-3 border-t border-border shrink-0 space-y-1 pb-safe">
+        <ThemeToggle />
         <NavLink to="/trash" className={navLinkClass} onClick={closeIfMobile}>
           <Trash2 className="w-4 h-4" />
           휴지통

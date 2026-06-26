@@ -63,6 +63,11 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
     audio.addEventListener('timeupdate', () => {
       if (!cancelled) setCurrentTimeMs(audio.currentTime * 1000)
     })
+    // 일시정지 상태의 프로그래매틱 seek는 timeupdate가 안 떠서 시간 표시가 갱신되지 않는다.
+    // seeked로 실제 위치를 반영(브라우저가 clamp한 값까지 보정).
+    audio.addEventListener('seeked', () => {
+      if (!cancelled) setCurrentTimeMs(audio.currentTime * 1000)
+    })
     audio.addEventListener('error', () => {
       if (!cancelled) setIsReady(true)
     })
@@ -140,6 +145,9 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
     const audio = audioRef.current
     if (!audio) return
     audio.currentTime = ms / 1000
+    // 낙관적 갱신: 일시정지 중 seek는 미디어 이벤트가 늦거나 안 떠서
+    // 시간 표시·트랜스크립트 하이라이트가 0:00에 멈춘다. 목표 위치를 즉시 반영.
+    setCurrentTimeMs(ms)
   }, [])
 
   const setPlaybackRate = useCallback((rate: number) => {

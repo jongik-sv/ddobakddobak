@@ -117,16 +117,16 @@ export default function InviteRedeemPage() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-zinc-50 px-4">
-      <div className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-6 shadow-xl">
+    <div className="flex min-h-dvh items-center justify-center bg-background px-4">
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-xl">
         {loading ? (
-          <p className="py-8 text-center text-sm text-zinc-500">불러오는 중…</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">불러오는 중…</p>
         ) : loadError ? (
           <div className="py-6 text-center">
             <p className="text-sm text-red-600">{loadError}</p>
             <button
               onClick={() => navigate('/meetings')}
-              className="mt-4 rounded-md border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+              className="mt-4 rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
             >
               홈으로
             </button>
@@ -145,10 +145,10 @@ export default function InviteRedeemPage() {
                   size={48}
                 />
               )}
-              <h1 className="text-lg font-bold text-zinc-900">
+              <h1 className="text-lg font-bold text-foreground">
                 {preview?.name ?? '프로젝트'}
               </h1>
-              <p className="text-sm text-zinc-500">프로젝트에 초대되었습니다.</p>
+              <p className="text-sm text-muted-foreground">프로젝트에 초대되었습니다.</p>
             </div>
 
             {submitError && (
@@ -173,7 +173,7 @@ export default function InviteRedeemPage() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="이름"
-                    className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
                     autoFocus
                   />
                   <input
@@ -181,14 +181,14 @@ export default function InviteRedeemPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="이메일"
-                    className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="비밀번호"
-                    className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                   <button
                     type="submit"
@@ -198,7 +198,7 @@ export default function InviteRedeemPage() {
                     가입하고 합류하기
                   </button>
                 </form>
-                <p className="mt-4 text-center text-xs text-zinc-500">
+                <p className="mt-4 text-center text-xs text-muted-foreground">
                   이미 계정이 있으신가요?{' '}
                   <button
                     type="button"
@@ -217,7 +217,7 @@ export default function InviteRedeemPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="이메일"
-                    className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
                     autoFocus
                   />
                   <input
@@ -225,7 +225,7 @@ export default function InviteRedeemPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="비밀번호"
-                    className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                   <button
                     type="submit"
@@ -235,7 +235,7 @@ export default function InviteRedeemPage() {
                     로그인하고 합류하기
                   </button>
                 </form>
-                <p className="mt-4 text-center text-xs text-zinc-500">
+                <p className="mt-4 text-center text-xs text-muted-foreground">
                   계정이 없으신가요?{' '}
                   <button
                     type="button"

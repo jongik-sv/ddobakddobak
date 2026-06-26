@@ -17,7 +17,7 @@ export function ParticipantList({
 
   return (
     <div className="px-3 py-2">
-      <h3 className="text-xs font-semibold text-gray-500 mb-1">
+      <h3 className="text-xs font-semibold text-muted-foreground mb-1">
         참여자 ({participants.length})
       </h3>
       <ul>
@@ -26,12 +26,12 @@ export function ParticipantList({
             {p.role === 'host' ? (
               <Crown className="text-amber-500 w-4 h-4 shrink-0" />
             ) : (
-              <Eye className="text-gray-400 w-4 h-4 shrink-0" />
+              <Eye className="text-muted-foreground w-4 h-4 shrink-0" />
             )}
             <span className="flex-1 truncate">
               {p.user_name}
               {p.user_id === currentUserId && (
-                <span className="text-gray-400 ml-1">(나)</span>
+                <span className="text-muted-foreground ml-1">(나)</span>
               )}
             </span>
             {p.role === 'host' && (

@@ -24,7 +24,7 @@ export function ScheduleFields({ value, onChange }: ScheduleFieldsProps) {
           type="checkbox"
           checked={value.enabled}
           onChange={(e) => toggleSchedule(e.target.checked)}
-          className="h-4 w-4 rounded border-gray-300 accent-blue-600"
+          className="h-4 w-4 rounded border-border accent-blue-600"
           aria-label="예약 시작"
         />
         <span className="text-sm font-medium">⏰ 예약 시작 (지정한 시각에 자동/수동으로 시작)</span>
@@ -48,7 +48,7 @@ export function ScheduleFields({ value, onChange }: ScheduleFieldsProps) {
               value={value.hour}
               onChange={(e) => onChange({ ...value, hour: e.target.value })}
               aria-label="시"
-              className="rounded-md border px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-white"
+              className="rounded-md border px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
             >
               {Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0')).map((h) => (
                 <option key={h} value={h}>{h}</option>
@@ -59,7 +59,7 @@ export function ScheduleFields({ value, onChange }: ScheduleFieldsProps) {
               value={value.minute}
               onChange={(e) => onChange({ ...value, minute: e.target.value })}
               aria-label="분"
-              className="rounded-md border px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-white"
+              className="rounded-md border px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
             >
               {Array.from({ length: 60 }, (_, m) => String(m).padStart(2, '0')).map((m) => (
                 <option key={m} value={m}>{m}</option>
@@ -108,7 +108,7 @@ export function ScheduleFields({ value, onChange }: ScheduleFieldsProps) {
                 type="checkbox"
                 checked={value.recurring}
                 onChange={(e) => onChange({ ...value, recurring: e.target.checked })}
-                className="h-4 w-4 rounded border-gray-300 accent-blue-600"
+                className="h-4 w-4 rounded border-border accent-blue-600"
                 aria-label="반복"
               />
               <span className="text-sm font-medium">반복</span>

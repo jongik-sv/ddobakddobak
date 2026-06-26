@@ -5,11 +5,11 @@ import { Dialog } from '../ui/Dialog'
 import { AiSummaryPanel } from './AiSummaryPanel'
 
 const CONTAINER_DESKTOP =
-  'relative w-full max-w-7xl h-[92vh] max-h-[92vh] rounded-xl bg-white shadow-2xl border border-gray-100 flex flex-col mx-4'
-const CONTAINER_MOBILE = 'fixed inset-0 w-full h-dvh bg-white flex flex-col'
+  'relative w-full max-w-7xl h-[92vh] max-h-[92vh] rounded-xl bg-card shadow-2xl border border-border flex flex-col mx-4'
+const CONTAINER_MOBILE = 'fixed inset-0 w-full h-dvh bg-card flex flex-col'
 
 const CLOSE_BTN =
-  'p-1.5 min-h-[44px] flex items-center rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors'
+  'p-1.5 min-h-[44px] flex items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors'
 
 interface AiSummaryFullViewModalProps {
   meetingId: number
@@ -39,7 +39,7 @@ export function AiSummaryFullViewModal({
     >
       <div data-testid="ai-summary-fullview" className="flex flex-col h-full min-h-0">
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
-          <h2 className="text-lg font-semibold text-gray-900">AI 회의록</h2>
+          <h2 className="text-lg font-semibold text-foreground">AI 회의록</h2>
           <button onClick={onClose} className={CLOSE_BTN} aria-label="닫기">
             <X className="w-5 h-5" />
           </button>

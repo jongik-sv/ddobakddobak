@@ -2,6 +2,20 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import { initMobileBridge } from './config'
+import { loadTheme, applyTheme } from './lib/theme'
+import { useUiStore } from './stores/uiStore'
+
+// OS 다크모드 변경 추적(모듈 수명, cleanup 없음). fire-time에 스토어의 현재 theme를
+// 읽어 'system'일 때만 재적용한다 — 명시적 light/dark 선택 시엔 OS가 바뀌어도 무시.
+try {
+  window
+    .matchMedia('(prefers-color-scheme: dark)')
+    .addEventListener('change', () => {
+      if (useUiStore.getState().theme === 'system') applyTheme('system')
+    })
+} catch {
+  /* 무시 */
+}
 
 // Tauri WebView: 입력 필드 외에서 Backspace 뒤로가기 방지
 document.addEventListener('keydown', (e) => {
@@ -29,6 +43,8 @@ if (import.meta.env.DEV) {
 // 모듈 로드 시점(getApiBaseUrl())에 고정되므로, App(및 transitive import) 평가 전에
 // 브릿지 포트를 캐시하고 전달 대상을 설정한다. 데스크톱/웹에서는 즉시 통과한다.
 async function boot() {
+  // FOUC 방지: 첫 await 이전에 동기로 테마 적용(저장값 → <html>.dark 토글)
+  applyTheme(loadTheme())
   // [BBDBG] 임시 계측 — AudioContext가 sampleRate:16000을 존중하는지 + logcat 채널 확인 (제거 예정)
   try {
     const { bbdbg } = await import('./lib/bbdbg')

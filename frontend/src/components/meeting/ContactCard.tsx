@@ -36,7 +36,7 @@ export function ContactCard({ contact, onDelete, onUpdate, readOnly = false }: C
 
   if (editing) {
     return (
-      <div className="w-56 shrink-0 rounded-lg border border-blue-300 bg-white p-3">
+      <div className="w-56 shrink-0 rounded-lg border border-blue-300 bg-card p-3">
         <div className="space-y-1">
           {EDIT_FIELDS.map((f) => (
             <input
@@ -50,7 +50,7 @@ export function ContactCard({ contact, onDelete, onUpdate, readOnly = false }: C
           ))}
         </div>
         <div className="mt-2 flex justify-end gap-2">
-          <button type="button" onClick={() => setEditing(false)} className="text-gray-400 hover:text-gray-600" aria-label="취소">
+          <button type="button" onClick={() => setEditing(false)} className="text-muted-foreground hover:text-foreground" aria-label="취소">
             <X className="w-4 h-4" />
           </button>
           <button type="button" onClick={save} className="text-blue-500 hover:text-blue-700" aria-label="저장">
@@ -65,25 +65,25 @@ export function ContactCard({ contact, onDelete, onUpdate, readOnly = false }: C
   const extraEntries = Object.entries(contact.extra ?? {})
 
   return (
-    <div className="w-56 shrink-0 rounded-lg border bg-white p-3 hover:shadow-sm hover:border-blue-300 transition">
+    <div className="w-56 shrink-0 rounded-lg border bg-card p-3 hover:shadow-sm hover:border-blue-300 transition">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-semibold text-gray-800 truncate">{contact.name || '(미인식 명함)'}</p>
-          {subtitle && <p className="text-xs text-gray-500 truncate flex items-center gap-1"><Building2 className="w-3 h-3 shrink-0" />{subtitle}</p>}
+          <p className="font-semibold text-foreground truncate">{contact.name || '(미인식 명함)'}</p>
+          {subtitle && <p className="text-xs text-muted-foreground truncate flex items-center gap-1"><Building2 className="w-3 h-3 shrink-0" />{subtitle}</p>}
         </div>
         {!readOnly && (
           <div className="flex items-center gap-1 shrink-0">
-            <button type="button" onClick={startEdit} className="text-gray-300 hover:text-blue-500" aria-label="수정">
+            <button type="button" onClick={startEdit} className="text-muted-foreground hover:text-blue-500" aria-label="수정">
               <Pencil className="w-4 h-4" />
             </button>
-            <button type="button" onClick={() => onDelete(contact.id)} className="text-gray-300 hover:text-red-500" aria-label="삭제">
+            <button type="button" onClick={() => onDelete(contact.id)} className="text-muted-foreground hover:text-red-500" aria-label="삭제">
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
         )}
       </div>
 
-      <div className="mt-2 space-y-1 text-xs text-gray-600">
+      <div className="mt-2 space-y-1 text-xs text-muted-foreground">
         {contact.mobile && <p className="flex items-center gap-1 truncate"><Smartphone className="w-3 h-3 shrink-0" />{contact.mobile}</p>}
         {contact.phone && <p className="flex items-center gap-1 truncate"><Phone className="w-3 h-3 shrink-0" />{contact.phone}</p>}
         {contact.email && <p className="flex items-center gap-1 truncate"><Mail className="w-3 h-3 shrink-0" />{contact.email}</p>}
@@ -95,9 +95,9 @@ export function ContactCard({ contact, onDelete, onUpdate, readOnly = false }: C
         </button>
       )}
       {showRaw && (
-        <div className="mt-1 space-y-1 text-[11px] text-gray-500">
+        <div className="mt-1 space-y-1 text-[11px] text-muted-foreground">
           {extraEntries.map(([k, v]) => (
-            <p key={k} className="truncate"><span className="text-gray-400">{k}:</span> {String(v)}</p>
+            <p key={k} className="truncate"><span className="text-muted-foreground">{k}:</span> {String(v)}</p>
           ))}
           {contact.raw_text && <pre className="whitespace-pre-wrap break-words">{contact.raw_text}</pre>}
         </div>

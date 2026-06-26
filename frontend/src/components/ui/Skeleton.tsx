@@ -63,7 +63,7 @@ export function DashboardMeetingsSkeleton() {
 export function MeetingPageSkeleton() {
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="px-6 py-4 bg-white border-b shrink-0">
+      <div className="px-6 py-4 bg-card border-b shrink-0">
         <div className="flex items-center gap-3">
           <Skeleton className="h-6 w-48" />
           <Skeleton className="h-5 w-16 rounded-full" />

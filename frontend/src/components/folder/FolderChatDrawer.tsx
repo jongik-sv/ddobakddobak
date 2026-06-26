@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { AiChatPanel } from '../meeting/AiChatPanel'
@@ -6,6 +6,7 @@ import type { ChatScopeType } from '../../api/chat'
 import { getUserLlmSettings } from '../../api/userLlmSettings'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { BREAKPOINTS } from '../../config'
+import { useUiStore } from '../../stores/uiStore'
 
 // 우측 슬라이드오버 폴더/프로젝트 챗. 스코프 셀렉터로 '이 폴더' ↔ '프로젝트 전체' 전환.
 export function FolderChatDrawer({
@@ -20,6 +21,27 @@ export function FolderChatDrawer({
   const navigate = useNavigate()
   const [scope, setScope] = useState<'folder' | 'project'>(folderId ? 'folder' : 'project')
   const isDesktop = useMediaQuery(BREAKPOINTS.lg)
+  const folderChatWidth = useUiStore((s) => s.folderChatWidth)
+  const setFolderChatWidth = useUiStore((s) => s.setFolderChatWidth)
+
+  // 좌측 경계 드래그로 드로어 폭 조절(데스크톱). 우측 고정 슬라이드오버라 방향이 사이드바와 반대:
+  // 왼쪽으로 끌수록 폭이 커진다 → 폭 = startW - (현재X - 시작X). 폭은 uiStore가 localStorage에 영속.
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = useUiStore.getState().folderChatWidth
+    const onMove = (ev: MouseEvent) => setFolderChatWidth(startW - (ev.clientX - startX))
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [setFolderChatWidth])
 
   // 열릴 때 한 번, 실제 답변할 모델 표시명을 가져와 헤더에 미리보기. fetch 실패는 무시(드로어는 그대로).
   const [chatModel, setChatModel] = useState<string | null>(null)
@@ -55,7 +77,7 @@ export function FolderChatDrawer({
       type="button"
       disabled={disabled}
       onClick={() => setScope(val)}
-      className={`px-2 py-1 text-xs rounded ${effectiveScope === val ? 'bg-blue-600 text-white' : 'text-gray-600'} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+      className={`px-2 py-1 text-xs rounded ${effectiveScope === val ? 'bg-blue-600 text-white' : 'text-muted-foreground'} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
     >
       {label}
     </button>
@@ -63,13 +85,20 @@ export function FolderChatDrawer({
 
   // 데스크톱(lg+)=우측 슬라이드오버, 모바일=설정 모달처럼 전체화면(safe-area 하단 패딩 유지).
   const containerClass = isDesktop
-    ? 'relative w-full max-w-md bg-white shadow-xl flex flex-col h-full pb-0'
-    : 'fixed inset-0 w-full h-dvh bg-white flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))]'
+    ? 'relative bg-card shadow-xl flex flex-col h-full pb-0'
+    : 'fixed inset-0 w-full h-dvh bg-card flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))]'
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
-      <div className={containerClass}>
+      <div className={containerClass} style={isDesktop ? { width: folderChatWidth } : undefined}>
+        {isDesktop && (
+          <div
+            onMouseDown={startResize}
+            className="absolute top-0 left-0 z-20 h-full w-1.5 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
+            title="드래그하여 폭 조절"
+          />
+        )}
         <div className="flex items-center justify-between border-b px-3 py-2">
           <div className="flex items-center gap-1">
             {tabBtn('folder', folderName ? `이 폴더: ${folderName}` : '이 폴더', !folderId)}
@@ -77,7 +106,7 @@ export function FolderChatDrawer({
           </div>
           <div className="flex items-center gap-2">
             {chatModel && (
-              <span className="text-[11px] text-gray-400 whitespace-nowrap" title={`AI 답변 모델: ${chatModel}`}>
+              <span className="text-[11px] text-muted-foreground whitespace-nowrap" title={`AI 답변 모델: ${chatModel}`}>
                 🤖 {chatModel}
               </span>
             )}

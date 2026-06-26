@@ -42,7 +42,7 @@ export function ChatMermaid({ code }: { code: string }) {
           onClose={() => setOpen(false)}
           closeOnBackdrop
           ariaLabel="다이어그램 확대 보기"
-          className="w-full max-w-5xl max-h-[90vh] overflow-auto rounded-xl bg-white p-4 shadow-2xl"
+          className="w-full max-w-5xl max-h-[90vh] overflow-auto rounded-xl bg-card p-4 shadow-2xl"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1">
@@ -51,17 +51,17 @@ export function ChatMermaid({ code }: { code: string }) {
                 aria-label="축소"
                 onClick={() => setZoom((z) => clampZoom(z - ZSTEP))}
                 disabled={zoom <= ZMIN}
-                className="px-2 py-0.5 text-sm rounded border border-gray-200 text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-2 py-0.5 text-sm rounded border border-border text-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 −
               </button>
-              <span className="text-xs tabular-nums w-12 text-center text-gray-600">{Math.round(zoom * 100)}%</span>
+              <span className="text-xs tabular-nums w-12 text-center text-muted-foreground">{Math.round(zoom * 100)}%</span>
               <button
                 type="button"
                 aria-label="확대"
                 onClick={() => setZoom((z) => clampZoom(z + ZSTEP))}
                 disabled={zoom >= ZMAX}
-                className="px-2 py-0.5 text-sm rounded border border-gray-200 text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-2 py-0.5 text-sm rounded border border-border text-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 ＋
               </button>
@@ -69,7 +69,7 @@ export function ChatMermaid({ code }: { code: string }) {
                 type="button"
                 aria-label="리셋"
                 onClick={() => setZoom(ZDEFAULT)}
-                className="ml-1 px-2 py-0.5 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-100"
+                className="ml-1 px-2 py-0.5 text-xs rounded border border-border text-muted-foreground hover:bg-accent"
               >
                 리셋
               </button>
@@ -78,7 +78,7 @@ export function ChatMermaid({ code }: { code: string }) {
               type="button"
               onClick={() => setOpen(false)}
               aria-label="닫기"
-              className="text-sm text-gray-500 hover:text-gray-800"
+              className="text-sm text-muted-foreground hover:text-foreground"
             >
               닫기 <span aria-hidden="true">✕</span>
             </button>

@@ -32,8 +32,8 @@ export default function SettingsContent({ offline = false }: Props = {}) {
     return (
       <div className="max-w-2xl space-y-6">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">오프라인 설정</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="text-lg font-semibold text-foreground">오프라인 설정</h2>
+          <p className="text-sm text-muted-foreground">
             온디바이스 STT 모델과 인식 방식을 설정합니다. (서버 연동 설정은 온라인에서 변경하세요.)
           </p>
         </div>
@@ -66,7 +66,7 @@ export default function SettingsContent({ offline = false }: Props = {}) {
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               tab === t.id
                 ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
             {t.label}

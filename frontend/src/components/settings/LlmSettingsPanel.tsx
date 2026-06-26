@@ -209,7 +209,7 @@ export function LlmSettingsPanel() {
         {/* ADDENDUM B: 레거시 챗 모델 입력 (요약과 동일일 때만) */}
         {chatPresetId === '' && (
           <div className="mt-2">
-            <label htmlFor="chat-legacy-model" className="block text-xs text-gray-600 mb-1">챗 모델</label>
+            <label htmlFor="chat-legacy-model" className="block text-xs text-muted-foreground mb-1">챗 모델</label>
             <input
               id="chat-legacy-model"
               value={chatForm.model}

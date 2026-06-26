@@ -190,7 +190,7 @@ export function AddFileDialog({ meetingId, defaultCategory, onClose, onUploaded 
               className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
                 category === c.value
                   ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                  : 'bg-card text-muted-foreground border-border hover:border-blue-400'
               }`}
             >
               {c.label}
@@ -205,7 +205,7 @@ export function AddFileDialog({ meetingId, defaultCategory, onClose, onUploaded 
           onDrop={handleDrop}
           onClick={handleDropZoneClick}
           className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors mb-4 ${
-            dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+            dragOver ? 'border-blue-500 bg-blue-50' : 'border-border hover:border-muted-foreground'
           }`}
         >
           <input
@@ -219,11 +219,11 @@ export function AddFileDialog({ meetingId, defaultCategory, onClose, onUploaded 
             }}
             className="hidden"
           />
-          <svg className="w-8 h-8 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-8 h-8 mx-auto text-muted-foreground mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
-          <p className="text-sm text-gray-600">파일을 드래그하거나 클릭하여 선택</p>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-sm text-muted-foreground">파일을 드래그하거나 클릭하여 선택</p>
+          <p className="text-xs text-muted-foreground mt-1">
             {category === 'business_card'
               ? '명함 이미지를 올리면 자동 인식되어 참석자로 등록됩니다 (PNG/JPG/WEBP)'
               : 'PDF, DOC, XLS, PPT, 이미지, ZIP, HWP 등'}
@@ -235,10 +235,10 @@ export function AddFileDialog({ meetingId, defaultCategory, onClose, onUploaded 
           <div className="max-h-40 overflow-y-auto space-y-2 mb-4">
             {files.map((item, i) => (
               <div key={i} className="flex items-center gap-2 text-sm">
-                <span className="truncate flex-1 text-gray-700">{item.file.name}</span>
-                <span className="text-xs text-gray-400 shrink-0">{formatSize(item.file.size)}</span>
+                <span className="truncate flex-1 text-foreground">{item.file.name}</span>
+                <span className="text-xs text-muted-foreground shrink-0">{formatSize(item.file.size)}</span>
                 {item.status === 'uploading' && (
-                  <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden shrink-0">
+                  <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden shrink-0">
                     <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${item.progress}%` }} />
                   </div>
                 )}
@@ -248,7 +248,7 @@ export function AddFileDialog({ meetingId, defaultCategory, onClose, onUploaded 
                   <button
                     type="button"
                     onClick={() => removeFile(i)}
-                    className="text-gray-400 hover:text-gray-600 shrink-0"
+                    className="text-muted-foreground hover:text-foreground shrink-0"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

@@ -8,6 +8,8 @@ import type { Block } from '@blocknote/core'
 import type { RefObject } from 'react'
 import { TranscriptBlock } from './blocks'
 import { MermaidBlock } from '../meeting/mermaidBlock'
+import { useUiStore } from '../../stores/uiStore'
+import { resolveTheme } from '../../lib/theme'
 
 export const customSchema = BlockNoteSchema.create({
   blockSpecs: {
@@ -39,6 +41,7 @@ export function MeetingEditor({
     schema: customSchema,
     initialContent,
   })
+  const resolvedTheme = resolveTheme(useUiStore((s) => s.theme))
 
   useEffect(() => {
     if (editorRef) {
@@ -61,7 +64,7 @@ export function MeetingEditor({
       editor={editor}
       editable={editable}
       onChange={handleChange}
-      theme="light"
+      theme={resolvedTheme}
       slashMenu={false}
     >
       <SuggestionMenuController

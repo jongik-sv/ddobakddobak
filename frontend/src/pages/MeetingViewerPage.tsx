@@ -70,7 +70,7 @@ export default function MeetingViewerPage() {
         <div className="h-full flex flex-col">
           {/* 화자/참여자 accordion (기본 닫힘) */}
           <details className="border-b">
-            <summary className="px-4 py-2 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-50">
+            <summary className="px-4 py-2 text-sm font-medium text-foreground cursor-pointer hover:bg-muted">
               화자 · 참여자
             </summary>
             <div className="px-2 pb-2">
@@ -111,7 +111,7 @@ export default function MeetingViewerPage() {
   if (!isLoaded) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-gray-400 text-sm">회의 정보를 불러오는 중...</div>
+        <div className="text-muted-foreground text-sm">회의 정보를 불러오는 중...</div>
       </div>
     )
   }
@@ -150,7 +150,7 @@ export default function MeetingViewerPage() {
             </section>
           </Panel>
 
-          <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
+          <PanelResizeHandle className="w-1 bg-border hover:bg-blue-400 transition-colors cursor-col-resize" />
 
           <Panel defaultSize={70} minSize={20}>
             <section
@@ -167,11 +167,11 @@ export default function MeetingViewerPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between px-4 h-7 border-t bg-gray-50 text-[11px] text-gray-500 shrink-0 select-none">
-        <span className="text-gray-400">
+      <div className="flex items-center justify-between px-4 h-7 border-t bg-muted text-[11px] text-muted-foreground shrink-0 select-none">
+        <span className="text-muted-foreground">
           {recordingStopped ? '종료됨' : '실시간 참여 중'}
         </span>
-        <span className="text-gray-400">읽기 전용</span>
+        <span className="text-muted-foreground">읽기 전용</span>
       </div>
     </div>
   )

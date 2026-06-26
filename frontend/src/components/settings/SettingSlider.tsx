@@ -26,8 +26,8 @@ export function SettingSlider({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-gray-800">{label}</label>
-        <span className={`text-sm tabular-nums font-mono ${isModified ? 'text-blue-600 font-semibold' : 'text-gray-500'}`}>
+        <label className="text-sm font-medium text-foreground">{label}</label>
+        <span className={`text-sm tabular-nums font-mono ${isModified ? 'text-blue-600 font-semibold' : 'text-muted-foreground'}`}>
           {value}{unit ?? ''}
         </span>
       </div>
@@ -41,7 +41,7 @@ export function SettingSlider({
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full accent-blue-600 h-2"
       />
-      <div className="flex justify-between text-[10px] text-gray-400">
+      <div className="flex justify-between text-[10px] text-muted-foreground">
         <span>{min}{unit ?? ''}</span>
         <span>{max}{unit ?? ''}</span>
       </div>

@@ -68,13 +68,13 @@ const MAP: Components = {
     <table className="w-full text-xs border-collapse my-1">{children}</table>
   ),
   th: ({ children }) => (
-    <th className="border border-gray-300 px-1.5 py-0.5 text-left">{children}</th>
+    <th className="border border-border px-1.5 py-0.5 text-left">{children}</th>
   ),
   td: ({ children }) => (
-    <td className="border border-gray-300 px-1.5 py-0.5 text-left">{children}</td>
+    <td className="border border-border px-1.5 py-0.5 text-left">{children}</td>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-gray-300 pl-2 text-gray-600">{children}</blockquote>
+    <blockquote className="border-l-2 border-border pl-2 text-muted-foreground">{children}</blockquote>
   ),
   // Note: `a` is intentionally omitted from MAP — ChatMarkdown overrides it below
   // to handle the ddobak-seek: protocol. Defining it here would be dead code.

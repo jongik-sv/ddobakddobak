@@ -269,8 +269,8 @@ export default function MeetingPage() {
   if (!accessLoading && accessError === 'forbidden') {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 gap-4">
-        <h2 className="text-lg font-semibold text-gray-800">접근 권한이 없습니다</h2>
-        <p className="text-sm text-gray-500 text-center">
+        <h2 className="text-lg font-semibold text-foreground">접근 권한이 없습니다</h2>
+        <p className="text-sm text-muted-foreground text-center">
           이 회의록은 같은 팀 소속 멤버만 볼 수 있습니다.
         </p>
       </div>
@@ -280,8 +280,8 @@ export default function MeetingPage() {
   if (!accessLoading && accessError === 'not_found') {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 gap-4">
-        <h2 className="text-lg font-semibold text-gray-800">회의록을 찾을 수 없습니다</h2>
-        <p className="text-sm text-gray-500">삭제되었거나 존재하지 않는 회의입니다.</p>
+        <h2 className="text-lg font-semibold text-foreground">회의록을 찾을 수 없습니다</h2>
+        <p className="text-sm text-muted-foreground">삭제되었거나 존재하지 않는 회의입니다.</p>
       </div>
     )
   }
@@ -432,7 +432,7 @@ export default function MeetingPage() {
       {showFullPlayer && (
         <div className="fixed inset-0 z-50 lg:hidden" onClick={() => setShowFullPlayer(false)}>
           <div className="absolute inset-0 bg-black/30" />
-          <div className="absolute bottom-0 left-0 right-0 bg-white border-t shadow-lg rounded-t-xl p-3 pb-safe" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute bottom-0 left-0 right-0 bg-card border-t shadow-lg rounded-t-xl p-3 pb-safe" onClick={(e) => e.stopPropagation()}>
             <AudioPlayer
               audio={audio}
               onTimeUpdate={setCurrentTimeMs}
@@ -500,11 +500,11 @@ export default function MeetingPage() {
             </div>
           </Panel>
 
-          <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
+          <PanelResizeHandle className="w-1 bg-border hover:bg-blue-400 transition-colors cursor-col-resize" />
 
           {/* AI 회의록 — 기본 48% */}
           <Panel defaultSize={48} minSize={20}>
-            <div data-search-region="summary" className="h-full bg-gray-50 overflow-hidden flex flex-col min-h-0">
+            <div data-search-region="summary" className="h-full bg-muted overflow-hidden flex flex-col min-h-0">
               <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
                 <AiSummaryPanel
                   meetingId={meetingId}
@@ -521,7 +521,7 @@ export default function MeetingPage() {
 
           {memoVisible && (
             <>
-              <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors cursor-col-resize" />
+              <PanelResizeHandle className="w-1 bg-border hover:bg-blue-400 transition-colors cursor-col-resize" />
 
               {/* 메모 + Decision Log + AI 챗 탭 — 기본 30% */}
               <Panel defaultSize={30} minSize={15}>

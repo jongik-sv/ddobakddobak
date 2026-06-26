@@ -85,7 +85,7 @@ export default function ProjectsPage() {
   return (
     <div className="p-8">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-zinc-900">프로젝트</h1>
+        <h1 className="text-xl font-bold text-foreground">프로젝트</h1>
         {isSystemAdmin && <ImportProjectButton onImported={handleImported} />}
       </div>
 
@@ -99,34 +99,34 @@ export default function ProjectsPage() {
         {visibleProjects.map((p) => (
           <div
             key={p.id}
-            className="group relative h-[160px] cursor-pointer rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md md:h-[250px]"
+            className="group relative h-[160px] cursor-pointer rounded-xl border border-border bg-card p-4 shadow-sm transition-shadow hover:shadow-md md:h-[250px]"
             onClick={() => openProject(p)}
           >
             <div className="flex items-start gap-3">
               <ProjectIcon project={p} size={56} />
               <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold text-zinc-900">{projectDisplayName(p)}</p>
-                <p className="mt-0.5 text-xs text-zinc-500">
+                <p className="truncate font-semibold text-foreground">{projectDisplayName(p)}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
                   멤버 {p.member_count} · 회의 {p.meeting_count}
                 </p>
               </div>
               <div className="relative" onClick={(e) => e.stopPropagation()}>
                 <button
                   onClick={() => setMenuId(menuId === p.id ? null : p.id)}
-                  className="rounded-md p-1 text-zinc-500 opacity-0 transition-opacity hover:bg-zinc-100 group-hover:opacity-100"
+                  className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100"
                   aria-label="프로젝트 메뉴"
                 >
                   <MoreVertical className="h-4 w-4" />
                 </button>
                 {menuId === p.id && (
-                  <div className="absolute right-0 z-50 mt-1 w-36 rounded-md border border-zinc-200 bg-white py-1 text-zinc-900 shadow-lg">
+                  <div className="absolute right-0 z-50 mt-1 w-36 rounded-md border border-border bg-card py-1 text-foreground shadow-lg">
                     <button
                       onClick={() => {
                         setMenuId(null)
                         setDialogProject(p)
                         setDialogOpen(true)
                       }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
                     >
                       <Pencil className="h-4 w-4" /> 편집
                     </button>
@@ -135,7 +135,7 @@ export default function ProjectsPage() {
                         setMenuId(null)
                         setMembersProject(p)
                       }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
                     >
                       <Users className="h-4 w-4" /> 멤버 관리
                     </button>
@@ -145,7 +145,7 @@ export default function ProjectsPage() {
                           setMenuId(null)
                           setExportTarget(p)
                         }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
                       >
                         <Download className="h-4 w-4" /> 내보내기
                       </button>
@@ -163,7 +163,7 @@ export default function ProjectsPage() {
               </div>
             </div>
             {p.description && (
-              <p className="mt-3 line-clamp-2 text-xs text-zinc-500">{p.description}</p>
+              <p className="mt-3 line-clamp-2 text-xs text-muted-foreground">{p.description}</p>
             )}
           </div>
         ))}
@@ -173,7 +173,7 @@ export default function ProjectsPage() {
             setDialogProject(null)
             setDialogOpen(true)
           }}
-          className="flex h-[160px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-200 p-4 text-sm font-medium text-zinc-500 transition-colors hover:border-indigo-600 hover:text-indigo-600 md:h-[250px]"
+          className="flex h-[160px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border p-4 text-sm font-medium text-muted-foreground transition-colors hover:border-indigo-600 hover:text-indigo-600 md:h-[250px]"
         >
           <Plus className="h-5 w-5" /> 새 프로젝트
         </button>

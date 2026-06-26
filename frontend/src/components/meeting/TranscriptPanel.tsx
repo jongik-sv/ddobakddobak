@@ -110,7 +110,7 @@ export function TranscriptPanel({
 
   if (transcripts.length === 0) {
     return (
-      <div className="p-4 text-sm text-gray-400">
+      <div className="p-4 text-sm text-muted-foreground">
         트랜스크립트가 없습니다.
       </div>
     )
@@ -131,7 +131,7 @@ export function TranscriptPanel({
               editable={!readOnly}
               onRename={(name) => handleRename(group.segments[0].transcript.speaker_label, name)}
             />
-            <span className="text-[10px] text-gray-400 tabular-nums">
+            <span className="text-[10px] text-muted-foreground tabular-nums">
               {formatTimestamp(group.startedAtMs)}
             </span>
           </div>
@@ -144,8 +144,8 @@ export function TranscriptPanel({
                 data-highlighted={isHighlighted ? 'true' : 'false'}
                 className={`p-3 min-h-[44px] rounded cursor-pointer transition-colors ${
                   isHighlighted
-                    ? 'bg-indigo-100 border-l-4 border-indigo-500'
-                    : 'hover:bg-gray-100 active:bg-gray-100'
+                    ? 'bg-accent border-l-4 border-indigo-500'
+                    : 'hover:bg-muted active:bg-muted'
                 }`}
                 onClick={() => onSeek(transcript.started_at_ms)}
               >
@@ -157,7 +157,7 @@ export function TranscriptPanel({
                     activeOccurrence={
                       activeSearch?.transcriptId === transcript.id ? activeSearch.occurrence : -1
                     }
-                    className="text-sm text-gray-800 select-text"
+                    className="text-sm text-foreground select-text"
                   />
                 ) : (
                   <EditableTranscriptText
@@ -165,7 +165,7 @@ export function TranscriptPanel({
                     meetingId={meetingId}
                     content={contentOverrides.get(transcript.id) ?? transcript.content}
                     editable={!readOnly}
-                    className="text-sm text-gray-800 select-text"
+                    className="text-sm text-foreground select-text"
                   />
                 )}
               </div>

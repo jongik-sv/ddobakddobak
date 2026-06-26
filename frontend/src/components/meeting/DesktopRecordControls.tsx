@@ -74,25 +74,25 @@ export function DesktopRecordControls({
         ? 'bg-red-50 border-b-2 border-red-400'
         : isActive && isPaused
           ? 'bg-amber-50 border-b-2 border-amber-400'
-          : 'bg-white border-b'
+          : 'bg-card border-b'
     }`}>
       {/* 좌측: 네비게이션 */}
       <div className="flex items-center gap-2">
         <Tooltip text="미리보기로">
           <button
             onClick={onNavigateBack}
-            className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
+            className="p-1.5 rounded-md hover:bg-accent transition-colors"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
+            <ArrowLeft className="w-5 h-5 text-muted-foreground" />
           </button>
         </Tooltip>
-        <h1 className="text-lg font-semibold text-gray-900 truncate max-w-[200px]">
+        <h1 className="text-lg font-semibold text-foreground truncate max-w-[200px]">
           {title}
         </h1>
         <Tooltip text="회의 정보 수정">
           <button
             onClick={onShowEdit}
-            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
           >
             <Pencil className="w-4 h-4" />
           </button>
@@ -100,7 +100,7 @@ export function DesktopRecordControls({
         <Tooltip text={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}>
           <button
             onClick={onToggleAttachments}
-            className={`p-1.5 rounded-md transition-colors ${attachmentsVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+            className={`p-1.5 rounded-md transition-colors ${attachmentsVisible ? 'text-blue-600 bg-blue-50' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
           >
             <Paperclip className="w-4 h-4" />
           </button>
@@ -108,7 +108,7 @@ export function DesktopRecordControls({
         <Tooltip text={memoVisible ? '메모 숨기기' : '메모 보기'}>
           <button
             onClick={onToggleMemo}
-            className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+            className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
           >
             <StickyNote className="w-4 h-4" />
           </button>
@@ -116,7 +116,7 @@ export function DesktopRecordControls({
         <Tooltip text="설정">
           <button
             onClick={useUiStore.getState().openSettings}
-            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
           >
             <Settings className="w-4 h-4" />
           </button>
@@ -125,7 +125,7 @@ export function DesktopRecordControls({
           <Tooltip text="템플릿으로 저장">
             <button
               onClick={onShowSaveTemplate}
-              className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             >
               <Save className="w-4 h-4" />
             </button>
@@ -155,7 +155,7 @@ export function DesktopRecordControls({
           </div>
 
           {/* 경과 시간 */}
-          <span className="font-mono text-sm font-semibold text-gray-700 tabular-nums tracking-wide">
+          <span className="font-mono text-sm font-semibold text-foreground tabular-nums tracking-wide">
             {formatElapsedSeconds(elapsedSeconds)}
           </span>
 
@@ -207,7 +207,7 @@ export function DesktopRecordControls({
         {IS_TAURI && (
           <Tooltip text="시스템 오디오 캡처">
             <div className="flex items-center gap-1.5">
-              <Monitor className={`w-3.5 h-3.5 ${systemAudioEnabled ? 'text-purple-600' : 'text-gray-400'}`} />
+              <Monitor className={`w-3.5 h-3.5 ${systemAudioEnabled ? 'text-purple-600' : 'text-muted-foreground'}`} />
               <Switch
                 checked={systemAudioEnabled}
                 onChange={onToggleSystemAudio}
@@ -219,11 +219,11 @@ export function DesktopRecordControls({
         {/* 적용주기 선택 */}
         <Tooltip text="AI 회의록 적용 주기">
         <div className="flex items-center gap-1.5">
-          <Timer className="w-3.5 h-3.5 text-gray-500" />
+          <Timer className="w-3.5 h-3.5 text-muted-foreground" />
           <select
             value={summaryIntervalSec}
             onChange={(e) => onSummaryIntervalChange(Number(e.target.value))}
-            className="text-xs border border-gray-300 rounded-md px-1.5 py-1 bg-white text-gray-700"
+            className="text-xs border border-border rounded-md px-1.5 py-1 bg-background text-foreground"
           >
             {SUMMARY_INTERVAL_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>

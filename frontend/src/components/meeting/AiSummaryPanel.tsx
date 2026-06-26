@@ -6,6 +6,8 @@ import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuI
 import { insertOrUpdateBlockForSlashMenu } from '@blocknote/core'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 import { useAppSettingsStore } from '../../stores/appSettingsStore'
+import { useUiStore } from '../../stores/uiStore'
+import { resolveTheme } from '../../lib/theme'
 import { editorSchema, codeBlocksToMermaid } from './mermaidBlock'
 import { markersToInline, inlineToMarkers } from './citationInline'
 import { speakerAtMs } from '../../lib/citationMarkers'
@@ -41,6 +43,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
   const summarizationKind = useTranscriptStore((s) => s.summarizationKind)
   const finals = useTranscriptStore((s) => s.finals)
   const diarizationEnabled = useAppSettingsStore((s) => s.diarizationEnabled)
+  const resolvedTheme = resolveTheme(useUiStore((s) => s.theme))
 
   // 실제로 화자가 둘 이상 분리됐을 때만 안내(전부 같은 화자라벨이면 거짓 "분리 완료" 차단)
   const showManualHint = useMemo(
@@ -196,9 +199,9 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
 
   return (
     <>
-      <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-card shrink-0">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-gray-500">AI 회의록</h2>
+          <h2 className="text-sm font-semibold text-muted-foreground">AI 회의록</h2>
           {isSummarizing && (
             <span
               className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700"
@@ -227,7 +230,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
               onClick={() => setShowFullView(true)}
               aria-label="전체보기"
               title="전체보기"
-              className="p-1.5 min-h-[44px] flex items-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              className="p-1.5 min-h-[44px] flex items-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <Maximize2 className="w-4 h-4" />
             </button>
@@ -244,7 +247,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
               className={`px-2 py-0.5 min-h-[44px] flex items-center rounded text-[11px] font-medium transition-colors ${
                 isDirty
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-gray-100 text-gray-400 cursor-default'
+                  : 'bg-muted text-muted-foreground cursor-default'
               } disabled:opacity-50`}
             >
               {isSaving ? '저장 중...' : isDirty ? '저장' : '저장됨'}
@@ -254,7 +257,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
         </div>
       </div>
       {showManualHint && (
-        <div className="mx-4 mt-3 rounded-md border border-blue-100 bg-blue-50/50 p-3 text-xs text-blue-700">
+        <div className="mx-4 mt-3 rounded-md border border-border bg-primary/10 p-3 text-xs text-foreground">
           화자분리가 완료되었습니다. 좌측 화자 목록에서 이름을 지정한 뒤
           <span className="font-semibold"> 회의록 재생성</span> 버튼으로 회의록을 만들 수 있습니다.
         </div>
@@ -265,7 +268,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
             editor={editor}
             editable={true}
             onChange={handleChange}
-            theme="light"
+            theme={resolvedTheme}
             slashMenu={false}
           >
             <SuggestionMenuController
@@ -297,7 +300,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
           <BlockNoteView
             editor={editor}
             editable={false}
-            theme="light"
+            theme={resolvedTheme}
           />
         )}
       </div>

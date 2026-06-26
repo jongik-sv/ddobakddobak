@@ -71,9 +71,9 @@ export function ClosePrompt() {
         if (e.target === e.currentTarget) cancel()
       }}
     >
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl border border-gray-100">
+      <div className="w-full max-w-md rounded-xl bg-card p-6 shadow-2xl border border-border">
         <h2 className="text-lg font-semibold">또박또박을 어떻게 할까요?</h2>
-        <p className="mt-2 text-sm text-gray-600">
+        <p className="mt-2 text-sm text-muted-foreground">
           백그라운드로 두면 예약 회의가 시각에 맞춰 자동 시작됩니다.
         </p>
         <label className="mt-4 flex items-center gap-2 text-sm">

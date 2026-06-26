@@ -21,7 +21,7 @@ export function LiveStatusBar({
   activeSttMode,
 }: LiveStatusBarProps) {
   return (
-    <div className="flex items-center justify-between px-4 h-7 border-t bg-gray-50 text-[11px] text-gray-500 shrink-0 select-none">
+    <div className="flex items-center justify-between px-4 h-7 border-t bg-muted text-[11px] text-muted-foreground shrink-0 select-none">
       <div className="flex items-center gap-3">
         {isActive && activeSttMode === 'local' && (
           <span
@@ -39,10 +39,10 @@ export function LiveStatusBar({
           </span>
         )}
         {!isActive && meetingApiStatus === 'completed' && (
-          <span className="text-gray-400">종료됨</span>
+          <span className="text-muted-foreground">종료됨</span>
         )}
         {!isActive && meetingApiStatus === 'pending' && (
-          <span className="text-gray-400">대기 중</span>
+          <span className="text-muted-foreground">대기 중</span>
         )}
       </div>
 
@@ -51,7 +51,7 @@ export function LiveStatusBar({
           <span className="text-blue-600 font-medium truncate max-w-xs">{statusMessage}</span>
         )}
         {sttEngine && (
-          <span className="font-mono text-gray-400">
+          <span className="font-mono text-muted-foreground">
             STT: {ENGINE_LABELS_SHORT[sttEngine] ?? sttEngine}
           </span>
         )}

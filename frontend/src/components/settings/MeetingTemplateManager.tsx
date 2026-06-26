@@ -54,7 +54,7 @@ export default function MeetingTemplateManager() {
               <button onClick={saveEdit} className="p-2.5 text-green-600 hover:bg-green-50 rounded">
                 <Check className="w-4 h-4" />
               </button>
-              <button onClick={cancelEdit} className="p-2.5 text-gray-400 hover:bg-gray-100 rounded">
+              <button onClick={cancelEdit} className="p-2.5 text-muted-foreground hover:bg-accent rounded">
                 <X className="w-4 h-4" />
               </button>
             </>
@@ -66,7 +66,7 @@ export default function MeetingTemplateManager() {
                   {t.meeting_type}
                 </span>
               )}
-              <button onClick={() => startEdit(t.id, t.name)} className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded">
+              <button onClick={() => startEdit(t.id, t.name)} className="p-2.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded">
                 <Pencil className="w-3.5 h-3.5" />
               </button>
               <button onClick={() => handleDelete(t.id)} className="p-2.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded">

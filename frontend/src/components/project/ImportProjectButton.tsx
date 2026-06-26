@@ -45,7 +45,7 @@ export default function ImportProjectButton({ onImported }: ImportProjectButtonP
         type="button"
         onClick={handlePick}
         disabled={importing}
-        className="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-100 disabled:opacity-50"
+        className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent disabled:opacity-50"
       >
         {importing ? (
           <Loader2 className="h-4 w-4 animate-spin" />

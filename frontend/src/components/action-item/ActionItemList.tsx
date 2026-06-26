@@ -51,13 +51,13 @@ export function ActionItemList({ meetingId, teamMembers }: ActionItemListProps) 
   }
 
   if (loading) {
-    return <div className="p-4 text-sm text-gray-400">로딩 중...</div>
+    return <div className="p-4 text-sm text-muted-foreground">로딩 중...</div>
   }
 
   return (
     <div className="flex flex-col gap-3 p-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700">Action Items</h3>
+        <h3 className="text-sm font-semibold text-foreground">Action Items</h3>
         {!showForm && !editingItem && (
           <button
             onClick={() => setShowForm(true)}
@@ -78,7 +78,7 @@ export function ActionItemList({ meetingId, teamMembers }: ActionItemListProps) 
       )}
 
       {items.length === 0 && !showForm ? (
-        <p className="text-sm text-gray-400">Action Item이 없습니다</p>
+        <p className="text-sm text-muted-foreground">Action Item이 없습니다</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {items.map((item) =>
@@ -100,7 +100,7 @@ export function ActionItemList({ meetingId, teamMembers }: ActionItemListProps) 
                   onChange={() => handleToggle(item)}
                   className="mt-0.5 shrink-0"
                 />
-                <span className={`flex-1 ${item.status === 'done' ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                <span className={`flex-1 ${item.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                   {item.content}
                 </span>
                 {item.ai_generated && (
@@ -109,11 +109,11 @@ export function ActionItemList({ meetingId, teamMembers }: ActionItemListProps) 
                   </span>
                 )}
                 {item.assignee && (
-                  <span className="shrink-0 text-xs text-gray-500">{item.assignee.name}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{item.assignee.name}</span>
                 )}
                 <button
                   onClick={() => setEditingItem(item)}
-                  className="shrink-0 text-xs text-gray-400 hover:text-gray-600 min-h-[44px] flex items-center"
+                  className="shrink-0 text-xs text-muted-foreground hover:text-foreground min-h-[44px] flex items-center"
                 >
                   수정
                 </button>

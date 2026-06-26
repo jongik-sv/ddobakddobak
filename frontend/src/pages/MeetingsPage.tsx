@@ -248,7 +248,7 @@ export default function MeetingsPage() {
               className={`ml-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
                 showAll
                   ? 'bg-amber-50 text-amber-700 border-amber-300'
-                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                  : 'bg-card text-foreground border-border hover:bg-muted'
               }`}
             >
               {showAll ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -265,7 +265,7 @@ export default function MeetingsPage() {
             <button
               onClick={() => handleViewModeChange('card')}
               className={`p-1.5 rounded transition-colors ${
-                viewMode === 'card' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                viewMode === 'card' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <LayoutGrid className="w-4 h-4" />
@@ -275,7 +275,7 @@ export default function MeetingsPage() {
             <button
               onClick={() => handleViewModeChange('list')}
               className={`p-1.5 rounded transition-colors ${
-                viewMode === 'list' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                viewMode === 'list' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <List className="w-4 h-4" />
@@ -342,7 +342,7 @@ export default function MeetingsPage() {
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
                   showAll
                     ? 'bg-amber-50 text-amber-700 border-amber-300'
-                    : 'bg-white text-gray-600 border-gray-300'
+                    : 'bg-card text-foreground border-border'
                 }`}
               >
                 {showAll ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}

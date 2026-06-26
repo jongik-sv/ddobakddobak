@@ -154,7 +154,7 @@ export function SpeakerPanel({
   // body: 기존 렌더 내용 (collapsible/비-collapsible 공통)
   const body =
     visibleSpeakers.length === 0 ? (
-      <div className="p-4 text-xs text-gray-400">
+      <div className="p-4 text-xs text-muted-foreground">
         {isRecording ? '화자 감지 대기 중...' : '감지된 화자 없음'}
       </div>
     ) : (
@@ -162,7 +162,7 @@ export function SpeakerPanel({
         <div className="flex items-center justify-between">
           {/* collapsible 모드에서는 summary가 라벨 역할을 하므로 헤더 라벨 숨김 */}
           {!collapsible && (
-            <span className="text-xs font-semibold text-gray-500">화자 목록</span>
+            <span className="text-xs font-semibold text-muted-foreground">화자 목록</span>
           )}
           <button
             onClick={handleReset}
@@ -207,10 +207,10 @@ export function SpeakerPanel({
               <button
                 onClick={() => { if (!readOnly) startEdit(speaker) }}
                 disabled={readOnly}
-                className="flex-1 text-left text-xs text-gray-700 hover:text-blue-600 truncate disabled:hover:text-gray-700 disabled:cursor-not-allowed"
+                className="flex-1 text-left text-xs text-foreground hover:text-blue-600 truncate disabled:hover:text-foreground disabled:cursor-not-allowed"
                 title={readOnly ? '잠긴 회의입니다' : '클릭하여 이름 편집'}
               >
-                {display !== speaker.id ? display : <span className="text-gray-400 italic">이름 없음</span>}
+                {display !== speaker.id ? display : <span className="text-muted-foreground italic">이름 없음</span>}
               </button>
             )}
           </div>
@@ -231,7 +231,7 @@ export function SpeakerPanel({
           userToggledRef.current = true
           setOpen((v) => !v)
         }}
-        className="px-4 py-2 text-xs font-semibold text-gray-500 cursor-pointer hover:bg-gray-50 select-none"
+        className="px-4 py-2 text-xs font-semibold text-muted-foreground cursor-pointer hover:bg-accent select-none"
       >
         화자 목록{visibleSpeakers.length > 0 ? ` (${distinctSpeakerCount})` : ''}
       </summary>

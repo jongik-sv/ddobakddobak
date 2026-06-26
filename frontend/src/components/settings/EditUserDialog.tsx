@@ -39,7 +39,7 @@ export function EditUserDialog({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
-      <form onSubmit={handleSubmit} className="w-full max-w-md rounded-xl bg-white shadow-2xl border border-gray-100 p-6 mx-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-md rounded-xl bg-card shadow-2xl border border-border p-6 mx-4">
         <h3 className="text-lg font-semibold mb-4">사용자 수정</h3>
         <div className="space-y-3">
           <div>
@@ -53,7 +53,7 @@ export function EditUserDialog({
         </div>
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         <div className="flex justify-end gap-2 mt-5">
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 min-h-[44px]">취소</button>
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-md text-sm font-medium border border-border text-foreground hover:bg-accent min-h-[44px]">취소</button>
           <button type="submit" disabled={saving} className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 min-h-[44px]">
             {saving ? '저장 중...' : '저장'}
           </button>
