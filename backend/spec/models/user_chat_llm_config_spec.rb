@@ -172,6 +172,70 @@ RSpec.describe User, "chat LLM config", type: :model do
     end
   end
 
+  describe "#effective_chat_llm_config — SERVER_MODE CLI gate" do
+    # 원격 서버(SERVER_MODE=true)에서 개인 챗 CLI 프로바이더는 무시된다.
+    # ENV 는 메시지 스텁(직접 대입 X)으로 누수 방지 — 자체 describe 라 챗 around 훅 비상속.
+    def stub_server_default!
+      allow(ENV).to receive(:fetch).and_call_original
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:fetch).with("LLM_PROVIDER", "anthropic").and_return("anthropic")
+      allow(ENV).to receive(:[]).with("ANTHROPIC_AUTH_TOKEN").and_return("sk-server-key")
+      allow(ENV).to receive(:[]).with("LLM_MODEL").and_return("claude-sonnet-4-6")
+      allow(ENV).to receive(:[]).with("ANTHROPIC_BASE_URL").and_return(nil)
+      allow(ENV).to receive(:[]).with("CHAT_LLM_PROVIDER").and_return(nil)
+      allow(ENV).to receive(:[]).with("CHAT_LLM_MODEL").and_return(nil)
+    end
+
+    it "원격 서버에서 개인 챗 gemini_cli 는 무시되고 tier-2 요약(개인 클라우드)로 폴백한다" do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("SERVER_MODE").and_return("true")
+      allow(ENV).to receive(:[]).with("CHAT_LLM_MODEL").and_return(nil)
+      user = build(:user,
+        llm_provider: "anthropic", llm_api_key: "sk-sum",
+        llm_model: "claude-sonnet-4-6", llm_enabled: true,
+        chat_llm_provider: "gemini_cli", chat_llm_api_key: nil, chat_llm_base_url: nil
+      )
+      cfg = user.effective_chat_llm_config
+      expect(cfg[:provider]).not_to eq("gemini_cli")
+      expect(cfg[:provider]).to eq("anthropic")
+      expect(cfg[:auth_token]).to eq("sk-sum")
+    end
+
+    it "개인 챗 CLI + 개인 요약 CLI 둘 다 SERVER_MODE 에서 막혀 서버 기본까지 전부 폴백한다" do
+      stub_server_default!
+      allow(ENV).to receive(:[]).with("SERVER_MODE").and_return("true")
+      user = build(:user,
+        llm_provider: "claude_cli", llm_api_key: nil, llm_model: "sonnet", llm_enabled: true,
+        chat_llm_provider: "gemini_cli", chat_llm_api_key: nil,
+        chat_llm_model: nil, chat_llm_base_url: nil
+      )
+      cfg = user.effective_chat_llm_config
+      expect(cfg[:provider]).to eq("anthropic")
+      expect(cfg[:auth_token]).to eq("sk-server-key")
+      expect(User::CLI_LLM_PROVIDERS).not_to include(cfg[:provider])
+    end
+
+    it "로컬(SERVER_MODE 미설정)에서 개인 챗 claude_cli 는 그대로 유지한다" do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("SERVER_MODE").and_return(nil)
+      user = build(:user, chat_llm_provider: "claude_cli", chat_llm_api_key: nil,
+                          chat_llm_model: "sonnet", chat_llm_base_url: nil)
+      cfg = user.effective_chat_llm_config
+      expect(cfg[:provider]).to eq("claude_cli")
+      expect(cfg[:model]).to eq("sonnet")
+    end
+
+    it "SERVER_MODE=true 라도 개인 챗 클라우드(anthropic+키)는 영향받지 않는다" do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("SERVER_MODE").and_return("true")
+      user = build(:user, chat_llm_provider: "anthropic", chat_llm_api_key: "sk-chat",
+                          chat_llm_model: "claude-haiku", chat_llm_base_url: nil)
+      cfg = user.effective_chat_llm_config
+      expect(cfg[:provider]).to eq("anthropic")
+      expect(cfg[:auth_token]).to eq("sk-chat")
+    end
+  end
+
   describe ".server_default_chat_llm_config" do
     around do |example|
       keys = %w[CHAT_LLM_PROVIDER CHAT_LLM_AUTH_TOKEN CHAT_LLM_BASE_URL CHAT_LLM_MODEL]
