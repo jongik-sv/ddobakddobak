@@ -203,6 +203,9 @@ RSpec.describe LlmService, "streaming" do
 
   it "CLI provider 도 stdout 청크를 방출한다" do
     s = LlmService.new(llm_config: { provider: "claude_cli", model: "claude-sonnet-4-20250514" })
+    # A안 선제 폴백이 머신 PATH 에 claude 가 없으면 anthropic 으로 갈아끼우므로, CLI 경로 테스트는
+    # 바이너리 존재를 명시 스텁해 PATH 비의존으로 고정한다(폴백 미발동 → 기존 CLI 경로 유지).
+    allow(s).to receive(:cli_available?).and_return(true)
     # run_cli 를 청크 스텁: 블록에 두 청크 전달, 전체 반환
     allow(s).to receive(:run_cli) do |_cmd, _stdin, &blk|
       blk&.call("부분1 ")
@@ -241,5 +244,66 @@ RSpec.describe LlmService, "streaming" do
       expect(out.valid_encoding?).to be true
       expect(buf).to be_empty
     end
+  end
+end
+
+# A안(실행시점 폴백): CLI provider 로 추론하려는데 그 바이너리가 이 머신에 없으면 LlmError 로 깨지지 말고
+# 디스패치 전에 서버 기본 LLM(server_default_config)으로 선제 폴백해 다시 추론한다.
+# 데스크톱(CLI 존재)=개인 CLI 동작 / 원격서버(CLI 없음)=자동 폴백. SERVER_MODE 신호를 쓰지 않아 배포 무관.
+RSpec.describe LlmService, "missing-CLI 서버기본 폴백 (A안)" do
+  it "(a) CLI 바이너리 부재 시 LlmError 없이 서버 기본(anthropic)으로 폴백 추론한다" do
+    svc = LlmService.new(llm_config: { provider: "claude_cli", model: "claude-x" })
+    allow(svc).to receive(:cli_available?).and_return(false)
+    allow(svc).to receive(:server_default_config)
+      .and_return({ provider: "anthropic", auth_token: "k", model: "claude-sonnet-4-20250514" })
+    expect(svc).to receive(:call_anthropic).and_return("서버기본 응답")
+    expect(svc).not_to receive(:call_claude_cli)
+
+    out = nil
+    expect { out = svc.answer_question("sys", "user") }.not_to raise_error
+    expect(out).to eq("서버기본 응답")
+  end
+
+  it "(a-stream) 스트리밍(&block) 경로도 동일하게 서버 기본으로 폴백한다" do
+    svc = LlmService.new(llm_config: { provider: "claude_cli", model: "claude-x" })
+    allow(svc).to receive(:cli_available?).and_return(false)
+    allow(svc).to receive(:server_default_config)
+      .and_return({ provider: "anthropic", auth_token: "k", model: "m" })
+    allow(svc).to receive(:call_anthropic_stream) do |_s, _u, _mt, &blk|
+      blk.call("델타1")
+      blk.call("델타2")
+      "델타1델타2"
+    end
+
+    seen = []
+    full = svc.answer_question("sys", "user") { |d| seen << d }
+    expect(seen).to eq([ "델타1", "델타2" ])
+    expect(full).to eq("델타1델타2")
+  end
+
+  it "(b) CLI 바이너리 존재 시 폴백 없이 기존대로 CLI 를 실행한다" do
+    svc = LlmService.new(llm_config: { provider: "claude_cli", model: "claude-x" })
+    allow(svc).to receive(:cli_available?).and_return(true)
+    expect(svc).to receive(:run_cli).and_return("CLI 응답")
+    expect(svc).not_to receive(:call_anthropic)
+
+    expect(svc.answer_question("sys", "user")).to eq("CLI 응답")
+  end
+
+  it "(c) 서버 기본마저 CLI 이고 그 바이너리도 부재면 폴백 1회만 → 원래 LlmError 를 raise 한다" do
+    svc = LlmService.new(llm_config: { provider: "claude_cli", model: "claude-x" })
+    allow(svc).to receive(:cli_available?).and_return(false) # 개인·서버기본 둘 다 부재
+    allow(svc).to receive(:server_default_config)
+      .and_return({ provider: "gemini_cli", model: "g" })
+
+    expect { svc.answer_question("sys", "user") }.to raise_error(LlmService::LlmError)
+  end
+
+  it "(d) 일반 API provider(anthropic)는 폴백 로직 영향 없음 (cli_available? 미조회)" do
+    svc = LlmService.new(llm_config: { provider: "anthropic", auth_token: "k", model: "m" })
+    expect(svc).not_to receive(:cli_available?)
+    expect(svc).to receive(:call_anthropic).and_return("정상")
+
+    expect(svc.answer_question("sys", "user")).to eq("정상")
   end
 end

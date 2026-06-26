@@ -19,12 +19,14 @@ export interface LlmProviderCardProps {
   value: LlmProviderCardValue
   maskedToken?: string
   showTokenLimits?: boolean
+  /** true면 CLI 프리셋을 항상 노출(서버 원격 모드의 admin용). getMode()==='local' 과 OR. */
+  admin?: boolean
   onSelectPreset: (presetId: string) => void
   onChange: (partial: Partial<LlmProviderCardValue>) => void
 }
 
 export function LlmProviderCard(props: LlmProviderCardProps) {
-  const { title, idPrefix, presets, noneOption, value, maskedToken, showTokenLimits, onSelectPreset, onChange } = props
+  const { title, idPrefix, presets, noneOption, value, maskedToken, showTokenLimits, admin, onSelectPreset, onChange } = props
   const [useCustomModel, setUseCustomModel] = useState(false)
   const [localModels, setLocalModels] = useState<string[]>([])
   const [localLoading, setLocalLoading] = useState(false)
@@ -40,10 +42,11 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
   const isCli = CLI_PRESET_IDS.has(value.presetId)
   const requiresKey = preset?.requiresApiKey ?? false
 
-  // CLI 프리셋은 CLI 실행 가능 환경(로컬 모드)에서만 노출한다. 그 외(웹·모바일·
-  // 데스크톱 원격 모드)에서는 숨기되, 이미 그 CLI를 저장해 둔 사용자에게는 잠금(비활성)
+  // CLI 프리셋은 CLI 실행 가능 환경(로컬 모드)에서만 노출한다. 단 원격 서버 모드라도
+  // admin은 서버측 CLI를 관리해야 하므로 admin=true면 노출한다(아래 OR). 그 외(웹·모바일·
+  // 데스크톱 원격, 비admin)에서는 숨기되, 이미 그 CLI를 저장해 둔 사용자에게는 잠금(비활성)
   // 버튼으로 남겨 안내한다.
-  const cliAllowed = getMode() === 'local'
+  const cliAllowed = getMode() === 'local' || !!admin
   const visiblePresets = cliAllowed
     ? presets
     : presets.filter((p) => !CLI_PRESET_IDS.has(p.id) || p.id === value.presetId)

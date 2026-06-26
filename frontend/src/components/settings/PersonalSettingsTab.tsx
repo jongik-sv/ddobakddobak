@@ -26,26 +26,40 @@ export default function PersonalSettingsTab({ showPasswordSection }: Props) {
                     </p>
                     {isServer && (
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {getServerUrl()}
+                        접속 서버: {getServerUrl()}
                       </p>
                     )}
                   </>
                 )
               })()}
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                clearMode()
-                window.location.reload()
-              }}
-              className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-md hover:bg-red-50 transition-colors"
-            >
-              모드 재설정
-            </button>
+            <div className="flex items-center gap-2">
+              {getMode() === 'server' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    sessionStorage.setItem('reselect_mode', '1')
+                    window.location.reload()
+                  }}
+                  className="px-3 py-1.5 text-sm text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50 transition-colors"
+                >
+                  서버 변경
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  clearMode()
+                  window.location.reload()
+                }}
+                className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-md hover:bg-red-50 transition-colors"
+              >
+                모드 재설정
+              </button>
+            </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            재설정 시 앱이 다시 시작되며 모드 선택 화면이 표시됩니다.
+            서버 변경: 접속 서버 주소만 다시 고릅니다. 모드 재설정: 로컬/서버 모드부터 다시 선택합니다.
           </p>
         </section>
       )}
