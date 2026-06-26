@@ -12,7 +12,7 @@ interface AudioPlayerProps {
 
 export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = false }: AudioPlayerProps) {
   const progressRef = useRef<HTMLDivElement>(null)
-  const { isReady, isPlaying, hasAudio, audioLoaded, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download } = audio
+  const { isReady, isPlaying, hasAudio, srcReady, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download } = audio
 
   const SPEED_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2]
   const cycleSpeed = () => {
@@ -45,7 +45,7 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
   const progress = durationMs > 0 ? (currentTimeMs / durationMs) * 100 : 0
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 bg-white border-b">
+    <div className="flex items-center gap-3 px-4 py-1 bg-white border-b">
       {!isReady ? (
         <span className="text-sm text-gray-400">오디오 불러오는 중...</span>
       ) : (
@@ -53,7 +53,7 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
           {/* 재생/정지 버튼 */}
           <button
             onClick={isPlaying ? pause : play}
-            disabled={!audioLoaded}
+            disabled={!srcReady}
             className="shrink-0 w-11 h-11 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
@@ -68,7 +68,7 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
           <div
             ref={progressRef}
             onClick={handleProgressClick}
-            className="flex-1 h-2 bg-gray-200 rounded-full cursor-pointer relative group py-4 box-content"
+            className="flex-1 h-2 bg-gray-200 rounded-full cursor-pointer relative group py-2 box-content"
           >
             <div
               className="h-full bg-indigo-600 rounded-full transition-[width] duration-100"
@@ -96,14 +96,14 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
           {/* 다운로드 */}
           <button
             onClick={() => download()}
-            disabled={!audioLoaded}
+            disabled={!hasAudio}
             className="shrink-0 p-2.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             title="다운로드"
           >
             <Download className="w-4 h-4" />
           </button>
 
-          {!audioLoaded && (
+          {!srcReady && (
             <span className="text-xs text-gray-400">로딩...</span>
           )}
         </>

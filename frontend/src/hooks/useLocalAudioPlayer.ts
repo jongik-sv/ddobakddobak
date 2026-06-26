@@ -34,6 +34,7 @@ export function useLocalAudioPlayer(localId: string, title: string, reloadKey = 
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasAudio, setHasAudio] = useState(false)
   const [audioLoaded, setAudioLoaded] = useState(false)
+  const [srcReady, setSrcReady] = useState(false)
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [durationMs, setDurationMs] = useState(0)
   const [playbackRate, setPlaybackRateState] = useState(1)
@@ -85,6 +86,7 @@ export function useLocalAudioPlayer(localId: string, title: string, reloadKey = 
         setIsReady(true)
         blobUrl = URL.createObjectURL(new Blob([merged.bytes], { type: 'audio/wav' }))
         audio.src = blobUrl
+        setSrcReady(true)
       })
       .catch(() => {
         if (!cancelled) setIsReady(true)
@@ -103,6 +105,7 @@ export function useLocalAudioPlayer(localId: string, title: string, reloadKey = 
       setIsPlaying(false)
       setHasAudio(false)
       setAudioLoaded(false)
+      setSrcReady(false)
       setCurrentTimeMs(0)
       setDurationMs(0)
       setSegmentOffsetsMs([])
@@ -143,6 +146,7 @@ export function useLocalAudioPlayer(localId: string, title: string, reloadKey = 
     isPlaying,
     hasAudio,
     audioLoaded,
+    srcReady,
     currentTimeMs,
     durationMs,
     playbackRate,

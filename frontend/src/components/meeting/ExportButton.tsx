@@ -4,6 +4,7 @@ import { exportMeeting, exportMeetingData, exportPrompt } from '../../api/meetin
 import { downloadMarkdown } from '../../lib/markdown'
 import { downloadBlob, downloadText } from '../../lib/download'
 import { Tooltip } from '../ui/Tooltip'
+import { ACTION_NEUTRAL } from './actionButtonStyles'
 
 type ExportFormat = 'md' | 'pdf' | 'docx' | 'prompt'
 
@@ -97,7 +98,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
       <Tooltip text="내보내기">
         <button
           onClick={() => setIsOpen((o) => !o)}
-          className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+          className={ACTION_NEUTRAL}
           aria-label="내보내기"
         >
           <Download className="w-4 h-4" />

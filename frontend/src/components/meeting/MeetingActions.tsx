@@ -2,6 +2,7 @@ import { Bot, Play, RefreshCw, Trash2, Users } from 'lucide-react'
 import type { Meeting } from '../../api/meetings'
 import { Tooltip } from '../ui/Tooltip'
 import { ExportButton } from './ExportButton'
+import { ACTION_NEUTRAL, ACTION_AMBER, ACTION_BLUE, ACTION_DANGER } from './actionButtonStyles'
 
 interface MeetingActionsProps {
   meeting: Meeting
@@ -50,9 +51,10 @@ export function MeetingActions({
             onClick={onShowSttConfirm}
             disabled={locked}
             aria-label="STT 재생성"
-            className="rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={ACTION_NEUTRAL}
           >
-            {isDesktop ? 'STT 재생성' : <RefreshCw className="w-4 h-4" />}
+            <RefreshCw className="w-4 h-4" />
+            {isDesktop && 'STT 재생성'}
           </button>
         </Tooltip>
       )}
@@ -66,9 +68,10 @@ export function MeetingActions({
             onClick={onShowReDiarizeConfirm}
             disabled={locked}
             aria-label="화자분리만 재실행"
-            className="rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={ACTION_NEUTRAL}
           >
-            {isDesktop ? '화자분리만 재실행' : <Users className="w-4 h-4" />}
+            <Users className="w-4 h-4" />
+            {isDesktop && '화자분리만 재실행'}
           </button>
         </Tooltip>
       )}
@@ -80,17 +83,22 @@ export function MeetingActions({
                 onClick={onShowNotesConfirm}
                 disabled={isRegeneratingNotes || locked}
                 aria-label="회의록 재생성"
-                className="px-3 py-1.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className={ACTION_NEUTRAL}
               >
                 {isRegeneratingNotes ? (
-                  <span className="flex items-center gap-1">
-                    <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                  <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
                     {isDesktop && '재생성 중...'}
-                  </span>
-                ) : (isDesktop ? '회의록 재생성' : <Bot className="w-4 h-4" />)}
+                  </>
+                ) : (
+                  <>
+                    <Bot className="w-4 h-4" />
+                    {isDesktop && '회의록 재생성'}
+                  </>
+                )}
               </button>
             </Tooltip>
           )}
@@ -99,9 +107,10 @@ export function MeetingActions({
               onClick={onReopen}
               disabled={locked}
               aria-label="회의 재개"
-              className="px-3 py-1.5 rounded-md text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className={ACTION_AMBER}
             >
-              {isDesktop ? '회의 재개' : <Play className="w-4 h-4" />}
+              <Play className="w-4 h-4" />
+              {isDesktop && '회의 재개'}
             </button>
           </Tooltip>
         </>
@@ -112,9 +121,10 @@ export function MeetingActions({
             onClick={onGoLive}
             disabled={locked}
             aria-label="회의 진행"
-            className="px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className={ACTION_BLUE}
           >
-            {isDesktop ? '회의 진행' : <Play className="w-4 h-4" />}
+            <Play className="w-4 h-4" />
+            {isDesktop && '회의 진행'}
           </button>
         </Tooltip>
       )}
@@ -129,9 +139,10 @@ export function MeetingActions({
             onClick={onDelete}
             disabled={locked}
             aria-label="삭제"
-            className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={ACTION_DANGER}
           >
-            {isDesktop ? '삭제' : <Trash2 className="w-4 h-4" />}
+            <Trash2 className="w-4 h-4" />
+            {isDesktop && '삭제'}
           </button>
         </Tooltip>
       )}

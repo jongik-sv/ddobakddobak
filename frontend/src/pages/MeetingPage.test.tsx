@@ -106,6 +106,7 @@ vi.mock('../hooks/useAudioPlayer', () => ({
     isPlaying: false,
     hasAudio: true,
     audioLoaded: true,
+    srcReady: true,
     currentTimeMs: 0,
     durationMs: 60000,
     playbackRate: 1,

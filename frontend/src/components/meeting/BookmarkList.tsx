@@ -34,7 +34,7 @@ export function BookmarkList({
   onEdit?: (bookmarkId: number, label: string) => void
   /** 잠긴 회의면 북마크 추가·편집·삭제를 막는다 (탐색·이동은 가능). 기본 false. */
   readOnly?: boolean
-  /** 모바일에서 헤더 클릭으로 목록을 접을 수 있게 한다 (기본 펼침). 데스크톱은 미사용. 기본 false. */
+  /** 헤더 클릭으로 목록을 접을 수 있게 한다 (기본 펼침). 데스크톱·모바일 모두 사용. 기본 false. */
   collapsible?: boolean
 }) {
   const [editingId, setEditingId] = useState<number | null>(null)

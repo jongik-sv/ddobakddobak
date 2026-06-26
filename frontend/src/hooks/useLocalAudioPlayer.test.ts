@@ -54,7 +54,7 @@ describe('useLocalAudioPlayer', () => {
     mergeLocalAudio.mockResolvedValue(null)
     const { result } = renderHook(() => useLocalAudioPlayer('local-x', '제목'))
     for (const k of [
-      'isReady', 'isPlaying', 'hasAudio', 'audioLoaded',
+      'isReady', 'isPlaying', 'hasAudio', 'audioLoaded', 'srcReady',
       'currentTimeMs', 'durationMs', 'playbackRate',
       'play', 'pause', 'seekTo', 'setPlaybackRate', 'download',
     ]) {

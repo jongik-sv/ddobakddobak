@@ -8,6 +8,7 @@ export interface AudioPlayerResult {
   isPlaying: boolean
   hasAudio: boolean
   audioLoaded: boolean
+  srcReady: boolean
   currentTimeMs: number
   durationMs: number
   playbackRate: number
@@ -23,6 +24,7 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasAudio, setHasAudio] = useState(false)
   const [audioLoaded, setAudioLoaded] = useState(false)
+  const [srcReady, setSrcReady] = useState(false)
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [durationMs, setDurationMs] = useState(0)
   const [playbackRate, setPlaybackRateState] = useState(1)
@@ -99,12 +101,14 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
           }
           blobUrl = URL.createObjectURL(blob)
           audio.src = blobUrl
+          setSrcReady(true)
         })
         .catch(() => {
           if (!cancelled) setIsReady(true)
         })
     } else {
       audio.src = audioUrl
+      setSrcReady(true)
     }
 
     return () => {
@@ -118,6 +122,7 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
       setIsPlaying(false)
       setHasAudio(false)
       setAudioLoaded(false)
+      setSrcReady(false)
       setCurrentTimeMs(0)
       setDurationMs(0)
     }
@@ -152,5 +157,5 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
     await downloadBlob(blob, filename ?? serverFilename)
   }, [meetingId])
 
-  return { isReady, isPlaying, hasAudio, audioLoaded, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download }
+  return { isReady, isPlaying, hasAudio, audioLoaded, srcReady, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download }
 }
