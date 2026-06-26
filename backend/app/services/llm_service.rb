@@ -243,6 +243,11 @@ class LlmService
   def call_llm_raw(system, user_content, max_tokens: max_output_tokens, &block)
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
+    # A안(실행시점 폴백): 개인 CLI provider 인데 그 바이너리가 이 머신에 없으면(원격 서버 등)
+    # 디스패치 전에 서버 기본 LLM 으로 @config 를 선제 교체한다. 동기·JSON·스트리밍 모든 공개 경로가
+    # call_llm_raw 로 모이므로 여기 한 곳이면 충분하다.
+    maybe_fallback_from_missing_cli!
+
     # 추론(thinking) 모델은 요약에 불필요 — 비활성 지시 주입(속도·본문 회복)
     if (directive = thinking_off_directive)
       system = "#{directive}\n\n#{system}"
@@ -328,7 +333,7 @@ class LlmService
   # ── 로컬 CLI 실행 (Claude Code / Gemini / Codex) ──
 
   def call_claude_cli(system, user_content, &block)
-    cli = ENV.fetch("CLAUDE_CLI_PATH", "claude")
+    cli = cli_binary_for("claude_cli")
     ensure_cli!(cli, "Claude Code CLI", "npm install -g @anthropic-ai/claude-code")
     # 요약은 순수 텍스트 생성 — 툴/플러그인/스킬/MCP/훅 전부 불필요.
     # 끄면 호출마다 ~/.claude(2GB 플러그인 등) 로딩 오버헤드가 사라진다.
@@ -349,7 +354,7 @@ class LlmService
   #   - --dangerously-skip-permissions: 요약 작업은 비대화형이라 툴 권한 프롬프트로 멈추지 않게 함
   # GEMINI_CLI_PATH 도 하위호환으로 인정. provider 이름은 gemini_cli 유지.
   def call_gemini_cli(system, user_content, &block)
-    cli = ENV["AGY_CLI_PATH"].presence || ENV.fetch("GEMINI_CLI_PATH", "agy")
+    cli = cli_binary_for("gemini_cli")
     ensure_cli!(cli, "Antigravity CLI", "curl -fsSL https://antigravity.google/cli/install.sh | bash")
     merged = "[시스템 지시]\n#{system}\n\n[사용자 입력]\n#{user_content}"
     cmd = [ cli, "-p", merged, "--dangerously-skip-permissions" ]
@@ -358,7 +363,7 @@ class LlmService
   end
 
   def call_codex_cli(system, user_content, &block)
-    cli = ENV.fetch("CODEX_CLI_PATH", "codex")
+    cli = cli_binary_for("codex_cli")
     ensure_cli!(cli, "Codex CLI", "npm install -g @openai/codex")
     cmd = [ cli, "exec", "-" ]
     cmd.push("--model", @config[:model].to_s) if @config[:model].present?
@@ -367,9 +372,48 @@ class LlmService
   end
 
   def ensure_cli!(cli, display_name, install_hint)
-    return if cli.include?("/") && File.executable?(cli)
-    return if system_which(cli)
+    return if cli_available?(cli)
     raise LlmError, "#{display_name}를 찾을 수 없습니다: '#{cli}'. #{install_hint}"
+  end
+
+  # CLI 바이너리가 이 머신에서 실행 가능한지. ensure_cli! 와 선제 폴백(maybe_fallback_from_missing_cli!)이
+  # 동일 판정을 공유하도록 단일 출처로 추출(절대경로면 executable, 아니면 PATH 탐색).
+  def cli_available?(cli)
+    cli = cli.to_s
+    return false if cli.empty?
+    return true if cli.include?("/") && File.executable?(cli)
+    system_which(cli)
+  end
+
+  # CLI provider 별 바이너리 경로 해석 — 각 call_*_cli 의 cli 결정 로직과 동일(단일 출처).
+  # 선제 폴백 판정이 디스패치 전에 존재 여부를 보기 위해 분리. CLI 가 아니면 nil.
+  def cli_binary_for(provider)
+    case provider
+    when "claude_cli" then ENV.fetch("CLAUDE_CLI_PATH", "claude")
+    when "gemini_cli" then ENV["AGY_CLI_PATH"].presence || ENV.fetch("GEMINI_CLI_PATH", "agy")
+    when "codex_cli"  then ENV.fetch("CODEX_CLI_PATH", "codex")
+    end
+  end
+
+  # A안: CLI provider 로 추론하려는데 그 바이너리가 이 머신에 없으면, 부분 작업 후 예외 대신
+  # 디스패치 전에 서버 기본 LLM(server_default_config)으로 @config·@client 를 선제 교체해 다시 추론한다.
+  # 데스크톱(CLI 존재)=개인 CLI 유지 / 원격(CLI 없음)=서버 기본 폴백. SERVER_MODE 신호를 안 써 배포 무관.
+  # 무한재귀 가드: 서버 기본마저 CLI 이고 그 바이너리도 없으면 교체하지 않고 원래 경로로 진행해
+  # ensure_cli! 가 원래 미존재 메시지로 LlmError 를 raise 한다(폴백은 1회만).
+  def maybe_fallback_from_missing_cli!
+    provider = @config[:provider]
+    return unless CLI_PROVIDERS.include?(provider)
+    return if cli_available?(cli_binary_for(provider))
+
+    fallback = server_default_config
+    return if CLI_PROVIDERS.include?(fallback[:provider]) && !cli_available?(cli_binary_for(fallback[:provider]))
+
+    Rails.logger.warn(
+      "[LlmService] 개인 CLI '#{cli_binary_for(provider)}'(#{provider}) 미존재 → " \
+      "서버 기본 LLM(#{fallback[:provider]}/#{fallback[:model]}) 폴백"
+    )
+    @config = fallback
+    @client = build_client
   end
 
   def system_which(bin)
