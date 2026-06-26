@@ -240,59 +240,6 @@ RSpec.describe User, "LLM settings", type: :model do
     end
   end
 
-  describe "#effective_llm_config — SERVER_MODE CLI gate" do
-    # 원격 다중사용자 서버(SERVER_MODE=true)에서 개인 CLI 프로바이더는 무시되고
-    # 서버 기본 LLM 으로 폴백한다. ENV 는 메시지 스텁(직접 대입 X)으로 누수 방지.
-    def stub_server_default!
-      allow(ENV).to receive(:fetch).and_call_original
-      allow(ENV).to receive(:[]).and_call_original
-      allow(ENV).to receive(:fetch).with("LLM_PROVIDER", "anthropic").and_return("anthropic")
-      allow(ENV).to receive(:[]).with("ANTHROPIC_AUTH_TOKEN").and_return("sk-server-key")
-      allow(ENV).to receive(:[]).with("LLM_MODEL").and_return("claude-sonnet-4-6")
-      allow(ENV).to receive(:[]).with("ANTHROPIC_BASE_URL").and_return(nil)
-    end
-
-    it "원격 서버(SERVER_MODE=true)에서 개인 claude_cli 는 무시하고 서버 기본으로 폴백한다" do
-      stub_server_default!
-      allow(ENV).to receive(:[]).with("SERVER_MODE").and_return("true")
-      user = build(:user, llm_provider: "claude_cli", llm_api_key: nil,
-                          llm_model: "sonnet", llm_enabled: true)
-      cfg = user.effective_llm_config
-      expect(cfg[:provider]).to eq("anthropic")
-      expect(cfg[:auth_token]).to eq("sk-server-key")
-      expect(User::CLI_LLM_PROVIDERS).not_to include(cfg[:provider])
-    end
-
-    it "로컬(SERVER_MODE 미설정)에서 개인 claude_cli 는 그대로 유지한다" do
-      allow(ENV).to receive(:[]).and_call_original
-      allow(ENV).to receive(:[]).with("SERVER_MODE").and_return(nil)
-      user = build(:user, llm_provider: "claude_cli", llm_api_key: nil,
-                          llm_model: "sonnet", llm_enabled: true)
-      cfg = user.effective_llm_config
-      expect(cfg[:provider]).to eq("claude_cli")
-      expect(cfg[:model]).to eq("sonnet")
-    end
-
-    it "SERVER_MODE=true 라도 개인 클라우드(anthropic+키)는 영향받지 않는다" do
-      allow(ENV).to receive(:[]).and_call_original
-      allow(ENV).to receive(:[]).with("SERVER_MODE").and_return("true")
-      user = build(:user, llm_provider: "anthropic", llm_api_key: "sk-personal",
-                          llm_model: "claude-x", llm_enabled: true)
-      cfg = user.effective_llm_config
-      expect(cfg[:provider]).to eq("anthropic")
-      expect(cfg[:auth_token]).to eq("sk-personal")
-    end
-
-    it "개인 설정 없음 + SERVER_MODE=true 는 서버 기본으로 폴백한다(불변)" do
-      stub_server_default!
-      allow(ENV).to receive(:[]).with("SERVER_MODE").and_return("true")
-      user = build(:user, llm_provider: nil, llm_api_key: nil)
-      cfg = user.effective_llm_config
-      expect(cfg[:provider]).to eq("anthropic")
-      expect(cfg[:auth_token]).to eq("sk-server-key")
-    end
-  end
-
   describe "factory traits" do
     it "creates user with :with_llm_config trait" do
       user = create(:user, :with_llm_config)

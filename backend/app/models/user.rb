@@ -48,17 +48,6 @@ class User < ApplicationRecord
     CLI_LLM_PROVIDERS.include?(llm_provider)
   end
 
-  # 원격 다중사용자 서버(SERVER_MODE=true)에서는 개인 CLI 프로바이더를 무시하고 서버 기본 LLM 으로 폴백한다.
-  # CLI 추론은 Rails 서버 머신의 Open3 실행이라, 원격에서 개인 CLI 를 쓰면 (a)서버 구독을 끌어쓰고
-  # (b)서버에 해당 CLI 가 없어 추론이 깨진다. 로컬(SERVER_MODE 미설정=데스크톱 Rails==내 PC)은 개인 CLI 유지.
-  def self.server_mode?
-    ENV["SERVER_MODE"] == "true"
-  end
-
-  def chat_llm_provider_cli?
-    CLI_LLM_PROVIDERS.include?(chat_llm_provider)
-  end
-
   def llm_configured?
     llm_has_settings? && llm_enabled?
   end
@@ -69,8 +58,7 @@ class User < ApplicationRecord
   end
 
   def effective_llm_config
-    # 원격 서버에서 개인 CLI 프로바이더는 차단(server_mode? && llm_provider_cli?) → else 의 서버 기본 폴백.
-    if llm_configured? && !(self.class.server_mode? && llm_provider_cli?)
+    if llm_configured?
       {
         provider: llm_provider,
         auth_token: llm_api_key,
@@ -88,9 +76,7 @@ class User < ApplicationRecord
   #   3) 전역 챗 설정(ENV["CHAT_LLM_PROVIDER"]) → 전역 독립
   #   4) 전역 요약 + ENV["CHAT_LLM_MODEL"] 모델 override
   def effective_chat_llm_config
-    # 원격 서버에서 개인 챗 CLI 프로바이더는 tier-1 차단 → tier-2(요약) 로 폴백.
-    # tier-2 의 effective_llm_config 도 동일 게이트로 자가 폴백하므로 요약마저 CLI 면 서버 기본까지 떨어진다.
-    if chat_llm_configured? && !(self.class.server_mode? && chat_llm_provider_cli?)
+    if chat_llm_configured?
       return {
         provider: chat_llm_provider,
         auth_token: chat_llm_api_key,
