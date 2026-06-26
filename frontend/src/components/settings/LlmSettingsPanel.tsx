@@ -4,6 +4,7 @@ import type { LlmSettings } from '../../api/settings'
 import { SERVICE_PRESETS, presetFormDefaults } from './llmServicePresets'
 import LlmProviderCard from './LlmProviderCard'
 import type { LlmProviderCardValue } from './LlmProviderCard'
+import { useAuthStore } from '../../stores/authStore'
 
 interface PresetFormState {
   auth_token: string
@@ -15,6 +16,7 @@ interface PresetFormState {
 
 /** AI(LLM) 요약/챗 모델 설정 카드: 요약 카드 + AI 챗 카드 2분할. */
 export function LlmSettingsPanel() {
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
   const [llmSettings, setLlmSettings] = useState<LlmSettings | null>(null)
   const [presetCache, setPresetCache] = useState<Record<string, PresetFormState>>({})
   const [selectedPreset, setSelectedPreset] = useState('anthropic')
@@ -180,6 +182,7 @@ export function LlmSettingsPanel() {
           title="요약 모델"
           idPrefix="summary"
           presets={SERVICE_PRESETS}
+          admin={isAdmin}
           showTokenLimits
           value={{
             presetId: selectedPreset,
@@ -199,6 +202,7 @@ export function LlmSettingsPanel() {
           title="AI 챗 모델"
           idPrefix="chat"
           presets={SERVICE_PRESETS}
+          admin={isAdmin}
           noneOption={{ id: '', label: '요약과 동일', description: '요약 모델 그대로 사용' }}
           value={{ presetId: chatPresetId, ...chatForm }}
           maskedToken={chatMaskedToken || undefined}
