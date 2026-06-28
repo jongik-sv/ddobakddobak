@@ -9,6 +9,12 @@ export default defineConfig({
     tailwindcss(),
     react(),
   ],
+  define: {
+    // react-draggable(react-rnd 드래그 의존)이 handleDragStart에서 브라우저에 없는
+    // process.env.DRAGGABLE_DEBUG를 읽어 "ReferenceError: process is not defined" → 드래그가 죽음
+    // (리사이즈는 re-resizable라 정상). 빌드/최적화 시 false로 치환해 에러 제거 → 드래그 복구.
+    'process.env.DRAGGABLE_DEBUG': 'false',
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
