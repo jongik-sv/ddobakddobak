@@ -32,10 +32,9 @@ class MeetingExporter
 
     add_manifest(tar)
     add_files(tar)
-
-    tar.close
   ensure
-    gz.finish if gz
+    tar&.close
+    gz&.finish
   end
 
   # 다운로드 파일명. <slug>-meeting-YYYYMMDD.ddobak-meeting.tgz
