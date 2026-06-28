@@ -269,6 +269,33 @@ RSpec.describe MeetingImporter do
       expect(Meeting.count).to eq(count_before)
     end
 
+    it ".extracted 디렉토리도 새 첨부 옆으로 복사된다" do
+      Dir.mktmpdir do |dir|
+        attach_path = File.join(dir, "agenda.pdf")
+        File.binwrite(attach_path, "PDF")
+        ed_src = "#{attach_path}.extracted"
+        FileUtils.mkdir_p(File.join(ed_src, "sub"))
+        File.write(File.join(ed_src, "x.txt"), "EXTRACTED")
+        File.write(File.join(ed_src, "sub", "y.md"), "SUB")
+        create(:meeting_attachment, meeting: meeting, file_path: attach_path, uploaded_by_id: owner.id)
+
+        result = run_import
+        m = Meeting.find(result[:meeting_id])
+        att = m.meeting_attachments.find { |a| a.file_path.present? && File.file?(a.file_path) }
+        ed = "#{att.file_path}.extracted"
+
+        expect(File.read(File.join(ed, "x.txt"))).to eq("EXTRACTED")
+        expect(File.read(File.join(ed, "sub", "y.md"))).to eq("SUB")
+      ensure
+        if defined?(m) && m
+          m.meeting_attachments.each do |a|
+            FileUtils.rm_f(a.file_path)
+            FileUtils.rm_rf("#{a.file_path}.extracted")
+          end
+        end
+      end
+    end
+
     it "kind=link 첨부는 파일 없이도 import 성공한다 (롤백 없음)" do
       create(:meeting_attachment, meeting: meeting,
                                   kind: "link", url: "https://example.com/doc",
