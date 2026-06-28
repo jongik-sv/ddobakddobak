@@ -15,21 +15,21 @@ export function StatusBadge({ status, scheduled }: { status: Meeting['status']; 
   if (status === 'pending') {
     if (scheduled === true) {
       return (
-        <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 flex items-center gap-1">
+        <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 flex items-center gap-1 whitespace-nowrap shrink-0">
           <span aria-hidden>⏰</span>
           예약중
         </span>
       )
     }
     return (
-      <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+      <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap shrink-0">
         대기중
       </span>
     )
   }
   if (status === 'recording') {
     return (
-      <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 flex items-center gap-1">
+      <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 flex items-center gap-1 whitespace-nowrap shrink-0">
         <span className="inline-block w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
         녹음중
       </span>
@@ -37,14 +37,14 @@ export function StatusBadge({ status, scheduled }: { status: Meeting['status']; 
   }
   if (status === 'transcribing') {
     return (
-      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex items-center gap-1">
+      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex items-center gap-1 whitespace-nowrap shrink-0">
         <span className="inline-block w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
         변환중
       </span>
     )
   }
   return (
-    <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+    <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 whitespace-nowrap shrink-0">
       완료
     </span>
   )
