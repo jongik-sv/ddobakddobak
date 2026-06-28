@@ -73,6 +73,20 @@ RSpec.describe FolderImporter do
     Meeting.where(project_id: dst_project.id, title: title).first
   end
 
+  # 최소 manifest 를 담은 tar.gz StringIO 생성 (검증 실패 경로 테스트용).
+  # add_file_simple 으로 크기를 미리 전달 — GzipWriter 는 pos= 미지원이므로 필수.
+  def build_archive_io(manifest_hash)
+    io    = StringIO.new
+    gz    = Zlib::GzipWriter.new(io)
+    tar   = Gem::Package::TarWriter.new(gz)
+    bytes = manifest_hash.to_json.b
+    tar.add_file_simple("manifest.json", 0o644, bytes.bytesize) { |f| f.write(bytes) }
+    tar.close
+    gz.finish
+    io.rewind
+    io
+  end
+
   # ── 반환값 ──
 
   describe "#run! 반환값" do
@@ -189,9 +203,38 @@ RSpec.describe FolderImporter do
       MeetingExporter.new(meeting1, include_audio: false).write_to(meeting_io)
       meeting_io.rewind
 
+      folder_count_before  = Folder.count
+      meeting_count_before = Meeting.count
+
       expect {
         described_class.new(meeting_io, user: importer_user, project: dst_project).run!
       }.to raise_error(Transfer::Archive::InvalidArchiveError)
+
+      expect(Folder.count).to eq(folder_count_before)
+      expect(Meeting.count).to eq(meeting_count_before)
+    end
+  end
+
+  # ── 빈 folders 가드 ──
+
+  describe "빈 folders 가드" do
+    it "manifest folders 가 비어있으면 레코드 생성 없이 InvalidArchiveError 를 발생시킨다" do
+      empty_io = build_archive_io(
+        "format_version" => FolderImporter::SUPPORTED_FORMAT_VERSION,
+        "scope"          => "folder",
+        "folders"        => [],
+        "meetings"       => []
+      )
+
+      folder_count_before  = Folder.count
+      meeting_count_before = Meeting.count
+
+      expect {
+        described_class.new(empty_io, user: importer_user, project: dst_project).run!
+      }.to raise_error(Transfer::Archive::InvalidArchiveError, /folders/)
+
+      expect(Folder.count).to eq(folder_count_before)
+      expect(Meeting.count).to eq(meeting_count_before)
     end
   end
 
@@ -217,6 +260,55 @@ RSpec.describe FolderImporter do
       expect { run_import }.to raise_error(StandardError)
 
       expect(Meeting.count).to eq(count_before)
+    end
+
+    it "1차 restore! 가 복사한 파일이 트랜잭션 롤백 시 디스크에서 삭제된다 (rollback cleanup 회귀)" do
+      files_copied = []
+      begin
+        Dir.mktmpdir do |dir|
+          # 3개 회의 모두에 오디오 설정 — 매니페스트 순서 무관하게 첫 restore! 에서 파일 복사 보장
+          [meeting1, meeting2, meeting3].each_with_index do |mtg, i|
+            path = File.join(dir, "audio_#{i}.mp3")
+            File.binwrite(path, "AUDIO-#{i}")
+            mtg.update_column(:audio_file_path, path)
+          end
+
+          io = export_io(include_audio: true)
+
+          folder_count_before  = Folder.count
+          meeting_count_before = Meeting.count
+
+          # FileUtils.cp 를 감시해 실제로 복사된 대상 경로 수집
+          allow(FileUtils).to receive(:cp).and_wrap_original do |original, src, dst|
+            files_copied << dst
+            original.call(src, dst)
+          end
+
+          # 첫 번째 restore! 은 실제 실행(파일 복사 포함), 두 번째부터 raise
+          call_count = 0
+          allow_any_instance_of(Transfer::MeetingRestorer).to receive(:restore!).and_wrap_original do |m|
+            call_count += 1
+            call_count >= 2 ? raise(ActiveRecord::RecordInvalid.new(Meeting.new)) : m.call
+          end
+
+          expect { run_import(io) }.to raise_error(ActiveRecord::RecordInvalid)
+
+          # (a) rollback cleanup 동작 확인: 복사된 파일이 디스크에서 삭제됐어야 함
+          expect(files_copied).not_to be_empty,
+            "test precondition: 아무 파일도 복사되지 않음 — include_audio 또는 첫 restore! 점검 필요"
+          files_copied.each do |path|
+            expect(File.file?(path)).to be(false),
+              "rollback cleanup 실패: #{path} 가 삭제되지 않음 (데이터손실 회귀)"
+          end
+
+          # (b) & (c) DB 롤백: Folder·Meeting 레코드 불변
+          expect(Folder.count).to eq(folder_count_before)
+          expect(Meeting.count).to eq(meeting_count_before)
+        end
+      ensure
+        # 안전망: rollback cleanup 실패 시에도 테스트 아티팩트 정리
+        files_copied.each { |p| FileUtils.rm_f(p) }
+      end
     end
   end
 

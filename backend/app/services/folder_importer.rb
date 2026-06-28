@@ -132,6 +132,11 @@ class FolderImporter
       raise Transfer::Archive::InvalidArchiveError,
             "expected scope=folder, got #{scope.inspect}"
     end
+
+    if (manifest["folders"] || []).empty?
+      raise Transfer::Archive::InvalidArchiveError,
+            "manifest.json folders is empty or missing"
+    end
   end
 
   # ── 태그 맵 ──
@@ -221,7 +226,7 @@ class FolderImporter
   # ── 회의 (2-pass) ──
 
   # 1패스: 각 회의를 MeetingRestorer 로 복원 (previous_meeting_id=nil).
-  #         restorer.copied_paths 를 @all_copied_paths 에 누적.
+  #         각 restorer 를 @restorers 에 누적 — 롤백 시 copied_paths 수집에 사용.
   # 2패스: previous_meeting_id 를 서브트리 내에서만 리맵
   #         (범위 밖이면 nil 유지).
   def import_meetings(manifest, folder_map, tag_map)
