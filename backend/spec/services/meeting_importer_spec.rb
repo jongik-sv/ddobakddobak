@@ -107,6 +107,18 @@ RSpec.describe MeetingImporter do
       expect(new_meeting.locked_at).to be_nil
     end
 
+    it "status 는 'completed' 로 정상화된다 (진행 중 상태 제거)" do
+      expect(new_meeting.status).to eq("completed")
+    end
+
+    it "recording_client_id 는 nil 이다" do
+      expect(new_meeting.recording_client_id).to be_nil
+    end
+
+    it "recorder_heartbeat_at 는 nil 이다" do
+      expect(new_meeting.recorder_heartbeat_at).to be_nil
+    end
+
     it "자식 레코드 카운트가 일치한다" do
       expect(new_meeting.transcripts.count).to eq(1)
       expect(new_meeting.summaries.count).to eq(1)
@@ -150,6 +162,36 @@ RSpec.describe MeetingImporter do
       result_root = described_class.new(export_io, user: importer_user, project: dst_project, folder: nil).run!
       m = Meeting.find(result_root[:meeting_id])
       expect(m.folder_id).to be_nil
+    end
+  end
+
+  # ── 진행 중 회의 lifecycle 정상화 ──
+
+  describe "진행 중 회의 lifecycle 정상화" do
+    it "status='recording' + recording_client_id 세팅된 회의 export→import→복원본 status='completed'·recording_client_id nil·recorder_heartbeat_at nil" do
+      meeting.update_columns(
+        status:                "recording",
+        recording_client_id:   "client-abc-123",
+        recorder_heartbeat_at: Time.current,
+        paused_at:             nil
+      )
+
+      result      = run_import(export_io)
+      new_meeting = Meeting.find(result[:meeting_id])
+
+      expect(new_meeting.status).to eq("completed")
+      expect(new_meeting.recording_client_id).to be_nil
+      expect(new_meeting.recorder_heartbeat_at).to be_nil
+    end
+
+    it "status='transcribing' 인 회의도 복원본 status='completed'·recording_client_id nil" do
+      meeting.update_columns(status: "transcribing", recording_client_id: "cid-xyz")
+
+      result      = run_import(export_io)
+      new_meeting = Meeting.find(result[:meeting_id])
+
+      expect(new_meeting.status).to eq("completed")
+      expect(new_meeting.recording_client_id).to be_nil
     end
   end
 

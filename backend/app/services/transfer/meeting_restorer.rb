@@ -57,6 +57,12 @@ module Transfer
       attrs["previous_meeting_id"]  = @previous_meeting_id
       attrs["locked_at"]            = nil  # locked: false
       attrs["audio_file_path"]      = nil  # 복사 후 채움
+      # 라이프사이클 정상화: 복원본은 정적 스냅샷이므로 진행 중 상태를 제거한다.
+      # 진행 중 회의가 export 되어 복원될 경우 SummarizationJob 등에 잡히지 않도록 방지.
+      attrs["status"]                = "completed"
+      attrs["recording_client_id"]   = nil
+      attrs["recorder_heartbeat_at"] = nil
+      attrs["paused_at"]             = nil
 
       meeting = Meeting.new(attrs)
       meeting.important_explicitly_set = true  # 폴더값 상속 콜백이 manifest 값을 덮지 않게

@@ -39,6 +39,31 @@ RSpec.describe FolderExporter do
   let!(:tagging_a)   { Tagging.create!(tag: tag, taggable: folder_a) }
   let!(:tagging_m1)  { Tagging.create!(tag: tag, taggable: meeting1) }
 
+  describe "collect_subtree 사이클 가드" do
+    # 3단 깊이 A > B > C 서브트리가 전부 수집되는지 확인
+    let!(:folder_c) { create(:folder, project: project, name: "C 폴더", parent_id: folder_b.id) }
+
+    it "A>B>C 3단 깊이 서브트리 전체를 수집한다" do
+      exporter = described_class.new(folder_a, include_audio: false)
+      io = StringIO.new
+      exporter.write_to(io)
+      entries = read_tar_gz(io)
+      parsed = JSON.parse(entries["manifest.json"])
+
+      folder_ids = parsed["folders"].map { |f| f["id"] }
+      expect(folder_ids).to include(folder_a.id, folder_b.id, folder_c.id)
+    end
+
+    it "자기참조 사이클(parent_id=자신)이 있어도 SystemStackError 없이 수집을 완료한다" do
+      # FK 제약 우회하여 직접 update_column 으로 사이클 주입
+      folder_b.update_column(:parent_id, folder_b.id)
+
+      exporter = described_class.new(folder_a, include_audio: false)
+      io = StringIO.new
+      expect { exporter.write_to(io) }.not_to raise_error
+    end
+  end
+
   describe "#filename" do
     it "<slug>-folder-YYYYMMDD.ddobak-folder.tgz 형식이다 (ASCII name)" do
       folder_a.update_column(:name, "My Folder")

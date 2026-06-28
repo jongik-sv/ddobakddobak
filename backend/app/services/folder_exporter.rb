@@ -48,13 +48,16 @@ class FolderExporter
   private
 
   # 폴더 서브트리: 인자 folder + 모든 하위 폴더(재귀 children).
-  # 사이클은 Folder#children 이 DB FK로 보장하므로 단순 재귀로 충분.
+  # DB FK는 parent_id 존재성만 보장하며 사이클(A→B→A)은 막지 못한다.
+  # seen Set 으로 재방문 방지(사이클·무한재귀 억제).
   def folders
-    @folders ||= collect_subtree(@folder)
+    @folders ||= collect_subtree(@folder, Set.new)
   end
 
-  def collect_subtree(folder)
-    [folder] + folder.children.flat_map { |c| collect_subtree(c) }
+  def collect_subtree(folder, seen)
+    return [] if seen.include?(folder.id)
+    seen << folder.id
+    [folder] + folder.children.flat_map { |c| collect_subtree(c, seen) }
   end
 
   # 서브트리 내 전 폴더에 속한 회의들.

@@ -35,6 +35,16 @@ RSpec.describe Transfer::Archive do
     it "does not raise for a safe relative path like 'audio/1.mp3'" do
       expect { described_class.guard_entry_name!("audio/1.mp3") }.not_to raise_error
     end
+
+    it "raises UnsafeEntryError for a name containing a null byte" do
+      expect { described_class.guard_entry_name!("audio/evil\x00.mp3") }
+        .to raise_error(Transfer::Archive::UnsafeEntryError)
+    end
+
+    it "raises UnsafeEntryError for a name that is only a null byte" do
+      expect { described_class.guard_entry_name!("\x00") }
+        .to raise_error(Transfer::Archive::UnsafeEntryError)
+    end
   end
 
   describe ".gzip_magic?" do

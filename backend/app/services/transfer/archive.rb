@@ -28,12 +28,14 @@ module Transfer
 
     module_function
 
-    # zip-slip 가드: 절대경로·".." 세그먼트·역슬래시 우회·Windows 드라이브 절대경로를 거부.
+    # zip-slip 가드: 절대경로·".." 세그먼트·역슬래시 우회·Windows 드라이브 절대경로·null-byte 를 거부.
     # @param name [String] tar 엔트리 이름
     # @raise [UnsafeEntryError] 안전하지 않은 이름일 때
     def guard_entry_name!(name)
-      normalized = name.to_s.tr("\\", "/")
-      if normalized.start_with?("/") ||
+      raw        = name.to_s
+      normalized = raw.tr("\\", "/")
+      if raw.include?("\x00") ||
+         normalized.start_with?("/") ||
          normalized.split("/").include?("..") ||
          normalized.match?(/\A[A-Za-z]:/)
         raise UnsafeEntryError, "unsafe tar entry name: #{name.inspect}"
