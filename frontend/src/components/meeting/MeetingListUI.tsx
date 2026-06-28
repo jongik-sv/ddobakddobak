@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { FolderInput, MoreVertical, Pencil, Trash2 } from 'lucide-react'
+import { FolderInput, MoreVertical, PackageOpen, Pencil, Trash2 } from 'lucide-react'
 import type { Meeting } from '../../api/meetings'
 import { canEditMeeting } from '../../api/meetings'
 import { useAuthStore } from '../../stores/authStore'
@@ -121,6 +121,7 @@ interface MeetingActionButtonsProps {
   onMoveProject: (meeting: Meeting) => void
   onDelete: (meeting: Meeting) => void
   onStop: (meeting: Meeting) => void
+  onExport: (meeting: Meeting) => void
   /** list view always uses hover-based opacity; card view uses isDesktop toggle */
   forceHoverOpacity?: boolean
 }
@@ -132,6 +133,7 @@ export function MeetingActionButtons({
   onMoveProject,
   onDelete,
   onStop,
+  onExport,
 }: MeetingActionButtonsProps) {
   const me = useAuthStore((s) => s.user)
   // 소유권 게이팅: 서버가 403으로 강제하지만, 어포던스(수정/이동/삭제)는 권한이 있을 때만 노출한다.
@@ -180,7 +182,7 @@ export function MeetingActionButtons({
             e.stopPropagation()
             if (!open && triggerRef.current) {
               const rect = triggerRef.current.getBoundingClientRect()
-              const MENU_H = 160
+              const MENU_H = 200
               const right = Math.max(8, window.innerWidth - rect.right)
               setPos(
                 rect.bottom + MENU_H > window.innerHeight
@@ -232,6 +234,17 @@ export function MeetingActionButtons({
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted"
             >
               <FolderInput className="w-4 h-4" /> 프로젝트 이동
+            </button>
+            <button
+              aria-label="회의 내보내기"
+              onClick={(e) => {
+                e.stopPropagation()
+                setOpen(false)
+                onExport(meeting)
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted"
+            >
+              <PackageOpen className="w-3.5 h-3.5" /> 회의 내보내기
             </button>
             <button
               aria-label="삭제"

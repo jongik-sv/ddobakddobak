@@ -27,6 +27,7 @@ interface MeetingListTableProps {
   onMoveProject: (m: Meeting) => void
   onDelete: (m: Meeting) => void
   onStop: (m: Meeting) => void
+  onExport: (m: Meeting) => void
   /** 중요 표시 토글. 미지정이면 별 토글 숨김. 잠긴 회의는 비활성(update 경유라 막힘). */
   onToggleImportant?: (m: Meeting) => void
 }
@@ -48,6 +49,7 @@ export function MeetingListTable({
   onMoveProject,
   onDelete,
   onStop,
+  onExport,
   onToggleImportant,
 }: MeetingListTableProps) {
   return (
@@ -198,6 +200,7 @@ export function MeetingListTable({
                   onMoveProject={onMoveProject}
                   onDelete={onDelete}
                   onStop={onStop}
+                  onExport={onExport}
                   forceHoverOpacity
                 />
               </div>

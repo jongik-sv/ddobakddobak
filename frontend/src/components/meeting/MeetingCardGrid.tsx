@@ -22,6 +22,7 @@ interface MeetingCardGridProps {
   onMoveProject: (m: Meeting) => void
   onDelete: (m: Meeting) => void
   onStop: (m: Meeting) => void
+  onExport: (m: Meeting) => void
   /** 중요 표시 토글. 미지정이면 별 토글 숨김. 잠긴 회의는 비활성. */
   onToggleImportant?: (m: Meeting) => void
 }
@@ -40,6 +41,7 @@ export function MeetingCardGrid({
   onMoveProject,
   onDelete,
   onStop,
+  onExport,
   onToggleImportant,
 }: MeetingCardGridProps) {
   const me = useAuthStore((s) => s.user)
@@ -165,6 +167,7 @@ export function MeetingCardGrid({
                 onMoveProject={onMoveProject}
                 onDelete={onDelete}
                 onStop={onStop}
+                onExport={onExport}
               />
             </div>
           </div>

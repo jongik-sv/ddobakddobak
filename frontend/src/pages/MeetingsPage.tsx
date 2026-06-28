@@ -18,6 +18,7 @@ import MoveMeetingDialog from '../components/folder/MoveMeetingDialog'
 import MoveToProjectModal from '../components/project/MoveToProjectModal'
 import { useProjectStore } from '../stores/projectStore'
 import EditMeetingDialog, { type EditMeetingData } from '../components/meeting/EditMeetingDialog'
+import ExportMeetingDialog from '../components/meeting/ExportMeetingDialog'
 import { JoinMeetingDialog } from '../components/meeting/JoinMeetingDialog'
 import { MeetingsGridSkeleton } from '../components/ui/Skeleton'
 import { CreateMeetingModal } from '../components/meeting/CreateMeetingModal'
@@ -68,6 +69,7 @@ export default function MeetingsPage() {
   const [movingMeeting, setMovingMeeting] = useState<Meeting | null>(null)
   const [movingProjectMeeting, setMovingProjectMeeting] = useState<Meeting | null>(null)
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
+  const [exportingMeeting, setExportingMeeting] = useState<Meeting | null>(null)
   const [askOpen, setAskOpen] = useState(false)
   const currentProjectId = useProjectStore((s) => s.currentProjectId)
 
@@ -418,6 +420,7 @@ export default function MeetingsPage() {
           onMoveProject={setMovingProjectMeeting}
           onDelete={handleDeleteMeeting}
           onStop={handleStopMeeting}
+          onExport={setExportingMeeting}
           onToggleImportant={handleToggleImportant}
         />
       ) : (
@@ -438,6 +441,7 @@ export default function MeetingsPage() {
           onMoveProject={setMovingProjectMeeting}
           onDelete={handleDeleteMeeting}
           onStop={handleStopMeeting}
+          onExport={setExportingMeeting}
           onToggleImportant={handleToggleImportant}
         />
       )}
@@ -522,6 +526,11 @@ export default function MeetingsPage() {
           onConfirm={handleEditMeeting}
           onClose={() => setEditingMeeting(null)}
         />
+      )}
+
+      {/* 회의 내보내기(.tgz) 다이얼로그 */}
+      {exportingMeeting && (
+        <ExportMeetingDialog meeting={exportingMeeting} onClose={() => setExportingMeeting(null)} />
       )}
 
       {/* 회의 참여 다이얼로그 */}
