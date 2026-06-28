@@ -92,3 +92,12 @@ export function scheduleToPayload(state: ScheduleFormState): SchedulePayload {
         : null,
   }
 }
+
+/**
+ * 회의 제목 자동 입력용 날짜 라벨: "2026.07.05 14시30분" (로컬, zero-pad).
+ * 연(4자리).월(2).일(2) 공백 시(2)"시"분(2)"분".
+ */
+export function formatMeetingDateLabel(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}시${p(d.getMinutes())}분`
+}
