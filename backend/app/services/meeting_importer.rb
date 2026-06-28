@@ -40,30 +40,33 @@ class MeetingImporter
     new_meeting = nil
     restorer    = nil
 
-    ActiveRecord::Base.transaction do
-      tag_map = build_tag_map(tags_data)
-      restorer = Transfer::MeetingRestorer.new(
-        meeting_hash,
-        user:                 @user,
-        project:              @project,
-        file_lookup:          @staged_paths,
-        folder_id:            @folder&.id,
-        previous_meeting_id:  nil,
-        tag_resolver:         ->(old_tag_id) { tag_map[old_tag_id] }
-      )
-      new_meeting = restorer.restore!
+    begin
+      ActiveRecord::Base.transaction do
+        tag_map = build_tag_map(tags_data)
+        restorer = Transfer::MeetingRestorer.new(
+          meeting_hash,
+          user:                 @user,
+          project:              @project,
+          file_lookup:          @staged_paths,
+          folder_id:            @folder&.id,
+          previous_meeting_id:  nil,
+          tag_resolver:         ->(old_tag_id) { tag_map[old_tag_id] }
+        )
+        new_meeting = restorer.restore!
+      end
+    rescue StandardError
+      # 트랜잭션 실패 시에만 복사된 storage/ 파일 롤백
+      restorer&.copied_paths&.each { |path| FileUtils.rm_f(path) }
+      raise
+    ensure
+      # 트랜잭션 성공·실패 무관, staged tempfile 은 항상 정리
+      cleanup_staged_files
     end
 
-    # EmbedBackfillJob 은 트랜잭션 밖(post-commit)에서 실행
+    # ↓ 커밋 확정 후. 여기서 raise 해도 copied_paths 는 절대 삭제 안 됨
     EmbedBackfillJob.perform_later(meeting_id: new_meeting.id) if new_meeting.transcripts.exists?
 
     { meeting_id: new_meeting.id }
-  rescue StandardError
-    # 복사된 storage/ 파일 롤백
-    restorer&.copied_paths&.each { |path| FileUtils.rm_f(path) }
-    raise
-  ensure
-    cleanup_staged_files
   end
 
   private

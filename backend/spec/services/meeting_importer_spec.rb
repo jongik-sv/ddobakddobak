@@ -438,4 +438,51 @@ RSpec.describe MeetingImporter do
       expect(Meeting.count).to eq(count_before)
     end
   end
+
+  # ── post-commit 예외 시 파일 보존 (data-loss 회귀) ──
+
+  describe "post-commit 예외 시 파일 보존" do
+    it "EmbedBackfillJob 이 raise 해도 커밋된 회의와 복사 파일이 살아있다" do
+      Dir.mktmpdir do |dir|
+        audio_path = File.join(dir, "session.mp3")
+        File.binwrite(audio_path, "AUDIO-BYTES")
+        meeting.update_column(:audio_file_path, audio_path)
+
+        attach_path = File.join(dir, "#{meeting.id}_doc.pdf")
+        File.binwrite(attach_path, "PDF-BYTES")
+        create(:meeting_attachment, meeting: meeting, file_path: attach_path,
+                                    uploaded_by_id: owner.id)
+
+        # post-commit 단계에서 raise 를 강제 → 수정 전이라면 copied_paths 삭제됨
+        allow(EmbedBackfillJob).to receive(:perform_later).and_raise(StandardError, "job queue down")
+
+        count_before = Meeting.count
+
+        expect {
+          run_import(export_io(include_audio: true))
+        }.to raise_error(StandardError, "job queue down")
+
+        # (1) 트랜잭션이 커밋됐으므로 새 Meeting 레코드가 DB 에 존재한다
+        expect(Meeting.count).to eq(count_before + 1)
+
+        new_meeting = Meeting.order(:id).last
+
+        # (2) 복사된 오디오 파일이 디스크에 여전히 존재한다
+        expect(new_meeting.audio_file_path).to be_present
+        expect(File.file?(new_meeting.audio_file_path)).to be(true), \
+          "audio file was deleted after post-commit exception (data-loss bug)"
+
+        # (3) 복사된 첨부 파일이 디스크에 여전히 존재한다
+        att = new_meeting.meeting_attachments.find { |a| a.file_path.present? }
+        expect(att).to be_present
+        expect(File.file?(att.file_path)).to be(true), \
+          "attachment file was deleted after post-commit exception (data-loss bug)"
+      ensure
+        if defined?(new_meeting) && new_meeting
+          FileUtils.rm_f(new_meeting.audio_file_path)
+          new_meeting.meeting_attachments.each { |a| FileUtils.rm_f(a.file_path) }
+        end
+      end
+    end
+  end
 end
