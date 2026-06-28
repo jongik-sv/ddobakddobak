@@ -30,7 +30,7 @@ class FolderImporter
     @parent_folder    = parent_folder
     @staged_paths     = {}   # tar 엔트리명 → staged Tempfile 경로
     @staged_files     = []   # Tempfile 객체 보관(GC 방지)
-    @all_copied_paths = []   # 트랜잭션 실패 시 롤백할 storage/ 파일
+    @restorers        = []   # 각 MeetingRestorer 참조 — 롤백 시 copied_paths 수집
     @root_folder      = nil  # import 후 루트 Folder 레코드
   end
 
@@ -49,7 +49,8 @@ class FolderImporter
       end
     rescue StandardError
       # 트랜잭션 실패 시에만 복사된 storage/ 파일 롤백
-      @all_copied_paths.each { |path| FileUtils.rm_f(path) }
+      # @restorers 의 copied_paths 를 flatten — 중간에 raise 된 restorer 의 부분 복사본도 포함
+      @restorers.flat_map(&:copied_paths).each { |path| FileUtils.rm_f(path) }
       raise
     ensure
       # 트랜잭션 성공·실패 무관, staged tempfile 은 항상 정리
@@ -240,8 +241,8 @@ class FolderImporter
         previous_meeting_id: nil,
         tag_resolver:        tag_resolver
       )
+      @restorers << restorer  # restore! 전에 등록 — 중간 raise 시에도 부분 복사본 추적
       new_meeting = restorer.restore!
-      @all_copied_paths.concat(restorer.copied_paths)
       meeting_map[m["id"]] = new_meeting
       new_meetings << new_meeting
     end
