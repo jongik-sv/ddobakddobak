@@ -4,6 +4,7 @@ import {
   todayLocal,
   scheduleStateFromMeeting,
   scheduleToPayload,
+  formatMeetingDateLabel,
   type ScheduleFormState,
 } from './schedulePayload'
 import type { Meeting } from '../api/meetings'
@@ -163,6 +164,15 @@ describe('scheduleStateFromMeeting', () => {
     const iso = new Date('2026-06-25T09:00').toISOString()
     const state = scheduleStateFromMeeting(makeMeeting({ scheduled_start_time: iso }))
     expect(state.mode).toBe('manual')
+  })
+})
+
+describe('formatMeetingDateLabel', () => {
+  it('연.월.일 HH시MM분 (로컬, zero-pad)', () => {
+    expect(formatMeetingDateLabel(new Date(2026, 6, 5, 14, 30))).toBe('2026.07.05 14시30분')
+  })
+  it('한 자리 월/일/시/분 zero-pad', () => {
+    expect(formatMeetingDateLabel(new Date(2026, 0, 3, 9, 5))).toBe('2026.01.03 09시05분')
   })
 })
 

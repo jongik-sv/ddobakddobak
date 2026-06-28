@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createMeeting, getMeetings } from '../../api/meetings'
 import type { Meeting } from '../../api/meetings'
 import { useProjectStore } from '../../stores/projectStore'
@@ -6,7 +6,7 @@ import { useMeetingTemplateStore } from '../../stores/meetingTemplateStore'
 import { Dialog } from '../ui/Dialog'
 import { MeetingTypeSelector } from './MeetingListUI'
 import { ScheduleFields } from './ScheduleFields'
-import { emptyScheduleState, scheduleToPayload, type ScheduleFormState } from '../../lib/schedulePayload'
+import { emptyScheduleState, scheduleToPayload, formatMeetingDateLabel, type ScheduleFormState } from '../../lib/schedulePayload'
 
 interface CreateMeetingModalProps {
   folderId: number | null
@@ -16,7 +16,9 @@ interface CreateMeetingModalProps {
 }
 
 export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreated }: CreateMeetingModalProps) {
-  const [title, setTitle] = useState('')
+  const [now] = useState(() => new Date())
+  const [title, setTitle] = useState(() => formatMeetingDateLabel(now))
+  const [titleEdited, setTitleEdited] = useState(false)
   const [meetingType, setMeetingType] = useState('general')
   const [shared, setShared] = useState(true)
   const [previousMeetingId, setPreviousMeetingId] = useState('')
@@ -29,6 +31,20 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
   const [error, setError] = useState('')
   const templates = useMeetingTemplateStore((s) => s.templates)
   const fetchTemplates = useMeetingTemplateStore((s) => s.fetch)
+
+  // 자동 제목 날짜 라벨: 예약을 켜고 날짜가 있으면 그 예약 시각, 아니면 생성 시각.
+  const autoTitle = useMemo(() => {
+    if (schedule.enabled && schedule.date) {
+      return formatMeetingDateLabel(new Date(`${schedule.date}T${schedule.hour}:${schedule.minute}`))
+    }
+    return formatMeetingDateLabel(now)
+  }, [schedule.enabled, schedule.date, schedule.hour, schedule.minute, now])
+
+  // 사용자가 제목을 직접 고치기 전까지는 자동 날짜 라벨을 따라간다.
+  // 예약 시각을 넣으면 그 시각 라벨로, 예약을 끄면 생성 시각 라벨로 되돌아간다.
+  useEffect(() => {
+    if (!titleEdited) setTitle(autoTitle)
+  }, [autoTitle, titleEdited])
 
   useEffect(() => { fetchTemplates() }, [fetchTemplates])
 
@@ -114,7 +130,8 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
           <input
             type="text"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => { setTitle(e.target.value); setTitleEdited(true) }}
+            onFocus={(e) => e.target.select()}
             placeholder="회의 제목을 입력하세요"
             className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
             autoFocus

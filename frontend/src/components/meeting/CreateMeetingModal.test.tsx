@@ -145,7 +145,9 @@ describe('CreateMeetingModal 예약 시각', () => {
   it('예약 토글 OFF(기본)면 예약 키 없이 기존 그대로 생성한다', async () => {
     renderModal()
 
-    await userEvent.type(screen.getByPlaceholderText(/회의 제목/i), '즉시 회의')
+    const titleInput = screen.getByPlaceholderText(/회의 제목/i)
+    await userEvent.clear(titleInput)
+    await userEvent.type(titleInput, '즉시 회의')
     await userEvent.click(screen.getByRole('button', { name: /^생성$/i }))
 
     await waitFor(() => expect(mockCreateMeeting).toHaveBeenCalled())
@@ -254,5 +256,50 @@ describe('CreateMeetingModal 반복(recurrence)', () => {
     const arg = mockCreateMeeting.mock.calls[0][0]
     expect(arg).not.toHaveProperty('recurrence_rule')
     expect(arg.scheduled_start_time).toBe(new Date('2026-06-25T10:00').toISOString())
+  })
+})
+
+describe('CreateMeetingModal 제목 자동 날짜 입력', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetMeetings.mockResolvedValue({ meetings: [], meta: { total: 0, page: 1, per: 100 } })
+    mockCreateMeeting.mockResolvedValue({ id: 6, title: '자동 제목', scheduled_start_time: null })
+  })
+
+  it('모달을 열면 제목에 현재 시각 날짜 라벨이 자동 입력된다', () => {
+    renderModal()
+    const titleInput = screen.getByPlaceholderText(/회의 제목/i) as HTMLInputElement
+    expect(titleInput.value).toMatch(/^\d{4}\.\d{2}\.\d{2} \d{2}시\d{2}분$/)
+  })
+
+  it('예약 시각을 지정하면 제목이 그 시각 라벨로 바뀐다', () => {
+    renderModal()
+    enableSchedule()
+    setDate('2026-07-05')
+    fireEvent.change(screen.getByLabelText('시'), { target: { value: '14' } })
+    fireEvent.change(screen.getByLabelText('분'), { target: { value: '30' } })
+    const titleInput = screen.getByPlaceholderText(/회의 제목/i) as HTMLInputElement
+    expect(titleInput.value).toBe('2026.07.05 14시30분')
+  })
+
+  it('제목을 직접 입력하면 예약 시각을 바꿔도 제목이 유지된다', async () => {
+    renderModal()
+    const titleInput = screen.getByPlaceholderText(/회의 제목/i)
+    await userEvent.clear(titleInput)
+    await userEvent.type(titleInput, '내 커스텀 회의')
+    enableSchedule()
+    setDate('2026-07-05')
+    fireEvent.change(screen.getByLabelText('시'), { target: { value: '14' } })
+    fireEvent.change(screen.getByLabelText('분'), { target: { value: '30' } })
+    expect((titleInput as HTMLInputElement).value).toBe('내 커스텀 회의')
+  })
+
+  it('제목칸에 포커스하면 자동 날짜 라벨 전체가 선택된다(타이핑 시 교체용)', () => {
+    renderModal()
+    const titleInput = screen.getByPlaceholderText(/회의 제목/i) as HTMLInputElement
+    fireEvent.focus(titleInput)
+    expect(titleInput.value.length).toBeGreaterThan(0)
+    expect(titleInput.selectionStart).toBe(0)
+    expect(titleInput.selectionEnd).toBe(titleInput.value.length)
   })
 })
