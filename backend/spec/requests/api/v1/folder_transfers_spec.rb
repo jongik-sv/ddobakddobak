@@ -180,5 +180,57 @@ RSpec.describe "Api::V1::FolderTransfers", type: :request do
         expect(response.parsed_body["error"]).to be_present
       end
     end
+
+    # ── 보안: cross-tenant parent_folder_id enumeration 제거 ──────────────
+
+    context "parent_folder_id 가 존재하지 않는 ID" do
+      before { login_as(editor) }
+
+      it "404 Not Found + 폴더 생성 없음" do
+        archive = folder_archive
+
+        expect {
+          post "/api/v1/projects/#{project.id}/folders/import",
+               params: { file: upload_file(archive), parent_folder_id: 999_999_999 }
+        }.not_to change(Folder, :count)
+
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    context "parent_folder_id 가 다른 프로젝트의 실재 폴더 (cross-tenant oracle 제거 확인)" do
+      before { login_as(editor) }
+
+      it "404 Not Found (422 아님) + 폴더 생성 없음" do
+        other_project = create(:project, creator: create(:user))
+        other_folder  = create(:folder, project: other_project)
+        archive = folder_archive
+
+        expect {
+          post "/api/v1/projects/#{project.id}/folders/import",
+               params: { file: upload_file(archive), parent_folder_id: other_folder.id }
+        }.not_to change(Folder, :count)
+
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    context "parent_folder_id 가 대상 프로젝트의 유효 폴더 (happy path)" do
+      before { login_as(editor) }
+
+      it "201 + 새 폴더가 해당 부모 폴더 아래 생성" do
+        parent = create(:folder, project: project, name: "부모 폴더")
+        archive = folder_archive
+
+        expect {
+          post "/api/v1/projects/#{project.id}/folders/import",
+               params: { file: upload_file(archive), parent_folder_id: parent.id }
+        }.to change(Folder, :count).by(1)
+
+        expect(response).to have_http_status(:created)
+        new_folder = Folder.find(response.parsed_body["folder_id"])
+        expect(new_folder.parent_id).to eq(parent.id)
+      end
+    end
   end
 end

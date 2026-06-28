@@ -52,11 +52,8 @@ module Api
 
         folder = nil
         if params[:folder_id].present?
-          folder = Folder.find_by(id: params[:folder_id])
+          folder = project.folders.find_by(id: params[:folder_id])
           return render json: { error: "폴더를 찾을 수 없습니다" }, status: :not_found unless folder
-          unless folder.project_id == project.id
-            return render json: { error: "폴더가 이 프로젝트에 속하지 않습니다" }, status: :unprocessable_entity
-          end
         end
 
         result = MeetingImporter.new(

@@ -177,5 +177,57 @@ RSpec.describe "Api::V1::MeetingTransfers", type: :request do
         expect(response.parsed_body["error"]).to be_present
       end
     end
+
+    # ── 보안: cross-tenant folder enumeration 제거 ──────────────────────────
+
+    context "folder_id 가 존재하지 않는 ID" do
+      before { login_as(editor) }
+
+      it "404 Not Found + 회의 생성 없음" do
+        archive = meeting_archive
+
+        expect {
+          post "/api/v1/projects/#{project.id}/meetings/import",
+               params: { file: upload_file(archive), folder_id: 999_999_999 }
+        }.not_to change(Meeting, :count)
+
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    context "folder_id 가 다른 프로젝트의 실재 폴더 (cross-tenant oracle 제거 확인)" do
+      before { login_as(editor) }
+
+      it "404 Not Found (422 아님) + 회의 생성 없음" do
+        other_project = create(:project, creator: create(:user))
+        other_folder  = create(:folder, project: other_project)
+        archive = meeting_archive
+
+        expect {
+          post "/api/v1/projects/#{project.id}/meetings/import",
+               params: { file: upload_file(archive), folder_id: other_folder.id }
+        }.not_to change(Meeting, :count)
+
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    context "folder_id 가 대상 프로젝트의 유효 폴더 (happy path)" do
+      before { login_as(editor) }
+
+      it "201 + 새 회의가 해당 폴더에 생성" do
+        target_folder = create(:folder, project: project)
+        archive = meeting_archive
+
+        expect {
+          post "/api/v1/projects/#{project.id}/meetings/import",
+               params: { file: upload_file(archive), folder_id: target_folder.id }
+        }.to change(Meeting, :count).by(1)
+
+        expect(response).to have_http_status(:created)
+        new_meeting = Meeting.find(response.parsed_body["meeting_id"])
+        expect(new_meeting.folder_id).to eq(target_folder.id)
+      end
+    end
   end
 end

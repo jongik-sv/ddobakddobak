@@ -52,11 +52,8 @@ module Api
 
         parent_folder = nil
         if params[:parent_folder_id].present?
-          parent_folder = Folder.find_by(id: params[:parent_folder_id])
+          parent_folder = project.folders.find_by(id: params[:parent_folder_id])
           return render json: { error: "부모 폴더를 찾을 수 없습니다" }, status: :not_found unless parent_folder
-          unless parent_folder.project_id == project.id
-            return render json: { error: "부모 폴더가 이 프로젝트에 속하지 않습니다" }, status: :unprocessable_entity
-          end
         end
 
         result = FolderImporter.new(
