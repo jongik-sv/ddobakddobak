@@ -41,6 +41,7 @@ function renderButtons(meeting: Meeting) {
       onMoveProject={noop}
       onDelete={noop}
       onStop={noop}
+      onExport={noop}
     />,
   )
 }
@@ -71,6 +72,7 @@ describe('MeetingActionButtons 소유권 게이팅', () => {
         onMoveProject={noop}
         onDelete={() => { deleted += 1 }}
         onStop={noop}
+        onExport={noop}
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: '회의 메뉴' }))
@@ -107,5 +109,25 @@ describe('MeetingActionButtons 소유권 게이팅', () => {
   it('녹음중 회의이고 소유자면 종료 버튼이 노출된다', () => {
     renderButtons(makeMeeting({ status: 'recording', editable: true }))
     expect(screen.getByRole('button', { name: '종료' })).toBeInTheDocument()
+  })
+
+  it('메뉴를 열면 회의 내보내기 항목이 있고 클릭 시 onExport가 호출된다', () => {
+    let exported = 0
+    render(
+      <MeetingActionButtons
+        meeting={makeMeeting({ editable: true })}
+        isDesktop
+        onEdit={noop}
+        onMove={noop}
+        onMoveProject={noop}
+        onDelete={noop}
+        onStop={noop}
+        onExport={() => { exported += 1 }}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '회의 메뉴' }))
+    expect(screen.getByRole('button', { name: '회의 내보내기' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '회의 내보내기' }))
+    expect(exported).toBe(1)
   })
 })

@@ -49,8 +49,10 @@ function renderTable(meetings: Meeting[], onToggleImportant = vi.fn()) {
       onMeetingOpen={noop}
       onEdit={noop}
       onMove={noop}
+      onMoveProject={noop}
       onDelete={noop}
       onStop={noop}
+      onExport={noop}
       onToggleImportant={onToggleImportant}
     />,
   )
