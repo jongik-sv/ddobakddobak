@@ -66,6 +66,7 @@ Rails.application.routes.draw do
           get  :peaks, to: "meetings_audio#peaks"
           get  :export
           get  :export_prompt
+          post :export, to: "meeting_transfers#export", as: :transfer_meeting_export
           get  :summary
           get  :transcripts
           post :share, to: "meeting_shares#create_share"
@@ -116,6 +117,7 @@ Rails.application.routes.draw do
       resources :folders, only: %i[index create update destroy] do
         member do
           post :move_to_project
+          post :export, to: "folder_transfers#export"
         end
         resources :glossary_entries, only: %i[index create], controller: "glossary_entries"
         resources :chat_messages, only: %i[index create],
@@ -148,6 +150,10 @@ Rails.application.routes.draw do
           post :reset
         end
       end
+
+      # Meeting & Folder transfer imports (nested under project for create-gate)
+      post "projects/:project_id/meetings/import", to: "meeting_transfers#import"
+      post "projects/:project_id/folders/import",  to: "folder_transfers#import"
 
       # Projects
       resources :projects, only: %i[index show create update destroy] do

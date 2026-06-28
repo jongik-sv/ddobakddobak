@@ -1,7 +1,9 @@
-import { Bot, Play, RefreshCw, Trash2, Users } from 'lucide-react'
+import { useState } from 'react'
+import { Bot, Play, RefreshCw, Trash2, Users, PackageOpen } from 'lucide-react'
 import type { Meeting } from '../../api/meetings'
 import { Tooltip } from '../ui/Tooltip'
 import { ExportButton } from './ExportButton'
+import ExportMeetingDialog from './ExportMeetingDialog'
 import { ACTION_NEUTRAL, ACTION_AMBER, ACTION_BLUE, ACTION_DANGER } from './actionButtonStyles'
 
 interface MeetingActionsProps {
@@ -42,7 +44,9 @@ export function MeetingActions({
   // 잠긴 회의: 내용을 바꾸는 모든 어포던스를 비활성(disabled + 안내 툴팁). 내보내기(읽기)는 예외.
   const locked = meeting.locked
   const lockTitle = '잠긴 회의입니다 — 잠금을 해제한 뒤 다시 시도하세요.'
+  const [showExportDialog, setShowExportDialog] = useState(false)
   return (
+    <>
     <div className={`flex items-center shrink-0 ml-auto ${isDesktop ? 'gap-2' : 'gap-1'}`}>
       {/* STT 재생성: 오디오만 있으면 가능 — 전사 실패로 pending+트랜스크립트 0건이 된 회의의 복구 경로 */}
       {canEdit && meeting.has_audio_file && (meeting.status === 'completed' || meeting.status === 'pending') && (
@@ -133,6 +137,17 @@ export function MeetingActions({
         meetingTitle={meeting.title}
         meetingDate={meeting.started_at ?? meeting.created_at}
       />
+      {/* 회의 내보내기(.tgz) — 마크다운 ExportButton 과 별개, 전체 아카이브 포맷 */}
+      <Tooltip text="회의 내보내기(.tgz)">
+        <button
+          onClick={() => setShowExportDialog(true)}
+          aria-label="회의 내보내기(.tgz)"
+          className={ACTION_NEUTRAL}
+        >
+          <PackageOpen className="w-4 h-4" />
+          {isDesktop && '내보내기(.tgz)'}
+        </button>
+      </Tooltip>
       {canEdit && (
         <Tooltip text={locked ? lockTitle : '삭제'}>
           <button
@@ -147,5 +162,9 @@ export function MeetingActions({
         </Tooltip>
       )}
     </div>
+    {showExportDialog && (
+      <ExportMeetingDialog meeting={meeting} onClose={() => setShowExportDialog(false)} />
+    )}
+    </>
   )
 }

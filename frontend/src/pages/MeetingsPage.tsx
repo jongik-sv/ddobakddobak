@@ -26,6 +26,7 @@ import { StatusFilterTabs } from '../components/meeting/MeetingListUI'
 import { MeetingCardGrid } from '../components/meeting/MeetingCardGrid'
 import { MeetingListTable } from '../components/meeting/MeetingListTable'
 import { MeetingsHeader } from '../components/meeting/MeetingsHeader'
+import ImportTransferButton from '../components/transfer/ImportTransferButton'
 import { folderName } from '../lib/meetingFormat'
 import { VIEW_MODE_KEY, getStoredViewMode, type ViewMode, type SortField, type SortDirection } from './meetings/types'
 
@@ -258,7 +259,7 @@ export default function MeetingsPage() {
         </div>
       )}
 
-      {/* 뷰 모드 토글 + 필터 영역 */}
+      {/* 뷰 모드 토글 + 가져오기 버튼 */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
           <Tooltip text="카드 뷰">
@@ -282,6 +283,17 @@ export default function MeetingsPage() {
             </button>
           </Tooltip>
         </div>
+        {/* 회의·폴더 가져오기(.tgz) — 현재 프로젝트에만 표시 */}
+        {currentProjectId != null && (
+          <ImportTransferButton
+            projectId={currentProjectId}
+            folderId={currentFolderId ?? undefined}
+            onImported={() => {
+              useFolderStore.getState().fetchFolders()
+              fetchMeetings(currentPage)
+            }}
+          />
+        )}
       </div>
 
       {/* 검색 + 날짜 필터 (데스크톱만) */}

@@ -14,6 +14,7 @@ import {
   Lock,
   SpellCheck,
   Star,
+  PackageOpen,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useFolderStore } from '../../stores/folderStore'
@@ -23,6 +24,7 @@ import type { FolderNode } from '../../api/folders'
 import type { SelectedFolder } from '../../stores/folderStore'
 import CreateFolderDialog from './CreateFolderDialog'
 import GlossaryDialog from './GlossaryDialog'
+import ExportFolderDialog from './ExportFolderDialog'
 import MoveToProjectModal from '../project/MoveToProjectModal'
 import { useProjectStore } from '../../stores/projectStore'
 import { initDrag } from '../../utils/dragState'
@@ -54,6 +56,7 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
   const [showSubfolderDialog, setShowSubfolderDialog] = useState(false)
   const [showGlossaryDialog, setShowGlossaryDialog] = useState(false)
   const [showMoveProject, setShowMoveProject] = useState(false)
+  const [showExportDialog, setShowExportDialog] = useState(false)
   const currentProjectId = useProjectStore((s) => s.currentProjectId)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -230,6 +233,16 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
               <button
                 onClick={(e) => {
                   e.stopPropagation()
+                  setShowMenu(false)
+                  setShowExportDialog(true)
+                }}
+                className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm hover:bg-muted transition-colors"
+              >
+                <PackageOpen className="w-3.5 h-3.5" /> 내보내기(.tgz)
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
                   handleDelete()
                 }}
                 className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm text-red-600 hover:bg-red-50 transition-colors"
@@ -263,6 +276,9 @@ function FolderTreeItem({ folder, depth, isRecordingActive, onSelectFolder }: Fo
       )}
       {showGlossaryDialog && (
         <GlossaryDialog folderId={folder.id} folderName={folder.name} onClose={() => setShowGlossaryDialog(false)} />
+      )}
+      {showExportDialog && (
+        <ExportFolderDialog folderId={folder.id} folderName={folder.name} onClose={() => setShowExportDialog(false)} />
       )}
       {showMoveProject && currentProjectId != null && (
         <MoveToProjectModal
