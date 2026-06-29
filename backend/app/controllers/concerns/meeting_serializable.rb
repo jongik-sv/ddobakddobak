@@ -52,6 +52,9 @@ module MeetingSerializable
       # 유효 폴더 공유 상태(없으면 nil). 조상 중 하나라도 비공개면 false.
       # EditMeetingDialog에서 "폴더가 비공개라 회의도 숨김" 안내용.
       json[:folder_shared] = meeting.folder&.effectively_shared?
+      json[:project_name] = meeting.project&.name
+      # 폴더 루트→현재 경로 [{id,name}]. ancestors=루트→부모(자기 제외)라 self 를 끝에 덧붙인다.
+      json[:folder_path] = meeting.folder ? (meeting.folder.ancestors + [{ id: meeting.folder.id, name: meeting.folder.name }]) : []
       # 이전 회의 참고: 배지 표시용 (id + 제목). list 응답엔 미포함(N+1 회피).
       json[:previous_meeting_id] = meeting.previous_meeting_id
       json[:previous_meeting_title] = meeting.previous_meeting&.title

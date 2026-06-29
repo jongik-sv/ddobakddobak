@@ -35,6 +35,7 @@ import { GlossaryPanel } from '../components/meeting/GlossaryPanel'
 import { MeetingActionHeader } from '../components/meeting/MeetingActionHeader'
 import { MeetingActions } from '../components/meeting/MeetingActions'
 import { MeetingDetailTopBar } from '../components/meeting/MeetingDetailTopBar'
+import { MeetingPathBreadcrumb } from '../components/meeting/MeetingPathBreadcrumb'
 import { buildMeetingDetailTabs } from '../components/meeting/meetingDetailTabs'
 import { MeetingSearchBar } from '../components/meeting/MeetingSearchBar'
 import { useMeetingSearch } from '../hooks/useMeetingSearch'
@@ -412,6 +413,14 @@ export default function MeetingPage() {
           />
         ) : undefined}
       />
+
+      {meeting && (
+        <MeetingPathBreadcrumb
+          projectName={meeting.project_name}
+          folderPath={meeting.folder_path}
+          className="px-3 lg:px-6 py-1.5 border-b border-border bg-card/50"
+        />
+      )}
 
       {/* 페이지 내 검색 바 (전사 + AI요약) */}
       {search.isOpen && (

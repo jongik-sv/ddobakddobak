@@ -39,6 +39,7 @@ import { MemoHeader } from '../components/meeting/MemoHeader'
 import { RightTabsPanel } from '../components/meeting/RightTabsPanel'
 import { BookmarkPopover } from '../components/meeting/BookmarkPopover'
 import { DesktopRecordControls } from '../components/meeting/DesktopRecordControls'
+import { MeetingPathBreadcrumb } from '../components/meeting/MeetingPathBreadcrumb'
 import { LiveStatusBar } from '../components/meeting/LiveStatusBar'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { StopMeetingDialog } from '../components/meeting/StopMeetingDialog'
@@ -218,6 +219,14 @@ export default function MeetingLivePage() {
         canManualSummary={canManualSummary}
       />
 
+      {meeting && (
+        <MeetingPathBreadcrumb
+          projectName={meeting.project_name}
+          folderPath={meeting.folder_path}
+          className="hidden lg:flex px-4 py-1 border-b border-border bg-card/50"
+        />
+      )}
+
       {/* 첨부 파일/링크 섹션 */}
       {attachmentsVisible && <AttachmentSection meetingId={meetingId} />}
 
@@ -379,6 +388,13 @@ export default function MeetingLivePage() {
             </>
             )}
           </MobileRecordControls>
+          {meeting && (
+            <MeetingPathBreadcrumb
+              projectName={meeting.project_name}
+              folderPath={meeting.folder_path}
+              className="lg:hidden px-3 py-1 border-b border-border bg-card/50"
+            />
+          )}
           <div className="flex-1 min-h-0">
             <MobileTabLayout
               tabs={mobileTabs}
@@ -405,7 +421,7 @@ export default function MeetingLivePage() {
           meetingTypeList={meetingTypeList}
           onConfirm={async (data: UpdateMeetingParams) => {
             const updated = await updateMeeting(meetingId, data)
-            setMeeting(updated)
+            setMeeting({ ...meeting, ...updated })
             setShowEditDialog(false)
             showStatus('회의 정보가 수정되었습니다')
           }}
