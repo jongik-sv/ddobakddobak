@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>또박또박 — 실시간 AI 회의록, 우리 서버 안에서</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3C/svg%3E" />
+<meta name="description" content="또박또박은 회의 음성을 실시간으로 받아쓰고 AI가 요약·결정사항·할 일까지 정리하는 셀프호스트 팀 회의 어시스턴트입니다. 음성도 회의록도 외부로 나가지 않습니다." />
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #17151f;
+    --ink-soft: #46434f;
+    --muted: #6f6c7d;
+    --line: #e8e7ef;
+    --line-soft: #f0eff5;
+    --paper: #fafafb;
+    --surface: #ffffff;
+    --lav: #eeeefe;
+    --lav-deep: #e3e2fb;
+    --indigo: #4f46e5;
+    --indigo-700: #4035c4;
+    --indigo-ink: #2a2380;
+    --live: #fb5b5b;
+    --mint: #0fa877;
+    --amber: #e08a08;
+    --shadow-sm: 0 1px 2px rgba(23, 21, 31, .05), 0 4px 16px rgba(23, 21, 31, .04);
+    --shadow-md: 0 12px 40px rgba(40, 35, 128, .12), 0 2px 8px rgba(23, 21, 31, .05);
+    --shadow-lg: 0 30px 70px rgba(40, 35, 128, .18), 0 6px 16px rgba(23, 21, 31, .06);
+    --r: 18px;
+    --maxw: 1140px;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    --sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--ink);
+    background: var(--paper);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  a { color: inherit; text-decoration: none; }
+  img { max-width: 100%; display: block; }
+  .wrap { width: 100%; max-width: var(--maxw); margin-inline: auto; padding-inline: 24px; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .74rem;
+    font-weight: 500;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--indigo);
+    display: inline-flex;
+    align-items: center;
+    gap: .5em;
+  }
+  .eyebrow .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--live);
+    box-shadow: 0 0 0 0 rgba(251, 91, 91, .55);
+    animation: pulse 2.4s ease-out infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(251, 91, 91, .5); }
+    70% { box-shadow: 0 0 0 7px rgba(251, 91, 91, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(251, 91, 91, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) { .eyebrow .dot { animation: none; } }
+
+  /* ---------- Header ---------- */
+  .hd {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(250, 250, 251, .82);
+    backdrop-filter: saturate(160%) blur(12px);
+    border-bottom: 1px solid transparent;
+    transition: border-color .25s ease, background .25s ease;
+  }
+  .hd.scrolled { border-bottom-color: var(--line); background: rgba(255, 255, 255, .9); }
+  .hd__in { display: flex; align-items: center; justify-content: space-between; height: 66px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.12rem; letter-spacing: -.02em; }
+  .brand .mark {
+    display: grid; place-items: center;
+    width: 30px; height: 30px; border-radius: 9px;
+    background: linear-gradient(150deg, var(--indigo), #6b62f5);
+    color: #fff; font-size: .8rem; box-shadow: var(--shadow-sm);
+  }
+  .nav { display: flex; align-items: center; gap: 30px; }
+  .nav a.lnk { font-size: .92rem; color: var(--ink-soft); font-weight: 500; transition: color .18s; }
+  .nav a.lnk:hover { color: var(--indigo); }
+  .btn {
+    display: inline-flex; align-items: center; gap: .5em;
+    font-family: var(--sans); font-weight: 600; font-size: .92rem;
+    padding: 10px 18px; border-radius: 11px; border: 1px solid transparent;
+    cursor: pointer; transition: transform .15s ease, box-shadow .2s ease, background .2s ease, border-color .2s;
+    white-space: nowrap;
+  }
+  .btn--primary { background: var(--indigo); color: #fff; box-shadow: 0 6px 18px rgba(79, 70, 229, .28); }
+  .btn--primary:hover { background: var(--indigo-700); transform: translateY(-1px); box-shadow: 0 10px 24px rgba(79, 70, 229, .34); }
+  .btn--ghost { background: var(--surface); color: var(--ink); border-color: var(--line); box-shadow: var(--shadow-sm); }
+  .btn--ghost:hover { border-color: var(--lav-deep); transform: translateY(-1px); }
+  .nav__cta { display: flex; align-items: center; gap: 12px; }
+  .burger { display: none; width: 42px; height: 38px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; }
+  .burger span { display: block; width: 18px; height: 2px; background: var(--ink); margin: 3px auto; border-radius: 2px; }
+
+  /* ---------- Hero ---------- */
+  .hero { position: relative; padding: 64px 0 32px; }
+  .hero::before {
+    content: ""; position: absolute; inset: -10% -20% auto -20%; height: 620px; z-index: 0;
+    background:
+      radial-gradient(60% 60% at 20% 18%, rgba(99, 91, 245, .14), transparent 70%),
+      radial-gradient(55% 55% at 88% 8%, rgba(251, 91, 91, .08), transparent 70%);
+    pointer-events: none;
+  }
+  .hero__in { position: relative; z-index: 1; display: grid; grid-template-columns: 1.02fr 1.12fr; gap: 56px; align-items: center; }
+  .hero h1 {
+    font-size: clamp(2.4rem, 5.4vw, 4rem); line-height: 1.08; letter-spacing: -.035em;
+    font-weight: 800; margin: 20px 0 0;
+  }
+  .hero h1 .accent { color: var(--indigo); }
+  .hero__sub { font-size: clamp(1.02rem, 1.6vw, 1.18rem); color: var(--ink-soft); margin: 22px 0 0; max-width: 36ch; }
+  .hero__cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+  .hero__cta .btn { padding: 13px 22px; font-size: .98rem; }
+  .hero__meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 26px; }
+  .chip {
+    font-family: var(--mono); font-size: .76rem; color: var(--ink-soft);
+    display: inline-flex; align-items: center; gap: .5em;
+  }
+  .chip i { width: 5px; height: 5px; border-radius: 50%; background: var(--indigo); display: inline-block; }
+  .chip.mint i { background: var(--mint); }
+  .chip.amber i { background: var(--amber); }
+  .chip.live i { background: var(--live); }
+
+  /* browser frame */
+  .frame {
+    position: relative; border-radius: 16px; overflow: hidden;
+    background: var(--surface); border: 1px solid var(--line);
+    box-shadow: var(--shadow-lg);
+  }
+  .frame__bar { display: flex; align-items: center; gap: 7px; padding: 11px 14px; background: #f6f6fa; border-bottom: 1px solid var(--line); }
+  .frame__bar .d { width: 11px; height: 11px; border-radius: 50%; background: #e0dfe8; }
+  .frame__bar .d:nth-child(1) { background: #fc8d86; }
+  .frame__bar .d:nth-child(2) { background: #f7c64f; }
+  .frame__bar .d:nth-child(3) { background: #62c878; }
+  .frame__bar .u {
+    margin-left: 10px; flex: 1; height: 22px; border-radius: 7px; background: #fff; border: 1px solid var(--line);
+    font-family: var(--mono); font-size: .68rem; color: var(--muted); display: flex; align-items: center; padding: 0 10px;
+  }
+  .frame img { width: 100%; height: auto; }
+  .hero__fig { position: relative; }
+  .hero__fig .badge {
+    position: absolute; left: -16px; bottom: 26px; z-index: 3;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 13px;
+    box-shadow: var(--shadow-md); padding: 11px 14px; display: flex; align-items: center; gap: 10px;
+  }
+  .hero__fig .badge .ic { width: 32px; height: 32px; border-radius: 9px; background: var(--lav); display: grid; place-items: center; color: var(--indigo); }
+  .hero__fig .badge b { font-size: .86rem; }
+  .hero__fig .badge small { display: block; color: var(--muted); font-size: .72rem; font-family: var(--mono); }
+
+  /* ---------- Waveform timeline divider ---------- */
+  .timeline { padding: 30px 0 8px; }
+  .wave { display: flex; align-items: flex-end; gap: 3px; height: 46px; opacity: .55; }
+  .wave .bar { flex: 1; min-width: 2px; border-radius: 2px; background: linear-gradient(180deg, #8a83f3, #4f46e5); }
+  .ticks { display: flex; justify-content: space-between; margin-top: 10px; font-family: var(--mono); font-size: .68rem; color: var(--muted); letter-spacing: .06em; }
+
+  /* ---------- Values ---------- */
+  .values { padding: 40px 0 12px; }
+  .values__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .vcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 24px 22px; box-shadow: var(--shadow-sm); transition: transform .2s ease, box-shadow .2s ease, border-color .2s; }
+  .vcard:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--lav-deep); }
+  .vcard .vi { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; background: var(--lav); color: var(--indigo); margin-bottom: 14px; }
+  .vcard h3 { font-size: 1.04rem; margin: 0 0 6px; letter-spacing: -.01em; }
+  .vcard p { font-size: .9rem; color: var(--muted); margin: 0; line-height: 1.6; }
+
+  /* ---------- Section heads ---------- */
+  .sec { padding: 88px 0; }
+  .sec--tint { background: linear-gradient(180deg, #fff, #f7f7fc); border-block: 1px solid var(--line-soft); }
+  .sechead { max-width: 60ch; margin-bottom: 46px; }
+  .sechead h2 { font-size: clamp(1.75rem, 3.5vw, 2.6rem); line-height: 1.16; letter-spacing: -.03em; font-weight: 800; margin: 14px 0 0; }
+  .sechead p { color: var(--ink-soft); font-size: 1.05rem; margin: 14px 0 0; }
+
+  /* ---------- Steps (timecode) ---------- */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--surface); box-shadow: var(--shadow-sm); }
+  .step { padding: 30px 28px; border-right: 1px solid var(--line); position: relative; }
+  .step:last-child { border-right: none; }
+  .step__tc { font-family: var(--mono); font-size: .82rem; font-weight: 700; color: var(--indigo); letter-spacing: .04em; }
+  .step__tc.live { color: var(--live); }
+  .step__tc.done { color: var(--mint); }
+  .step h3 { font-size: 1.18rem; margin: 14px 0 8px; letter-spacing: -.01em; }
+  .step p { color: var(--muted); font-size: .94rem; margin: 0; }
+  .step .ln { position: absolute; left: 28px; top: 64px; right: 28px; height: 2px; background: repeating-linear-gradient(90deg, var(--lav-deep) 0 6px, transparent 6px 12px); }
+
+  /* ---------- Showcase ---------- */
+  .show { display: grid; grid-template-columns: 1fr 1.18fr; gap: 56px; align-items: center; }
+  .show + .show { margin-top: 96px; }
+  .show--rev .show__txt { order: 2; }
+  .show--rev .show__fig { order: 1; }
+  .show__txt h3 { font-size: clamp(1.5rem, 2.8vw, 2.05rem); line-height: 1.2; letter-spacing: -.02em; margin: 16px 0 0; font-weight: 800; }
+  .show__txt p.lead { color: var(--ink-soft); font-size: 1.04rem; margin: 16px 0 22px; }
+  .flist { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  .flist li { position: relative; padding-left: 30px; color: var(--ink-soft); font-size: .98rem; }
+  .flist li::before {
+    content: ""; position: absolute; left: 0; top: .42em; width: 17px; height: 17px; border-radius: 6px;
+    background: var(--lav); border: 1px solid var(--lav-deep);
+  }
+  .flist li::after { content: ""; position: absolute; left: 5px; top: .72em; width: 6px; height: 6px; border-radius: 2px; background: var(--indigo); }
+  .show__fig { position: relative; }
+  .show__fig .tag {
+    position: absolute; z-index: 3; top: -14px; right: 18px;
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase;
+    background: var(--ink); color: #fff; padding: 6px 11px; border-radius: 8px; box-shadow: var(--shadow-md);
+  }
+
+  /* ---------- Feature grid ---------- */
+  .fgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .fg {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px 22px;
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s; box-shadow: var(--shadow-sm);
+  }
+  .fg:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--lav-deep); }
+  .fg__top { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
+  .fg__ic { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: var(--lav); color: var(--indigo); flex: none; }
+  .fg h3 { font-size: 1.02rem; margin: 0; letter-spacing: -.01em; }
+  .fg ul { list-style: none; padding: 0; margin: 0; }
+  .fg li { font-size: .87rem; color: var(--muted); padding: 3px 0 3px 14px; position: relative; }
+  .fg li::before { content: "·"; position: absolute; left: 2px; color: var(--indigo); font-weight: 700; }
+
+  /* ---------- Differentiator ---------- */
+  .diff { display: grid; grid-template-columns: 1.05fr .95fr; gap: 52px; align-items: center; }
+  .diff__list { display: grid; gap: 18px; margin-top: 30px; }
+  .df { display: flex; gap: 16px; }
+  .df__n { font-family: var(--mono); font-size: .8rem; font-weight: 700; color: var(--indigo); padding-top: 3px; flex: none; width: 30px; }
+  .df h4 { margin: 0 0 4px; font-size: 1.06rem; letter-spacing: -.01em; }
+  .df p { margin: 0; color: var(--ink-soft); font-size: .94rem; }
+
+  /* ---------- CTA band ---------- */
+  .ctaband { position: relative; overflow: hidden; border-radius: 26px; padding: 64px 48px; color: #fff; text-align: center;
+    background: radial-gradient(120% 140% at 18% 0%, #6b62f5 0%, #4f46e5 42%, #3a31bf 100%); box-shadow: var(--shadow-lg); }
+  .ctaband::after { content: ""; position: absolute; inset: 0; background: radial-gradient(60% 80% at 85% 110%, rgba(255, 255, 255, .16), transparent 60%); pointer-events: none; }
+  .ctaband .eyebrow { color: rgba(255, 255, 255, .85); position: relative; z-index: 1; }
+  .ctaband h2 { font-size: clamp(1.8rem, 4vw, 2.7rem); letter-spacing: -.03em; line-height: 1.16; margin: 14px 0 0; position: relative; z-index: 1; }
+  .ctaband p { color: rgba(255, 255, 255, .86); font-size: 1.05rem; margin: 16px auto 0; max-width: 52ch; position: relative; z-index: 1; }
+  .ctaband__row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 30px; position: relative; z-index: 1; }
+  .btn--light { background: #fff; color: var(--indigo-ink); }
+  .btn--light:hover { transform: translateY(-1px); box-shadow: 0 14px 30px rgba(0, 0, 0, .2); }
+  .btn--outline { background: rgba(255, 255, 255, .08); color: #fff; border-color: rgba(255, 255, 255, .4); }
+  .btn--outline:hover { background: rgba(255, 255, 255, .16); transform: translateY(-1px); }
+
+  /* ---------- Footer ---------- */
+  .foot { padding: 56px 0 48px; border-top: 1px solid var(--line); margin-top: 90px; }
+  .foot__in { display: flex; justify-content: space-between; gap: 40px; flex-wrap: wrap; }
+  .foot__brand { max-width: 34ch; }
+  .foot__brand p { color: var(--muted); font-size: .9rem; margin: 12px 0 0; }
+  .foot__links { display: flex; gap: 56px; flex-wrap: wrap; }
+  .foot__col h5 { font-family: var(--mono); font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 14px; font-weight: 500; }
+  .foot__col a { display: block; color: var(--ink-soft); font-size: .92rem; padding: 4px 0; transition: color .15s; }
+  .foot__col a:hover { color: var(--indigo); }
+  .foot__base { margin-top: 40px; padding-top: 22px; border-top: 1px solid var(--line-soft); font-size: .82rem; color: var(--muted); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .foot__base .mono { font-family: var(--mono); }
+
+  /* ---------- Reveal ---------- */
+  html.js .reveal { opacity: 0; transform: translateY(22px); transition: opacity .7s cubic-bezier(.2, .7, .2, 1), transform .7s cubic-bezier(.2, .7, .2, 1); }
+  html.js .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { html.js .reveal { opacity: 1; transform: none; transition: none; } }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 960px) {
+    .hero__in, .show, .show--rev .show__txt, .show--rev .show__fig, .diff { grid-template-columns: 1fr; gap: 36px; }
+    .show--rev .show__txt, .show--rev .show__fig { order: 0; }
+    .hero { padding-top: 40px; }
+    .hero__fig { max-width: 620px; }
+    .values__grid { grid-template-columns: repeat(2, 1fr); }
+    .steps { grid-template-columns: 1fr; }
+    .step { border-right: none; border-bottom: 1px solid var(--line); }
+    .step:last-child { border-bottom: none; }
+    .step .ln { display: none; }
+    .fgrid { grid-template-columns: repeat(2, 1fr); }
+    .nav { display: none; }
+    .burger { display: block; }
+    .sec { padding: 64px 0; }
+    .show + .show { margin-top: 64px; }
+  }
+  @media (max-width: 560px) {
+    .values__grid, .fgrid { grid-template-columns: 1fr; }
+    .ctaband { padding: 44px 24px; border-radius: 20px; }
+    .wrap { padding-inline: 18px; }
+  }
+
+  /* mobile menu */
+  .mmenu { display: none; }
+  .mmenu.open { display: block; position: fixed; inset: 66px 0 0; z-index: 49; background: rgba(250, 250, 251, .98); backdrop-filter: blur(8px); padding: 24px; }
+  .mmenu a { display: block; font-size: 1.1rem; font-weight: 600; padding: 16px 4px; border-bottom: 1px solid var(--line); }
+  .mmenu .btn { width: 100%; justify-content: center; margin-top: 18px; }
+
+  :focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<!-- ========== Header ========== -->
+<header class="hd" id="hd">
+  <div class="wrap hd__in">
+    <a class="brand" href="#top" aria-label="또박또박 홈">
+      <span class="mark">또</span><span>또박또박</span>
+    </a>
+    <nav class="nav" aria-label="주요 메뉴">
+      <a class="lnk" href="#features">기능</a>
+      <a class="lnk" href="#showcase">화면</a>
+      <a class="lnk" href="#why">차별점</a>
+      <a class="lnk" href="../기능-인벤토리.md">기능 인벤토리</a>
+    </nav>
+    <div class="nav__cta">
+      <a class="btn btn--ghost" href="../../README.md">소개 문서</a>
+      <a class="btn btn--primary" href="../../배포가이드.md">설치 가이드</a>
+    </div>
+    <button class="burger" id="burger" aria-label="메뉴 열기" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</header>
+<div class="mmenu" id="mmenu">
+  <a href="#features">기능</a>
+  <a href="#showcase">화면</a>
+  <a href="#why">차별점</a>
+  <a href="../기능-인벤토리.md">기능 인벤토리</a>
+  <a class="btn btn--primary" href="../../배포가이드.md">설치 가이드</a>
+</div>
+
+<main id="top">
+
+  <!-- ========== Hero ========== -->
+  <section class="hero">
+    <div class="wrap hero__in">
+      <div class="hero__txt">
+        <span class="eyebrow"><span class="dot"></span>실시간 AI 회의록 · 셀프호스트</span>
+        <h1>회의에 집중하세요.<br />기록은 <span class="accent">또박또박</span>이 합니다.</h1>
+        <p class="hero__sub">회의 음성을 실시간으로 받아쓰고, AI가 핵심 요약·결정사항·할 일까지 정리합니다. 음성도 회의록도 우리 서버 안에만 머뭅니다.</p>
+        <div class="hero__cta">
+          <a class="btn btn--primary" href="../../배포가이드.md">설치 가이드 보기</a>
+          <a class="btn btn--ghost" href="#features">주요 기능 둘러보기</a>
+        </div>
+        <div class="hero__meta">
+          <span class="chip live"><i></i>실시간 전사·화자 구분</span>
+          <span class="chip"><i></i>9개 언어 인식</span>
+          <span class="chip mint"><i></i>전 코퍼스 로컬</span>
+          <span class="chip amber"><i></i>데스크톱·모바일</span>
+        </div>
+      </div>
+      <div class="hero__fig reveal">
+        <div class="frame">
+          <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 회의 상세 · AI 회의록</span></div>
+          <img src="assets/05-meeting-detail.png" alt="회의 상세 화면: 왼쪽 화자별 전사, 오른쪽 AI가 작성한 핵심 요약과 논의 사항" loading="eager" />
+        </div>
+        <div class="badge">
+          <span class="ic" aria-hidden="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>
+          </span>
+          <div><b>핵심 요약 자동 완성</b><small>00:00 – 1:22:57 · AI 회의록</small></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== Waveform timeline divider ========== -->
+  <div class="wrap timeline" aria-hidden="true">
+    <div class="wave" id="wave"></div>
+    <div class="ticks"><span>00:00 녹음 시작</span><span>02:30 실시간 요약</span><span>05:00 결정·할 일</span><span>07:14 회의 종료</span></div>
+  </div>
+
+  <!-- ========== Values ========== -->
+  <section class="values">
+    <div class="wrap values__grid">
+      <div class="vcard reveal">
+        <div class="vi" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg></div>
+        <h3>전 코퍼스 로컬</h3>
+        <p>음성·전사·요약 전체가 팀 서버나 내 기기 안에만 머뭅니다. 외부 클라우드로 한 글자도 나가지 않습니다.</p>
+      </div>
+      <div class="vcard reveal">
+        <div class="vi" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+        <h3>근거를 클릭하면 그 순간으로</h3>
+        <p>요약·답변 문장마다 발화 시각과 화자가 붙습니다. 누르면 원본 오디오의 바로 그 지점으로 점프합니다.</p>
+      </div>
+      <div class="vcard reveal">
+        <div class="vi" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <h3>여러 회의를 가로질러 질문</h3>
+        <p>한 회의를 넘어 폴더·프로젝트 전체에 묻습니다. 의미 검색으로 답을 찾고 해당 회의로 이동합니다.</p>
+      </div>
+      <div class="vcard reveal">
+        <div class="vi" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 16 11"/></svg></div>
+        <h3>팀 단위로 쌓는 회의록</h3>
+        <p>개인 도구와 달리 프로젝트·폴더로 회의록을 함께 모으고, 공유 코드로 실시간으로 같이 봅니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== How it works (timecode steps) ========== -->
+  <section class="sec" id="how">
+    <div class="wrap">
+      <div class="sechead reveal">
+        <span class="eyebrow">동작 방식</span>
+        <h2>녹음 버튼 하나로, 회의록까지.</h2>
+        <p>한 번의 녹음이 자막에서 구조화된 회의록으로, 그리고 검색 가능한 팀 자산으로 이어집니다.</p>
+      </div>
+      <div class="steps reveal">
+        <div class="step">
+          <span class="step__tc live">00:00 · 녹음</span>
+          <span class="ln" aria-hidden="true"></span>
+          <h3>말하면 자막이 됩니다</h3>
+          <p>마이크와 시스템 오디오를 함께 받아 실시간으로 받아씁니다. 9개 언어를 인식하고 화자를 자동으로 구분합니다.</p>
+        </div>
+        <div class="step">
+          <span class="step__tc">진행 중 · AI</span>
+          <span class="ln" aria-hidden="true"></span>
+          <h3>AI가 정리합니다</h3>
+          <p>약 1분 주기로 핵심 요약·논의·결정·할 일을 구조화합니다. 스탠드업·인터뷰 등 회의 유형별 양식을 따릅니다.</p>
+        </div>
+        <div class="step">
+          <span class="step__tc done">회의 후 · 활용</span>
+          <h3>검색하고 공유합니다</h3>
+          <p>전사·요약을 전역에서 찾고, 회의에 직접 질문하고, 공유 코드와 내보내기로 팀과 나눕니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== Showcase ========== -->
+  <section class="sec sec--tint" id="showcase">
+    <div class="wrap">
+      <div class="sechead reveal">
+        <span class="eyebrow">화면으로 보기</span>
+        <h2>받아쓰기가 아니라, 읽기 좋은 회의록.</h2>
+        <p>실제 화면 그대로입니다. 녹음하는 동안 회의록이 만들어지고, 끝나면 바로 찾고 나눌 수 있습니다.</p>
+      </div>
+
+      <!-- A: 실시간 -->
+      <div class="show reveal">
+        <div class="show__txt">
+          <span class="eyebrow"><span class="dot"></span>실시간</span>
+          <h3>말하는 동안 회의록이 완성됩니다</h3>
+          <p class="lead">왼쪽에 실시간 자막과 화자, 가운데에 AI 회의록, 오른쪽에 메모. 회의를 멈추지 않고도 기록이 채워집니다.</p>
+          <ul class="flist">
+            <li>실시간 자막과 화자 구분을 한 화면에서</li>
+            <li>약 1분 주기로 핵심 요약·논의·결정 자동 갱신</li>
+            <li>메모와 AI 피드백으로 즉석에서 다듬기</li>
+          </ul>
+        </div>
+        <div class="show__fig">
+          <span class="tag">MeetingLive</span>
+          <div class="frame">
+            <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 라이브 녹음</span></div>
+            <img src="assets/08-meeting-live.png" alt="라이브 녹음 화면: 실시간 자막, AI 회의록, 메모 패널이 3단으로 배치" loading="lazy" />
+          </div>
+        </div>
+      </div>
+
+      <!-- B: 근거 (reversed) -->
+      <div class="show show--rev reveal">
+        <div class="show__txt">
+          <span class="eyebrow">신뢰</span>
+          <h3>모든 문장에 ‘언제, 누가’ 가 붙습니다</h3>
+          <p class="lead">AI가 지어낸 말인지 헷갈릴 일이 없습니다. 요약 옆 인용을 누르면 화자가 그 말을 한 순간으로 정확히 이동합니다.</p>
+          <ul class="flist">
+            <li>요약·답변 문장마다 발화 시각·화자 인용</li>
+            <li>인용 클릭 시 원본 오디오의 해당 지점으로 점프</li>
+            <li>잘못 들은 고유명사는 폴더별 오타사전으로 일괄 교정</li>
+          </ul>
+        </div>
+        <div class="show__fig">
+          <span class="tag">Meeting</span>
+          <div class="frame">
+            <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 회의 상세</span></div>
+            <img src="assets/07-meeting-recording.png" alt="회의 상세 화면: 파형 플레이어와 화자별 전사, AI 회의록" loading="lazy" />
+          </div>
+        </div>
+      </div>
+
+      <!-- C: 대시보드 -->
+      <div class="show reveal">
+        <div class="show__txt">
+          <span class="eyebrow">대시보드</span>
+          <h3>오늘의 회의를 한 화면에</h3>
+          <p class="lead">전체·녹음 중·완료·대기 건수를 한눈에. 카드를 누르면 바로 그 상태의 목록으로 들어갑니다.</p>
+          <ul class="flist">
+            <li>상태별 건수와 최근 회의를 요약해서 표시</li>
+            <li>예약·놓친 회의를 배너로 알림</li>
+            <li>카드 클릭으로 곧장 필터된 목록 이동</li>
+          </ul>
+        </div>
+        <div class="show__fig">
+          <span class="tag">Dashboard</span>
+          <div class="frame">
+            <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 대시보드</span></div>
+            <img src="assets/03-dashboard.png" alt="대시보드 화면: 상태별 통계 카드와 최근 회의 목록" loading="lazy" />
+          </div>
+        </div>
+      </div>
+
+      <!-- D: 목록/정리 (reversed) -->
+      <div class="show show--rev reveal">
+        <div class="show__txt">
+          <span class="eyebrow">정리 · 팀</span>
+          <h3>프로젝트와 폴더로 회의를 자산화</h3>
+          <p class="lead">흩어진 녹음이 아니라 검색 가능한 팀 기록으로. 카드와 리스트, 태그와 폴더로 차곡차곡 정리됩니다.</p>
+          <ul class="flist">
+            <li>카드/리스트 뷰, 태그·날짜·상태로 필터와 검색</li>
+            <li>폴더·프로젝트 단위 공유와 비공개 전환</li>
+            <li>회의·폴더·프로젝트를 통째로 내보내고 가져오기</li>
+          </ul>
+        </div>
+        <div class="show__fig">
+          <span class="tag">Meetings</span>
+          <div class="frame">
+            <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 회의 목록</span></div>
+            <img src="assets/04-meetings-list.png" alt="회의 목록 화면: 폴더 탐색과 회의 카드 목록" loading="lazy" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== Feature grid ========== -->
+  <section class="sec" id="features">
+    <div class="wrap">
+      <div class="sechead reveal">
+        <span class="eyebrow">전체 기능</span>
+        <h2>회의 전·중·후를 모두 덮습니다.</h2>
+        <p>녹음과 받아쓰기부터 정리·검색·공유·관리까지. 필요한 만큼만 켜서 씁니다.</p>
+      </div>
+      <div class="fgrid">
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></svg></span><h3>녹음 · STT</h3></div>
+          <ul><li>실시간 음성 인식, VAD 무음 스킵</li><li>오디오 파일 업로드 전사</li><li>9개 언어 · 시스템 오디오 캡처</li><li>환경별 STT 엔진 자동 선택</li></ul>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></span><h3>AI 회의록 · 요약</h3></div>
+          <ul><li>핵심·논의·결정·할 일 구조화</li><li>회의 유형별 양식, 압축율 5단계</li><li>자연어 피드백으로 수정</li><li>Mermaid 다이어그램 자동 생성</li></ul>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20v-1a5 5 0 0 1 9-3M14 20v-.5a4 4 0 0 1 7-2.5"/></svg></span><h3>화자 분리</h3></div>
+          <ul><li>발화자 자동 구분, 회의별 화자 인식</li><li>화자 이름 인라인 편집</li><li>배지 클릭으로 발화 따라가기</li><li>화자분리만 다시 실행</li></ul>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg></span><h3>AI 챗</h3></div>
+          <ul><li>회의에 질문, 실시간 스트리밍 답변</li><li>회의/폴더/프로젝트 범위 전환</li><li>여러 회의 교차 Q&amp;A</li><li>답변마다 회의로 인용 점프</li></ul>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span><h3>검색</h3></div>
+          <ul><li>전사·요약 전역 검색과 하이라이트</li><li>화자·날짜·상태 필터</li><li>회의 안에서 본문 검색</li><li>의미 검색(임베딩) 기반 발췌</li></ul>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8"/><path d="M16 6l-4-4-4 4M12 2v14"/></svg></span><h3>공유 · 권한</h3></div>
+          <ul><li>6자리 코드로 실시간 공유(최대 20명)</li><li>읽기전용 뷰어 모드</li><li>호스트 위임·자동 승계</li><li>회의 잠금, 폴더 가시성 상속</li></ul>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h8M16 3h5v5M21 3l-9 9"/></svg></span><h3>내보내기 · 가져오기</h3></div>
+          <ul><li>MD·PDF·DOCX·외부 LLM 프롬프트</li><li>회의·폴더 아카이브(.tgz) 이관</li><li>프로젝트 통째로 백업·복원</li><li>인용 제거·할 일 체크박스화</li></ul>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01"/></svg></span><h3>예약 · 자동화</h3></div>
+          <ul><li>예약 회의 자동/수동 시작</li><li>주간·일간 반복 자동 생성</li><li>다가오는·놓친 예약 알림</li><li>데스크톱 백그라운드·트레이</li></ul>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 2.6 14H2.5a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4 7.6l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 4.6h.1A1.6 1.6 0 0 0 10 2.5a2 2 0 1 1 4 0v.1A1.6 1.6 0 0 0 17 4.6a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a2 2 0 1 1 0 4h-.1z"/></svg></span><h3>설정 · 모델</h3></div>
+          <ul><li>요약·챗 LLM을 직접 선택·테스트</li><li>로컬 LLM(Ollama 등)으로 오프라인</li><li>회의 언어·STT·화자분리 조정</li><li>회의 템플릿·요약 양식 관리</li></ul>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span><h3>데스크톱 · 모바일</h3></div>
+          <ul><li>macOS·Windows·Linux 데스크톱 앱</li><li>모바일 잠금화면 백그라운드 녹음</li><li>완전 오프라인 온디바이스 전사</li><li>로컬/서버 모드 선택</li></ul>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg></span><h3>할 일 · 결정</h3></div>
+          <ul><li>할 일을 담당·기한과 함께 추출·관리</li><li>결정사항 로그(맥락·상태)</li><li>타임스탬프 북마크</li><li>명함 OCR로 참석자 자동 등록</li></ul>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><h3>폴더 · 프로젝트</h3></div>
+          <ul><li>프로젝트별 작업 공간과 멤버 초대</li><li>폴더 트리로 회의 분류·이동</li><li>경로 브레드크럼 네비게이션</li><li>휴지통 소프트삭제·복구</li></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== Why / differentiator ========== -->
+  <section class="sec sec--tint" id="why">
+    <div class="wrap diff">
+      <div class="diff__txt reveal">
+        <span class="eyebrow">왜 또박또박인가</span>
+        <h2 style="font-size:clamp(1.75rem,3.5vw,2.6rem);line-height:1.16;letter-spacing:-.03em;font-weight:800;margin:14px 0 0;">클라우드 회의록이 못 주는 네 가지.</h2>
+        <p style="color:var(--ink-soft);font-size:1.05rem;margin:14px 0 0;">받아쓰기 정확도는 어디나 비슷해집니다. 차이는 데이터가 어디에 있고, 회의록을 얼마나 믿을 수 있고, 팀이 함께 쓸 수 있느냐에서 납니다.</p>
+        <div class="diff__list">
+          <div class="df"><span class="df__n">01</span><div><h4>데이터 주권</h4><p>음성·전사·요약이 우리 인프라 밖으로 나가지 않습니다. 민감한 사내 회의를 그대로 맡길 수 있습니다.</p></div></div>
+          <div class="df"><span class="df__n">02</span><div><h4>근거 기반</h4><p>모든 요약과 답변이 발화 시각·화자로 검증됩니다. AI 환각을 한 번의 클릭으로 확인합니다.</p></div></div>
+          <div class="df"><span class="df__n">03</span><div><h4>교차 회의</h4><p>한 회의가 아니라 폴더·프로젝트 전체에 질문합니다. 쌓일수록 더 똑똑해지는 팀 지식이 됩니다.</p></div></div>
+          <div class="df"><span class="df__n">04</span><div><h4>모델 자유</h4><p>요약·챗 모델을 직접 고릅니다. Anthropic·OpenAI·로컬 Ollama까지, 인터넷 없이도 동작합니다.</p></div></div>
+        </div>
+      </div>
+      <div class="diff__fig reveal">
+        <span class="show__fig" style="display:block;position:relative;">
+          <span class="tag" style="position:absolute;z-index:3;top:-14px;right:18px;font-family:var(--mono);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;background:var(--ink);color:#fff;padding:6px 11px;border-radius:8px;box-shadow:var(--shadow-md);">Settings</span>
+          <span class="frame" style="display:block;">
+            <span class="frame__bar" style="display:flex;"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 음성·인식 설정</span></span>
+            <img src="assets/12-settings-audio.png" alt="설정 화면: STT 엔진·화자분리·LLM 모델 선택 옵션" loading="lazy" />
+          </span>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== CTA band ========== -->
+  <section class="sec" style="padding-bottom:0;">
+    <div class="wrap">
+      <div class="ctaband reveal">
+        <span class="eyebrow">셀프호스트 · 무료로 시작</span>
+        <h2>회의록 쓰는 시간, 또박또박에 맡기세요.</h2>
+        <p>데스크톱 앱을 설치하거나 팀 서버에 올리면 끝. 첫 회의부터 받아쓰기와 AI 회의록이 함께 시작됩니다.</p>
+        <div class="ctaband__row">
+          <a class="btn btn--light" href="../../배포가이드.md">설치 가이드 보기</a>
+          <a class="btn btn--outline" href="../기능-인벤토리.md">기능 인벤토리</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ========== Footer ========== -->
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__in">
+      <div class="foot__brand">
+        <a class="brand" href="#top"><span class="mark">또</span><span>또박또박</span></a>
+        <p>회의 음성을 실시간으로 받아쓰고 AI가 정리하는 셀프호스트 회의 어시스턴트. 회의에 집중하세요, 기록은 또박또박이 합니다.</p>
+      </div>
+      <div class="foot__links">
+        <div class="foot__col">
+          <h5>제품</h5>
+          <a href="#features">기능</a>
+          <a href="#showcase">화면</a>
+          <a href="#why">차별점</a>
+        </div>
+        <div class="foot__col">
+          <h5>문서</h5>
+          <a href="../../README.md">소개(README)</a>
+          <a href="../../배포가이드.md">설치 가이드</a>
+          <a href="../기능-인벤토리.md">기능 인벤토리</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot__base">
+      <span>또박또박 (ddobakddobak)</span>
+      <span class="mono">SELF-HOSTED · LOCAL-FIRST · 9 LANGUAGES</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  document.documentElement.classList.add('js');
+
+  // header shadow on scroll
+  var hd = document.getElementById('hd');
+  var onScroll = function () { hd.classList.toggle('scrolled', window.scrollY > 8); };
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  // mobile menu
+  var burger = document.getElementById('burger');
+  var mmenu = document.getElementById('mmenu');
+  burger.addEventListener('click', function () {
+    var open = mmenu.classList.toggle('open');
+    burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.body.style.overflow = open ? 'hidden' : '';
+  });
+  mmenu.querySelectorAll('a').forEach(function (a) {
+    a.addEventListener('click', function () {
+      mmenu.classList.remove('open');
+      burger.setAttribute('aria-expanded', 'false');
+      document.body.style.overflow = '';
+    });
+  });
+
+  // waveform bars (deterministic so it reads like a real recording)
+  (function () {
+    var el = document.getElementById('wave');
+    if (!el) return;
+    var seed = [4,7,12,9,16,22,14,8,11,19,27,21,13,9,6,10,18,24,30,23,15,11,7,5,9,14,20,28,33,25,17,12,8,6,11,17,23,29,21,14,
+                9,7,13,19,26,31,24,16,10,7,5,8,12,18,25,32,27,19,13,9,6,10,15,21,28,34,26,18,11,8,5,7,11,16,22,29,23,15,10,6];
+    var max = 36;
+    var frag = document.createDocumentFragment();
+    seed.forEach(function (v) {
+      var b = document.createElement('span');
+      b.className = 'bar';
+      b.style.height = Math.max(8, (v / max) * 100) + '%';
+      frag.appendChild(b);
+    });
+    el.appendChild(frag);
+  })();
+
+  // scroll reveal
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var reveals = document.querySelectorAll('.reveal');
+  if (reduce || !('IntersectionObserver' in window)) {
+    reveals.forEach(function (r) { r.classList.add('in'); });
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    reveals.forEach(function (r) { io.observe(r); });
+    // safety net: never leave content hidden if the observer doesn't fire
+    setTimeout(function () { reveals.forEach(function (r) { r.classList.add('in'); }); }, 2200);
+  }
+  // reveal everything before printing
+  window.addEventListener('beforeprint', function () { reveals.forEach(function (r) { r.classList.add('in'); }); });
+</script>
+</body>
+</html>
