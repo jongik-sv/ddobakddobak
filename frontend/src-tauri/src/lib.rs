@@ -183,6 +183,9 @@ pub fn run() {
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Info)
+                    // 이웃 윈도우 PC의 _dosvc(Delivery Optimization) 방송이 규격 위반이라
+                    // mdns-sd 파서가 패킷마다 ERROR를 뱉음 — 또박또박 무관 소음이라 묵음.
+                    .level_for("mdns_sd", log::LevelFilter::Off)
                     .build(),
             )?;
 
