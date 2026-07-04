@@ -95,3 +95,6 @@ _*/
 Caddyfile.local
 certs/lan.pem
 certs/lan-key.pem
+
+# MS Office 임시 잠금 파일 (문서 열려있을 때 생성, ~$ 접두)
+~$*
