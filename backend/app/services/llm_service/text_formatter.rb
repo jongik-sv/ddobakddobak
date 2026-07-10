@@ -13,24 +13,18 @@ class LlmService
 
     def format_transcripts(transcripts)
       return "" if transcripts.blank?
-      roster = {}
       lines = transcripts.map { |t|
         label = (t["speaker_label"] || t[:speaker_label]).to_s
         name  = (t["speaker"] || t[:speaker]).to_s
         text = t["text"] || t[:text] || ""
         ms = (t["started_at_ms"] || t[:started_at_ms] || 0).to_i
         clock = format("%02d:%02d", ms / 60000, (ms / 1000) % 60)
+        # 화자 라벨(화자 N)만 마커 근거로 유지. 실명(speaker)·roster·"이름: " 접두사는
+        # 요약 본문에 화자 귀속이 새어나가므로 넣지 않는다. label 없을 때만 name 폴백.
         bracket = label.empty? ? (name.empty? ? "알 수 없음" : name) : label
-        if !name.empty? && name != bracket
-          roster[bracket] ||= name
-          prefix = "#{name}: "
-        else
-          prefix = ""
-        end
-        "[#{clock}|#{ms}ms #{bracket}] #{prefix}#{text}"
+        "[#{clock}|#{ms}ms #{bracket}] #{text}"
       }
-      header = roster.empty? ? "" : "[화자 안내] #{roster.map { |l, n| "#{l}=#{n}" }.join(', ')}\n\n"
-      header + lines.join("\n")
+      lines.join("\n")
     end
 
     def extract_json(text)
@@ -59,18 +53,24 @@ class LlmService
       end
     end
 
+    # 구(舊) 구현은 `[...]`/`{...}`/`(...)` 3개 패턴을 **순차 3-pass**로 전체
+    # 블록에 각각 gsub 했다. 이 구조는 라벨 안쪽 괄호 텍스트를 자기오염시킨다:
+    # square pass가 `A[Full Hard(원소재) 출고]`를 `A["Full Hard(원소재) 출고"]`로
+    # 만든 뒤, 이어지는 paren pass가 그 **이미 따옴표 씌운 라벨 안쪽**의
+    # `Hard(원소재)`를 독립 라운드노드로 오인해 `Hard("원소재")`로 다시 감싼다
+    # → `A["... ("원소재") ..."]` 중첩따옴표 → mermaid parse 조기종료(파싱깨짐).
+    #
+    # 수정: 3개 패턴을 **단일 교대(alternation) pass**로 합친다. 정규식 엔진이
+    # `A[...]`를 매칭하면 닫는 `]`까지 소비하고 그 뒤부터 다시 스캔하므로, 라벨
+    # 내부의 `(원소재)`/`{...}`가 별도 노드로 재매칭되지 않는다. 이미 깨진
+    # 중첩따옴표 입력도 clean_label 이 라벨 내부 `"` 를 전부 제거하므로 자기치유.
     def quote_mermaid_labels(block)
-      # Square brackets: A[label] → A["label"]
-      block = block.gsub(/(^|\s|>|\|)(\w+)\[([^\]]+)\]/m) do
-        "#{$1}#{$2}#{clean_label($3, '[', ']')}"
-      end
-      # Curly braces: A{label} → A{"label"}
-      block = block.gsub(/(^|\s|>|\|)(\w+)\{([^}]+)\}/m) do
-        "#{$1}#{$2}#{clean_label($3, '{', '}')}"
-      end
-      # Parentheses: A(label) → A("label")
-      block.gsub(/(^|\s|>|\|)(\w+)\(([^)]+)\)/m) do
-        "#{$1}#{$2}#{clean_label($3, '(', ')')}"
+      # 교대 순서 = 구(舊) pass 순서(square→curly→paren). 각 그룹은 첫 닫힘문자까지.
+      block.gsub(/(^|\s|>|\|)(\w+)(\[[^\]]+\]|\{[^}]+\}|\([^)]+\))/m) do
+        prefix, id, group = $1, $2, $3
+        open_b = group[0]
+        close_b = group[-1]
+        "#{prefix}#{id}#{clean_label(group[1..-2], open_b, close_b)}"
       end
     end
 

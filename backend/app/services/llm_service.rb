@@ -57,6 +57,13 @@ class LlmService
 
     result = call_llm_raw(system_prompt, user_content, max_tokens: max_tokens)
     notes = TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(result))
+    # thinking 누출 방어(solo 2026-07 commit 6209fad 이식, 회의38: 8k자→727자 추론쓰레기로
+    # 누적 노트가 통째 소실된 사고): refine 출력이 기존 노트를 대량 유실하면 오염으로 간주,
+    # 기존 노트 보존 + ok:false로 재시도 유도(D8 anchor-C1과 동일 계약: 호출부 미저장·미소비).
+    if catastrophic_note_loss?(current_notes, notes)
+      Rails.logger.error "[LlmService] refine_notes: catastrophic note loss guard triggered (#{current_notes.to_s.length}자 → #{notes.length}자)"
+      return { "notes_markdown" => current_notes, "ok" => false }
+    end
     { "notes_markdown" => notes, "ok" => true }
   rescue => e
     Rails.logger.error "[LlmService] refine_notes failed: #{e.message}"
@@ -300,7 +307,7 @@ class LlmService
 
   def call_openai_stream(system, user_content, max_tokens, &block)
     full = +""
-    @client.chat(parameters: {
+    params = {
       model: @config[:model],
       max_tokens: max_tokens,
       messages: [
@@ -313,7 +320,9 @@ class LlmService
         full << delta
         block.call(delta)
       end
-    })
+    }
+    params[:reasoning_effort] = openai_reasoning_effort if openai_reasoning_effort
+    @client.chat(parameters: params)
     full
   end
 
@@ -326,8 +335,22 @@ class LlmService
         { role: "user", content: user_content }
       ]
     }
+    params[:reasoning_effort] = openai_reasoning_effort if openai_reasoning_effort
     response = @client.chat(parameters: params)
     response.dig("choices", 0, "message", "content") || ""
+  end
+
+  # Gemini(OpenAI-호환)에서 thinking을 끄는 reasoning_effort 값 — solo(Rust 코어, 2026-07
+  # commit 6209fad)에서 이식한 **원본 Rails엔 없는 의도적 divergence**(회의38 thinking 누출
+  # 방어: gemini flash가 최종 마크다운 대신 자기 추론을 뱉어 refine_notes가 누적 노트를
+  # 덮어쓴 사고). Google 문서(ai.google.dev/gemini-api/docs/openai): gemini 2.5 Flash는
+  # reasoning_effort:"none"으로 thinking 비활성 가능(2.5 Pro·3는 불가). gemini flash
+  # 계열에만 부착 — 다른 OpenAI-compat 서버(진짜 OpenAI/로컬)는 미지 파라미터를 400으로
+  # 거부할 수 있어 게이팅 필수.
+  def openai_reasoning_effort
+    m = @config[:model].to_s.downcase
+    return "none" if m.include?("gemini") && m.include?("flash")
+    nil
   end
 
   # ── 로컬 CLI 실행 (Claude Code / Gemini / Codex) ──
@@ -365,7 +388,9 @@ class LlmService
   def call_codex_cli(system, user_content, &block)
     cli = cli_binary_for("codex_cli")
     ensure_cli!(cli, "Codex CLI", "npm install -g @openai/codex")
-    cmd = [ cli, "exec", "-" ]
+    # 프로덕션 .app은 cwd에 .git이 없어 codex exec가 "Not inside a trusted directory"로
+    # 거부함 — git repo 검사 생략(exec 기본 sandbox는 read-only라 안전).
+    cmd = [ cli, "exec", "--skip-git-repo-check", "-" ]
     cmd.push("--model", @config[:model].to_s) if @config[:model].present?
     merged = "[시스템 지시]\n#{system}\n\n[사용자 입력]\n#{user_content}"
     run_cli(cmd, merged, &block)
@@ -520,6 +545,23 @@ class LlmService
     return "detailed thinking off" if m.match?(/nemotron/i)
     return "/no_think"             if m.match?(/qwen3|qwen-3|qwq/i)
     ENV["LLM_DISABLE_THINKING"] == "1" ? "/no_think" : nil
+  end
+
+  # refine(전체 재작성) 출력이 기존 노트를 대량 유실했는지 판정 — solo(Rust 코어, 2026-07
+  # commit 6209fad)에서 이식한 **원본 Rails엔 없는 의도적 divergence**(회의38 방어). thinking
+  # 계열 모델(예: gemini)이 최종 마크다운 대신 자기 추론(<think> 태그로도 안 감싸져
+  # strip_think가 못 거르는 맨 추론)을 뱉으면, refine_notes가 누적 노트를 그 추론쓰레기로
+  # 통째 덮어써 원 요약이 소실된다(실측: 8k자 노트 → 727자). REFINE 규칙4("기존 내용
+  # 삭제·생략 절대 금지, 원래 분량 유지")상 정상 refine 출력은 항상 기존분량 이상이므로,
+  # 절반 미만으로 붕괴하면 오염으로 간주하고 거부한다. 원본 노트가 짧을 때(<플로어)는
+  # 절반 스윙이 노이즈라 발동 안 함(초기 누적/사용자 축약 편집 보호).
+  def catastrophic_note_loss?(current, next_notes)
+    floor_chars = 400
+    retention_min = 0.5
+    cur = current.to_s.length
+    return false if cur < floor_chars
+
+    next_notes.to_s.length < cur * retention_min
   end
 
   # 출력에 새는 추론 블록 제거 (<think>, ◁think▷, <thinking>)
