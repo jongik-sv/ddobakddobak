@@ -333,9 +333,20 @@ claude                   # 서버 안에서 Claude Code로 수정·개발
 - [x] **WSL keep-alive 함정 수정**: `/bin/true`+SYSTEM 태스크로는 유휴 종료를 못 막아 빌드 tmux가 죽음 → 사용자 계정 + `sleep infinity`로 교체 (3단계 ② 정정 반영)
 - [x] **sidecar pyproject 수정**: `mlx`/`mlx-metal`에 darwin 마커, cuda extra에 `transformers`+`qwen-asr` 추가(맥에선 mlx-lm 전이 의존이라 안 드러났던 누락), macos↔cuda extra `tool.uv.conflicts` 선언 (qwen-asr가 transformers 4.57 고정 vs mlx-audio는 5.x 요구). 맥 환경은 `uv sync --dry-run` = 무변화 확인
 - [x] apt 기반 패키지: build-essential·libssl 등 Ruby 빌드 의존성, ffmpeg, nginx(HTTPS용), tmux, Node 22(+npm)
-- [진행중] Ruby 4.0.2 rbenv 빌드 (서버 tmux `rubybuild`)
-- [진행중] frontend `npm install`+`vite build` (서버 tmux `febuild`)
-- [진행중] sidecar `uv sync --extra cuda` — pyproject 수정 푸시 후 재실행 예정
+- [x] Ruby 4.0.2 rbenv 빌드 (⚠️ `numo-narray`가 신형 GCC에서 컴파일 실패 → `--with-cflags="-std=gnu17 -Wno-incompatible-pointer-types"`로 해결, 문제 해결 표 참고)
+- [x] frontend `npm install` + `vite build` → `dist/` 생성
+- [x] backend `bundle install` + `RAILS_ENV=production db:prepare db:seed` (master.key는 ssh로 별도 전송 — git 미포함)
+- [x] `settings.yaml` 생성 (`stt: auto`), systemd 유닛 2개(`ddobak-backend`·`ddobak-stt`) 작성
+- [x] **ddobak-backend 서비스 가동** — `systemctl active`, `/api/v1/health` = `{"status":"ok"}`
+- [x] nginx HTTPS 구성 — 자체서명(CN=서버IP), ⚠️ 가이드 원본에 없던 `/auth/*` 프록시 추가(누락 시 웹 로그인 404), 프론트 500은 `chmod o+x /home/ddobak`으로 해결(www-data 홈 접근)
+- [x] 웹 로그인용 admin 계정 생성 (`rails runner`, 계정은 `_local/서버-접속정보.md`)
+- [x] SSH 공개키 인증 전환 (`ssh ddobak-win` = Ubuntu 직행 / `ddobak-win-ps` = PowerShell) — sshpass 반복 인증의 간헐 실패 제거
+- [x] sidecar `uv sync --extra cuda` 완료 (CUDA 휠 수 GB)
+- [x] **ddobak-stt 서비스 기동** — 로그: `[STT] 자동 감지 엔진: qwen3_asr_transformers` + `CUDA GPU 감지됨 — GPU 모드`. 첫 기동은 Qwen3-ASR-1.7B(~3.4GB) HF 다운로드 때문에 health 응답까지 수 분 걸림
+- [x] **mirrored 네트워킹 전환** — `.wslconfig` `networkingMode=mirrored`, 방화벽 443/80 인바운드 + Hyper-V 방화벽 규칙(`New-NetFirewallHyperVRule`, WSL VMCreatorId). WSL이 LAN IP를 직접 사용, 맥에서 `https://<서버IP>` 직접 접속 확인 (API ok + front 200)
+- [x] **재부팅 통합 검증 통과** — `shutdown /r` 후 무개입으로 SSH 복구 → WSL-AutoStart → systemd 3서비스(backend·stt·nginx) 자동 기동 → 외부 https 응답 확인
+- [ ] 실회의 1건으로 STT/화자분리/임베딩 실동작 검증 (남은 항목)
+- [ ] 웹 admin 임시 비밀번호 변경, LLM 프로바이더 설정 (관리 UI)
 - [ ] **4단계**: 배포가이드 §2.3 웹 서버 설치 (rbenv/Ruby/frontend 빌드/systemd)
 - [ ] **4단계**: 배포가이드 §2.2 STT sidecar 설치 (uv/의존성/settings.yaml)
 - [ ] **5단계**: 포트 노출 (mirrored 권장 — 빌드 26200이라 가능)
@@ -363,3 +374,6 @@ claude                   # 서버 안에서 Claude Code로 수정·개발
 | apt http(80포트) `Connection failed` | 기업망이 평문 http 차단. `/etc/apt/sources.list.d/ubuntu.sources`의 `http://`를 `https://`로 치환 (위 CA 등록 선행) |
 | SSH 끊으면 tmux·백그라운드 작업 죽음 | WSL 유휴 종료. 3단계 ②의 keep-alive 태스크(`sleep infinity`, 사용자 계정) 등록·실행 |
 | `wsl ... -- bash -c '...'`가 SSH에서 경로 오류 | cmd는 작은따옴표를 해석 안 함 → 인용 깨짐. `ssh <서버> "wsl -d Ubuntu bash" <<'EOF'` 식 stdin 스크립트 주입 사용 |
+| `numo-narray` 네이티브 빌드 실패 (GCC 14+) | C23 기본 컴파일러와 구식 C 충돌. `bundle config set build.numo-narray --with-cflags="-std=gnu17 -Wno-incompatible-pointer-types"` 후 재시도 |
+| nginx 프론트 500 (`Permission denied`) | www-data가 `/home/<유저>` 접근 불가 (750). `chmod o+x /home/<유저>` |
+| 웹 로그인 404 | nginx에 `/auth/*` 프록시 누락 (devise_for path:"auth"). `location ~ ^/(api\|auth)/` 로 프록시 |
