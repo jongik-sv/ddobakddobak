@@ -356,6 +356,22 @@ claude                   # 서버 안에서 Claude Code로 수정·개발
 - SSH로 원격 자동화 시 `wsl -d Ubuntu -- bash -c '...'`는 cmd 인용부호 문제로 실패 → **stdin 스크립트 주입**(`ssh ... "wsl -d Ubuntu bash" <<'EOF'`)이 정답
 - `wsl.exe` 출력은 UTF-16LE → 맥에서 `iconv -f UTF-16LE -t UTF-8` 필요 (cmd 출력은 CP949)
 
+### 2026-07-14 — 화자분리 CUDA 전환 (최종 성공)
+
+56분 오디오 화자분리를 CPU(실패)에서 CUDA로 전환해 44.7초에 완료. speakrs-cli(Rust 화자분리 CLI)를 Linux+CUDA에서 돌리기까지의 경과.
+
+- [x] **실행모드 플랫폼 조건부화**: speakrs-cli가 CoreML 하드코딩이라 Linux 빌드 불가 → 실행모드를 macOS=CoreMl, 그 외=Cpu로 조건부 처리 + `SPEAKRS_MODE` 환경변수(cpu|cuda|coreml) 오버라이드 추가 (커밋 aae8fb3)
+- [x] **모델 사전 다운로드**: speakrs의 HF 자동 다운로드(Rust hf_hub)가 사내망 SSL 가로채기 CA를 못 써 실패 → 모델을 Python `huggingface_hub`(사내 CA 적용됨)으로 `~/speakrs-models`에 미리 받아두고 유닛에 `SPEAKRS_MODELS_DIR` 지정
+- [x] **CPU 모드 1차 실패 진단**: 56분 오디오가 5분+ 걸리다 exit(1). 전체 stderr 확보 결과 원인은 `build pipeline: Plda(Io(NotFound))` = PLDA 모델 파일 누락. `SPEAKRS_MODELS_DIR`(from_dir) 경로는 자동 다운로드가 없어 필요 파일을 전부 수동으로 갖춰야 함
+- [x] **CUDA 피처 빌드 전환**: Cargo.toml Linux 타깃 `features=["cuda"]` (커밋 3f32800). ⚠️ 배포 시 바이너리만이 아니라 `libonnxruntime_providers_shared.so`·`libonnxruntime_providers_cuda.so`를 **바이너리와 같은 폴더**에 함께 복사해야 함 (ort가 실행파일 옆에서 찾음)
+- [x] **CUDA 런타임 라이브러리 공급**: CUDA EP가 libcublasLt.so.12 → libcufft.so.11 순으로 부족분을 드러냄. sidecar venv의 nvidia 폴더를 공급원으로 재사용 → pyproject cuda extra에 `nvidia-cuda-runtime-cu12`·`nvidia-cufft-cu12`·`nvidia-curand-cu12` 추가, 유닛 `LD_LIBRARY_PATH`를 6경로로 확장(`nvidia/{cublas,cudnn,cuda_nvrtc,cufft,cuda_runtime,curand}/lib`)
+- [x] **CUDA 모드 필요 모델 18개** (`~/speakrs-models`): PLDA 6종(`plda_{lda,tr,mu,psi,mean1,mean2}.npy`) + `wespeaker-voxceleb-resnet34.min_num_samples.txt` + `segmentation-3.0.onnx`(+`-b32`) + `wespeaker-voxceleb-resnet34.onnx`(+`.data`,`-b64`) + `wespeaker-fbank.onnx`(+`-b32`) + `wespeaker-multimask-tail.onnx`(+`-b32`) + `wespeaker-voxceleb-resnet34-tail.onnx`(+`-b3`,`-b32`). ⚠️ 마지막 tail 3종은 crate의 required_files 목록엔 없지만 런타임이 요구함
+- [x] **유닛에 `Environment=SPEAKRS_MODE=cuda` 추가** 후 재시작
+- [x] **성능 실증**: 60초 샘플 1.9초, 56분(3,346초) 전체 44.7초 (화자 2명, 1,047 세그먼트). CPU 모드는 동일 파일 5~6분+ 후 실패했고, 맥북 M5(CoreML) 1~2분보다도 빠름
+
+**메모**
+- 재분리 잡 트리거 주의: `ReDiarizeJob`은 `meeting.transcribing?` 가드가 있어 completed 상태에서 enqueue하면 no-op. `m.update!(status: :transcribing)`로 상태를 바꾼 뒤 `ReDiarizeJob.perform_later(m.id)`
+
 ---
 
 ## 문제 해결
@@ -377,3 +393,7 @@ claude                   # 서버 안에서 Claude Code로 수정·개발
 | `numo-narray` 네이티브 빌드 실패 (GCC 14+) | C23 기본 컴파일러와 구식 C 충돌. `bundle config set build.numo-narray --with-cflags="-std=gnu17 -Wno-incompatible-pointer-types"` 후 재시도 |
 | nginx 프론트 500 (`Permission denied`) | www-data가 `/home/<유저>` 접근 불가 (750). `chmod o+x /home/<유저>` |
 | 웹 로그인 404 | nginx에 `/auth/*` 프록시 누락 (devise_for path:"auth"). `location ~ ^/(api\|auth)/` 로 프록시 |
+| speakrs `exit(1)` `Plda(Io(NotFound))` | `SPEAKRS_MODELS_DIR`에 PLDA `.npy` 6종 누락 (from_dir는 자동 다운로드 없음). Python `huggingface_hub`로 사전 다운로드해 채움 |
+| speakrs CUDA `Failed to load libonnxruntime_providers_shared.so` | provider `.so`가 바이너리 옆에 없음. `target/release`의 `providers_{shared,cuda}.so`를 바이너리와 같은 폴더에 복사 |
+| speakrs CUDA `libcublasLt.so.12`/`libcufft.so.11` 없음 | CUDA 12 런타임 미설치. pyproject cuda extra(`nvidia-cuda-runtime`/`cufft`/`curand-cu12`) + `LD_LIBRARY_PATH` 6경로 지정 |
+| `ReDiarizeJob` 돌렸는데 화자 그대로 | completed 상태 가드로 no-op. status를 `transcribing`으로 바꾼 뒤 enqueue |
