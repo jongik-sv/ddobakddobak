@@ -8,8 +8,8 @@ dependencies = [
     "anthropic>=0.40.0",
     "fastapi>=0.135.2",
     "torch>=2.4",
-    "mlx==0.31.2",
-    "mlx-metal==0.31.2",
+    "mlx==0.31.2; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-metal==0.31.2; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "more-itertools>=11.1.0",
     "numpy>=1.26.0",
     "openai>=2.30.0",
@@ -27,14 +27,21 @@ macos = [
     "mlx-lm>=0.31.1",
     "pywhispercpp>=1.4.1",
 ]
-# Windows/Linux NVIDIA GPU: faster-whisper (CUDA)
+# Windows/Linux NVIDIA GPU: Qwen3-ASR(transformers) + faster-whisper (CUDA)
+# transformers·qwen-asr는 맥에선 mlx-lm 전이 의존으로 들어오지만 Linux엔 없어 명시 필요
 cuda = [
     "faster-whisper>=1.1.0",
+    "transformers>=4.51",
+    "qwen-asr>=0.0.6",
 ]
 # Windows/Linux CPU 전용: whisper.cpp만 (화자 분리 비활성화)
 cpu = [
     "pywhispercpp>=1.4.1",
 ]
+
+[tool.uv]
+# 플랫폼 배타 extras: macos(MLX, transformers>=5)와 cuda(qwen-asr→transformers==4.57 고정)는 동시 설치 불가
+conflicts = [[{ extra = "cuda" }, { extra = "macos" }]]
 
 [dependency-groups]
 dev = [

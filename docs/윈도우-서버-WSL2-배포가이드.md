@@ -9,6 +9,7 @@
 
 ---
 
+
 ## 전체 구성
 
 ```
@@ -169,13 +170,19 @@ EOF
 
 적용은 Windows 쪽에서 `wsl --shutdown` 후 재진입.
 
-### ② 부팅 시 WSL 기동 (Windows 관리자 PowerShell)
+### ② 부팅 시 WSL 기동 + 상시 유지 (Windows 관리자 PowerShell)
+
+⚠️ 두 가지 함정 (실측으로 확인됨):
+- **`/bin/true`처럼 즉시 끝나는 명령으로는 부족** — WSL은 마지막 클라이언트가 끊기면 VM을 내려버려서 tmux·백그라운드 작업이 전부 죽는다. `sleep infinity`로 wsl.exe 클라이언트를 계속 잡아둬야 한다.
+- **`/ru SYSTEM`으로 돌리면 안 됨** — WSL distro는 Windows 사용자별이라 SYSTEM 계정의 WSL은 내 Ubuntu와 별개 인스턴스다. 반드시 실제 사용자 계정으로 등록한다.
 
 ```powershell
-schtasks /create /tn "WSL-AutoStart" /tr "wsl.exe -d Ubuntu --exec /bin/true" /sc onstart /ru SYSTEM /rl HIGHEST /f
+schtasks /create /tn "WSL-AutoStart" /tr "wsl.exe -d Ubuntu --exec sleep infinity" /sc onstart /ru <윈도유저> /rp <비밀번호> /rl HIGHEST /f
+# 등록 즉시 가동 (재부팅 전에도 keep-alive 활성화)
+schtasks /run /tn "WSL-AutoStart"
 ```
 
-재부팅 → 작업 스케줄러가 WSL을 깨움 → systemd가 등록된 서비스(Rails, sidecar)를 자동으로 올림.
+재부팅 → 작업 스케줄러가 WSL을 깨우고 계속 잡아둠 → systemd가 등록된 서비스(Rails, sidecar)를 자동으로 올림.
 
 > **참고**: WSL은 유휴 상태가 길어지면 VM을 내리는 경우가 있다. systemd 서비스가 떠 있으면 보통 내려가지 않으므로 기본값으로 시작하고, 문제가 생기면 Windows 쪽 `%USERPROFILE%\.wslconfig`의 `[wsl2]` 섹션에서 `vmIdleTimeout`을 조정한다.
 
@@ -308,6 +315,38 @@ claude                   # 서버 안에서 Claude Code로 수정·개발
 
 ---
 
+## 진행 기록
+
+> 실제 배포 진행 상황. 접속 정보는 `_local/서버-접속정보.md`(git 미추적) 참고.
+
+### 2026-07-14 — 0~4단계 초반 완료
+
+- [x] **0단계**: Windows 11 Pro (빌드 26200) — WSL2·mirrored 네트워킹 모두 지원 확인
+- [x] **0단계**: GPU = NVIDIA RTX 5000 Ada Generation (VRAM 32GB), 드라이버 581.80
+- [x] **OpenSSH 서버 설치** (RDP에서 `Add-WindowsCapability` → 재부팅 필요했음 → `Start-Service sshd` + `Set-Service -StartupType Automatic`)
+- [x] **1단계**: WSL2 + Ubuntu 설치. 비인터랙티브 경로 사용: `wsl --install -d Ubuntu --no-launch` → `ubuntu.exe install --root` → root로 유저 생성 (`useradd -m -G sudo ddobak`)
+- [x] **1단계**: WSL 안 `nvidia-smi` GPU 패스스루 확인 (RTX 5000 Ada 32GB 보임)
+- [x] **3단계**: `/etc/wsl.conf`에 `systemd=true` + `[user] default=ddobak` → `wsl --shutdown` 후 `systemctl is-system-running` = running
+- [x] **3단계**: 작업 스케줄러 `WSL-AutoStart` 등록 완료
+- [x] **4단계**: WSL 홈(`~/ddobakddobak`)에 소스 clone 완료 (`--depth 50`)
+- [x] **기업망 SSL 가로채기 대응**: apt https가 `certificate verify failed` → 프록시 CA(CN=dongkuk) 추출·등록으로 해결 (아래 문제 해결 표 참고). `SSL_CERT_FILE`/`REQUESTS_CA_BUNDLE`/`NODE_EXTRA_CA_CERTS`를 `~/.bashrc`에 등록
+- [x] **WSL keep-alive 함정 수정**: `/bin/true`+SYSTEM 태스크로는 유휴 종료를 못 막아 빌드 tmux가 죽음 → 사용자 계정 + `sleep infinity`로 교체 (3단계 ② 정정 반영)
+- [x] **sidecar pyproject 수정**: `mlx`/`mlx-metal`에 darwin 마커, cuda extra에 `transformers`+`qwen-asr` 추가(맥에선 mlx-lm 전이 의존이라 안 드러났던 누락), macos↔cuda extra `tool.uv.conflicts` 선언 (qwen-asr가 transformers 4.57 고정 vs mlx-audio는 5.x 요구). 맥 환경은 `uv sync --dry-run` = 무변화 확인
+- [x] apt 기반 패키지: build-essential·libssl 등 Ruby 빌드 의존성, ffmpeg, nginx(HTTPS용), tmux, Node 22(+npm)
+- [진행중] Ruby 4.0.2 rbenv 빌드 (서버 tmux `rubybuild`)
+- [진행중] frontend `npm install`+`vite build` (서버 tmux `febuild`)
+- [진행중] sidecar `uv sync --extra cuda` — pyproject 수정 푸시 후 재실행 예정
+- [ ] **4단계**: 배포가이드 §2.3 웹 서버 설치 (rbenv/Ruby/frontend 빌드/systemd)
+- [ ] **4단계**: 배포가이드 §2.2 STT sidecar 설치 (uv/의존성/settings.yaml)
+- [ ] **5단계**: 포트 노출 (mirrored 권장 — 빌드 26200이라 가능)
+- [ ] 재부팅 통합 검증 + 실회의 STT/화자분리/임베딩 검증
+
+**메모**
+- SSH로 원격 자동화 시 `wsl -d Ubuntu -- bash -c '...'`는 cmd 인용부호 문제로 실패 → **stdin 스크립트 주입**(`ssh ... "wsl -d Ubuntu bash" <<'EOF'`)이 정답
+- `wsl.exe` 출력은 UTF-16LE → 맥에서 `iconv -f UTF-16LE -t UTF-8` 필요 (cmd 출력은 CP949)
+
+---
+
 ## 문제 해결
 
 | 증상 | 원인/조치 |
@@ -320,3 +359,7 @@ claude                   # 서버 안에서 Claude Code로 수정·개발
 | portproxy가 재부팅 후 죽음 | WSL IP 변경 때문. 갱신 스크립트를 시작 작업에 등록 (또는 방법 A로 전환) |
 | JWT 인증 무시되고 아무나 접속 | `SERVER_MODE=true` 누락. 배포가이드 §2.3 8단계 참고 |
 | 빌드/IO가 비정상적으로 느림 | 소스가 `/mnt/c/` 아래에 있음. WSL 홈(ext4)으로 이동 |
+| apt/curl에서 `certificate verify failed` | 기업망 SSL 가로채기 프록시. WSL에서 `echo \| openssl s_client -connect security.ubuntu.com:443 -showcerts`로 체인 추출 → 루트(자기서명) cert를 `/usr/local/share/ca-certificates/*.crt`로 복사 → `update-ca-certificates`. 언어별 추가: `SSL_CERT_FILE`·`REQUESTS_CA_BUNDLE`(Python), `NODE_EXTRA_CA_CERTS`(Node) 환경변수를 CA 번들로 지정 |
+| apt http(80포트) `Connection failed` | 기업망이 평문 http 차단. `/etc/apt/sources.list.d/ubuntu.sources`의 `http://`를 `https://`로 치환 (위 CA 등록 선행) |
+| SSH 끊으면 tmux·백그라운드 작업 죽음 | WSL 유휴 종료. 3단계 ②의 keep-alive 태스크(`sleep infinity`, 사용자 계정) 등록·실행 |
+| `wsl ... -- bash -c '...'`가 SSH에서 경로 오류 | cmd는 작은따옴표를 해석 안 함 → 인용 깨짐. `ssh <서버> "wsl -d Ubuntu bash" <<'EOF'` 식 stdin 스크립트 주입 사용 |
