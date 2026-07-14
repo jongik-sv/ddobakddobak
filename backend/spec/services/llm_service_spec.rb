@@ -20,6 +20,48 @@ RSpec.describe LlmService, "ok signalling" do
     end
   end
 
+  # thinking 누출 방어(solo 2026-07 commit 6209fad 이식, 회의38: 8k자→727자 추론쓰레기로
+  # 누적 노트 소실). refine 출력이 기존 노트 대비 절반 미만으로 붕괴하면 저장 거부.
+  describe "#refine_notes catastrophic note loss guard" do
+    it "rejects a collapsed refine output and preserves the current notes" do
+      current = "가" * 2000
+      allow(service).to receive(:call_llm_raw).and_return("나" * 700)
+      result = service.refine_notes(current, [{ "speaker" => "A", "text" => "새 내용" }])
+      expect(result["ok"]).to be false
+      expect(result["notes_markdown"]).to eq(current)
+    end
+
+    it "does not trigger when current notes are short (below the floor)" do
+      current = "가" * 100
+      allow(service).to receive(:call_llm_raw).and_return("")
+      result = service.refine_notes(current, [{ "speaker" => "A", "text" => "새 내용" }])
+      expect(result["ok"]).to be true
+    end
+
+    it "allows growth and stable/near-stable refine output" do
+      current = "가" * 2000
+      allow(service).to receive(:call_llm_raw).and_return("가" * 2500)
+      expect(service.refine_notes(current, [{ "speaker" => "A", "text" => "새 내용" }])["ok"]).to be true
+
+      allow(service).to receive(:call_llm_raw).and_return(current)
+      expect(service.refine_notes(current, [{ "speaker" => "A", "text" => "새 내용" }])["ok"]).to be true
+
+      # 소폭 등락(예: 재구조화로 90% 유지)은 오탐 없이 통과.
+      allow(service).to receive(:call_llm_raw).and_return("가" * 1800)
+      expect(service.refine_notes(current, [{ "speaker" => "A", "text" => "새 내용" }])["ok"]).to be true
+    end
+  end
+
+  describe "#catastrophic_note_loss? (private helper)" do
+    it "detects collapse below half when current notes are substantial" do
+      expect(service.send(:catastrophic_note_loss?, "가" * 2000, "나" * 700)).to be true
+    end
+
+    it "ignores short current notes" do
+      expect(service.send(:catastrophic_note_loss?, "가" * 100, "")).to be false
+    end
+  end
+
   # 압축율 5단계: 프롬프트 글자수 캡이 출력량 제어의 유일한 레버(claude_cli 가 max_tokens 무시)
   describe "verbosity instructions" do
     let(:transcripts) { [{ "speaker" => "A", "text" => "새 내용" }] }
@@ -141,10 +183,44 @@ RSpec.describe LlmService, "ok signalling" do
       expect(out).to eq("[02:05|125000ms 화자 1] 결정 보류")
     end
 
-    it "라벨과 이름이 둘 다 있으면 대괄호=라벨, 콜론앞=이름" do
+    it "라벨과 이름이 둘 다 있어도 대괄호=라벨만, 실명(speaker)은 본문 미노출(화자 귀속 제거)" do
       svc = LlmService.allocate
       out = svc.send(:format_transcripts, [{ "speaker_label" => "화자 3", "speaker" => "장종익", "text" => "제안", "started_at_ms" => 53000 }])
-      expect(out).to eq("[화자 안내] 화자 3=장종익\n\n[00:53|53000ms 화자 3] 장종익: 제안")
+      expect(out).to eq("[00:53|53000ms 화자 3] 제안")
+    end
+  end
+
+  # 회의30 회귀: 라벨 안쪽에 괄호 텍스트(`Full Hard(원소재)`)가 있으면 구(舊)
+  # 3-pass 살균기(quote_mermaid_labels)의 paren pass가 `원소재`를 따옴표로
+  # 다시 감싸 `["... ("원소재") ..."]` 중첩따옴표를 만들어 mermaid 파싱을
+  # 깨뜨렸다(빈 화면). 통합 단일 pass는 `[...]`를 통째로 소비해 내부 괄호를
+  # 재매칭하지 않는다. LLM이 낼 수 있는 두 형태(맨라벨/이미 따옴표) 모두 검증.
+  describe "#fix_mermaid_quotes 라벨 안 괄호 텍스트 살균기 자기오염 방지" do
+    def assert_no_nested_quotes_in_labels(out)
+      out.scan(/\[([^\]]*)\]/).each do |(inner)|
+        quote_count = inner.count('"')
+        expect([0, 2]).to(include(quote_count), "라벨 안 중첩따옴표 검출: #{inner.inspect} (따옴표 #{quote_count}개)")
+      end
+    end
+
+    it "라벨이 맨 괄호 텍스트(bare)를 포함해도 중첩따옴표를 만들지 않는다" do
+      text = "```mermaid\nflowchart TD\n  A[Full Hard(원소재) 출고 + 내국작업신고] --> B[검사]\n```"
+      out = LlmService::TextFormatter.fix_mermaid_quotes(text)
+      expect(out).to include('A["Full Hard(원소재) 출고 + 내국작업신고"]')
+      assert_no_nested_quotes_in_labels(out)
+    end
+
+    it "라벨이 이미 따옴표로 감싼 채 괄호 텍스트를 포함해도(+ <br/> 동반) 보존한다" do
+      text = "```mermaid\nflowchart TD\n  C[\"완제품 재고화<br/>(인가공업체=사외창고)\"] --> D[영업 출고]\n```"
+      out = LlmService::TextFormatter.fix_mermaid_quotes(text)
+      expect(out).to include('C["완제품 재고화<br/>(인가공업체=사외창고)"]')
+      assert_no_nested_quotes_in_labels(out)
+    end
+
+    it "이미 깨진 중첩따옴표 입력도 재-살균으로 치유한다" do
+      text = "```mermaid\nflowchart TD\n  A[\"Full Hard(\"원소재\") 출고\"] --> B[x]\n```"
+      out = LlmService::TextFormatter.fix_mermaid_quotes(text)
+      assert_no_nested_quotes_in_labels(out)
     end
   end
 
@@ -173,6 +249,55 @@ RSpec.describe LlmService, "openai 로컬(Ollama/LM Studio)" do
     svc = LlmService.new(llm_config: { provider: "openai", model: "llama-3.1-8b",
                                        base_url: "http://localhost:11434/v1" })
     expect { svc.send(:build_client) }.not_to raise_error
+  end
+end
+
+# gemini thinking 누출 원인 차단(solo 2026-07 commit 6209fad 이식, 원본 Rails엔 없는
+# 의도적 divergence): gemini flash 계열에만 reasoning_effort:"none" 부착.
+RSpec.describe LlmService, "openai reasoning_effort gating (gemini flash thinking off)" do
+  def svc_for(model)
+    LlmService.new(llm_config: { provider: "openai", model: model, base_url: "http://localhost:11434/v1" })
+  end
+
+  describe "#openai_reasoning_effort" do
+    it "gemini flash 계열에만 \"none\"을 반환한다" do
+      expect(svc_for("gemini-flash-latest").send(:openai_reasoning_effort)).to eq("none")
+      expect(svc_for("gemini-2.5-flash").send(:openai_reasoning_effort)).to eq("none")
+      expect(svc_for("models/gemini-flash-lite-latest").send(:openai_reasoning_effort)).to eq("none")
+      expect(svc_for("gemini-2.5-pro").send(:openai_reasoning_effort)).to be_nil
+      expect(svc_for("gpt-4o").send(:openai_reasoning_effort)).to be_nil
+      expect(svc_for("qwen3-32b").send(:openai_reasoning_effort)).to be_nil
+    end
+  end
+
+  describe "#call_openai" do
+    it "gemini flash 요청 바디에 reasoning_effort:\"none\"을 부착한다" do
+      svc = svc_for("gemini-flash-latest")
+      client = instance_double("OpenAI::Client")
+      captured = nil
+      allow(client).to receive(:chat) do |parameters:|
+        captured = parameters
+        { "choices" => [ { "message" => { "content" => "결과" } } ] }
+      end
+      svc.instance_variable_set(:@client, client)
+
+      svc.send(:call_openai, "sys", "usr", 4096)
+      expect(captured[:reasoning_effort]).to eq("none")
+    end
+
+    it "비-gemini 모델은 reasoning_effort를 부착하지 않는다(미지 파라미터 400 방지)" do
+      svc = svc_for("gpt-4o")
+      client = instance_double("OpenAI::Client")
+      captured = nil
+      allow(client).to receive(:chat) do |parameters:|
+        captured = parameters
+        { "choices" => [ { "message" => { "content" => "결과" } } ] }
+      end
+      svc.instance_variable_set(:@client, client)
+
+      svc.send(:call_openai, "sys", "usr", 4096)
+      expect(captured).not_to have_key(:reasoning_effort)
+    end
   end
 end
 

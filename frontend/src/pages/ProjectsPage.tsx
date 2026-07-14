@@ -14,6 +14,7 @@ import ProjectMembersPanel from '../components/project/ProjectMembersPanel'
 import ExportProjectDialog from '../components/project/ExportProjectDialog'
 import { confirmDialog } from '../lib/confirmDialog'
 import ImportProjectButton from '../components/project/ImportProjectButton'
+import { getMode } from '../config'
 
 export default function ProjectsPage() {
   const navigate = useNavigate()
@@ -25,6 +26,9 @@ export default function ProjectsPage() {
   const removeProject = useProjectStore((s) => s.removeProject)
   // 시스템 admin은 비멤버(role=null) 프로젝트도 삭제 권한이 있음(백엔드 override).
   const isSystemAdmin = useAuthStore((s) => s.user?.role === 'admin')
+  // 프로젝트 가져오기(admin 전용). 로컬 모드(맥 데스크톱 단독)는 loopback=desktop@local admin이라
+  // user 객체가 없어도 admin 등가 — Sidebar canManageUsers 등과 동일 관례.
+  const canImportProject = isSystemAdmin || getMode() === 'local'
 
   const [dialogProject, setDialogProject] = useState<Project | null>(null)
   // ?new=1 → 생성 다이얼로그 자동 오픈. 초기값을 URL에서 1회 도출(렌더 중 setState 회피).
@@ -86,7 +90,7 @@ export default function ProjectsPage() {
     <div className="p-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold text-foreground">프로젝트</h1>
-        {isSystemAdmin && <ImportProjectButton onImported={handleImported} />}
+        {canImportProject && <ImportProjectButton onImported={handleImported} />}
       </div>
 
       {error && (

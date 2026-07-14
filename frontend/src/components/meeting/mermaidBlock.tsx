@@ -96,7 +96,16 @@ export function MermaidRenderer({
   useEffect(() => { applyZoom(zoom) }, [zoom, applyZoom])
 
   if (error) {
-    return <>{fallback}</>
+    // 호출자가 fallback을 주면 그걸 우선(ChatMermaid=원문 pre). 없으면(노트 편집기)
+    // 조용한 빈 화면 대신 에러+코드를 보여줘 사용자가 '코드 편집'으로 고치게 유도.
+    if (fallback != null) return <>{fallback}</>
+    return (
+      <div className="p-3 text-xs text-red-600 dark:text-red-400">
+        <div className="font-medium mb-1">⚠ 다이어그램 렌더 실패 — 코드를 수정하세요</div>
+        <pre className="whitespace-pre-wrap break-words text-muted-foreground mb-1">{error}</pre>
+        <pre className="whitespace-pre-wrap break-words overflow-x-auto font-mono">{code}</pre>
+      </div>
+    )
   }
 
   return <div ref={containerRef} className="[&>svg]:h-auto w-fit mx-auto" />
