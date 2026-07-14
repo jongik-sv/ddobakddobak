@@ -8,7 +8,12 @@ module Api
       before_action :authorize_project_admin!, only: %i[update destroy add_member update_member remove_member]
 
       def index
-        projects = current_user.admin? ? Project.kept.includes(:creator) : current_user.projects.kept.includes(:creator)
+        # 개인 프로젝트는 소유자(멤버)에게만 — admin도 남의 개인 프로젝트는 목록에서 제외.
+        projects = if current_user.admin?
+          Project.kept.where(personal: false).or(Project.kept.where(id: current_user.project_ids)).includes(:creator)
+        else
+          current_user.projects.kept.includes(:creator)
+        end
         render json: { projects: projects.distinct.map { |p| project_json(p) } }
       end
 

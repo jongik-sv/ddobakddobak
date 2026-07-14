@@ -49,6 +49,32 @@ RSpec.describe "Api::V1::Projects", type: :request do
         expect(shared.first["owner"]).to eq(user.name)
       end
     end
+
+    context "when system admin" do
+      let(:admin) { create(:user, :admin) }
+
+      before { login_as(admin) }
+
+      it "팀 프로젝트는 전부, 개인 프로젝트는 자기 것만 (남의 개인 프로젝트는 회의가 있어도 제외)" do
+        admin_personal = admin.projects.find_by(personal: true)
+
+        # 남의 팀 프로젝트 — admin은 멤버가 아니어도 봐야 한다
+        other_team = create(:project, creator: other_user, personal: false)
+        create(:project_membership, user: other_user, project: other_team, role: "admin")
+
+        # 남의 개인 프로젝트 + 회의 1개 — 회의가 있어도 목록에서 제외되어야 한다
+        other_personal = other_user.projects.find_by(personal: true)
+        create(:meeting, project: other_personal, creator: other_user)
+
+        get "/api/v1/projects"
+
+        expect(response).to have_http_status(:ok)
+        ids = response.parsed_body["projects"].map { |p| p["id"] }
+        expect(ids).to include(admin_personal.id)
+        expect(ids).to include(other_team.id)
+        expect(ids).not_to include(other_personal.id)
+      end
+    end
   end
 
   describe "POST /api/v1/projects" do

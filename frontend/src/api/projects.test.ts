@@ -16,19 +16,19 @@ describe('projectDisplayName', () => {
 })
 
 describe('isHiddenClutterProject', () => {
-  it('personal + role null + meeting_count 0 → true (hidden)', () => {
-    expect(isHiddenClutterProject({ personal: true, role: null, meeting_count: 0 })).toBe(true)
+  it('personal + role null → true (hidden — 남의 개인 프로젝트)', () => {
+    expect(isHiddenClutterProject({ personal: true, role: null })).toBe(true)
   })
 
-  it('personal + role admin (mine) + meeting_count 0 → false (shown — my own)', () => {
-    expect(isHiddenClutterProject({ personal: true, role: 'admin', meeting_count: 0 })).toBe(false)
+  it('personal + role admin (mine) → false (shown — 내 개인 프로젝트)', () => {
+    expect(isHiddenClutterProject({ personal: true, role: 'admin' })).toBe(false)
   })
 
-  it('personal + role null + meeting_count 3 → false (shown — has content)', () => {
-    expect(isHiddenClutterProject({ personal: true, role: null, meeting_count: 3 })).toBe(false)
+  it('personal + role member (mine) → false (shown — 내가 멤버)', () => {
+    expect(isHiddenClutterProject({ personal: true, role: 'member' })).toBe(false)
   })
 
-  it('non-personal + role null + meeting_count 0 → false (shown — team/dummy)', () => {
-    expect(isHiddenClutterProject({ personal: false, role: null, meeting_count: 0 })).toBe(false)
+  it('non-personal + role null → false (shown — 팀 프로젝트)', () => {
+    expect(isHiddenClutterProject({ personal: false, role: null })).toBe(false)
   })
 })
