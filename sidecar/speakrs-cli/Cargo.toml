@@ -4,8 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# default features include "online" (HF cache model auto-load). coreml = native CoreML (FP32 ~1s step).
+
+# default features include "online" (HF cache model auto-load).
+# coreml = native CoreML (FP32 ~1s step) — macOS 전용이라 타깃 조건부로 분리 (Linux 서버 빌드 지원).
+[target.'cfg(target_os = "macos")'.dependencies]
 speakrs = { version = "0.4.2", features = ["coreml"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+speakrs = { version = "0.4.2" }
 
 [[bin]]
 name = "speakrs-cli"
