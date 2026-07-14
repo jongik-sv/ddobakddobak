@@ -54,12 +54,14 @@ export function useMeeting(meetingId: number): UseMeetingReturn {
 
   async function updateTitle(title: string) {
     const updated = await updateMeeting(meetingId, { title })
-    setMeeting(updated)
+    setMeeting((prev) => (prev ? { ...prev, ...updated } : updated))
   }
 
   async function updateMeetingInfo(data: UpdateMeetingParams) {
     const updated = await updateMeeting(meetingId, data)
-    setMeeting(updated)
+    // 즉시 merge(경로 등 full 전용 필드 보존) 후, full GET 으로 previous_meeting 등 갱신.
+    setMeeting((prev) => (prev ? { ...prev, ...updated } : updated))
+    refetch()
   }
 
   async function deleteMeeting() {

@@ -36,6 +36,10 @@ export interface Meeting {
   /** 이 회의가 속한 프로젝트 id (프로젝트 스코핑). */
   project_id?: number | null
   folder_id: number | null
+  /** 회의가 속한 프로젝트 이름 (show=full 응답에만 포함). 상세·라이브 경로 표시용. */
+  project_name?: string | null
+  /** 폴더 루트→현재 경로 [{id,name}]. 폴더 없으면 빈 배열. show=full 응답에만 포함. */
+  folder_path?: { id: number; name: string }[]
   /** 이 회의가 속한 폴더의 공유 여부(상세 응답에만 포함). false면 폴더가 비공개라 회의도 숨겨진다. */
   folder_shared?: boolean | null
   transcription_progress?: number
