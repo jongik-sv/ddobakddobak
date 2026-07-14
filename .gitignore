@@ -98,3 +98,6 @@ certs/lan-key.pem
 
 # MS Office 임시 잠금 파일 (문서 열려있을 때 생성, ~$ 접두)
 ~$*
+
+# 실제 회의록 샘플 — 사내 민감정보, PUBLIC repo 커밋 금지
+/docs/회의록샘플/
