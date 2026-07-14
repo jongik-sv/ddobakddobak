@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useUiStore } from '../stores/uiStore'
+import { useToastStore } from '../stores/toastStore'
 import { useAudioRecorder } from './useAudioRecorder'
 import { useSystemAudioCapture } from './useSystemAudioCapture'
 import { useMicCapture } from './useMicCapture'
@@ -35,7 +36,6 @@ import { useSharingStore } from '../stores/sharingStore'
 import { IS_TAURI, getApiOrigin, getMode } from '../config'
 import { useAuthStore } from '../stores/authStore'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
-import { useNavigationGuards } from './useNavigationGuards'
 import { useRecordingSummaryTimer } from './useRecordingSummaryTimer'
 import { useRecorderHeartbeat } from './useRecorderHeartbeat'
 import { newSilenceState, tickSilence } from '../lib/silenceAutoComplete'
@@ -44,7 +44,6 @@ type MeetingStatus = 'idle' | 'recording' | 'stopped'
 type ChunkMeta = { sequence: number; offsetMs: number }
 
 interface UseLiveRecordingOptions {
-  showStatus: (msg: string, durationMs?: number) => void
   isApplyingCorrections: boolean
   clearMemoEditor: () => void
 }
@@ -55,9 +54,14 @@ interface UseLiveRecordingOptions {
  */
 export function useLiveRecording(
   meetingId: number,
-  { showStatus, isApplyingCorrections, clearMemoEditor }: UseLiveRecordingOptions
+  { isApplyingCorrections, clearMemoEditor }: UseLiveRecordingOptions
 ) {
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // 상태 토스트는 전역 스토어 경유 — 백그라운드 녹음 종료 메시지가 라우트 무관 표시되도록.
+  const showStatus = (msg: string, durationMs?: number) =>
+    useToastStore.getState().showStatus(msg, durationMs)
 
   // 회의실 진입 시 사이드바 닫기 + 이전 거부 플래그 초기화
   useEffect(() => {
@@ -213,7 +217,6 @@ export function useLiveRecording(
     isSummarizing,
     showStatus,
   })
-  const { showLeaveBlock, setShowLeaveBlock, handleNavigateBack } = useNavigationGuards(meetingId, isActive)
 
   // Tauri 네이티브 마이크 캡처 (STT용) — 시스템 오디오도 여기서 믹싱하여 하나의 STT 스트림으로 처리
   const {
@@ -253,8 +256,12 @@ export function useLiveRecording(
     if (IS_TAURI) stopMicCapture()
     stopSystemCapture()
     if (isRecording) discard()
-    navigate(`/meetings/${meetingId}/viewer`, { replace: true })
-  }, [recordingDenied, isRecording, meetingId, navigate, discard, stopMicCapture, stopSystemCapture])
+    // 훅이 라우트 무관 세션으로 옮겨지므로(B), 다른 라우트(대시보드 등)에서 2번째 클라
+    // 레이스로 navigate가 발화하면 사용자를 엉뚱하게 끌어간다. 이 회의의 live 라우트일 때만 이동.
+    if (location.pathname === `/meetings/${meetingId}/live`) {
+      navigate(`/meetings/${meetingId}/viewer`, { replace: true })
+    }
+  }, [recordingDenied, isRecording, meetingId, navigate, location.pathname, discard, stopMicCapture, stopSystemCapture])
 
   const handleStart = async () => {
     // 이전 세션 오디오 업로드 완료 대기 (중단→재시작 싱크 보장)
@@ -316,21 +323,25 @@ export function useLiveRecording(
     }
     setActiveSttMode(resolved)
 
-    try {
-      if (meetingApiStatus === 'completed') {
-        await reopenMeeting(meetingId)
-      }
-      if (meetingApiStatus !== 'recording') {
-        await startMeeting(meetingId)
-      }
-    } catch {
-      // 이미 recording 상태인 경우 무시
-    }
     // 재개 시 최신 오디오 길이 + 시퀀스 번호를 서버에서 가져옴.
     // 로컬 모드(auto-offline)는 서버 미도달이 정상 상태 — 실패 시 0부터 시작해
     // 녹음은 계속돼야 한다. 서버 모드에선 실패가 곧 진행 불가이므로 그대로 throw.
+    // 이 fetch는 start/reopen 분기보다 먼저 와야 한다 — 갓 마운트된 세션은
+    // meetingApiStatus state 가 아직 null(getMeeting 미해결)이라, stale closure 로
+    // 분기하면 종료된(completed) 회의를 startMeeting(422)으로 잘못 보내 녹음이
+    // 종료 상태 회의에 묶인다(조용한 데이터 손실). 갓 가져온 상태로 분기한다.
     const latest =
       resolved === 'local' ? await getMeeting(meetingId).catch(() => null) : await getMeeting(meetingId)
+
+    try {
+      if (latest?.status === 'completed') {
+        await reopenMeeting(meetingId)
+      } else if (latest?.status !== 'recording') {
+        await startMeeting(meetingId)
+      }
+    } catch {
+      // 이미 recording 등 — 무시
+    }
     const offsetMs = Math.max(latest?.audio_duration_ms ?? 0, latest?.last_transcript_end_ms ?? 0)
     const seqNum = latest?.last_sequence_number ?? 0
     setAudioDurationMs(offsetMs)
@@ -638,12 +649,11 @@ export function useLiveRecording(
     currentUserId,
     showResetConfirm,
     setShowResetConfirm,
-    showLeaveBlock,
-    setShowLeaveBlock,
     handleStart,
     handlePause,
     handleResume,
     handleStop,
+    performStop,
     handleManualSummary,
     canManualSummary: isActive && !isPaused && finalsCount > 0 && !isSummarizing,
     showStopConfirm,
@@ -652,7 +662,6 @@ export function useLiveRecording(
     cancelStop,
     handleResetClick,
     handleResetConfirm,
-    handleNavigateBack,
   } as const
 }
 

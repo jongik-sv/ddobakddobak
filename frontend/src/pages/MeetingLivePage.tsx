@@ -5,19 +5,22 @@ import { Switch } from '../components/ui/Switch'
 import { useUiStore } from '../stores/uiStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMemoEditor } from '../hooks/useMemoEditor'
-import { useStatusMessage } from '../hooks/useStatusMessage'
-import { useLiveRecording } from '../hooks/useLiveRecording'
+import { useToastStore } from '../stores/toastStore'
+import { useRecordingStore } from '../stores/recordingStore'
 import { useLiveTermCorrections } from '../hooks/useLiveTermCorrections'
 import { useLiveBookmark } from '../hooks/useLiveBookmark'
 import { useLiveMobileTabs } from '../hooks/useLiveMobileTabs'
+import { useNavigationGuards } from '../hooks/useNavigationGuards'
 import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SummaryOptionsControl } from '../components/meeting/SummaryOptionsControl'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
-import { updateMeeting, triggerRealtimeSummary, updateNotes } from '../api/meetings'
-import type { Participant, UpdateMeetingParams } from '../api/meetings'
+import { getMeeting, updateMeeting, triggerRealtimeSummary, updateNotes, getParticipants, resetMeetingContent, getTranscripts, getSummary } from '../api/meetings'
+import type { Meeting, Participant, UpdateMeetingParams } from '../api/meetings'
+import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 import { useTranscriptStore } from '../stores/transcriptStore'
+import { useSharingStore } from '../stores/sharingStore'
 import { IS_TAURI, IS_MOBILE, SUMMARY_INTERVAL_OPTIONS, getMode } from '../config'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
 import { ShareButton } from '../components/meeting/ShareButton'
@@ -42,8 +45,7 @@ import { DesktopRecordControls } from '../components/meeting/DesktopRecordContro
 import { MeetingPathBreadcrumb } from '../components/meeting/MeetingPathBreadcrumb'
 import { LiveStatusBar } from '../components/meeting/LiveStatusBar'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
-import { StopMeetingDialog } from '../components/meeting/StopMeetingDialog'
-import { Dialog } from '../components/ui/Dialog'
+import { planLiveBaselineLoad } from './meetingLiveBaseline'
 
 export default function MeetingLivePage() {
   const { id } = useParams<{ id: string }>()
@@ -51,38 +53,152 @@ export default function MeetingLivePage() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  // 상태 메시지 (하단 상태바)
-  const { statusMessage, showStatus } = useStatusMessage()
+  // 녹음 세션 스토어 — 페이지는 읽기 + 인텐트 전송만(녹음 본체는 앱-레벨 헤드리스 세션 소유).
+  const rec = useRecordingStore()
+  const isThisSession = rec.activeMeetingId === meetingId
+  const isActive = rec.status === 'recording' && isThisSession
 
-  // 오타 수정 (state + 핸들러) — useLiveRecording 이전에 호출(isApplyingCorrections 주입)
+  // 상태 메시지 (하단 상태바) — 전역 토스트 스토어 경유
+  const statusMessage = useToastStore((s) => s.message)
+  const showStatus = useToastStore((s) => s.showStatus)
+
+  // 표시 데이터(제목/메모 등)는 페이지가 자체 로드 — 세션 상태와 분리.
+  const [meeting, setMeeting] = useState<Meeting | null>(null)
+  const [meetingMemo, setMeetingMemo] = useState<string | null>(null)
+  useEffect(() => {
+    getMeeting(meetingId)
+      .then((m) => {
+        setMeeting(m)
+        if (m.memo) setMeetingMemo(m.memo)
+        // 공유 상태 로드(세션 미마운트 idle 페이지도 ShareButton/ParticipantList/isHost 동작).
+        if (m.share_code) {
+          getParticipants(meetingId)
+            .then((ps) => useSharingStore.getState().startSharing(m.share_code!, ps))
+            .catch(() => {})
+        } else {
+          useSharingStore.getState().reset()
+        }
+      })
+      .catch(() => {})
+  }, [meetingId])
+
+  // 이 회의의 베이스라인(전사+요약)을 DB에서 로드/복원.
+  // idle이면 reset 후 로드. 녹음 중 이 회의로 복귀하면(중간 경로 reset으로 store가 비거나
+  // 라이브 신규 발화만 남은 경우) 히스토리를 복원한다 — 판정은 planLiveBaselineLoad.
+  // finals는 라이브 신규를 보존하려 DB와 union(클로버 방지), 요약은 라이브 실시간 요약을 덮지 않게 비었을 때만.
+  useEffect(() => {
+    const store = useTranscriptStore.getState()
+    const plan = planLiveBaselineLoad({
+      activeMeetingId: rec.activeMeetingId,
+      meetingId,
+      notesEmpty: store.meetingNotes === null,
+    })
+    if (!plan.loadFinals && !plan.loadSummary) return
+    let cancelled = false
+    if (plan.reset) store.reset()
+    if (plan.loadFinals) {
+      getTranscripts(meetingId)
+        .then((t) => {
+          if (cancelled) return
+          const dbFinals = mapTranscriptsToFinals(t)
+          if (plan.reset) {
+            useTranscriptStore.getState().loadFinals(dbFinals)
+          } else {
+            // DB 히스토리 + 현재(라이브 신규) finals를 id로 union — 라이브가 더 최신이라 우선.
+            const byId = new Map(dbFinals.map((f) => [f.id, f] as const))
+            for (const f of useTranscriptStore.getState().finals) byId.set(f.id, f)
+            useTranscriptStore.getState().loadFinals([...byId.values()])
+          }
+        })
+        .catch(() => {})
+    }
+    if (plan.loadSummary) {
+      getSummary(meetingId)
+        .then((s) => { if (!cancelled && s?.notes_markdown) useTranscriptStore.getState().setMeetingNotes(s.notes_markdown) })
+        .catch(() => {})
+    }
+    return () => { cancelled = true }
+  }, [meetingId, rec.activeMeetingId])
+
+  // 라이브 상태(이 세션이 활성일 때만 store 값, 아니면 뷰 기본값)
+  const isPaused = isThisSession ? rec.isPaused : false
+  const elapsedSeconds = isThisSession ? rec.elapsedSeconds : 0
+  const summaryCountdown = isThisSession ? rec.summaryCountdown : 0
+  const summaryIntervalSec = rec.summaryIntervalSec
+  const canManualSummary = isThisSession ? rec.canManualSummary : false
+  const systemAudioEnabled = isThisSession ? rec.systemAudioEnabled : false
+  const isResetting = isThisSession ? rec.isResetting : false
+  const isStopping = isThisSession ? rec.isStopping : false
+  const error = isThisSession ? rec.error : null
+  const sttEngine = rec.sttEngine
+  const activeSttMode = rec.activeSttMode
+  // meetingApiStatus: 세션 활성 시 store, 아니면 fetch한 회의 상태.
+  // LiveStatusBar는 'transcribing'을 받지 않으므로 'completed'로 좁힘.
+  const meetingApiStatus: 'pending' | 'recording' | 'completed' | null = isThisSession
+    ? rec.meetingApiStatus
+    : meeting
+      ? (meeting.status === 'transcribing' ? 'completed' : meeting.status)
+      : null
+
+  // 라이브 인텐트(store로 전달 — 핸들러는 헤드리스 세션이 registerHandlers로 등록)
+  const handleStart = useCallback(() => rec.start(meetingId), [rec, meetingId])
+  const handlePause = rec.pause
+  const handleResume = rec.resume
+  const handleStop = rec.requestStop
+  const handleManualSummary = rec.manualSummary
+  const handleToggleSystemAudio = rec.toggleSystemAudio
+  const setSummaryIntervalSec = rec.setSummaryInterval
+
+  // 초기화: 다이얼로그 가시성은 페이지-로컬, 실제 초기화는 store 인텐트(+ 메모 에디터 clear는 페이지-로컬).
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const handleResetClick = useCallback(() => setShowResetConfirm(true), [])
+  const handleResetConfirm = useCallback(async () => {
+    // 페이지가 직접 초기화 — reset은 보통 세션 미마운트 상태에서만 도달 가능(activeMeetingId=null),
+    // 세션 핸들러(_handlers)가 null이라 store 인텐트 위임은 무음 실패한다.
+    await resetMeetingContent(meetingId)
+    useTranscriptStore.getState().markReset()
+    useTranscriptStore.getState().reset()
+    useTranscriptStore.getState().setMeetingNotes(null)
+    clearMemoEditorRef.current()
+    const m = await getMeeting(meetingId).catch(() => null)
+    if (m) setMeeting(m)
+    setShowResetConfirm(false)
+  }, [meetingId])
+
+  // 네비게이션 정책(이탈 차단 제거 — B 백그라운드 녹음). 웹 한정 beforeunload 경고만 유지.
+  const { handleNavigateBack } = useNavigationGuards(meetingId, isActive)
+
+  // 메모 에디터 초기화 (useMemoEditor 이후 ref로 주입 — 순환 의존 회피)
+  const clearMemoEditorRef = useRef<() => void>(() => {})
+
+  // 오타 수정 (state + 핸들러)
   const {
     corrections, isApplyingCorrections, handleApplyCorrections,
     updateCorrection, addCorrectionRow, removeCorrectionRow,
   } = useLiveTermCorrections(meetingId, showStatus)
 
-  // 메모 에디터 초기화 (useMemoEditor 이후 ref로 주입 — 순환 의존 회피)
-  const clearMemoEditorRef = useRef<() => void>(() => {})
+  // isApplyingCorrections를 store에 흘림(요약 게이팅 등 세션이 참조)
+  useEffect(() => {
+    useRecordingStore.getState().setApplyingCorrections(isApplyingCorrections)
+  }, [isApplyingCorrections])
 
-  // 라이브 세션(녹음/캡처/요약/세션상태) 컨트롤러
-  const live = useLiveRecording(meetingId, {
-    showStatus,
-    isApplyingCorrections,
-    clearMemoEditor: () => clearMemoEditorRef.current(),
-  })
-  const {
-    meeting, setMeeting, meetingMemo, meetingApiStatus, sttEngine, activeSttMode,
-    isPaused, error, systemAudioError, isSystemCapturing,
-    elapsedSeconds, summaryCountdown, summaryIntervalSec, setSummaryIntervalSec,
-    systemAudioEnabled, handleToggleSystemAudio, isResetting, isStopping,
-    isActive, isSharing, isHost, currentUserId,
-    showResetConfirm, setShowResetConfirm, showLeaveBlock, setShowLeaveBlock,
-    handleStart, handlePause, handleResume, handleStop,
-    handleManualSummary, canManualSummary,
-    showStopConfirm, confirmStopSummarize, confirmStopSkip, cancelStop,
-    handleResetClick, handleResetConfirm, handleNavigateBack,
-  } = live
+  // 다른 세션이 이미 녹음 중 → 읽기전용 뷰어로 라우팅 (단일 녹음 세션 보장).
+  // 헤드리스 세션은 idle 상태에서 신뢰성 있게 처리 못 하므로 페이지-레벨에서 처리.
+  const recordingDenied = useSharingStore((s) => s.recordingDenied)
+  useEffect(() => {
+    if (recordingDenied) navigate(`/meetings/${meetingId}/viewer`, { replace: true })
+  }, [recordingDenied, meetingId, navigate])
 
-  // 예약 회의 자동시작: 스케줄러가 state.autoStart=true로 네비게이트 → 마운트 후 1회 handleStart().
+  // 공유/호스트 정보 — sharingStore + 인증 사용자에서 직접 계산.
+  const sharingParticipants = useSharingStore((s) => s.participants)
+  const isSharing = useSharingStore((s) => s.shareCode !== null)
+  const currentUserId = useAuthStore.getState().user?.id ?? meeting?.created_by.id ?? 0
+  const isHost = useMemo(() => {
+    const host = sharingParticipants.find((p) => p.role === 'host')
+    return host?.user_id === currentUserId && currentUserId !== 0
+  }, [sharingParticipants, currentUserId])
+
+  // 예약 회의 자동시작: 스케줄러가 state.autoStart=true로 네비게이트 → 마운트 후 1회 rec.start().
   // ref 가드로 리렌더 간 중복 호출 방지 + nav state 소비(뒤로/새로고침 재트리거 차단).
   const autoStartFiredRef = useRef(false)
   useEffect(() => {
@@ -90,11 +206,11 @@ export default function MeetingLivePage() {
     if (!autoStart || autoStartFiredRef.current) return
     if (meetingApiStatus === 'recording' || isActive) return
     autoStartFiredRef.current = true
-    handleStart()
+    rec.start(meetingId)
     showStatus('회의를 시작합니다', 4000)
     // nav state 소비: 같은 경로로 replace 해 history 항목에서 autoStart 제거.
     navigate(location.pathname, { replace: true, state: {} })
-  }, [location.state, location.pathname, meetingApiStatus, isActive, handleStart, showStatus, navigate])
+  }, [location.state, location.pathname, meetingApiStatus, isActive, rec, meetingId, showStatus, navigate])
 
   // 메모 에디터
   const memoCallbacks = useMemo(() => ({
@@ -196,7 +312,7 @@ export default function MeetingLivePage() {
         summaryCountdown={summaryCountdown}
         summaryIntervalSec={summaryIntervalSec}
         onSummaryIntervalChange={setSummaryIntervalSec}
-        error={error || systemAudioError}
+        error={error}
         attachmentsVisible={attachmentsVisible}
         onToggleAttachments={toggleAttachments}
         memoVisible={memoVisible}
@@ -406,7 +522,7 @@ export default function MeetingLivePage() {
 
       {/* 하단 상태바 */}
       <LiveStatusBar
-        isSystemCapturing={isSystemCapturing}
+        isSystemCapturing={false}
         isActive={isActive}
         meetingApiStatus={meetingApiStatus}
         statusMessage={statusMessage}
@@ -442,29 +558,6 @@ export default function MeetingLivePage() {
         />
       )}
 
-      {/* 녹음 중 뒤로가기 차단 다이얼로그 */}
-      {showLeaveBlock && (
-        <Dialog
-          onClose={() => setShowLeaveBlock(false)}
-          closeOnBackdrop={false}
-          closeOnEsc={false}
-          className="bg-card rounded-lg shadow-xl p-6 max-w-sm mx-4"
-        >
-          <h3 className="text-lg font-semibold text-foreground mb-2">녹음 진행 중</h3>
-          <p className="text-sm text-muted-foreground mb-5">
-            녹음 중에는 페이지를 떠날 수 없습니다. 먼저 회의를 종료해주세요.
-          </p>
-          <div className="flex justify-end">
-            <button
-              onClick={() => setShowLeaveBlock(false)}
-              className="px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-            >
-              확인
-            </button>
-          </div>
-        </Dialog>
-      )}
-
       {/* 초기화 확인 다이얼로그 */}
       {showResetConfirm && (
         <ConfirmDialog
@@ -474,14 +567,6 @@ export default function MeetingLivePage() {
           confirmClassName="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors"
           onConfirm={handleResetConfirm}
           onCancel={() => setShowResetConfirm(false)}
-        />
-      )}
-
-      {showStopConfirm && (
-        <StopMeetingDialog
-          onSummarize={confirmStopSummarize}
-          onSkip={confirmStopSkip}
-          onCancel={cancelStop}
         />
       )}
 

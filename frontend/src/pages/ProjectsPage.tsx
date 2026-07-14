@@ -4,6 +4,7 @@ import { HTTPError } from 'ky'
 import { Plus, MoreVertical, Pencil, Users, Trash2, Download } from 'lucide-react'
 import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
+import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
 import { useFolderStore } from '../stores/folderStore'
 import { useMeetingStore } from '../stores/meetingStore'
 import type { Project } from '../api/projects'
@@ -37,6 +38,9 @@ export default function ProjectsPage() {
   const [exportTarget, setExportTarget] = useState<Project | null>(null)
   const [menuId, setMenuId] = useState<number | null>(null)
   const [error, setError] = useState('')
+  // 아이콘을 카드 높이의 약 1/2로(카드 md:250px → 120, 모바일 160px → 80). 좌측 큰 아이콘.
+  const isMd = useMediaQuery(BREAKPOINTS.md)
+  const iconSize = isMd ? 120 : 80
 
   useEffect(() => {
     fetchProjects()
@@ -164,6 +168,13 @@ export default function ProjectsPage() {
                     )}
                   </div>
                 )}
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <ProjectIcon project={p} size={iconSize} />
+              <div className="min-w-0">
+                <p className="text-xs text-zinc-500">멤버 {p.member_count}</p>
+                <p className="text-xs text-zinc-500">회의 {p.meeting_count}</p>
               </div>
             </div>
             {p.description && (
