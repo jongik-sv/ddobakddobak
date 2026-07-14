@@ -2,7 +2,8 @@
 // Input: PCM s16le 16kHz mono (positional). Output stdout JSON:
 //   {"speakers":["화자 1",...],"turns":[{"start_ms":int,"end_ms":int,"speaker":"화자 N"}]}
 // Option: --ahc-threshold <f32> (default 0.4). Lower = split speakers more (distance cutoff).
-// ExecutionMode fixed to CoreMl (FP32 ~1s step). stderr carries [speakrs-cli] timing logs.
+// ExecutionMode: macOS=CoreMl(FP32 ~1s step), 그 외=Cpu. SPEAKRS_MODE(cpu|cuda|coreml)로 오버라이드.
+// stderr carries [speakrs-cli] timing logs.
 
 use speakrs::{ExecutionMode, OwnedDiarizationPipeline, PipelineConfig};
 use std::collections::HashMap;
@@ -45,11 +46,13 @@ fn main() {
         audio.len() as f32 / 16000.0
     );
 
-    // --- diarize (CoreMl FP32 ~1s step). Prefer SPEAKRS_MODELS_DIR if set, else HF cache. ---
+    // --- diarize. Prefer SPEAKRS_MODELS_DIR if set, else HF cache. ---
+    let mode = exec_mode();
+    eprintln!("[speakrs-cli] execution mode: {mode:?}");
     let t0 = Instant::now();
     let mut pipeline = match std::env::var("SPEAKRS_MODELS_DIR") {
-        Ok(dir) => OwnedDiarizationPipeline::from_dir(dir, ExecutionMode::CoreMl),
-        Err(_) => OwnedDiarizationPipeline::from_pretrained(ExecutionMode::CoreMl),
+        Ok(dir) => OwnedDiarizationPipeline::from_dir(dir, mode),
+        Err(_) => OwnedDiarizationPipeline::from_pretrained(mode),
     }
     .unwrap_or_else(|e| die(&format!("build pipeline: {e:?}")));
     let mut cfg = PipelineConfig::default(); // == for_mode(CoreMl): 20 VBx iters
@@ -95,6 +98,27 @@ fn main() {
         .collect::<Vec<_>>()
         .join(",");
     println!("{{\"speakers\":[{speakers}],\"turns\":[{turns}]}}");
+}
+
+// SPEAKRS_MODE 환경변수(cpu|cuda|coreml) 우선, 없으면 플랫폼 기본값.
+fn exec_mode() -> ExecutionMode {
+    match std::env::var("SPEAKRS_MODE").ok().as_deref() {
+        Some("cpu") => ExecutionMode::Cpu,
+        Some("cuda") => ExecutionMode::Cuda,
+        Some("coreml") => ExecutionMode::CoreMl,
+        Some(other) => die(&format!("unknown SPEAKRS_MODE: {other} (cpu|cuda|coreml)")),
+        None => default_mode(),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn default_mode() -> ExecutionMode {
+    ExecutionMode::CoreMl
+}
+
+#[cfg(not(target_os = "macos"))]
+fn default_mode() -> ExecutionMode {
+    ExecutionMode::Cpu
 }
 
 fn die(msg: &str) -> ! {
