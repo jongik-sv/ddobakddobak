@@ -37,6 +37,11 @@ cuda = [
     # 실행 시 LD_LIBRARY_PATH에 .venv/.../nvidia/{cublas,cudnn}/lib 추가 필요 (systemd 유닛 참고)
     "nvidia-cublas-cu12; sys_platform == 'linux'",
     "nvidia-cudnn-cu12>=8.9,<9; sys_platform == 'linux'",
+    # speakrs-cli CUDA 모드(ort CUDA EP)가 요구하는 CUDA 12 런타임 — cudart·cufft·curand.
+    # 파이썬 의존은 아니지만 venv nvidia/ 폴더를 LD_LIBRARY_PATH 공급원으로 재사용 (uv sync 재현성)
+    "nvidia-cuda-runtime-cu12; sys_platform == 'linux'",
+    "nvidia-cufft-cu12; sys_platform == 'linux'",
+    "nvidia-curand-cu12; sys_platform == 'linux'",
 ]
 # Windows/Linux CPU 전용: whisper.cpp만 (화자 분리 비활성화)
 cpu = [
