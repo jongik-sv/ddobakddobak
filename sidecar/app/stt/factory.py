@@ -74,14 +74,26 @@ def _is_mlx_engine(engine: str) -> bool:
     )
 
 
+def _cuda_available() -> bool:
+    """NVIDIA CUDA GPU 사용 가능 여부 (torch 미설치 환경은 False)."""
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
+
+
 def available_file_engines() -> list[str]:
     """배치(파일 재전사) STT 셀렉터에 노출할 엔진 목록(플랫폼별).
 
     - Apple Silicon → whisper_cpp(기본·안정) + mlx_whisper_turbo_beam_8bit(고속)
+    - NVIDIA CUDA  → whisper_cpp + qwen3_asr_transformers(GPU, CJK 정확) + faster_whisper(GPU)
     - 그 외        → whisper_cpp (MLX는 Apple 전용이므로 노출하지 않음)
     """
     if _is_apple_silicon():
         return ["whisper_cpp", "mlx_whisper_turbo_beam_8bit"]
+    if _cuda_available():
+        return ["whisper_cpp", "qwen3_asr_transformers", "faster_whisper"]
     return ["whisper_cpp"]
 
 
