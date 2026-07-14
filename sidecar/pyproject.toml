@@ -33,6 +33,10 @@ cuda = [
     "faster-whisper>=1.1.0",
     "transformers>=4.51",
     "qwen-asr>=0.0.6",
+    # ctranslate2(faster-whisper) 4.4는 cuDNN 8 + cuBLAS 12 사용 — torch cu13 스택(cuDNN 9)과 소네임이 달라 별도 필요.
+    # 실행 시 LD_LIBRARY_PATH에 .venv/.../nvidia/{cublas,cudnn}/lib 추가 필요 (systemd 유닛 참고)
+    "nvidia-cublas-cu12; sys_platform == 'linux'",
+    "nvidia-cudnn-cu12>=8.9,<9; sys_platform == 'linux'",
 ]
 # Windows/Linux CPU 전용: whisper.cpp만 (화자 분리 비활성화)
 cpu = [
