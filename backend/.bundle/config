@@ -1,0 +1,2 @@
+---
+BUNDLE_BUILD__NUMO___NARRAY: "--with-cflags=-std=gnu17 -Wno-incompatible-pointer-types -Wno-implicit-function-declaration"
