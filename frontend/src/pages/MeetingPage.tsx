@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMeetingStore } from '../stores/meetingStore'
+import { useProjectStore } from '../stores/projectStore'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
@@ -40,6 +41,7 @@ import { buildMeetingDetailTabs } from '../components/meeting/meetingDetailTabs'
 import { MeetingSearchBar } from '../components/meeting/MeetingSearchBar'
 import { useMeetingSearch } from '../hooks/useMeetingSearch'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
+import { folderPath } from '../lib/folderNav'
 import { useTermCorrections } from '../hooks/useTermCorrections'
 import { useNotesRegeneration } from '../hooks/useNotesRegeneration'
 import { useBookmarks } from '../hooks/useBookmarks'
@@ -266,6 +268,21 @@ export default function MeetingPage() {
     setSeekMs(ms)
   }
 
+  // 뒤로가기: 원래 폴더 목록으로 복귀. 크로스 프로젝트 진입(딥링크·전역검색)이면
+  // 대상 폴더가 현재 프로젝트 밖이므로, 먼저 프로젝트 컨텍스트를 회의의 프로젝트로
+  // 동기화해야 빈 회의 목록에 떨어지지 않는다.
+  function handleBack() {
+    if (!meeting) {
+      navigate('/meetings')
+      return
+    }
+    const { currentProjectId, setCurrentProject } = useProjectStore.getState()
+    if (meeting.project_id != null && meeting.project_id !== currentProjectId) {
+      setCurrentProject(meeting.project_id)
+    }
+    navigate(folderPath(meeting.folder_id ?? null))
+  }
+
   // 폴더/프로젝트 스코프 챗의 크로스회의 인용 클릭 → 현재 회의면 in-place seek, 아니면 해당 회의로 네비.
   function handleSeekMeeting(mid: number, ms: number) {
     if (mid === meetingId) {
@@ -387,7 +404,7 @@ export default function MeetingPage() {
         searchOpen={search.isOpen}
         canEdit={canEdit}
         locked={locked}
-        onBack={() => navigate('/')}
+        onBack={handleBack}
         onToggleAttachments={toggleAttachments}
         onShowEdit={() => setShowEditDialog(true)}
         onToggleMemo={toggleMemo}

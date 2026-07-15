@@ -231,6 +231,8 @@ vi.mock('react-router-dom', async (importOriginal) => {
 // ──────────────────────────────────────────────
 
 import * as meetingsApi from '../api/meetings'
+import type { Meeting } from '../api/meetings'
+import { useProjectStore } from '../stores/projectStore'
 
 function renderPage(meetingId = '1') {
   return render(
@@ -358,6 +360,68 @@ describe('MeetingPage', () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
+  })
+
+  it('뒤로가기 클릭 시 원래 폴더(folder_id)로 복귀한다', async () => {
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue({ ...mockMeetingBase, folder_id: 5 })
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('테스트 회의')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: '목록으로 돌아가기' }))
+    expect(mockNavigate).toHaveBeenCalledWith('/meetings?folder=5')
+  })
+
+  it('미분류(folder_id null) 회의는 뒤로가기 시 ?folder=none으로 복귀한다', async () => {
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue({ ...mockMeetingBase, folder_id: null })
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('테스트 회의')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: '목록으로 돌아가기' }))
+    expect(mockNavigate).toHaveBeenCalledWith('/meetings?folder=none')
+  })
+
+  it('뒤로가기 시 폴더 컨텍스트를 잃는 홈("/")으로 이동하지 않는다 — 회귀 방지', async () => {
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue({ ...mockMeetingBase, folder_id: 5 })
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('테스트 회의')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: '목록으로 돌아가기' }))
+    expect(mockNavigate).not.toHaveBeenCalledWith('/')
+  })
+
+  // useMeeting/useMeetingAccess의 모듈 캐시가 테스트 간 공유되므로,
+  // 아래 신규 테스트들은 고유 meetingId로 캐시 오염을 피한다.
+  function mockMeetingWithId(id: number, overrides: Partial<Meeting> = {}) {
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue({ ...mockMeetingBase, id, ...overrides })
+  }
+
+  it('크로스 프로젝트 뒤로가기: 회의의 프로젝트로 컨텍스트 동기화 후 폴더로 이동한다', async () => {
+    // 전역검색·딥링크로 다른 프로젝트의 회의에 진입한 경우 — 폴더가 현재 프로젝트 밖이면
+    // 프로젝트를 먼저 전환해야 빈 회의 목록에 떨어지지 않는다.
+    useProjectStore.setState({ currentProjectId: 1 })
+    mockMeetingWithId(301, { folder_id: 5, project_id: 2 })
+    renderPage('301')
+    await waitFor(() => {
+      expect(screen.getByText('테스트 회의')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: '목록으로 돌아가기' }))
+    expect(useProjectStore.getState().currentProjectId).toBe(2)
+    expect(mockNavigate).toHaveBeenCalledWith('/meetings?folder=5')
+  })
+
+  it('같은 프로젝트 회의의 뒤로가기는 프로젝트 컨텍스트를 바꾸지 않는다', async () => {
+    useProjectStore.setState({ currentProjectId: 1 })
+    mockMeetingWithId(302, { folder_id: 5, project_id: 1 })
+    renderPage('302')
+    await waitFor(() => {
+      expect(screen.getByText('테스트 회의')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: '목록으로 돌아가기' }))
+    expect(useProjectStore.getState().currentProjectId).toBe(1)
+    expect(mockNavigate).toHaveBeenCalledWith('/meetings?folder=5')
   })
 
   it('getMeeting과 getSummary가 병렬 호출된다', async () => {

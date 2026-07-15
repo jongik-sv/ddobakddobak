@@ -46,6 +46,7 @@ export function MeetingDetailTopBar({
     <div className={`bg-card border-b shrink-0 flex items-center ${isDesktop ? 'px-6 py-4 gap-3' : 'px-3 py-2 gap-2'}`}>
       <Tooltip text="목록으로 돌아가기">
         <button
+          aria-label="목록으로 돌아가기"
           onClick={onBack}
           className="p-1.5 rounded-md hover:bg-accent transition-colors"
         >
