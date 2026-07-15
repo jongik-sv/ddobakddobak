@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { getApiBaseUrl, getMode } from '../config'
 import { apiClient, getAuthHeaders } from '../api/client'
+import { filenameFromDisposition } from '../api/projectTransfers'
 import { downloadBlob } from '../lib/download'
 
 export interface AudioPlayerResult {
@@ -158,9 +159,8 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
 
   const download = useCallback(async (filename?: string) => {
     const response = await apiClient.get(`meetings/${meetingId}/audio`)
-    const disposition = response.headers.get('content-disposition') ?? ''
-    const match = disposition.match(/filename="?(.+?)"?$/)
-    const serverFilename = match?.[1] ?? `meeting-${meetingId}.webm`
+    const disposition = response.headers.get('content-disposition')
+    const serverFilename = filenameFromDisposition(disposition) ?? `meeting-${meetingId}.webm`
     const blob = await response.blob()
     await downloadBlob(blob, filename ?? serverFilename)
   }, [meetingId])
