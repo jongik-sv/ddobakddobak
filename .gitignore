@@ -85,8 +85,9 @@ frontend/src-tauri/**/cohere-onnx/
 # 멀티에이전트 starter 설명서 (로컬 보관용)
 MULTIAGENT.md
 
-# _ 로 시작하는 폴더 전부 (멀티에이전트 _shared/_templates/_local 등)
-_*/
+# 루트의 _ 시작 폴더 (멀티에이전트 _shared/_templates/_local 등)
+# 루트 한정(/) — 전역 _*/ 이면 frontend의 __tests__/ 신규 파일까지 숨겨진다
+/_*/
 
 # superpowers brainstorm visual companion
 .superpowers/
