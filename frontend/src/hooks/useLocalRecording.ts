@@ -17,6 +17,7 @@ import { invoke } from '@tauri-apps/api/core'
 
 import { useMicCapture } from './useMicCapture'
 import { useLocalStt } from './useLocalStt'
+import { useScreenWakeLock } from './useScreenWakeLock'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useAppSettingsStore } from '../stores/appSettingsStore'
 import * as localStore from '../stt/localStore'
@@ -87,6 +88,10 @@ export function useLocalRecording(
     modelDir,
     uploadEnabled: localUploadEnabled,
   })
+
+  // 웹 브라우저 전용: 녹음 중 화면 자동 꺼짐 방지 (일시정지 포함 — 세션 생존 유지).
+  // Tauri WebView는 미지원이라 no-op (macOS는 caffeinate, Android는 FGS가 담당).
+  useScreenWakeLock(status === 'recording' || status === 'paused')
 
   // 연속 녹음 버퍼(이 세션분 raw-pcm Int16). 무음 포함 끊김 없는 재생/재전사 원본.
   // 종료 시 1벌로 concat → localStore.appendRecording(append-only). 세션 중 메모리 누적이라

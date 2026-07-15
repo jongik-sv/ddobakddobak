@@ -38,6 +38,7 @@ import { useAuthStore } from '../stores/authStore'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 import { useRecordingSummaryTimer } from './useRecordingSummaryTimer'
 import { useRecorderHeartbeat } from './useRecorderHeartbeat'
+import { useScreenWakeLock } from './useScreenWakeLock'
 import { newSilenceState, tickSilence } from '../lib/silenceAutoComplete'
 
 type MeetingStatus = 'idle' | 'recording' | 'stopped'
@@ -527,6 +528,11 @@ export function useLiveRecording(
         .catch(() => {})
     }
   }, [isActive])
+
+  // 웹 브라우저 전용: 녹음 중 화면 자동 꺼짐 방지 (Screen Wake Lock).
+  // 일시정지 중에도 status는 'recording'이라 유지 — 하트비트와 동일 의미론(클라 생존).
+  // 게이트(isActive && !recordingDenied)도 하트비트와 동일 — 녹음 거부된 클라가 lock을 계속 쥐지 않게.
+  useScreenWakeLock(isActive && !recordingDenied)
 
   // 녹음 클라 생존 하트비트: "이 클라가 활성 녹음 중"일 때만 ~15초마다 전송.
   // 게이트(isActive && !recordingDenied)로 시청자·idle·녹음거부 컨텍스트에서는 0회.
