@@ -22,7 +22,7 @@ default: &default
     # ⚠️ queue_as로 새 큐를 만들면 반드시 여기 워커에도 등록할 것 —
     #    빠지면 production(solid_queue)에서 잡이 영원히 ready로 방치된다
     #    (development는 async 어댑터라 큐 이름을 무시해 안 드러남)
-    - queues: [default, card_extraction]
+    - queues: [default, card_extraction, solid_queue_recurring]
       threads: 3
       processes: <%= ENV.fetch("JOB_CONCURRENCY", 1) %>
       polling_interval: 0.5
