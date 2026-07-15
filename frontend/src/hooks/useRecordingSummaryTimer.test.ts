@@ -133,4 +133,25 @@ describe('useRecordingSummaryTimer — 자동 타이머(가짜 타이머)', () =
     act(() => result.current.resetSummaryTimer())
     expect(result.current.summaryCountdown).toBe(0)
   })
+
+  it('자동 요약 트리거 시 허위 "회의록 적용 완료" 대신 요청 접수 문구를 보여준다', async () => {
+    // 실제 성패는 summarization_finished 브로드캐스트가 알림 — HTTP 수락은 "요청 접수"만 의미.
+    vi.mocked(useTranscriptStore.getState).mockReturnValue({ finals: [{ id: 1 }] } as never)
+    const showStatus = vi.fn()
+    const { rerender } = renderHook(
+      (props: Parameters<typeof useRecordingSummaryTimer>[0]) => useRecordingSummaryTimer(props),
+      { initialProps: makeOptions({ isActive: false, showStatus }) },
+    )
+    act(() => rerender(makeOptions({ isActive: true, showStatus })))
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync((DEFAULT_SUMMARY_INTERVAL_SEC + 1) * 1000)
+    })
+
+    expect(trigger).toHaveBeenCalledWith(42)
+    expect(showStatus).toHaveBeenCalledWith('요약 생성 요청 중...', 10000)
+    expect(showStatus).toHaveBeenCalledWith('요약 생성을 요청했습니다')
+    const messages = showStatus.mock.calls.map((c) => c[0])
+    expect(messages).not.toContain('회의록 적용 완료')
+  })
 })

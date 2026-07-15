@@ -104,6 +104,30 @@ describe('transcriptStore', () => {
   })
 })
 
+describe('summaryError 상태', () => {
+  beforeEach(() => {
+    useTranscriptStore.getState().reset()
+  })
+
+  it('초기값은 null', () => {
+    expect(useTranscriptStore.getState().summaryError).toBeNull()
+  })
+
+  it('setSummaryError: 실패 상태 세팅과 해제', () => {
+    useTranscriptStore.getState().setSummaryError({ kind: 'realtime', message: 'LLM 오류' })
+    expect(useTranscriptStore.getState().summaryError).toEqual({ kind: 'realtime', message: 'LLM 오류' })
+
+    useTranscriptStore.getState().setSummaryError(null)
+    expect(useTranscriptStore.getState().summaryError).toBeNull()
+  })
+
+  it('reset: summaryError 클리어', () => {
+    useTranscriptStore.getState().setSummaryError({ kind: 'final', message: '실패' })
+    useTranscriptStore.getState().reset()
+    expect(useTranscriptStore.getState().summaryError).toBeNull()
+  })
+})
+
 describe('updateFinal', () => {
   beforeEach(() => {
     useTranscriptStore.setState({

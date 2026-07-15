@@ -342,6 +342,29 @@ class Meeting < ApplicationRecord
     decisions.destroy_all
     blocks.destroy_all
     meeting_attachments.destroy_all if include_attachments
+    # 콘텐츠 초기화(reset_content·재전사) 시 이전 요약 실패 기록도 함께 클리어 —
+    # 잔존하면 초기화된 회의에 오탐 실패 배지가 영구 노출된다.
+    clear_summary_error!
+  end
+
+  # ── 요약 실패 레포트 (summary_error) ──
+  # 영속 기록의 메시지 상한 — broadcast·meeting_json 노출 공통(과대 메시지 방어).
+  SUMMARY_ERROR_MESSAGE_MAX = 500
+
+  # 요약(LLM) final 실패 영속 기록 — meeting_json 으로 노출돼 새로고침 후에도 사용자가
+  # 실패를 알 수 있다. MeetingSummarizationJob 과 FileTranscriptionJob(파일 전사 경유
+  # final)이 공유하는 단일 진입점. update_columns: 콜백·updated_at 오염 방지.
+  def record_summary_error!(message)
+    update_columns(
+      summary_error_message: message.to_s.truncate(SUMMARY_ERROR_MESSAGE_MAX),
+      summary_error_at: Time.current
+    )
+  end
+
+  # 성공 저장 시 이전 실패 기록 클리어 — 기록이 없으면 쓰기 생략(매 틱 불필요한 UPDATE 방지).
+  def clear_summary_error!
+    return if summary_error_message.nil? && summary_error_at.nil?
+    update_columns(summary_error_message: nil, summary_error_at: nil)
   end
 
   # notes_markdown에서 의미 있는 요약 텍스트를 추출하여 brief_summary 컬럼에 저장

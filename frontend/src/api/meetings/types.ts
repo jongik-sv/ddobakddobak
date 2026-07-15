@@ -69,6 +69,10 @@ export interface Meeting {
   summary_verbosity?: SummaryVerbosity
   /** true=지속 재구조화(매 틱 전체 재정리), false=증분(앞 내용 불변, 시간대별 추가) */
   summary_restructure?: boolean
+  /** 최근 최종(final) 요약 실패 사유. 성공 저장 시 서버가 null로 클리어. */
+  summary_error_message?: string | null
+  /** 최근 최종 요약 실패 시각 (ISO 문자열). */
+  summary_error_at?: string | null
   /** 이전 회의 참고: 이 회의록의 시작점(시드)이 된 회의 id (상세 응답에만 포함) */
   previous_meeting_id?: number | null
   /** 이전 회의 참고 배지 표시용 제목 (상세 응답에만 포함) */

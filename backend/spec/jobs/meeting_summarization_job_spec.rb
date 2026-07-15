@@ -29,6 +29,73 @@ RSpec.describe MeetingSummarizationJob do
 
       expect(meeting.transcripts.where(applied_to_minutes: false).count).to eq(2)
     end
+
+    it "broadcasts summarization_finished with ok:false and the error reason on transient failure" do
+      allow(ActionCable.server).to receive(:broadcast)
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "기존 내용", "ok" => false, "error" => "LLM 폭발" })
+
+      described_class.perform_now(meeting.id, type: "realtime")
+
+      expect(ActionCable.server).to have_received(:broadcast).with(
+        meeting.transcription_stream,
+        hash_including(type: "summarization_finished", summary_type: "realtime",
+                       ok: false, error: a_string_including("LLM 폭발"))
+      )
+    end
+
+    it "does NOT persist summary_error on realtime transient failure (매분 재시도라 노이즈 방지)" do
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "기존 내용", "ok" => false, "error" => "LLM 폭발" })
+
+      described_class.perform_now(meeting.id, type: "realtime")
+
+      expect(meeting.reload.summary_error_message).to be_nil
+      expect(meeting.summary_error_at).to be_nil
+    end
+
+    it "broadcasts summarization_finished with ok:true on success (스피너 해제 + 오류 아님)" do
+      allow(ActionCable.server).to receive(:broadcast)
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "## 회의록", "ok" => true })
+
+      described_class.perform_now(meeting.id, type: "realtime")
+
+      expect(ActionCable.server).to have_received(:broadcast).with(
+        meeting.transcription_stream,
+        hash_including(type: "summarization_finished", summary_type: "realtime", ok: true, error: nil)
+      )
+    end
+
+    # 회귀(의도된 스킵): LLM 도중 회의가 종료(completed)되면 실패가 아니다 —
+    # ok:true·error:nil 로 broadcast 하고 이번 결과는 저장·소비하지 않는다.
+    it "broadcasts ok:true and saves nothing when the meeting completes during LLM (의도된 스킵)" do
+      allow(ActionCable.server).to receive(:broadcast)
+      allow_any_instance_of(LlmService).to receive(:refine_notes) do
+        meeting.update_columns(status: "completed")
+        { "notes_markdown" => "## LLM 결과", "ok" => true }
+      end
+
+      described_class.perform_now(meeting.id, type: "realtime")
+
+      expect(ActionCable.server).to have_received(:broadcast).with(
+        meeting.transcription_stream,
+        hash_including(type: "summarization_finished", summary_type: "realtime", ok: true, error: nil)
+      )
+      expect(meeting.summaries.find_by(summary_type: "realtime")).to be_nil
+      expect(meeting.transcripts.where(applied_to_minutes: false).count).to eq(2)
+    end
+
+    it "clears a previous summary_error when a realtime summary is saved" do
+      meeting.update_columns(summary_error_message: "이전 실패", summary_error_at: Time.current)
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "## 회의록", "ok" => true })
+
+      described_class.perform_now(meeting.id, type: "realtime")
+
+      expect(meeting.reload.summary_error_message).to be_nil
+      expect(meeting.summary_error_at).to be_nil
+    end
   end
 
   describe "final path — ok:false 가드" do
@@ -46,6 +113,93 @@ RSpec.describe MeetingSummarizationJob do
 
       expect(meeting.summaries.find_by(summary_type: "final")).to be_nil
       expect(meeting.transcripts.where(applied_to_minutes: false).count).to eq(total_unapplied)
+    end
+
+    it "records summary_error on the meeting and broadcasts ok:false with the reason" do
+      allow(ActionCable.server).to receive(:broadcast)
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "기존 내용", "ok" => false, "error" => "토큰 초과" })
+
+      described_class.perform_now(meeting.id, type: "final")
+
+      expect(meeting.reload.summary_error_message).to include("토큰 초과")
+      expect(meeting.summary_error_at).to be_present
+      expect(ActionCable.server).to have_received(:broadcast).with(
+        meeting.transcription_stream,
+        hash_including(type: "summarization_finished", summary_type: "final",
+                       ok: false, error: a_string_including("토큰 초과"))
+      )
+    end
+
+    it "records a sanitized summary_error when an internal error raises during final (rescue 경로 — 원문 비노출)" do
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_raise(StandardError, 'Connection refused - connect(2) for "10.0.0.5" port 8443')
+
+      described_class.perform_now(meeting.id, type: "final")
+
+      # 내부 호스트:포트는 새지 않고 일반 문구로 치환돼 기록된다
+      expect(meeting.reload.summary_error_message).to eq(LlmService::GENERIC_USER_ERROR)
+      expect(meeting.summary_error_message).not_to include("10.0.0.5")
+      expect(meeting.summary_error_at).to be_present
+    end
+
+    it "passes through our own LlmError message in the rescue path (한국어 안내문 allowlist)" do
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_raise(LlmService::LlmError, "CLI 응답 시간이 초과되었습니다 (600초): claude")
+
+      described_class.perform_now(meeting.id, type: "final")
+
+      expect(meeting.reload.summary_error_message).to include("초과되었습니다")
+      expect(meeting.summary_error_at).to be_present
+    end
+
+    # 회귀(기록 전 재확인): 실패 영속 기록보다 reset 판정을 먼저 수행 — LLM 도중
+    # 초기화된 회의에 실패 배지를 남기지 않고 의도된 스킵(ok:true)으로 마감한다.
+    it "does NOT record summary_error and broadcasts ok:true when the meeting was reset during LLM" do
+      allow(ActionCable.server).to receive(:broadcast)
+      allow_any_instance_of(LlmService).to receive(:refine_notes) do
+        meeting.update_columns(status: "pending", last_reset_at: Time.current)
+        { "notes_markdown" => "기존", "ok" => false, "error" => "LLM 폭발" }
+      end
+
+      described_class.perform_now(meeting.id, type: "final")
+
+      expect(meeting.reload.summary_error_message).to be_nil
+      expect(meeting.summary_error_at).to be_nil
+      expect(ActionCable.server).to have_received(:broadcast).with(
+        meeting.transcription_stream,
+        hash_including(type: "summarization_finished", summary_type: "final", ok: true, error: nil)
+      )
+    end
+
+    # ok:true 인데 notes 가 빈 하드 실패 — final 은 재시도가 없으므로 broadcast 만으로는
+    # 새로고침 시 소실된다. 영속 기록으로 배지 레포트를 보장한다.
+    it "records summary_error when the LLM returns ok:true with blank notes (하드 실패 영속 기록)" do
+      allow(ActionCable.server).to receive(:broadcast)
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "", "ok" => true })
+
+      described_class.perform_now(meeting.id, type: "final")
+
+      expect(meeting.reload.summary_error_message).to include("비어 있습니다")
+      expect(meeting.summary_error_at).to be_present
+      expect(ActionCable.server).to have_received(:broadcast).with(
+        meeting.transcription_stream,
+        hash_including(type: "summarization_finished", summary_type: "final",
+                       ok: false, error: a_string_including("비어 있습니다"))
+      )
+    end
+
+    it "clears a previous summary_error when the final summary is saved" do
+      meeting.update_columns(summary_error_message: "이전 실패", summary_error_at: Time.current)
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "## 정상 회의록", "ok" => true })
+
+      described_class.perform_now(meeting.id, type: "final")
+
+      expect(meeting.reload.summary_error_message).to be_nil
+      expect(meeting.summary_error_at).to be_nil
+      expect(meeting.summaries.find_by(summary_type: "final").notes_markdown).to eq("## 정상 회의록")
     end
   end
 
@@ -234,7 +388,7 @@ RSpec.describe MeetingSummarizationJob do
       expect(existing.reload.notes_markdown).to eq("## 사용자가 직접 쓴 정본")
     end
 
-    # T3: attempt >= CAP + stale + 정본 없음 → 포기(드랍, 재enqueue 안 함)
+    # T3: attempt >= CAP + stale + 정본 없음 → 포기(드랍, 재enqueue 안 함) + 실패 영속 기록
     it "gives up (no re-enqueue) when attempt reaches FINAL_REENQUEUE_CAP" do
       cap = described_class::FINAL_REENQUEUE_CAP
 
@@ -243,6 +397,22 @@ RSpec.describe MeetingSummarizationJob do
       }.not_to have_enqueued_job(described_class)
 
       expect(meeting.summaries.find_by(summary_type: "final")).to be_nil
+      # 포기 = 정본이 영영 안 생김 — 사용자 레포트용으로 영속 기록돼야 한다
+      expect(meeting.reload.summary_error_message).to include("포기")
+      expect(meeting.summary_error_at).to be_present
+    end
+
+    # T3-b 회귀: 포기는 성공처럼 보이면 안 됨 — ok:true 대신 ok:false + 사유로 broadcast
+    it "broadcasts ok:false with the give-up reason when retries are exhausted (성공 위장 금지)" do
+      allow(ActionCable.server).to receive(:broadcast)
+
+      run_final_with_user_edit_during_llm(attempt: described_class::FINAL_REENQUEUE_CAP)
+
+      expect(ActionCable.server).to have_received(:broadcast).with(
+        meeting.transcription_stream,
+        hash_including(type: "summarization_finished", summary_type: "final",
+                       ok: false, error: a_string_including("포기"))
+      )
     end
 
     # T4 회귀: stale 아님 → 정상 저장(재enqueue 없음)

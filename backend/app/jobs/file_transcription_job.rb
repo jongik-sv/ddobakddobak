@@ -213,10 +213,22 @@ class FileTranscriptionJob < ApplicationJob
     )
     notes_markdown = result["notes_markdown"]
 
-    if notes_markdown.present?
+    if result["ok"] && notes_markdown.present?
       summary = meeting.summaries.find_or_initialize_by(summary_type: "final")
       summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
+      # 성공 저장 — 재전사 이전의 실패 기록이 남아 오탐 배지가 되지 않게 클리어
+      # (MeetingSummarizationJob final 과 동일한 summary_error 라이프사이클).
+      meeting.clear_summary_error!
       meeting.transcripts.update_all(applied_to_minutes: true)
+    else
+      # 파일 전사 경유 final 실패도 영속 기록 — meeting_json 배지로 새로고침 후에도 레포트.
+      error = if result["ok"]
+        "요약 결과가 비어 있습니다"
+      else
+        result["error"].presence || "요약 생성에 실패했습니다"
+      end
+      meeting.record_summary_error!(error)
+      Rails.logger.warn "[FileTranscriptionJob] meeting=#{meeting.id} 요약 실패: #{error}"
     end
   end
 

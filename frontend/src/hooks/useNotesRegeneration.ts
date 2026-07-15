@@ -33,6 +33,31 @@ export function useNotesRegeneration(meetingId: number, { pauseAudio, refetch }:
           if (data.type === 'meeting_notes_update') {
             setIsRegeneratingNotes(false)
             setMeetingNotes((data.notes_markdown as string) ?? '')
+            // 재생성 성공 — 이전 실패 배지가 남아 있으면 클리어 (transcription.ts와 동일 규약)
+            if (useTranscriptStore.getState().summaryError) {
+              useTranscriptStore.getState().setSummaryError(null)
+            }
+            refetch()
+          }
+          // final 요약 실패 — meeting_notes_update가 오지 않으므로 여기서 스피너를 풀어야
+          // isRegeneratingNotes가 영구 true로 고착되지 않는다.
+          // 주의: 회의 상세 페이지에는 전역 토스트(LiveStatusBar)도, transcription.ts의
+          // 채널 핸들러도 렌더/구독되지 않으므로 여기서 직접 summaryError를 세팅해
+          // AiSummaryPanel 실패 배지로 사용자에게 레포트한다.
+          if (
+            data.type === 'summarization_finished' &&
+            data.ok === false &&
+            data.summary_type === 'final'
+          ) {
+            setIsRegeneratingNotes(false)
+            useTranscriptStore.getState().setSummaryError({
+              kind: 'final',
+              message:
+                typeof data.error === 'string' && data.error !== ''
+                  ? data.error
+                  : '알 수 없는 오류',
+            })
+            // 서버 정본 동기화 — 영속 실패 필드(summary_error_message) 포함 최신 상태 반영
             refetch()
           }
         },

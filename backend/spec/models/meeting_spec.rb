@@ -199,6 +199,42 @@ RSpec.describe Meeting, type: :model do
     end
   end
 
+  # 요약 실패 레포트(summary_error) 라이프사이클 — 잡(final)들이 공유하는 단일 진입점
+  describe "summary_error 라이프사이클" do
+    let(:meeting) { create(:meeting) }
+
+    describe "#record_summary_error!" do
+      it "메시지와 발생 시각을 기록하고, 과대 메시지는 truncate 한다" do
+        meeting.record_summary_error!("가" * (Meeting::SUMMARY_ERROR_MESSAGE_MAX + 100))
+
+        expect(meeting.reload.summary_error_message.length).to be <= Meeting::SUMMARY_ERROR_MESSAGE_MAX
+        expect(meeting.summary_error_at).to be_present
+      end
+    end
+
+    describe "#clear_summary_error!" do
+      it "두 컬럼을 nil 로 되돌린다" do
+        meeting.update_columns(summary_error_message: "실패", summary_error_at: Time.current)
+
+        meeting.clear_summary_error!
+
+        expect(meeting.reload.summary_error_message).to be_nil
+        expect(meeting.summary_error_at).to be_nil
+      end
+    end
+
+    describe "#purge_transcription_content!" do
+      it "콘텐츠 초기화 시 summary_error 도 함께 클리어한다 (재전사·리셋 후 오탐 배지 방지)" do
+        meeting.update_columns(summary_error_message: "옛 실패", summary_error_at: Time.current)
+
+        meeting.purge_transcription_content!
+
+        expect(meeting.reload.summary_error_message).to be_nil
+        expect(meeting.summary_error_at).to be_nil
+      end
+    end
+  end
+
   describe "#reconcile_embeddings!" do
     include ActiveJob::TestHelper
 

@@ -2,6 +2,7 @@ import type { Consumer, Subscription } from '@rails/actioncable'
 import { uint8ArrayToBase64 } from '../lib/audioUtils'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useSharingStore } from '../stores/sharingStore'
+import { useToastStore } from '../stores/toastStore'
 
 /**
  * TranscriptionChannel - ActionCable 실시간 STT 채널
@@ -53,6 +54,7 @@ type BackendMessage = {
   // summarization progress
   summary_type?: 'realtime' | 'final'
   ok?: boolean
+  error?: string
   // sharing events
   participant_id?: number
   user_id?: number
@@ -123,6 +125,8 @@ export function createTranscriptionChannel(
               break
             }
             store.setMeetingNotes(raw.notes_markdown ?? '')
+            // 회의록이 실제로 갱신됨 = 요약 성공 — 이전 실패 상태 클리어
+            if (store.summaryError) store.setSummaryError(null)
             break
           }
           case 'transcripts_applied':
@@ -152,7 +156,24 @@ export function createTranscriptionChannel(
             store.setSummarizing(raw.summary_type ?? 'realtime')
             break
           case 'summarization_finished':
+            // 성패와 무관하게 스피너는 항상 해제 (실패 시 스피너 고착 방지)
             store.setSummarizing(null)
+            if (raw.ok === false) {
+              // Reset 가드: 리셋 직후 도착한 stale 실패 broadcast가 빈 회의에
+              // 배지·토스트를 띄우지 않도록 무시 (다른 케이스와 동일 패턴)
+              if (Date.now() - store.lastResetAt < 5000) {
+                break
+              }
+              const message = raw.error || '알 수 없는 오류'
+              // 실패 스트릭당 토스트 1회만 — realtime cron이 1분마다 재시도하므로 매번 띄우면 스팸
+              if (store.summaryError === null) {
+                useToastStore.getState().showStatus(`요약 생성 실패: ${message}`, 5000)
+              }
+              store.setSummaryError({ kind: raw.summary_type ?? 'realtime', message })
+            } else if (store.summaryError) {
+              // 성공(ok !== false) — 실패 스트릭 종료, 상태 클리어
+              store.setSummaryError(null)
+            }
             break
           case 'participant_joined':
             useSharingStore.getState().addParticipant({

@@ -99,9 +99,11 @@ export function useRecordingSummaryTimer({
         }
         summarizing = true
         setSummaryCountdown(0)
-        showStatus('기록을 회의록에 적용 중...', 10000)
+        // HTTP 수락은 "요청 접수"일 뿐 요약 성공이 아니다 — 실제 성패 알림은
+        // summarization_finished(transcription.ts) 쪽이 담당한다 (허위 "적용 완료" 방지).
+        showStatus('요약 생성 요청 중...', 10000)
         triggerRealtimeSummary(meetingId)
-          .then(() => showStatus('회의록 적용 완료'))
+          .then(() => showStatus('요약 생성을 요청했습니다'))
           .catch(() => {})
           .finally(() => {
             summarizing = false

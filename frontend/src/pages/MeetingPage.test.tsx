@@ -233,6 +233,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
 import * as meetingsApi from '../api/meetings'
 import type { Meeting } from '../api/meetings'
 import { useProjectStore } from '../stores/projectStore'
+import { useTranscriptStore } from '../stores/transcriptStore'
 
 function renderPage(meetingId = '1') {
   return render(
@@ -422,6 +423,50 @@ describe('MeetingPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '목록으로 돌아가기' }))
     expect(useProjectStore.getState().currentProjectId).toBe(1)
     expect(mockNavigate).toHaveBeenCalledWith('/meetings?folder=5')
+  })
+
+  it('summary_error_message가 없으면 summaryError를 주입하지 않는다', async () => {
+    useTranscriptStore.setState({ summaryError: null })
+    mockMeetingWithId(310)
+    renderPage('310')
+    await waitFor(() => {
+      expect(screen.getByText('테스트 회의')).toBeInTheDocument()
+    })
+    expect(useTranscriptStore.getState().summaryError).toBeNull()
+  })
+
+  it('영속 실패 필드(summary_error_message)가 있으면 로드 시 summaryError 배지 상태를 주입한다', async () => {
+    // 새로고침·정지 후 재진입 시나리오: broadcast는 이미 지나갔고 서버 영속 필드만 남아 있다
+    useTranscriptStore.setState({ summaryError: null })
+    mockMeetingWithId(311, {
+      summary_error_message: '최종 요약 실패 사유',
+      summary_error_at: '2026-03-25T11:00:00Z',
+    })
+    renderPage('311')
+    await waitFor(() => {
+      expect(useTranscriptStore.getState().summaryError).toEqual({
+        kind: 'final',
+        message: '최종 요약 실패 사유',
+      })
+    })
+  })
+
+  it('broadcast로 이미 summaryError가 떠 있으면 영속 필드로 덮어쓰지 않는다', async () => {
+    useTranscriptStore.setState({ summaryError: null })
+    mockMeetingWithId(312, { summary_error_message: '영속 필드 사유' })
+    renderPage('312')
+    // 최초 로드에서 영속 필드가 주입된 뒤,
+    await waitFor(() => {
+      expect(useTranscriptStore.getState().summaryError?.message).toBe('영속 필드 사유')
+    })
+    // 실시간 broadcast가 더 최신 사유를 세팅한 상황을 재현
+    act(() => {
+      useTranscriptStore.setState({ summaryError: { kind: 'final', message: '실시간 broadcast 사유' } })
+    })
+    // 이후 리렌더/refetch로 effect가 재실행돼도 덮어쓰지 않아야 한다
+    await waitFor(() => {
+      expect(useTranscriptStore.getState().summaryError?.message).toBe('실시간 broadcast 사유')
+    })
   })
 
   it('getMeeting과 getSummary가 병렬 호출된다', async () => {

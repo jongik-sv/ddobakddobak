@@ -17,6 +17,17 @@ RSpec.describe LlmService, "ok signalling" do
       result = service.refine_notes("기존 회의록", [{ "speaker" => "A", "text" => "새 내용" }])
       expect(result["ok"]).to be false
       expect(result["notes_markdown"]).to eq("기존 회의록")
+      # 실패 사유는 사용자 노출용 일반 문구로 정규화 — 예외 원문(내부 정보)은 통과 금지
+      expect(result["error"]).to eq(LlmService::GENERIC_USER_ERROR)
+      expect(result["error"]).not_to include("boom")
+    end
+
+    it "passes through our own LlmError message (한국어 안내문 allowlist)" do
+      allow(service).to receive(:call_llm_raw)
+        .and_raise(LlmService::LlmError.new("CLI 실행이 실패했습니다 (코드 1)"))
+      result = service.refine_notes("기존 회의록", [{ "speaker" => "A", "text" => "새 내용" }])
+      expect(result["ok"]).to be false
+      expect(result["error"]).to eq("CLI 실행이 실패했습니다 (코드 1)")
     end
   end
 
@@ -29,6 +40,8 @@ RSpec.describe LlmService, "ok signalling" do
       result = service.refine_notes(current, [{ "speaker" => "A", "text" => "새 내용" }])
       expect(result["ok"]).to be false
       expect(result["notes_markdown"]).to eq(current)
+      # 가드 발동 사유도 error 로 레포트한다
+      expect(result["error"]).to include("대량 유실")
     end
 
     it "does not trigger when current notes are short (below the floor)" do
@@ -162,6 +175,9 @@ RSpec.describe LlmService, "ok signalling" do
       result = service.append_notes("기존", transcripts)
       expect(result["ok"]).to be false
       expect(result["block_markdown"]).to eq("")
+      # 실패 사유는 사용자 노출용 일반 문구로 정규화 — 예외 원문(내부 정보)은 통과 금지
+      expect(result["error"]).to eq(LlmService::GENERIC_USER_ERROR)
+      expect(result["error"]).not_to include("boom")
     end
 
     it "uses the append system prompt with verbosity instruction" do
@@ -240,6 +256,38 @@ RSpec.describe LlmService, "ok signalling" do
       svc.refine_notes("", [{ "speaker" => "화자 1", "text" => "안녕", "started_at_ms" => 0 }], verbosity_context: :realtime)
       expect(captured).to include("⟦t:<ms>/s:<화자>⟧")
       expect(captured).to include("기존 회의록에 이미 있는")
+    end
+  end
+end
+
+# 사용자 노출 오류 메시지 정규화(allowlist): 예외 원문(내부 호스트:포트·경로·CLI stderr)이
+# broadcast·DB·meeting_json 으로 참가자 전원에게 새지 않게 한다.
+RSpec.describe LlmService, "사용자 노출 오류 메시지 정규화" do
+  describe ".user_facing_error_message" do
+    it "LlmError 는 원문을 통과시키되 길이를 truncate 한다" do
+      long = "가" * (LlmService::USER_ERROR_MAX_LENGTH + 100)
+      msg = described_class.user_facing_error_message(LlmService::LlmError.new(long))
+      expect(msg.length).to be <= LlmService::USER_ERROR_MAX_LENGTH
+      expect(msg).to start_with("가")
+    end
+
+    it "그 외 예외는 내부 정보 유출 방지를 위해 일반 문구로 치환한다" do
+      e = StandardError.new('Connection refused - connect(2) for "10.0.0.5" port 8443')
+      msg = described_class.user_facing_error_message(e)
+      expect(msg).to eq(LlmService::GENERIC_USER_ERROR)
+      expect(msg).not_to include("10.0.0.5")
+    end
+  end
+
+  describe "#run_cli 실패 시 stderr 비노출" do
+    it "예외 메시지에 stderr 원문(내부 경로)을 포함하지 않고 종료 코드만 노출한다" do
+      svc = described_class.new(llm_config: { provider: "anthropic", auth_token: "k", model: "m" })
+      expect {
+        svc.send(:run_cli, [ "/bin/sh", "-c", "echo /internal/secret/path >&2; exit 3" ], "")
+      }.to raise_error(LlmService::LlmError) { |e|
+        expect(e.message).not_to include("/internal/secret/path")
+        expect(e.message).to include("코드 3")
+      }
     end
   end
 end

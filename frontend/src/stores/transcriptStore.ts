@@ -13,6 +13,8 @@ interface TranscriptState {
   currentSpeaker: string | null
   isSummarizing: boolean
   summarizationKind: 'realtime' | 'final' | null
+  /** 최근 요약 실패 상태. 성공 신호(finished ok / notes_update) 수신 시 클리어. */
+  summaryError: { kind: string; message: string } | null
   lastUserEditAt: number
   lastResetAt: number
   clientId: string
@@ -28,6 +30,7 @@ interface TranscriptState {
   setSpeakerName: (speakerLabel: string, name: string | null) => void
   clearSpeakerNames: () => void
   setSummarizing: (kind: 'realtime' | 'final' | null) => void
+  setSummaryError: (error: { kind: string; message: string } | null) => void
   markUserEdit: () => void
   markReset: () => void
   reset: () => void
@@ -50,6 +53,7 @@ const initialState = {
   currentSpeaker: null,
   isSummarizing: false,
   summarizationKind: null as 'realtime' | 'final' | null,
+  summaryError: null as { kind: string; message: string } | null,
   lastUserEditAt: 0,
   lastResetAt: 0,
 }
@@ -148,6 +152,8 @@ export const useTranscriptStore = create<TranscriptState>()((set) => ({
 
   setSummarizing: (kind) =>
     set({ isSummarizing: kind !== null, summarizationKind: kind }),
+
+  setSummaryError: (error) => set({ summaryError: error }),
 
   markUserEdit: () => set({ lastUserEditAt: Date.now() }),
 

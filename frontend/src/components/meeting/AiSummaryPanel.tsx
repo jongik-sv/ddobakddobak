@@ -41,6 +41,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const isSummarizing = useTranscriptStore((s) => s.isSummarizing)
   const summarizationKind = useTranscriptStore((s) => s.summarizationKind)
+  const summaryError = useTranscriptStore((s) => s.summaryError)
   const finals = useTranscriptStore((s) => s.finals)
   const diarizationEnabled = useAppSettingsStore((s) => s.diarizationEnabled)
   const resolvedTheme = resolveTheme(useUiStore((s) => s.theme))
@@ -220,6 +221,18 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
                 <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
               </svg>
               {summarizationKind === 'final' ? '최종 요약 중...' : '요약 중...'}
+            </span>
+          )}
+          {!isSummarizing && summaryError && (
+            /* 긴 오류 원문이 와도 헤더가 깨지지 않게 truncate — 전체 사유는 title(툴팁)로 제공 */
+            <span
+              className="px-2 py-0.5 rounded text-[11px] font-medium bg-red-50 text-red-700 max-w-[40ch] truncate"
+              role="alert"
+              title={summaryError.message}
+            >
+              {summaryError.kind === 'final'
+                ? `최종 요약 실패: ${summaryError.message}`
+                : '요약 실패 — 다음 주기에 재시도합니다'}
             </span>
           )}
         </div>

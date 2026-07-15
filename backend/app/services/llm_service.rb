@@ -12,6 +12,20 @@ class LlmService
 
   class LlmError < StandardError; end
 
+  # 사용자 노출용 오류 메시지 상한 (broadcast·DB 영속 기록 공통 truncate)
+  USER_ERROR_MAX_LENGTH = 300
+  # allowlist 밖 예외를 치환하는 일반 문구 — 내부 정보(호스트:포트·경로·stderr) 유출 차단
+  GENERIC_USER_ERROR = "요약 생성 중 오류가 발생했습니다".freeze
+
+  # 예외 → 사용자 노출용 메시지 정규화(allowlist). LlmError 는 우리가 직접 작성한 한국어
+  # 안내문만 담으므로 통과(truncate 만), 그 외 예외 원문은 내부 호스트:포트·파일 경로·
+  # CLI stderr 가 섞일 수 있어 일반 문구로 치환한다. 원문은 호출부가 Rails.logger 로만 남긴다.
+  # broadcast·summary_error 영속 기록 등 참가자 전원에게 노출되는 모든 경로에서 사용할 것.
+  def self.user_facing_error_message(error)
+    return GENERIC_USER_ERROR unless error.is_a?(LlmError)
+    error.message.to_s.truncate(USER_ERROR_MAX_LENGTH)
+  end
+
   CLI_TIMEOUT = ENV.fetch("LLM_CLI_TIMEOUT", "600").to_i # seconds — Claude/Gemini/Codex/GLM CLI 실행 제한
 
   CLI_PROVIDERS = %w[claude_cli gemini_cli codex_cli].freeze
@@ -62,13 +76,16 @@ class LlmService
     # 기존 노트 보존 + ok:false로 재시도 유도(D8 anchor-C1과 동일 계약: 호출부 미저장·미소비).
     if catastrophic_note_loss?(current_notes, notes)
       Rails.logger.error "[LlmService] refine_notes: catastrophic note loss guard triggered (#{current_notes.to_s.length}자 → #{notes.length}자)"
-      return { "notes_markdown" => current_notes, "ok" => false }
+      # "error" 사유는 호출부가 사용자에게 레포트한다 (기존 {"ok"=>false} 계약 유지 + 필드 추가).
+      return { "notes_markdown" => current_notes, "ok" => false,
+               "error" => "요약 결과가 기존 회의록을 대량 유실해 저장을 거부했습니다 (#{current_notes.to_s.length}자 → #{notes.length}자)" }
     end
     { "notes_markdown" => notes, "ok" => true }
   rescue => e
     Rails.logger.error "[LlmService] refine_notes failed: #{e.message}"
     # ok:false → 호출부가 transcript 미소비·미저장(무음 손실 차단, D8 anchor-C1)
-    { "notes_markdown" => current_notes, "ok" => false }
+    # error 는 사용자 노출용으로 정규화 — 예외 원문은 위 로그에만 남긴다.
+    { "notes_markdown" => current_notes, "ok" => false, "error" => self.class.user_facing_error_message(e) }
   end
 
   # 증분(append-only) 모드: 새 자막만 시간대별 새 블록 하나로 요약. 기존 회의록 불변.
@@ -93,7 +110,8 @@ class LlmService
     { "block_markdown" => block, "ok" => true }
   rescue => e
     Rails.logger.error "[LlmService] append_notes failed: #{e.message}"
-    { "block_markdown" => "", "ok" => false }
+    # error 는 사용자 노출용으로 정규화 — 예외 원문은 위 로그에만 남긴다.
+    { "block_markdown" => "", "ok" => false, "error" => self.class.user_facing_error_message(e) }
   end
 
   # 구조화된 요약 (JSON): key_points, decisions, discussion_details, action_items
@@ -398,7 +416,9 @@ class LlmService
 
   def ensure_cli!(cli, display_name, install_hint)
     return if cli_available?(cli)
-    raise LlmError, "#{display_name}를 찾을 수 없습니다: '#{cli}'. #{install_hint}"
+    # 전체 경로(ENV 설정)는 로그에만 — 사용자 메시지에는 basename 만 노출.
+    Rails.logger.error "[LlmService] CLI 미존재: '#{cli}' (#{display_name})"
+    raise LlmError, "#{display_name}를 찾을 수 없습니다: '#{File.basename(cli.to_s)}'. #{install_hint}"
   end
 
   # CLI 바이너리가 이 머신에서 실행 가능한지. ensure_cli! 와 선제 폴백(maybe_fallback_from_missing_cli!)이
@@ -474,7 +494,8 @@ class LlmService
             if remaining <= 0 || IO.select([stdout], nil, nil, remaining).nil?
               Process.kill("KILL", wait_thr.pid) rescue nil
               wait_thr.join
-              raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{cmd.first}"
+              # basename 만 노출 — 절대 경로(ENV 설정)가 참가자에게 새지 않게 한다.
+              raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{File.basename(cmd.first.to_s)}"
             end
             chunk = stdout.readpartial(4096)
             stdout_str << chunk
@@ -498,7 +519,8 @@ class LlmService
         unless wait_thr.join(CLI_TIMEOUT)
           Process.kill("KILL", wait_thr.pid) rescue nil
           wait_thr.join
-          raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{cmd.first}"
+          # basename 만 노출 — 절대 경로(ENV 설정)가 참가자에게 새지 않게 한다.
+          raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{File.basename(cmd.first.to_s)}"
         end
         stdout_str = stdout.read.to_s
         stderr_str = stderr.read.to_s
@@ -508,7 +530,10 @@ class LlmService
 
     unless status&.success?
       err = stderr_str.to_s.strip
-      raise LlmError, "CLI 오류 (코드 #{status&.exitstatus}): #{err.presence || '원인 불명'}"
+      # stderr 원문은 내부 경로·계정 정보가 섞일 수 있어 로그에만 남긴다 —
+      # LlmError 메시지는 allowlist 로 사용자에게 그대로 노출되므로 코드만 포함.
+      Rails.logger.error "[LlmService] CLI 실패 (코드 #{status&.exitstatus}): #{err.presence || '원인 불명'}"
+      raise LlmError, "CLI 실행이 실패했습니다 (코드 #{status&.exitstatus})"
     end
     # 스트리밍 경로는 위에서 UTF-8 로 재해석했으나, 강제로 한 번 더 보정(킬/절단 대비).
     stdout_str.dup.force_encoding(Encoding::UTF_8).scrub("").strip

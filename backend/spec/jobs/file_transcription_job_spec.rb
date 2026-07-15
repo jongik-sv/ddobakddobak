@@ -158,4 +158,52 @@ RSpec.describe FileTranscriptionJob, type: :job do
       described_class.perform_now(meeting.id)
     end
   end
+
+  # 파일 전사 경유 final 요약도 summary_error 라이프사이클에 참여한다 —
+  # 성공 저장 시 이전 실패 기록 클리어(재전사 후 오탐 배지 방지), 실패 시 영속 기록.
+  describe "#generate_summary — summary_error 라이프사이클" do
+    let(:llm) { instance_double(LlmService) }
+
+    before do
+      # 상단 before 의 generate_summary 스텁을 원복해 실제 구현을 검증한다
+      allow_any_instance_of(described_class).to receive(:generate_summary).and_call_original
+      allow(LlmService).to receive(:new).and_return(llm)
+      create(:transcript, meeting: meeting, sequence_number: 1, content: "발화", applied_to_minutes: false)
+    end
+
+    it "성공 저장 시 이전 summary_error 를 클리어한다 (재전사 후 오탐 배지 잔존 방지)" do
+      meeting.update_columns(summary_error_message: "이전 실패", summary_error_at: Time.current)
+      allow(llm).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "## 회의록", "ok" => true })
+
+      described_class.new.send(:generate_summary, meeting)
+
+      expect(meeting.reload.summary_error_message).to be_nil
+      expect(meeting.summary_error_at).to be_nil
+      expect(meeting.summaries.find_by(summary_type: "final").notes_markdown).to eq("## 회의록")
+      expect(meeting.transcripts.where(applied_to_minutes: false).count).to eq(0)
+    end
+
+    it "실패(ok:false) 시 summary_error 를 영속 기록하고 요약을 저장하지 않는다" do
+      allow(llm).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "", "ok" => false, "error" => "요약 생성 중 오류가 발생했습니다" })
+
+      described_class.new.send(:generate_summary, meeting)
+
+      expect(meeting.reload.summary_error_message).to include("오류가 발생했습니다")
+      expect(meeting.summary_error_at).to be_present
+      expect(meeting.summaries.find_by(summary_type: "final")).to be_nil
+      expect(meeting.transcripts.where(applied_to_minutes: false).count).to eq(1)
+    end
+
+    it "ok:true 인데 notes 가 비면 하드 실패로 영속 기록한다" do
+      allow(llm).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "", "ok" => true })
+
+      described_class.new.send(:generate_summary, meeting)
+
+      expect(meeting.reload.summary_error_message).to include("비어 있습니다")
+      expect(meeting.summary_error_at).to be_present
+    end
+  end
 end

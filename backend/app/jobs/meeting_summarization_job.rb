@@ -13,6 +13,8 @@ class MeetingSummarizationJob < ApplicationJob
 
   FINAL_REENQUEUE_CAP = 5
   FINAL_REENQUEUE_WAIT = 30.seconds
+  # final 재시도 포기 시 사용자 레포트 문구 — 영속 기록·ok:false broadcast 가 같은 문구를 공유.
+  FINAL_GIVE_UP_ERROR = "최종 요약 재시도 한도(#{FINAL_REENQUEUE_CAP}회)를 초과해 생성을 포기했습니다. 회의록 재생성으로 다시 시도해 주세요.".freeze
 
   def perform(meeting_id, type: "realtime", attempt: 0)
     meeting = Meeting.find_by(id: meeting_id)
@@ -92,11 +94,13 @@ class MeetingSummarizationJob < ApplicationJob
     })
   end
 
-  def broadcast_finished(meeting, summary_type, ok:)
+  # error: 실패 사유(사용자 레포트용). ok:true 면 nil — 프론트가 ok:false + error 로 토스트/배지를 띄운다.
+  def broadcast_finished(meeting, summary_type, ok:, error: nil)
     ActionCable.server.broadcast(meeting.transcription_stream, {
       type: "summarization_finished",
       summary_type: summary_type,
-      ok: ok
+      ok: ok,
+      error: error
     })
   end
 
@@ -127,6 +131,7 @@ class MeetingSummarizationJob < ApplicationJob
 
     started = true
     ok = false
+    error = nil
     broadcast_started(meeting, "realtime")
     # 재구조화 OR 연결(이전 회의 참고)이면 refine 로 통합. 연결+증분은 seeded_merge 로 논의 절취선 삽입.
     if meeting.summary_restructure? || meeting.previous_meeting_id.present?
@@ -160,10 +165,12 @@ class MeetingSummarizationJob < ApplicationJob
     # LLM 호출 중에 stop/reset/user-edit이 일어났을 수 있으므로 broadcast/저장 전에 재확인.
     meeting.reload
     if meeting.completed?
+      ok = true # 의도된 스킵 — ok:false 는 프론트에 오류로 레포트되므로 실패로 취급하지 않는다
       Rails.logger.info "[MeetingSummarizationJob] realtime skipped (meeting completed during LLM) meeting=#{meeting.id}"
       return
     end
     if meeting.pending? || stale_relative_to_user_action?(meeting)
+      ok = true # 의도된 스킵 (위와 동일)
       Rails.logger.info "[MeetingSummarizationJob] realtime skipped (reset or user-edit during LLM) meeting=#{meeting.id}"
       return
     end
@@ -172,6 +179,7 @@ class MeetingSummarizationJob < ApplicationJob
       summary = meeting.summaries.find_or_initialize_by(summary_type: "realtime")
       summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
 
+      meeting.clear_summary_error!
       meeting.refresh_brief_summary!(notes_markdown)
       meeting.transcripts.where(id: applied_ids).update_all(applied_to_minutes: true)
 
@@ -191,6 +199,8 @@ class MeetingSummarizationJob < ApplicationJob
       ActionCable.server.broadcast(channel, { type: "transcripts_applied", ids: applied_ids })
     elsif !result["ok"]
       # transient LLM 실패: 미저장·미소비. 다음 틱 재시도(무음 손실 차단).
+      # 사유는 broadcast 로만 레포트 — 매분 재시도라 영속 기록하면 노이즈(final 만 영속 기록).
+      error = result["error"].presence || "요약 생성에 실패했습니다"
       Rails.logger.warn "[MeetingSummarizationJob] realtime transient failure meeting=#{meeting.id} (미소비)"
     end
     # 안건을 실제로 주입했고 LLM 이 성공했으면 1회주입 플래그를 채운다(이후 틱 재주입 방지).
@@ -198,34 +208,63 @@ class MeetingSummarizationJob < ApplicationJob
     if agenda_ref.present? && result["ok"]
       meeting.update_column(:agenda_reference_applied_at, Time.current)
     end
-    ok = true
+    # 기존엔 무조건 ok=true 로 transient 실패도 성공으로 broadcast 됐다 — result["ok"] 를 그대로 반영.
+    ok = result["ok"] ? true : false
   rescue LlmService::LlmError, StandardError => e
+    # broadcast 는 참가자 전원 노출 — 예외 원문(호스트:포트·경로 등)은 로그에만, 사용자에겐 정규화 문구.
+    error = LlmService.user_facing_error_message(e)
     Rails.logger.error "[MeetingSummarizationJob] realtime meeting=#{meeting.id} error=#{e.message}"
   ensure
-    broadcast_finished(meeting, "realtime", ok: ok) if started
+    broadcast_finished(meeting, "realtime", ok: ok, error: ok ? nil : error) if started
   end
 
   # 전사 편집 등으로 stale라 이번 final 결과를 버려야 하지만, 정본(final summary)이 아직 없으면
   # 그냥 드랍하면 "영영 안 생김"(stop이 final을 1회만 enqueue). 최신 전사로 재생성하도록 재enqueue한다.
   # 이미 정본이 있으면(사용자 수동 편집 가능성) 덮어쓰지 않도록 기존대로 드랍.
+  # 반환값으로 결과를 구분한다 — 호출부가 포기(:gave_up)를 성공처럼 broadcast 하지 않게:
+  #   :minutes_exist — 정본이 이미 있어 드랍(의도된 스킵)
+  #   :gave_up       — 재시도 한도 초과 포기(영속 기록됨) → 호출부는 ok:false 로 레포트
+  #   :reenqueued    — 최신 전사로 재생성하도록 재enqueue(의도된 스킵)
   def reenqueue_final_if_minutes_missing(meeting, attempt)
     if meeting.summaries.exists?(summary_type: "final")
       Rails.logger.info "[MeetingSummarizationJob] final skipped (reset or user-edit during LLM; minutes exist) meeting=#{meeting.id}"
-      return
+      return :minutes_exist
     end
     if attempt >= FINAL_REENQUEUE_CAP
+      # 재시도 포기 = 정본이 영영 안 생김 — 사용자에게 레포트하도록 영속 기록.
+      meeting.record_summary_error!(FINAL_GIVE_UP_ERROR)
       Rails.logger.warn "[MeetingSummarizationJob] final giving up (still stale after #{attempt} retries) meeting=#{meeting.id}"
-      return
+      return :gave_up
     end
     Rails.logger.info "[MeetingSummarizationJob] final re-enqueued (stale during LLM, no minutes yet) meeting=#{meeting.id} attempt=#{attempt + 1}"
     self.class.set(wait: FINAL_REENQUEUE_WAIT).perform_later(meeting.id, type: "final", attempt: attempt + 1)
+    :reenqueued
+  end
+
+  # LLM 호출 뒤 실패 기록·저장 판단 직전의 공통 재확인 — LLM 도중 reset(pending)/사용자
+  # 편집(stale)이 있었으면 이번 결과(성공·실패 모두)를 버린다. 초기화된 회의에 실패 배지가
+  # 남지 않게 실패 영속 기록보다 반드시 먼저 수행한다. 반환:
+  #   :proceed — 그대로 진행 / :skipped — 의도된 스킵(ok:true 마감) / :gave_up — 재시도 포기(ok:false)
+  def final_post_llm_disposition(meeting, attempt)
+    meeting.reload
+    if meeting.pending?
+      Rails.logger.info "[MeetingSummarizationJob] final skipped (reset during LLM) meeting=#{meeting.id}"
+      return :skipped
+    end
+    if stale_relative_to_user_action?(meeting)
+      Rails.logger.info "[MeetingSummarizationJob] final skipped (user-edit during LLM) meeting=#{meeting.id}"
+      return reenqueue_final_if_minutes_missing(meeting, attempt) == :gave_up ? :gave_up : :skipped
+    end
+    :proceed
   end
 
   def generate_minutes_final(meeting, attempt: 0)
     meeting.reload
     return if meeting.pending?
     if stale_relative_to_user_action?(meeting)
-      reenqueue_final_if_minutes_missing(meeting, attempt)
+      outcome = reenqueue_final_if_minutes_missing(meeting, attempt)
+      # 이 경로는 시작 broadcast 없이 끝난다 — 포기만은 라이브로도 실패를 알린다(영속 기록은 헬퍼가 수행).
+      broadcast_finished(meeting, "final", ok: false, error: FINAL_GIVE_UP_ERROR) if outcome == :gave_up
       return
     end
 
@@ -241,6 +280,7 @@ class MeetingSummarizationJob < ApplicationJob
 
     started = true
     ok = false
+    error = nil
     broadcast_started(meeting, "final")
     # refine 통짜 재생성 경로: 재구조화 / 연결(이전 회의 참고) / 증분이라도 base 백지(재생성 직후 등).
     # 연결+증분은 seeded_merge 로 이전+현재를 한 회의로 통합하고 논의에 절취선을 넣는다.
@@ -278,29 +318,39 @@ class MeetingSummarizationJob < ApplicationJob
         notes_markdown = latest_notes
       end
     end
-    return if notes_markdown.blank?
+    # LLM 도중 reset/사용자 편집 재확인을 실패 기록·저장 판단보다 먼저 수행한다 —
+    # 의도된 스킵이면 성공·실패 결과 모두 버려, 초기화된 회의에 실패 배지가 남지 않는다.
+    case final_post_llm_disposition(meeting, attempt)
+    when :skipped
+      ok = true # 의도된 스킵 — ok:false 는 프론트에 오류로 레포트되므로 실패로 취급하지 않는다
+      return
+    when :gave_up
+      error = FINAL_GIVE_UP_ERROR # 재시도 포기는 성공처럼 보이면 안 됨 — ok:false + 사유로 레포트
+      return
+    end
 
     # transient LLM 실패(ok:false)면 저장·소비·강등해제 전부 건너뜀 — stale notes 로 전 자막을
     # 영구 소비(sticky)하는 무음 손실 차단 (D8 anchor-C1, realtime 경로와 동일 처리).
+    # blank 체크보다 먼저 판정해 실패 사유 기록이 누락되지 않게 한다.
+    # final 은 stop 이 1회만 enqueue 하므로 실패를 영속 기록해 사용자에게 레포트한다.
     unless result["ok"]
+      error = result["error"].presence || "요약 생성에 실패했습니다"
+      meeting.record_summary_error!(error)
       Rails.logger.warn "[MeetingSummarizationJob] final transient failure meeting=#{meeting.id} (미소비)"
       return
     end
-
-    meeting.reload
-    if meeting.pending?
-      Rails.logger.info "[MeetingSummarizationJob] final skipped (reset during LLM) meeting=#{meeting.id}"
-      return
-    end
-    if stale_relative_to_user_action?(meeting)
-      Rails.logger.info "[MeetingSummarizationJob] final skipped (user-edit during LLM) meeting=#{meeting.id}"
-      reenqueue_final_if_minutes_missing(meeting, attempt)
+    if notes_markdown.blank?
+      # ok:true 인데 결과가 빈 하드 실패 — final 은 재시도가 없으므로 broadcast 만으로는
+      # 새로고침 시 소실된다. 영속 기록해 배지로 레포트한다.
+      error = "요약 결과가 비어 있습니다"
+      meeting.record_summary_error!(error)
       return
     end
 
     summary = meeting.summaries.find_or_initialize_by(summary_type: "final")
     summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
 
+    meeting.clear_summary_error!
     meeting.refresh_brief_summary!(notes_markdown)
     # update_all 전에 "이번에 새로 적용되는" 자막 id를 스냅샷한다(프론트 라이브기록 미적용 배지 해제용).
     newly_applied_ids = meeting.transcripts.where(applied_to_minutes: false).pluck(:id)
@@ -321,9 +371,13 @@ class MeetingSummarizationJob < ApplicationJob
     end
     ok = true
   rescue LlmService::LlmError, StandardError => e
+    # broadcast·영속 기록은 참가자 전원 노출 — 예외 원문은 로그에만, 사용자에겐 정규화 문구.
+    error = LlmService.user_facing_error_message(e)
+    # final 은 재enqueue 되지 않는 하드 실패 — 사용자 레포트용 영속 기록.
+    meeting.record_summary_error!(error)
     Rails.logger.error "[MeetingSummarizationJob] final meeting=#{meeting.id} error=#{e.message}"
   ensure
-    broadcast_finished(meeting, "final", ok: ok) if started
+    broadcast_finished(meeting, "final", ok: ok, error: ok ? nil : error) if started
   end
 
   # 증분 블록을 시간대 헤딩과 함께 기존 회의록 뒤에 덧붙인 전체 노트 반환. 블록 없으면 기존 그대로.

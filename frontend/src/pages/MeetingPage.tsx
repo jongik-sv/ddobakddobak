@@ -127,6 +127,7 @@ export default function MeetingPage() {
   const markUserEdit = useTranscriptStore((s) => s.markUserEdit)
   const clientId = useTranscriptStore((s) => s.clientId)
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
+  const setSummaryError = useTranscriptStore((s) => s.setSummaryError)
   useEffect(() => {
     resetTranscriptStore()
   }, [meetingId, resetTranscriptStore])
@@ -135,6 +136,18 @@ export default function MeetingPage() {
       setMeetingNotes(summary.notes_markdown)
     }
   }, [summary?.notes_markdown, setMeetingNotes])
+
+  // 영속 실패 필드 주입: 새로고침·정지 후에도 final 요약 실패가 레포트되도록
+  // 서버가 내려준 meeting.summary_error_message를 store에 반영한다(AiSummaryPanel 배지 재사용).
+  // 실시간 broadcast로 이미 배지가 떠 있으면 덮어쓰지 않는다.
+  // 주의: 위 resetTranscriptStore effect(선언 순서상 먼저 실행)가 store를 비운 뒤에 주입되며,
+  // 회의 전환 중 meeting이 이전 회의 데이터인 동안(id 불일치)은 stale 주입을 막는다.
+  useEffect(() => {
+    if (!meeting || meeting.id !== meetingId) return
+    if (!meeting.summary_error_message) return
+    if (useTranscriptStore.getState().summaryError) return
+    setSummaryError({ kind: 'final', message: meeting.summary_error_message })
+  }, [meetingId, meeting, setSummaryError])
 
   // 메모 에디터 + 토글
   const memoVisible = useUiStore((s) => s.memoVisible)

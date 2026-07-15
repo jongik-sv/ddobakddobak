@@ -33,6 +33,9 @@ module MeetingSerializable
       expected_participants: meeting.expected_participants,
       summary_verbosity: meeting.summary_verbosity,
       summary_restructure: meeting.summary_restructure,
+      # 최근 final 요약 실패 사유/시각 (성공 저장 시 클리어) — 새로고침 후에도 실패를 레포트.
+      summary_error_message: meeting.summary_error_message,
+      summary_error_at: meeting.summary_error_at,
       stt_engine: meeting.stt_engine,
       scheduled_start_time: meeting.scheduled_start_time,
       auto_start_mode: meeting.auto_start_mode,
