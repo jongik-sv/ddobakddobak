@@ -3,6 +3,7 @@ import { HTTPError } from 'ky'
 import { UserPlus } from 'lucide-react'
 import { createAdminUser } from '../../api/adminUsers'
 import type { AdminUser } from '../../api/adminUsers'
+import { PasswordInput } from '../ui/PasswordInput'
 
 /** 사용자 생성 다이얼로그 */
 export function CreateUserDialog({
@@ -74,8 +75,7 @@ export function CreateUserDialog({
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">비밀번호</label>
-            <input
-              type="password"
+            <PasswordInput
               required
               minLength={6}
               value={password}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type ServicePreset, LOCAL_MODEL_FETCHERS, isLocalListable, CLI_PRESET_IDS } from './llmServicePresets'
 import { getMode } from '../../config'
+import { PasswordInput } from '../ui/PasswordInput'
 
 export interface LlmProviderCardValue {
   presetId: string
@@ -136,7 +137,7 @@ export function LlmProviderCard(props: LlmProviderCardProps) {
       {requiresKey && (
         <div className="mb-3">
           <label htmlFor={`${idPrefix}-key`} className="block text-sm font-medium mb-1">API Key</label>
-          <input id={`${idPrefix}-key`} type="password" value={value.auth_token}
+          <PasswordInput id={`${idPrefix}-key`} value={value.auth_token}
             onChange={(e) => onChange({ auth_token: e.target.value })}
             placeholder={maskedToken || '토큰을 입력하세요'}
             className="w-full rounded-md border px-3 py-2 text-sm font-mono min-h-[44px]" />

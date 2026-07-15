@@ -7,6 +7,7 @@ import { getInvitePreview, redeemInvite } from '../api/projects'
 import type { Project } from '../api/projects'
 import { loginWithCredentials } from '../api/auth'
 import ProjectIcon from '../components/project/ProjectIcon'
+import { PasswordInput } from '../components/ui/PasswordInput'
 
 export default function InviteRedeemPage() {
   const { code = '' } = useParams<{ code: string }>()
@@ -183,8 +184,7 @@ export default function InviteRedeemPage() {
                     placeholder="이메일"
                     className="w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
                   />
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="비밀번호"
@@ -220,8 +220,7 @@ export default function InviteRedeemPage() {
                     className="w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
                     autoFocus
                   />
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="비밀번호"

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { changePassword } from '../../api/account'
 import { useAuthStore } from '../../stores/authStore'
 import { errorToMessage } from '../../lib/errors'
+import { PasswordInput } from '../ui/PasswordInput'
 
 export default function PasswordChangeSection() {
   const [current, setCurrent] = useState('')
@@ -49,9 +50,9 @@ export default function PasswordChangeSection() {
       <form onSubmit={handleSubmit} className="space-y-3 max-w-sm">
         <div>
           <label htmlFor="current-password" className="block text-sm font-medium mb-1">현재 비밀번호</label>
-          <input
+          <PasswordInput
             id="current-password"
-            type="password"
+            toggleLabel="현재 비밀번호"
             required
             value={current}
             onChange={(e) => setCurrent(e.target.value)}
@@ -60,9 +61,9 @@ export default function PasswordChangeSection() {
         </div>
         <div>
           <label htmlFor="new-password" className="block text-sm font-medium mb-1">새 비밀번호</label>
-          <input
+          <PasswordInput
             id="new-password"
-            type="password"
+            toggleLabel="새 비밀번호"
             required
             minLength={6}
             value={next}
@@ -73,9 +74,9 @@ export default function PasswordChangeSection() {
         </div>
         <div>
           <label htmlFor="confirm-password" className="block text-sm font-medium mb-1">새 비밀번호 확인</label>
-          <input
+          <PasswordInput
             id="confirm-password"
-            type="password"
+            toggleLabel="새 비밀번호 확인"
             required
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}

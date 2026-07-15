@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { LogIn } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { getApiOrigin, IS_MOBILE, IS_TAURI } from '../../config'
+import { PasswordInput } from '../ui/PasswordInput'
 
 export function LoginPage() {
   const { login, loginDirect } = useAuth()
@@ -64,8 +65,7 @@ export function LoginPage() {
             <label htmlFor="password" className="block text-sm font-medium text-foreground mb-1">
               비밀번호
             </label>
-            <input
-              type="password"
+            <PasswordInput
               id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
