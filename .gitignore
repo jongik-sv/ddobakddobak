@@ -39,6 +39,8 @@ sidecar/speaker_dbs/
 # Node / Frontend
 node_modules/
 frontend/dist/
+# 빌드 산출물 백업본 (dist.bak-*, dist.backup 등) — 커밋 대상에서 제외
+frontend/dist.*
 
 # E2E 테스트
 e2e/test-results/
