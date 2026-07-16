@@ -210,6 +210,36 @@ describe('MeetingLivePage 단일 녹음 기기 락', () => {
     })
   })
 
+  describe('다른 탭/기기 종료 동기화 (recording_stopped)', () => {
+    it('세션 비소유 탭은 종료 신호 시 회의를 재조회해 완료로 갱신하고 안내한다', async () => {
+      // 같은 브라우저 두 번째 탭: activeMeetingId null(세션 비소유) + 같은 clientId라 진입 리다이렉트 없음.
+      vi.mocked(meetingsApi.getMeeting)
+        .mockResolvedValueOnce(makeMeeting({ status: 'recording', recorder_active: true, recording_client_id: getClientId() }) as never)
+        .mockResolvedValueOnce(makeMeeting({ status: 'completed' }) as never)
+      renderPage()
+      await waitFor(() => expect(meetingsApi.getMeeting).toHaveBeenCalledTimes(1))
+
+      // 다른 탭에서 회의 종료 → recording_stopped 브로드캐스트 수신
+      act(() => { useRecordingSignalsStore.getState().setRecordingStopped(true) })
+
+      await waitFor(() => {
+        expect(useToastStore.getState().message).toBe('다른 탭에서 회의가 종료되었습니다')
+      })
+      expect(meetingsApi.getMeeting).toHaveBeenCalledTimes(2) // 재조회로 완료 상태 반영
+      expect(screen.queryByTestId('viewer-route')).not.toBeInTheDocument()
+    })
+
+    it('완료 상태에서는 종료 신호가 와도 재조회하지 않는다(루프 방지)', async () => {
+      vi.mocked(meetingsApi.getMeeting).mockResolvedValue(makeMeeting({ status: 'completed' }) as never)
+      renderPage()
+      await waitFor(() => expect(meetingsApi.getMeeting).toHaveBeenCalledTimes(1))
+      act(() => { useRecordingSignalsStore.getState().setRecordingStopped(true) })
+      // 잠깐 흘려보내도 추가 호출 없어야 함
+      await Promise.resolve()
+      expect(meetingsApi.getMeeting).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('handleStart 시작 API 에러 처리', () => {
     it('startMeeting 409(recorder_conflict)면 캡처 시작 없이 토스트 + 뷰어로 이동한다', async () => {
       vi.mocked(meetingsApi.startMeeting).mockRejectedValue(

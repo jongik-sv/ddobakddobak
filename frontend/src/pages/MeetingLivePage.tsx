@@ -181,6 +181,22 @@ export default function MeetingLivePage() {
     if (recordingDenied) navigate(`/meetings/${meetingId}/viewer`, { replace: true })
   }, [recordingDenied, meetingId, navigate])
 
+  // 다른 탭/기기에서 회의가 종료되면(recording_stopped 브로드캐스트) 이 탭도 완료 상태로 반영한다.
+  // (같은 브라우저 두 번째 탭은 clientId가 같아 진입 리다이렉트에 안 걸리고 라이브 페이지에 남아,
+  //  종료 후에도 fetch한 status='recording'이 stale하게 굳어 "진행중"으로 계속 보이던 문제.)
+  // 녹음 세션 소유 탭(isThisSession)은 자체 종료 흐름이 상태를 갱신하므로 제외.
+  const recordingStopped = useRecordingSignalsStore((s) => s.recordingStopped)
+  useEffect(() => {
+    if (!recordingStopped || isThisSession) return
+    if (meetingApiStatus == null || meetingApiStatus === 'completed') return
+    getMeeting(meetingId)
+      .then((m) => {
+        setMeeting(m)
+        showStatus('다른 탭에서 회의가 종료되었습니다', 4000)
+      })
+      .catch(() => {})
+  }, [recordingStopped, isThisSession, meetingApiStatus, meetingId, showStatus])
+
   // 라이브 진입 시 기기 점유 검사 — 다른 기기가 활성 녹음 중(하트비트 신선)이면 뷰어로 보낸다.
   // 채널 denied 신호는 이쪽이 청크를 보내야만 오므로, 첫 발화 전 침묵 구간은 이 검사가 커버한다.
   // 같은 기기의 새로고침 복귀(recording_client_id === 내 clientId)는 절대 리다이렉트하지 않는다.
