@@ -13,8 +13,11 @@ class MeetingChatJob < ApplicationJob
                       .where("created_at <= ?", answer.created_at).order(:created_at).last
 
     ctx = MeetingChatContext.build(meeting: meeting, user: user, question: question&.content.to_s)
-    config = meeting.creator&.effective_chat_llm_config
-    raise "이 회의의 LLM이 설정되어 있지 않습니다." if config.blank?
+    # 회의 챗도 질문자(answer.user) 본인의 개인 챗 LLM 설정을 쓴다 — 폴더 챗(FolderChatJob)과 동일.
+    # (이전엔 meeting.creator 설정을 써서, 남이 만든 회의에서 챗하면 참가자 개인 모델이 무시됐다.)
+    # 개인 설정이 없으면 effective_chat_llm_config 가 서버 기본으로 폴백한다.
+    config = user&.effective_chat_llm_config
+    raise "LLM이 설정되어 있지 않습니다." if config.blank?
 
     model_name = LlmModelName.humanize(config[:model])
     raw = stream_answer(answer, config, ctx[:system_prompt], ctx[:user_content], model_name)

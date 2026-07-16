@@ -36,10 +36,10 @@ RSpec.describe MeetingChatJob, type: :job do
     MeetingChatJob.perform_now(answer.id)
   end
 
-  it "builds LlmService with the creator's chat LLM config (separate chat model)" do
-    meeting.creator.update!(
+  it "builds LlmService with the asker's own chat LLM config (separate chat model)" do
+    user.update!(
       llm_provider: "anthropic",
-      llm_api_key: "sk-creator-key",
+      llm_api_key: "sk-asker-key",
       llm_model: "claude-sonnet-4-6",
       chat_llm_model: "claude-haiku-4-5"
     )
@@ -47,6 +47,26 @@ RSpec.describe MeetingChatJob, type: :job do
     fake = instance_double(LlmService, answer_question: "ok")
     expect(LlmService).to receive(:new)
       .with(llm_config: hash_including(model: "claude-haiku-4-5"))
+      .and_return(fake)
+
+    MeetingChatJob.perform_now(answer.id)
+  end
+
+  # 회귀 방지: 회의 챗은 회의 생성자가 아니라 '질문자 본인'의 개인 챗 모델을 써야 한다.
+  # (남이 만든 회의에서 참가자가 챗할 때 개인 nvidia 모델이 서버 모델로 무시되던 버그.)
+  it "uses the asker's personal chat model, not the meeting creator's" do
+    meeting.creator.update!(
+      llm_provider: "anthropic", llm_api_key: "sk-creator", llm_model: "claude-sonnet-4-6"
+    )
+    user.update!(
+      chat_llm_provider: "openai", chat_llm_api_key: "sk-asker",
+      chat_llm_model: "nvidia/nemotron-3-ultra-550b-a55b",
+      chat_llm_base_url: "https://integrate.api.nvidia.com/v1"
+    )
+
+    fake = instance_double(LlmService, answer_question: "ok")
+    expect(LlmService).to receive(:new)
+      .with(llm_config: hash_including(provider: "openai", model: "nvidia/nemotron-3-ultra-550b-a55b"))
       .and_return(fake)
 
     MeetingChatJob.perform_now(answer.id)
