@@ -49,6 +49,12 @@ module Api
         rescue ActiveRecord::RecordInvalid => e
           render json: { error: e.record.errors.full_messages.join(", ") },
                  status: :unprocessable_entity
+        rescue ActiveRecord::Encryption::Errors::Configuration => e
+          # API 키 암호화 키(active_record_encryption)가 credentials에서 누락된 구성 사고 —
+          # 그대로 두면 raw 500 이라 진단이 어렵다. 서버측 구성 문제임을 명확히 알려 재조사를 유도한다.
+          Rails.logger.error "[LlmSettings] encryption config error: #{e.message}"
+          render json: { error: "서버 암호화 설정 오류로 저장하지 못했습니다. 관리자에게 문의해 주세요." },
+                 status: :service_unavailable
         end
 
         # PATCH /api/v1/user/llm_settings/toggle
