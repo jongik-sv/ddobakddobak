@@ -2,26 +2,47 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { AiChatPanel } from './AiChatPanel'
 
-// mutable state ref — hoisted so vi.mock factory can close over it
+// mutable state ref — hoisted so vi.mock factory can close over it.
+// send/load 는 안정적인 mock 으로 둬 호출 검증이 가능하게 한다(매 렌더 새 vi.fn() 금지).
 const state = vi.hoisted(() => ({
   messages: [
     { id: 1, role: 'assistant', status: 'complete', content: '확정. ⟦t:60000|s:화자 1⟧', suggestions: [] },
   ] as any[],
+  send: vi.fn(),
+  load: vi.fn(),
 }))
 
 vi.mock('../../stores/chatStore', () => ({
   useChatStore: (sel?: any) => {
-    const s = { messages: state.messages, load: vi.fn(), send: vi.fn() }
+    const s = { messages: state.messages, load: state.load, send: state.send }
     return sel ? sel(s) : s
   },
 }))
 vi.mock('../../channels/chat', () => ({ subscribeChat: () => () => {} }))
 
 beforeEach(() => {
+  state.send.mockClear()
+  state.load.mockClear()
   // reset to default (marker message) so existing onSeek test is unaffected
   state.messages = [
     { id: 1, role: 'assistant', status: 'complete', content: '확정. ⟦t:60000|s:화자 1⟧', suggestions: [] },
   ]
+})
+
+describe('AiChatPanel 입력 전송 (IME 조합 가드)', () => {
+  it('IME 조합 중 Enter(isComposing)는 전송하지 않고, 조합 종료 후 Enter는 전송한다', () => {
+    render(<AiChatPanel scopeId={1} />)
+    const input = screen.getByPlaceholderText('회의에 질문하기…')
+    fireEvent.change(input, { target: { value: '알려줘' } })
+
+    // 조합 중 Enter → 전송 금지 (잔여 '줘' 이중전송 방지)
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    expect(state.send).not.toHaveBeenCalled()
+
+    // 조합 종료 후 Enter → 정상 전송
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(state.send).toHaveBeenCalledWith('meeting', 1, '알려줘')
+  })
 })
 
 describe('AiChatPanel onSeek', () => {

@@ -126,7 +126,10 @@ export function AiChatPanel({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') submit()
+            // 한글 등 IME 조합 중의 Enter는 조합 '확정'용이므로 전송하지 않는다.
+            // (조합 중 전송하면 확정된 마지막 글자가 다음 질문으로 다시 날아가는 이중전송 버그 —
+            //  예: "…알려줘" 전송 후 잔여 "줘"가 재전송됨.)
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) submit()
           }}
         />
         <button
