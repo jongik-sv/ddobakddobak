@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 import { SpeakerLabel } from './SpeakerLabel'
 import { EditableTranscriptText } from './EditableTranscriptText'
@@ -8,7 +8,6 @@ interface LiveRecordProps {
   meetingId: number
   currentTimeMs?: number
   onSeek?: (ms: number) => void
-  onApply?: () => Promise<void>
   editable?: boolean
   /**
    * 오프라인 재생용: 병합 오디오 타임라인 기준 세그먼트 시작 오프셋(ms). unapplied 인덱스와 1:1.
@@ -18,14 +17,13 @@ interface LiveRecordProps {
   segmentOffsetsMs?: number[]
 }
 
-export function LiveRecord({ meetingId, currentTimeMs = 0, onSeek, onApply, editable = true, segmentOffsetsMs }: LiveRecordProps) {
+export function LiveRecord({ meetingId, currentTimeMs = 0, onSeek, editable = true, segmentOffsetsMs }: LiveRecordProps) {
   const finals = useTranscriptStore((s) => s.finals)
   const partial = useTranscriptStore((s) => s.partial)
   // 라이브 기록 = AI 회의록에 아직 적용되지 않은 버퍼 기록
   const unapplied = finals.filter((f) => !f.applied)
   const bottomRef = useRef<HTMLDivElement>(null)
   const highlightedRef = useRef<HTMLDivElement>(null)
-  const [isApplying, setIsApplying] = useState(false)
 
   // currentTimeMs>0 = 재생 중(상세/뷰어). 0 = 라이브 녹음(타임업데이트 없음).
   const isPlayback = currentTimeMs > 0
@@ -60,34 +58,8 @@ export function LiveRecord({ meetingId, currentTimeMs = 0, onSeek, onApply, edit
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [unapplied.length, partial, isPlayback])
 
-  const handleApply = async () => {
-    if (!onApply || isApplying) return
-    setIsApplying(true)
-    try {
-      await onApply()
-    } finally {
-      setIsApplying(false)
-    }
-  }
-
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* 적용 버튼 */}
-      {onApply && unapplied.length > 0 && (
-        <div className="flex items-center justify-between px-4 py-2 border-b bg-amber-50 shrink-0">
-          <span className="text-xs text-amber-700">
-            미적용 {unapplied.length}건
-          </span>
-          <button
-            onClick={handleApply}
-            disabled={isApplying}
-            className="px-3 py-1 rounded-md text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
-          >
-            {isApplying ? '적용 중...' : '회의록에 적용'}
-          </button>
-        </div>
-      )}
-
       <div className="flex flex-col gap-3 overflow-y-auto p-4 flex-1">
       {unapplied.length === 0 && !partial && (
         <p className="text-sm text-muted-foreground">새로운 기록을 기다리는 중...</p>

@@ -7,7 +7,6 @@ import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor, customSchema } from '../components/editor/MeetingEditor'
 import { MemoHeader } from '../components/meeting/MemoHeader'
 import { CorrectionsSection } from '../components/meeting/CorrectionsSection'
-import { triggerRealtimeSummary } from '../api/meetings'
 import type { TermCorrection } from '../api/meetings'
 import type { Tab } from '../components/layout/MobileTabLayout'
 import type { BlockNoteEditor } from '@blocknote/core'
@@ -67,7 +66,6 @@ export function useLiveMobileTabs({
             <RecordTabPanel
               meetingId={meetingId}
               currentTimeMs={0}
-              onApply={() => triggerRealtimeSummary(meetingId)}
             />
           </div>
         </div>

@@ -16,7 +16,7 @@ import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SummaryOptionsControl } from '../components/meeting/SummaryOptionsControl'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
-import { getMeeting, updateMeeting, triggerRealtimeSummary, updateNotes, resetMeetingContent, getTranscripts, getSummary, canEditMeeting } from '../api/meetings'
+import { getMeeting, updateMeeting, updateNotes, resetMeetingContent, getTranscripts, getSummary, canEditMeeting } from '../api/meetings'
 import type { Meeting, UpdateMeetingParams } from '../api/meetings'
 import { getClientId } from '../lib/clientId'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
@@ -360,7 +360,6 @@ export default function MeetingLivePage() {
                 <RecordTabPanel
                   meetingId={meetingId}
                   currentTimeMs={0}
-                  onApply={() => triggerRealtimeSummary(meetingId)}
                 />
               </div>
               <div className="border-t shrink-0">
@@ -509,7 +508,7 @@ export default function MeetingLivePage() {
           <div className="flex-1 min-h-0">
             <MobileTabLayout
               tabs={mobileTabs}
-              defaultTab="chat"
+              defaultTab="transcript"
             />
           </div>
         </>

@@ -436,13 +436,14 @@ describe('MeetingLivePage', () => {
       expect(screen.getByRole('tab', { name: /메모/i })).toBeInTheDocument()
     })
 
-    it('기본 탭은 AI 챗이며 챗 영역이 보임', () => {
+    it('기본 탭은 기록이며 기록 영역이 활성', () => {
       renderPage()
-      // 모바일 기본 활성 탭이 'AI 챗'으로 변경됨 → 챗 입력창이 보이는 tabpanel이 활성
-      const chatInput = screen.getByPlaceholderText('회의에 질문하기…')
-      expect(chatInput).toBeInTheDocument()
-      const tabPanel = chatInput.closest('[role="tabpanel"]')
-      expect(tabPanel).toHaveStyle({ visibility: 'visible' })
+      // 모바일 기본 활성 탭이 '기록'(transcript) → 기록 탭이 선택되고 그 tabpanel이 보임
+      const transcriptTab = screen.getByRole('tab', { name: /기록/i })
+      expect(transcriptTab).toHaveAttribute('aria-selected', 'true')
+      const panels = screen.getAllByRole('tabpanel', { hidden: true })
+      const activePanel = panels.find((p) => p.getAttribute('data-tab-id') === 'transcript')!
+      expect(activePanel).toHaveStyle({ visibility: 'visible' })
     })
 
     it('전사 탭에 화자 관리 accordion이 포함됨', () => {
