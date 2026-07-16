@@ -48,9 +48,11 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
 
   useEffect(() => { fetchTemplates() }, [fetchTemplates])
 
-  // 이전 회의 참고 셀렉터용: 같은 폴더의 회의 최근순 목록 (folderId=null이면 루트)
+  // 이전 회의 참고 셀렉터용: 같은 폴더의 회의 최근순 목록 (folderId=null이면 루트).
+  // show_all: 완료된 회의도 후보로 필요하다 — 기본 목록 큐레이션(important OR !completed)이
+  // 걸리면 정상 종료된 회의가 사라져 이전 회의로 고를 수 없다(중요표시 무관하게 노출).
   useEffect(() => {
-    getMeetings({ folder_id: folderId, per: 100 })
+    getMeetings({ folder_id: folderId, per: 100, show_all: true })
       .then((res) => setRecentMeetings(res.meetings))
       .catch(() => {})
   }, [folderId])

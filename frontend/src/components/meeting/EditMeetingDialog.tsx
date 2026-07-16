@@ -64,9 +64,11 @@ export default function EditMeetingDialog({
     getTags().then(setAllTags).catch(() => {})
   }, [])
 
-  // 이전 회의 참고 셀렉터용: 같은 폴더의 회의 최근순 (자기 자신 제외)
+  // 이전 회의 참고 셀렉터용: 같은 폴더의 회의 최근순 (자기 자신 제외).
+  // show_all: 완료된 회의도 후보로 필요하다 — 기본 목록 큐레이션(important OR !completed)이
+  // 걸리면 정상 종료된 회의가 통째로 사라져 이전 회의로 고를 수 없다(중요표시 무관하게 노출).
   useEffect(() => {
-    getMeetings({ folder_id: meeting.folder_id, per: 100 })
+    getMeetings({ folder_id: meeting.folder_id, per: 100, show_all: true })
       .then((res) => setFolderMeetings(res.meetings.filter((m) => m.id !== meeting.id)))
       .catch(() => {})
   }, [meeting.folder_id, meeting.id])
