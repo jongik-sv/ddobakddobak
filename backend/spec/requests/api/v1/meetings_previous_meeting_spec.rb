@@ -91,6 +91,58 @@ RSpec.describe "Api::V1::Meetings previous meeting reference", type: :request do
     end
   end
 
+  describe "POST /api/v1/meetings/upload_audio" do
+    def audio_upload
+      Rack::Test::UploadedFile.new(
+        StringIO.new("\x1A\x45\xDF\xA3" + ("x" * 64)),
+        "audio/webm", true, original_filename: "rec.webm"
+      )
+    end
+
+    before { allow(FileTranscriptionJob).to receive(:perform_later) }
+
+    # 업로드는 audio_dir 에 파일을 쓴다 — 테스트는 임시 디렉토리로 격리(공용 storage/audio 오염 방지).
+    around do |ex|
+      Dir.mktmpdir do |dir|
+        prev = ENV["AUDIO_DIR"]
+        ENV["AUDIO_DIR"] = dir
+        ex.run
+        ENV["AUDIO_DIR"] = prev
+      end
+    end
+
+    it "persists an accessible same-folder previous_meeting_id" do
+      fa = create(:folder, project: project)
+      prev = create(:meeting, project: project, creator: user, folder: fa, title: "지난 회의")
+
+      post "/api/v1/meetings/upload_audio",
+           params: { title: "업로드 이어가기", project_id: project.id, folder_id: fa.id, previous_meeting_id: prev.id, audio: audio_upload }
+
+      expect(response).to have_http_status(:created)
+      expect(Meeting.find_by(title: "업로드 이어가기").previous_meeting_id).to eq(prev.id)
+    end
+
+    it "drops a different-folder previous_meeting_id (위변조 방어)" do
+      fa = create(:folder, project: project)
+      fb = create(:folder, project: project)
+      prev = create(:meeting, project: project, creator: user, folder: fa)
+
+      post "/api/v1/meetings/upload_audio",
+           params: { title: "타폴더 업로드", project_id: project.id, folder_id: fb.id, previous_meeting_id: prev.id, audio: audio_upload }
+
+      expect(response).to have_http_status(:created)
+      expect(Meeting.find_by(title: "타폴더 업로드").previous_meeting_id).to be_nil
+    end
+
+    it "uploads fine without previous_meeting_id" do
+      post "/api/v1/meetings/upload_audio",
+           params: { title: "단독 업로드", project_id: project.id, audio: audio_upload }
+
+      expect(response).to have_http_status(:created)
+      expect(Meeting.find_by(title: "단독 업로드").previous_meeting_id).to be_nil
+    end
+  end
+
   describe "GET /api/v1/meetings/:id (show)" do
     it "includes previous_meeting_id and title for the badge" do
       prev = create(:meeting, project: project, creator: user, title: "지난 회의")

@@ -129,6 +129,7 @@ module Api
           meeting_type: params[:meeting_type] || "general",
           folder_id: params[:folder_id],
           project_id: @create_project.id,
+          previous_meeting_id: accessible_previous_meeting_id(params[:previous_meeting_id], params[:folder_id].presence&.to_i),
           shared: params.key?(:shared) ? ActiveModel::Type::Boolean.new.cast(params[:shared]) : true,
           status: :transcribing,
           source: "upload",

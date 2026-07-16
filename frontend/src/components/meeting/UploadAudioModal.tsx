@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { uploadAudioFile, updateMeeting } from '../../api/meetings'
+import { useState, useEffect } from 'react'
+import { uploadAudioFile, getMeetings } from '../../api/meetings'
 import type { Meeting, SummaryVerbosity } from '../../api/meetings'
 import { useProjectStore } from '../../stores/projectStore'
 import { IS_TAURI, IS_MOBILE } from '../../config'
@@ -24,9 +24,20 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
   const [verbosity, setVerbosity] = useState<SummaryVerbosity | ''>('')
   const [restructure, setRestructure] = useState<'' | 'true' | 'false'>('')
   const [file, setFile] = useState<File | null>(null)
+  const [previousMeetingId, setPreviousMeetingId] = useState('')
+  const [recentMeetings, setRecentMeetings] = useState<Meeting[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [dragOver, setDragOver] = useState(false)
+
+  // 연결 회의 셀렉터용: 같은 폴더의 회의 최근순 (folderId=null이면 루트).
+  // show_all: 완료 회의도 후보로 필요 — 기본 목록 큐레이션(important OR !completed)에 걸리면
+  // 정상 종료된 회의가 사라져 연결 회의로 고를 수 없다(중요표시 무관하게 노출).
+  useEffect(() => {
+    getMeetings({ folder_id: folderId, per: 100, show_all: true })
+      .then((res) => setRecentMeetings(res.meetings))
+      .catch(() => {})
+  }, [folderId])
 
   const handleFile = (f: File) => {
     setFile(f)
@@ -86,14 +97,11 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
         meeting_type: meetingType,
         audio: file,
         project_id: useProjectStore.getState().currentProjectId,
+        folder_id: folderId,
+        ...(previousMeetingId ? { previous_meeting_id: Number(previousMeetingId) } : {}),
         ...(verbosity ? { summary_verbosity: verbosity } : {}),
         ...(restructure ? { summary_restructure: restructure === 'true' } : {}),
       })
-      // 폴더가 있으면 이동
-      if (folderId) {
-        await updateMeeting(meeting.id, { folder_id: folderId })
-        meeting.folder_id = folderId
-      }
       onCreated(meeting)
       onClose()
     } catch (err: unknown) {
@@ -186,6 +194,27 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
             selected={meetingType}
             onSelect={setMeetingType}
           />
+        </div>
+
+        {/* 연결 회의: 선택하면 그 회의록을 시작점으로 깔고 이어서 회의록을 작성 */}
+        <div>
+          <label htmlFor="upload-previous-meeting" className="block text-sm font-medium mb-1">연결 회의 (선택)</label>
+          <select
+            id="upload-previous-meeting"
+            value={previousMeetingId}
+            onChange={(e) => setPreviousMeetingId(e.target.value)}
+            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
+          >
+            <option value="">없음</option>
+            {recentMeetings.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}{m.created_at ? ` (${new Date(m.created_at).toLocaleDateString()})` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            지정하면 이전 회의록을 이어받아 그 뒤에 이번 회의 내용을 작성합니다.
+          </p>
         </div>
 
         {/* 회의록 압축율 */}

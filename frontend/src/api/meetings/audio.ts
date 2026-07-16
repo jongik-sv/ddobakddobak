@@ -66,6 +66,10 @@ export async function uploadAudioFile(data: {
   audio: File
   /** 프로젝트 스코핑. 업로드로 생성되는 회의가 속할 프로젝트. */
   project_id?: number | null
+  /** 생성 시점 폴더. 이전 회의(previous_meeting_id) 검증이 같은 폴더 기준이라 생성 때 함께 보낸다. */
+  folder_id?: number | null
+  /** 연결 회의: 이 회의록을 이어받아 뒤에 작성. 서버는 같은 폴더의 접근 가능한 회의만 허용. */
+  previous_meeting_id?: number | null
   /** 생략하면 서버가 직전 회의 설정을 승계한다 */
   summary_verbosity?: SummaryVerbosity
   summary_restructure?: boolean
@@ -74,6 +78,8 @@ export async function uploadAudioFile(data: {
   formData.append('title', data.title)
   if (data.meeting_type) formData.append('meeting_type', data.meeting_type)
   if (data.project_id != null) formData.append('project_id', String(data.project_id))
+  if (data.folder_id != null) formData.append('folder_id', String(data.folder_id))
+  if (data.previous_meeting_id != null) formData.append('previous_meeting_id', String(data.previous_meeting_id))
   if (data.summary_verbosity) formData.append('summary_verbosity', data.summary_verbosity)
   if (data.summary_restructure !== undefined) formData.append('summary_restructure', String(data.summary_restructure))
   formData.append('audio', data.audio)
