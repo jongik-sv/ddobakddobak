@@ -90,6 +90,7 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
   - 회의 1건을 `.ddobak-meeting.tgz` 로 내보내 다른 기기 현재 프로젝트·현재 폴더에 새 회의로 복원
   - 폴더(디렉토리) 서브트리+소속 회의 통째로 `.ddobak-folder.tgz` 내보내기/가져오기 (프로젝트/폴더/회의 3단 완성)
   - 공유 `Transfer::Archive`(보안 primitive)·`MeetingSerializer`/`MeetingRestorer`. 기존 프로젝트 export/import 무수정
+23. 회의중에는 뒤로가기 안되도록 보호
 
 
 ## 향후 추가 계획 — 미완료
