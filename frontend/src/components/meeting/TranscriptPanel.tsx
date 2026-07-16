@@ -4,6 +4,7 @@ import { renameSpeaker } from '../../api/speakers'
 import { EditableTranscriptText } from './EditableTranscriptText'
 import { HighlightedText } from './HighlightedText'
 import { SpeakerLabel, speakerBorderColor } from './SpeakerLabel'
+import { resolveHighlightIndex } from './transcriptHighlight'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 
 interface TranscriptPanelProps {
@@ -59,8 +60,12 @@ export function TranscriptPanel({
     return map
   }, [storeFinals])
 
-  const highlightedIndex = transcripts.findIndex(
-    (t) => currentTimeMs >= t.started_at_ms && currentTimeMs < t.ended_at_ms
+  // 포함 구간 우선, 없으면(무음 갭·회의록 시간태그 mm:ss 절삭 등) 가장 가까운 구간.
+  // 시간태그 클릭으로 seek한 ms가 어떤 구간에도 안 들어가면 오디오만 재생되고 전사 선택이
+  // 안 되던 문제를 해결한다(speakerAtMs의 nearest 폴백과 동일 규칙).
+  const highlightedIndex = useMemo(
+    () => resolveHighlightIndex(transcripts, currentTimeMs),
+    [transcripts, currentTimeMs]
   )
 
   // 표시 병합: 해석된 이름이 연속 동일한 세그먼트를 한 그룹으로.

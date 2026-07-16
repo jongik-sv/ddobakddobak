@@ -88,6 +88,31 @@ describe('TranscriptPanel', () => {
     expect(notHighlighted?.getAttribute('data-highlighted')).toBe('false')
   })
 
+  it('시간태그 seek ms가 무음 갭에 떨어져도 가장 가까운 세그먼트를 하이라이트한다', () => {
+    // 시간태그 클릭으로 오디오는 seek되는데(currentTimeMs=4000, [3000,6000) 밖은 아님)
+    // 회의록 마커가 절삭/근사되어 어떤 구간에도 안 들어가는 케이스 재현.
+    const gapped = [
+      { id: 1, speaker_label: 'SPEAKER_00', content: '첫 번째 발화입니다.', started_at_ms: 0, ended_at_ms: 3000, sequence_number: 1 },
+      { id: 2, speaker_label: 'SPEAKER_01', content: '두 번째 발화입니다.', started_at_ms: 5000, ended_at_ms: 8000, sequence_number: 2 },
+    ]
+    render(
+      <TranscriptPanel meetingId={1} transcripts={gapped} currentTimeMs={4000} onSeek={vi.fn()} />
+    )
+    const highlighted = screen.getByText('두 번째 발화입니다.').closest('[data-highlighted="true"]')
+    expect(highlighted).toBeInTheDocument()
+  })
+
+  it('첫 발화 이전(>0) seek이면 첫 세그먼트를 하이라이트한다', () => {
+    const later = [
+      { id: 1, speaker_label: 'SPEAKER_00', content: '늦게 시작하는 발화.', started_at_ms: 2000, ended_at_ms: 4000, sequence_number: 1 },
+    ]
+    render(
+      <TranscriptPanel meetingId={1} transcripts={later} currentTimeMs={500} onSeek={vi.fn()} />
+    )
+    const highlighted = screen.getByText('늦게 시작하는 발화.').closest('[data-highlighted="true"]')
+    expect(highlighted).toBeInTheDocument()
+  })
+
   it('세그먼트 클릭 시 onSeek(started_at_ms) 호출한다', () => {
     const onSeek = vi.fn()
     render(
