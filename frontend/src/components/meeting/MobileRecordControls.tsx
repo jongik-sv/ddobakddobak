@@ -19,6 +19,8 @@ export interface MobileRecordControlsProps {
   isStopping: boolean
   /** 시작 준비 중(예: 온디바이스 모델 로딩). true && !isRecording 이면 "회의 시작" disabled + 스피너. 기본 false(서버 무영향). */
   isStarting?: boolean
+  /** 회의 시작 어포던스 노출 여부(소유자 ∨ admin). 권한은 서버가 강제. 기본 true. */
+  canEdit?: boolean
   /** 더보기 바텀 시트에 표시할 추가 옵션. close()로 시트를 닫을 수 있다(다이얼로그를 띄우는 항목용). */
   children?: (close: () => void) => ReactNode
 }
@@ -37,6 +39,7 @@ export function MobileRecordControls({
   canManualSummary,
   isStopping,
   isStarting = false,
+  canEdit = true,
   children,
 }: MobileRecordControlsProps) {
   const [showMore, setShowMore] = useState(false)
@@ -85,14 +88,16 @@ export function MobileRecordControls({
       {/* 우측: 시작 / (일시정지·재개 + 종료) + 더보기 */}
       <div className="flex items-center gap-1 shrink-0">
         {!isRecording ? (
-          <button
-            onClick={onStart}
-            disabled={isStarting}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isStarting && <Loader2 className="w-4 h-4 animate-spin" />}
-            회의 시작
-          </button>
+          canEdit && (
+            <button
+              onClick={onStart}
+              disabled={isStarting}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isStarting && <Loader2 className="w-4 h-4 animate-spin" />}
+              회의 시작
+            </button>
+          )
         ) : (
           <>
             {onManualSummary && (

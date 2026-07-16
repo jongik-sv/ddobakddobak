@@ -142,10 +142,6 @@ vi.mock('../../api/bookmarks', () => ({
   deleteBookmark: vi.fn(),
 }))
 
-vi.mock('../../components/meeting/ShareLinkButton', () => ({
-  ShareLinkButton: () => null,
-}))
-
 vi.mock('../../components/meeting/ExportButton', () => ({
   ExportButton: () => <button data-testid="export-button">내보내기</button>,
 }))

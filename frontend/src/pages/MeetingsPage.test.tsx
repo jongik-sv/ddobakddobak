@@ -331,10 +331,11 @@ describe('MeetingsPage 모바일 대응 (TSK-03-02)', () => {
       expect(dateInputs.length).toBe(2)
     })
 
-    it('헤더 버튼(회의 참여, 오디오 업로드)이 텍스트로 표시된다', () => {
+    it('헤더 버튼(오디오 업로드)이 텍스트로 표시되고 회의 참여 버튼은 없다', () => {
       renderPage()
-      expect(screen.getByRole('button', { name: /회의 참여/i })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /오디오 업로드/i })).toBeInTheDocument()
+      // 라이브 공유/참여 기능 제거 — 회의 참여 진입점이 없어야 한다
+      expect(screen.queryByRole('button', { name: /회의 참여/i })).not.toBeInTheDocument()
     })
   })
 

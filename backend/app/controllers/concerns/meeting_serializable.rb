@@ -15,6 +15,10 @@ module MeetingSerializable
       meeting_type: meeting.meeting_type,
       started_at: meeting.started_at,
       ended_at: meeting.ended_at,
+      paused_at: meeting.paused_at,
+      # 단일 녹음 기기 락: 점유 기기 id + 활성 점유 여부(프론트가 "내 기기인가/충돌인가" 판단).
+      recording_client_id: meeting.recording_client_id,
+      recorder_active: meeting.recorder_active?,
       created_by_id: meeting.created_by_id,
       created_by: { id: meeting.created_by_id, name: meeting.creator&.name },
       shared: meeting.shared,
@@ -33,6 +37,7 @@ module MeetingSerializable
       expected_participants: meeting.expected_participants,
       summary_verbosity: meeting.summary_verbosity,
       summary_restructure: meeting.summary_restructure,
+      summary_interval_sec: meeting.summary_interval_sec,
       # 최근 final 요약 실패 사유/시각 (성공 저장 시 클리어) — 새로고침 후에도 실패를 레포트.
       summary_error_message: meeting.summary_error_message,
       summary_error_at: meeting.summary_error_at,

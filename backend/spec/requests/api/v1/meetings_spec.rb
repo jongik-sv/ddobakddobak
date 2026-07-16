@@ -394,15 +394,14 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     end
 
     context "접근 권한" do
-      it "소유자가 아니고 참여자도 아니면 403 (비공개 회의)" do
+      it "소유자가 아니면 비공개 회의는 프로젝트 멤버라도 403" do
         foreign = create(:meeting, :private_meeting, project: project, creator: other_user)
         get "/api/v1/meetings/#{foreign.id}"
         expect(response).to have_http_status(:forbidden)
       end
 
-      it "공유코드로 참여한 viewer는 조회 가능(200)" do
-        foreign = create(:meeting, project: project, creator: other_user)
-        create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
+      it "공유 가시성 있는 프로젝트 멤버는 조회 가능(200)" do
+        foreign = create(:meeting, project: project, creator: other_user) # 팩토리 기본 shared: true
         get "/api/v1/meetings/#{foreign.id}"
         expect(response).to have_http_status(:ok)
       end
@@ -412,13 +411,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         login_as(create(:user, role: "admin"))
         get "/api/v1/meetings/#{foreign.id}"
         expect(response).to have_http_status(:ok)
-      end
-
-      it "회의를 떠난(left_at 설정) 참여자는 더 이상 접근할 수 없다(403)" do
-        foreign = create(:meeting, :private_meeting, project: project, creator: other_user)
-        create(:meeting_participant, meeting: foreign, user: user, role: "viewer", left_at: Time.current)
-        get "/api/v1/meetings/#{foreign.id}"
-        expect(response).to have_http_status(:forbidden)
       end
 
       it "소유자는 자신의 회의에 접근 가능(200)" do
@@ -470,6 +462,27 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       it "범위 밖 값은 422" do
         patch "/api/v1/meetings/#{meeting.id}", params: { expected_participants: 0 }
         expect(response).to have_http_status(:unprocessable_entity)
+      end
+    end
+
+    describe "summary_interval_sec" do
+      it "update로 자동 요약 주기(0=안함 포함)를 설정하고 직렬화한다" do
+        patch "/api/v1/meetings/#{meeting.id}", params: { summary_interval_sec: 0 }
+        expect(response).to have_http_status(:ok)
+        expect(meeting.reload.summary_interval_sec).to eq(0)
+        expect(JSON.parse(response.body).dig("meeting", "summary_interval_sec")).to eq(0)
+
+        patch "/api/v1/meetings/#{meeting.id}", params: { summary_interval_sec: 300 }
+        expect(meeting.reload.summary_interval_sec).to eq(300)
+      end
+
+      it "무효값(음수·빈값·비숫자)은 무시하고 기존값을 유지한다" do
+        meeting.update!(summary_interval_sec: 180)
+        [ -5, "", "abc" ].each do |bad|
+          patch "/api/v1/meetings/#{meeting.id}", params: { summary_interval_sec: bad }
+          expect(response).to have_http_status(:ok)
+          expect(meeting.reload.summary_interval_sec).to eq(180)
+        end
       end
     end
 
@@ -746,9 +759,8 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       expect(response).to have_http_status(:unprocessable_entity)
     end
 
-    it "forbids viewer participants" do
+    it "forbids non-owner readers (공유 가시성 멤버)" do
       foreign = create(:meeting, project: project, creator: other_user, status: "recording")
-      create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
       post "/api/v1/meetings/#{foreign.id}/pause"
       expect(response).to have_http_status(:forbidden)
     end
@@ -801,14 +813,12 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   describe "제어 액션 인가" do
     let(:foreign) { create(:meeting, project: project, creator: other_user, status: "pending") }
 
-    it "viewer 참여자는 회의를 제어(start)할 수 없다(403)" do
-      create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
+    it "읽기 가시성 멤버(비소유자)는 회의를 제어(start)할 수 없다(403)" do
       post "/api/v1/meetings/#{foreign.id}/start"
       expect(response).to have_http_status(:forbidden)
     end
 
-    it "viewer 참여자는 update할 수 없다(403)" do
-      create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
+    it "읽기 가시성 멤버(비소유자)는 update할 수 없다(403)" do
       patch "/api/v1/meetings/#{foreign.id}", params: { title: "해킹" }
       expect(response).to have_http_status(:forbidden)
       expect(foreign.reload.title).not_to eq("해킹")

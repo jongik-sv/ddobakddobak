@@ -41,7 +41,6 @@ Rails.application.routes.draw do
           post :upload_audio
           post :move_to_folder
           post :move_to_project
-          post :join, to: "meeting_shares#join"
         end
         member do
           post :start
@@ -69,11 +68,6 @@ Rails.application.routes.draw do
           post :export, to: "meeting_transfers#export", as: :transfer_meeting_export
           get  :summary
           get  :transcripts
-          post :share, to: "meeting_shares#create_share"
-          delete :share, to: "meeting_shares#destroy_share"
-          get :participants, to: "meeting_shares#participants"
-          post :transfer_host, to: "meeting_shares#transfer_host"
-          post :claim_host, to: "meeting_shares#claim_host"
           post :lock
           delete :lock, to: "meetings#unlock"
           post :dismiss_schedule

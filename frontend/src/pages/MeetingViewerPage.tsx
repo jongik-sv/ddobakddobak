@@ -4,15 +4,12 @@ import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'reac
 import { useTranscription } from '../hooks/useTranscription'
 import { useViewerData } from '../hooks/useViewerData'
 import { useTranscriptStore } from '../stores/transcriptStore'
-import { useSharingStore } from '../stores/sharingStore'
+import { useRecordingSignalsStore } from '../stores/recordingSignalsStore'
 import { useUiStore } from '../stores/uiStore'
 import { RecordTabPanel } from '../components/meeting/RecordTabPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
-import { ParticipantList } from '../components/meeting/ParticipantList'
 import { ViewerHeader } from '../components/meeting/ViewerHeader'
-import HostDisconnectedBanner from '../components/meeting/HostDisconnectedBanner'
-import { useAuthStore } from '../stores/authStore'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { MeetingAccessFallback } from '../components/meeting/MeetingAccessFallback'
 import { FileText, Bot } from 'lucide-react'
@@ -20,25 +17,25 @@ import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
 import MobileTabLayout from '../components/layout/MobileTabLayout'
 import type { Tab } from '../components/layout/MobileTabLayout'
 
+/** 읽기전용 뷰어 — 다른 기기에서 녹음 중인 회의의 전사/회의록을 실시간으로 지켜본다. */
 export default function MeetingViewerPage() {
   const { id } = useParams<{ id: string }>()
   const meetingId = Number(id)
   const navigate = useNavigate()
 
-  const recordingStopped = useSharingStore((s) => s.recordingStopped)
-  const participantCount = useSharingStore((s) => s.participants.length)
-  const sharingParticipants = useSharingStore((s) => s.participants)
-  const authUser = useAuthStore((s) => s.user)
-  const isHost = useMemo(() => {
-    const host = sharingParticipants.find((p) => p.role === 'host')
-    return host?.user_id === authUser?.id && !!authUser?.id
-  }, [sharingParticipants, authUser?.id])
+  const recordingStopped = useRecordingSignalsStore((s) => s.recordingStopped)
+  const recordingPausedSignal = useRecordingSignalsStore((s) => s.recordingPaused)
 
   useEffect(() => {
     useUiStore.setState({ sidebarOpen: false })
   }, [])
 
-  const { meetingTitle, locked, isLoaded, error } = useViewerData(meetingId)
+  const { meetingTitle, locked, paused: initialPaused, isLoaded, error } = useViewerData(meetingId)
+  // 일시정지 표시: 채널 신호(recording_paused/resumed)가 '이 회의'의 것일 때만 신호 우선,
+  // 아니면(신호 미수신·타 회의 신호) 진입 시 REST 스냅샷으로 폴백 — 타 회의 신호 누수 차단.
+  const isPaused = recordingPausedSignal?.meetingId === meetingId
+    ? recordingPausedSignal.paused
+    : initialPaused
   const { isLoading: accessLoading, error: accessError } = useMeetingAccess(meetingId)
 
   useTranscription(meetingId)
@@ -46,16 +43,11 @@ export default function MeetingViewerPage() {
   useEffect(() => {
     return () => {
       useTranscriptStore.getState().reset()
-      useSharingStore.getState().reset()
+      useRecordingSignalsStore.getState().reset()
     }
   }, [])
 
-  // viewer가 host로 승격되면 live 페이지로 이동
-  useEffect(() => {
-    if (isHost) navigate(`/meetings/${meetingId}`)
-  }, [isHost, meetingId, navigate])
-
-  const handleLeave = () => {
+  const handleBack = () => {
     navigate('/meetings')
   }
 
@@ -68,16 +60,13 @@ export default function MeetingViewerPage() {
       icon: FileText,
       content: (
         <div className="h-full flex flex-col">
-          {/* 화자/참여자 accordion (기본 닫힘) */}
+          {/* 화자 accordion (기본 닫힘) */}
           <details className="border-b">
             <summary className="px-4 py-2 text-sm font-medium text-foreground cursor-pointer hover:bg-muted">
-              화자 · 참여자
+              화자
             </summary>
             <div className="px-2 pb-2">
               <SpeakerPanel meetingId={meetingId} isRecording={!recordingStopped} readOnly={locked} />
-              <div className="border-t mt-2 pt-2">
-                <ParticipantList isHost={false} currentUserId={0} />
-              </div>
             </div>
           </details>
           <div className="flex-1 overflow-hidden">
@@ -120,11 +109,10 @@ export default function MeetingViewerPage() {
     <div className="flex flex-col h-full">
       <ViewerHeader
         title={meetingTitle}
-        participantCount={participantCount}
         isRecordingStopped={recordingStopped}
-        onLeave={handleLeave}
+        isPaused={isPaused}
+        onBack={handleBack}
       />
-      <HostDisconnectedBanner meetingId={meetingId} />
 
       {/* 데스크톱: 좌우 분할 / 모바일: 탭 레이아웃 */}
       {isDesktop ? (
@@ -140,12 +128,6 @@ export default function MeetingViewerPage() {
               </div>
               <div className="border-t shrink-0">
                 <SpeakerPanel meetingId={meetingId} isRecording={!recordingStopped} collapsible readOnly={locked} />
-              </div>
-              <div className="border-t shrink-0">
-                <ParticipantList
-                  isHost={false}
-                  currentUserId={0}
-                />
               </div>
             </section>
           </Panel>
@@ -169,7 +151,7 @@ export default function MeetingViewerPage() {
 
       <div className="flex items-center justify-between px-4 h-7 border-t bg-muted text-[11px] text-muted-foreground shrink-0 select-none">
         <span className="text-muted-foreground">
-          {recordingStopped ? '종료됨' : '실시간 참여 중'}
+          {recordingStopped ? '종료됨' : isPaused ? '다른 기기에서 녹음 중 — 일시정지' : '다른 기기에서 녹음 중'}
         </span>
         <span className="text-muted-foreground">읽기 전용</span>
       </div>

@@ -33,6 +33,20 @@ describe('MobileRecordControls', () => {
     expect(onStart).toHaveBeenCalledOnce()
   })
 
+  // ─── canEdit(소유자 ∨ admin) 게이트 ───
+
+  it('canEdit=false면 대기 상태에서 "회의 시작" 버튼이 노출되지 않는다', () => {
+    render(<MobileRecordControls {...defaultProps} isRecording={false} canEdit={false} />)
+    expect(screen.queryByRole('button', { name: /회의 시작/i })).not.toBeInTheDocument()
+    // 더보기 버튼은 게이트와 무관하게 유지
+    expect(screen.getByRole('button', { name: /더보기/i })).toBeInTheDocument()
+  })
+
+  it('canEdit 미지정(기본 true)이면 "회의 시작" 버튼이 노출된다(회귀 가드)', () => {
+    render(<MobileRecordControls {...defaultProps} isRecording={false} />)
+    expect(screen.getByRole('button', { name: '회의 시작' })).toBeInTheDocument()
+  })
+
   // ─── isStarting(모델 로딩 등) 게이트 ───
 
   it('isStarting=true && !isRecording → "회의 시작" 버튼 disabled + 스피너', () => {

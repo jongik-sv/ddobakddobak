@@ -86,8 +86,7 @@ module Api
 
       def meeting_controllable?(meeting)
         return true if current_user.respond_to?(:admin?) && current_user.admin?
-        return true if meeting.owner?(current_user)
-        meeting.host_participant&.user_id == current_user.id
+        meeting.owner?(current_user)
       end
 
       def entry_params

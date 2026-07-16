@@ -19,7 +19,6 @@ import MoveToProjectModal from '../components/project/MoveToProjectModal'
 import { useProjectStore } from '../stores/projectStore'
 import EditMeetingDialog, { type EditMeetingData } from '../components/meeting/EditMeetingDialog'
 import ExportMeetingDialog from '../components/meeting/ExportMeetingDialog'
-import { JoinMeetingDialog } from '../components/meeting/JoinMeetingDialog'
 import { MeetingsGridSkeleton } from '../components/ui/Skeleton'
 import { CreateMeetingModal } from '../components/meeting/CreateMeetingModal'
 import { UploadAudioModal } from '../components/meeting/UploadAudioModal'
@@ -62,7 +61,6 @@ export default function MeetingsPage() {
 
   const [showModal, setShowModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
-  const [showJoinDialog, setShowJoinDialog] = useState(false)
   const [searchExpanded, setSearchExpanded] = useState(false)
   const [filterSheetOpen, setFilterSheetOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -221,7 +219,6 @@ export default function MeetingsPage() {
         onSearchExpand={() => setSearchExpanded(true)}
         onSearchClose={() => { setSearchExpanded(false); setSearchQuery('') }}
         onOpenFilterSheet={() => setFilterSheetOpen(true)}
-        onJoinMeeting={() => setShowJoinDialog(true)}
         onUploadAudio={() => setShowUploadModal(true)}
         onCreateMeeting={() => setShowModal(true)}
         onAskFolder={() => setAskOpen(true)}
@@ -532,12 +529,6 @@ export default function MeetingsPage() {
       {exportingMeeting && (
         <ExportMeetingDialog meeting={exportingMeeting} onClose={() => setExportingMeeting(null)} />
       )}
-
-      {/* 회의 참여 다이얼로그 */}
-      <JoinMeetingDialog
-        open={showJoinDialog}
-        onClose={() => setShowJoinDialog(false)}
-      />
 
       {/* 폴더/프로젝트에게 묻기 드로어 */}
       <FolderChatDrawer

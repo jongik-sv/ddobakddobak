@@ -51,7 +51,6 @@ export interface Meeting {
   /** 참여 인원수 (화자분리 ±2 힌트). null=자동 감지 */
   expected_participants?: number | null
   tags?: { id: number; name: string; color: string }[]
-  share_code?: string | null
   /** 모든 사용자에게 공유 여부 (기본 true). 비공유면 소유자/admin만 조회 가능. */
   shared: boolean
   /** 회의 잠금 여부. 잠금되면 편집이 차단된다(소유자/admin만 잠금/해제). */
@@ -69,6 +68,8 @@ export interface Meeting {
   summary_verbosity?: SummaryVerbosity
   /** true=지속 재구조화(매 틱 전체 재정리), false=증분(앞 내용 불변, 시간대별 추가) */
   summary_restructure?: boolean
+  /** 자동 요약 주기(초). 0=안함. 서버 영속 — cron 자동요약 게이트 */
+  summary_interval_sec?: number
   /** 최근 최종(final) 요약 실패 사유. 성공 저장 시 서버가 null로 클리어. */
   summary_error_message?: string | null
   /** 최근 최종 요약 실패 시각 (ISO 문자열). */
@@ -87,6 +88,12 @@ export interface Meeting {
   recurrence_rule?: RecurrenceRule | null
   /** 사용자가 놓친 예약 안내를 닫은 시각 (목록에서 숨김). */
   schedule_dismissed_at?: string | null
+  /** 일시정지 시각 (ISO 문자열). recording 상태에서만 의미. null=진행 중. */
+  paused_at?: string | null
+  /** 현재 녹음을 점유한 클라이언트 ID (lib/clientId.getClientId와 대응). null=점유 없음. */
+  recording_client_id?: string | null
+  /** recording 상태이고 녹음 클라 하트비트가 신선한지 (서버 계산). 기기 점유 판정용. */
+  recorder_active?: boolean
 }
 
 /** 반복 예약 규칙. days: 0=일~6=토 (weekly에서만 사용). time: "HH:MM". tz: IANA 타임존. */
@@ -163,6 +170,8 @@ export interface UpdateMeetingParams {
   important?: boolean
   summary_verbosity?: SummaryVerbosity
   summary_restructure?: boolean
+  /** 자동 요약 주기(초). 0=안함. 서버 영속 — cron 자동요약 게이트 */
+  summary_interval_sec?: number
   /** 이전 회의 참고. null/빈값이면 해제 */
   previous_meeting_id?: number | null
   /** 예약 시작 시각 (ISO UTC). null=예약 해제. pending 회의 수정에서만 의미 있음. */
@@ -225,24 +234,4 @@ export interface MeetingExportData {
     timestamp: string
     content: string
   }>
-}
-
-// --- 공유 API ---
-
-export interface Participant {
-  id: number
-  user_id: number
-  user_name: string
-  role: 'host' | 'viewer'
-  joined_at: string
-}
-
-export interface ShareResponse {
-  share_code: string
-  participants: Participant[]
-}
-
-export interface JoinResponse {
-  meeting: Meeting
-  participant: Participant
 }

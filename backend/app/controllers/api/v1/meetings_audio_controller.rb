@@ -4,6 +4,7 @@ module Api
       include MeetingLookup
       include AudioStorage
       include MeetingWriteGuard
+      include RecorderConflictGuard
 
       ALLOWED_AUDIO_CONTENT_TYPES = %w[audio/webm audio/ogg video/webm audio/mp4 audio/wav audio/x-wav audio/wave].freeze
       AUDIO_MIME_OVERRIDES = { ".m4a" => "audio/mp4", ".aac" => "audio/aac" }.freeze
@@ -12,6 +13,8 @@ module Api
       before_action :set_meeting
       before_action :authorize_meeting_control!, only: %i[create chunk finalize]
       before_action :reject_if_locked!, only: %i[create chunk finalize]
+      # 단일 녹음 기기 락: 녹음 중 REST 청크 업로드/종결도 점유 기기에서만(다른 기기는 409).
+      before_action :reject_if_recorder_conflict!, only: %i[create chunk finalize]
 
       def create
         audio_file = params.require(:audio)

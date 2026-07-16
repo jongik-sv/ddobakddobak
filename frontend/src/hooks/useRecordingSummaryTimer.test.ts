@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useRecordingSummaryTimer } from './useRecordingSummaryTimer'
-import { triggerRealtimeSummary } from '../api/meetings'
+import { triggerRealtimeSummary, updateMeeting } from '../api/meetings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { DEFAULT_SUMMARY_INTERVAL_SEC } from '../config'
 
 vi.mock('../api/meetings', () => ({
   triggerRealtimeSummary: vi.fn(async () => {}),
+  updateMeeting: vi.fn(async () => ({})),
 }))
 
 vi.mock('../stores/transcriptStore', () => ({
@@ -14,6 +15,7 @@ vi.mock('../stores/transcriptStore', () => ({
 }))
 
 const trigger = vi.mocked(triggerRealtimeSummary)
+const update = vi.mocked(updateMeeting)
 
 type Opts = Parameters<typeof useRecordingSummaryTimer>[0]
 
@@ -46,6 +48,20 @@ describe('useRecordingSummaryTimer — summaryIntervalSec 상태 내재화', () 
     const { result } = renderHook(() => useRecordingSummaryTimer(makeOptions()))
     act(() => result.current.setSummaryIntervalSec(120))
     expect(result.current.summaryIntervalSec).toBe(120)
+  })
+
+  it('setSummaryIntervalSec 호출 시 updateMeeting(meetingId, {summary_interval_sec})가 호출된다', () => {
+    const { result } = renderHook(() => useRecordingSummaryTimer(makeOptions()))
+    act(() => result.current.setSummaryIntervalSec(120))
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(update).toHaveBeenCalledWith(42, { summary_interval_sec: 120 })
+  })
+
+  it('syncSummaryIntervalSec 는 로컬 값만 갱신하고 API를 호출하지 않는다', () => {
+    const { result } = renderHook(() => useRecordingSummaryTimer(makeOptions()))
+    act(() => result.current.syncSummaryIntervalSec(300))
+    expect(result.current.summaryIntervalSec).toBe(300)
+    expect(update).not.toHaveBeenCalled()
   })
 
   it('isActive:false 면 카운트다운 0 유지, 자동 요약 호출 안 함', () => {

@@ -20,39 +20,23 @@ RSpec.describe TranscriptionChannel, type: :channel do
       end
     end
 
-    context "when active participant (viewer)" do
+    context "when project member with shared visibility (viewer)" do
       let(:viewer) { create(:user) }
 
       before do
-        create(:meeting_participant, meeting: meeting, user: viewer, role: "viewer", joined_at: Time.current)
+        create(:project_membership, user: viewer, project: project, role: "member")
         stub_connection current_user: viewer
       end
 
       it "subscribes to the meeting transcription stream" do
-        subscribe(meeting_id: meeting.id)
+        subscribe(meeting_id: meeting.id) # 팩토리 기본 shared: true → 읽기 가시성
 
         expect(subscription).to be_confirmed
         expect(subscription).to have_stream_from("meeting_#{meeting.id}_transcription")
       end
     end
 
-    context "when active participant (host)" do
-      let(:host_user) { create(:user) }
-
-      before do
-        create(:meeting_participant, meeting: meeting, user: host_user, role: "host", joined_at: Time.current)
-        stub_connection current_user: host_user
-      end
-
-      it "subscribes to the meeting transcription stream" do
-        subscribe(meeting_id: meeting.id)
-
-        expect(subscription).to be_confirmed
-        expect(subscription).to have_stream_from("meeting_#{meeting.id}_transcription")
-      end
-    end
-
-    context "when user is not owner nor active participant" do
+    context "when user is not a project member" do
       let(:stranger) { create(:user) }
 
       before { stub_connection current_user: stranger }
@@ -64,12 +48,13 @@ RSpec.describe TranscriptionChannel, type: :channel do
       end
     end
 
-    context "when participant has left (left_at set)" do
-      let(:left_user) { create(:user) }
+    context "when project member but meeting is not shared" do
+      let(:member) { create(:user) }
 
       before do
-        create(:meeting_participant, meeting: meeting, user: left_user, role: "viewer", joined_at: 1.hour.ago, left_at: Time.current)
-        stub_connection current_user: left_user
+        create(:project_membership, user: member, project: project, role: "member")
+        meeting.update!(shared: false)
+        stub_connection current_user: member
       end
 
       it "rejects the subscription" do
@@ -177,29 +162,12 @@ RSpec.describe TranscriptionChannel, type: :channel do
       end
     end
 
-    context "when subscribed as host participant and meeting is recording" do
-      let(:host_user) { create(:user) }
-
-      before do
-        meeting.update!(status: "recording")
-        create(:meeting_participant, meeting: meeting, user: host_user, role: "host", joined_at: Time.current)
-        stub_connection current_user: host_user
-        subscribe(meeting_id: meeting.id)
-      end
-
-      it "enqueues a TranscriptionJob" do
-        expect {
-          perform(:audio_chunk, { "data" => "base64audio==", "sequence" => 1 })
-        }.to have_enqueued_job(TranscriptionJob)
-      end
-    end
-
-    context "when subscribed as viewer" do
+    context "when subscribed as viewer (shared-visible project member)" do
       let(:viewer) { create(:user) }
 
       before do
         meeting.update!(status: "recording")
-        create(:meeting_participant, meeting: meeting, user: viewer, role: "viewer", joined_at: Time.current)
+        create(:project_membership, user: viewer, project: project, role: "member")
         stub_connection current_user: viewer
         subscribe(meeting_id: meeting.id)
       end
@@ -282,9 +250,9 @@ RSpec.describe TranscriptionChannel, type: :channel do
       expect(meeting.reload.recorder_heartbeat_at).to be_within(1.second).of(ts)
     end
 
-    it "viewer heartbeat → 미갱신" do
+    it "viewer(읽기 가시성 멤버) heartbeat → 미갱신" do
       viewer = create(:user)
-      create(:meeting_participant, meeting: meeting, user: viewer, role: "viewer", joined_at: Time.current)
+      create(:project_membership, user: viewer, project: project, role: "member")
       meeting.update!(status: "recording", started_at: 1.minute.ago, recorder_heartbeat_at: nil)
       stub_connection current_user: viewer
       subscribe(meeting_id: meeting.id)

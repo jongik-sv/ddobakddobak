@@ -13,7 +13,7 @@ RSpec.describe ProjectExporter do
 
   let!(:meeting) do
     create(:meeting, project: project, creator: owner, folder: child_folder,
-                     title: "주간 회의", share_code: "ABC123")
+                     title: "주간 회의")
   end
 
   let!(:transcript) { create(:transcript, meeting: meeting, content: "안녕하세요 회의 시작합니다") }
@@ -23,7 +23,6 @@ RSpec.describe ProjectExporter do
   let!(:block)       { create(:block, meeting: meeting) }
   let!(:contact)     { create(:meeting_contact, meeting: meeting) }
   let!(:bookmark)    { create(:meeting_bookmark, meeting: meeting) }
-  let!(:participant) { create(:meeting_participant, meeting: meeting, user: owner) }
   let!(:chat_message) { create(:chat_message, meeting: meeting, user: owner) }
 
   let!(:tag)     { create(:tag, project: project, name: "긴급") }
@@ -89,7 +88,6 @@ RSpec.describe ProjectExporter do
       it "회의 원본 PK 를 보존한다" do
         expect(manifest[:meetings].size).to eq(1)
         expect(m["id"]).to eq(meeting.id)
-        expect(m["share_code"]).to eq("ABC123")
       end
 
       it "모든 자식 컬렉션을 중첩한다" do
@@ -101,7 +99,6 @@ RSpec.describe ProjectExporter do
         expect(m[:blocks].map { |b| b["id"] }).to contain_exactly(block.id)
         expect(m[:contacts].map { |c| c["id"] }).to contain_exactly(contact.id)
         expect(m[:bookmarks].map { |b| b["id"] }).to contain_exactly(bookmark.id)
-        expect(m[:participants].map { |p| p["id"] }).to contain_exactly(participant.id)
         expect(m[:chat_messages].map { |c| c["id"] }).to contain_exactly(chat_message.id)
         expect(m[:glossary_entries].map { |g| g["id"] }).to contain_exactly(glossary_entry.id)
       end

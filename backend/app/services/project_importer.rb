@@ -14,7 +14,7 @@ require "tempfile"
 #   - ProjectMembership(실행자, role: admin) 1건
 #   - old_id → new 맵으로 FK 리맵 (folders 2-pass · tags dedupe · meetings · 자식)
 #   - 소유권은 전부 실행자로 재지정(회의 created_by · 챗/북마크 user · 첨부 uploaded_by)
-#   - share_code=nil, previous_meeting_id 는 범위 안만 리맵(밖이면 nil)
+#   - previous_meeting_id 는 범위 안만 리맵(밖이면 nil)
 #   - 오디오/첨부 파일은 tar 에서 꺼내 storage/ 로 복사 후 절대경로로 file_path 재작성
 #   - 전체를 단일 DB 트랜잭션으로 감싸고, 실패 시 복사한 파일을 정리한다.
 #
@@ -267,7 +267,6 @@ class ProjectImporter
       attrs["project_id"]    = project.id
       attrs["created_by_id"] = @user.id
       attrs["folder_id"]     = remap_id(folder_map, m["folder_id"])
-      attrs["share_code"]    = nil
       attrs["previous_meeting_id"] = nil
       attrs["audio_file_path"]     = nil
 
@@ -314,7 +313,6 @@ class ProjectImporter
       attrs["source_attachment_id"] = nil # 첨부 리맵 복잡도 회피(메타 보존이 목적 아님)
       meeting.meeting_contacts.create!(attrs.merge("meeting_id" => meeting.id))
     end
-    import_participants(meeting, m["participants"] || [])
     (m["bookmarks"] || []).each do |b|
       meeting.meeting_bookmarks.create!(sanitize(b, MeetingBookmark).merge("meeting_id" => meeting.id))
     end
@@ -332,37 +330,6 @@ class ProjectImporter
     end
     import_attachments(meeting, m["attachments"] || [])
     import_taggings(meeting, m["tag_ids"] || [], tag_map)
-  end
-
-  # 참석자: 모든 user_id 를 실행자로 재지정한다. 하지만 MeetingParticipant 는
-  # (meeting_id, user_id) 활성(left_at IS NULL) 유일 제약이 있어, 원본에 활성 참석자가
-  # 2명 이상이면 같은 user_id·left_at=nil 가 중복돼 검증 위반·트랜잭션 롤백이 난다.
-  # → 모든 ROW 는 보존하되, 활성 참석자는 새 meeting 당 1건만 활성으로 둔다.
-  # 2번째 이후의 원래-활성 참석자는 left_at 를 채워(joined_at 폴백, 없으면 현재시각)
-  # 비활성으로 강등한다.
-  #
-  # 주의: uniqueness 검증의 conditions 는 "후보 ROW 의 left_at" 이 아니라 DB 의 기존
-  # 활성 ROW 만 본다 → 비활성 후보를 만들어도, 이미 활성 ROW 가 있으면 검증이 걸린다.
-  # 따라서 비활성 ROW 들을 먼저 만들고(이때 활성 ROW 가 아직 없어 통과), 단 하나의
-  # 활성 ROW 를 마지막에 만든다(이때도 다른 활성 ROW 가 없어 통과).
-  def import_participants(meeting, participants)
-    active_attrs = nil
-    rows = []
-    participants.each do |p|
-      attrs = sanitize(p, MeetingParticipant)
-      attrs["user_id"]   = @user.id
-      attrs["meeting_id"] = meeting.id
-
-      if attrs["left_at"].blank? && active_attrs.nil?
-        active_attrs = attrs # 첫 활성 참석자만 활성 유지(마지막에 생성).
-      else
-        attrs["left_at"] = attrs["joined_at"].presence || Time.current if attrs["left_at"].blank?
-        rows << attrs
-      end
-    end
-
-    rows.each { |attrs| meeting.meeting_participants.create!(attrs) }
-    meeting.meeting_participants.create!(active_attrs) if active_attrs
   end
 
   # blocks: parent_block_id 자기참조 → 2-pass 로 계층 보존.

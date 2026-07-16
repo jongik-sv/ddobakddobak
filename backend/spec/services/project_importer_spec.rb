@@ -23,7 +23,7 @@ RSpec.describe ProjectImporter do
 
   let!(:meeting) do
     create(:meeting, project: project, creator: owner, folder: child_folder,
-                     title: "주간 회의", share_code: "ABC123",
+                     title: "주간 회의",
                      previous_meeting: out_of_scope_prev)
   end
 
@@ -34,7 +34,6 @@ RSpec.describe ProjectImporter do
   let!(:block)       { create(:block, meeting: meeting) }
   let!(:contact)     { create(:meeting_contact, meeting: meeting) }
   let!(:bookmark)    { create(:meeting_bookmark, meeting: meeting) }
-  let!(:participant) { create(:meeting_participant, meeting: meeting, user: owner) }
   let!(:chat_message) { create(:chat_message, meeting: meeting, user: owner, content: "질문이요") }
 
   let!(:tag)     { create(:tag, project: project, name: "긴급") }
@@ -103,7 +102,6 @@ RSpec.describe ProjectImporter do
       expect(m.blocks.count).to eq(1)
       expect(m.meeting_contacts.count).to eq(1)
       expect(m.meeting_bookmarks.count).to eq(1)
-      expect(m.meeting_participants.count).to eq(1)
       expect(m.chat_messages.count).to eq(1)
       expect(m.glossary_entries.count).to eq(1)
     end
@@ -117,11 +115,6 @@ RSpec.describe ProjectImporter do
       m = new_project.meetings.first
       expect(m.created_by_id).to eq(importer.id)
       expect(m.chat_messages.first.user_id).to eq(importer.id)
-    end
-
-    it "share_code 는 nil 로 초기화한다" do
-      m = new_project.meetings.first
-      expect(m.share_code).to be_nil
     end
 
     it "범위 밖 previous_meeting_id 는 nil 이다" do
@@ -328,40 +321,6 @@ RSpec.describe ProjectImporter do
         described_class.new(export_io, importer).run!
       }.to raise_error(StandardError)
       expect(Project.count).to eq(project_count_before)
-    end
-  end
-
-  describe "다참석자 회의 (F1)" do
-    # 원본에 활성 참석자(left_at IS NULL) 2명(host + viewer) → 무조건 실행자로 재지정하면
-    # 같은 meeting_id 에 같은 user_id·left_at=nil 2건 → uniqueness 위반·트랜잭션 전체 롤백.
-    let!(:other_user) { create(:user, name: "두번째참석자") }
-
-    before do
-      participant.update_columns(role: "host", left_at: nil)
-      create(:meeting_participant, meeting: meeting, user: other_user, role: "viewer", left_at: nil)
-    end
-
-    it "활성 참석자 2명 회의를 import 해도 성공한다 (트랜잭션 롤백 없음)" do
-      expect {
-        @new_project = described_class.new(export_io, importer).run!
-      }.not_to raise_error
-      expect(@new_project).to be_a(Project)
-    end
-
-    it "새 meeting 의 활성 참석자(left_at nil)는 정확히 1건이다" do
-      new_project = described_class.new(export_io, importer).run!
-      m = new_project.meetings.first
-      active = m.meeting_participants.where(left_at: nil)
-      expect(active.count).to eq(1)
-      expect(active.first.user_id).to eq(importer.id)
-    end
-
-    it "모든 참석자 ROW 는 보존하되 2번째 이후는 비활성으로 import 한다" do
-      new_project = described_class.new(export_io, importer).run!
-      m = new_project.meetings.first
-      # 원본 ROW 수는 보존(2건), 비활성(left_at present)이 1건
-      expect(m.meeting_participants.count).to eq(2)
-      expect(m.meeting_participants.where.not(left_at: nil).count).to eq(1)
     end
   end
 

@@ -53,7 +53,6 @@ module Transfer
       attrs["project_id"]           = @project.id
       attrs["created_by_id"]        = @user.id
       attrs["folder_id"]            = @folder_id
-      attrs["share_code"]           = nil
       attrs["previous_meeting_id"]  = @previous_meeting_id
       attrs["locked_at"]            = nil  # locked: false
       attrs["audio_file_path"]      = nil  # 복사 후 채움
@@ -86,7 +85,6 @@ module Transfer
       restore_blocks(meeting)
       attachment_map = restore_attachments(meeting)
       restore_contacts(meeting, attachment_map)
-      restore_participants(meeting)
       restore_bookmarks(meeting)
       restore_chat_messages(meeting)
       restore_glossary_entries(meeting)
@@ -165,26 +163,6 @@ module Transfer
         attrs["source_attachment_id"] = old_src ? attachment_map[old_src]&.id : nil
         meeting.meeting_contacts.create!(attrs.merge("meeting_id" => meeting.id))
       end
-    end
-
-    # 참석자: 소유권 전체 실행자로. 활성(left_at IS NULL) 은 1건만 유지(uniqueness 위반 방지).
-    # 비활성 ROW 먼저 생성 후 단 하나의 활성 ROW 마지막에 생성.
-    def restore_participants(meeting)
-      active_attrs = nil
-      rows         = []
-      (@m["participants"] || []).each do |p|
-        attrs = sanitize(MeetingParticipant, p)
-        attrs["user_id"]    = @user.id
-        attrs["meeting_id"] = meeting.id
-        if attrs["left_at"].blank? && active_attrs.nil?
-          active_attrs = attrs
-        else
-          attrs["left_at"] = attrs["joined_at"].presence || Time.current if attrs["left_at"].blank?
-          rows << attrs
-        end
-      end
-      rows.each { |attrs| meeting.meeting_participants.create!(attrs) }
-      meeting.meeting_participants.create!(active_attrs) if active_attrs
     end
 
     def restore_bookmarks(meeting)

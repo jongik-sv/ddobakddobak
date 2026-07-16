@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { createTranscriptionChannel } from './transcription'
-import { useSharingStore } from '../stores/sharingStore'
+import { useRecordingSignalsStore } from '../stores/recordingSignalsStore'
 import { useToastStore } from '../stores/toastStore'
 
 type ReceivedFn = (raw: Record<string, unknown>) => void
@@ -25,19 +25,45 @@ function captureReceived(): ReceivedFn {
 
 describe('received 라우팅: recording_denied', () => {
   beforeEach(() => {
-    useSharingStore.getState().reset()
+    useRecordingSignalsStore.getState().reset()
   })
 
-  it('recording_denied 메시지가 sharingStore.recordingDenied를 true로 설정한다', () => {
+  it('recording_denied 메시지가 recordingSignalsStore.recordingDenied를 true로 설정한다', () => {
     const received = captureReceived()
     received({ type: 'recording_denied', meeting_id: 1 })
-    expect(useSharingStore.getState().recordingDenied).toBe(true)
+    expect(useRecordingSignalsStore.getState().recordingDenied).toBe(true)
   })
 
   it('recording_in_progress 메시지도 recordingDenied를 true로 설정한다(뷰어 라우팅 트리거)', () => {
     const received = captureReceived()
     received({ type: 'recording_in_progress', meeting_id: 1 })
-    expect(useSharingStore.getState().recordingDenied).toBe(true)
+    expect(useRecordingSignalsStore.getState().recordingDenied).toBe(true)
+  })
+
+  it('recording_stopped 메시지가 recordingStopped를 true로 설정한다(뷰어 종료 안내)', () => {
+    const received = captureReceived()
+    received({ type: 'recording_stopped', meeting_id: 1 })
+    expect(useRecordingSignalsStore.getState().recordingStopped).toBe(true)
+  })
+
+  it('recording_paused 메시지가 recordingPaused를 meeting_id와 함께 설정한다(뷰어 일시정지 배지)', () => {
+    const received = captureReceived()
+    expect(useRecordingSignalsStore.getState().recordingPaused).toBeNull()
+    received({ type: 'recording_paused', meeting_id: 1 })
+    expect(useRecordingSignalsStore.getState().recordingPaused).toEqual({ meetingId: 1, paused: true })
+  })
+
+  it('recording_resumed 메시지가 해당 meeting의 recordingPaused를 false로 설정한다', () => {
+    const received = captureReceived()
+    received({ type: 'recording_paused', meeting_id: 1 })
+    received({ type: 'recording_resumed', meeting_id: 1 })
+    expect(useRecordingSignalsStore.getState().recordingPaused).toEqual({ meetingId: 1, paused: false })
+  })
+
+  it('recording_paused의 payload meeting_id가 신호에 반영된다(회의 스코프)', () => {
+    const received = captureReceived()
+    received({ type: 'recording_paused', meeting_id: 99 })
+    expect(useRecordingSignalsStore.getState().recordingPaused).toEqual({ meetingId: 99, paused: true })
   })
 })
 

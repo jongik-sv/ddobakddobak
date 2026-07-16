@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
-import { triggerRealtimeSummary } from '../api/meetings'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { triggerRealtimeSummary, updateMeeting } from '../api/meetings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { DEFAULT_SUMMARY_INTERVAL_SEC } from '../config'
 
@@ -20,6 +20,9 @@ interface UseRecordingSummaryTimerOptions {
  * 카운트다운을 1틱당 -1로 누산하면 백그라운드 탭/화면꺼짐 시 setInterval throttle로
  * 어긋난다. Date.now() 기준 deadline(절대 시각)으로 매 틱 남은 시간을 재계산해
  * 벽시계와 일치시킨다. summaryIntervalSec === 0 이면 "안함"(종료 시 final 요약만).
+ *
+ * 요약 주기는 서버(meetings.summary_interval_sec)에 영속된다 — 값 변경 시 updateMeeting으로
+ * 저장하고(setSummaryIntervalSec), 회의 로드 시 서버 값으로 초기화한다(syncSummaryIntervalSec, API 미호출).
  */
 export function useRecordingSummaryTimer({
   isActive,
@@ -31,7 +34,17 @@ export function useRecordingSummaryTimer({
   showStatus,
 }: UseRecordingSummaryTimerOptions) {
   const [summaryCountdown, setSummaryCountdown] = useState<number>(0)
-  const [summaryIntervalSec, setSummaryIntervalSec] = useState(DEFAULT_SUMMARY_INTERVAL_SEC)
+  // syncSummaryIntervalSec: 로컬 state만 갱신(API 미호출) — 서버 값으로 초기화용.
+  const [summaryIntervalSec, syncSummaryIntervalSec] = useState(DEFAULT_SUMMARY_INTERVAL_SEC)
+
+  // 사용자 변경 setter: 로컬 state 갱신 + 서버 영속(실패는 조용히 무시 — 로컬 타이머는 그대로 동작).
+  const setSummaryIntervalSec = useCallback(
+    (sec: number) => {
+      syncSummaryIntervalSec(sec)
+      updateMeeting(meetingId, { summary_interval_sec: sec }).catch(() => {})
+    },
+    [meetingId],
+  )
   // 요약 타이머는 틱 누산이 아니라 Date.now() 기준 deadline으로 동작 (백그라운드 throttle/일시정지에도 정확)
   const summaryDeadlineRef = useRef<number | null>(null)
   const summaryRemainingRef = useRef<number | null>(null)
@@ -119,5 +132,5 @@ export function useRecordingSummaryTimer({
     return () => clearInterval(interval)
   }, [isActive, isPaused, isApplyingCorrections, meetingId, summaryIntervalSec])
 
-  return { summaryCountdown, handleManualSummary, resetSummaryTimer, summaryIntervalSec, setSummaryIntervalSec }
+  return { summaryCountdown, handleManualSummary, resetSummaryTimer, summaryIntervalSec, setSummaryIntervalSec, syncSummaryIntervalSec }
 }

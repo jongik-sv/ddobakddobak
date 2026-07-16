@@ -1,4 +1,4 @@
-import { Search, X, Filter, UserPlus, Upload, MessagesSquare } from 'lucide-react'
+import { Search, X, Filter, Upload, MessagesSquare } from 'lucide-react'
 import { Tooltip } from '../ui/Tooltip'
 
 interface MeetingsHeaderProps {
@@ -10,7 +10,6 @@ interface MeetingsHeaderProps {
   onSearchExpand: () => void
   onSearchClose: () => void
   onOpenFilterSheet: () => void
-  onJoinMeeting: () => void
   onUploadAudio: () => void
   onCreateMeeting: () => void
   /** "폴더에게 묻기" 진입점 — 폴더/프로젝트가 선택됐을 때만 노출. */
@@ -28,7 +27,6 @@ export function MeetingsHeader({
   onSearchExpand,
   onSearchClose,
   onOpenFilterSheet,
-  onJoinMeeting,
   onUploadAudio,
   onCreateMeeting,
   onAskFolder,
@@ -82,16 +80,6 @@ export function MeetingsHeader({
                 <Filter className="w-5 h-5" />
               </button>
             </Tooltip>
-            <Tooltip text="회의 참여 (공유 코드)">
-              <button
-                data-testid="mobile-join-meeting"
-                onClick={onJoinMeeting}
-                className="p-2 rounded-md hover:bg-muted transition-colors"
-                aria-label="회의 참여"
-              >
-                <UserPlus className="w-5 h-5" />
-              </button>
-            </Tooltip>
             <Tooltip text="오디오 파일 업로드">
               <button
                 data-testid="mobile-upload-audio"
@@ -128,12 +116,6 @@ export function MeetingsHeader({
                 <MessagesSquare size={16} /> 폴더에게 묻기
               </button>
             )}
-            <button
-              onClick={onJoinMeeting}
-              className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
-            >
-              회의 참여
-            </button>
             <button
               onClick={onUploadAudio}
               className="rounded-md border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"

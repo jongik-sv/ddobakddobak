@@ -17,7 +17,7 @@ RSpec.describe "Api::V1::ProjectTransfers", type: :request do
   let!(:folder)  { create(:folder, project: project, name: "루트", parent: nil) }
   let!(:meeting) do
     create(:meeting, project: project, creator: admin, folder: folder,
-                     title: "주간 회의", share_code: "ABC123")
+                     title: "주간 회의")
   end
   let!(:transcript) { create(:transcript, meeting: meeting, content: "안녕하세요 회의 시작합니다") }
   let!(:tag)     { create(:tag, project: project, name: "긴급") }

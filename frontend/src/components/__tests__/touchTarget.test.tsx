@@ -164,26 +164,6 @@ describe('AudioPlayer 터치 타겟', () => {
   })
 })
 
-// ── 6. ShareButton 터치 타겟 ──
-vi.mock('../../stores/sharingStore', () => ({
-  useSharingStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({ shareCode: null, isLoading: false, participants: [] }),
-}))
-vi.mock('../../api/meetings', () => ({
-  shareMeeting: vi.fn(),
-  stopSharing: vi.fn(),
-}))
-
-import { ShareButton } from '../meeting/ShareButton'
-
-describe('ShareButton 터치 타겟', () => {
-  it('공유 버튼에 min-h-[44px] 클래스가 적용되어 있다', () => {
-    render(<ShareButton meetingId={1} />)
-    const button = screen.getByText('공유').closest('button')
-    expect(button?.className).toContain('min-h-[44px]')
-  })
-})
-
 // ── 7. ExportButton 터치 타겟 ──
 import { ExportButton } from '../meeting/ExportButton'
 import { ACTION_NEUTRAL } from '../meeting/actionButtonStyles'
@@ -195,17 +175,6 @@ describe('ExportButton 스타일', () => {
     // 사용자 결정(컴팩트 ~30px 통일)에 따라 min-h-[44px] 대신 다른 헤더 액션 버튼과 동일한 알약 스타일을 공유한다.
     const button = screen.getByRole('button', { name: '내보내기' })
     expect(button.className).toBe(ACTION_NEUTRAL)
-  })
-})
-
-// ── 8. ShareLinkButton 터치 타겟 ──
-import { ShareLinkButton } from '../meeting/ShareLinkButton'
-
-describe('ShareLinkButton 터치 타겟', () => {
-  it('링크 복사 버튼에 min-h-[44px] 클래스가 적용되어 있다', () => {
-    render(<ShareLinkButton meetingId={1} />)
-    const button = screen.getByText('링크 복사').closest('button')
-    expect(button?.className).toContain('min-h-[44px]')
   })
 })
 
@@ -294,12 +263,8 @@ describe('AppLayout 터치 타겟', () => {
 import ViewerHeaderSrc from '../meeting/ViewerHeader?raw'
 
 describe('ViewerHeader 터치 타겟', () => {
-  it('나가기 버튼에 p-2.5 적용', () => {
+  it('뒤로 버튼에 p-2.5 적용', () => {
     expect(ViewerHeaderSrc).toContain('p-2.5')
-  })
-
-  it('나가기 텍스트 버튼에 min-h-[44px] 적용', () => {
-    expect(ViewerHeaderSrc).toContain('min-h-[44px]')
   })
 })
 
@@ -424,14 +389,5 @@ import ActionItemFormSrc from '../action-item/ActionItemForm?raw'
 describe('ActionItemForm 터치 타겟', () => {
   it('버튼에 min-h-[44px] 적용', () => {
     expect(ActionItemFormSrc).toContain('min-h-[44px]')
-  })
-})
-
-// ── 26. ParticipantList 터치 타겟 ──
-import ParticipantListSrc from '../meeting/ParticipantList?raw'
-
-describe('ParticipantList 터치 타겟', () => {
-  it('넘기기 버튼에 min-h-[44px] 적용', () => {
-    expect(ParticipantListSrc).toContain('min-h-[44px]')
   })
 })

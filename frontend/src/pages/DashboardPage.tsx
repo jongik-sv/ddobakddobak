@@ -205,7 +205,7 @@ export default function DashboardPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <StatusBadge status={meeting.status} scheduled={meeting.status === 'pending' && !!meeting.scheduled_start_time} />
+                    <StatusBadge status={meeting.status} scheduled={meeting.status === 'pending' && !!meeting.scheduled_start_time} paused={meeting.status === 'recording' && !!meeting.paused_at} />
                     <span className="text-xs text-muted-foreground">
                       {formatDate(meeting.created_at)}
                     </span>

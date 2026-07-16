@@ -5,11 +5,10 @@ import { AiChatPanel } from '../components/meeting/AiChatPanel'
 import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor, customSchema } from '../components/editor/MeetingEditor'
-import { ParticipantList } from '../components/meeting/ParticipantList'
 import { MemoHeader } from '../components/meeting/MemoHeader'
 import { CorrectionsSection } from '../components/meeting/CorrectionsSection'
 import { triggerRealtimeSummary } from '../api/meetings'
-import type { Participant, TermCorrection } from '../api/meetings'
+import type { TermCorrection } from '../api/meetings'
 import type { Tab } from '../components/layout/MobileTabLayout'
 import type { BlockNoteEditor } from '@blocknote/core'
 
@@ -18,10 +17,6 @@ type MemoEditorRef = React.RefObject<BlockNoteEditor<typeof customSchema.blockSc
 interface UseLiveMobileTabsArgs {
   meetingId: number
   isActive: boolean
-  isSharing: boolean
-  isHost: boolean
-  currentUserId: number
-  onTransferRequest: (p: Participant) => void
   onNotesChange: (markdown: string) => void
   onSaveMemo: () => void
   isSavingMemo: boolean
@@ -40,10 +35,6 @@ interface UseLiveMobileTabsArgs {
 export function useLiveMobileTabs({
   meetingId,
   isActive,
-  isSharing,
-  isHost,
-  currentUserId,
-  onTransferRequest,
   onNotesChange,
   onSaveMemo,
   isSavingMemo,
@@ -70,15 +61,6 @@ export function useLiveMobileTabs({
             </summary>
             <div className="px-2 pb-2">
               <SpeakerPanel meetingId={meetingId} isRecording={isActive} />
-              {isSharing && (
-                <div className="border-t mt-2 pt-2">
-                  <ParticipantList
-                    isHost={isHost}
-                    currentUserId={currentUserId}
-                    onTransferRequest={onTransferRequest}
-                  />
-                </div>
-              )}
             </div>
           </details>
           <div className="flex-1 overflow-hidden">
@@ -129,5 +111,5 @@ export function useLiveMobileTabs({
         </div>
       ),
     },
-  ], [meetingId, isActive, isSharing, isHost, currentUserId, onTransferRequest, onNotesChange, onSaveMemo, isSavingMemo, memoEditorRef, corrections, isApplyingCorrections, onUpdateCorrection, onAddCorrection, onRemoveCorrection, onApplyCorrections, summaryOptions])
+  ], [meetingId, isActive, onNotesChange, onSaveMemo, isSavingMemo, memoEditorRef, corrections, isApplyingCorrections, onUpdateCorrection, onAddCorrection, onRemoveCorrection, onApplyCorrections, summaryOptions])
 }

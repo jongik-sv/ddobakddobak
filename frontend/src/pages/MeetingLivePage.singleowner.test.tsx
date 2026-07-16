@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import MeetingLivePage from './MeetingLivePage'
 import { useRecordingStore } from '../stores/recordingStore'
-import { useSharingStore } from '../stores/sharingStore'
+import { useRecordingSignalsStore } from '../stores/recordingSignalsStore'
 import { useTranscriptStore } from '../stores/transcriptStore'
 
 // ──────────────────────────────────────────────
@@ -60,7 +60,8 @@ vi.mock('../api/meetings', () => ({
   resetMeetingContent: vi.fn().mockResolvedValue({ id: 5, status: 'pending' }),
   correctTerms: vi.fn().mockResolvedValue({ notes_markdown: '', corrected_transcripts: 0 }),
   updateNotes: vi.fn().mockResolvedValue(undefined),
-  getParticipants: vi.fn().mockResolvedValue([]),
+  // 어포던스 게이팅 헬퍼 — 이 파일은 게이팅 관심사가 아니므로 항상 편집 가능으로 고정.
+  canEditMeeting: vi.fn().mockReturnValue(true),
 }))
 
 vi.mock('../hooks/useMemoEditor', () => ({
@@ -127,7 +128,7 @@ function renderPageOnly(meetingId = '5') {
 describe('MeetingLivePage 단일 소유자 가드', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    useSharingStore.getState().reset()
+    useRecordingSignalsStore.getState().reset()
     useTranscriptStore.getState().reset()
     useRecordingStore.getState().endSession()
     setDesktopMode(true)

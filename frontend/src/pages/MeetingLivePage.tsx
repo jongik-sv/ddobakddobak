@@ -16,17 +16,14 @@ import { AiSummaryPanel } from '../components/meeting/AiSummaryPanel'
 import { SummaryOptionsControl } from '../components/meeting/SummaryOptionsControl'
 import { SpeakerPanel } from '../components/meeting/SpeakerPanel'
 import { MeetingEditor } from '../components/editor/MeetingEditor'
-import { getMeeting, updateMeeting, triggerRealtimeSummary, updateNotes, getParticipants, resetMeetingContent, getTranscripts, getSummary } from '../api/meetings'
-import type { Meeting, Participant, UpdateMeetingParams } from '../api/meetings'
+import { getMeeting, updateMeeting, triggerRealtimeSummary, updateNotes, resetMeetingContent, getTranscripts, getSummary, canEditMeeting } from '../api/meetings'
+import type { Meeting, UpdateMeetingParams } from '../api/meetings'
+import { getClientId } from '../lib/clientId'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 import { useTranscriptStore } from '../stores/transcriptStore'
-import { useSharingStore } from '../stores/sharingStore'
+import { useRecordingSignalsStore } from '../stores/recordingSignalsStore'
 import { IS_TAURI, IS_MOBILE, SUMMARY_INTERVAL_OPTIONS, getMode } from '../config'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
-import { ShareButton } from '../components/meeting/ShareButton'
-import { ParticipantList } from '../components/meeting/ParticipantList'
-import { HostTransferDialog } from '../components/meeting/HostTransferDialog'
-import HostDisconnectedBanner from '../components/meeting/HostDisconnectedBanner'
 import { useAuthStore } from '../stores/authStore'
 import { useMeetingTemplateStore } from '../stores/meetingTemplateStore'
 import SaveTemplateDialog from '../components/meeting/SaveTemplateDialog'
@@ -70,17 +67,18 @@ export default function MeetingLivePage() {
       .then((m) => {
         setMeeting(m)
         if (m.memo) setMeetingMemo(m.memo)
-        // 공유 상태 로드(세션 미마운트 idle 페이지도 ShareButton/ParticipantList/isHost 동작).
-        if (m.share_code) {
-          getParticipants(meetingId)
-            .then((ps) => useSharingStore.getState().startSharing(m.share_code!, ps))
-            .catch(() => {})
-        } else {
-          useSharingStore.getState().reset()
-        }
       })
       .catch(() => {})
   }, [meetingId])
+
+  // 활성 녹음 세션이 없을 때만(활성이면 세션 훅이 store를 publish) 표시값을 서버 요약 주기로 동기화.
+  // rec.setSummaryInterval을 쓰면 다른 세션 핸들러가 호출될 수 있어 setState로 직접 반영한다.
+  useEffect(() => {
+    if (rec.activeMeetingId != null || !meeting) return
+    if (typeof meeting.summary_interval_sec === 'number') {
+      useRecordingStore.setState({ summaryIntervalSec: meeting.summary_interval_sec })
+    }
+  }, [meeting, rec.activeMeetingId])
 
   // 이 회의의 베이스라인(전사+요약)을 DB에서 로드/복원.
   // idle이면 reset 후 로드. 녹음 중 이 회의로 복귀하면(중간 경로 reset으로 store가 비거나
@@ -147,29 +145,23 @@ export default function MeetingLivePage() {
   const handleStop = rec.requestStop
   const handleManualSummary = rec.manualSummary
   const handleToggleSystemAudio = rec.toggleSystemAudio
-  const setSummaryIntervalSec = rec.setSummaryInterval
+  // 요약 주기 변경: store 표시값/타이머 반영 + 서버 영속.
+  // 활성 세션이면 훅의 영속 setter(onSetSummaryInterval)가 이미 저장하므로, 비활성일 때만 여기서 PUT(이중 저장 방지).
+  const setSummaryIntervalSec = useCallback(
+    (sec: number) => {
+      rec.setSummaryInterval(sec)
+      if (!isThisSession) updateMeeting(meetingId, { summary_interval_sec: sec }).catch(() => {})
+    },
+    [rec, isThisSession, meetingId],
+  )
 
   // 초기화: 다이얼로그 가시성은 페이지-로컬, 실제 초기화는 store 인텐트(+ 메모 에디터 clear는 페이지-로컬).
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const handleResetClick = useCallback(() => setShowResetConfirm(true), [])
-  const handleResetConfirm = useCallback(async () => {
-    // 페이지가 직접 초기화 — reset은 보통 세션 미마운트 상태에서만 도달 가능(activeMeetingId=null),
-    // 세션 핸들러(_handlers)가 null이라 store 인텐트 위임은 무음 실패한다.
-    await resetMeetingContent(meetingId)
-    useTranscriptStore.getState().markReset()
-    useTranscriptStore.getState().reset()
-    useTranscriptStore.getState().setMeetingNotes(null)
-    clearMemoEditorRef.current()
-    const m = await getMeeting(meetingId).catch(() => null)
-    if (m) setMeeting(m)
-    setShowResetConfirm(false)
-  }, [meetingId])
 
-  // 네비게이션 정책(이탈 차단 제거 — B 백그라운드 녹음). 웹 한정 beforeunload 경고만 유지.
-  const { handleNavigateBack } = useNavigationGuards(meetingId, isActive)
-
-  // 메모 에디터 초기화 (useMemoEditor 이후 ref로 주입 — 순환 의존 회피)
-  const clearMemoEditorRef = useRef<() => void>(() => {})
+  // 네비게이션 정책: 녹음/STT 중엔 뒤로가기·탭 닫기를 보호(확인 후에만 이탈).
+  const { handleNavigateBack, showLeaveConfirm, confirmLeave, cancelLeave } =
+    useNavigationGuards(meetingId, isActive)
 
   // 오타 수정 (state + 핸들러)
   const {
@@ -184,19 +176,22 @@ export default function MeetingLivePage() {
 
   // 다른 세션이 이미 녹음 중 → 읽기전용 뷰어로 라우팅 (단일 녹음 세션 보장).
   // 헤드리스 세션은 idle 상태에서 신뢰성 있게 처리 못 하므로 페이지-레벨에서 처리.
-  const recordingDenied = useSharingStore((s) => s.recordingDenied)
+  const recordingDenied = useRecordingSignalsStore((s) => s.recordingDenied)
   useEffect(() => {
     if (recordingDenied) navigate(`/meetings/${meetingId}/viewer`, { replace: true })
   }, [recordingDenied, meetingId, navigate])
 
-  // 공유/호스트 정보 — sharingStore + 인증 사용자에서 직접 계산.
-  const sharingParticipants = useSharingStore((s) => s.participants)
-  const isSharing = useSharingStore((s) => s.shareCode !== null)
-  const currentUserId = useAuthStore.getState().user?.id ?? meeting?.created_by.id ?? 0
-  const isHost = useMemo(() => {
-    const host = sharingParticipants.find((p) => p.role === 'host')
-    return host?.user_id === currentUserId && currentUserId !== 0
-  }, [sharingParticipants, currentUserId])
+  // 라이브 진입 시 기기 점유 검사 — 다른 기기가 활성 녹음 중(하트비트 신선)이면 뷰어로 보낸다.
+  // 채널 denied 신호는 이쪽이 청크를 보내야만 오므로, 첫 발화 전 침묵 구간은 이 검사가 커버한다.
+  // 같은 기기의 새로고침 복귀(recording_client_id === 내 clientId)는 절대 리다이렉트하지 않는다.
+  useEffect(() => {
+    if (!meeting || isActive) return
+    if (meeting.status !== 'recording' || !meeting.recorder_active) return
+    const occupant = meeting.recording_client_id
+    if (!occupant || occupant === getClientId()) return
+    showStatus('다른 기기에서 녹음 중입니다', 5000)
+    navigate(`/meetings/${meetingId}/viewer`, { replace: true })
+  }, [meeting, isActive, meetingId, navigate, showStatus])
 
   // 예약 회의 자동시작: 스케줄러가 state.autoStart=true로 네비게이트 → 마운트 후 1회 rec.start().
   // ref 가드로 리렌더 간 중복 호출 방지 + nav state 소비(뒤로/새로고침 재트리거 차단).
@@ -218,7 +213,20 @@ export default function MeetingLivePage() {
     onError: () => showStatus('메모 저장에 실패했습니다'),
   }), [showStatus])
   const { memoEditorRef, isSavingMemo, handleSaveMemo } = useMemoEditor(meetingId, meetingMemo, memoCallbacks)
-  clearMemoEditorRef.current = () => memoEditorRef.current?.replaceBlocks(memoEditorRef.current.document, [])
+
+  const handleResetConfirm = useCallback(async () => {
+    // 페이지가 직접 초기화 — reset은 보통 세션 미마운트 상태에서만 도달 가능(activeMeetingId=null),
+    // 세션 핸들러(_handlers)가 null이라 store 인텐트 위임은 무음 실패한다.
+    await resetMeetingContent(meetingId)
+    useTranscriptStore.getState().markReset()
+    useTranscriptStore.getState().reset()
+    useTranscriptStore.getState().setMeetingNotes(null)
+    // 메모 에디터 초기화 (페이지-로컬)
+    memoEditorRef.current?.replaceBlocks(memoEditorRef.current.document, [])
+    const m = await getMeeting(meetingId).catch(() => null)
+    if (m) setMeeting(m)
+    setShowResetConfirm(false)
+  }, [meetingId, memoEditorRef])
 
   // 회의 정보 수정 다이얼로그
   const [showEditDialog, setShowEditDialog] = useState(false)
@@ -230,8 +238,8 @@ export default function MeetingLivePage() {
   const currentUser = useAuthStore((s) => s.user)
   const canManageTemplates = currentUser?.role === 'admin' || getMode() === 'local'
 
-  // 호스트 위임 다이얼로그
-  const [transferTarget, setTransferTarget] = useState<Participant | null>(null)
+  // 회의 시작/초기화 어포던스 게이팅(소유자 ∨ admin). 로드 전(null)엔 노출 유지 — 권한은 서버가 403/409로 강제.
+  const canEdit = meeting ? canEditMeeting(meeting, currentUser) : true
 
   // 북마크 팝오버 + Ctrl+B 단축키
   const {
@@ -262,8 +270,8 @@ export default function MeetingLivePage() {
   // 데스크톱/모바일 분기
   const isDesktop = useMediaQuery(BREAKPOINTS.lg)
 
-  // 요약 옵션(압축율·재구조화) 컨트롤 — 솔로 녹음자 또는 공유 host 만. PATCH 후 기존 full 필드 보존 위해 merge.
-  const summaryOptionsControl = meeting && (!isSharing || isHost) ? (
+  // 요약 옵션(압축율·재구조화) 컨트롤. PATCH 후 기존 full 필드 보존 위해 merge.
+  const summaryOptionsControl = meeting ? (
     <SummaryOptionsControl
       meeting={meeting}
       onSave={async (params) => {
@@ -277,10 +285,6 @@ export default function MeetingLivePage() {
   const mobileTabs = useLiveMobileTabs({
     meetingId,
     isActive,
-    isSharing,
-    isHost,
-    currentUserId,
-    onTransferRequest: setTransferTarget,
     onNotesChange: handleNotesChange,
     onSaveMemo: handleSaveMemo,
     isSavingMemo,
@@ -304,7 +308,6 @@ export default function MeetingLivePage() {
 
       {/* 헤더 컨트롤 바 (데스크톱 전용 — 모바일은 MobileRecordControls 사용) */}
       <DesktopRecordControls
-        meetingId={meetingId}
         title={meeting?.title || '회의실'}
         isActive={isActive}
         isPaused={isPaused}
@@ -327,6 +330,7 @@ export default function MeetingLivePage() {
         onShowSaveTemplate={() => setShowSaveTemplate(true)}
         onOpenBookmark={handleOpenBookmark}
         onResetClick={handleResetClick}
+        canEdit={canEdit}
         onStart={handleStart}
         onPause={handlePause}
         onResume={handleResume}
@@ -362,15 +366,6 @@ export default function MeetingLivePage() {
               <div className="border-t shrink-0">
                 <SpeakerPanel meetingId={meetingId} isRecording={isActive} collapsible />
               </div>
-              {isSharing && (
-                <div className="border-t shrink-0">
-                  <ParticipantList
-                    isHost={isHost}
-                    currentUserId={currentUserId}
-                    onTransferRequest={(p) => setTransferTarget(p)}
-                  />
-                </div>
-              )}
             </section>
           </Panel>
 
@@ -435,6 +430,7 @@ export default function MeetingLivePage() {
             isPaused={isPaused}
             elapsedSeconds={elapsedSeconds}
             onBack={handleNavigateBack}
+            canEdit={canEdit}
             onStart={handleStart}
             onPause={handlePause}
             onResume={handleResume}
@@ -453,7 +449,6 @@ export default function MeetingLivePage() {
               <Pencil className="w-4 h-4" />
               회의 정보 수정
             </button>
-            <ShareButton meetingId={meetingId} />
             {IS_TAURI && (
               <div className="flex items-center justify-between py-2">
                 <div className="flex items-center gap-2">
@@ -491,7 +486,7 @@ export default function MeetingLivePage() {
                 설정
               </button>
             )}
-            {!isActive && (
+            {!isActive && canEdit && (
               <button
                 onClick={() => { closeMore(); handleResetClick() }}
                 disabled={isResetting}
@@ -558,6 +553,17 @@ export default function MeetingLivePage() {
         />
       )}
 
+      {/* 녹음/STT 중 뒤로가기 보호 확인 다이얼로그 */}
+      {showLeaveConfirm && (
+        <ConfirmDialog
+          title="회의 진행 중"
+          message="녹음/STT가 진행 중입니다. 회의 화면에서 나가시겠습니까?"
+          confirmLabel="나가기"
+          onConfirm={confirmLeave}
+          onCancel={cancelLeave}
+        />
+      )}
+
       {/* 초기화 확인 다이얼로그 */}
       {showResetConfirm && (
         <ConfirmDialog
@@ -573,6 +579,7 @@ export default function MeetingLivePage() {
       {/* 북마크 추가 팝오버 */}
       {showBookmarkPopover && (
         <BookmarkPopover
+          // eslint-disable-next-line react-hooks/refs -- 팝오버 열기(handleOpenBookmark) 시점에만 세팅되고 열림 중 불변 (기존 패턴)
           timestampMs={bookmarkTimestampRef.current}
           label={bookmarkLabel}
           onLabelChange={setBookmarkLabel}
@@ -580,19 +587,6 @@ export default function MeetingLivePage() {
           onClose={() => setShowBookmarkPopover(false)}
         />
       )}
-
-      {/* 호스트 연결 끊김 배너 */}
-      <HostDisconnectedBanner meetingId={meetingId} />
-
-      {/* 호스트 위임 다이얼로그 */}
-      <HostTransferDialog
-        open={transferTarget !== null}
-        targetUserName={transferTarget?.user_name ?? ''}
-        targetUserId={transferTarget?.user_id ?? 0}
-        meetingId={meetingId}
-        onClose={() => setTransferTarget(null)}
-        onTransferred={() => setTransferTarget(null)}
-      />
     </div>
   )
 }

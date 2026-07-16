@@ -17,8 +17,6 @@ class Meeting < ApplicationRecord
   has_many :meeting_attachments, dependent: :destroy
   has_many :meeting_contacts, dependent: :destroy
   has_many :meeting_bookmarks, dependent: :destroy
-  has_many :meeting_participants, dependent: :destroy
-  has_many :active_participants, -> { where(left_at: nil) }, class_name: "MeetingParticipant"
   has_many :chat_messages, dependent: :destroy
 
   # 회의록 압축율 5단계 (회의 화면·미리보기에서 회의별 지정)
@@ -34,10 +32,10 @@ class Meeting < ApplicationRecord
   PREVIOUS_MEETING_CUT_LINE = "**✂ ─ ─ ─ ─ ─ 이전 회의 / 현재 회의 ─ ─ ─ ─ ─**".freeze
 
   validates :title, presence: true
-  validates :share_code, uniqueness: true, allow_nil: true
   validates :status, inclusion: { in: %w[pending recording transcribing completed] }
   validates :summary_verbosity, inclusion: { in: SUMMARY_VERBOSITY_LEVELS }
   validates :summary_restructure, inclusion: { in: [ true, false ] } # NOT NULL 컬럼 — nil 이 500 대신 422 가 되게
+  validates :summary_interval_sec, numericality: { only_integer: true, greater_than_or_equal_to: 0 } # 0 = 자동 요약 안 함
   validates :source, inclusion: { in: %w[live upload] }
   validates :expected_participants, numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 100 }, allow_nil: true
   # 예약 회의 시작 방식. 예약(scheduled_start_time) 회의에만 의미. nil = 예약 미지정(기존 즉시 회의).
@@ -172,7 +170,7 @@ class Meeting < ApplicationRecord
   # 열람 가능한 회의 목록 범위: admin은 전체, 그 외는 본인 소유분 + "공유로 보이는" 회의.
   # 유효 공유 가시성 = meetings.shared AND (폴더 없음 OR 폴더와 모든 조상이 shared). 즉 상위
   # 폴더를 비공개로 두면 그 하위 폴더·회의가 개별 shared 여부와 무관하게 전부 숨는다(상속·폴더 우선).
-  # (개별 회의 접근은 MeetingLookup이 참여자까지 허용하므로 더 넓다 — 이 스코프는 목록 쿼리용)
+  # (개별 회의 접근 인가는 MeetingLookup#authorize_meeting_read! — 이 스코프는 목록 쿼리용)
   # Folder.visible_folder_ids가 조상 체인을 in-memory로 평가해 보이는 폴더 id만 IN 으로 넘긴다.
   # Phase 5 컨트롤러 스코핑(index 등)에서 사용 예정.
   scope :in_project, ->(pid) { pid.present? ? where(project_id: pid) : all }
@@ -193,10 +191,6 @@ class Meeting < ApplicationRecord
 
   # 수정·삭제 가능한 회의 목록 범위: admin은 전체, 그 외는 본인 소유분만.
   scope :editable_by, ->(user) { user.admin? ? all : where(created_by_id: user.id) }
-
-  def sharing?
-    share_code.present?
-  end
 
   def owner?(user)
     created_by_id == user.id
@@ -251,6 +245,12 @@ class Meeting < ApplicationRecord
     recorder_heartbeat_at.nil? || recorder_heartbeat_at < RECORDER_HEARTBEAT_STALE_AFTER.ago
   end
 
+  # 활성 점유 녹음 여부: recording 이고 점유 기기 하트비트가 신선(stale 아님)할 때만 true.
+  # 단일 녹음 기기 락의 충돌 판정과 serializer(recorder_active) 노출이 공유하는 판정.
+  def recorder_active?
+    recording? && !stale_recording?
+  end
+
   def heal_stale_recording!
     return unless stale_recording?
 
@@ -262,7 +262,13 @@ class Meeting < ApplicationRecord
     # update_all 은 콜백/검증 우회(status 전이엔 콜백 불필요). reload 로 in-memory 갱신.
     changed = Meeting.where(id: id, status: "recording")
                      .update_all(status: "completed", ended_at: ended, paused_at: nil, updated_at: Time.current)
-    return if changed.zero?
+    if changed.zero?
+      # 다른 healer 가 먼저 completed 로 전이한 경우 — in-memory @meeting 이 recording 으로
+      # 잔존하면 가드(reject_if_recorder_conflict!) 통과 후 downstream 액션(stop/pause)이
+      # stale recording?=true 로 오작동한다. 성공 분기와 동일하게 reload 로 상태를 맞춘다.
+      reload
+      return
+    end
 
     RecordingLock.clear(id)
 
@@ -280,10 +286,6 @@ class Meeting < ApplicationRecord
       MeetingSummarizationJob.perform_later(id, type: "final")
       reconcile_embeddings!
     end
-  end
-
-  def host_participant
-    active_participants.find_by(role: MeetingParticipant::ROLE_HOST)
   end
 
   # 명함에서 인식한 참석자 이름을 attendees 자유텍스트에 비파괴 append.

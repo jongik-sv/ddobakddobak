@@ -31,6 +31,13 @@ RSpec.describe SummarizationJob, type: :job do
           described_class.new.perform
         }.not_to have_enqueued_job(MeetingSummarizationJob).with(paused.id, type: "realtime")
       end
+
+      it "summary_interval_sec가 0(안함)인 recording 회의는 enqueue되지 않는다" do
+        no_summary = create(:meeting, project: project, creator: user, status: "recording", summary_interval_sec: 0)
+        expect {
+          described_class.new.perform
+        }.not_to have_enqueued_job(MeetingSummarizationJob).with(no_summary.id, type: "realtime")
+      end
     end
 
     context "when there are multiple recording meetings" do

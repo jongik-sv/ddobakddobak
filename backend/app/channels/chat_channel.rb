@@ -38,13 +38,13 @@ class ChatChannel < ApplicationCable::Channel
   end
 
   # MeetingLookup#authorize_meeting_read! 와 동일 규칙:
-  # admin / 소유자(created_by_id) / 공유 가시(shared_visible?) / active participant.
+  # admin / 소유자(created_by_id) / (프로젝트 멤버 && 공유 가시). 공유 가시성은 프로젝트
+  # 멤버십 뒤에 게이트된다 — 비멤버는 shared 회의라도 못 본다(REST·transcription_channel 정합).
   # 채널엔 controller 헬퍼가 없으므로 모델 메서드로 동일 판정을 표현한다.
   def meeting_readable?(meeting)
     return true if current_user.respond_to?(:admin?) && current_user.admin?
     return true if meeting.owner?(current_user)
-    return true if meeting.shared_visible?
 
-    meeting.active_participants.exists?(user_id: current_user.id)
+    meeting.project&.member?(current_user) && meeting.shared_visible?
   end
 end

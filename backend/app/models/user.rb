@@ -8,7 +8,6 @@ class User < ApplicationRecord
   has_many :project_memberships, dependent: :destroy
   has_many :projects, through: :project_memberships
   has_many :created_projects, class_name: "Project", foreign_key: :created_by_id, inverse_of: :creator
-  has_many :meeting_participants, dependent: :destroy
   has_many :chat_messages, dependent: :destroy
 
   after_create { EnsurePersonalProject.call(self) }

@@ -6,6 +6,7 @@ module Api
       include TranscriptSerializable
       include AudioStorage
       include MeetingWriteGuard
+      include RecorderConflictGuard
       include ProjectScoped
 
       before_action :authenticate_user!
@@ -15,6 +16,11 @@ module Api
       before_action :authorize_lock!, only: %i[lock unlock]
       # 잠긴 회의 변조 차단. lock/unlock 은 제외(아니면 영원히 못 풂). create/upload_audio/index/show/move_to_folder/scheduled 제외.
       before_action :reject_if_locked!, only: %i[update destroy start stop reopen pause resume reset_content summarize regenerate_stt re_diarize regenerate_notes update_notes feedback reapply_glossary apply_glossary_entry dismiss_schedule]
+      # 단일 녹음 기기 락: 활성 recording 회의의 제어는 점유 기기에서만(다른 기기는 409).
+      # start 는 원자 전이(액션 본문)가 충돌을 처리하므로 여기 목록엔 없다.
+      # reset_content 는 활성 녹음(recording && 신선 하트비트)을 다른 기기가 초기화하지 못하게
+      # 가드한다. 같은 기기·비녹음(pending/completed) 회의는 통과, stale 이면 heal 후 통과.
+      before_action :reject_if_recorder_conflict!, only: %i[stop reopen pause resume reset_content]
       # 멈춘 화자분리-재실행 자가복구: 조회/재실행 시 stale 면 completed 로 되돌려 버튼이 다시 보이게 함
       before_action -> { @meeting&.heal_stale_re_diarize! }, only: %i[show re_diarize]
       # 비정상 종료(크래시/강제종료)로 recording 에 고정된 회의 자가복구: 조회 시 presence 부재면 종결.
@@ -172,6 +178,11 @@ module Api
         attrs[:attendees] = params[:attendees] if params.key?(:attendees)
         attrs[:expected_participants] = params[:expected_participants].presence&.to_i if params.key?(:expected_participants)
         attrs[:summary_verbosity] = params[:summary_verbosity] if params.key?(:summary_verbosity)
+        if params.key?(:summary_interval_sec)
+          # 음이 아닌 정수(문자열/숫자)만 반영. ""/null/음수/비숫자는 무시 — NOT NULL 컬럼이라 500 방지.
+          interval = params[:summary_interval_sec]
+          attrs[:summary_interval_sec] = interval.to_i if interval.to_s.match?(/\A\d+\z/)
+        end
         attrs[:important] = ActiveModel::Type::Boolean.new.cast(params[:important]) if params.key?(:important)
         if params.key?(:summary_restructure)
           # cast 가 nil 을 주는 입력(""/null)은 무시 — NOT NULL 컬럼이라 500 으로 터진다
@@ -272,17 +283,25 @@ module Api
       end
 
       def start
-        require_meeting_status!(@meeting, :pending?, "Meeting is not in pending state")
-        return if performed?
-
-        @meeting.update!(
-          status: :recording,
-          started_at: Time.current,
+        now = Time.current
+        # pending→recording 원자 전이(heal_stale_recording! 의 원자 전이와 동일 패턴) —
+        # 두 기기가 동시에 start 해도 UPDATE 승자 한 기기만 점유(recording_client_id)를 도장한다.
+        # update_all 은 콜백·검증 우회(상태 전이엔 불필요) — updated_at 은 수동 갱신.
+        changed = Meeting.where(id: @meeting.id, status: "pending").update_all(
+          status: "recording",
+          started_at: now,
           recording_client_id: current_client_id,
           recording_client_platform: current_client_platform,
           # 시작 직후 침묵으로 stale 오종결되지 않도록 즉시 presence 도장(하트비트 부재 방지).
-          recorder_heartbeat_at: Time.current
+          recorder_heartbeat_at: now,
+          # 잔존 paused_at 정리 — reset_content→start 시퀀스로 "recording+paused" 유령 상태가
+          # 남아 자동요약(paused_at: nil 게이트)이 건너뛰고 UI 에 일시정지 배지가 오표시되는 것 방지.
+          paused_at: nil,
+          updated_at: now
         )
+        return render_start_transition_failure("Meeting is not in pending state") if changed.zero?
+
+        @meeting.reload
         # 반복 시리즈: 시작 성공 후 다음 occurrence 를 미리 예약(미래 형제 없을 때만, 멱등).
         @meeting.materialize_next_occurrence! if @meeting.recurring?
         render json: { meeting: meeting_json(@meeting) }
@@ -316,13 +335,24 @@ module Api
       end
 
       def reopen
-        require_meeting_status!(@meeting, :completed?, "Meeting is not completed")
-        return if performed?
+        now = Time.current
+        # completed→recording 원자 전이 + 점유 기기 재도장 — reopen 한 기기가 새 recorder 다.
+        # (기존엔 하트비트만 갱신해 이전 녹음 기기의 recording_client_id 가 남는 비대칭 →
+        # 그 기기 외 전부 409 가 되는 락 오염.) 하트비트 도장 이유는 start 와 동일 — 안 찍으면
+        # 옛(완료 시점) 하트비트로 다음 show/index 의 heal_stale_recording! 가 즉시 재종결(회귀).
+        changed = Meeting.where(id: @meeting.id, status: "completed").update_all(
+          status: "recording",
+          ended_at: nil,
+          recording_client_id: current_client_id,
+          recording_client_platform: current_client_platform,
+          recorder_heartbeat_at: now,
+          # 방어적 정리 — 완료 회의에 paused_at 이 잔존했다면 recording 복귀 시 함께 비운다.
+          paused_at: nil,
+          updated_at: now
+        )
+        return render_start_transition_failure("Meeting is not completed") if changed.zero?
 
-        # start 과 동일하게 presence 도장 — 안 찍으면 옛(완료 시점) 하트비트로 다음 show/index 의
-        # heal_stale_recording! 가 방금 reopen 한 회의를 즉시 재종결한다(회귀).
-        @meeting.update!(status: :recording, ended_at: nil, recorder_heartbeat_at: Time.current)
-        render json: { meeting: meeting_json(@meeting) }
+        render json: { meeting: meeting_json(@meeting.reload) }
       end
 
       def pause
@@ -363,8 +393,17 @@ module Api
           audio_duration_ms: nil,
           brief_summary: nil,
           last_reset_at: Time.current,
-          last_user_edit_at: nil
+          last_user_edit_at: nil,
+          # 녹음 기기 락 상태도 함께 정리 — 잔존 시 옛 기기가 락을 쥔 채 새 기기가 start 하면
+          # 채널 audio_chunk 로 두 소스가 동시 유입하는 이중 녹음 창(window)이 열린다.
+          paused_at: nil,
+          recording_client_id: nil,
+          recording_client_platform: nil,
+          recorder_heartbeat_at: nil
         )
+
+        # 인프로세스 락 해제(stop·heal_stale_recording! 과 동일) — 옛 기기 커넥션의 잔존 락 청소.
+        RecordingLock.clear(@meeting.id)
 
         ActionCable.server.broadcast(@meeting.transcription_stream, {
           type: "meeting_reset"
@@ -745,6 +784,15 @@ module Api
         return if meeting.public_send(status_predicate)
 
         render json: { error: error_message }, status: :unprocessable_entity
+      end
+
+      # start/reopen 원자 전이 실패(0행) 처리: 리로드 후 다른 기기의 활성 녹음이면 기기 충돌(409),
+      # 그 외(이미 completed/transcribing, stale, 같은 기기 중복 요청 등)는 기존 상태 검증 의미(422).
+      def render_start_transition_failure(status_error_message)
+        @meeting.reload
+        return render_recorder_conflict if @meeting.recorder_active? && recorder_conflict?(@meeting)
+
+        render json: { error: status_error_message }, status: :unprocessable_entity
       end
 
       # "false" 문자열만 false로 해석하고, 파라미터 미전달 시 true 반환

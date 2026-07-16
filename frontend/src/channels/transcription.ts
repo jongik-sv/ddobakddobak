@@ -1,7 +1,7 @@
 import type { Consumer, Subscription } from '@rails/actioncable'
 import { uint8ArrayToBase64 } from '../lib/audioUtils'
 import { useTranscriptStore } from '../stores/transcriptStore'
-import { useSharingStore } from '../stores/sharingStore'
+import { useRecordingSignalsStore } from '../stores/recordingSignalsStore'
 import { useToastStore } from '../stores/toastStore'
 
 /**
@@ -55,17 +55,8 @@ type BackendMessage = {
   summary_type?: 'realtime' | 'final'
   ok?: boolean
   error?: string
-  // sharing events
-  participant_id?: number
-  user_id?: number
-  user_name?: string
-  role?: string
-  joined_at?: string
-  new_host_id?: number
-  new_host_name?: string
+  // recording signals
   meeting_id?: number
-  grace_period_seconds?: number
-  disconnected_host_id?: number
 }
 
 export function createTranscriptionChannel(
@@ -175,43 +166,20 @@ export function createTranscriptionChannel(
               store.setSummaryError(null)
             }
             break
-          case 'participant_joined':
-            useSharingStore.getState().addParticipant({
-              id: raw.participant_id ?? 0,
-              user_id: raw.user_id ?? 0,
-              user_name: raw.user_name ?? '',
-              role: (raw.role as 'host' | 'viewer') ?? 'viewer',
-              joined_at: raw.joined_at ?? '',
-            })
-            break
-          case 'participant_left':
-            useSharingStore.getState().removeParticipant(raw.user_id ?? 0)
-            break
-          case 'host_transferred':
-            useSharingStore.getState().transferHost(raw.new_host_id ?? 0)
-            break
           case 'recording_stopped':
-            useSharingStore.getState().setRecordingStopped(true)
+            useRecordingSignalsStore.getState().setRecordingStopped(true)
+            break
+          case 'recording_paused':
+            // meeting_id를 담아 회의별로 스코프 — 타 회의 뷰어로 신호가 누수되지 않게.
+            useRecordingSignalsStore.getState().setRecordingPaused(raw.meeting_id ?? meetingId, true)
+            break
+          case 'recording_resumed':
+            useRecordingSignalsStore.getState().setRecordingPaused(raw.meeting_id ?? meetingId, false)
             break
           case 'recording_denied':
           case 'recording_in_progress':
             // 다른 세션이 이미 녹음 중 — 이 세션은 녹음 불가(읽기전용 뷰어로 라우팅)
-            useSharingStore.getState().setRecordingDenied(true)
-            break
-          case 'host_disconnected':
-            useSharingStore.getState().setHostDisconnected(
-              raw.user_id ?? 0,
-              raw.grace_period_seconds ?? 10,
-            )
-            break
-          case 'host_reconnected':
-            useSharingStore.getState().clearHostDisconnected()
-            break
-          case 'host_claimable':
-            useSharingStore.getState().setHostClaimable(true)
-            break
-          case 'sharing_stopped':
-            useSharingStore.getState().stopSharing()
+            useRecordingSignalsStore.getState().setRecordingDenied(true)
             break
         }
       },

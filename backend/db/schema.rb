@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_15_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_16_000002) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -156,21 +156,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_000001) do
     t.index ["source_attachment_id"], name: "index_meeting_contacts_on_source_attachment_id"
   end
 
-  create_table "meeting_participants", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.datetime "host_disconnected_at"
-    t.datetime "joined_at", null: false
-    t.datetime "left_at"
-    t.integer "meeting_id", null: false
-    t.string "role", default: "viewer", null: false
-    t.datetime "updated_at", null: false
-    t.integer "user_id", null: false
-    t.index ["meeting_id", "role"], name: "idx_participants_meeting_role"
-    t.index ["meeting_id", "user_id", "left_at"], name: "idx_participants_meeting_user_active"
-    t.index ["user_id"], name: "index_meeting_participants_on_user_id"
-    t.check_constraint "role IN ('host','viewer')", name: "chk_meeting_participants_role"
-  end
-
   create_table "meeting_templates", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "folder_id"
@@ -214,7 +199,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_000001) do
     t.text "recurrence_rule"
     t.datetime "schedule_dismissed_at"
     t.datetime "scheduled_start_time"
-    t.string "share_code"
     t.boolean "shared", default: true, null: false
     t.string "source", default: "live", null: false
     t.datetime "started_at"
@@ -222,6 +206,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_000001) do
     t.string "stt_engine"
     t.datetime "summary_error_at"
     t.text "summary_error_message"
+    t.integer "summary_interval_sec", default: 180, null: false
     t.boolean "summary_restructure", default: true, null: false
     t.string "summary_verbosity", default: "standard", null: false
     t.string "title", null: false
@@ -236,7 +221,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_000001) do
     t.index ["previous_meeting_id"], name: "index_meetings_on_previous_meeting_id"
     t.index ["project_id", "status"], name: "index_meetings_on_project_id_and_status"
     t.index ["scheduled_start_time"], name: "index_meetings_on_scheduled_start_time"
-    t.index ["share_code"], name: "index_meetings_on_share_code", unique: true
     t.index ["trash_group_id"], name: "index_meetings_on_trash_group_id"
     t.check_constraint "source IN ('live','upload')", name: "chk_meetings_source"
     t.check_constraint "status IN ('pending','recording','transcribing','completed')", name: "chk_meetings_status"
@@ -389,8 +373,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_000001) do
   add_foreign_key "meeting_contacts", "meeting_attachments", column: "source_attachment_id", on_delete: :nullify
   add_foreign_key "meeting_contacts", "meetings"
   add_foreign_key "meeting_contacts", "users", column: "created_by_id"
-  add_foreign_key "meeting_participants", "meetings"
-  add_foreign_key "meeting_participants", "users"
   add_foreign_key "meeting_templates", "folders"
   add_foreign_key "meetings", "folders", on_delete: :nullify
   add_foreign_key "meetings", "meetings", column: "previous_meeting_id", on_delete: :nullify

@@ -45,14 +45,13 @@ module Api
         @decision&.meeting
       end
 
-      # 소유/admin/현재 host만 변조 허용 (MeetingLookup#authorize_meeting_control!와 동일 티어).
+      # 소유/admin만 변조 허용 (MeetingLookup#authorize_meeting_control!와 동일 티어).
       # 회의 공유(shared) 도입으로 비소유자가 decisions#index로 ID를 얻을 수 있으므로,
       # 이 최상위 update/destroy에도 회의 단위 제어 인가가 필수다.
       def authorize_decision_control!
         meeting = @decision.meeting
         return if current_user.respond_to?(:admin?) && current_user.admin?
         return if meeting.owner?(current_user)
-        return if meeting.host_participant&.user_id == current_user.id
 
         render json: { error: "회의를 제어할 권한이 없습니다" }, status: :forbidden
       end

@@ -3,7 +3,7 @@ import { render, screen, fireEvent, act, waitFor, within } from '@testing-librar
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import MeetingLivePage from './MeetingLivePage'
 import { RecordingLayer } from '../components/recording/RecordingLayer'
-import { useSharingStore } from '../stores/sharingStore'
+import { useRecordingSignalsStore } from '../stores/recordingSignalsStore'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useRecordingStore } from '../stores/recordingStore'
 
@@ -26,7 +26,8 @@ vi.mock('../api/meetings', () => ({
   resetMeetingContent: vi.fn().mockResolvedValue({ id: 1, status: 'pending', title: '테스트 회의', meeting_type: 'general', created_by: { id: 1, name: '사용자' }, brief_summary: null, audio_duration_ms: 0, last_transcript_end_ms: 0, last_sequence_number: 0, started_at: null, ended_at: null, created_at: '' }),
   correctTerms: vi.fn().mockResolvedValue({ notes_markdown: '', corrected_transcripts: 0 }),
   updateNotes: vi.fn().mockResolvedValue(undefined),
-  getParticipants: vi.fn().mockResolvedValue([]),
+  // 어포던스 게이팅 헬퍼 — 이 파일은 게이팅 관심사가 아니므로 항상 편집 가능으로 고정.
+  canEditMeeting: vi.fn().mockReturnValue(true),
 }))
 
 vi.mock('../hooks/useAudioRecorder', () => ({
@@ -151,7 +152,7 @@ function renderPageWithState(state: unknown, meetingId = '1') {
 describe('MeetingLivePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    useSharingStore.getState().reset()
+    useRecordingSignalsStore.getState().reset()
     useTranscriptStore.getState().reset()
     // 녹음 세션 상태를 테스트 간 초기화(activeMeetingId/handlers/showStopConfirm 등)
     useRecordingStore.getState().endSession()
@@ -180,7 +181,7 @@ describe('MeetingLivePage', () => {
   it('다른 세션이 녹음 중이면(recordingDenied) 읽기전용 뷰어로 라우팅한다', async () => {
     renderPage()
     act(() => {
-      useSharingStore.getState().setRecordingDenied(true)
+      useRecordingSignalsStore.getState().setRecordingDenied(true)
     })
     await waitFor(() => {
       expect(screen.getByTestId('viewer-route')).toBeInTheDocument()

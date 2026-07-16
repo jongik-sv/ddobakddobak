@@ -11,7 +11,7 @@ export const STATUS_FILTER_TABS = [
   { value: 'pending', label: '대기중' },
 ] as const
 
-export function StatusBadge({ status, scheduled }: { status: Meeting['status']; scheduled?: boolean }) {
+export function StatusBadge({ status, scheduled, paused }: { status: Meeting['status']; scheduled?: boolean; paused?: boolean }) {
   if (status === 'pending') {
     if (scheduled === true) {
       return (
@@ -28,6 +28,14 @@ export function StatusBadge({ status, scheduled }: { status: Meeting['status']; 
     )
   }
   if (status === 'recording') {
+    if (paused === true) {
+      return (
+        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex items-center gap-1 whitespace-nowrap shrink-0">
+          <span className="inline-block w-1.5 h-1.5 bg-amber-500 rounded-full" />
+          일시정지
+        </span>
+      )
+    }
     return (
       <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 flex items-center gap-1 whitespace-nowrap shrink-0">
         <span className="inline-block w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />

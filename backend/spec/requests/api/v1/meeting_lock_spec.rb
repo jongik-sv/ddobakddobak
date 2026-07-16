@@ -86,12 +86,6 @@ RSpec.describe "Api::V1::MeetingLock", type: :request do
       [:post,   "/api/v1/meetings/#{m}/audio_chunk",                    {}],
       [:post,   "/api/v1/meetings/#{m}/audio_finalize",                 {}],
 
-      # shares
-      [:post,   "/api/v1/meetings/#{m}/share",                          {}],
-      [:delete, "/api/v1/meetings/#{m}/share",                          {}],
-      [:post,   "/api/v1/meetings/#{m}/claim_host",                     {}],
-      [:post,   "/api/v1/meetings/#{m}/transfer_host",                  { target_user_id: owner.id }],
-
       # glossary (nested create + top-level update/destroy)
       [:post,   "/api/v1/meetings/#{m}/glossary_entries",               { from_text: "c", to_text: "d", match_type: "literal" }],
       [:patch,  "/api/v1/glossary_entries/#{glossary.id}",             { to_text: "z" }],

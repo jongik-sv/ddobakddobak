@@ -1,14 +1,12 @@
 import { Settings, Monitor, Mic, ArrowLeft, StickyNote, Paperclip, Bookmark, Save, Timer, Pencil } from 'lucide-react'
 import { Switch } from '../ui/Switch'
 import { Tooltip } from '../ui/Tooltip'
-import { ShareButton } from './ShareButton'
 import { useUiStore } from '../../stores/uiStore'
 import { formatElapsedSeconds } from '../../lib/audioUtils'
 import { IS_TAURI, SUMMARY_INTERVAL_OPTIONS } from '../../config'
 
 /** 데스크톱 전용 녹음 컨트롤 헤더 바 (모바일은 MobileRecordControls 사용) */
 export function DesktopRecordControls({
-  meetingId,
   title,
   isActive,
   isPaused,
@@ -31,6 +29,7 @@ export function DesktopRecordControls({
   onShowSaveTemplate,
   onOpenBookmark,
   onResetClick,
+  canEdit = true,
   onStart,
   onPause,
   onResume,
@@ -38,7 +37,6 @@ export function DesktopRecordControls({
   onManualSummary,
   canManualSummary,
 }: {
-  meetingId: number
   title: string
   isActive: boolean
   isPaused: boolean
@@ -61,6 +59,8 @@ export function DesktopRecordControls({
   onShowSaveTemplate: () => void
   onOpenBookmark: () => void
   onResetClick: () => void
+  /** 회의 시작/초기화 어포던스 노출 여부(소유자 ∨ admin). 권한은 서버가 강제. 기본 true. */
+  canEdit?: boolean
   onStart: () => void
   onPause: () => void
   onResume: () => void
@@ -159,8 +159,10 @@ export function DesktopRecordControls({
             {formatElapsedSeconds(elapsedSeconds)}
           </span>
 
-          {/* 원형 카운트다운 타이머 */}
-          {summaryCountdown > 0 && (
+          {/* 원형 카운트다운 타이머 — 요약주기 0(안함)으로 전환하는 커밋에서
+              (summaryIntervalSec - summaryCountdown)/summaryIntervalSec 이 -Infinity가 되어
+              무효 strokeDashoffset이 한 프레임 노출되는 것을 막기 위해 주기>0도 가드. */}
+          {summaryCountdown > 0 && summaryIntervalSec > 0 && (
             <div className="flex items-center gap-1" title="다음 AI 회의록 적용까지">
               <div className="relative w-7 h-7">
                 <svg className="w-7 h-7 -rotate-90" viewBox="0 0 28 28">
@@ -200,9 +202,6 @@ export function DesktopRecordControls({
           </Tooltip>
         )}
 
-        {/* 공유 버튼 */}
-        <ShareButton meetingId={meetingId} />
-
         {/* 시스템 오디오 토글 (Tauri 데스크톱 앱에서만 표시) */}
         {IS_TAURI && (
           <Tooltip text="시스템 오디오 캡처">
@@ -232,7 +231,7 @@ export function DesktopRecordControls({
         </div>
         </Tooltip>
 
-        {!isActive && (
+        {!isActive && canEdit && (
           <button
             onClick={onResetClick}
             disabled={isResetting}
@@ -243,12 +242,14 @@ export function DesktopRecordControls({
         )}
 
         {!isActive ? (
-          <button
-            onClick={onStart}
-            className="px-3 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-          >
-            회의 시작
-          </button>
+          canEdit && (
+            <button
+              onClick={onStart}
+              className="px-3 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            >
+              회의 시작
+            </button>
+          )
         ) : (
           <>
             {onManualSummary && (

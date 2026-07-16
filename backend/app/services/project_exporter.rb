@@ -87,7 +87,6 @@ class ProjectExporter
       attachments:      meeting.meeting_attachments.map { |a| serialize_attachment(a) },
       contacts:         meeting.meeting_contacts.map(&:attributes),
       bookmarks:        meeting.meeting_bookmarks.map(&:attributes),
-      participants:     meeting.meeting_participants.map(&:attributes),
       chat_messages:    meeting.chat_messages.map(&:attributes),
       tag_ids:          meeting.taggings.map(&:tag_id),
       glossary_entries: meeting.glossary_entries.map(&:attributes)

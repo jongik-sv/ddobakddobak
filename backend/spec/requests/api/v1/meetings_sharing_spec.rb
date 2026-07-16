@@ -229,12 +229,9 @@ RSpec.describe "Api::V1::Meetings 공유/비공개", type: :request do
       expect(own_shared.reload.shared).to eq(false)
     end
 
-    it "비소유 host 의 update 는 shared 변경을 무시한다" do
-      # foreign_shared(타인 소유)에 user 를 host 로 참여시킴 → control 권한은 host 로 통과하지만
-      # shared 변경은 editable_by?(소유/admin) 가 아니므로 무시되어야 한다.
-      create(:meeting_participant, meeting: foreign_shared, user: user, role: "host")
+    it "비소유 멤버는 update 로 shared 를 변경할 수 없다(403)" do
       patch "/api/v1/meetings/#{foreign_shared.id}", params: { shared: false }, as: :json
-      expect(response).to have_http_status(:ok)
+      expect(response).to have_http_status(:forbidden)
       expect(foreign_shared.reload.shared).to eq(true)
     end
   end

@@ -12,8 +12,9 @@ RSpec.describe "Api::V1::Speakers", type: :request do
     expect(response).to have_http_status(:forbidden)
   end
 
-  it "viewer 참여자는 화자 이름을 수정할 수 없다(403)" do
-    create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
+  it "읽기 가시성 멤버(비소유자)는 화자 이름을 수정할 수 없다(403)" do
+    foreign.update!(shared: true)
+    create(:project_membership, project: foreign.project, user: user)
     patch "/api/v1/speakers/spk1", params: { meeting_id: foreign.id, name: "변경" }
     expect(response).to have_http_status(:forbidden)
   end

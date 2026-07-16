@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useUiStore } from '../stores/uiStore'
 import { useToastStore } from '../stores/toastStore'
@@ -27,14 +27,14 @@ import {
   getTranscripts,
   getSummary,
   resetMeetingContent,
-  getParticipants,
 } from '../api/meetings'
-import type { Meeting, Participant } from '../api/meetings'
+import type { Meeting } from '../api/meetings'
 import { getSttSettings, getLanguageSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
-import { useSharingStore } from '../stores/sharingStore'
+import { useRecordingSignalsStore } from '../stores/recordingSignalsStore'
+import { useRecordingStore } from '../stores/recordingStore'
+import { httpErrorInfo } from '../lib/errors'
 import { IS_TAURI, getApiOrigin, getMode } from '../config'
-import { useAuthStore } from '../stores/authStore'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 import { useRecordingSummaryTimer } from './useRecordingSummaryTimer'
 import { useRecorderHeartbeat } from './useRecorderHeartbeat'
@@ -67,7 +67,7 @@ export function useLiveRecording(
   // 회의실 진입 시 사이드바 닫기 + 이전 거부 플래그 초기화
   useEffect(() => {
     useUiStore.setState({ sidebarOpen: false })
-    useSharingStore.getState().setRecordingDenied(false)
+    useRecordingSignalsStore.getState().setRecordingDenied(false)
   }, [])
 
   const [status, setStatus] = useState<MeetingStatus>('idle')
@@ -98,16 +98,8 @@ export function useLiveRecording(
   const finalsCount = useTranscriptStore((s) => s.finals.length)
   const isSummarizing = useTranscriptStore((s) => s.isSummarizing)
 
-  // 공유 상태
-  const isSharing = useSharingStore((s) => s.shareCode !== null)
-  const sharingParticipants = useSharingStore((s) => s.participants)
   // 다른 세션이 이미 녹음 중 → 읽기전용 뷰어로 라우팅 (단일 녹음 세션 보장)
-  const recordingDenied = useSharingStore((s) => s.recordingDenied)
-  const [currentUserId, setCurrentUserId] = useState<number>(0)
-  const isHost = useMemo(() => {
-    const host = sharingParticipants.find((p) => p.role === 'host')
-    return host?.user_id === currentUserId && currentUserId !== 0
-  }, [sharingParticipants, currentUserId])
+  const recordingDenied = useRecordingSignalsStore((s) => s.recordingDenied)
 
   // 메모 (초기 로드 값)
   const [meetingMemo, setMeetingMemo] = useState<string | null>(null)
@@ -209,7 +201,7 @@ export function useLiveRecording(
   })
 
   // 라이브 세션 보조 훅 (god 분해): 자동/수동 요약 타이머 + 이탈 차단 가드
-  const { summaryCountdown, handleManualSummary, resetSummaryTimer, summaryIntervalSec, setSummaryIntervalSec } = useRecordingSummaryTimer({
+  const { summaryCountdown, handleManualSummary, resetSummaryTimer, summaryIntervalSec, setSummaryIntervalSec, syncSummaryIntervalSec } = useRecordingSummaryTimer({
     isActive,
     isPaused,
     isApplyingCorrections,
@@ -340,8 +332,22 @@ export function useLiveRecording(
       } else if (latest?.status !== 'recording') {
         await startMeeting(meetingId)
       }
-    } catch {
-      // 이미 recording 등 — 무시
+    } catch (err) {
+      const info = await httpErrorInfo(err)
+      if (info?.status === 409 && info.code === 'recorder_conflict') {
+        // 다른 기기가 녹음 점유(하트비트 신선) — 캡처 시작 전에 중단하고
+        // 기존 recordingDenied 경로 재사용(진행 중 캡처 폐기 + 읽기전용 뷰어 이동).
+        showStatus(info.message ?? '다른 기기에서 녹음이 진행 중입니다.', 5000)
+        useRecordingSignalsStore.getState().setRecordingDenied(true)
+        return
+      }
+      if (info?.status === 403) {
+        // 권한 없음 — 캡처 미시작 상태로 중단 + 세션 종료(재시도 가능하게 activeMeetingId 해제).
+        showStatus('권한이 없습니다', 5000)
+        useRecordingStore.getState().endSession()
+        return
+      }
+      // 그 외(이미 recording 상태 합류 등) — 기존 관용 유지, 캡처 계속 진행
     }
     const offsetMs = Math.max(latest?.audio_duration_ms ?? 0, latest?.last_transcript_end_ms ?? 0)
     const seqNum = latest?.last_sequence_number ?? 0
@@ -384,7 +390,11 @@ export function useLiveRecording(
     }
     pause()
     // 일시정지 중 요약 완전 금지 — flush 호출하지 않음. 서버에 일시정지 통지(cron 자동요약 차단).
-    pauseMeeting(meetingId).catch(() => {})
+    // 409(다른 기기 점유)는 사유만 표기 — 보통 진입 시 리다이렉트로 도달 불가한 방어 코드.
+    pauseMeeting(meetingId).catch(async (err) => {
+      const info = await httpErrorInfo(err)
+      if (info?.status === 409) showStatus(info.message ?? '다른 기기에서 녹음이 진행 중입니다.', 5000)
+    })
   }
 
   const handleResume = () => {
@@ -393,7 +403,10 @@ export function useLiveRecording(
       import('@tauri-apps/api/core').then(({ invoke }) => invoke('resume_recording')).catch(() => {})
     }
     resume()
-    resumeMeeting(meetingId).catch(() => {})
+    resumeMeeting(meetingId).catch(async (err) => {
+      const info = await httpErrorInfo(err)
+      if (info?.status === 409) showStatus(info.message ?? '다른 기기에서 녹음이 진행 중입니다.', 5000)
+    })
   }
 
   // 종료 버튼: 라이브 기록 있으면 최종요약 여부 확인 다이얼로그, 없으면 바로 종료(skip).
@@ -452,7 +465,17 @@ export function useLiveRecording(
         // 요약 반영 시간 확보
         await new Promise((r) => setTimeout(r, 2000))
       }
-      await stopMeeting(meetingId, { skipSummary })
+      try {
+        await stopMeeting(meetingId, { skipSummary })
+      } catch (err) {
+        const info = await httpErrorInfo(err)
+        if (info?.status === 409) {
+          // 다른 기기 점유 중 종료 거부 — 사유 표기 후 로컬 세션만 정리(finally).
+          showStatus(info.message ?? '다른 기기에서 녹음이 진행 중입니다.', 5000)
+          return
+        }
+        throw err
+      }
       // 최종 회의록 다시 로드
       const summary = await getSummary(meetingId).catch(() => null)
       if (summary?.notes_markdown) {
@@ -597,30 +620,18 @@ export function useLiveRecording(
         setAudioDurationMs(m.audio_duration_ms ?? 0)
         setLastSeqNum(m.last_sequence_number ?? 0)
         if (m.memo) setMeetingMemo(m.memo)
-        // 현재 사용자 ID 저장 (호스트 여부 판별용) - 인증된 유저 우선
-        const authUser = useAuthStore.getState().user
-        setCurrentUserId(authUser?.id ?? m.created_by.id)
-        // 공유 상태 초기화: share_code가 있으면 참여자 로드
-        if (m.share_code) {
-          getParticipants(meetingId)
-            .then((participants) => {
-              useSharingStore.getState().startSharing(
-                m.share_code!,
-                participants,
-              )
-            })
-            .catch(() => {})
-        } else {
-          useSharingStore.getState().reset()
-        }
+        // 서버가 진실원천 — 새로고침/재진입 시 요약 주기 복원(API 미호출 raw setter).
+        if (typeof m.summary_interval_sec === 'number') syncSummaryIntervalSec(m.summary_interval_sec)
       })
       .catch(() => {})
-  }, [meetingId])
+    // syncSummaryIntervalSec은 useState 세터라 identity가 안정 → 재실행 위험 없이 워닝만 해소.
+  }, [meetingId, syncSummaryIntervalSec])
 
-  // 페이지 언마운트 시 sharingStore 초기화
+  // 세션 언마운트 시 녹음 신호 초기화 — stale recordingDenied/recordingStopped가
+  // 다음 세션의 뷰어 라우팅을 오발화하지 않게 한다.
   useEffect(() => {
     return () => {
-      useSharingStore.getState().reset()
+      useRecordingSignalsStore.getState().reset()
     }
   }, [])
 
@@ -650,9 +661,6 @@ export function useLiveRecording(
     isResetting,
     isStopping,
     isActive,
-    isSharing,
-    isHost,
-    currentUserId,
     showResetConfirm,
     setShowResetConfirm,
     handleStart,
@@ -670,5 +678,3 @@ export function useLiveRecording(
     handleResetConfirm,
   } as const
 }
-
-export type { Participant }

@@ -85,8 +85,9 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         expect(response).to have_http_status(:forbidden)
       end
 
-      it "viewer 참여자는 transcripts 조회 가능(200)" do
-        create(:meeting_participant, meeting: foreign, user: user, role: "viewer")
+      it "읽기 가시성 멤버(비소유자)는 transcripts 조회 가능(200)" do
+        foreign.update!(shared: true)
+        create(:project_membership, project: foreign.project, user: user)
         get "/api/v1/meetings/#{foreign.id}/transcripts"
         expect(response).to have_http_status(:ok)
       end

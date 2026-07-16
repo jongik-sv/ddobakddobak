@@ -35,10 +35,6 @@ vi.mock('../components/meeting/SpeakerPanel', () => ({
   SpeakerPanel: () => <div data-testid="speaker-panel">화자 영역</div>,
 }))
 
-vi.mock('../components/meeting/ParticipantList', () => ({
-  ParticipantList: () => <div data-testid="participant-list">참여자 목록</div>,
-}))
-
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={['/meetings/99/viewer']}>

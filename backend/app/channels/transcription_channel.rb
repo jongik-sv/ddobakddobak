@@ -1,5 +1,6 @@
 class TranscriptionChannel < ApplicationCable::Channel
-  GRACE_PERIOD_SECONDS = 10
+  ROLE_OWNER  = "owner".freeze
+  ROLE_VIEWER = "viewer".freeze
 
   def subscribed
     meeting = Meeting.find_by(id: params[:meeting_id])
@@ -14,7 +15,6 @@ class TranscriptionChannel < ApplicationCable::Channel
 
     if @role
       stream_from meeting.transcription_stream
-      handle_host_reconnection(meeting)
       notify_if_recording_in_progress(meeting)
     else
       reject
@@ -24,7 +24,6 @@ class TranscriptionChannel < ApplicationCable::Channel
   def unsubscribed
     RecordingLock.release(@meeting_id, @lock_token) if @meeting_id && @lock_token
     stop_all_streams
-    handle_host_disconnection if @meeting_id
   end
 
   # 녹음 클라 생존 신호. 프론트가 ~15초마다 호출(VAD/일시정지 무관).
@@ -35,8 +34,8 @@ class TranscriptionChannel < ApplicationCable::Channel
   def audio_chunk(data)
     return unless @meeting_id
 
-    # viewer는 오디오 전송 차단 (owner 또는 host만 허용)
-    return if @role == MeetingParticipant::ROLE_VIEWER
+    # viewer는 오디오 전송 차단 (owner만 허용)
+    return if @role == ROLE_VIEWER
 
     # 녹음 중인 회의에만 오디오 허용 (멈춘/완료된 회의로의 스트리밍 차단)
     meeting = Meeting.find_by(id: @meeting_id)
@@ -70,12 +69,12 @@ class TranscriptionChannel < ApplicationCable::Channel
 
   private
 
-  # 녹음 클라 생존 신호. owner/host + recording 일 때만, 10초 throttle 로 DB 갱신.
+  # 녹음 클라 생존 신호. owner + recording 일 때만, 10초 throttle 로 DB 갱신.
   # update_column 으로 검증/콜백/updated_at 우회(쓰기 폭주 방지). presence 부재 시
   # Meeting#heal_stale_recording! 가 stale 로 보고 종결.
   def bump_recorder_heartbeat
     return unless @meeting_id
-    return unless %w[owner host].include?(@role)
+    return unless @role == ROLE_OWNER
 
     meeting = Meeting.find_by(id: @meeting_id)
     return unless meeting&.recording?
@@ -97,58 +96,27 @@ class TranscriptionChannel < ApplicationCable::Channel
 
   # 다른 기기가 이미 녹음 중일 때: viewer로 강등하고 1회만 거부 알림.
   def deny_recording
-    @role = MeetingParticipant::ROLE_VIEWER
+    @role = ROLE_VIEWER
     return if @recording_denied_notified
 
     @recording_denied_notified = true
     transmit({ "type" => "recording_denied", "meeting_id" => @meeting_id })
   end
 
-  # 구독 권한 결정: owner / host / viewer / nil(거부)
-  # admin 유저는 모든 회의에 owner 권한으로 접근 가능 (관리/모니터링 목적)
+  # 구독 권한 결정: owner / viewer / nil(거부)
+  # admin 유저는 모든 회의에 owner 권한으로 접근 가능 (관리/모니터링 목적).
+  # 읽기 가시성이 있는 프로젝트 멤버는 viewer(읽기전용 뷰어의 실시간 수신용) —
+  # MeetingLookup#authorize_meeting_read! 와 동일 판정(멤버십 && shared_visible?).
   def determine_role(meeting)
-    return "owner" if current_user.respond_to?(:admin?) && current_user.admin?
+    return ROLE_OWNER if current_user.respond_to?(:admin?) && current_user.admin?
+    return ROLE_OWNER if meeting.owner?(current_user)
+    return ROLE_VIEWER if project_member?(meeting) && meeting.shared_visible?
 
-    if meeting.owner?(current_user)
-      "owner"
-    else
-      meeting.active_participants.find_by(user_id: current_user.id)&.role
-    end
+    nil
   end
 
-  # 호스트 재접속 시 host_disconnected_at 초기화 + 브로드캐스트
-  def handle_host_reconnection(meeting)
-    participant = meeting.host_participant
-    return unless participant&.user_id == current_user.id
-    return unless participant.host_disconnected_at.present?
-
-    participant.update!(host_disconnected_at: nil)
-    ActionCable.server.broadcast(
-      meeting.transcription_stream,
-      { type: "host_reconnected", user_id: current_user.id }
-    )
-  end
-
-  # 호스트 끊김 시 host_disconnected_at 설정 + grace period job 예약
-  def handle_host_disconnection
-    meeting = Meeting.find_by(id: @meeting_id)
-    return unless meeting&.sharing?
-
-    participant = meeting.host_participant
-    return unless participant&.user_id == current_user.id
-
-    disconnected_at = Time.current
-    participant.update!(host_disconnected_at: disconnected_at)
-
-    ActionCable.server.broadcast(
-      meeting.transcription_stream,
-      { type: "host_disconnected", user_id: current_user.id, grace_period_seconds: GRACE_PERIOD_SECONDS }
-    )
-
-    HostGracePeriodJob.set(wait: GRACE_PERIOD_SECONDS.seconds).perform_later(
-      meeting_id: @meeting_id,
-      user_id: current_user.id,
-      disconnected_at: disconnected_at.iso8601(6)
-    )
+  # MeetingLookup#project_member? 와 동일 판정. project_id 없으면 false(과도기 안전).
+  def project_member?(meeting)
+    meeting.project_id && ProjectMembership.exists?(project_id: meeting.project_id, user_id: current_user.id)
   end
 end
