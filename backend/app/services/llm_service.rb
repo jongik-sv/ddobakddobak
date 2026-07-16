@@ -26,6 +26,52 @@ class LlmService
     error.message.to_s.truncate(USER_ERROR_MAX_LENGTH)
   end
 
+  # 클라우드 프로바이더(anthropic/openai 계열)의 사용 가능 모델 id 목록 — 설정 UI의 '모델 새로고침'.
+  # 프로바이더의 표준 `/v1/models` 엔드포인트를 그대로 조회한다(로컬 ollama/lmstudio 는 프론트가
+  # 직접 조회하므로 대상 아님, CLI 도 아님). 새 모델이 나와도 하드코딩 목록 갱신·재배포 없이 최신화된다.
+  # base_url override 로 z.ai(anthropic 호환)·openai 호환 서버(nvidia 등)도 지원. 실패 시 LlmError.
+  def self.list_models(provider:, api_key:, base_url: nil)
+    case provider
+    when "openai"
+      base = base_url.presence || "https://api.openai.com/v1"
+      data = http_get_json("#{base.chomp('/')}/models", { "Authorization" => "Bearer #{api_key}" })
+      extract_model_ids(data)
+    when "anthropic"
+      base = base_url.presence || "https://api.anthropic.com"
+      data = http_get_json("#{base.chomp('/')}/v1/models",
+                           { "x-api-key" => api_key.to_s, "anthropic-version" => "2023-06-01" })
+      extract_model_ids(data)
+    else
+      []
+    end
+  end
+
+  # OpenAI/Anthropic `/v1/models` 응답({ "data" => [{ "id" => ... }] })에서 모델 id 만 정렬·중복제거.
+  def self.extract_model_ids(data)
+    list = data.is_a?(Hash) ? (data["data"] || data[:data]) : nil
+    return [] unless list.is_a?(Array)
+    list.filter_map { |m| m.is_a?(Hash) ? (m["id"] || m[:id]) : nil }.uniq.sort
+  end
+
+  # 인증 헤더를 붙여 GET → JSON 파싱. 타임아웃 짧게(설정 UI 인터랙션용). 2xx 아니면 LlmError.
+  def self.http_get_json(url, headers)
+    require "net/http"
+    uri = URI.parse(url)
+    raise LlmError, "잘못된 URL 입니다" unless uri.is_a?(URI::HTTP)
+
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.use_ssl = (uri.scheme == "https")
+    http.open_timeout = 5
+    http.read_timeout = 10
+
+    req = Net::HTTP::Get.new(uri)
+    headers.each { |k, v| req[k] = v }
+    res = http.request(req)
+    raise LlmError, "모델 목록 조회 실패 (HTTP #{res.code})" unless res.is_a?(Net::HTTPSuccess)
+
+    JSON.parse(res.body.to_s)
+  end
+
   CLI_TIMEOUT = ENV.fetch("LLM_CLI_TIMEOUT", "600").to_i # seconds — Claude/Gemini/Codex/GLM CLI 실행 제한
 
   CLI_PROVIDERS = %w[claude_cli gemini_cli codex_cli].freeze

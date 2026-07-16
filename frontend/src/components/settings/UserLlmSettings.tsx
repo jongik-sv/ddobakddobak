@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   getUserLlmSettings,
   updateUserLlmSettings,
   testUserLlmConnection,
   toggleUserLlm,
+  fetchUserLlmModels,
 } from '../../api/userLlmSettings'
 import type {
   UserLlmSettingsResponse,
@@ -22,6 +23,12 @@ export default function UserLlmSettings() {
   const [chatPresetId, setChatPresetId] = useState('')
   const [chatForm, setChatForm] = useState({ base_url: '', model: '', auth_token: '' })
 
+  // 프리셋별 폼 입력값 캐시. 프리셋을 전환했다가 되돌아와도 앞서 입력한 base_url/model/키가
+  // 초기화되지 않게 한다(특히 '직접 입력'(custom)은 기본값이 없어 전환 시 유실되던 문제).
+  type PresetForm = { base_url: string; model: string; auth_token: string }
+  const summaryFormCacheRef = useRef<Record<string, PresetForm>>({})
+  const chatFormCacheRef = useRef<Record<string, PresetForm>>({})
+
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [toggling, setToggling] = useState(false)
@@ -30,6 +37,9 @@ export default function UserLlmSettings() {
   const [success, setSuccess] = useState<string | null>(null)
 
   const initFormFromSettings = useCallback((data: UserLlmSettingsResponse) => {
+    // 서버 진실로부터 새로 채우므로 프리셋별 폼 캐시도 초기화(로드·초기화·none 저장 시).
+    summaryFormCacheRef.current = {}
+    chatFormCacheRef.current = {}
     const ls = data.llm_settings
     const sid = presetIdFromUserConfig(ls.provider ?? null, ls.base_url ?? null) ?? 'none'
     setSummaryPresetId(sid)
@@ -53,16 +63,22 @@ export default function UserLlmSettings() {
   }, [initFormFromSettings])
 
   const handleSummarySelect = (id: string) => {
+    // 현재 입력값을 이전 프리셋 아래 캐시 → 다시 돌아오면 복원(입력 유실 방지).
+    summaryFormCacheRef.current[summaryPresetId] = summaryForm
     setSummaryPresetId(id)
-    setSummaryForm(id === 'none' ? { base_url: '', model: '', auth_token: '' } : presetFormDefaults(id))
+    const cached = summaryFormCacheRef.current[id]
+    setSummaryForm(id === 'none' ? { base_url: '', model: '', auth_token: '' } : (cached ?? presetFormDefaults(id)))
     setTestResult(null)
     setError(null)
     setSuccess(null)
   }
 
   const handleChatSelect = (id: string) => {
+    chatFormCacheRef.current[chatPresetId] = chatForm
     setChatPresetId(id)
-    setChatForm(id === '' ? { base_url: '', model: '', auth_token: '' } : presetFormDefaults(id))
+    // '' (요약과 동일) / 'server' (서버 모델) 는 프로바이더 폼이 없으므로 비운다. 그 외엔 캐시 복원.
+    const cached = chatFormCacheRef.current[id]
+    setChatForm(id === '' || id === 'server' ? { base_url: '', model: '', auth_token: '' } : (cached ?? presetFormDefaults(id)))
     setError(null)
     setSuccess(null)
   }
@@ -72,26 +88,35 @@ export default function UserLlmSettings() {
     setError(null)
     setSuccess(null)
     try {
+      // 챗 payload는 요약 선택과 무관하게 한 번 구성한다 — 요약='선택 안함'(none)이어도
+      // 개인 챗 모델을 함께 저장할 수 있어야 하기 때문(BUG: none 분기가 chat_* 를 누락해
+      // 챗이 항상 '요약과 동일'로 되돌아가던 문제).
+      // 챗 특수옵션: '' = 요약과 동일(chat_provider=null) / 'server' = 서버 모델 강제(센티넬)
+      const isServerChat = chatPresetId === 'server'
+      const cp = (chatPresetId === '' || isServerChat) ? null : SERVICE_PRESETS.find((p) => p.id === chatPresetId) ?? null
+      const chatPayload = {
+        chat_provider: isServerChat ? 'server' : (cp ? cp.provider : null),
+        chat_base_url: isServerChat ? null : (cp ? (chatForm.base_url || null) : null),
+        // 서버 모델은 개인 모델 override 없음. 그 외엔 chatForm.model(레거시 보존).
+        chat_model: isServerChat ? null : (chatForm.model || null),
+        chat_api_key: isServerChat ? '' : chatForm.auth_token,
+      }
       if (summaryPresetId === 'none') {
-        const result = await updateUserLlmSettings({ llm_settings: { provider: '' } })
+        const result = await updateUserLlmSettings({ llm_settings: { provider: '', ...chatPayload } })
         setSettings(result)
         initFormFromSettings(result)
-        setSuccess('서버 기본 LLM을 사용합니다.')
+        setChatForm((f) => ({ ...f, auth_token: '' }))
+        setSuccess('저장되었습니다.')
         return
       }
       const sp = SERVICE_PRESETS.find((p) => p.id === summaryPresetId)!
-      const cp = chatPresetId === '' ? null : SERVICE_PRESETS.find((p) => p.id === chatPresetId) ?? null
       const result = await updateUserLlmSettings({
         llm_settings: {
           provider: sp.provider,
           ...(summaryForm.auth_token ? { api_key: summaryForm.auth_token } : {}),
           model: summaryForm.model,
           base_url: summaryForm.base_url || null,
-          chat_provider: cp ? cp.provider : null,
-          chat_base_url: cp ? (chatForm.base_url || null) : null,
-          // chat_model은 cp 유무 무관하게 chatForm.model(레거시 보존)
-          chat_model: chatForm.model || null,
-          chat_api_key: chatForm.auth_token,
+          ...chatPayload,
         },
       })
       setSettings(result)
@@ -235,6 +260,7 @@ export default function UserLlmSettings() {
             maskedToken={summaryMask}
             onSelectPreset={handleSummarySelect}
             onChange={(p) => setSummaryForm((f) => ({ ...f, ...p }))}
+            onFetchModels={fetchUserLlmModels}
           />
 
           {/* AI 챗 모델 카드 */}
@@ -242,11 +268,15 @@ export default function UserLlmSettings() {
             title="AI 챗 모델"
             idPrefix="user-chat"
             presets={SERVICE_PRESETS}
-            noneOption={{ id: '', label: '요약과 동일', description: '요약 모델 그대로 사용' }}
+            noneOptions={[
+              { id: '', label: '요약과 동일', description: '요약 모델 그대로 사용' },
+              { id: 'server', label: '선택 안함', description: '서버 기본 챗 모델 사용' },
+            ]}
             value={{ presetId: chatPresetId, ...chatForm }}
             maskedToken={chatMask}
             onSelectPreset={handleChatSelect}
             onChange={(p) => setChatForm((f) => ({ ...f, ...p }))}
+            onFetchModels={fetchUserLlmModels}
           />
 
           {/* 레거시 챗 모델 입력 — chatPresetId='' 일 때만 표시 */}

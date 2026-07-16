@@ -9,6 +9,7 @@ vi.mock('../../api/userLlmSettings', () => ({
   updateUserLlmSettings: vi.fn(),
   testUserLlmConnection: vi.fn(),
   toggleUserLlm: vi.fn(),
+  fetchUserLlmModels: vi.fn().mockResolvedValue([]),
 }))
 
 // 카드가 useEffect로 로컬 fetch하므로 필수 — 없으면 jsdom real fetch로 행
@@ -21,12 +22,11 @@ vi.mock('../../api/settings', () => ({
 // 하므로 getMode를 항상 'local'로 고정한다(의도 보존).
 vi.mock('../../config', async (orig) => ({ ...(await orig() as object), getMode: vi.fn(() => 'local') }))
 
-import { getUserLlmSettings, updateUserLlmSettings, testUserLlmConnection, toggleUserLlm } from '../../api/userLlmSettings'
+import { getUserLlmSettings, updateUserLlmSettings, testUserLlmConnection } from '../../api/userLlmSettings'
 
 const mockGetUserLlmSettings = vi.mocked(getUserLlmSettings)
 const mockUpdateUserLlmSettings = vi.mocked(updateUserLlmSettings)
 const mockTestUserLlmConnection = vi.mocked(testUserLlmConnection)
-const mockToggleUserLlm = vi.mocked(toggleUserLlm)
 
 // 테스트용 응답 데이터
 const configuredResponse: UserLlmSettingsResponse = {
@@ -323,6 +323,44 @@ describe('UserLlmSettings', () => {
     expect(within(chatGrid).getByText('요약과 동일').closest('button')!.getAttribute('aria-pressed')).toBe('true')
   })
 
+  // 신규: 챗 카드에 '선택 안함'(=서버 모델) 옵션 노출 + 선택·저장 시 chat_provider='server'(센티넬)
+  it("챗 카드: '요약과 동일'과 '선택 안함' 두 특수옵션을 모두 노출한다", async () => {
+    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
+    render(<UserLlmSettings />)
+    const chatGrid = await screen.findByTestId('user-chat-service-grid')
+    expect(within(chatGrid).getByText('요약과 동일')).toBeInTheDocument()
+    expect(within(chatGrid).getByText('선택 안함')).toBeInTheDocument()
+  })
+
+  it("챗 '선택 안함' 선택 후 저장하면 chat_provider='server', chat_model=null 을 담는다", async () => {
+    mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
+    mockUpdateUserLlmSettings.mockResolvedValue(configuredResponse)
+    render(<UserLlmSettings />)
+    const chatGrid = await screen.findByTestId('user-chat-service-grid')
+
+    fireEvent.click(within(chatGrid).getByText('선택 안함').closest('button')!)
+    fireEvent.click(screen.getAllByRole('button', { name: /저장/ })[0])
+    await waitFor(() => {
+      expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          llm_settings: expect.objectContaining({ chat_provider: 'server', chat_model: null }),
+        }),
+      )
+    })
+  })
+
+  it("로드: 저장된 chat_provider='server' 는 '선택 안함' 선택으로 복원", async () => {
+    mockGetUserLlmSettings.mockResolvedValue({
+      ...configuredResponse,
+      llm_settings: { ...configuredResponse.llm_settings, chat_provider: 'server', chat_model: null },
+    })
+    render(<UserLlmSettings />)
+    const chatGrid = await screen.findByTestId('user-chat-service-grid')
+    await waitFor(() =>
+      expect(within(chatGrid).getByText('선택 안함').closest('button')!.getAttribute('aria-pressed')).toBe('true'),
+    )
+  })
+
   // #1: 저장된 provider와 일치하면 마스크를 넘긴다 (Anthropic 기본 로드 == 저장값)
   it('선택 provider가 저장값과 같으면 요약 카드에 마스크("현재:")를 표시한다', async () => {
     mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
@@ -366,7 +404,8 @@ describe('UserLlmSettings', () => {
     })
   })
 
-  // #2: 요약='선택 안함' 저장 payload 는 reset_all 을 포함하지 않는다 (챗 보존)
+  // #2: 요약='선택 안함' 저장 payload 는 reset_all 을 포함하지 않는다 (전체 초기화 아님).
+  // 챗 payload(chat_*)는 함께 실린다 — 요약=none 이어도 개인 챗 모델을 저장할 수 있어야 하므로.
   it('요약=선택 안함 저장 payload 는 reset_all 을 담지 않는다', async () => {
     mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
     mockUpdateUserLlmSettings.mockResolvedValue(unconfiguredResponse)
@@ -376,10 +415,69 @@ describe('UserLlmSettings', () => {
     // 요약 카드에서 '선택 안함' 선택 → 빈 provider 저장 경로
     fireEvent.click(within(summaryGrid).getByText('선택 안함').closest('button')!)
     fireEvent.click(screen.getByText('저장'))
-    await waitFor(() => {
-      expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith({
-        llm_settings: { provider: '' },
-      })
+    await waitFor(() => expect(mockUpdateUserLlmSettings).toHaveBeenCalled())
+    const payload = mockUpdateUserLlmSettings.mock.calls.at(-1)![0].llm_settings
+    expect(payload.provider).toBe('')
+    expect(payload).not.toHaveProperty('reset_all')
+  })
+
+  // BUG(회귀 방지): 요약='선택 안함'(none) + 챗='직접 입력'(custom) 저장 시 payload 에
+  // chat_* 가 실려야 한다. 기존엔 none 분기가 { provider: '' } 만 보내 chat_* 를 누락 →
+  // 개인 챗 모델을 저장해도 서버가 챗을 건드리지 않아 항상 '요약과 동일'로 되돌아갔다.
+  it('요약=선택 안함 + 챗=직접입력 저장 시 payload 에 chat_provider·chat_model 을 담는다', async () => {
+    mockGetUserLlmSettings.mockResolvedValue(unconfiguredResponse)
+    mockUpdateUserLlmSettings.mockResolvedValue(unconfiguredResponse)
+    render(<UserLlmSettings />)
+    await screen.findByTestId('user-summary-service-grid')
+
+    // 요약='선택 안함'(기본이 none 이지만 명시적으로 확정)
+    const summaryGrid = screen.getByTestId('user-summary-service-grid')
+    fireEvent.click(within(summaryGrid).getByText('선택 안함').closest('button')!)
+
+    // 챗 카드에서 '직접 입력'(custom) 선택 + base_url·model 입력
+    const chatCard = screen.getByTestId('user-chat-card')
+    fireEvent.click(within(chatCard).getByText('직접 입력').closest('button')!)
+    fireEvent.change(within(chatCard).getByLabelText('API Base URL'), {
+      target: { value: 'https://integrate.api.nvidia.com/v1' },
     })
+    fireEvent.change(within(chatCard).getByLabelText('모델명'), {
+      target: { value: 'nvidia/nemotron-3-ultra-550b-a55b' },
+    })
+
+    fireEvent.click(screen.getByText('저장'))
+    await waitFor(() => {
+      expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          llm_settings: expect.objectContaining({
+            provider: '',
+            chat_provider: 'openai',
+            chat_base_url: 'https://integrate.api.nvidia.com/v1',
+            chat_model: 'nvidia/nemotron-3-ultra-550b-a55b',
+          }),
+        }),
+      )
+    })
+  })
+
+  // 프리셋 전환 시 입력값 보존: '직접 입력'(custom)에 값 입력 → 다른 프리셋 → 다시 custom → 복원.
+  // (이전엔 프리셋 재선택이 폼을 기본값으로 리셋해 custom 입력이 통째로 유실됐다.)
+  it('직접입력(custom) 프리셋 입력 후 다른 프리셋 갔다 돌아와도 입력값이 보존된다', async () => {
+    mockGetUserLlmSettings.mockResolvedValue(unconfiguredResponse)
+    render(<UserLlmSettings />)
+    const summaryGrid = await screen.findByTestId('user-summary-service-grid')
+
+    // 직접 입력(custom) 선택 + base_url·model 입력
+    fireEvent.click(within(summaryGrid).getByText('직접 입력').closest('button')!)
+    const summaryCard = screen.getByTestId('user-summary-card')
+    fireEvent.change(within(summaryCard).getByLabelText('API Base URL'), { target: { value: 'https://my.endpoint/v1' } })
+    fireEvent.change(within(summaryCard).getByLabelText('모델명'), { target: { value: 'my-model' } })
+
+    // OpenAI 로 전환했다가 다시 직접 입력으로 복귀
+    fireEvent.click(within(summaryGrid).getByText('OpenAI').closest('button')!)
+    fireEvent.click(within(summaryGrid).getByText('직접 입력').closest('button')!)
+
+    // 입력값이 보존되어야 한다
+    expect((within(summaryCard).getByLabelText('API Base URL') as HTMLInputElement).value).toBe('https://my.endpoint/v1')
+    expect((within(summaryCard).getByLabelText('모델명') as HTMLInputElement).value).toBe('my-model')
   })
 })

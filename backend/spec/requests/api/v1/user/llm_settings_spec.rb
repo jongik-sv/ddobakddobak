@@ -302,6 +302,59 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(user.llm_enabled).to be(true)
     end
 
+    # ============================================================
+    # BUG(개인 챗 저장): 요약='선택 안함'(빈 provider, reset_all 없음) + chat_* 전송 시
+    #   요약은 비우되 개인 챗 모델은 요청대로 저장해야 한다.
+    #   (요약은 서버 기본을 쓰고 AI 챗만 개인 모델로 돌리는 조합 — 이전엔 저장 불가였다.)
+    # ============================================================
+    it "provider 빈값(reset_all 없음) + chat_* 전송 시 요약은 비우고 챗은 저장한다" do
+      user.update!(llm_provider: "anthropic", llm_api_key: "sk-xxx", llm_model: "claude-sonnet-4-6")
+
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: {
+          provider: "",
+          chat_provider: "openai", chat_api_key: "chatkey",
+          chat_model: "nvidia/nemotron-3-ultra-550b-a55b",
+          chat_base_url: "https://integrate.api.nvidia.com/v1"
+        }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      # 요약 컬럼은 비워짐
+      expect(user.llm_provider).to be_nil
+      expect(user.llm_api_key).to be_nil
+      expect(user.llm_model).to be_nil
+      # 챗 컬럼은 요청대로 저장됨
+      expect(user.chat_llm_provider).to eq("openai")
+      expect(user.chat_llm_api_key).to eq("chatkey")
+      expect(user.chat_llm_model).to eq("nvidia/nemotron-3-ultra-550b-a55b")
+      expect(user.chat_llm_base_url).to eq("https://integrate.api.nvidia.com/v1")
+      expect(user.llm_enabled).to be(true)
+
+      body = response.parsed_body
+      expect(body.dig("llm_settings", "chat_provider")).to eq("openai")
+      expect(body.dig("llm_settings", "chat_configured")).to be true
+    end
+
+    # 요약='선택 안함' + 챗='요약과 동일'(chat_provider=null) 전송 시 개인 챗 provider 는 비운다.
+    # (프론트가 항상 chat_* 를 보내므로, '요약과 동일' 재선택 = 개인 챗 해제 의도.)
+    it "provider 빈값 + chat_provider=null 전송 시 개인 챗 provider 를 비운다" do
+      user.update!(
+        llm_provider: "anthropic", llm_api_key: "sk-xxx",
+        chat_llm_provider: "openai", chat_llm_api_key: "ck", chat_llm_model: "gpt-4o"
+      )
+
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "", chat_provider: nil, chat_base_url: nil, chat_model: nil, chat_api_key: "" }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.chat_llm_provider).to be_nil
+      expect(user.chat_llm_model).to be_nil
+    end
+
     it "provider 빈값 + reset_all 시 요약·챗 모두 초기화한다(전체 초기화 버튼)" do
       user.update!(
         llm_provider: "anthropic", llm_api_key: "sk-xxx", llm_model: "claude-sonnet-4-6",
@@ -409,6 +462,55 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       user.reload
       expect(user.llm_enabled).to be(true)
       expect(user.llm_configured?).to be(true)
+    end
+  end
+
+  # ============================================================
+  # POST /api/v1/user/llm_settings/models  (클라우드 모델 목록 프록시 조회)
+  # ============================================================
+  describe "POST /api/v1/user/llm_settings/models" do
+    it "클라우드 provider 의 모델 목록을 반환한다" do
+      allow(LlmService).to receive(:list_models).and_return(%w[claude-sonnet-5 claude-opus-4-8])
+
+      post "/api/v1/user/llm_settings/models", params: { provider: "anthropic", api_key: "sk-x" }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["models"]).to eq(%w[claude-sonnet-5 claude-opus-4-8])
+    end
+
+    it "api_key 미전송(마스킹) 시 저장된 개인 키로 조회한다" do
+      user.update!(llm_provider: "anthropic", llm_api_key: "sk-saved-key")
+      expect(LlmService).to receive(:list_models)
+        .with(hash_including(provider: "anthropic", api_key: "sk-saved-key")).and_return([])
+
+      post "/api/v1/user/llm_settings/models", params: { provider: "anthropic" }, as: :json
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "지원하지 않는 provider(CLI 등)면 빈 목록을 반환한다" do
+      expect(LlmService).not_to receive(:list_models)
+
+      post "/api/v1/user/llm_settings/models", params: { provider: "claude_cli" }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["models"]).to eq([])
+    end
+
+    it "조회 실패 시 200 + 빈 목록으로 폴백한다" do
+      allow(LlmService).to receive(:list_models).and_raise(LlmService::LlmError.new("boom"))
+
+      post "/api/v1/user/llm_settings/models", params: { provider: "openai", api_key: "k" }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["models"]).to eq([])
+      expect(response.parsed_body["error"]).to be_present
+    end
+
+    it "provider 누락 시 400을 반환한다" do
+      post "/api/v1/user/llm_settings/models", params: {}, as: :json
+
+      expect(response).to have_http_status(:bad_request)
     end
   end
 

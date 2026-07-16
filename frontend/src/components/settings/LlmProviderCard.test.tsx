@@ -145,6 +145,35 @@ describe('LlmProviderCard', () => {
     expect(onSelectPreset).toHaveBeenCalledWith('openai')
   })
 
+  it('noneOptions(복수) 지정 시 모든 특수옵션을 렌더하고 각각 onSelectPreset(id)를 호출한다', () => {
+    const onSelectPreset = vi.fn()
+    renderCard({
+      noneOptions: [
+        { id: '', label: '요약과 동일', description: '요약 모델 그대로' },
+        { id: 'server', label: '서버 모델', description: '서버 기본 챗' },
+      ],
+      value: { ...baseValue, presetId: '' },
+      onSelectPreset,
+    })
+    const grid = screen.getByTestId('sum-service-grid')
+    expect(within(grid).getByText('요약과 동일')).toBeInTheDocument()
+    expect(within(grid).getByText('서버 모델')).toBeInTheDocument()
+    fireEvent.click(within(grid).getByText('서버 모델').closest('button')!)
+    expect(onSelectPreset).toHaveBeenCalledWith('server')
+  })
+
+  it('선택된 특수옵션(예: server)이면 프로바이더 폼(base/model)을 숨긴다', () => {
+    renderCard({
+      noneOptions: [
+        { id: '', label: '요약과 동일', description: 'x' },
+        { id: 'server', label: '서버 모델', description: 'y' },
+      ],
+      value: { ...baseValue, presetId: 'server' },
+    })
+    expect(screen.queryByLabelText('API Base URL')).toBeNull()
+    expect(screen.queryByLabelText('모델명')).toBeNull()
+  })
+
   it('이미 선택된 noneOption 재클릭도 no-op', () => {
     const onSelectPreset = vi.fn()
     renderCard({ noneOption: { id: 'none', label: '선택 안함', description: '서버 기본' }, value: { ...baseValue, presetId: 'none' }, onSelectPreset })
@@ -209,6 +238,35 @@ describe('LlmProviderCard', () => {
     fireEvent.change(input, { target: { value: '' } })
     expect(onChange).toHaveBeenCalledWith({ max_input_tokens: undefined })
     expect(onChange).not.toHaveBeenCalledWith({ max_input_tokens: 0 })
+  })
+
+  // 클라우드(anthropic) + onFetchModels: 자동조회 안 하고, 새로고침 클릭 시 원격 조회 → SELECT 렌더
+  it('클라우드 프리셋 + onFetchModels: 새로고침 클릭 시 조회하고 결과를 SELECT로 렌더', async () => {
+    const onFetchModels = vi.fn().mockResolvedValue(['claude-sonnet-5', 'claude-opus-4-8'])
+    renderCard({ value: { ...baseValue, presetId: 'anthropic', model: '' }, onFetchModels })
+    // 클라우드는 키가 필요해 자동조회하지 않는다 — 버튼 클릭 전까지 호출 없음
+    expect(onFetchModels).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByLabelText('모델 새로고침'))
+    await waitFor(() => expect(onFetchModels).toHaveBeenCalledWith(expect.objectContaining({ provider: 'anthropic' })))
+    await waitFor(() => {
+      const el = screen.getByLabelText('모델명') as HTMLSelectElement
+      expect(Array.from(el.options).map((o) => o.value)).toContain('claude-sonnet-5')
+    })
+  })
+
+  // onFetchModels 미지정(admin 패널 등)이면 클라우드 프리셋에 새로고침 버튼을 노출하지 않는다
+  it('onFetchModels 미지정이면 클라우드 프리셋에 새로고침 버튼이 없다', () => {
+    renderCard({ value: { ...baseValue, presetId: 'anthropic', model: '' } })
+    expect(screen.queryByLabelText('모델 새로고침')).toBeNull()
+  })
+
+  // 클라우드 조회 실패 시 에러 메시지 + 추천목록(SELECT) 폴백 유지
+  it('클라우드 조회 실패 시 에러를 표시하고 추천목록 SELECT로 폴백한다', async () => {
+    const onFetchModels = vi.fn().mockRejectedValue(new Error('bad key'))
+    renderCard({ value: { ...baseValue, presetId: 'anthropic', model: '' }, onFetchModels })
+    fireEvent.click(screen.getByLabelText('모델 새로고침'))
+    await waitFor(() => expect(screen.getByText(/모델 목록을 불러올 수 없습니다/)).toBeInTheDocument())
+    expect((screen.getByLabelText('모델명') as HTMLElement).tagName).toBe('SELECT')
   })
 
   // #9 — 프리셋 변경 시 '직접 입력' 토글이 리셋되어 모델 SELECT가 다시 보인다

@@ -43,6 +43,11 @@ class User < ApplicationRecord
   # 키·base 불요 CLI 프로바이더. 정본은 AppSettings(부팅 안전)에 두고 별칭한다 — 단일 출처(드리프트 방지).
   CLI_LLM_PROVIDERS = AppSettings::CLI_LLM_PROVIDERS
 
+  # chat_llm_provider 센티넬: "AI 챗은 서버 모델로" 명시 선택.
+  # 실제 프로바이더가 아니라, 개인 요약(tier2)을 건너뛰고 서버(전역챗→전역요약)로
+  # 강제 라우팅하라는 표식. effective_chat_llm_config 에서만 해석된다.
+  CHAT_SERVER_SENTINEL = "server".freeze
+
   def llm_provider_cli?
     CLI_LLM_PROVIDERS.include?(llm_provider)
   end
@@ -70,11 +75,15 @@ class User < ApplicationRecord
   end
 
   # AI Chat용 LLM 설정. 우선순위:
+  #   0) 챗 = "server" 센티넬 → 개인 요약(tier2)을 건너뛰고 서버(전역챗→전역요약)로 강제.
+  #      (요약은 내 개인 LLM으로 쓰되, AI 챗만 서버 모델로 돌리고 싶을 때.)
   #   1) 개인 챗 설정(chat_llm_*) → 완전 독립
   #   2) 개인 요약 있음 → 요약 config + (chat_llm_model || ENV["CHAT_LLM_MODEL"]) 모델 override
   #   3) 전역 챗 설정(ENV["CHAT_LLM_PROVIDER"]) → 전역 독립
   #   4) 전역 요약 + ENV["CHAT_LLM_MODEL"] 모델 override
   def effective_chat_llm_config
+    return server_chat_llm_config if chat_llm_provider == CHAT_SERVER_SENTINEL
+
     if chat_llm_configured?
       return {
         provider: chat_llm_provider,
@@ -90,6 +99,12 @@ class User < ApplicationRecord
       return chat_model ? cfg.merge(model: chat_model) : cfg
     end
 
+    server_chat_llm_config
+  end
+
+  # 서버 기본 챗 config (전역챗 tier3 → 전역요약 tier4). 개인 설정을 무시하고 서버만 본다.
+  # 카스케이드의 최종 폴백이자, 챗="server" 센티넬이 곧장 도달하는 목적지.
+  def server_chat_llm_config
     return self.class.server_default_chat_llm_config if ENV["CHAT_LLM_PROVIDER"].present?
 
     cfg = self.class.server_default_llm_config

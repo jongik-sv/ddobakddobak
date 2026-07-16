@@ -183,6 +183,7 @@ Rails.application.routes.draw do
       namespace :user do
         resource :llm_settings, only: [ :show, :update ] do
           post :test, on: :collection
+          post :models, on: :collection
           patch :toggle, on: :collection
         end
         resource :language_settings, only: [ :show, :update ]

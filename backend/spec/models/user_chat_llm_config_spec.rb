@@ -170,6 +170,43 @@ RSpec.describe User, "chat LLM config", type: :model do
         expect(cfg[:model]).to eq("global-model")          # NOT "personal-chat-model"
       end
     end
+
+    context "chat_llm_provider = 'server' sentinel (force server, skip personal summary)" do
+      around do |example|
+        keys = %w[CHAT_LLM_PROVIDER CHAT_LLM_AUTH_TOKEN CHAT_LLM_BASE_URL CHAT_LLM_MODEL]
+        prev = keys.index_with { |k| ENV[k] }
+        example.run
+        keys.each { |k| prev[k].nil? ? ENV.delete(k) : ENV[k] = prev[k] }
+      end
+
+      it "uses global chat (tier 3) even when a personal summary LLM is configured/enabled" do
+        ENV["CHAT_LLM_PROVIDER"]   = "openai"
+        ENV["CHAT_LLM_AUTH_TOKEN"] = "global-chat-key"
+        ENV["CHAT_LLM_MODEL"]      = "global-chat-model"
+        ENV.delete("CHAT_LLM_BASE_URL")
+        user = build(:user, llm_provider: "anthropic", llm_api_key: "sk-user",
+                     llm_model: "claude-sonnet-4-6", llm_enabled: true,
+                     chat_llm_provider: "server", chat_llm_model: "ignored-personal-chat")
+
+        cfg = user.effective_chat_llm_config
+        expect(cfg[:provider]).to eq("openai")            # 서버 챗, 개인 anthropic 아님
+        expect(cfg[:auth_token]).to eq("global-chat-key")
+        expect(cfg[:model]).to eq("global-chat-model")     # 개인 chat_llm_model 무시
+      end
+
+      it "falls back to server summary (tier 4), never the personal summary, when no CHAT_LLM_PROVIDER" do
+        %w[CHAT_LLM_PROVIDER CHAT_LLM_AUTH_TOKEN CHAT_LLM_MODEL CHAT_LLM_BASE_URL].each { |k| ENV.delete(k) }
+        user = build(:user, llm_provider: "anthropic", llm_api_key: "sk-user",
+                     llm_model: "claude-sonnet-4-6", llm_enabled: true,
+                     chat_llm_provider: "server")
+
+        cfg = user.effective_chat_llm_config
+        # 개인 요약의 프로바이더 키/모델이 새어나오지 않고 서버로 강제되어야 한다.
+        expect(cfg[:auth_token]).not_to eq("sk-user")
+        expect(cfg[:model]).not_to eq("claude-sonnet-4-6")
+        expect(cfg).to eq(user.server_chat_llm_config)
+      end
+    end
   end
 
   describe ".server_default_chat_llm_config" do

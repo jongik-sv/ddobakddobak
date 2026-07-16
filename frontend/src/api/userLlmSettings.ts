@@ -72,3 +72,18 @@ export async function testUserLlmConnection(
 export async function toggleUserLlm(): Promise<UserLlmSettingsResponse> {
   return apiClient.patch('user/llm_settings/toggle', { json: {} }).json()
 }
+
+// 클라우드 프로바이더(anthropic/openai)의 모델 목록을 백엔드 프록시로 조회한다('모델 새로고침').
+// api_key 미전송 시 서버가 저장된 개인 키로 폴백. 서버가 error 를 담아 응답하면 throw 하여
+// 카드가 폴백(추천 목록) + 에러 메시지를 표시하게 한다.
+export async function fetchUserLlmModels(params: {
+  provider: string
+  base_url?: string | null
+  api_key?: string
+}): Promise<string[]> {
+  const res = await apiClient
+    .post('user/llm_settings/models', { json: params })
+    .json<{ models?: string[]; error?: string }>()
+  if (res.error) throw new Error(res.error)
+  return res.models ?? []
+}
