@@ -310,8 +310,11 @@ export default function DomainFilesPanel({ ownerType, ownerId, projectId, canEdi
   )
 }
 
-/** owner에 링크할 도메인 파일 다중 선택 모달 — 전체 교체(PUT) 방식 */
-function SelectDomainFilesModal({
+/**
+ * owner에 링크할 도메인 파일 다중 선택 모달 — 전체 교체(PUT) 방식.
+ * 회의 생성 전(meeting id 없음) 화면에서도 재사용하기 위해 export한다 — CreateMeetingModal 참고.
+ */
+export function SelectDomainFilesModal({
   available, selected, inherited, canDelete, onDeleteFile, onClose, onConfirm,
 }: {
   available: DomainFile[]

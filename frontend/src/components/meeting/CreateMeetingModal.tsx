@@ -2,11 +2,19 @@ import { useState, useEffect, useMemo } from 'react'
 import { createMeeting, getMeetings } from '../../api/meetings'
 import type { Meeting } from '../../api/meetings'
 import { useProjectStore } from '../../stores/projectStore'
+import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingTemplateStore } from '../../stores/meetingTemplateStore'
+import { useToastStore } from '../../stores/toastStore'
 import { Dialog } from '../ui/Dialog'
 import { MeetingTypeSelector } from './MeetingListUI'
 import { ScheduleFields } from './ScheduleFields'
 import { emptyScheduleState, scheduleToPayload, formatMeetingDateLabel, type ScheduleFormState } from '../../lib/schedulePayload'
+import { folderName } from '../../lib/meetingFormat'
+import {
+  listDomainFiles, getFolderDomainFiles, getProjectDomainFiles, setMeetingDomainFiles,
+} from '../../api/domainFiles'
+import type { DomainFile, DomainFileSummary, InheritedDomainFile } from '../../api/domainFiles'
+import { SelectDomainFilesModal } from './DomainFilesPanel'
 
 interface CreateMeetingModalProps {
   folderId: number | null
@@ -31,6 +39,60 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
   const [error, setError] = useState('')
   const templates = useMeetingTemplateStore((s) => s.templates)
   const fetchTemplates = useMeetingTemplateStore((s) => s.fetch)
+  const currentProjectId = useProjectStore((s) => s.currentProjectId)
+  const projects = useProjectStore((s) => s.projects)
+  const folders = useFolderStore((s) => s.folders)
+
+  // 도메인 파일 — 생성 전이라 meeting id가 없어 회의 owner API는 못 쓴다.
+  // 대상 폴더/프로젝트에 이미 지정된 파일은 읽기전용 미리보기로, 회의 전용 추가분은 로컬 state로만 들고 있다가
+  // 회의 생성 성공 후 setMeetingDomainFiles로 한 번에 반영한다.
+  const [domainAvailable, setDomainAvailable] = useState<DomainFile[]>([])
+  const [domainInheritedPreview, setDomainInheritedPreview] = useState<InheritedDomainFile[]>([])
+  const [extraDomainFileIds, setExtraDomainFileIds] = useState<number[]>([])
+  const [domainSelectOpen, setDomainSelectOpen] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    listDomainFiles(currentProjectId ?? undefined)
+      .then((res) => { if (!cancelled) setDomainAvailable(res.domain_files) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [currentProjectId])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadInheritedPreview() {
+      try {
+        if (folderId != null) {
+          const res = await getFolderDomainFiles(folderId)
+          if (cancelled) return
+          const thisFolderName = folderName(folders, folderId) ?? '폴더'
+          const own: InheritedDomainFile[] = res.domain_files.map((f) => ({
+            ...f, source: 'folder', owner_name: thisFolderName,
+          }))
+          setDomainInheritedPreview([...own, ...res.inherited])
+        } else if (currentProjectId != null) {
+          const res = await getProjectDomainFiles(currentProjectId)
+          if (cancelled) return
+          const thisProjectName = projects.find((p) => p.id === currentProjectId)?.name ?? '프로젝트'
+          const own: InheritedDomainFile[] = res.domain_files.map((f) => ({
+            ...f, source: 'project', owner_name: thisProjectName,
+          }))
+          setDomainInheritedPreview(own)
+        } else {
+          setDomainInheritedPreview([])
+        }
+      } catch {
+        if (!cancelled) setDomainInheritedPreview([])
+      }
+    }
+    loadInheritedPreview()
+    return () => { cancelled = true }
+  }, [folderId, currentProjectId, folders, projects])
+
+  const extraDomainFiles: DomainFileSummary[] = domainAvailable
+    .filter((f) => extraDomainFileIds.includes(f.id))
+    .map((f) => ({ id: f.id, name: f.name, project_id: f.project_id, updated_at: f.updated_at, editable: !!f.editable }))
 
   // 자동 제목 날짜 라벨: 예약을 켜고 날짜가 있으면 그 예약 시각, 아니면 생성 시각.
   const autoTitle = useMemo(() => {
@@ -90,6 +152,15 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
         project_id: useProjectStore.getState().currentProjectId,
         ...scheduleKeys,
       })
+      if (extraDomainFileIds.length > 0) {
+        try {
+          await setMeetingDomainFiles(meeting.id, extraDomainFileIds)
+        } catch (err) {
+          // 회의 생성 자체는 성공 처리 — 도메인 파일 연결 실패는 경고만 남긴다.
+          console.warn('도메인 파일 연결 실패', err)
+          useToastStore.getState().showStatus('회의는 생성되었지만 도메인 파일 연결에 실패했습니다.')
+        }
+      }
       onCreated(meeting)
       onClose()
     } catch {
@@ -169,6 +240,64 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
           </p>
         </div>
 
+        {/* 도메인 파일 — 대상 폴더/프로젝트 지정분은 읽기전용 미리보기, 회의 전용 추가분은 생성 후 반영 */}
+        <div>
+          <label className="block text-sm font-medium mb-1">도메인 파일</label>
+
+          {domainInheritedPreview.length > 0 && (
+            <div className="flex flex-col gap-1 mb-2">
+              <span className="text-[11px] text-muted-foreground">상속된 도메인 파일 (읽기전용)</span>
+              <div className="flex flex-wrap gap-1.5">
+                {domainInheritedPreview.map((f) => (
+                  <span
+                    key={`${f.source}-${f.id}`}
+                    className="inline-flex items-center gap-1 pl-2.5 pr-2 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border"
+                  >
+                    <span className="truncate max-w-[12rem]">{f.name}</span>
+                    <span className="text-[10px] opacity-80">
+                      {f.source === 'project' ? `프로젝트: ${f.owner_name}` : `폴더: ${f.owner_name}`}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {extraDomainFiles.length === 0 && domainInheritedPreview.length === 0 && (
+              <span className="text-xs text-muted-foreground">선택된 도메인 파일이 없습니다</span>
+            )}
+            {extraDomainFiles.map((f) => (
+              <span
+                key={f.id}
+                className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200"
+              >
+                <span className="truncate max-w-[16rem]">{f.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setExtraDomainFileIds((prev) => prev.filter((id) => id !== f.id))}
+                  className="shrink-0 w-4 h-4 leading-none text-blue-400 hover:text-red-600"
+                  title="제거"
+                  aria-label={`${f.name} 제거`}
+                >
+                  &times;
+                </button>
+              </span>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setDomainSelectOpen(true)}
+            className="text-xs text-blue-500 hover:text-blue-700"
+          >
+            파일 선택
+          </button>
+          <p className="mt-1 text-xs text-muted-foreground">
+            회의 생성 후 자동으로 연결됩니다. 폴더·프로젝트에서 상속된 파일은 따로 선택하지 않아도 됩니다.
+          </p>
+        </div>
+
         {/* 예약 시작: 명시적 토글. 켜야만 날짜/시각/시작방식/반복이 나타나고 예약 키가 전송된다. */}
         <ScheduleFields value={schedule} onChange={setSchedule} />
 
@@ -205,6 +334,21 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
           </button>
         </div>
       </form>
+
+      {domainSelectOpen && (
+        <SelectDomainFilesModal
+          available={domainAvailable}
+          selected={extraDomainFiles}
+          inherited={domainInheritedPreview}
+          canDelete={false}
+          onDeleteFile={async () => {}}
+          onClose={() => setDomainSelectOpen(false)}
+          onConfirm={async (ids) => {
+            setExtraDomainFileIds(ids)
+            setDomainSelectOpen(false)
+          }}
+        />
+      )}
     </Dialog>
   )
 }

@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CreateMeetingModal } from './CreateMeetingModal'
+import { useFolderStore } from '../../stores/folderStore'
+import { useProjectStore } from '../../stores/projectStore'
+import { useToastStore } from '../../stores/toastStore'
 
 const { mockCreateMeeting, mockGetMeetings } = vi.hoisted(() => ({
   mockCreateMeeting: vi.fn(),
@@ -16,6 +19,15 @@ vi.mock('../../api/meetings', async () => ({
 
 vi.mock('../../api/meetingTemplates', () => ({
   getMeetingTemplates: vi.fn().mockResolvedValue([]),
+}))
+
+// 도메인 파일 API — DomainFilesPanel.test.tsx의 mock 패턴 참고. 기본은 빈 응답이라
+// 도메인 파일과 무관한 기존 테스트(예약/반복/제목)에는 영향을 주지 않는다.
+vi.mock('../../api/domainFiles', () => ({
+  listDomainFiles: vi.fn(async () => ({ domain_files: [] })),
+  getFolderDomainFiles: vi.fn(async () => ({ domain_files: [], inherited: [] })),
+  getProjectDomainFiles: vi.fn(async () => ({ domain_files: [] })),
+  setMeetingDomainFiles: vi.fn(async () => ({ selected: [], inherited: [], excluded: [] })),
 }))
 
 const meetingTypeList = [
@@ -301,5 +313,108 @@ describe('CreateMeetingModal 제목 자동 날짜 입력', () => {
     expect(titleInput.value.length).toBeGreaterThan(0)
     expect(titleInput.selectionStart).toBe(0)
     expect(titleInput.selectionEnd).toBe(titleInput.value.length)
+  })
+})
+
+describe('CreateMeetingModal 도메인 파일', () => {
+  const folderNode = {
+    id: 7, name: '테스트 폴더', parent_id: null, position: 0,
+    shared: true, important: false, meeting_count: 0, tags: [], children: [],
+  }
+  const testProject = {
+    id: 5, name: '반도체 프로젝트', description: null, icon_type: null, icon_value: null,
+    color: null, personal: false, role: 'member' as const, member_count: 1, meeting_count: 0, owner: null,
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    mockGetMeetings.mockResolvedValue({ meetings: [], meta: { total: 0, page: 1, per: 100 } })
+    mockCreateMeeting.mockResolvedValue({ id: 10, title: '새 회의', scheduled_start_time: null })
+    useFolderStore.setState({ folders: [] })
+    useProjectStore.setState({ currentProjectId: null, projects: [] })
+    useToastStore.setState({ message: '' })
+  })
+
+  it('대상 폴더에 지정된 파일 + 상속분을 읽기전용 칩으로 보여준다', async () => {
+    useFolderStore.setState({ folders: [folderNode] })
+    const api = await import('../../api/domainFiles')
+    vi.mocked(api.getFolderDomainFiles).mockResolvedValueOnce({
+      domain_files: [{ id: 1, name: '폴더 지정 파일', project_id: null, updated_at: '', editable: true }],
+      inherited: [
+        { id: 2, name: '상속 파일', project_id: 5, updated_at: '', editable: false, source: 'project', owner_name: '반도체 프로젝트' },
+      ],
+    })
+
+    render(<CreateMeetingModal folderId={7} meetingTypeList={meetingTypeList} onClose={vi.fn()} onCreated={vi.fn()} />)
+
+    await waitFor(() => expect(screen.getByText('폴더 지정 파일')).toBeInTheDocument())
+    expect(screen.getByText('폴더: 테스트 폴더')).toBeInTheDocument()
+    expect(screen.getByText('상속 파일')).toBeInTheDocument()
+    expect(screen.getByText('프로젝트: 반도체 프로젝트')).toBeInTheDocument()
+  })
+
+  it('대상 폴더가 없으면 프로젝트에 지정된 파일만 읽기전용 칩으로 보여준다', async () => {
+    useProjectStore.setState({ currentProjectId: 5, projects: [testProject] })
+    const api = await import('../../api/domainFiles')
+    vi.mocked(api.getProjectDomainFiles).mockResolvedValueOnce({
+      domain_files: [{ id: 1, name: '프로젝트 지정 파일', project_id: 5, updated_at: '', editable: true }],
+    })
+
+    render(<CreateMeetingModal folderId={null} meetingTypeList={meetingTypeList} onClose={vi.fn()} onCreated={vi.fn()} />)
+
+    await waitFor(() => expect(screen.getByText('프로젝트 지정 파일')).toBeInTheDocument())
+    expect(screen.getByText('프로젝트: 반도체 프로젝트')).toBeInTheDocument()
+    expect(api.getFolderDomainFiles).not.toHaveBeenCalled()
+  })
+
+  it('회의 전용 파일을 추가 선택하고 생성하면 회의 생성 후 setMeetingDomainFiles를 호출한다', async () => {
+    const api = await import('../../api/domainFiles')
+    vi.mocked(api.listDomainFiles).mockResolvedValueOnce({
+      domain_files: [{ id: 3, name: '추가 파일', project_id: null, created_by_id: 1, content_chars: 10, updated_at: '', editable: true }],
+    })
+
+    render(<CreateMeetingModal folderId={null} meetingTypeList={meetingTypeList} onClose={vi.fn()} onCreated={vi.fn()} />)
+
+    await userEvent.click(screen.getByText('파일 선택'))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '추가 파일' })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('checkbox', { name: '추가 파일' }))
+    await userEvent.click(screen.getByRole('button', { name: '확인' }))
+
+    // 확인 후 모달이 닫히고 선택 칩이 남는다
+    await waitFor(() => expect(screen.queryByRole('checkbox', { name: '추가 파일' })).not.toBeInTheDocument())
+    expect(screen.getByLabelText('추가 파일 제거')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /^생성$/i }))
+
+    await waitFor(() => expect(mockCreateMeeting).toHaveBeenCalled())
+    await waitFor(() => expect(api.setMeetingDomainFiles).toHaveBeenCalledWith(10, [3]))
+  })
+
+  it('도메인 파일 연결에 실패해도 회의 생성은 성공 처리하고 경고 토스트를 남긴다', async () => {
+    const api = await import('../../api/domainFiles')
+    vi.mocked(api.listDomainFiles).mockResolvedValueOnce({
+      domain_files: [{ id: 3, name: '추가 파일', project_id: null, created_by_id: 1, content_chars: 10, updated_at: '', editable: true }],
+    })
+    vi.mocked(api.setMeetingDomainFiles).mockRejectedValueOnce(new Error('실패'))
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const onCreated = vi.fn()
+    const onClose = vi.fn()
+
+    render(<CreateMeetingModal folderId={null} meetingTypeList={meetingTypeList} onClose={onClose} onCreated={onCreated} />)
+
+    await userEvent.click(screen.getByText('파일 선택'))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '추가 파일' })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('checkbox', { name: '추가 파일' }))
+    await userEvent.click(screen.getByRole('button', { name: '확인' }))
+    await waitFor(() => expect(screen.getByLabelText('추가 파일 제거')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /^생성$/i }))
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalled())
+    expect(onClose).toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalled()
+    expect(useToastStore.getState().message).toContain('도메인 파일')
+
+    warnSpy.mockRestore()
   })
 })
