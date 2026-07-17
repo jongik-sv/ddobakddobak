@@ -18,7 +18,7 @@ class User < ApplicationRecord
   #   (meetings.created_by_id 도 동일) — 공유 콘텐츠 소유자 삭제는 Phase 범위 밖, 별도 처리 필요.
   before_destroy { created_projects.where(personal: true).destroy_all }
 
-  ROLES = %w[admin member].freeze
+  ROLES = %w[admin manager member].freeze
   LOCAL_EMAIL = "desktop@local".freeze
 
   validates :name, presence: true
@@ -35,6 +35,15 @@ class User < ApplicationRecord
 
   def member?
     role == "member"
+  end
+
+  def manager?
+    role == "manager"
+  end
+
+  # 프로젝트 생성·팀 프로젝트 관리 등 manager 이상 권한이 필요한 동작의 게이트.
+  def manager_or_above?
+    admin? || manager?
   end
 
   # 로컬 자동로그인 계정(desktop@local) 여부

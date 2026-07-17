@@ -1,7 +1,10 @@
 require "rails_helper"
 
 RSpec.describe "Api::V1::Projects", type: :request do
-  let(:user) { create(:user) }
+  # 프로젝트 생성·팀 프로젝트 관리는 시스템 manager 이상 요구 — 이 파일의 user는
+  # "프로젝트를 만들고 관리하는" 주 행위자이므로 manager로 둔다(개인 프로젝트 소유자 경로는
+  # 시스템 role과 무관하게 항상 통과하므로 영향 없음).
+  let(:user) { create(:user, :manager) }
   let(:other_user) { create(:user) }
 
   before { login_as(user) }
@@ -101,6 +104,29 @@ RSpec.describe "Api::V1::Projects", type: :request do
       end
     end
 
+    context "시스템 role 게이트" do
+      it "시스템 member는 프로젝트를 생성할 수 없다(403)" do
+        login_as(create(:user))
+        expect {
+          post "/api/v1/projects", params: { name: "안됨" }, as: :json
+        }.not_to change(Project, :count)
+        expect(response).to have_http_status(:forbidden)
+        expect(response.parsed_body["error"]).to be_present
+      end
+
+      it "시스템 manager는 프로젝트를 생성할 수 있다(201)" do
+        login_as(create(:user, :manager))
+        post "/api/v1/projects", params: { name: "매니저프로젝트" }, as: :json
+        expect(response).to have_http_status(:created)
+      end
+
+      it "시스템 admin은 프로젝트를 생성할 수 있다(201)" do
+        login_as(create(:user, :admin))
+        post "/api/v1/projects", params: { name: "관리자프로젝트" }, as: :json
+        expect(response).to have_http_status(:created)
+      end
+    end
+
     it "프로젝트를 만들고 생성자를 admin 멤버로 넣는다" do
       post "/api/v1/projects", params: { name: "마케팅", icon_type: "emoji", icon_value: "📣" }, as: :json
       expect(response).to have_http_status(:created)
@@ -124,6 +150,70 @@ RSpec.describe "Api::V1::Projects", type: :request do
       login_as(other_user)
       get "/api/v1/projects/#{project.id}"
       expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe "GET /api/v1/projects/:id — 시스템 admin override와 개인 프로젝트" do
+    let(:sys_admin) { create(:user, :admin) }
+
+    it "admin은 남의 개인 프로젝트를 못 본다(403)" do
+      other_personal = other_user.projects.find_by(personal: true)
+      login_as(sys_admin)
+      get "/api/v1/projects/#{other_personal.id}"
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "admin은 본인 개인 프로젝트를 본다(200)" do
+      admin_personal = sys_admin.projects.find_by(personal: true)
+      login_as(sys_admin)
+      get "/api/v1/projects/#{admin_personal.id}"
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "admin은 남의 팀 프로젝트를 본다(200, 멤버 아니어도)" do
+      team = create(:project, creator: other_user, personal: false)
+      login_as(sys_admin)
+      get "/api/v1/projects/#{team.id}"
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  describe "PATCH /api/v1/projects/:id — 팀 프로젝트 관리 시스템 role 게이트" do
+    let!(:gated_project) { create(:project) }
+    let(:sys_member) { create(:user) }
+    let(:sys_manager) { create(:user, :manager) }
+
+    before do
+      create(:project_membership, user: sys_member, project: gated_project, role: "admin")
+      create(:project_membership, user: sys_manager, project: gated_project, role: "admin")
+    end
+
+    it "시스템 member는 프로젝트 admin이어도 수정 불가(403)" do
+      login_as(sys_member)
+      patch "/api/v1/projects/#{gated_project.id}", params: { name: "해킹" }, as: :json
+      expect(response).to have_http_status(:forbidden)
+      expect(gated_project.reload.name).not_to eq("해킹")
+    end
+
+    it "시스템 manager는 프로젝트 admin이면 수정 가능(200)" do
+      login_as(sys_manager)
+      patch "/api/v1/projects/#{gated_project.id}", params: { name: "정상변경" }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(gated_project.reload.name).to eq("정상변경")
+    end
+
+    it "시스템 member는 프로젝트 admin이어도 멤버 추가 불가(403)" do
+      target = create(:user, email: "gate-target1@example.com")
+      login_as(sys_member)
+      post "/api/v1/projects/#{gated_project.id}/members", params: { email: target.email }, as: :json
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "시스템 manager는 프로젝트 admin이면 멤버 추가 가능(201)" do
+      target = create(:user, email: "gate-target2@example.com")
+      login_as(sys_manager)
+      post "/api/v1/projects/#{gated_project.id}/members", params: { email: target.email }, as: :json
+      expect(response).to have_http_status(:created)
     end
   end
 
@@ -168,6 +258,20 @@ RSpec.describe "Api::V1::Projects", type: :request do
     end
   end
 
+  describe "POST /api/v1/projects/:id/members (개인 프로젝트 가드)" do
+    it "개인 프로젝트에는 멤버를 추가할 수 없다(409, 멤버 수 불변)" do
+      personal = user.projects.find_by(personal: true)
+      other_email = other_user.email # let을 expect 블록 밖에서 먼저 평가(개인 프로젝트 자동생성 부수효과가 측정에 섞이지 않도록)
+
+      expect {
+        post "/api/v1/projects/#{personal.id}/members", params: { email: other_email }, as: :json
+      }.not_to change(ProjectMembership, :count)
+
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body["error"]).to be_present
+    end
+  end
+
   describe "GET /api/v1/projects/:id/members" do
     let!(:project) { create(:project, creator: user) }
     let!(:admin_membership) { create(:project_membership, user: user, project: project, role: "admin") }
@@ -196,6 +300,35 @@ RSpec.describe "Api::V1::Projects", type: :request do
     it "멤버가 없으면 404" do
       patch "/api/v1/projects/#{project.id}/members/999999", params: { role: "admin" }, as: :json
       expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "PATCH /api/v1/projects/:id/members/:user_id — 위임(delegation) 시나리오" do
+    let!(:project) { create(:project) }
+    let!(:target_membership) { create(:project_membership, user: other_user, project: project, role: "member") }
+
+    it "시스템 admin은 자기가 멤버 아닌 남의 팀 프로젝트에서도 역할을 승격한다(200)" do
+      login_as(create(:user, :admin))
+      patch "/api/v1/projects/#{project.id}/members/#{other_user.id}", params: { role: "admin" }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(target_membership.reload.role).to eq("admin")
+    end
+
+    it "시스템 admin도 남의 개인 프로젝트 멤버 역할은 바꿀 수 없다(403)" do
+      owner = create(:user)
+      personal = owner.projects.find_by(personal: true)
+      login_as(create(:user, :admin))
+      patch "/api/v1/projects/#{personal.id}/members/#{owner.id}", params: { role: "admin" }, as: :json
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "시스템 member는 프로젝트 admin이어도 멤버 역할 변경 불가(403)" do
+      sys_member = create(:user)
+      create(:project_membership, user: sys_member, project: project, role: "admin")
+      login_as(sys_member)
+      patch "/api/v1/projects/#{project.id}/members/#{other_user.id}", params: { role: "admin" }, as: :json
+      expect(response).to have_http_status(:forbidden)
+      expect(target_membership.reload.role).to eq("member")
     end
   end
 

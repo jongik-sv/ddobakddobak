@@ -3,10 +3,31 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import EditMeetingDialog from './EditMeetingDialog'
 import type { Meeting } from '../../api/meetings'
+import { useAuthStore } from '../../stores/authStore'
+import { useProjectStore } from '../../stores/projectStore'
+import type { Project } from '../../api/projects'
 
 vi.mock('../../api/tags', () => ({
   getTags: vi.fn().mockResolvedValue([]),
   createTag: vi.fn(),
+}))
+
+const { mockUpdateMeetingOwner, mockGetProjectMembers } = vi.hoisted(() => ({
+  mockUpdateMeetingOwner: vi.fn(),
+  mockGetProjectMembers: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('../../api/meetings', async () => {
+  const actual = await vi.importActual<typeof import('../../api/meetings')>('../../api/meetings')
+  return {
+    ...actual,
+    getMeetings: vi.fn().mockResolvedValue({ meetings: [] }),
+    updateMeetingOwner: mockUpdateMeetingOwner,
+  }
+})
+
+vi.mock('../../api/projects', () => ({
+  getProjectMembers: mockGetProjectMembers,
 }))
 
 vi.mock('../../api/domainFiles', () => ({
@@ -52,6 +73,13 @@ function makeMeeting(overrides: Partial<Meeting> = {}): Meeting {
     ended_at: null,
     created_at: '2026-01-01T00:00:00Z',
     ...overrides,
+  }
+}
+
+function makeProject(o: Partial<Project> = {}): Project {
+  return {
+    id: 7, name: 'P', description: null, icon_type: null, icon_value: null,
+    color: null, personal: false, role: 'member', member_count: 2, meeting_count: 0, owner: null, ...o,
   }
 }
 
@@ -293,5 +321,113 @@ describe('EditMeetingDialog 예약 수정', () => {
     expect(arg.scheduled_start_time).toBe(new Date('2026-06-30T14:15').toISOString())
     expect(arg.auto_start_mode).toBe('manual')
     expect(arg.recurrence_rule).toBeNull()
+  })
+})
+
+describe('EditMeetingDialog 소유자 이관', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetProjectMembers.mockResolvedValue([])
+    useAuthStore.setState({ user: null })
+    useProjectStore.setState({ projects: [] } as never)
+  })
+
+  it('소유자 본인도 아니고 admin/manager도 아니면 소유자 셀렉트가 보이지 않는다', () => {
+    useAuthStore.setState({ user: { id: 2, email: 'm@x.com', name: 'M', role: 'member' } } as never)
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting({ project_id: 7, created_by: { id: 1, name: 'Owner' } })}
+        meetingTypeList={meetingTypeList}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('combobox', { name: '소유자' })).not.toBeInTheDocument()
+  })
+
+  it('manager이지만 이 회의 프로젝트의 관리자가 아니면 보이지 않는다', () => {
+    useAuthStore.setState({ user: { id: 2, email: 'mg@x.com', name: 'Mg', role: 'manager' } } as never)
+    useProjectStore.setState({ projects: [makeProject({ role: 'member' })] } as never)
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting({ project_id: 7, created_by: { id: 1, name: 'Owner' } })}
+        meetingTypeList={meetingTypeList}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('combobox', { name: '소유자' })).not.toBeInTheDocument()
+  })
+
+  it('현재 소유자 본인이면 보인다', async () => {
+    useAuthStore.setState({ user: { id: 1, email: 'o@x.com', name: 'Owner', role: 'member' } } as never)
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting({ project_id: 7, created_by: { id: 1, name: 'Owner' } })}
+        meetingTypeList={meetingTypeList}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(await screen.findByRole('combobox', { name: '소유자' })).toBeInTheDocument()
+  })
+
+  it('manager + 이 회의 프로젝트의 관리자면 보인다', async () => {
+    useAuthStore.setState({ user: { id: 2, email: 'mg@x.com', name: 'Mg', role: 'manager' } } as never)
+    useProjectStore.setState({ projects: [makeProject({ role: 'admin' })] } as never)
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting({ project_id: 7, created_by: { id: 1, name: 'Owner' } })}
+        meetingTypeList={meetingTypeList}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(await screen.findByRole('combobox', { name: '소유자' })).toBeInTheDocument()
+  })
+
+  it('소유자를 변경하고 저장하면 updateMeetingOwner가 호출된다', async () => {
+    mockGetProjectMembers.mockResolvedValue([
+      { user_id: 1, name: 'Owner', email: 'o@x.com', role: 'admin' },
+      { user_id: 2, name: 'Other', email: 'other@x.com', role: 'member' },
+    ])
+    mockUpdateMeetingOwner.mockResolvedValue(makeMeeting())
+    useAuthStore.setState({ user: { id: 1, email: 'o@x.com', name: 'Owner', role: 'admin' } } as never)
+    const onConfirm = vi.fn()
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting({ id: 42, project_id: 7, created_by: { id: 1, name: 'Owner' } })}
+        meetingTypeList={meetingTypeList}
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    )
+    const select = await screen.findByRole('combobox', { name: '소유자' })
+    fireEvent.change(select, { target: { value: '2' } })
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => expect(mockUpdateMeetingOwner).toHaveBeenCalledWith(42, 2))
+    expect(onConfirm).toHaveBeenCalled()
+  })
+
+  it('소유자를 바꾸지 않고 저장하면 updateMeetingOwner를 호출하지 않는다', async () => {
+    mockGetProjectMembers.mockResolvedValue([
+      { user_id: 1, name: 'Owner', email: 'o@x.com', role: 'admin' },
+    ])
+    useAuthStore.setState({ user: { id: 1, email: 'o@x.com', name: 'Owner', role: 'admin' } } as never)
+    const onConfirm = vi.fn()
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting({ id: 42, project_id: 7, created_by: { id: 1, name: 'Owner' } })}
+        meetingTypeList={meetingTypeList}
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    )
+    await screen.findByRole('combobox', { name: '소유자' })
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled())
+    expect(mockUpdateMeetingOwner).not.toHaveBeenCalled()
   })
 })

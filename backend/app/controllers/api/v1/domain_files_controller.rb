@@ -96,9 +96,15 @@ module Api
       end
 
       # project_id 지정 시 비멤버(비admin)는 403 처리 대상. nil(전역)은 항상 통과.
+      # admin override는 남의 개인 프로젝트(personal=true, 소유자 ≠ current_user)에는 적용되지 않는다.
       def project_membership_ok?(project_id)
         return true if project_id.blank?
-        return true if current_user.respond_to?(:admin?) && current_user.admin?
+
+        if current_user.respond_to?(:admin?) && current_user.admin?
+          project = ::Project.find_by(id: project_id)
+          return true unless project&.blocks_admin_override?(current_user)
+        end
+
         ProjectMembership.exists?(project_id: project_id, user_id: current_user.id)
       end
 

@@ -44,7 +44,7 @@ export async function logout(accessToken: string): Promise<void> {
 export interface LoginResponse {
   access_token: string
   refresh_token: string
-  user: { id: number; email: string; name: string; role: 'admin' | 'member' }
+  user: { id: number; email: string; name: string; role: 'admin' | 'manager' | 'member' }
 }
 
 export async function loginWithCredentials(

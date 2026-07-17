@@ -29,4 +29,18 @@ RSpec.describe ChatChannel, type: :channel do
     expect(subscription).to be_confirmed
     expect(subscription).to have_stream_from("meeting_#{meeting.id}_chat_#{owner.id}")
   end
+
+  it "admin도 남의 개인 프로젝트 scope 구독은 거부당한다" do
+    other = create(:user)
+    other_personal = other.projects.find_by(personal: true)
+    stub_connection current_user: create(:user, :admin)
+    subscribe(scope_type: "project", scope_id: other_personal.id)
+    expect(subscription).to be_rejected
+  end
+
+  it "admin은 남의 팀 프로젝트 scope는 구독할 수 있다" do
+    stub_connection current_user: create(:user, :admin)
+    subscribe(scope_type: "project", scope_id: project.id)
+    expect(subscription).to be_confirmed
+  end
 end

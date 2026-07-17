@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_17_000005) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_17_000007) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -388,7 +388,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_000005) do
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["jti"], name: "index_users_on_jti", unique: true
     t.index ["refresh_token_jti"], name: "index_users_on_refresh_token_jti", unique: true
-    t.check_constraint "role IN ('admin','member')", name: "chk_users_role"
+    t.check_constraint "role IN ('admin','manager','member')", name: "chk_users_role"
   end
 
   add_foreign_key "chat_messages", "meetings", on_delete: :cascade

@@ -31,4 +31,10 @@ class Project < ApplicationRecord
     return false unless user
     project_memberships.exists?(user_id: user.id, role: "admin")
   end
+
+  # 시스템 admin의 "모든 팀 프로젝트 접근" override가 이 프로젝트에는 적용되면 안 될 때 true.
+  # 남의 개인 프로젝트(personal=true, 소유자 ≠ user)만 true — 그 외(팀 프로젝트, 본인 개인 프로젝트)는 false.
+  def blocks_admin_override?(user)
+    personal? && created_by_id != user&.id
+  end
 end

@@ -32,3 +32,11 @@ export async function updateMeeting(id: number, params: UpdateMeetingParams): Pr
   const res: { meeting: Meeting } = await apiClient.patch(`meetings/${id}`, { json: params }).json()
   return res.meeting
 }
+
+/** 회의 소유자 이관 (현 소유자/프로젝트 관리자/시스템 admin). 대상은 그 회의 프로젝트의 멤버만 가능. */
+export async function updateMeetingOwner(id: number, userId: number): Promise<Meeting> {
+  const res: { meeting: Meeting } = await apiClient
+    .patch(`meetings/${id}/owner`, { json: { user_id: userId } })
+    .json()
+  return res.meeting
+}

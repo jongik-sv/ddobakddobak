@@ -26,6 +26,24 @@ RSpec.describe "Api::V1::Meetings project 격리", type: :request do
     expect(response).to have_http_status(:ok)
   end
 
+  describe "시스템 admin override와 개인 프로젝트" do
+    let(:sys_admin) { create(:user, :admin) }
+
+    it "admin은 남의 개인 프로젝트 회의를 못 본다(403)" do
+      other_personal = outsider.projects.find_by(personal: true)
+      personal_meeting = create(:meeting, project: other_personal, creator: outsider, shared: true)
+      login_as(sys_admin)
+      get "/api/v1/meetings/#{personal_meeting.id}"
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "admin은 남의 팀 프로젝트 회의를 본다(200)" do
+      login_as(sys_admin)
+      get "/api/v1/meetings/#{m.id}"
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
   describe "POST /api/v1/meetings/move_to_folder 교차 프로젝트 가드" do
     let(:other_project) { create(:project) }
     let!(:other_folder) { create(:folder, project: other_project) }

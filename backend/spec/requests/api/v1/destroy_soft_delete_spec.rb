@@ -1,7 +1,8 @@
 require "rails_helper"
 
 RSpec.describe "Destroy soft-delete", type: :request do
-  let(:user) { create(:user) }
+  # 팀 프로젝트 관리(삭제)는 시스템 manager 이상 — 행위자 승격 (역할 3단계 규칙)
+  let(:user) { create(:user, :manager) }
   let(:project) { create(:project, creator: user) }
   let!(:admin_membership) { create(:project_membership, user: user, project: project, role: "admin") }
 

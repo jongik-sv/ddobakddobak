@@ -37,7 +37,10 @@ module MeetingLookup
     meeting.project_id && ProjectMembership.exists?(project_id: meeting.project_id, user_id: current_user.id)
   end
 
+  # admin override — 단 남의 개인 프로젝트(personal=true, 소유자 ≠ current_user) 소속 회의는 제외.
+  # project_id 가 없는 회의(과도기 데이터)는 override 대상 유지.
   def meeting_admin?
-    current_user.respond_to?(:admin?) && current_user.admin?
+    return false unless current_user.respond_to?(:admin?) && current_user.admin?
+    !@meeting.project&.blocks_admin_override?(current_user)
   end
 end

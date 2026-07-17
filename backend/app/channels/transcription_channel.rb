@@ -119,11 +119,12 @@ class TranscriptionChannel < ApplicationCable::Channel
   end
 
   # 구독 권한 결정: owner / viewer / nil(거부)
-  # admin 유저는 모든 회의에 owner 권한으로 접근 가능 (관리/모니터링 목적).
+  # admin 유저는 모든 회의에 owner 권한으로 접근 가능 (관리/모니터링 목적) — 단 남의 개인
+  # 프로젝트(personal=true, 소유자 ≠ current_user) 소속 회의는 제외(project_id 없으면 override 유지).
   # 읽기 가시성이 있는 프로젝트 멤버는 viewer(읽기전용 뷰어의 실시간 수신용) —
   # MeetingLookup#authorize_meeting_read! 와 동일 판정(멤버십 && shared_visible?).
   def determine_role(meeting)
-    return ROLE_OWNER if current_user.respond_to?(:admin?) && current_user.admin?
+    return ROLE_OWNER if current_user.respond_to?(:admin?) && current_user.admin? && !meeting.project&.blocks_admin_override?(current_user)
     return ROLE_OWNER if meeting.owner?(current_user)
     return ROLE_VIEWER if project_member?(meeting) && meeting.shared_visible?
 

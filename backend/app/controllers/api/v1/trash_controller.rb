@@ -40,11 +40,25 @@ module Api
 
       private
 
-      # 내 root 휴지통 스코프 (admin은 전체).
+      # 내 root 휴지통 스코프 (admin은 전체 — 단 남의 개인 프로젝트 소속 항목은 제외).
       def my_root_scope(klass)
         scope = klass.trashed.where(trashed_as_root: true)
-        scope = scope.where(deleted_by_id: current_user.id) unless current_user.admin?
-        scope
+        if current_user.admin?
+          exclude_others_personal(klass, scope)
+        else
+          scope.where(deleted_by_id: current_user.id)
+        end
+      end
+
+      # klass별로 "남의 개인 프로젝트(personal=true, 소유자 ≠ current_user)" 소속 레코드를 제외한다.
+      # project_id가 NULL인 레코드는 `NOT IN` 만으로는 SQL NULL 비교 규칙상 잘못 제외되므로 별도로 포함시킨다.
+      def exclude_others_personal(klass, scope)
+        if klass == Project
+          scope.where.not(personal: true).or(scope.where(personal: true, created_by_id: current_user.id))
+        else
+          others_personal_ids = Project.where(personal: true).where.not(created_by_id: current_user.id).select(:id)
+          scope.where(project_id: nil).or(scope.where.not(project_id: others_personal_ids))
+        end
       end
 
       def find_root!
@@ -58,7 +72,7 @@ module Api
           head :not_found
           return nil
         end
-        unless current_user.admin? || rec.deleted_by_id == current_user.id || owner?(rec)
+        unless (current_user.admin? && admin_reach?(rec)) || rec.deleted_by_id == current_user.id || owner?(rec)
           head :forbidden
           return nil
         end
@@ -73,9 +87,15 @@ module Api
         end
       end
 
-      # 영구삭제·비우기: admin 또는 소유자 또는 삭제 수행자
+      # admin override가 이 레코드(남의 개인 프로젝트 소속)에는 적용되면 안 될 때 false.
+      def admin_reach?(rec)
+        project = rec.is_a?(Project) ? rec : rec.project
+        !project&.blocks_admin_override?(current_user)
+      end
+
+      # 영구삭제·비우기: admin(단 남의 개인 프로젝트 제외) 또는 소유자 또는 삭제 수행자
       def can_purge?(rec)
-        current_user.admin? || owner?(rec) || rec.deleted_by_id == current_user.id
+        (current_user.admin? && admin_reach?(rec)) || owner?(rec) || rec.deleted_by_id == current_user.id
       end
 
       def serialize_trash_item(type, rec)

@@ -13,6 +13,23 @@ import { DeleteConfirmDialog } from './DeleteConfirmDialog'
 import { ResetPasswordDialog } from './ResetPasswordDialog'
 import { EditUserDialog } from './EditUserDialog'
 
+// admin → manager → member → admin 순환
+const NEXT_ROLE: Record<AdminUser['role'], AdminUser['role']> = {
+  admin: 'manager',
+  manager: 'member',
+  member: 'admin',
+}
+const ROLE_LABEL: Record<AdminUser['role'], string> = {
+  admin: '관리자',
+  manager: '매니저',
+  member: '멤버',
+}
+const ROLE_BADGE_CLASS: Record<AdminUser['role'], string> = {
+  admin: 'bg-purple-100 text-purple-700 hover:bg-purple-200',
+  manager: 'bg-blue-100 text-blue-700 hover:bg-blue-200',
+  member: 'bg-muted text-foreground hover:bg-accent',
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('ko-KR', {
     year: 'numeric',
@@ -51,7 +68,7 @@ export default function UserManagementPanel() {
   }, [])
 
   const handleRoleChange = async (user: AdminUser) => {
-    const newRole = user.role === 'admin' ? 'member' : 'admin'
+    const newRole = NEXT_ROLE[user.role]
     setUpdatingId(user.id)
     try {
       const updated = await updateAdminUser(user.id, { role: newRole })
@@ -144,10 +161,7 @@ export default function UserManagementPanel() {
                               disabled={roleLocked || updatingId === user.id}
                               className={`
                                 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium transition-colors
-                                ${user.role === 'admin'
-                                  ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                                  : 'bg-muted text-foreground hover:bg-accent'
-                                }
+                                ${ROLE_BADGE_CLASS[user.role]}
                                 ${roleLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                               `}
                               title={
@@ -155,10 +169,10 @@ export default function UserManagementPanel() {
                                   ? '관리자 계정의 역할은 변경할 수 없습니다'
                                   : isSelf
                                     ? '자신의 역할은 변경할 수 없습니다'
-                                    : `클릭하여 ${user.role === 'admin' ? 'member' : 'admin'}로 변경`
+                                    : `클릭하여 ${ROLE_LABEL[NEXT_ROLE[user.role]]}로 변경`
                               }
                             >
-                              {updatingId === user.id ? '...' : user.role}
+                              {updatingId === user.id ? '...' : ROLE_LABEL[user.role]}
                             </button>
                           )
                         })()}

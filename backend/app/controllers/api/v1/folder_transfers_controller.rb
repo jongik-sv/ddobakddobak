@@ -76,7 +76,8 @@ module Api
       # 비멤버에게 폴더 존재를 漏洩しないように 404 を返す。
       def set_folder
         accessible_project_ids = if current_user.admin?
-          Project.all.select(:id)
+          # 남의 개인 프로젝트(personal=true, 소유자 ≠ current_user)는 override 제외.
+          Project.where(personal: false).or(Project.where(id: current_user.project_ids)).select(:id)
         else
           ProjectMembership.where(user_id: current_user.id).select(:project_id)
         end

@@ -14,7 +14,12 @@ export interface UserInfo {
   id: number
   email: string
   name: string
-  role: 'admin' | 'member'
+  role: 'admin' | 'manager' | 'member'
+}
+
+/** manager 이상(=admin, manager)만 프로젝트를 생성할 수 있다. 로컬 모드 예외는 호출부에서 처리. */
+export function canCreateProject(role: UserInfo['role'] | null | undefined): boolean {
+  return role === 'admin' || role === 'manager'
 }
 
 // ── State ──

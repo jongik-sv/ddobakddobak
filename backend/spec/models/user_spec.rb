@@ -13,7 +13,7 @@ RSpec.describe User, type: :model do
 
   describe "validations" do
     it { is_expected.to validate_presence_of(:name) }
-    it { is_expected.to validate_inclusion_of(:role).in_array(%w[admin member]) }
+    it { is_expected.to validate_inclusion_of(:role).in_array(%w[admin manager member]) }
   end
 
   describe "role" do
@@ -37,6 +37,11 @@ RSpec.describe User, type: :model do
       user = create(:user, role: "member")
       expect(user.role).to eq("member")
     end
+
+    it "accepts manager role" do
+      user = create(:user, role: "manager")
+      expect(user.role).to eq("manager")
+    end
   end
 
   describe "#admin?" do
@@ -47,6 +52,11 @@ RSpec.describe User, type: :model do
 
     it "returns false for member users" do
       user = build(:user, role: "member")
+      expect(user.admin?).to be false
+    end
+
+    it "returns false for manager users" do
+      user = build(:user, role: "manager")
       expect(user.admin?).to be false
     end
   end
@@ -60,6 +70,34 @@ RSpec.describe User, type: :model do
     it "returns false for admin users" do
       user = build(:user, role: "admin")
       expect(user.member?).to be false
+    end
+
+    it "returns false for manager users" do
+      user = build(:user, role: "manager")
+      expect(user.member?).to be false
+    end
+  end
+
+  describe "#manager?" do
+    it "returns true for manager users" do
+      user = build(:user, role: "manager")
+      expect(user.manager?).to be true
+    end
+
+    it "returns false for admin/member users" do
+      expect(build(:user, role: "admin").manager?).to be false
+      expect(build(:user, role: "member").manager?).to be false
+    end
+  end
+
+  describe "#manager_or_above?" do
+    it "returns true for admin and manager" do
+      expect(build(:user, role: "admin").manager_or_above?).to be true
+      expect(build(:user, role: "manager").manager_or_above?).to be true
+    end
+
+    it "returns false for member" do
+      expect(build(:user, role: "member").manager_or_above?).to be false
     end
   end
 

@@ -22,6 +22,10 @@ module Api
       end
 
       def create
+        unless current_user.manager_or_above?
+          return render json: { error: "프로젝트를 생성할 권한이 없습니다" }, status: :forbidden
+        end
+
         project = Project.new(project_params.merge(creator: current_user))
         if project.save
           ProjectMembership.create!(project: project, user: current_user, role: "admin")
@@ -52,6 +56,15 @@ module Api
       end
 
       def add_member
+        if @project.personal?
+          return render json: { error: "개인 프로젝트에는 멤버를 추가할 수 없습니다" }, status: :conflict
+        end
+
+        role = params[:role].presence || "member"
+        unless %w[admin member].include?(role)
+          return render json: { error: "잘못된 역할입니다" }, status: :unprocessable_entity
+        end
+
         email = params[:email].to_s.strip
         name = params[:name].to_s.strip
 
@@ -76,7 +89,7 @@ module Api
           return render json: { member: member_json(existing) }, status: :ok
         end
 
-        pm = @project.project_memberships.create!(user: user, role: "member")
+        pm = @project.project_memberships.create!(user: user, role: role)
         render json: { member: member_json(pm) }, status: :created
       end
 
@@ -129,7 +142,15 @@ module Api
 
       def authorize_project_admin!
         return if @project.nil? # require_project! 가 이미 렌더
-        return if project_admin_override? || @project.admin?(current_user)
+
+        if @project.personal?
+          # 개인 프로젝트: 기존 로직 그대로 — 소유자 본인(=프로젝트 admin)이면 시스템 role 무관 통과.
+          return if project_admin_override?(@project) || @project.admin?(current_user)
+        else
+          # 팀 프로젝트: 시스템 manager 이상 + 프로젝트 admin(또는 override)이어야 관리 가능.
+          return if current_user.manager_or_above? && (project_admin_override?(@project) || @project.admin?(current_user))
+        end
+
         render json: { error: "프로젝트 관리 권한이 없습니다" }, status: :forbidden
       end
 

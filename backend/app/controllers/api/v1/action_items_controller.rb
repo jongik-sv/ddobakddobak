@@ -42,7 +42,7 @@ module Api
       # 이 최상위 update/destroy에도 회의 단위 제어 인가가 필수다.
       def authorize_item_control!
         meeting = @action_item.meeting
-        return if current_user.respond_to?(:admin?) && current_user.admin?
+        return if current_user.respond_to?(:admin?) && current_user.admin? && !meeting.project&.blocks_admin_override?(current_user)
         return if meeting.owner?(current_user)
 
         render json: { error: "회의를 제어할 권한이 없습니다" }, status: :forbidden

@@ -7,6 +7,7 @@ module Api
       before_action :authenticate_user!
       before_action :require_system_admin!
       before_action :set_project, only: %i[export]
+      before_action :reject_others_personal_project!, only: %i[export]
 
       # 업로드 상한(설계문서 §보안). 오디오 동봉 시 회의가 많아도 여유 있게 3GB.
       MAX_IMPORT_BYTES = 3 * 1024 * 1024 * 1024
@@ -64,6 +65,12 @@ module Api
 
       def set_project
         @project = Project.find(params[:id])
+      end
+
+      # system admin 게이트라도 남의 개인 프로젝트(personal=true, 소유자 ≠ current_user)는 export 대상에서
+      # 제외한다 — 다른 admin override들과의 원칙 일관성(Project#blocks_admin_override?).
+      def reject_others_personal_project!
+        render json: { error: "Forbidden" }, status: :forbidden if @project.blocks_admin_override?(current_user)
       end
 
       # "false" 문자열만 false 로 해석하고, 미전달 시 true.

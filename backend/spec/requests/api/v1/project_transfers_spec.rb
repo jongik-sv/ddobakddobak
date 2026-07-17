@@ -64,6 +64,13 @@ RSpec.describe "Api::V1::ProjectTransfers", type: :request do
              params: { include_audio: false }, as: :json
         expect(response).to have_http_status(:not_found)
       end
+
+      it "남의 개인 프로젝트는 403(system admin override 제외)" do
+        others_personal = non_admin.projects.find_by(personal: true)
+        post "/api/v1/projects/#{others_personal.id}/export",
+             params: { include_audio: false }, as: :json
+        expect(response).to have_http_status(:forbidden)
+      end
     end
 
     context "비-admin 으로 인증" do

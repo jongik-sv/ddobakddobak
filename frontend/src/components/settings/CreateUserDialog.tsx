@@ -16,7 +16,7 @@ export function CreateUserDialog({
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
-  const [role, setRole] = useState<'member' | 'admin'>('member')
+  const [role, setRole] = useState<'member' | 'manager' | 'admin'>('member')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -88,10 +88,11 @@ export function CreateUserDialog({
             <label className="block text-sm font-medium mb-1">역할</label>
             <select
               value={role}
-              onChange={(e) => setRole(e.target.value as 'admin' | 'member')}
+              onChange={(e) => setRole(e.target.value as 'admin' | 'manager' | 'member')}
               className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-background min-h-[44px]"
             >
               <option value="member">Member</option>
+              <option value="manager">Manager</option>
               <option value="admin">Admin</option>
             </select>
           </div>

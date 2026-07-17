@@ -1,7 +1,8 @@
 require "rails_helper"
 
 RSpec.describe "POST /api/v1/projects/:id/members", type: :request do
-  let(:admin_user) { create(:user) }
+  # 팀 프로젝트 멤버 추가(add_member)는 시스템 manager 이상 + 프로젝트 admin이 필요하다.
+  let(:admin_user) { create(:user, :manager) }
   let(:project) { create(:project) }
   let!(:target) { create(:user, email: "newbie@example.com", name: "뉴비") }
 
@@ -85,5 +86,49 @@ RSpec.describe "POST /api/v1/projects/:id/members", type: :request do
     login_as(admin_user)
     add(name: "없는사람")
     expect(response).to have_http_status(:not_found)
+  end
+
+  describe "role 파라미터" do
+    it "role=admin으로 비멤버를 추가하면 프로젝트 admin으로 들어간다(201)" do
+      login_as(admin_user)
+      add(email: "newbie@example.com", role: "admin")
+      expect(response).to have_http_status(:created)
+      body = JSON.parse(response.body)
+      expect(body["member"]["role"]).to eq("admin")
+      expect(project.reload.project_memberships.find_by(user_id: target.id).role).to eq("admin")
+    end
+
+    it "role 미전달이면 member로 들어간다" do
+      login_as(admin_user)
+      add(email: "newbie@example.com")
+      expect(response).to have_http_status(:created)
+      expect(JSON.parse(response.body)["member"]["role"]).to eq("member")
+    end
+
+    it "잘못된 role 값은 422" do
+      login_as(admin_user)
+      expect { add(email: "newbie@example.com", role: "owner") }.not_to change(ProjectMembership, :count)
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body["error"]).to be_present
+    end
+
+    it "이미 멤버인 경우 role을 지정해도 기존 역할이 바뀌지 않는다(역할 변경은 update_member 담당)" do
+      create(:project_membership, user: target, project: project, role: "member")
+      login_as(admin_user)
+      add(email: "newbie@example.com", role: "admin")
+      expect(response).to have_http_status(:ok)
+      expect(project.reload.project_memberships.find_by(user_id: target.id).role).to eq("member")
+    end
+
+    it "위임 시나리오: 시스템 admin이 비멤버인 남의 팀 프로젝트에 role=admin으로 멤버를 추가할 수 있다" do
+      other_owner = create(:user)
+      other_team_project = create(:project, creator: other_owner, personal: false)
+      create(:project_membership, user: other_owner, project: other_team_project, role: "admin")
+
+      login_as(create(:user, :admin))
+      post "/api/v1/projects/#{other_team_project.id}/members", params: { email: target.email, role: "admin" }
+      expect(response).to have_http_status(:created)
+      expect(other_team_project.reload.project_memberships.find_by(user_id: target.id).role).to eq("admin")
+    end
   end
 end

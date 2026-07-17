@@ -49,4 +49,14 @@ RSpec.describe ChatChannel, type: :channel do
     subscribe(meeting_id: private_meeting.id)
     expect(subscription).to be_rejected
   end
+
+  it "rejects an admin subscribing to a meeting in someone else's personal project" do
+    personal = owner.projects.find_by(personal: true)
+    personal_meeting = create(:meeting, project: personal, creator: owner)
+    admin = create(:user, :admin)
+    stub_connection(current_user: admin)
+
+    subscribe(meeting_id: personal_meeting.id)
+    expect(subscription).to be_rejected
+  end
 end

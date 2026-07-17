@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
+import { useAuthStore } from '../stores/authStore'
 import type { Project } from '../api/projects'
 import ProjectSelectLanding from './ProjectSelectLanding'
 
@@ -13,7 +14,7 @@ vi.mock('../api/projects', () => ({
   updateProject: vi.fn(),
   deleteProject: vi.fn(),
   projectDisplayName: (p: { name: string; personal: boolean; owner: string | null }) =>
-    p.personal ? `${p.owner ?? '알 수 없음'}의 회의` : p.name,
+    p.personal ? '내 회의' : p.name,
 }))
 // 진입 시 폴더/회의 store는 네트워크 호출 → 목으로 차단.
 vi.mock('../stores/folderStore', () => ({
@@ -52,6 +53,8 @@ describe('ProjectSelectLanding', () => {
     vi.clearAllMocks()
     useProjectStore.getState().reset()
     localStorage.clear()
+    // 기본은 시스템 admin — "새 프로젝트" 게이팅과 무관한 기존 테스트가 계속 통과하도록.
+    useAuthStore.setState({ user: { id: 1, email: 'admin@x.com', name: 'Admin', role: 'admin' } } as never)
   })
 
   it('선택 이력(localStorage) 있으면 /meetings로 리다이렉트', () => {
@@ -88,7 +91,7 @@ describe('ProjectSelectLanding', () => {
       makeProject({ id: 3, name: '개인', personal: true, owner: '홍길동' }),
     ])
     renderLanding()
-    const items = await screen.findAllByText('홍길동의 회의')
+    const items = await screen.findAllByText('내 회의')
     fireEvent.click(items[0])
     expect(useProjectStore.getState().currentProjectId).toBe(3)
     expect(screen.getByText('MEETINGS_SENTINEL')).toBeInTheDocument()
@@ -114,5 +117,21 @@ describe('ProjectSelectLanding', () => {
     expect(screen.queryByText('더미')).not.toBeInTheDocument()
     const highlighted = document.querySelector('[aria-current="true"]')
     expect(highlighted?.textContent).toContain('기본')
+  })
+
+  it('시스템 member는 "새 프로젝트" 버튼 미노출', async () => {
+    useAuthStore.setState({ user: { id: 2, email: 'm@x.com', name: 'M', role: 'member' } } as never)
+    mockGetProjects.mockResolvedValue([])
+    renderLanding()
+    await screen.findByText('프로젝트 선택')
+    expect(screen.queryByText(/새 프로젝트/)).not.toBeInTheDocument()
+  })
+
+  it('manager는 "새 프로젝트" 버튼 노출', async () => {
+    useAuthStore.setState({ user: { id: 3, email: 'mg@x.com', name: 'Mg', role: 'manager' } } as never)
+    mockGetProjects.mockResolvedValue([])
+    renderLanding()
+    const addBtns = await screen.findAllByText(/새 프로젝트/)
+    expect(addBtns.length).toBeGreaterThan(0)
   })
 })

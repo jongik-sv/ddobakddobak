@@ -71,6 +71,7 @@ Rails.application.routes.draw do
           post :lock
           delete :lock, to: "meetings#unlock"
           post :dismiss_schedule
+          patch :owner, to: "meetings#update_owner"
           get   :domain_files
           put   :domain_files, to: "meetings#update_domain_files"
           post  :extract_terms

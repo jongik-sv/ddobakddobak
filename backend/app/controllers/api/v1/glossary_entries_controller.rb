@@ -85,7 +85,7 @@ module Api
       end
 
       def meeting_controllable?(meeting)
-        return true if current_user.respond_to?(:admin?) && current_user.admin?
+        return true if current_user.respond_to?(:admin?) && current_user.admin? && !meeting.project&.blocks_admin_override?(current_user)
         meeting.owner?(current_user)
       end
 

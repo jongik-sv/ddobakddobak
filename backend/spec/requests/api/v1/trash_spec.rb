@@ -17,6 +17,19 @@ RSpec.describe "Trash API", type: :request do
       items = response.parsed_body["items"]
       expect(items.map { |i| i["title"] || i["name"] }).to include("Mine")
     end
+
+    it "admin 목록에 남의 개인 프로젝트 회의는 노출되지 않는다" do
+      other_personal = other.projects.find_by(personal: true)
+      hidden = create(:meeting, title: "Others Personal", project: other_personal, creator: other)
+      Trash::SoftDeleter.call(hidden, by: other)
+
+      login_as(create(:user, :admin))
+      get "/api/v1/trash"
+
+      expect(response).to have_http_status(:ok)
+      items = response.parsed_body["items"]
+      expect(items.map { |i| i["title"] || i["name"] }).not_to include("Others Personal")
+    end
   end
 
   describe "POST /api/v1/trash/:type/:id/restore" do

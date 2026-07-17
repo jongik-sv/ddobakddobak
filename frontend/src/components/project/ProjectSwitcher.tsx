@@ -6,6 +6,8 @@ import { useFolderStore } from '../../stores/folderStore'
 import { useMeetingStore } from '../../stores/meetingStore'
 import ProjectIcon from './ProjectIcon'
 import { projectDisplayName, isHiddenClutterProject } from '../../api/projects'
+import { useAuthStore, canCreateProject } from '../../stores/authStore'
+import { getMode } from '../../config'
 
 /**
  * 사이드바 상단 프로젝트 스위처. 현재 프로젝트(아이콘+이름) + 드롭다운으로 전환.
@@ -19,6 +21,8 @@ export default function ProjectSwitcher() {
   const fetchProjects = useProjectStore((s) => s.fetchProjects)
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  // 프로젝트 생성(admin·manager, 로컬 모드는 예외적으로 허용).
+  const canCreate = canCreateProject(useAuthStore((s) => s.user?.role)) || getMode() === 'local'
 
   useEffect(() => {
     fetchProjects()
@@ -101,17 +105,19 @@ export default function ProjectSwitcher() {
             <FolderKanban className="h-4 w-4 shrink-0" />
             전체 프로젝트
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false)
-              navigate('/projects?new=1')
-            }}
-            className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent"
-          >
-            <Plus className="h-4 w-4 shrink-0" />
-            새 프로젝트
-          </button>
+          {canCreate && (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                navigate('/projects?new=1')
+              }}
+              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent"
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              새 프로젝트
+            </button>
+          )}
         </div>
       )}
     </div>

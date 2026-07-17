@@ -69,5 +69,31 @@ RSpec.describe "Api::V1::Invites", type: :request do
            params: { name: "x", email: "x@example.com", password: "password123" }, as: :json
       expect(response).to have_http_status(:gone)
     end
+
+    it "개인 프로젝트 초대는 참여 불가(409, 로그인 유저)" do
+      personal_owner = create(:user)
+      personal = personal_owner.projects.find_by(personal: true)
+      personal_invite = ProjectInvite.generate!(project: personal, created_by: personal_owner)
+      member = create(:user)
+      login_as(member)
+
+      expect { post "/api/v1/invite/#{personal_invite.code}/redeem", as: :json }
+        .not_to change { personal.project_memberships.count }
+
+      expect(response).to have_http_status(:conflict)
+    end
+
+    it "개인 프로젝트 초대는 가입 시도해도 유저가 생성되지 않는다(409)" do
+      personal_owner = create(:user)
+      personal = personal_owner.projects.find_by(personal: true)
+      personal_invite = ProjectInvite.generate!(project: personal, created_by: personal_owner)
+
+      expect {
+        post "/api/v1/invite/#{personal_invite.code}/redeem",
+             params: { name: "신규", email: "blocked@example.com", password: "password123" }, as: :json
+      }.not_to change(User, :count)
+
+      expect(response).to have_http_status(:conflict)
+    end
   end
 end

@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react'
 import { X, Plus } from 'lucide-react'
 import { Dialog } from '../ui/Dialog'
-import { getMeetings } from '../../api/meetings'
+import { getMeetings, updateMeetingOwner } from '../../api/meetings'
 import type { Meeting, RecurrenceRule } from '../../api/meetings'
 import type { Tag } from '../../api/tags'
 import { getTags, createTag } from '../../api/tags'
+import { getProjectMembers } from '../../api/projects'
+import type { ProjectMember } from '../../api/projects'
+import { useAuthStore } from '../../stores/authStore'
+import { useProjectStore } from '../../stores/projectStore'
 import { ENGINE_LABELS } from '../../config'
 import { ScheduleFields } from './ScheduleFields'
 import { scheduleStateFromMeeting, scheduleToPayload, type ScheduleFormState } from '../../lib/schedulePayload'
@@ -55,9 +59,27 @@ export default function EditMeetingDialog({
   const isPending = meeting.status === 'pending'
   const [schedule, setSchedule] = useState<ScheduleFormState>(() => scheduleStateFromMeeting(meeting))
 
+  // 소유자 이관: 현 소유자 본인 || 시스템 admin || (manager이면서 이 회의 프로젝트의 관리자).
+  const currentUser = useAuthStore((s) => s.user)
+  const meetingProject = useProjectStore((s) => s.projects.find((p) => p.id === meeting.project_id))
+  const isMeetingOwner = currentUser?.id === meeting.created_by?.id
+  const canTransferOwner =
+    meeting.project_id != null &&
+    (isMeetingOwner ||
+      currentUser?.role === 'admin' ||
+      (currentUser?.role === 'manager' && meetingProject?.role === 'admin'))
+  const [ownerId, setOwnerId] = useState<number | null>(meeting.created_by?.id ?? null)
+  const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([])
+  const [ownerError, setOwnerError] = useState('')
+
   useEffect(() => {
     getTags().then(setAllTags).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!canTransferOwner || meeting.project_id == null) return
+    getProjectMembers(meeting.project_id).then(setProjectMembers).catch(() => {})
+  }, [canTransferOwner, meeting.project_id])
 
   // 이전 회의 참고 셀렉터용: 같은 폴더의 회의 최근순 (자기 자신 제외).
   // show_all: 완료된 회의도 후보로 필요하다 — 기본 목록 큐레이션(important OR !completed)이
@@ -71,6 +93,13 @@ export default function EditMeetingDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
+    // 소유자 변경은 기존 회의 정보 수정(update)과 별도 엔드포인트 — 병행 호출.
+    if (canTransferOwner && ownerId != null && ownerId !== meeting.created_by?.id) {
+      setOwnerError('')
+      updateMeetingOwner(meeting.id, ownerId).catch(() => {
+        setOwnerError('소유자 변경에 실패했습니다.')
+      })
+    }
     onConfirm({
       title: title.trim(),
       meeting_type: meetingType,
@@ -196,6 +225,26 @@ export default function EditMeetingDialog({
               collapsible={false}
             />
           </div>
+
+          {/* 소유자 이관 (현 소유자/프로젝트 관리자/시스템 admin만 노출) */}
+          {canTransferOwner && (
+            <div>
+              <label className="block text-sm font-medium mb-1">소유자</label>
+              <select
+                aria-label="소유자"
+                value={ownerId ?? ''}
+                onChange={(e) => setOwnerId(Number(e.target.value))}
+                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
+              >
+                {projectMembers.map((m) => (
+                  <option key={m.user_id} value={m.user_id}>
+                    {m.name} ({m.email})
+                  </option>
+                ))}
+              </select>
+              {ownerError && <p className="mt-1 text-xs text-red-600">{ownerError}</p>}
+            </div>
+          )}
 
           {/* 예약 시작 (아직 시작하지 않은 회의만 수정 가능) */}
           {isPending && <ScheduleFields value={schedule} onChange={setSchedule} />}

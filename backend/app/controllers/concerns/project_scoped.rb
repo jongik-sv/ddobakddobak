@@ -16,14 +16,15 @@ module ProjectScoped
       render json: { error: "Project not found" }, status: :not_found
       return nil
     end
-    unless project_admin_override? || project.member?(current_user)
+    unless project_admin_override?(project) || project.member?(current_user)
       render json: { error: "이 프로젝트에 접근할 권한이 없습니다" }, status: :forbidden
       return nil
     end
     project
   end
 
-  def project_admin_override?
-    current_user.respond_to?(:admin?) && current_user.admin?
+  # 시스템 admin의 override — 단 남의 개인 프로젝트(personal=true, 소유자 ≠ current_user)는 제외.
+  def project_admin_override?(project)
+    current_user.respond_to?(:admin?) && current_user.admin? && !project.blocks_admin_override?(current_user)
   end
 end

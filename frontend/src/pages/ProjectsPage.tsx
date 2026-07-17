@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { HTTPError } from 'ky'
 import { Plus, MoreVertical, Pencil, Users, Trash2, Download } from 'lucide-react'
 import { useProjectStore } from '../stores/projectStore'
-import { useAuthStore } from '../stores/authStore'
+import { useAuthStore, canCreateProject } from '../stores/authStore'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
 import { useFolderStore } from '../stores/folderStore'
 import { useMeetingStore } from '../stores/meetingStore'
@@ -25,11 +25,14 @@ export default function ProjectsPage() {
   const fetchProjects = useProjectStore((s) => s.fetchProjects)
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject)
   const removeProject = useProjectStore((s) => s.removeProject)
+  const systemRole = useAuthStore((s) => s.user?.role)
   // 시스템 admin은 비멤버(role=null) 프로젝트도 삭제 권한이 있음(백엔드 override).
-  const isSystemAdmin = useAuthStore((s) => s.user?.role === 'admin')
+  const isSystemAdmin = systemRole === 'admin'
   // 프로젝트 가져오기(admin 전용). 로컬 모드(맥 데스크톱 단독)는 loopback=desktop@local admin이라
   // user 객체가 없어도 admin 등가 — Sidebar canManageUsers 등과 동일 관례.
   const canImportProject = isSystemAdmin || getMode() === 'local'
+  // 프로젝트 생성(admin·manager, 로컬 모드는 예외적으로 허용).
+  const canCreate = canCreateProject(systemRole) || getMode() === 'local'
 
   const [dialogProject, setDialogProject] = useState<Project | null>(null)
   // ?new=1 → 생성 다이얼로그 자동 오픈. 초기값을 URL에서 1회 도출(렌더 중 setState 회피).
@@ -158,7 +161,7 @@ export default function ProjectsPage() {
                         <Download className="h-4 w-4" /> 내보내기
                       </button>
                     )}
-                    {!p.personal && (p.role === 'admin' || isSystemAdmin) && (
+                    {!p.personal && (p.role === 'admin' || isSystemAdmin) && systemRole !== 'member' && (
                       <button
                         onClick={() => handleDelete(p)}
                         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
@@ -183,15 +186,17 @@ export default function ProjectsPage() {
           </div>
         ))}
 
-        <button
-          onClick={() => {
-            setDialogProject(null)
-            setDialogOpen(true)
-          }}
-          className="flex h-[160px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border p-4 text-sm font-medium text-muted-foreground transition-colors hover:border-indigo-600 hover:text-indigo-600 md:h-[250px]"
-        >
-          <Plus className="h-5 w-5" /> 새 프로젝트
-        </button>
+        {canCreate && (
+          <button
+            onClick={() => {
+              setDialogProject(null)
+              setDialogOpen(true)
+            }}
+            className="flex h-[160px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border p-4 text-sm font-medium text-muted-foreground transition-colors hover:border-indigo-600 hover:text-indigo-600 md:h-[250px]"
+          >
+            <Plus className="h-5 w-5" /> 새 프로젝트
+          </button>
+        )}
       </div>
 
       {dialogOpen && (

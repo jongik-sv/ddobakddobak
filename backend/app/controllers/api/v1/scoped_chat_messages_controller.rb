@@ -34,12 +34,12 @@ module Api
       end
 
       def authorize_scope!
-        return if current_user.respond_to?(:admin?) && current_user.admin?
-
         project = case @scope_type
         when "folder"  then ::Folder.find_by(id: @scope_id)&.project
         when "project" then ::Project.find_by(id: @scope_id)
         end
+
+        return if current_user.respond_to?(:admin?) && current_user.admin? && !project&.blocks_admin_override?(current_user)
         head :forbidden and return unless project&.member?(current_user)
       end
 

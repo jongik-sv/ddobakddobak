@@ -11,7 +11,7 @@ module Api
 
       before_action :authenticate_user!
       before_action :require_create_project!, only: %i[create upload_audio]
-      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry lock unlock dismiss_schedule domain_files update_domain_files extract_terms]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry lock unlock dismiss_schedule domain_files update_domain_files extract_terms update_owner]
       before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary apply_glossary_entry dismiss_schedule update_domain_files extract_terms]
       before_action :authorize_lock!, only: %i[lock unlock]
       # 잠긴 회의 변조 차단. lock/unlock 은 제외(아니면 영원히 못 풂). create/upload_audio/index/show/move_to_folder/scheduled 제외.
@@ -167,6 +167,24 @@ module Api
 
       def show
         render json: { meeting: meeting_json(@meeting, full: true) }
+      end
+
+      # 회의 소유자 이관 — 대상은 이 회의 프로젝트의 멤버만.
+      # 수행 권한: 현 소유자 / 프로젝트 관리자(시스템 manager 이상) / 시스템 admin(meeting_admin?).
+      def update_owner
+        unless can_transfer_meeting_owner?
+          return render json: { error: "회의 소유자를 변경할 권한이 없습니다" }, status: :forbidden
+        end
+
+        target = ::User.find_by(id: params[:user_id])
+        return render json: { error: "사용자를 찾을 수 없습니다" }, status: :not_found unless target
+
+        unless @meeting.project_id && ProjectMembership.exists?(project_id: @meeting.project_id, user_id: target.id)
+          return render json: { error: "프로젝트 멤버에게만 이관할 수 있습니다" }, status: :unprocessable_entity
+        end
+
+        @meeting.update!(created_by_id: target.id)
+        render json: { meeting: meeting_json(@meeting) }
       end
 
       def update
@@ -783,6 +801,15 @@ module Api
       end
 
       private
+
+      # 소유자 이관 권한: 시스템 admin(meeting_admin? — 남의 개인 프로젝트 제외 규칙 포함),
+      # 현 소유자, 또는 프로젝트 관리자(시스템 manager 이상).
+      def can_transfer_meeting_owner?
+        return true if meeting_admin?
+        return true if @meeting.owner?(current_user)
+
+        current_user.manager_or_above? && @meeting.project&.admin?(current_user)
+      end
 
       # 잠금/해제 권한: 소유자·admin 만(editable_by?). 라이브 host 라도 잠금은 못 건다.
       def authorize_lock!

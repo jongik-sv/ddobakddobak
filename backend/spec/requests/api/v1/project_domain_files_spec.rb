@@ -1,7 +1,8 @@
 require "rails_helper"
 
 RSpec.describe "Api::V1 project domain files", type: :request do
-  let(:admin_member) { create(:user) }
+  # update_domain_files(팀 프로젝트 관리)는 시스템 manager 이상 + 프로젝트 admin이 필요하다.
+  let(:admin_member) { create(:user, :manager) }
   let(:regular_member) { create(:user) }
   let(:stranger) { create(:user) }
   let(:project) { create(:project, creator: admin_member) }

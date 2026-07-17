@@ -17,7 +17,9 @@ export interface Project {
 }
 
 export function projectDisplayName(p: Pick<Project, 'name' | 'personal' | 'owner'>): string {
-  return p.personal ? `${p.owner ?? '알 수 없음'}의 회의` : p.name
+  // 개인 프로젝트는 본인 것만 목록에 오므로(남의 것은 backend index + isHiddenClutterProject가 차단)
+  // 소유자 이름 없이 항상 "내 회의"로 표시한다.
+  return p.personal ? '내 회의' : p.name
 }
 
 /**
@@ -77,6 +79,18 @@ export async function removeProjectMember(id: number, userId: number): Promise<v
   await apiClient.delete(`projects/${id}/members/${userId}`)
 }
 
+export async function updateProjectMember(
+  id: number,
+  userId: number,
+  role: 'admin' | 'member',
+): Promise<ProjectMember> {
+  return (
+    await apiClient
+      .patch(`projects/${id}/members/${userId}`, { json: { role } })
+      .json<{ member: ProjectMember }>()
+  ).member
+}
+
 export interface MemberCandidate {
   id: number
   name: string
@@ -86,7 +100,7 @@ export type AddMemberResult = { member: ProjectMember } | { candidates: MemberCa
 
 export async function addProjectMember(
   id: number,
-  query: { name?: string; email?: string; user_id?: number },
+  query: { name?: string; email?: string; user_id?: number; role?: 'admin' | 'member' },
 ): Promise<AddMemberResult> {
   return apiClient.post(`projects/${id}/members`, { json: query }).json<AddMemberResult>()
 }
@@ -117,7 +131,7 @@ export async function redeemInvite(
   joined?: boolean
   access_token?: string
   refresh_token?: string
-  user?: { id: number; email: string; name: string; role: 'admin' | 'member' }
+  user?: { id: number; email: string; name: string; role: 'admin' | 'manager' | 'member' }
   project: Partial<Project>
 }> {
   return apiClient.post(`invite/${code}/redeem`, signup ? { json: signup } : undefined).json()

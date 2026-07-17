@@ -8,6 +8,8 @@ import type { Project } from '../api/projects'
 import { projectDisplayName } from '../api/projects'
 import ProjectIcon from '../components/project/ProjectIcon'
 import ProjectDialog from '../components/project/ProjectDialog'
+import { useAuthStore, canCreateProject } from '../stores/authStore'
+import { getMode } from '../config'
 
 const CURRENT_KEY = 'current_project_id'
 
@@ -24,6 +26,8 @@ export default function ProjectSelectLanding() {
   const fetchProjects = useProjectStore((s) => s.fetchProjects)
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject)
   const [dialogOpen, setDialogOpen] = useState(false)
+  // 프로젝트 생성(admin·manager, 로컬 모드는 예외적으로 허용).
+  const canCreate = canCreateProject(useAuthStore((s) => s.user?.role)) || getMode() === 'local'
 
   // 게이트(최초/미선택시만): mount 시 1회 동기 계산 → 렌더 단계 리다이렉트(깜빡임 없음).
   const [hasStored] = useState(() => localStorage.getItem(CURRENT_KEY) != null)
@@ -70,13 +74,15 @@ export default function ProjectSelectLanding() {
             </button>
           ))}
         </nav>
-        <button
-          type="button"
-          onClick={() => setDialogOpen(true)}
-          className="mt-2 flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-indigo-400 transition-colors hover:bg-zinc-800"
-        >
-          <Plus className="h-4 w-4" /> 새 프로젝트
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            onClick={() => setDialogOpen(true)}
+            className="mt-2 flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-indigo-400 transition-colors hover:bg-zinc-800"
+          >
+            <Plus className="h-4 w-4" /> 새 프로젝트
+          </button>
+        )}
       </aside>
 
       <main className="flex-1 overflow-y-auto p-8">
@@ -117,13 +123,15 @@ export default function ProjectSelectLanding() {
                 </button>
               ))}
 
-              <button
-                type="button"
-                onClick={() => setDialogOpen(true)}
-                className="flex h-[160px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-700 p-4 text-sm font-medium text-zinc-400 transition-colors hover:border-indigo-500 hover:text-indigo-400 md:h-[250px]"
-              >
-                <Plus className="h-5 w-5" /> 새 프로젝트
-              </button>
+              {canCreate && (
+                <button
+                  type="button"
+                  onClick={() => setDialogOpen(true)}
+                  className="flex h-[160px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-700 p-4 text-sm font-medium text-zinc-400 transition-colors hover:border-indigo-500 hover:text-indigo-400 md:h-[250px]"
+                >
+                  <Plus className="h-5 w-5" /> 새 프로젝트
+                </button>
+              )}
             </div>
           )}
         </div>

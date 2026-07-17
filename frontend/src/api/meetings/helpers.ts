@@ -10,7 +10,7 @@ import type { Meeting } from './types'
  */
 export function canEditMeeting(
   meeting: Pick<Meeting, 'editable' | 'created_by'> | null | undefined,
-  user: { id: number; role: 'admin' | 'member' } | null | undefined,
+  user: { id: number; role: 'admin' | 'manager' | 'member' } | null | undefined,
 ): boolean {
   if (!meeting) return false
   if (typeof meeting.editable === 'boolean') return meeting.editable

@@ -10,6 +10,7 @@ module Api
 
       def redeem
         return render json: { error: "만료되었거나 사용할 수 없는 초대입니다" }, status: :gone unless @invite.redeemable?
+        return render json: { error: "개인 프로젝트에는 참여할 수 없습니다" }, status: :conflict if @invite.project.personal?
 
         # 가입 자격증명(email+password)이 오면 신규 가입 흐름.
         # 그렇지 않으면 현재 로그인 사용자를 합류시킨다.

@@ -8,6 +8,10 @@ FactoryBot.define do
       role { "admin" }
     end
 
+    trait :manager do
+      role { "manager" }
+    end
+
     trait :with_llm_config do
       llm_provider { "anthropic" }
       llm_api_key { "sk-ant-test-key-12345" }

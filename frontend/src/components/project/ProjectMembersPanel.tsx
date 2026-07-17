@@ -7,11 +7,15 @@ import {
   getProjectMembers,
   removeProjectMember,
   addProjectMember,
+  updateProjectMember,
   getProjectInvites,
   createProjectInvite,
   revokeProjectInvite,
 } from '../../api/projects'
 import type { Project, ProjectMember, ProjectInvite, MemberCandidate } from '../../api/projects'
+import { useAuthStore } from '../../stores/authStore'
+import { getMode } from '../../config'
+import { confirmDialog } from '../../lib/confirmDialog'
 
 interface ProjectMembersPanelProps {
   project: Project
@@ -19,6 +23,14 @@ interface ProjectMembersPanelProps {
 }
 
 export default function ProjectMembersPanel({ project, onClose }: ProjectMembersPanelProps) {
+  const currentUser = useAuthStore((s) => s.user)
+  // 시스템 admin이거나, manager이면서 본인이 이 프로젝트의 관리자(멤버십 role='admin')인 경우만
+  // 멤버 관리·초대 가능. 시스템 member는 프로젝트 관리자여도 불가 → 읽기 전용.
+  // 로컬 모드(맥 데스크톱 단독)는 user 객체가 없어도 admin 등가(ProjectsPage canImportProject와 동일 관례).
+  const canManage =
+    currentUser?.role === 'admin' ||
+    (currentUser?.role === 'manager' && project.role === 'admin') ||
+    getMode() === 'local'
   const [members, setMembers] = useState<ProjectMember[]>([])
   const [invites, setInvites] = useState<ProjectInvite[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,8 +41,10 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
   const [creating, setCreating] = useState(false)
   const [shareBase, setShareBase] = useState(window.location.origin)
   const [addInput, setAddInput] = useState('')
+  const [addRole, setAddRole] = useState<'member' | 'admin'>('member')
   const [adding, setAdding] = useState(false)
   const [candidates, setCandidates] = useState<MemberCandidate[]>([])
+  const [changingRoleId, setChangingRoleId] = useState<number | null>(null)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -63,11 +77,15 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
     setError('')
     setCandidates([])
     try {
-      const res = await addProjectMember(project.id, q.includes('@') ? { email: q } : { name: q })
+      const res = await addProjectMember(
+        project.id,
+        q.includes('@') ? { email: q, role: addRole } : { name: q, role: addRole },
+      )
       if ('candidates' in res) {
         setCandidates(res.candidates)
       } else {
         setAddInput('')
+        setAddRole('member')
         await reload()
       }
     } catch (err) {
@@ -85,9 +103,10 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
     setAdding(true)
     setError('')
     try {
-      const res = await addProjectMember(project.id, { user_id: c.id })
+      const res = await addProjectMember(project.id, { user_id: c.id, role: addRole })
       if ('member' in res) {
         setAddInput('')
+        setAddRole('member')
         setCandidates([])
         await reload()
       }
@@ -104,6 +123,27 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
       setMembers((prev) => prev.filter((m) => m.user_id !== userId))
     } catch {
       setError('멤버 제거에 실패했습니다.')
+    }
+  }
+
+  const handleRoleChange = async (member: ProjectMember, newRole: 'admin' | 'member') => {
+    // 자기 자신의 관리자 권한 해제는 되돌리기 어려우므로 확인을 거친다.
+    if (member.user_id === currentUser?.id && newRole === 'member') {
+      const ok = await confirmDialog('본인의 관리자 권한을 해제합니다. 계속할까요?', {
+        title: '권한 해제',
+        kind: 'warning',
+      })
+      if (!ok) return
+    }
+    setChangingRoleId(member.user_id)
+    setError('')
+    try {
+      const updated = await updateProjectMember(project.id, member.user_id, newRole)
+      setMembers((prev) => prev.map((m) => (m.user_id === updated.user_id ? updated : m)))
+    } catch {
+      setError('역할 변경에 실패했습니다.')
+    } finally {
+      setChangingRoleId(null)
     }
   }
 
@@ -185,7 +225,16 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
                   >
                     {m.role === 'admin' ? '관리자' : '멤버'}
                   </span>
-                  {m.role !== 'admin' && (
+                  {canManage && (
+                    <button
+                      onClick={() => handleRoleChange(m, m.role === 'admin' ? 'member' : 'admin')}
+                      disabled={changingRoleId === m.user_id}
+                      className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
+                    >
+                      {changingRoleId === m.user_id ? '...' : m.role === 'admin' ? '멤버로 변경' : '관리자로 위임'}
+                    </button>
+                  )}
+                  {canManage && m.role !== 'admin' && (
                     <button
                       onClick={() => handleRemove(m.user_id)}
                       className="rounded-md p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600"
@@ -199,80 +248,93 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
             </ul>
           </section>
 
-          <section className="mb-6">
-            <h3 className="mb-2 text-sm font-medium text-foreground">이름 또는 이메일로 멤버 추가</h3>
-            <form onSubmit={handleAdd} className="flex gap-2">
-              <input
-                type="text"
-                value={addInput}
-                onChange={(e) => setAddInput(e.target.value)}
-                placeholder="이름 또는 이메일"
-                className="flex-1 rounded-md border border-border px-3 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <button
-                type="submit"
-                disabled={adding || !addInput.trim()}
-                className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
-              >
-                추가
-              </button>
-            </form>
+          {canManage && (
+            <section className="mb-6">
+              <h3 className="mb-2 text-sm font-medium text-foreground">이름 또는 이메일로 멤버 추가</h3>
+              <form onSubmit={handleAdd} className="flex gap-2">
+                <input
+                  type="text"
+                  value={addInput}
+                  onChange={(e) => setAddInput(e.target.value)}
+                  placeholder="이름 또는 이메일"
+                  className="flex-1 rounded-md border border-border px-3 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <select
+                  aria-label="추가할 역할"
+                  value={addRole}
+                  onChange={(e) => setAddRole(e.target.value as 'member' | 'admin')}
+                  className="rounded-md border border-border px-2 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500 bg-background"
+                >
+                  <option value="member">멤버로 추가</option>
+                  <option value="admin">관리자로 추가</option>
+                </select>
+                <button
+                  type="submit"
+                  disabled={adding || !addInput.trim()}
+                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  추가
+                </button>
+              </form>
 
-            {candidates.length > 0 && (
-              <div className="mt-3 rounded-md border border-border p-2">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">동명이인 — 추가할 사람을 선택하세요</p>
-                <ul className="space-y-1">
-                  {candidates.map((c) => (
-                    <li key={c.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground">{c.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">{c.email}</p>
-                      </div>
-                      <button
-                        onClick={() => handlePick(c)}
-                        disabled={adding}
-                        className="rounded-md bg-indigo-600 px-3 py-1 text-xs font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
-                      >
-                        추가
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
+              {candidates.length > 0 && (
+                <div className="mt-3 rounded-md border border-border p-2">
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">동명이인 — 추가할 사람을 선택하세요</p>
+                  <ul className="space-y-1">
+                    {candidates.map((c) => (
+                      <li key={c.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-foreground">{c.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">{c.email}</p>
+                        </div>
+                        <button
+                          onClick={() => handlePick(c)}
+                          disabled={adding}
+                          className="rounded-md bg-indigo-600 px-3 py-1 text-xs font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          추가
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
+          )}
 
           <section>
             <h3 className="mb-2 text-sm font-medium text-foreground">초대 링크</h3>
-            <div className="mb-3 flex flex-wrap items-end gap-2">
-              <label className="flex flex-col text-xs text-muted-foreground">
-                만료 (선택)
-                <input
-                  type="date"
-                  value={expiresAt}
-                  onChange={(e) => setExpiresAt(e.target.value)}
-                  className="mt-1 rounded-md border border-border px-2 py-1 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </label>
-              <label className="flex flex-col text-xs text-muted-foreground">
-                최대 사용 (선택)
-                <input
-                  type="number"
-                  min={1}
-                  value={maxUses}
-                  onChange={(e) => setMaxUses(e.target.value)}
-                  placeholder="무제한"
-                  className="mt-1 w-24 rounded-md border border-border px-2 py-1 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </label>
-              <button
-                onClick={handleCreateInvite}
-                disabled={creating}
-                className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
-              >
-                링크 생성
-              </button>
-            </div>
+            {canManage && (
+              <div className="mb-3 flex flex-wrap items-end gap-2">
+                <label className="flex flex-col text-xs text-muted-foreground">
+                  만료 (선택)
+                  <input
+                    type="date"
+                    value={expiresAt}
+                    onChange={(e) => setExpiresAt(e.target.value)}
+                    className="mt-1 rounded-md border border-border px-2 py-1 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </label>
+                <label className="flex flex-col text-xs text-muted-foreground">
+                  최대 사용 (선택)
+                  <input
+                    type="number"
+                    min={1}
+                    value={maxUses}
+                    onChange={(e) => setMaxUses(e.target.value)}
+                    placeholder="무제한"
+                    className="mt-1 w-24 rounded-md border border-border px-2 py-1 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </label>
+                <button
+                  onClick={handleCreateInvite}
+                  disabled={creating}
+                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  링크 생성
+                </button>
+              </div>
+            )}
 
             <ul className="space-y-1">
               {invites.map((inv) => (
@@ -293,13 +355,15 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
                   >
                     {copied === inv.code ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
                   </button>
-                  <button
-                    onClick={() => handleRevoke(inv.id)}
-                    className="rounded-md p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600"
-                    aria-label="초대 취소"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {canManage && (
+                    <button
+                      onClick={() => handleRevoke(inv.id)}
+                      className="rounded-md p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                      aria-label="초대 취소"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </li>
               ))}
               {invites.length === 0 && (

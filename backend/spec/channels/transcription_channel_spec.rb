@@ -95,6 +95,30 @@ RSpec.describe TranscriptionChannel, type: :channel do
       end
     end
 
+    context "when admin but the meeting is in someone else's personal project" do
+      let(:other) { create(:user) }
+      let(:other_personal) { other.projects.find_by(personal: true) }
+      let(:personal_meeting) { create(:meeting, project: other_personal, creator: other) }
+
+      before { stub_connection current_user: create(:user, :admin) }
+
+      it "rejects the subscription" do
+        subscribe(meeting_id: personal_meeting.id)
+
+        expect(subscription).to be_rejected
+      end
+    end
+
+    context "when admin and the meeting is in someone else's team project" do
+      before { stub_connection current_user: create(:user, :admin) }
+
+      it "subscribes as owner" do
+        subscribe(meeting_id: meeting.id)
+
+        expect(subscription).to be_confirmed
+      end
+    end
+
     context "without meeting_id" do
       it "rejects the subscription" do
         subscribe(meeting_id: nil)
