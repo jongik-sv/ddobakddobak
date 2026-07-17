@@ -1,3 +1,5 @@
+require "base64"
+
 class TranscriptionChannel < ApplicationCable::Channel
   ROLE_OWNER  = "owner".freeze
   ROLE_VIEWER = "viewer".freeze
@@ -55,19 +57,32 @@ class TranscriptionChannel < ApplicationCable::Channel
     # (viewer가 덮어쓰지 못하도록 서버 권위 소스 사용, 요약 LLM과 동일 패턴).
     lang = meeting.creator&.effective_language_config || ::User.server_default_language_config
 
-    TranscriptionJob.perform_later(
+    job_args = {
       meeting_id: @meeting_id,
-      audio_data: data["data"].to_s,
       sequence: data["sequence"].to_i,
       offset_ms: data["offset_ms"].to_i,
       diarization_config: data["diarization_config"],
       languages: lang[:languages],
       mode: lang[:mode],
       audio_source: data["audio_source"] || "mic"
-    )
+    }.merge(audio_arg(data["data"].to_s, @meeting_id, data["sequence"].to_i))
+
+    TranscriptionJob.perform_later(**job_args)
   end
 
   private
+
+  # base64 오디오를 디스크 파일로 우회시켜 잡 인자에는 경로만 싣는다(큐 DB 비대 방지).
+  # 디코드 실패·파일 쓰기 실패 시에는 기존처럼 base64를 그대로 인자에 실어 폴백한다
+  # (가용성 보존 — 이 경로는 현행 동작으로 강등될 뿐 청크를 드랍하지 않는다).
+  def audio_arg(base64, meeting_id, sequence)
+    binary = Base64.strict_decode64(base64)
+    path = SttChunkStorage.write_chunk(meeting_id, sequence, binary)
+    { audio_path: path }
+  rescue ArgumentError, SystemCallError, IOError => e
+    Rails.logger.warn("[TranscriptionChannel] 청크 파일 저장 실패, 인라인 폴백 meeting=#{meeting_id}: #{e.message}")
+    { audio_data: base64 }
+  end
 
   # 녹음 클라 생존 신호. owner + recording 일 때만, 10초 throttle 로 DB 갱신.
   # update_column 으로 검증/콜백/updated_at 우회(쓰기 폭주 방지). presence 부재 시

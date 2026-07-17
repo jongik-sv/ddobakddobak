@@ -1,4 +1,6 @@
 require "rails_helper"
+require "tmpdir"
+require "fileutils"
 
 RSpec.describe TranscriptionChannel, type: :channel do
   let(:user) { create(:user) }
@@ -149,6 +151,43 @@ RSpec.describe TranscriptionChannel, type: :channel do
         }.to have_enqueued_job(TranscriptionJob).with(
           hash_including(mode: "multi", languages: %w[ko en])
         )
+      end
+    end
+
+    context "when audio data is valid base64 (file-backed chunk storage happy path)" do
+      let(:tmp_root) { Pathname.new(Dir.mktmpdir("transcription_channel_spec")) }
+      let(:valid_base64) { Base64.strict_encode64("raw-pcm-bytes") }
+
+      before do
+        stub_const("SttChunkStorage::ROOT", tmp_root)
+        meeting.update!(status: "recording")
+        subscribe(meeting_id: meeting.id)
+      end
+
+      after { FileUtils.rm_rf(tmp_root) }
+
+      it "writes the decoded audio to a file and enqueues the job with audio_path (no audio_data)" do
+        expect(TranscriptionJob).to receive(:perform_later) do |**kwargs|
+          expect(kwargs[:audio_path]).to be_present
+          expect(kwargs).not_to have_key(:audio_data)
+          expect(File.binread(kwargs[:audio_path])).to eq("raw-pcm-bytes")
+          expect(kwargs[:meeting_id]).to eq(meeting.id)
+          expect(kwargs[:sequence]).to eq(5)
+        end
+
+        perform(:audio_chunk, { "data" => valid_base64, "sequence" => 5 })
+      end
+
+      it "falls back to inline audio_data when file storage write fails" do
+        allow(SttChunkStorage).to receive(:write_chunk).and_raise(Errno::ENOSPC, "disk full")
+        expect(Rails.logger).to receive(:warn).with(/청크 파일 저장 실패/)
+
+        expect(TranscriptionJob).to receive(:perform_later) do |**kwargs|
+          expect(kwargs[:audio_data]).to eq(valid_base64)
+          expect(kwargs).not_to have_key(:audio_path)
+        end
+
+        perform(:audio_chunk, { "data" => valid_base64, "sequence" => 6 })
       end
     end
 

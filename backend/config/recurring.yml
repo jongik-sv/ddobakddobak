@@ -18,6 +18,9 @@ development:
     class: ScheduleRolloverJob
     queue: default
     schedule: every minute
+  stt_chunk_sweeper:
+    command: "SttChunkStorage.sweep!"
+    schedule: every hour at minute 42
 
 production:
   summarization:
@@ -30,9 +33,12 @@ production:
     schedule: every minute
   clear_solid_queue_finished_jobs:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
-    schedule: every hour at minute 12
+    schedule: every 10 minutes
   embedding_backfill:
     class: EmbedBackfillJob
     queue: default
     schedule: every 10 minutes
+  stt_chunk_sweeper:
+    command: "SttChunkStorage.sweep!"
+    schedule: every hour at minute 42
 
