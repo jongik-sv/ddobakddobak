@@ -11,6 +11,8 @@ class HealthResponse(BaseModel):
     status: str
     stt_engine: str
     model_loaded: bool
+    gpu_resident: bool = True  # STT 모델이 현재 GPU에 상주 중인지 (유휴 오프로드 상태 반영)
+    model_state: str = "gpu"  # "gpu" | "cpu" | "unloaded"
 
 
 class UpdateSttEngineRequest(BaseModel):

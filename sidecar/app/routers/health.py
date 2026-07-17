@@ -46,6 +46,8 @@ async def health(request: Request) -> HealthResponse:
         status="ok",
         stt_engine=resolved_engine,
         model_loaded=adapter.is_loaded if adapter is not None else False,
+        gpu_resident=adapter.gpu_resident if adapter is not None else False,
+        model_state=adapter.resident_state if adapter is not None else "unloaded",
     )
 
 
@@ -83,7 +85,13 @@ async def update_stt_engine(request: UpdateSttEngineRequest, http_request: Reque
         # 같은 엔진이면 스킵
         if settings.STT_ENGINE == request.engine:
             adapter = http_request.app.state.stt_adapter
-            return HealthResponse(status="ok", stt_engine=settings.STT_ENGINE, model_loaded=adapter.is_loaded)
+            return HealthResponse(
+                status="ok",
+                stt_engine=settings.STT_ENGINE,
+                model_loaded=adapter.is_loaded,
+                gpu_resident=adapter.gpu_resident,
+                model_state=adapter.resident_state,
+            )
         # 이전 모델을 먼저 해제하여 Metal GPU 컨텍스트 충돌 방지
         # (pywhispercpp + mlx-audio 동시 Metal 사용 시 크래시 발생)
         old_adapter = http_request.app.state.stt_adapter
@@ -105,4 +113,6 @@ async def update_stt_engine(request: UpdateSttEngineRequest, http_request: Reque
             status="ok",
             stt_engine=settings.STT_ENGINE,
             model_loaded=new_adapter.is_loaded,
+            gpu_resident=new_adapter.gpu_resident,
+            model_state=new_adapter.resident_state,
         )

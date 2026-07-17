@@ -11,6 +11,7 @@ from typing import AsyncIterator
 from app.stt import lang_utils
 from app.stt.audio_utils import is_hallucination, pcm_bytes_to_float32
 from app.stt.base import SttAdapter, TranscriptSegment
+from app.stt.idle_offload import IdleOffloadController, ResidentState
 
 _MODEL_SIZE = "large-v3-turbo"
 _SAMPLE_RATE = 16000
@@ -30,6 +31,25 @@ class FasterWhisperAdapter(SttAdapter):
         self._device = device
         self._model = None
 
+        # GPU 유휴 오프로드 — CTranslate2는 PyTorch처럼 .to('cpu')로 GPU<->CPU를 오갈 수
+        # 없으므로 1단계에서 바로 모델 객체를 완전히 해제한다(2단계 개념 없음, stage2 콜백 없음).
+        # device="cpu"(faster_whisper_cpu 엔진)는 애초에 GPU를 쓰지 않으므로 오프로드는 no-op.
+        supports_offload = self._device != "cpu"
+        self._idle = IdleOffloadController(
+            name=f"faster_whisper({self._model_size},device={self._device})",
+            stage1_offload=self._offload_full if supports_offload else None,
+            stage1_target=ResidentState.UNLOADED,
+            reload_from_unloaded=self._reload_full if supports_offload else None,
+        )
+
+    def _load_sync(self):
+        from faster_whisper import WhisperModel
+        return WhisperModel(
+            self._model_size,
+            device=self._device,
+            compute_type="auto" if self._device != "cpu" else "int8",
+        )
+
     async def load_model(self) -> None:
         """faster-whisper 모델을 로드한다."""
         try:
@@ -41,17 +61,37 @@ class FasterWhisperAdapter(SttAdapter):
             ) from e
 
         loop = asyncio.get_running_loop()
-
-        def _load():
-            from faster_whisper import WhisperModel
-            return WhisperModel(
-                self._model_size,
-                device=self._device,
-                compute_type="auto" if self._device != "cpu" else "int8",
-            )
-
-        self._model = await loop.run_in_executor(None, _load)
+        self._model = await loop.run_in_executor(None, self._load_sync)
         self._is_loaded = True
+        self._idle.mark_loaded()
+
+    # ── GPU 유휴 오프로드 콜백 ───────────────────────────────────────────
+    # CTranslate2 모델은 CPU 상주 중간 상태 없이 del + 재로드만 지원한다(1단계 = 완전 해제).
+
+    async def _offload_full(self) -> None:
+        loop = asyncio.get_running_loop()
+
+        def _unload():
+            import gc
+            self._model = None
+            gc.collect()
+
+        await loop.run_in_executor(None, _unload)
+
+    async def _reload_full(self) -> None:
+        loop = asyncio.get_running_loop()
+        self._model = await loop.run_in_executor(None, self._load_sync)
+
+    @property
+    def gpu_resident(self) -> bool:
+        return self._idle.gpu_resident
+
+    @property
+    def resident_state(self) -> str:
+        return self._idle.state.value
+
+    async def maybe_offload(self, idle_unload_sec: float, idle_full_unload_sec: float) -> None:
+        await self._idle.maybe_offload(idle_unload_sec, idle_full_unload_sec)
 
     async def transcribe(
         self, audio_chunk: bytes, languages: list[str] | None = None, mode: str = "single"
@@ -70,7 +110,8 @@ class FasterWhisperAdapter(SttAdapter):
         if len(audio_array) == 0:
             return []
 
-        raw_segments = await self._run_inference(audio_array, languages=languages, mode=mode)
+        async with self._idle:
+            raw_segments = await self._run_inference(audio_array, languages=languages, mode=mode)
         return [
             seg for seg in raw_segments
             if seg.text.strip() and not is_hallucination(seg.text, languages)
@@ -143,6 +184,7 @@ class FasterWhisperAdapter(SttAdapter):
                     ))
             return results
 
-        return await loop.run_in_executor(None, _transcribe)
+        async with self._idle:
+            return await loop.run_in_executor(None, _transcribe)
 
 
