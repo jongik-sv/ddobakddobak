@@ -43,6 +43,9 @@ export interface Meeting {
   /** 이 회의가 속한 폴더의 공유 여부(상세 응답에만 포함). false면 폴더가 비공개라 회의도 숨겨진다. */
   folder_shared?: boolean | null
   transcription_progress?: number
+  /** 파일 전사 대기열에서 앞선 미완료 잡 수. status=transcribing이고 아직 대기 중일 때만 값,
+   *  실행이 시작되면(claimed) null로 바뀌어 기존 진행률 표시로 자연 전환된다. */
+  transcription_queue_position?: number | null
   audio_duration_ms: number
   last_transcript_end_ms: number
   last_sequence_number: number

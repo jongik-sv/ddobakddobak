@@ -355,6 +355,7 @@ export default function MeetingPage() {
         message={progressMessage}
         isError={fileProgress.status === 'error'}
         error={fileProgress.error}
+        queuePosition={meeting?.transcription_queue_position}
       />
     )
   }

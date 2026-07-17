@@ -29,6 +29,10 @@ module MeetingSerializable
       brief_summary: meeting.brief_summary,
       source: meeting.source,
       transcription_progress: meeting.transcription_progress,
+      # 파일 전사 대기열 위치 — status=transcribing이고 아직 대기 중일 때만 값, 그 외 nil.
+      # 큐 잡 스냅샷은 요청(컨트롤러 인스턴스) 단위로 1회만 조회해 재사용한다 — index에서
+      # transcribing 회의가 여러 건이면 meeting_json 호출마다 큐 DB를 재조회하던 N+1을 없앤다.
+      transcription_queue_position: meeting.transcribing? ? meeting.transcription_queue_position(transcription_queue_jobs_snapshot) : nil,
       has_audio_file: meeting.audio_file_path.present?,
       folder_id: meeting.folder_id,
       project_id: meeting.project_id,
@@ -138,6 +142,20 @@ module MeetingSerializable
         ai_generated: ai.ai_generated,
         created_at: ai.created_at
       }
+    end
+  end
+
+  # 파일 전사 대기열 잡 스냅샷 — 컨트롤러 인스턴스(=요청) 단위로 1회만 조회해 meeting_json
+  # 반복 호출(index/scheduled 목록) 간 재사용한다. defined? 가드로 "조회했더니 빈 배열이었다"와
+  # "아직 조회 전"을 구분(||= 는 빈 배열이 truthy라 문제없지만 의도를 명시).
+  # StatementInvalid(dev/test :async 어댑터, 큐 테이블 없음)는 빈 배열로 흡수 — 이후
+  # Meeting#transcription_queue_position(jobs) 는 이미 받은 배열을 쓰므로 개별 rescue를 타지 않는다.
+  def transcription_queue_jobs_snapshot
+    return @transcription_queue_jobs_snapshot if defined?(@transcription_queue_jobs_snapshot)
+    @transcription_queue_jobs_snapshot = begin
+      Meeting.unfinished_transcription_queue_jobs
+    rescue ActiveRecord::StatementInvalid
+      []
     end
   end
 
