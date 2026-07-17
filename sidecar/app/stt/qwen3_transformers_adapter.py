@@ -34,7 +34,7 @@ class Qwen3TransformersAdapter(SttAdapter):
     def __init__(self, model_id: str = _MODEL_ID, quantization: str | None = None):
         super().__init__()
         self._model_id = model_id
-        self._quantization = quantization  # None, "4bit", "8bit"
+        self._quantization = quantization  # None(=full BF16), "6bit"(nf4 4-bit), "8bit"
         self._model = None
 
     async def load_model(self) -> None:
@@ -84,7 +84,7 @@ class Qwen3TransformersAdapter(SttAdapter):
                     load_in_4bit=True,
                     bnb_4bit_quant_type="nf4",
                     bnb_4bit_use_double_quant=True,
-                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_compute_dtype=torch.bfloat16,
                 )
             elif self._quantization == "8bit":
                 from transformers import BitsAndBytesConfig
@@ -92,7 +92,9 @@ class Qwen3TransformersAdapter(SttAdapter):
                     load_in_8bit=True,
                 )
             else:
-                kwargs["dtype"] = torch.float16
+                # Qwen3-ASR 가중치는 BF16 네이티브 → BF16으로 로드해야 다운캐스트(fp16 range 손실)
+                # 없이 한국어 정확도가 최대. RTX 5000 Ada는 BF16 텐서코어 네이티브 지원.
+                kwargs["dtype"] = torch.bfloat16
 
             model = Qwen3ASRModel.from_pretrained(self._model_id, **kwargs)
             return model

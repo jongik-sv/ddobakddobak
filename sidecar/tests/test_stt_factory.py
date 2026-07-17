@@ -91,3 +91,51 @@ def test_transcript_segment_default_values():
     seg = TranscriptSegment(text="hello", started_at_ms=0, ended_at_ms=1000)
     assert seg.language == "ko"
     assert seg.confidence == 0.0
+
+
+# ── Qwen3-ASR 양자화 엔진 라우팅 (플랫폼별) ──────────────────────────
+# 버그 회귀 방지: CUDA(비-Apple)에서 qwen3_asr_6bit/8bit가 MLX(Apple 전용) 어댑터로
+# 라우팅되면 load_model에서 실패한다. 비-Apple에선 transformers 어댑터로 가야 한다.
+# 어댑터 __init__은 torch/mlx/qwen_asr를 import하지 않으므로 GPU 없이 인스턴스화 검증 가능.
+
+@pytest.mark.parametrize("engine,expected_quant", [
+    ("qwen3_asr_6bit", "6bit"),
+    ("qwen3_asr_8bit", "8bit"),
+    ("qwen3_asr_4bit", None),  # CUDA엔 4bit bnb 경로 없음 → full precision
+])
+def test_qwen3_quant_engines_route_to_transformers_on_non_apple(engine, expected_quant, monkeypatch):
+    from app.stt import factory
+    from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter
+    monkeypatch.setattr(factory, "_is_apple_silicon", lambda: False)
+
+    adapter = factory.create_stt_adapter(engine)
+
+    assert isinstance(adapter, Qwen3TransformersAdapter)
+    assert adapter._quantization == expected_quant
+    # MLX repo id가 CUDA 어댑터로 새어들어가지 않아야 한다.
+    assert adapter._model_id == "Qwen/Qwen3-ASR-1.7B"
+
+
+@pytest.mark.parametrize("engine,expected_model_id", [
+    ("qwen3_asr_6bit", "mlx-community/Qwen3-ASR-1.7B-6bit"),
+    ("qwen3_asr_8bit", "mlx-community/Qwen3-ASR-1.7B-8bit"),
+])
+def test_qwen3_quant_engines_route_to_mlx_on_apple_silicon(engine, expected_model_id, monkeypatch):
+    from app.stt import factory
+    from app.stt.qwen3_adapter import Qwen3Adapter
+    monkeypatch.setattr(factory, "_is_apple_silicon", lambda: True)
+
+    adapter = factory.create_stt_adapter(engine)
+
+    assert isinstance(adapter, Qwen3Adapter)
+    assert adapter._model_id == expected_model_id
+
+
+def test_qwen3_transformers_adapter_defaults_to_bf16_full_precision():
+    """auto 경로가 만드는 기본 어댑터는 양자화 없음(full precision) 이어야 한다."""
+    from app.stt import factory
+    from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter
+    adapter = factory.create_stt_adapter("qwen3_asr_transformers")
+    assert isinstance(adapter, Qwen3TransformersAdapter)
+    assert adapter._quantization is None
+    assert adapter._model_id == "Qwen/Qwen3-ASR-1.7B"

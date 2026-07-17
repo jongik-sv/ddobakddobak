@@ -140,10 +140,13 @@ def test_qwen3_transcribe_file_returns_list(tmp_path):
 
 
 # ── factory 연동 ─────────────────────────────────────────────────────────────
-def test_factory_creates_qwen3_adapter():
-    from app.stt.factory import create_stt_adapter
+def test_factory_creates_qwen3_adapter(monkeypatch):
+    # MLX(mlx-audio) 어댑터는 Apple Silicon 전용 — 그 조건에서만 이 엔진명이 MLX로 라우팅된다.
+    # (비-Apple에서의 라우팅은 test_stt_factory.py가 별도 검증)
+    from app.stt import factory
     from app.stt.qwen3_adapter import Qwen3Adapter
-    adapter = create_stt_adapter("qwen3_asr_8bit")
+    monkeypatch.setattr(factory, "_is_apple_silicon", lambda: True)
+    adapter = factory.create_stt_adapter("qwen3_asr_8bit")
     assert isinstance(adapter, Qwen3Adapter)
 
 

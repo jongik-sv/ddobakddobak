@@ -18,11 +18,21 @@ _KNOWN_ENGINES: frozenset[str] = frozenset(
      "mock", "auto"}
 )
 
-# Qwen3-ASR 양자화별 모델 ID 매핑
+# Qwen3-ASR 양자화별 모델 ID 매핑 (mlx-community repo — Apple Silicon 전용)
 _QWEN3_MODEL_IDS: dict[str, str] = {
     "qwen3_asr_4bit": "mlx-community/Qwen3-ASR-1.7B-4bit",
     "qwen3_asr_6bit": "mlx-community/Qwen3-ASR-1.7B-6bit",
     "qwen3_asr_8bit": "mlx-community/Qwen3-ASR-1.7B-8bit",
+}
+
+# CUDA(비-Apple)에서 위 양자화 엔진명 → transformers 어댑터 bitsandbytes 레벨 매핑.
+# MLX repo(_QWEN3_MODEL_IDS)는 Apple 전용이라 CUDA에선 로드 불가하므로, 같은 엔진명을
+# bitsandbytes 양자화(Qwen/Qwen3-ASR-1.7B)로 대체한다. 값이 None이면 full precision.
+# (참고: 한국어 정확도 최우선 + 충분한 VRAM에선 양자화 대신 qwen3_asr_transformers=full BF16 권장.)
+_QWEN3_CUDA_QUANT: dict[str, str | None] = {
+    "qwen3_asr_6bit": "6bit",
+    "qwen3_asr_8bit": "8bit",
+    "qwen3_asr_4bit": None,  # CUDA엔 4bit bnb 경로 미구현 → full precision 폴백
 }
 
 # MLX Whisper(large-v3-turbo) 양자화별 모델 ID 매핑 (배치 전사 가속용)
@@ -141,8 +151,19 @@ def create_stt_adapter(engine: str | None = None) -> SttAdapter:
         return MockAdapter()
 
     if engine in _QWEN3_MODEL_IDS:
-        from app.stt.qwen3_adapter import Qwen3Adapter
-        return Qwen3Adapter(model_id=_QWEN3_MODEL_IDS[engine])
+        # Apple Silicon: mlx-audio(Metal) 양자화 어댑터.
+        if _is_apple_silicon():
+            from app.stt.qwen3_adapter import Qwen3Adapter
+            return Qwen3Adapter(model_id=_QWEN3_MODEL_IDS[engine])
+        # 그 외(주로 CUDA): MLX는 Apple 전용 → bitsandbytes 양자화 transformers 어댑터로 라우팅.
+        # (버그 수정: 이전엔 CUDA에서도 MLX 어댑터로 라우팅돼 load_model 시 실패했음)
+        from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter
+        quant = _QWEN3_CUDA_QUANT.get(engine)
+        if quant is None:
+            logger.info(
+                "[STT] '%s'는 CUDA에서 bitsandbytes 매핑이 없어 full-precision으로 로드합니다.", engine
+            )
+        return Qwen3TransformersAdapter(quantization=quant)
 
     if engine in _MLX_WHISPER_MODEL_IDS:
         from app.stt.mlx_whisper_adapter import MLXWhisperAdapter
