@@ -45,6 +45,16 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
         expect(response.parsed_body["user"]["role"]).to eq("admin")
       end
 
+      it "creates a manager user" do
+        post "/api/v1/admin/users", params: {
+          email: "manager1@example.com", name: "Manager 1",
+          password: "password123", role: "manager"
+        }, as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(response.parsed_body["user"]["role"]).to eq("manager")
+      end
+
       it "returns 422 for invalid params" do
         post "/api/v1/admin/users", params: { email: "", name: "" }, as: :json
         expect(response).to have_http_status(:unprocessable_entity)
@@ -61,6 +71,13 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
         json = response.parsed_body
         expect(json["user"]["name"]).to eq("Updated Name")
         expect(json["user"]["role"]).to eq("admin")
+      end
+
+      it "updates user role to manager" do
+        put "/api/v1/admin/users/#{member.id}", params: { role: "manager" }, as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body["user"]["role"]).to eq("manager")
       end
 
       it "returns 404 for non-existent user" do
@@ -95,6 +112,8 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
     describe "DELETE /api/v1/admin/users/:id" do
       it "deletes a member user" do
         member # create
+        User.find_or_create_by!(email: User::LOCAL_EMAIL) { |u| u.name = "관리자"; u.role = "admin" } # UserDeleter가 요청 중 생성하면 count 상쇄
+
         expect {
           delete "/api/v1/admin/users/#{member.id}"
         }.to change(User, :count).by(-1)
@@ -121,6 +140,82 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
         }.not_to change(User, :count)
 
         expect(response).to have_http_status(:forbidden)
+      end
+
+      context "소유 데이터가 있는 사용자 — 이관 후 삭제" do
+        let!(:victim) { create(:user) }
+        let(:victim_personal) { victim.projects.find_by(personal: true) }
+        let(:local_user) do
+          User.find_or_create_by!(email: User::LOCAL_EMAIL) { |u| u.name = "관리자"; u.role = "admin" }
+        end
+        let!(:other_admin) { create(:user) }
+        # 다른 관리자가 있는 팀 프로젝트 — 회의는 이 관리자에게 가야 한다
+        let!(:co_managed_project) do
+          p = create(:project, creator: victim, personal: false)
+          create(:project_membership, user: victim, project: p, role: "admin")
+          create(:project_membership, user: other_admin, project: p, role: "admin")
+          p
+        end
+        let!(:co_managed_meeting) { create(:meeting, project: co_managed_project, creator: victim) }
+        # 삭제 대상이 유일한 관리자인 팀 프로젝트 — 회의는 로컬 계정으로 폴백
+        let!(:solo_project) do
+          p = create(:project, creator: victim, personal: false)
+          create(:project_membership, user: victim, project: p, role: "admin")
+          p
+        end
+        let!(:solo_meeting) { create(:meeting, project: solo_project, creator: victim) }
+        let!(:personal_folder) { create(:folder, project: victim_personal) }
+        let!(:personal_meeting) do
+          create(:meeting, project: victim_personal, creator: victim, folder: personal_folder)
+        end
+
+        it "회의는 각 프로젝트의 다른 관리자에게, 없으면 로컬 계정에게 이관된다" do
+          local_user # 사전 생성 — 요청 중 find_or_create로 만들어지면 User.count 변화가 상쇄된다
+
+          expect {
+            delete "/api/v1/admin/users/#{victim.id}"
+          }.to change(User, :count).by(-1)
+             .and change { co_managed_meeting.reload.created_by_id }.to(other_admin.id)
+
+          expect(response).to have_http_status(:no_content)
+          expect(solo_meeting.reload.created_by_id).to eq(local_user.id)
+          expect(personal_meeting.reload.created_by_id).to eq(local_user.id)
+        end
+
+        it "프로젝트 소유권은 로컬 관리자 계정(desktop@local)에게 넘어간다" do
+          local_user # 사전 생성 (User.count 변화 고정)
+
+          delete "/api/v1/admin/users/#{victim.id}"
+
+          expect(response).to have_http_status(:no_content)
+          expect(co_managed_project.reload.created_by_id).to eq(local_user.id)
+          expect(solo_project.reload.created_by_id).to eq(local_user.id)
+        end
+
+        it "개인 프로젝트는 로컬 계정으로 개명·이관 후 내용물째 휴지통으로 간다" do
+          local_user
+          victim_name = victim.name
+
+          delete "/api/v1/admin/users/#{victim.id}"
+
+          expect(response).to have_http_status(:no_content)
+          expect(User.exists?(victim.id)).to be(false)
+
+          old_personal = victim_personal.reload
+          expect(old_personal.created_by_id).to eq(local_user.id)
+          expect(old_personal.personal).to be(false)
+          expect(old_personal.name).to eq("#{victim_name}의 개인 회의")
+          expect(old_personal.trashed?).to be(true)
+          expect(old_personal.trashed_as_root).to be(true)
+          expect(old_personal.deleted_by_id).to eq(local_user.id)
+          expect(old_personal.admin?(local_user)).to be(true)
+
+          # 내용물은 프로젝트에 남은 채 같은 휴지통 그룹으로 (복원 시 통째 복구)
+          expect(personal_meeting.reload.project_id).to eq(old_personal.id)
+          expect(personal_meeting.trashed?).to be(true)
+          expect(personal_meeting.trash_group_id).to eq(old_personal.trash_group_id)
+          expect(personal_folder.reload.trashed?).to be(true)
+        end
       end
     end
   end

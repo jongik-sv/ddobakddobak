@@ -47,7 +47,10 @@ module Api
             return
           end
 
-          @user.destroy
+          # 소유 데이터는 FK 제약 때문에 삭제 전 이관이 필수. 정책은 UserDeleter 참조 —
+          # 회의는 각 프로젝트의 관리자에게, 프로젝트·잔여 귀속은 로컬 관리자 계정에게,
+          # 개인 프로젝트는 이관 후 곧장 휴지통.
+          UserDeleter.call(@user)
           head :no_content
         end
 
