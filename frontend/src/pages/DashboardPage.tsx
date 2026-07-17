@@ -9,6 +9,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { CreateMeetingModal } from '../components/meeting/CreateMeetingModal'
 import { StatusBadge } from '../components/meeting/MeetingListUI'
 import { formatScheduledStart, scheduleSummary } from '../lib/meetingFormat'
+import { stripCitationMarkers } from '../lib/citationMarkers'
 import { MissedScheduledMeetings } from '../components/meeting/MissedScheduledMeetings'
 import { UpcomingScheduledMeetings } from '../components/meeting/UpcomingScheduledMeetings'
 import { DashboardStatsSkeleton, DashboardMeetingsSkeleton } from '../components/ui/Skeleton'
@@ -218,7 +219,7 @@ export default function DashboardPage() {
                 )}
                 {meeting.brief_summary && (
                   <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
-                    {meeting.brief_summary}
+                    {stripCitationMarkers(meeting.brief_summary)}
                   </p>
                 )}
               </div>

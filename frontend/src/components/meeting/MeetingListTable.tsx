@@ -5,6 +5,7 @@ import { initDrag } from '../../utils/dragState'
 import { StatusBadge, MeetingTypeBadge, MeetingActionButtons } from './MeetingListUI'
 import { MeetingIdBadge } from './MeetingIdBadge'
 import { formatDate, folderPath, formatScheduledStart, scheduleSummary } from '../../lib/meetingFormat'
+import { stripCitationMarkers } from '../../lib/citationMarkers'
 import { Tooltip } from '../ui/Tooltip'
 
 type SortField = 'created_at' | 'title'
@@ -184,7 +185,7 @@ export function MeetingListTable({
                   </div>
                 )}
                 {meeting.brief_summary && (
-                  <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{meeting.brief_summary}</p>
+                  <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{stripCitationMarkers(meeting.brief_summary)}</p>
                 )}
               </div>
               <span className="text-xs text-muted-foreground truncate">{meeting.created_by?.name || '-'}</span>

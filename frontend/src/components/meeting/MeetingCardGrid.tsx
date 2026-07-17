@@ -5,6 +5,7 @@ import { initDrag } from '../../utils/dragState'
 import { StatusBadge, MeetingTypeBadge, MeetingActionButtons } from './MeetingListUI'
 import { MeetingIdBadge } from './MeetingIdBadge'
 import { formatDate, folderPath, formatScheduledStart, scheduleSummary } from '../../lib/meetingFormat'
+import { stripCitationMarkers } from '../../lib/citationMarkers'
 import { useAuthStore } from '../../stores/authStore'
 import { Tooltip } from '../ui/Tooltip'
 
@@ -145,7 +146,7 @@ export function MeetingCardGrid({
             </div>
             {meeting.brief_summary && (
               <p className={`text-xs text-muted-foreground ${isDesktop ? 'line-clamp-5' : 'line-clamp-1'} mb-2 leading-relaxed`}>
-                {meeting.brief_summary}
+                {stripCitationMarkers(meeting.brief_summary)}
               </p>
             )}
           </div>
