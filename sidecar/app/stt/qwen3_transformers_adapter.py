@@ -31,11 +31,19 @@ class Qwen3TransformersAdapter(SttAdapter):
     - PCM 16kHz mono Int16 입력 처리
     """
 
-    def __init__(self, model_id: str = _MODEL_ID, quantization: str | None = None):
+    def __init__(self, model_id: str = _MODEL_ID, quantization: str | None = None, context: str = ""):
         super().__init__()
         self._model_id = model_id
         self._quantization = quantization  # None(=full BF16), "6bit"(nf4 4-bit), "8bit"
+        # context-biasing: qwen-asr가 이 문자열을 system 메시지로 주입해 인식을 바이어스한다.
+        # 회의 참석자명·안건·도메인 용어를 넣으면 한국어 고유명사 인식이 크게 개선된다.
+        # 기본 ""(비활성) — set_context()로 회의별 주입.
+        self._context = context or ""
         self._model = None
+
+    def set_context(self, context: str | None) -> None:
+        """인식 바이어스용 context(도메인 용어·참석자명 등)를 설정한다. None/빈값이면 비활성."""
+        self._context = context or ""
 
     async def load_model(self) -> None:
         """qwen-asr 패키지로 Qwen3-ASR 모델을 로드한다."""
@@ -134,7 +142,7 @@ class Qwen3TransformersAdapter(SttAdapter):
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             sf.write(tmp.name, audio_array, _SAMPLE_RATE)
-            results = self._model.transcribe(audio=tmp.name, language=engine_lang)
+            results = self._model.transcribe(audio=tmp.name, context=self._context, language=engine_lang)
 
         segments = []
         for r in results:
@@ -179,7 +187,7 @@ class Qwen3TransformersAdapter(SttAdapter):
                 # raw PCM은 임시 wav로 변환
                 return self._transcribe_pcm_file(file_path, languages=languages, mode=mode)
 
-            results = self._model.transcribe(audio=file_path, language=engine_lang)
+            results = self._model.transcribe(audio=file_path, context=self._context, language=engine_lang)
             segments = []
             for r in results:
                 text = r.text.strip()
@@ -210,7 +218,7 @@ class Qwen3TransformersAdapter(SttAdapter):
         engine_lang = lang_utils.qwen_force_lang(languages, mode)
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             sf.write(tmp.name, audio_array, _SAMPLE_RATE)
-            results = self._model.transcribe(audio=tmp.name, language=engine_lang)
+            results = self._model.transcribe(audio=tmp.name, context=self._context, language=engine_lang)
 
         segments = []
         for r in results:
