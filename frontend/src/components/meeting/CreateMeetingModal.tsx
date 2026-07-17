@@ -151,7 +151,7 @@ export function CreateMeetingModal({ folderId, meetingTypeList, onClose, onCreat
 
         {/* 이전 회의 참고: 선택하면 그 회의록을 시작점으로 깔고 이어서 회의록을 작성 */}
         <div>
-          <label className="block text-sm font-medium mb-1">이전 회의 참고 (선택)</label>
+          <label className="block text-sm font-medium mb-1">회의 연결해서 진행하기(이전 회의 선택)</label>
           <select
             value={previousMeetingId}
             onChange={(e) => setPreviousMeetingId(e.target.value)}
