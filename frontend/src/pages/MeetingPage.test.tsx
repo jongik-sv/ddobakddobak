@@ -155,10 +155,6 @@ vi.mock('../components/meeting/AttachmentSection', () => ({
   AttachmentSection: () => <div data-testid="attachment-section" />,
 }))
 
-vi.mock('../components/meeting/DomainFilesPanel', () => ({
-  default: () => <div data-testid="domain-files-panel" />,
-}))
-
 // GlossaryPanel(useGlossary)·RightTabsPanel 내 AiChatPanel(chatStore)이 실제 API를 호출해
 // 미mock fetch가 실백엔드(127.0.0.1:3000)로 나가 Unhandled Rejection을 일으키는 것을 막는다.
 vi.mock('../api/glossary', () => ({

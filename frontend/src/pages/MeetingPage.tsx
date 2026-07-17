@@ -33,7 +33,6 @@ import { RightTabsPanel } from '../components/meeting/RightTabsPanel'
 import { TranscribingProgress } from '../components/meeting/TranscribingProgress'
 import { TermCorrectionDetails } from '../components/meeting/TermCorrectionDetails'
 import { GlossaryPanel } from '../components/meeting/GlossaryPanel'
-import DomainFilesPanel from '../components/meeting/DomainFilesPanel'
 import { MeetingActionHeader } from '../components/meeting/MeetingActionHeader'
 import { MeetingActions } from '../components/meeting/MeetingActions'
 import { MeetingDetailTopBar } from '../components/meeting/MeetingDetailTopBar'
@@ -378,14 +377,6 @@ export default function MeetingPage() {
         onApply={handleApplyCorrections}
       />
       {meeting?.id && <GlossaryPanel meetingId={meeting.id} />}
-      {meeting?.id && (
-        <DomainFilesPanel
-          ownerType="meeting"
-          ownerId={meeting.id}
-          projectId={meeting.project_id ?? null}
-          canEdit={canEdit}
-        />
-      )}
     </div>
   ) : null
 
