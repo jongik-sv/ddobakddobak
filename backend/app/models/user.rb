@@ -24,6 +24,8 @@ class User < ApplicationRecord
   validates :name, presence: true
   validates :role, inclusion: { in: ROLES }
   validates :password, length: { minimum: 6 }, if: -> { password.present? }
+  # password_confirmation이 nil이면 자동 스킵되므로 admin 생성·비번변경 등 기존 흐름엔 영향 없음.
+  validates :password, confirmation: true
 
   encrypts :llm_api_key
 

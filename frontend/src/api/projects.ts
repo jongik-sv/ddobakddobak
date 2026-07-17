@@ -112,7 +112,7 @@ export async function getInvitePreview(code: string): Promise<{ project: Partial
 
 export async function redeemInvite(
   code: string,
-  signup?: { name: string; email: string; password: string },
+  signup?: { name: string; email: string; password: string; password_confirmation: string },
 ): Promise<{
   joined?: boolean
   access_token?: string
