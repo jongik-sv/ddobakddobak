@@ -4,8 +4,8 @@ module Api
       include ProjectScoped
 
       before_action :authenticate_user!
-      before_action :set_folder, only: %i[update destroy move_to_project]
-      before_action :authorize_folder_edit!, only: %i[update destroy move_to_project]
+      before_action :set_folder, only: %i[update destroy move_to_project domain_files update_domain_files]
+      before_action :authorize_folder_edit!, only: %i[update destroy move_to_project domain_files update_domain_files]
 
       def index
         project = require_project!(params[:project_id])
@@ -91,6 +91,36 @@ module Api
         render json: { moved_folders: ids.size, moved_meetings: moved_meetings }
       end
 
+      # 폴더에 링크된(적용된) 도메인 파일(용어집) 목록.
+      # inherited: 프로젝트 + 조상 폴더에서 상속된 분(source·owner_name 포함, UX 증분 C용).
+      def domain_files
+        render json: { domain_files: folder_domain_files_json(@folder), inherited: inherited_folder_domain_files_json(@folder) }
+      end
+
+      # 폴더의 도메인 파일 링크 세트를 통째로 교체(빈 배열=전체 해제).
+      # UX 증분 C: 이 폴더의 프로젝트·조상 폴더에 이미 링크된 id는 조용히 무시(422 대신 drop) —
+      # 응답으로 실제 반영된 상태를 돌려준다.
+      def update_domain_files
+        ids = Array(params[:domain_file_ids]).reject(&:blank?).map(&:to_i).uniq
+
+        if ids.any?
+          accessible_ids = DomainFile.accessible_by(current_user).where(id: ids).pluck(:id)
+          if accessible_ids.sort != ids.sort
+            return render json: { error: "선택할 수 없는 파일이 포함되어 있습니다" }, status: :unprocessable_entity
+          end
+        end
+
+        ids -= inherited_folder_domain_files_json(@folder).map { |e| e[:id] }
+
+        ActiveRecord::Base.transaction do
+          @folder.domain_file_links.destroy_all
+          ids.each { |id| @folder.domain_file_links.create!(domain_file_id: id) }
+        end
+
+        @folder.reload
+        render json: { domain_files: folder_domain_files_json(@folder), inherited: inherited_folder_domain_files_json(@folder) }
+      end
+
       private
 
       def set_folder
@@ -104,6 +134,36 @@ module Api
 
       def next_position(parent_id)
         Folder.where(parent_id: parent_id).maximum(:position).to_i + 1
+      end
+
+      def folder_domain_files_json(folder)
+        folder.domain_files.order("domain_file_links.id").map { |f| f.summary_json(current_user) }
+      end
+
+      # UX 증분 C: 이 폴더의 조상 폴더(가까운 순) + 프로젝트에 링크된 파일. 자기 폴더 직속 링크는
+      # 제외(그건 folder_domain_files_json 몫) — 같은 파일이 조상/프로젝트에 중복 링크되어 있으면
+      # 가장 가까운 조상 폴더 쪽 항목만 남긴다.
+      def inherited_folder_domain_files_json(folder)
+        result = []
+        seen = {}
+
+        folder.ancestor_records.each do |fld|
+          fld.domain_files.order("domain_file_links.id").each do |file|
+            next if seen[file.id]
+            seen[file.id] = true
+            result << file.summary_json(current_user).merge(source: "folder", owner_name: fld.name)
+          end
+        end
+
+        if folder.project
+          folder.project.domain_files.order("domain_file_links.id").each do |file|
+            next if seen[file.id]
+            seen[file.id] = true
+            result << file.summary_json(current_user).merge(source: "project", owner_name: folder.project.name)
+          end
+        end
+
+        result
       end
 
       def folder_json(folder, meeting_count = nil)

@@ -6,6 +6,8 @@ class Folder < ApplicationRecord
   has_many :children, class_name: "Folder", foreign_key: :parent_id, dependent: :nullify
   has_many :meetings, dependent: :nullify
   has_many :glossary_entries, as: :owner, dependent: :destroy
+  has_many :domain_file_links, as: :owner, dependent: :destroy
+  has_many :domain_files, through: :domain_file_links
   has_many :taggings, as: :taggable, dependent: :destroy
   has_many :tags, through: :taggings
 

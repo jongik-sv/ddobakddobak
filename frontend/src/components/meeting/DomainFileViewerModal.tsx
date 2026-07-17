@@ -1,16 +1,22 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getDomainFile, updateDomainFile } from '../../api/domainFiles'
+import { getDomainFile, updateDomainFile, deleteDomainFile } from '../../api/domainFiles'
 import type { DomainFileDetail } from '../../api/domainFiles'
 import { errorToMessage } from '../../lib/errors'
+import { confirmDialog } from '../../lib/confirmDialog'
 import { Dialog } from '../ui/Dialog'
 import AddTypoCorrectionDialog from './AddTypoCorrectionDialog'
 
 interface DomainFileViewerModalProps {
   fileId: number
-  meetingId: number
+  /** 회의 컨텍스트에서 열린 경우에만 지정 — "교정 추가"(오타사전 등록) 노출에 사용 */
+  meetingId?: number
   canEdit: boolean
+  /** 이 파일을 현재 유저가 편집·삭제할 수 있는지 (DomainFileSummary.editable). 기본 canEdit과 동일 */
+  editable?: boolean
   onClose: () => void
   onSaved: (f: DomainFileDetail) => void
+  /** 삭제 완료 시 호출 — 지정하지 않으면 삭제 버튼을 표시하지 않는다 */
+  onDeleted?: () => void
 }
 
 interface ParsedLine {
@@ -32,7 +38,9 @@ function parseLines(content: string): ParsedLine[] {
 }
 
 /** 도메인 파일 뷰어 + 편집 모달 — 용어 라인은 구조화 표시, 나머지는 원문 그대로. 용어별 오타교정 등록 연동. */
-export default function DomainFileViewerModal({ fileId, meetingId, canEdit, onClose, onSaved }: DomainFileViewerModalProps) {
+export default function DomainFileViewerModal({
+  fileId, meetingId, canEdit, editable = canEdit, onClose, onSaved, onDeleted,
+}: DomainFileViewerModalProps) {
   const [file, setFile] = useState<DomainFileDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -42,8 +50,13 @@ export default function DomainFileViewerModal({ fileId, meetingId, canEdit, onCl
   const [draftContent, setDraftContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   const [correctionTerm, setCorrectionTerm] = useState<string | null>(null)
+
+  // 편집/삭제는 이 화면(회의 등) 편집 권한 + 파일 자체의 편집 권한(작성자/관리자) 모두 필요
+  const canManage = canEdit && editable
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -84,6 +97,28 @@ export default function DomainFileViewerModal({ fileId, meetingId, canEdit, onCl
     }
   }
 
+  const handleDelete = async () => {
+    if (!file) return
+    if (
+      !(await confirmDialog(
+        `'${file.name}' 파일을 삭제합니다. 프로젝트·폴더·회의 등 모든 곳에 연결된 링크도 함께 사라집니다. 계속할까요?`,
+        { title: '도메인 파일 삭제', kind: 'warning' },
+      ))
+    ) {
+      return
+    }
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await deleteDomainFile(file.id)
+      onDeleted?.()
+    } catch (err) {
+      setDeleteError(await errorToMessage(err, '삭제 실패'))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <Dialog onClose={onClose} className="w-full max-w-2xl rounded-xl bg-card p-6 shadow-2xl border border-border max-h-[90vh] overflow-y-auto">
       {loading && <p className="text-sm text-muted-foreground">불러오는 중...</p>}
@@ -93,18 +128,31 @@ export default function DomainFileViewerModal({ fileId, meetingId, canEdit, onCl
         <>
           <div className="flex items-center justify-between mb-4 gap-2">
             <h2 className="text-lg font-semibold truncate">{file.name}</h2>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={startEdit}
-                className="shrink-0 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
-              >
-                편집
-              </button>
-            )}
+            <div className="flex items-center gap-2 shrink-0">
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={startEdit}
+                  className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
+                >
+                  편집
+                </button>
+              )}
+              {canManage && onDeleted && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                >
+                  {deleting ? '삭제 중...' : '삭제'}
+                </button>
+              )}
+            </div>
           </div>
 
           {saveMessage && <p className="text-xs text-blue-600 mb-2">{saveMessage}</p>}
+          {deleteError && <p className="text-xs text-red-500 mb-2">{deleteError}</p>}
 
           <div className="flex flex-col gap-1.5 text-sm">
             {parseLines(file.content).map((line, i) =>
@@ -118,7 +166,7 @@ export default function DomainFileViewerModal({ fileId, meetingId, canEdit, onCl
                     <span className="text-muted-foreground">: </span>
                     <span>{line.definition}</span>
                   </div>
-                  {canEdit && (
+                  {canEdit && meetingId != null && (
                     <button
                       type="button"
                       onClick={() => setCorrectionTerm(line.term!)}
@@ -182,7 +230,7 @@ export default function DomainFileViewerModal({ fileId, meetingId, canEdit, onCl
         </div>
       )}
 
-      {correctionTerm != null && (
+      {correctionTerm != null && meetingId != null && (
         <AddTypoCorrectionDialog
           meetingId={meetingId}
           term={correctionTerm}

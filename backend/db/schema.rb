@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_17_000002) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_17_000005) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -69,6 +69,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_000002) do
     t.index ["meeting_id"], name: "index_decisions_on_meeting_id"
     t.index ["status"], name: "index_decisions_on_status"
     t.check_constraint "status IN ('active','revised','cancelled')", name: "chk_decisions_status"
+  end
+
+  create_table "domain_file_links", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "domain_file_id", null: false
+    t.boolean "exclude", default: false, null: false
+    t.bigint "owner_id", null: false
+    t.string "owner_type", null: false
+    t.datetime "updated_at", null: false
+    t.index ["domain_file_id", "owner_type", "owner_id"], name: "idx_domain_file_links_unique", unique: true
+    t.index ["domain_file_id"], name: "index_domain_file_links_on_domain_file_id"
+    t.index ["owner_type", "owner_id"], name: "index_domain_file_links_on_owner_type_and_owner_id"
   end
 
   create_table "domain_files", force: :cascade do |t|
@@ -166,16 +178,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_000002) do
     t.string "website"
     t.index ["meeting_id"], name: "index_meeting_contacts_on_meeting_id"
     t.index ["source_attachment_id"], name: "index_meeting_contacts_on_source_attachment_id"
-  end
-
-  create_table "meeting_domain_files", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.integer "domain_file_id", null: false
-    t.integer "meeting_id", null: false
-    t.datetime "updated_at", null: false
-    t.index ["domain_file_id"], name: "index_meeting_domain_files_on_domain_file_id"
-    t.index ["meeting_id", "domain_file_id"], name: "index_meeting_domain_files_on_meeting_id_and_domain_file_id", unique: true
-    t.index ["meeting_id"], name: "index_meeting_domain_files_on_meeting_id"
   end
 
   create_table "meeting_templates", force: :cascade do |t|
@@ -391,14 +393,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_000002) do
 
   add_foreign_key "chat_messages", "meetings", on_delete: :cascade
   add_foreign_key "chat_messages", "users"
+  add_foreign_key "domain_file_links", "domain_files", on_delete: :cascade
   add_foreign_key "domain_files", "projects"
   add_foreign_key "domain_files", "users", column: "created_by_id"
   add_foreign_key "meeting_bookmarks", "meetings"
   add_foreign_key "meeting_contacts", "meeting_attachments", column: "source_attachment_id", on_delete: :nullify
   add_foreign_key "meeting_contacts", "meetings"
   add_foreign_key "meeting_contacts", "users", column: "created_by_id"
-  add_foreign_key "meeting_domain_files", "domain_files", on_delete: :cascade
-  add_foreign_key "meeting_domain_files", "meetings", on_delete: :cascade
   add_foreign_key "meeting_templates", "folders"
   add_foreign_key "meetings", "folders", on_delete: :nullify
   add_foreign_key "meetings", "meetings", column: "previous_meeting_id", on_delete: :nullify

@@ -379,7 +379,12 @@ export default function MeetingPage() {
       />
       {meeting?.id && <GlossaryPanel meetingId={meeting.id} />}
       {meeting?.id && (
-        <DomainFilesPanel meetingId={meeting.id} projectId={meeting.project_id ?? null} canEdit={canEdit} />
+        <DomainFilesPanel
+          ownerType="meeting"
+          ownerId={meeting.id}
+          projectId={meeting.project_id ?? null}
+          canEdit={canEdit}
+        />
       )}
     </div>
   ) : null

@@ -281,4 +281,97 @@ RSpec.describe Meeting, type: :model do
       expect(Meeting.accessible_by(admin).pluck(:id)).to include(foreign.id)
     end
   end
+
+  describe "#effective_domain_files" do
+    let(:user) { create(:user) }
+    let(:project) { create(:project, creator: user) }
+
+    it "회의 자체 링크만 있으면 source: meeting" do
+      meeting = create(:meeting, project: project, creator: user)
+      file = create(:domain_file, creator: user)
+      DomainFileLink.create!(owner: meeting, domain_file: file)
+
+      result = meeting.effective_domain_files
+      expect(result).to eq([ { file: file, source: "meeting", owner: nil } ])
+    end
+
+    it "폴더 조상체인 + 프로젝트를 합집합으로 포함한다(가까운 폴더 → 먼 폴더 → 프로젝트 순)" do
+      grandparent = create(:folder, project: project)
+      parent = create(:folder, project: project, parent: grandparent)
+      child = create(:folder, project: project, parent: parent)
+      meeting = create(:meeting, project: project, folder: child, creator: user)
+
+      project_file = create(:domain_file, creator: user, name: "P")
+      grandparent_file = create(:domain_file, creator: user, name: "GP")
+      parent_file = create(:domain_file, creator: user, name: "PF")
+      DomainFileLink.create!(owner: project, domain_file: project_file)
+      DomainFileLink.create!(owner: grandparent, domain_file: grandparent_file)
+      DomainFileLink.create!(owner: parent, domain_file: parent_file)
+
+      result = meeting.effective_domain_files
+      expect(result.map { |e| e[:file].id }).to eq([ parent_file.id, grandparent_file.id, project_file.id ])
+      expect(result.map { |e| e[:source] }).to eq(%w[folder folder project])
+    end
+
+    it "여러 레벨에 같은 파일이 링크되어 있으면 가장 구체적인 소스 하나만 남긴다(중복제거)" do
+      folder = create(:folder, project: project)
+      meeting = create(:meeting, project: project, folder: folder, creator: user)
+      shared_file = create(:domain_file, creator: user)
+
+      DomainFileLink.create!(owner: project, domain_file: shared_file)
+      DomainFileLink.create!(owner: folder, domain_file: shared_file)
+      DomainFileLink.create!(owner: meeting, domain_file: shared_file)
+
+      result = meeting.effective_domain_files
+      expect(result.size).to eq(1)
+      expect(result.first[:source]).to eq("meeting")
+    end
+
+    it "폴더가 없고 프로젝트에 링크된 파일도 없으면 회의 자체 링크만 반환한다" do
+      meeting = create(:meeting, project: project, folder: nil, creator: user)
+      file = create(:domain_file, creator: user)
+      DomainFileLink.create!(owner: meeting, domain_file: file)
+
+      expect(meeting.effective_domain_files.map { |e| e[:file].id }).to eq([ file.id ])
+    end
+
+    describe "회의별 상속 제외(exclude, UX 증분 B)" do
+      it "exclude=true로 마크한 파일은 프로젝트 상속에서 제거된다" do
+        meeting = create(:meeting, project: project, creator: user)
+        project_file = create(:domain_file, creator: user)
+        DomainFileLink.create!(owner: project, domain_file: project_file)
+        DomainFileLink.create!(owner: meeting, domain_file: project_file, exclude: true)
+
+        expect(meeting.effective_domain_files).to be_empty
+      end
+
+      it "exclude=true로 마크한 파일은 폴더 상속에서도 제거된다" do
+        folder = create(:folder, project: project)
+        meeting = create(:meeting, project: project, folder: folder, creator: user)
+        folder_file = create(:domain_file, creator: user)
+        DomainFileLink.create!(owner: folder, domain_file: folder_file)
+        DomainFileLink.create!(owner: meeting, domain_file: folder_file, exclude: true)
+
+        expect(meeting.effective_domain_files).to be_empty
+      end
+
+      it "exclude는 회의 자체 selected(meeting source)에는 영향을 주지 않는다" do
+        meeting = create(:meeting, project: project, creator: user)
+        own_file = create(:domain_file, creator: user)
+        DomainFileLink.create!(owner: meeting, domain_file: own_file, exclude: false)
+
+        expect(meeting.effective_domain_files.map { |e| e[:file].id }).to eq([ own_file.id ])
+      end
+
+      it "#domain_files(selected)는 exclude=true 마커 행을 포함하지 않는다" do
+        meeting = create(:meeting, project: project, creator: user)
+        project_file = create(:domain_file, creator: user)
+        DomainFileLink.create!(owner: project, domain_file: project_file)
+        DomainFileLink.create!(owner: meeting, domain_file: project_file, exclude: true)
+
+        expect(meeting.domain_files).to be_empty
+        expect(meeting.excluded_domain_files.map(&:id)).to eq([ project_file.id ])
+      end
+    end
+  end
 end

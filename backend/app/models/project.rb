@@ -9,7 +9,11 @@ class Project < ApplicationRecord
   has_many :meetings, dependent: :restrict_with_error
   has_many :folders, dependent: :restrict_with_error
   has_many :project_invites, dependent: :destroy
-  has_many :domain_files, dependent: :nullify
+  # project_id 로 이 프로젝트에 "생성 소속"된 도메인 파일(용어집) — project 삭제 시 nullify(전역 파일로 남음).
+  # 아래 domain_file_links를 통한 "프로젝트에 적용(링크)된" domain_files 와는 별개 개념.
+  has_many :owned_domain_files, class_name: "DomainFile", foreign_key: :project_id, dependent: :nullify
+  has_many :domain_file_links, as: :owner, dependent: :destroy
+  has_many :domain_files, through: :domain_file_links
 
   validates :name, presence: true
   validates :icon_type, inclusion: { in: ICON_TYPES }, allow_nil: true

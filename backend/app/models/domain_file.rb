@@ -8,8 +8,7 @@ class DomainFile < ApplicationRecord
   belongs_to :project, optional: true
   belongs_to :creator, class_name: "User", foreign_key: "created_by_id"
 
-  has_many :meeting_domain_files, dependent: :destroy
-  has_many :meetings, through: :meeting_domain_files
+  has_many :domain_file_links, dependent: :destroy
 
   validates :name, presence: true, length: { maximum: 100 },
             uniqueness: { scope: :project_id }
@@ -27,6 +26,17 @@ class DomainFile < ApplicationRecord
   def editable_by?(user)
     return false unless user
     user.admin? || created_by_id == user.id
+  end
+
+  # 프로젝트/폴더/회의 도메인 파일 링크 API 공용 요약 포맷(DomainFileSummary 계약).
+  def summary_json(user = nil)
+    {
+      id: id,
+      name: name,
+      project_id: project_id,
+      updated_at: updated_at,
+      editable: editable_by?(user)
+    }
   end
 
   # 신규/변경 용어를 마크다운 content에 반영한다.

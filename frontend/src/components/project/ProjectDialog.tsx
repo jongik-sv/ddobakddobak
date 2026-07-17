@@ -4,6 +4,7 @@ import { useProjectStore } from '../../stores/projectStore'
 import type { Project } from '../../api/projects'
 import ProjectIcon from './ProjectIcon'
 import IconPicker, { type IconValue } from './IconPicker'
+import DomainFilesPanel from '../meeting/DomainFilesPanel'
 
 interface ProjectDialogProps {
   project?: Project
@@ -112,6 +113,16 @@ export default function ProjectDialog({ project, onClose, onSaved }: ProjectDial
           <label className="mb-1 block text-sm font-medium text-foreground">아이콘</label>
           <IconPicker value={icon} onChange={setIcon} />
         </div>
+
+        {project && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-foreground">도메인 파일</label>
+            <p className="mb-1 text-xs text-muted-foreground">
+              여기서 선택한 도메인 파일은 이 프로젝트의 모든 폴더·회의에 자동 적용됩니다(상속).
+            </p>
+            <DomainFilesPanel ownerType="project" ownerId={project.id} projectId={project.id} canEdit={true} collapsible={false} />
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-2">
           <button

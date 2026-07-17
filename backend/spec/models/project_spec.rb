@@ -34,6 +34,38 @@ RSpec.describe Project, type: :model do
     end
   end
 
+  describe "#owned_domain_files (project_id 소속, dependent: :nullify)" do
+    it "프로젝트 삭제 시 소속 도메인 파일은 삭제되지 않고 전역(project_id nil)으로 남는다" do
+      project = create(:project)
+      file = create(:domain_file, :with_project, project: project)
+
+      project.destroy
+      expect(DomainFile.exists?(file.id)).to be true
+      expect(file.reload.project_id).to be_nil
+    end
+  end
+
+  describe "#domain_files (domain_file_links를 통한 링크, dependent: :destroy)" do
+    it "프로젝트에 링크된 도메인 파일과 소속(project_id) 파일은 별개다" do
+      project = create(:project)
+      owned_file = create(:domain_file, :with_project, project: project)
+      linked_file = create(:domain_file)
+      DomainFileLink.create!(owner: project, domain_file: linked_file)
+
+      expect(project.owned_domain_files).to contain_exactly(owned_file)
+      expect(project.domain_files).to contain_exactly(linked_file)
+    end
+
+    it "프로젝트 삭제 시 domain_file_links는 cascade로 삭제되지만 도메인 파일 자체는 남는다" do
+      project = create(:project)
+      file = create(:domain_file)
+      DomainFileLink.create!(owner: project, domain_file: file)
+
+      expect { project.destroy }.to change(DomainFileLink, :count).by(-1)
+      expect(DomainFile.exists?(file.id)).to be true
+    end
+  end
+
   describe "#admin?" do
     it "해당 유저의 멤버십 role이 admin이면 true" do
       project = create(:project)

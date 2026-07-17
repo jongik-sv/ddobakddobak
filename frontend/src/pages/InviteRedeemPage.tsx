@@ -26,6 +26,7 @@ export default function InviteRedeemPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
 
@@ -79,11 +80,20 @@ export default function InviteRedeemPage() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim() || !email.trim() || !password) return
+    if (!name.trim() || !email.trim() || !password || !passwordConfirm) return
+    if (password !== passwordConfirm) {
+      setSubmitError('비밀번호가 일치하지 않습니다.')
+      return
+    }
     setSubmitting(true)
     setSubmitError('')
     try {
-      const res = await redeemInvite(code, { name: name.trim(), email: email.trim(), password })
+      const res = await redeemInvite(code, {
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        password_confirmation: passwordConfirm,
+      })
       if (res.access_token && res.refresh_token) {
         setTokens(res.access_token, res.refresh_token)
         if (res.user) setUser(res.user)
@@ -190,9 +200,18 @@ export default function InviteRedeemPage() {
                     placeholder="비밀번호"
                     className="w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
                   />
+                  <PasswordInput
+                    value={passwordConfirm}
+                    onChange={(e) => setPasswordConfirm(e.target.value)}
+                    placeholder="비밀번호 확인"
+                    className="w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  {passwordConfirm && password !== passwordConfirm && (
+                    <p className="text-xs text-red-600">비밀번호가 일치하지 않습니다.</p>
+                  )}
                   <button
                     type="submit"
-                    disabled={submitting || !name.trim() || !email.trim() || !password}
+                    disabled={submitting || !name.trim() || !email.trim() || !password || !passwordConfirm}
                     className="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
                   >
                     가입하고 합류하기
@@ -202,7 +221,7 @@ export default function InviteRedeemPage() {
                   이미 계정이 있으신가요?{' '}
                   <button
                     type="button"
-                    onClick={() => { setAuthMode('login'); setSubmitError('') }}
+                    onClick={() => { setAuthMode('login'); setSubmitError(''); setPasswordConfirm('') }}
                     className="font-medium text-indigo-600 hover:underline"
                   >
                     로그인
@@ -238,7 +257,7 @@ export default function InviteRedeemPage() {
                   계정이 없으신가요?{' '}
                   <button
                     type="button"
-                    onClick={() => { setAuthMode('signup'); setSubmitError('') }}
+                    onClick={() => { setAuthMode('signup'); setSubmitError(''); setPasswordConfirm('') }}
                     className="font-medium text-indigo-600 hover:underline"
                   >
                     가입

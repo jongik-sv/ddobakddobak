@@ -38,6 +38,21 @@ RSpec.describe "Api::V1::DomainFiles", type: :request do
       expect(response.parsed_body["domain_files"].first).not_to have_key("content")
     end
 
+    it "각 항목에 editable(현재 유저 기준)을 포함한다 (UX 증분 A)" do
+      login_as(creator)
+      get "/api/v1/domain_files"
+      by_name = response.parsed_body["domain_files"].index_by { |f| f["name"] }
+      expect(by_name["전역 사전"]["editable"]).to be true # creator 본인 파일
+    end
+
+    it "본인이 만들지 않은 파일은 editable false" do
+      other_owned_global = create(:domain_file, name: "타인 전역 사전", creator: other)
+      login_as(creator)
+      get "/api/v1/domain_files"
+      by_name = response.parsed_body["domain_files"].index_by { |f| f["name"] }
+      expect(by_name[other_owned_global.name]["editable"]).to be false
+    end
+
     it "project_id 파라미터로 전역+해당 프로젝트 필터" do
       other_membered_project = create(:project, creator: creator)
       ProjectMembership.find_or_create_by!(project: other_membered_project, user: creator) { |pm| pm.role = "member" }
@@ -108,7 +123,7 @@ RSpec.describe "Api::V1::DomainFiles", type: :request do
 
     it "빈 content_type 이면 확장자로 폴백(.txt)" do
       login_as(creator)
-      file = upload_io("자유 텍스트", "메모.txt", "")
+      file = upload_io("- **메모**: 자유 텍스트", "메모.txt", "")
       post "/api/v1/domain_files", params: { file: file }
       expect(response).to have_http_status(:created)
     end
@@ -122,7 +137,7 @@ RSpec.describe "Api::V1::DomainFiles", type: :request do
 
     it "1MB 초과는 422" do
       login_as(creator)
-      big = "a" * (1.megabyte + 1)
+      big = "- **A**: #{"a" * 1.megabyte}"
       file = upload_io(big, "big.txt", "text/plain")
       post "/api/v1/domain_files", params: { file: file }
       expect(response).to have_http_status(:unprocessable_entity)
@@ -130,9 +145,49 @@ RSpec.describe "Api::V1::DomainFiles", type: :request do
 
     it "비멤버가 프로젝트 지정 업로드 시 403" do
       login_as(other)
-      file = upload_io("x", "a.txt", "text/plain")
+      file = upload_io("- **X**: x", "a.txt", "text/plain")
       post "/api/v1/domain_files", params: { file: file, project_id: project.id }
       expect(response).to have_http_status(:forbidden)
+    end
+
+    it "도메인 용어 형식 라인이 없으면 422" do
+      login_as(creator)
+      file = upload_io("그냥 자유 텍스트\n표시할 특별한 형식이 없음", "자유.txt", "text/plain")
+      post "/api/v1/domain_files", params: { file: file }
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body["error"]).to eq(
+        "도메인 용어 형식이 없습니다. `- **용어**: 설명` 형식의 라인이 1개 이상 필요합니다."
+      )
+      expect(DomainFile.exists?(name: "자유")).to be false
+    end
+
+    it "용어 형식 라인이 1개라도 있으면(다른 라인은 자유 텍스트) 통과" do
+      login_as(creator)
+      file = upload_io("# 제목\n자유 설명\n- **CTQ** [약어]: Critical To Quality", "혼합.md", "text/markdown")
+      post "/api/v1/domain_files", params: { file: file }
+      expect(response).to have_http_status(:created)
+    end
+
+    it "유효하지 않은 UTF-8 바이트가 섞이면 422" do
+      login_as(creator)
+      invalid_bytes = "- **A**: \xFF\xFE".dup.force_encoding("UTF-8")
+      file = upload_io(invalid_bytes, "broken.txt", "text/plain")
+      post "/api/v1/domain_files", params: { file: file }
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it "null byte가 섞이면 422" do
+      login_as(creator)
+      file = upload_io("- **A**: \x00설명", "nullbyte.txt", "text/plain")
+      post "/api/v1/domain_files", params: { file: file }
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it "공백이 포함된 정상 용어 파일은 업로드 성공" do
+      login_as(creator)
+      file = upload_io("- **CGL** [라인명]: 연속용융아연도금라인 설명", "ok.md", "text/markdown")
+      post "/api/v1/domain_files", params: { file: file }
+      expect(response).to have_http_status(:created)
     end
   end
 

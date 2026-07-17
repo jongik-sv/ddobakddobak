@@ -41,7 +41,8 @@ module Api
 
       # 비로그인 — 초대코드가 유효 가입 게이트. 계정 생성 + 합류 + JWT 발급.
       def signup_and_join!
-        user = ::User.new(name: params[:name], email: params[:email], password: params[:password], role: "member")
+        user = ::User.new(name: params[:name], email: params[:email], password: params[:password],
+                           password_confirmation: params[:password_confirmation], role: "member")
         unless user.save
           return render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
         end

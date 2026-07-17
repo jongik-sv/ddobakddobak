@@ -7,6 +7,7 @@ module Api
 
       ALLOWED_UPLOAD_CONTENT_TYPES = %w[text/plain text/markdown].freeze
       MAX_UPLOAD_SIZE = 1.megabyte
+      DOMAIN_TERM_FORMAT_ERROR = "도메인 용어 형식이 없습니다. `- **용어**: 설명` 형식의 라인이 1개 이상 필요합니다.".freeze
       # 확장자 → MIME 폴백(빈 content_type만 대상). meeting_attachment.rb 선례.
       EXTENSION_CONTENT_TYPES = { "md" => "text/markdown", "txt" => "text/plain" }.freeze
 
@@ -101,6 +102,16 @@ module Api
         ProjectMembership.exists?(project_id: project_id, user_id: current_user.id)
       end
 
+      # 업로드(파일) 경로에만 적용하는 형식 검증. 에디터 수기 작성(create_from_attrs)/update 는
+      # 초안 작성을 허용하기 위해 검증하지 않는다.
+      # (a) 유효 UTF-8, null byte 없음  (b) DomainFile::TERM_LINE_REGEX 매치 라인 1개 이상.
+      def valid_domain_term_upload?(raw)
+        return false unless raw.valid_encoding?
+        return false if raw.include?("\x00")
+
+        raw.each_line.any? { |line| DomainFile::TERM_LINE_REGEX.match?(line) }
+      end
+
       def create_from_attrs(name:, content:)
         project_id = params[:project_id].presence
         unless project_membership_ok?(project_id)
@@ -141,7 +152,9 @@ module Api
         end
 
         raw = file.read.force_encoding("UTF-8")
-        raw = raw.scrub unless raw.valid_encoding?
+        unless valid_domain_term_upload?(raw)
+          return render json: { error: DOMAIN_TERM_FORMAT_ERROR }, status: :unprocessable_entity
+        end
 
         name = params[:name].presence || File.basename(file.original_filename.to_s, ".*")
 
@@ -165,7 +178,8 @@ module Api
           project_id: f.project_id,
           created_by_id: f.created_by_id,
           content_chars: f.content.length,
-          updated_at: f.updated_at
+          updated_at: f.updated_at,
+          editable: f.editable_by?(current_user)
         }
       end
 

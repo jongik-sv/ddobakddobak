@@ -40,6 +40,29 @@ RSpec.describe "Api::V1::Invites", type: :request do
       expect(project.member?(User.find_by(email: "new@example.com"))).to be true
     end
 
+    it "password_confirmation 불일치 → 422" do
+      code = invite.code
+      post "/api/v1/invite/#{code}/redeem",
+           params: { name: "신규", email: "mismatch@example.com", password: "password123",
+                     password_confirmation: "different123" }, as: :json
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body["errors"]).to be_present
+    end
+
+    it "password_confirmation 일치 → 계정 생성 + 합류 + 토큰 발급" do
+      code = invite.code
+      expect {
+        post "/api/v1/invite/#{code}/redeem",
+             params: { name: "신규", email: "confirmed@example.com", password: "password123",
+                       password_confirmation: "password123" }, as: :json
+      }.to change(User, :count).by(1)
+      expect(response).to have_http_status(:created)
+      body = response.parsed_body
+      expect(body["access_token"]).to be_present
+      expect(body["refresh_token"]).to be_present
+      expect(project.member?(User.find_by(email: "confirmed@example.com"))).to be true
+    end
+
     it "만료 코드는 410" do
       expired = ProjectInvite.generate!(project: project, created_by: owner, expires_at: 1.hour.ago)
       post "/api/v1/invite/#{expired.code}/redeem",

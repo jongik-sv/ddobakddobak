@@ -8,9 +8,4 @@ FactoryBot.define do
       association :project
     end
   end
-
-  factory :meeting_domain_file do
-    association :meeting
-    association :domain_file
-  end
 end
