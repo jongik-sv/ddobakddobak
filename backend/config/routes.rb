@@ -71,6 +71,9 @@ Rails.application.routes.draw do
           post :lock
           delete :lock, to: "meetings#unlock"
           post :dismiss_schedule
+          get   :domain_files
+          put   :domain_files, to: "meetings#update_domain_files"
+          post  :extract_terms
         end
         resources :action_items,
           only: %i[index create],
@@ -118,6 +121,13 @@ Rails.application.routes.draw do
                   controller: "scoped_chat_messages", defaults: { scope_type: "folder" }
       end
       resources :glossary_entries, only: %i[update destroy]
+
+      # Domain files (용어집) — 기존 glossary(오타교정)와 완전 별개
+      resources :domain_files, only: %i[index show create update destroy] do
+        member do
+          post :merge_terms
+        end
+      end
 
       # Tags
       resources :tags, only: %i[index create update destroy]
