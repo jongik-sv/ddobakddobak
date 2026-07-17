@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useDomainFiles, type DomainFileOwnerType } from '../../hooks/useDomainFiles'
-import type { DomainFile, DomainFileSummary, ExtractedTerm } from '../../api/domainFiles'
+import type { DomainFile, DomainFileSummary, InheritedDomainFile, ExtractedTerm } from '../../api/domainFiles'
 import { errorToMessage } from '../../lib/errors'
 import { confirmDialog } from '../../lib/confirmDialog'
 import { Dialog } from '../ui/Dialog'
@@ -27,8 +27,10 @@ interface DomainFilesPanelProps {
  * "요약에서 용어 추출" 기능을 갖는다. 기존 오타 사전(GlossaryPanel)과 완전 별개 기능.
  */
 export default function DomainFilesPanel({ ownerType, ownerId, projectId, canEdit, collapsible = true }: DomainFilesPanelProps) {
-  const { selected, inherited, available, status, reload, select, createFile, uploadFile, removeFile, extract } =
-    useDomainFiles(ownerType, ownerId, projectId)
+  const {
+    selected, inherited, excluded, available, status, reload,
+    select, excludeInherited, restoreInherited, createFile, uploadFile, removeFile, extract,
+  } = useDomainFiles(ownerType, ownerId, projectId)
 
   const [viewerFile, setViewerFile] = useState<{ id: number; editable: boolean; readOnly: boolean } | null>(null)
   const [selectOpen, setSelectOpen] = useState(false)
@@ -68,7 +70,8 @@ export default function DomainFilesPanel({ ownerType, ownerId, projectId, canEdi
     }
   }
 
-  const handleDeleteChip = async (f: DomainFileSummary) => {
+  /** 도메인 파일 자체 삭제 — 선택 칩과 선택 모달 양쪽에서 공용으로 사용 */
+  const handleDeleteFile = async (f: { id: number; name: string }) => {
     if (
       !(await confirmDialog(
         `'${f.name}' 파일을 삭제합니다. 프로젝트·폴더·회의 등 모든 곳에 연결된 링크도 함께 사라집니다. 계속할까요?`,
@@ -82,6 +85,24 @@ export default function DomainFilesPanel({ ownerType, ownerId, projectId, canEdi
       await removeFile(f.id)
     } catch (err) {
       setError(await errorToMessage(err, '삭제 실패'))
+    }
+  }
+
+  const handleExclude = async (f: InheritedDomainFile) => {
+    setError('')
+    try {
+      await excludeInherited(f.id)
+    } catch (err) {
+      setError(await errorToMessage(err, '제외 실패'))
+    }
+  }
+
+  const handleRestore = async (f: DomainFileSummary) => {
+    setError('')
+    try {
+      await restoreInherited(f.id)
+    } catch (err) {
+      setError(await errorToMessage(err, '복원 실패'))
     }
   }
 
@@ -106,7 +127,7 @@ export default function DomainFilesPanel({ ownerType, ownerId, projectId, canEdi
             {canEdit && f.editable && (
               <button
                 type="button"
-                onClick={() => handleDeleteChip(f)}
+                onClick={() => handleDeleteFile(f)}
                 className="shrink-0 w-4 h-4 leading-none text-blue-400 hover:text-red-600"
                 title="삭제"
                 aria-label={`${f.name} 삭제`}
@@ -123,17 +144,59 @@ export default function DomainFilesPanel({ ownerType, ownerId, projectId, canEdi
           <span className="text-[11px] text-muted-foreground">상속된 도메인 파일 (읽기전용)</span>
           <div className="flex flex-wrap gap-1.5">
             {inherited.map((f) => (
-              <button
+              <span
                 key={`${f.source}-${f.id}`}
-                type="button"
-                onClick={() => setViewerFile({ id: f.id, editable: false, readOnly: true })}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border"
+                className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border"
               >
-                <span className="truncate max-w-[12rem]">{f.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setViewerFile({ id: f.id, editable: false, readOnly: true })}
+                  className="truncate max-w-[12rem]"
+                >
+                  {f.name}
+                </button>
                 <span className="text-[10px] opacity-80">
                   {f.source === 'project' ? `프로젝트: ${f.owner_name}` : `폴더: ${f.owner_name}`}
                 </span>
-              </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => handleExclude(f)}
+                    className="shrink-0 w-4 h-4 leading-none text-muted-foreground hover:text-red-600"
+                    title="이 회의에서 제외"
+                    aria-label={`${f.name} 이 회의에서 제외`}
+                  >
+                    &times;
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isMeeting && excluded.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">제외된 상속 파일</span>
+          <div className="flex flex-wrap gap-1.5">
+            {excluded.map((f) => (
+              <span
+                key={`excluded-${f.id}`}
+                className="inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-full text-xs font-medium bg-muted/50 text-muted-foreground border border-border/50"
+              >
+                <span className="truncate max-w-[12rem] line-through opacity-70">{f.name}</span>
+                <span className="text-[10px] opacity-80">제외됨</span>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => handleRestore(f)}
+                    className="shrink-0 text-[10px] text-blue-500 hover:text-blue-700"
+                    aria-label={`${f.name} 복원`}
+                  >
+                    복원
+                  </button>
+                )}
+              </span>
             ))}
           </div>
         </div>
@@ -189,6 +252,9 @@ export default function DomainFilesPanel({ ownerType, ownerId, projectId, canEdi
         <SelectDomainFilesModal
           available={available}
           selected={selected}
+          inherited={inherited}
+          canDelete={canEdit}
+          onDeleteFile={handleDeleteFile}
           onClose={() => setSelectOpen(false)}
           onConfirm={async (ids) => {
             await select(ids)
@@ -246,10 +312,15 @@ export default function DomainFilesPanel({ ownerType, ownerId, projectId, canEdi
 
 /** owner에 링크할 도메인 파일 다중 선택 모달 — 전체 교체(PUT) 방식 */
 function SelectDomainFilesModal({
-  available, selected, onClose, onConfirm,
+  available, selected, inherited, canDelete, onDeleteFile, onClose, onConfirm,
 }: {
   available: DomainFile[]
   selected: DomainFileSummary[]
+  /** 상위 레벨(프로젝트/폴더)에서 이미 상속(비제외) 적용된 파일 — 중복 선택 방지용으로 체크 비활성화 */
+  inherited: InheritedDomainFile[]
+  /** editable인 파일에 삭제 버튼을 노출할지 (캔버스의 canEdit) */
+  canDelete: boolean
+  onDeleteFile: (f: { id: number; name: string }) => Promise<void>
   onClose: () => void
   onConfirm: (ids: number[]) => Promise<void>
 }) {
@@ -258,12 +329,17 @@ function SelectDomainFilesModal({
     ...available,
     ...selected
       .filter((s) => !available.some((a) => a.id === s.id))
-      .map((s) => ({ id: s.id, name: s.name, project_id: s.project_id, created_by_id: 0, content_chars: 0, updated_at: s.updated_at })),
+      .map((s) => ({
+        id: s.id, name: s.name, project_id: s.project_id, created_by_id: 0, content_chars: 0,
+        updated_at: s.updated_at, editable: s.editable,
+      })),
   ]
+  const inheritedIds = new Set(inherited.map((f) => f.id))
   const [checked, setChecked] = useState<Set<number>>(new Set(selected.map((f) => f.id)))
   const [saving, setSaving] = useState(false)
 
   const toggle = (id: number) => {
+    if (inheritedIds.has(id)) return
     setChecked((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -275,7 +351,9 @@ function SelectDomainFilesModal({
   const submit = async () => {
     setSaving(true)
     try {
-      await onConfirm(Array.from(checked))
+      // 삭제 등으로 목록에서 사라진 id는 제외하고 제출
+      const validIds = new Set(merged.map((f) => f.id))
+      await onConfirm(Array.from(checked).filter((id) => validIds.has(id)))
     } finally {
       setSaving(false)
     }
@@ -286,13 +364,38 @@ function SelectDomainFilesModal({
       <h2 className="text-lg font-semibold mb-4">도메인 파일 선택</h2>
       <div className="max-h-72 overflow-y-auto flex flex-col gap-1 mb-4">
         {merged.length === 0 && <p className="text-sm text-muted-foreground">사용 가능한 도메인 파일이 없습니다</p>}
-        {merged.map((f) => (
-          <label key={f.id} className="flex items-center gap-2 text-sm py-1">
-            <input type="checkbox" checked={checked.has(f.id)} onChange={() => toggle(f.id)} />
-            <span className="flex-1 min-w-0 truncate">{f.name}</span>
-            {f.project_id == null && <span className="text-[10px] text-muted-foreground shrink-0">전역</span>}
-          </label>
-        ))}
+        {merged.map((f) => {
+          const isInherited = inheritedIds.has(f.id)
+          return (
+            <div key={f.id} className="flex items-center gap-2 text-sm py-1">
+              <label className="flex items-center gap-2 flex-1 min-w-0">
+                <input
+                  type="checkbox"
+                  checked={isInherited || checked.has(f.id)}
+                  disabled={isInherited}
+                  onChange={() => toggle(f.id)}
+                  aria-label={f.name}
+                />
+                <span className="flex-1 min-w-0 truncate">{f.name}</span>
+                {f.project_id == null && <span className="text-[10px] text-muted-foreground shrink-0">전역</span>}
+                {isInherited && (
+                  <span className="text-[10px] text-muted-foreground shrink-0">프로젝트/폴더에서 이미 적용됨</span>
+                )}
+              </label>
+              {canDelete && f.editable && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteFile({ id: f.id, name: f.name })}
+                  className="shrink-0 text-xs text-red-500 hover:text-red-700"
+                  aria-label={`${f.name} 파일 삭제`}
+                  title="삭제"
+                >
+                  삭제
+                </button>
+              )}
+            </div>
+          )
+        })}
       </div>
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onClose} className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors">

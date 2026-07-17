@@ -65,6 +65,25 @@ RSpec.describe "Api::V1 meeting domain files", type: :request do
       get "/api/v1/meetings/#{meeting.id}/domain_files"
       expect(response).to have_http_status(:forbidden)
     end
+
+    it "응답에 excluded 키를 포함한다(기본 빈 배열)" do
+      login_as(owner)
+      get "/api/v1/meetings/#{meeting.id}/domain_files"
+      expect(response.parsed_body["excluded"]).to eq([])
+    end
+
+    it "상속 제외(exclude=true)한 파일은 excluded에 노출되고 inherited에서는 빠진다 (UX 증분 B)" do
+      project_file = create(:domain_file, name: "프로젝트사전", creator: owner)
+      DomainFileLink.create!(owner: project, domain_file: project_file)
+      DomainFileLink.create!(owner: meeting, domain_file: project_file, exclude: true)
+
+      login_as(owner)
+      get "/api/v1/meetings/#{meeting.id}/domain_files"
+      body = response.parsed_body
+
+      expect(body["inherited"]).to be_empty
+      expect(body["excluded"].map { |f| f["id"] }).to eq([ project_file.id ])
+    end
   end
 
   describe "PUT /api/v1/meetings/:id/domain_files" do
@@ -116,6 +135,84 @@ RSpec.describe "Api::V1 meeting domain files", type: :request do
       login_as(other)
       put "/api/v1/meetings/#{meeting.id}/domain_files", params: { domain_file_ids: [ file_a.id ] }
       expect(response).to have_http_status(:forbidden)
+    end
+
+    describe "excluded_domain_file_ids (UX 증분 B: 회의별 상속 제외)" do
+      let!(:project_file) { create(:domain_file, name: "프로젝트사전", creator: owner) }
+      before { DomainFileLink.create!(owner: project, domain_file: project_file) }
+
+      it "excluded_domain_file_ids로 상속분을 제외할 수 있다" do
+        login_as(owner)
+        put "/api/v1/meetings/#{meeting.id}/domain_files",
+            params: { domain_file_ids: [], excluded_domain_file_ids: [ project_file.id ] }
+        expect(response).to have_http_status(:ok)
+
+        body = response.parsed_body
+        expect(body["excluded"].map { |f| f["id"] }).to eq([ project_file.id ])
+        expect(body["inherited"]).to be_empty
+      end
+
+      it "excluded_domain_file_ids 파라미터를 생략하면 기존 exclude를 유지한다(하위호환)" do
+        DomainFileLink.create!(owner: meeting, domain_file: project_file, exclude: true)
+
+        login_as(owner)
+        put "/api/v1/meetings/#{meeting.id}/domain_files", params: { domain_file_ids: [ file_a.id ] }
+        expect(response).to have_http_status(:ok)
+
+        body = response.parsed_body
+        expect(body["excluded"].map { |f| f["id"] }).to eq([ project_file.id ])
+        expect(body["selected"].map { |f| f["id"] }).to eq([ file_a.id ])
+      end
+
+      it "excluded_domain_file_ids: [] 로 명시하면 제외를 전부 해제(복원)한다" do
+        DomainFileLink.create!(owner: meeting, domain_file: project_file, exclude: true)
+
+        login_as(owner)
+        put "/api/v1/meetings/#{meeting.id}/domain_files",
+            params: { domain_file_ids: [], excluded_domain_file_ids: [] }
+        expect(response).to have_http_status(:ok)
+
+        body = response.parsed_body
+        expect(body["excluded"]).to be_empty
+        expect(body["inherited"].map { |f| f["id"] }).to eq([ project_file.id ])
+      end
+
+      it "제외할 수 없는(접근 불가) id가 포함되면 422" do
+        login_as(owner)
+        put "/api/v1/meetings/#{meeting.id}/domain_files",
+            params: { domain_file_ids: [], excluded_domain_file_ids: [ 999999 ] }
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+    end
+
+    describe "UX 증분 C: 상위에서 이미 상속(비제외)된 id는 조용히 무시" do
+      let!(:project_file) { create(:domain_file, name: "프로젝트사전", creator: owner) }
+      before { DomainFileLink.create!(owner: project, domain_file: project_file) }
+
+      it "domain_file_ids에 상속된 파일 id가 섞여 있어도 422 없이 무시되고 실제 상태를 반환한다" do
+        login_as(owner)
+        put "/api/v1/meetings/#{meeting.id}/domain_files",
+            params: { domain_file_ids: [ file_a.id, project_file.id ] }
+        expect(response).to have_http_status(:ok)
+
+        body = response.parsed_body
+        expect(body["selected"].map { |f| f["id"] }).to eq([ file_a.id ])
+        expect(meeting.reload.domain_files.pluck(:id)).to eq([ file_a.id ])
+      end
+
+      it "exclude를 같은 요청에서 해제하면 그 즉시 '이미 상속' 취급되어 직접 선택은 무시된다" do
+        DomainFileLink.create!(owner: meeting, domain_file: project_file, exclude: true)
+
+        login_as(owner)
+        put "/api/v1/meetings/#{meeting.id}/domain_files",
+            params: { domain_file_ids: [ project_file.id ], excluded_domain_file_ids: [] }
+        expect(response).to have_http_status(:ok)
+
+        body = response.parsed_body
+        expect(body["selected"]).to be_empty
+        expect(body["excluded"]).to be_empty
+        expect(body["inherited"].map { |f| f["id"] }).to eq([ project_file.id ])
+      end
     end
   end
 

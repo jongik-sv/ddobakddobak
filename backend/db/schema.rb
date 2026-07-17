@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_17_000004) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_17_000005) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -74,6 +74,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_000004) do
   create_table "domain_file_links", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "domain_file_id", null: false
+    t.boolean "exclude", default: false, null: false
     t.bigint "owner_id", null: false
     t.string "owner_type", null: false
     t.datetime "updated_at", null: false

@@ -7,6 +7,8 @@ export interface DomainFile {
   created_by_id: number
   content_chars: number
   updated_at: string
+  /** 현재 유저가 이 파일을 편집·삭제할 수 있는지. index(GET /domain_files) 응답에만 포함됨 */
+  editable?: boolean
 }
 
 export interface DomainFileDetail extends DomainFile {
@@ -83,6 +85,8 @@ export async function mergeDomainTerms(
 export interface MeetingDomainFilesResponse {
   selected: DomainFileSummary[]
   inherited: InheritedDomainFile[]
+  /** 상속분(폴더/프로젝트) 중 이 회의에서 명시적으로 제외된 파일 */
+  excluded: DomainFileSummary[]
 }
 
 export async function getMeetingDomainFiles(meetingId: number): Promise<MeetingDomainFilesResponse> {
@@ -92,8 +96,12 @@ export async function getMeetingDomainFiles(meetingId: number): Promise<MeetingD
 export async function setMeetingDomainFiles(
   meetingId: number,
   ids: number[],
+  /** 생략하면 서버가 기존 exclude 상태를 유지(하위호환) */
+  excludedIds?: number[],
 ): Promise<MeetingDomainFilesResponse> {
-  return apiClient.put(`meetings/${meetingId}/domain_files`, { json: { domain_file_ids: ids } }).json()
+  const json: { domain_file_ids: number[]; excluded_domain_file_ids?: number[] } = { domain_file_ids: ids }
+  if (excludedIds !== undefined) json.excluded_domain_file_ids = excludedIds
+  return apiClient.put(`meetings/${meetingId}/domain_files`, { json }).json()
 }
 
 export async function getProjectDomainFiles(projectId: number): Promise<{ domain_files: DomainFileSummary[] }> {
@@ -107,7 +115,13 @@ export async function setProjectDomainFiles(
   return apiClient.put(`projects/${projectId}/domain_files`, { json: { domain_file_ids: ids } }).json()
 }
 
-export async function getFolderDomainFiles(folderId: number): Promise<{ domain_files: DomainFileSummary[] }> {
+export interface FolderDomainFilesResponse {
+  domain_files: DomainFileSummary[]
+  /** 상위(프로젝트 + 조상 폴더)에서 상속된 파일 — 선택 모달에서 중복 선택 방지에 사용 */
+  inherited: InheritedDomainFile[]
+}
+
+export async function getFolderDomainFiles(folderId: number): Promise<FolderDomainFilesResponse> {
   return apiClient.get(`folders/${folderId}/domain_files`).json()
 }
 

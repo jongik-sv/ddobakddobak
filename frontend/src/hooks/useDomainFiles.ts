@@ -21,6 +21,8 @@ export type DomainFileOwnerType = 'meeting' | 'folder' | 'project'
 export function useDomainFiles(ownerType: DomainFileOwnerType, ownerId: number, projectId: number | null) {
   const [selected, setSelected] = useState<DomainFileSummary[]>([])
   const [inherited, setInherited] = useState<InheritedDomainFile[]>([])
+  /** 회의 전용: 상속분 중 이 회의에서 제외(exclude)된 파일 */
+  const [excluded, setExcluded] = useState<DomainFileSummary[]>([])
   const [available, setAvailable] = useState<DomainFile[]>([])
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
@@ -35,6 +37,7 @@ export function useDomainFiles(ownerType: DomainFileOwnerType, ownerId: number, 
         ])
         setSelected(sel.selected)
         setInherited(sel.inherited)
+        setExcluded(sel.excluded)
         setAvailable(avail.domain_files)
       } else if (ownerType === 'folder') {
         const [sel, avail] = await Promise.all([
@@ -42,7 +45,8 @@ export function useDomainFiles(ownerType: DomainFileOwnerType, ownerId: number, 
           listDomainFiles(projectId ?? undefined),
         ])
         setSelected(sel.domain_files)
-        setInherited([])
+        setInherited(sel.inherited)
+        setExcluded([])
         setAvailable(avail.domain_files)
       } else {
         const [sel, avail] = await Promise.all([
@@ -51,6 +55,7 @@ export function useDomainFiles(ownerType: DomainFileOwnerType, ownerId: number, 
         ])
         setSelected(sel.domain_files)
         setInherited([])
+        setExcluded([])
         setAvailable(avail.domain_files)
       }
     } finally {
@@ -65,6 +70,7 @@ export function useDomainFiles(ownerType: DomainFileOwnerType, ownerId: number, 
       const res = await setMeetingDomainFiles(ownerId, ids)
       setSelected(res.selected)
       setInherited(res.inherited)
+      setExcluded(res.excluded)
     } else if (ownerType === 'folder') {
       const res = await setFolderDomainFiles(ownerId, ids)
       setSelected(res.domain_files)
@@ -73,6 +79,26 @@ export function useDomainFiles(ownerType: DomainFileOwnerType, ownerId: number, 
       setSelected(res.domain_files)
     }
   }, [ownerType, ownerId])
+
+  /** 상속된(폴더/프로젝트) 파일을 이 회의에서만 제외 — meeting 전용 */
+  const excludeInherited = useCallback(async (fileId: number) => {
+    if (ownerType !== 'meeting') throw new Error('회의에서만 사용할 수 있습니다')
+    const nextExcludedIds = Array.from(new Set([...excluded.map((f) => f.id), fileId]))
+    const res = await setMeetingDomainFiles(ownerId, selected.map((f) => f.id), nextExcludedIds)
+    setSelected(res.selected)
+    setInherited(res.inherited)
+    setExcluded(res.excluded)
+  }, [ownerType, ownerId, selected, excluded])
+
+  /** 제외했던 상속 파일을 복원 — meeting 전용 */
+  const restoreInherited = useCallback(async (fileId: number) => {
+    if (ownerType !== 'meeting') throw new Error('회의에서만 사용할 수 있습니다')
+    const nextExcludedIds = excluded.filter((f) => f.id !== fileId).map((f) => f.id)
+    const res = await setMeetingDomainFiles(ownerId, selected.map((f) => f.id), nextExcludedIds)
+    setSelected(res.selected)
+    setInherited(res.inherited)
+    setExcluded(res.excluded)
+  }, [ownerType, ownerId, selected, excluded])
 
   const createFile = useCallback(async (data: { name: string; content: string; project_id?: number | null }) => {
     const res = await createDomainFile(data)
@@ -117,7 +143,7 @@ export function useDomainFiles(ownerType: DomainFileOwnerType, ownerId: number, 
   }, [load])
 
   return {
-    selected, inherited, available, loading, status,
-    reload: load, select, createFile, uploadFile, saveFile, removeFile, extract, merge,
+    selected, inherited, excluded, available, loading, status,
+    reload: load, select, excludeInherited, restoreInherited, createFile, uploadFile, saveFile, removeFile, extract, merge,
   }
 }

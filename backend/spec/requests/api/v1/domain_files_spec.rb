@@ -38,6 +38,21 @@ RSpec.describe "Api::V1::DomainFiles", type: :request do
       expect(response.parsed_body["domain_files"].first).not_to have_key("content")
     end
 
+    it "각 항목에 editable(현재 유저 기준)을 포함한다 (UX 증분 A)" do
+      login_as(creator)
+      get "/api/v1/domain_files"
+      by_name = response.parsed_body["domain_files"].index_by { |f| f["name"] }
+      expect(by_name["전역 사전"]["editable"]).to be true # creator 본인 파일
+    end
+
+    it "본인이 만들지 않은 파일은 editable false" do
+      other_owned_global = create(:domain_file, name: "타인 전역 사전", creator: other)
+      login_as(creator)
+      get "/api/v1/domain_files"
+      by_name = response.parsed_body["domain_files"].index_by { |f| f["name"] }
+      expect(by_name[other_owned_global.name]["editable"]).to be false
+    end
+
     it "project_id 파라미터로 전역+해당 프로젝트 필터" do
       other_membered_project = create(:project, creator: creator)
       ProjectMembership.find_or_create_by!(project: other_membered_project, user: creator) { |pm| pm.role = "member" }

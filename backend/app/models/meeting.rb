@@ -19,7 +19,10 @@ class Meeting < ApplicationRecord
   has_many :meeting_bookmarks, dependent: :destroy
   has_many :chat_messages, dependent: :destroy
   has_many :domain_file_links, as: :owner, dependent: :destroy
-  has_many :domain_files, through: :domain_file_links
+  # "선택된" 파일만(제외 마커 행은 별도) — UX 증분 B: 회의별 상속 제외.
+  has_many :domain_files, -> { merge(DomainFileLink.not_excluded) }, through: :domain_file_links
+  has_many :excluded_domain_file_links, -> { merge(DomainFileLink.excluded) }, as: :owner, class_name: "DomainFileLink"
+  has_many :excluded_domain_files, through: :excluded_domain_file_links, source: :domain_file
 
   # 회의록 압축율 5단계 (회의 화면·미리보기에서 회의별 지정)
   SUMMARY_VERBOSITY_LEVELS = %w[very_concise concise standard detailed very_detailed].freeze
@@ -326,9 +329,13 @@ class Meeting < ApplicationRecord
   # DomainReferenceBuilder는 이 순서를 그대로 소비해 캡 초과 시 project → 먼 folder → 가까운 folder →
   # meeting 순으로 잘라내(구체 레벨이 끝까지 살아남게) 처리한다.
   # @return [Array<Hash>] [{ file:, source: "meeting"|"folder"|"project", owner: (Folder|Project, source가 meeting이면 nil) }]
+  #
+  # UX 증분 B(회의별 상속 제외): 이 회의가 exclude=true 로 마크한 파일 id는 폴더/프로젝트
+  # 상속분에서 제거한다. 회의 자체 selected(domain_files, exclude=false 스코프)에는 영향 없음.
   def effective_domain_files
     seen = {}
     result = []
+    excluded_ids = domain_file_links.excluded.pluck(:domain_file_id).to_set
 
     domain_files.order("domain_file_links.id").each do |file|
       next if seen[file.id]
@@ -340,6 +347,10 @@ class Meeting < ApplicationRecord
       ([ folder ] + folder.ancestor_records).each do |fld|
         fld.domain_files.order("domain_file_links.id").each do |file|
           next if seen[file.id]
+          if excluded_ids.include?(file.id)
+            seen[file.id] = true
+            next
+          end
           seen[file.id] = true
           result << { file: file, source: "folder", owner: fld }
         end
@@ -349,6 +360,10 @@ class Meeting < ApplicationRecord
     if project
       project.domain_files.order("domain_file_links.id").each do |file|
         next if seen[file.id]
+        if excluded_ids.include?(file.id)
+          seen[file.id] = true
+          next
+        end
         seen[file.id] = true
         result << { file: file, source: "project", owner: project }
       end

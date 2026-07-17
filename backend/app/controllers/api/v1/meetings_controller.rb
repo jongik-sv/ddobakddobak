@@ -586,13 +586,23 @@ module Api
       # 회의의 도메인 파일 실효 세트. 읽기 인가(set_meeting)만 필요.
       # selected = 회의 자체 링크. inherited = 폴더 조상체인 + 프로젝트에서 상속된 분(회의 자체
       # 선택과 중복되는 파일은 selected 쪽에만 남고 inherited 에서는 제외 — effective_domain_files 의
-      # 우선순위 dedup 을 그대로 소비).
+      # 우선순위 dedup 을 그대로 소비). excluded = 이 회의가 상속 억제한 파일(UX 증분 B).
       def domain_files
-        render json: { selected: selected_domain_files_json(@meeting), inherited: inherited_domain_files_json(@meeting) }
+        render json: {
+          selected: selected_domain_files_json(@meeting),
+          inherited: inherited_domain_files_json(@meeting),
+          excluded: excluded_domain_files_json(@meeting)
+        }
       end
 
-      # 회의의 도메인 파일 선택을 통째로 교체(빈 배열=전체 해제). 회의 자체 링크만 교체 —
-      # 폴더/프로젝트 상속분은 영향받지 않는다. control + 잠금 가드.
+      # 회의의 도메인 파일 선택을 통째로 교체(빈 배열=전체 해제). 회의 자체 링크(exclude=false)만
+      # 교체 — 폴더/프로젝트 상속분은 영향받지 않는다. control + 잠금 가드.
+      #
+      # excluded_domain_file_ids: 상속 제외 세트(UX 증분 B). 파라미터 자체가 생략되면 기존 exclude
+      # 링크를 그대로 유지(하위호환) — 빈 배열([])이 명시되면 전체 해제로 취급.
+      #
+      # UX 증분 C: domain_file_ids 에 이미 폴더/프로젝트에서 상속(비제외)된 파일 id가 섞여 있으면
+      # 422 대신 조용히 무시(drop)하고, 응답으로 실제 반영된 상태를 돌려준다(동시성에도 안전).
       def update_domain_files
         # Rack::Test 등 form-encoded 클라이언트에서 빈 배열([])이 [""]로 왕복되는 경우가 있어 blank 제거.
         ids = Array(params[:domain_file_ids]).reject(&:blank?).map(&:to_i).uniq
@@ -604,13 +614,41 @@ module Api
           end
         end
 
+        excluded_ids_given = params.key?(:excluded_domain_file_ids)
+        excluded_ids = nil
+        if excluded_ids_given
+          excluded_ids = Array(params[:excluded_domain_file_ids]).reject(&:blank?).map(&:to_i).uniq
+          if excluded_ids.any?
+            accessible_excluded_ids = DomainFile.accessible_by(current_user).where(id: excluded_ids).pluck(:id)
+            if accessible_excluded_ids.sort != excluded_ids.sort
+              return render json: { error: "제외할 수 없는 파일이 포함되어 있습니다" }, status: :unprocessable_entity
+            end
+          end
+        end
+
+        effective_excluded_ids = excluded_ids || @meeting.domain_file_links.excluded.pluck(:domain_file_id)
+        # C: 상위(폴더/프로젝트)에서 이미 상속(비제외)된 id는 조용히 무시.
+        ids -= (inherited_owner_domain_file_ids(@meeting) - effective_excluded_ids)
+        # 같은 파일을 선택(ids)과 제외(effective_excluded_ids)에 동시에 넣는 모순 조합 방지
+        # (unique index가 owner+domain_file_id 당 한 행만 허용하므로 충돌 시 제외가 우선).
+        ids -= effective_excluded_ids
+
         ActiveRecord::Base.transaction do
-          @meeting.domain_file_links.destroy_all
-          ids.each { |id| @meeting.domain_file_links.create!(domain_file_id: id) }
+          @meeting.domain_file_links.not_excluded.destroy_all
+          ids.each { |id| @meeting.domain_file_links.create!(domain_file_id: id, exclude: false) }
+
+          if excluded_ids_given
+            @meeting.domain_file_links.excluded.destroy_all
+            excluded_ids.each { |id| @meeting.domain_file_links.create!(domain_file_id: id, exclude: true) }
+          end
         end
 
         @meeting.reload
-        render json: { selected: selected_domain_files_json(@meeting), inherited: inherited_domain_files_json(@meeting) }
+        render json: {
+          selected: selected_domain_files_json(@meeting),
+          inherited: inherited_domain_files_json(@meeting),
+          excluded: excluded_domain_files_json(@meeting)
+        }
       end
 
       # "요약에서 용어 추출" — 동기 컨트롤러 액션(신규 잡 클래스 금지). control + 잠금 가드.
@@ -877,6 +915,23 @@ module Api
             owner_name: entry[:owner]&.name
           )
         end
+      end
+
+      # UX 증분 B: 이 회의가 상속 억제(exclude=true)한 파일 목록.
+      def excluded_domain_files_json(meeting)
+        meeting.excluded_domain_files.order("domain_file_links.id").map { |f| f.summary_json(current_user) }
+      end
+
+      # UX 증분 C: 폴더 조상체인 + 프로젝트에 링크된(= exclude 여부와 무관하게 "상속 대상"인)
+      # 파일 id 전체. update_domain_files 에서 domain_file_ids 중 이미 상속(비제외)된 것을
+      # 조용히 걸러내는 데 사용한다.
+      def inherited_owner_domain_file_ids(meeting)
+        ids = []
+        if meeting.folder
+          ([ meeting.folder ] + meeting.folder.ancestor_records).each { |fld| ids.concat(fld.domain_files.pluck(:id)) }
+        end
+        ids.concat(meeting.project.domain_files.pluck(:id)) if meeting.project
+        ids.uniq
       end
 
       def glossary_entry_json(entry)

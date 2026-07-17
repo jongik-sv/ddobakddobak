@@ -334,5 +334,44 @@ RSpec.describe Meeting, type: :model do
 
       expect(meeting.effective_domain_files.map { |e| e[:file].id }).to eq([ file.id ])
     end
+
+    describe "회의별 상속 제외(exclude, UX 증분 B)" do
+      it "exclude=true로 마크한 파일은 프로젝트 상속에서 제거된다" do
+        meeting = create(:meeting, project: project, creator: user)
+        project_file = create(:domain_file, creator: user)
+        DomainFileLink.create!(owner: project, domain_file: project_file)
+        DomainFileLink.create!(owner: meeting, domain_file: project_file, exclude: true)
+
+        expect(meeting.effective_domain_files).to be_empty
+      end
+
+      it "exclude=true로 마크한 파일은 폴더 상속에서도 제거된다" do
+        folder = create(:folder, project: project)
+        meeting = create(:meeting, project: project, folder: folder, creator: user)
+        folder_file = create(:domain_file, creator: user)
+        DomainFileLink.create!(owner: folder, domain_file: folder_file)
+        DomainFileLink.create!(owner: meeting, domain_file: folder_file, exclude: true)
+
+        expect(meeting.effective_domain_files).to be_empty
+      end
+
+      it "exclude는 회의 자체 selected(meeting source)에는 영향을 주지 않는다" do
+        meeting = create(:meeting, project: project, creator: user)
+        own_file = create(:domain_file, creator: user)
+        DomainFileLink.create!(owner: meeting, domain_file: own_file, exclude: false)
+
+        expect(meeting.effective_domain_files.map { |e| e[:file].id }).to eq([ own_file.id ])
+      end
+
+      it "#domain_files(selected)는 exclude=true 마커 행을 포함하지 않는다" do
+        meeting = create(:meeting, project: project, creator: user)
+        project_file = create(:domain_file, creator: user)
+        DomainFileLink.create!(owner: project, domain_file: project_file)
+        DomainFileLink.create!(owner: meeting, domain_file: project_file, exclude: true)
+
+        expect(meeting.domain_files).to be_empty
+        expect(meeting.excluded_domain_files.map(&:id)).to eq([ project_file.id ])
+      end
+    end
   end
 end

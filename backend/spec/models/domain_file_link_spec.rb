@@ -34,6 +34,29 @@ RSpec.describe DomainFileLink do
     end
   end
 
+  describe "exclude (UX 증분 B: 회의별 상속 제외 마커)" do
+    it "기본값은 false" do
+      link = DomainFileLink.create!(owner: create(:meeting), domain_file: domain_file)
+      expect(link.exclude).to eq(false)
+    end
+
+    it "owner_type이 Meeting이면 exclude=true 유효" do
+      link = DomainFileLink.new(owner: create(:meeting), domain_file: domain_file, exclude: true)
+      expect(link).to be_valid
+    end
+
+    it "owner_type이 Folder면 exclude=true 무효" do
+      link = DomainFileLink.new(owner: create(:folder), domain_file: domain_file, exclude: true)
+      expect(link).not_to be_valid
+      expect(link.errors[:exclude]).to be_present
+    end
+
+    it "owner_type이 Project면 exclude=true 무효" do
+      link = DomainFileLink.new(owner: create(:project), domain_file: domain_file, exclude: true)
+      expect(link).not_to be_valid
+    end
+  end
+
   describe "polymorphic owner cascade" do
     it "meeting 삭제 시 연결 레코드가 cascade로 함께 삭제된다" do
       meeting = create(:meeting)

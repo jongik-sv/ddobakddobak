@@ -178,7 +178,8 @@ module Api
           project_id: f.project_id,
           created_by_id: f.created_by_id,
           content_chars: f.content.length,
-          updated_at: f.updated_at
+          updated_at: f.updated_at,
+          editable: f.editable_by?(current_user)
         }
       end
 
