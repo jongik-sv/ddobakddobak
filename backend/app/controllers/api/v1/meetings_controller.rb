@@ -752,7 +752,8 @@ module Api
           sections_prompt: sections_prompt,
           attendees: @meeting.attendees,
           verbosity: @meeting.summary_verbosity,
-          restructure: @meeting.summary_restructure
+          restructure: @meeting.summary_restructure,
+          domain_reference: DomainReferenceBuilder.build(@meeting)
         )
 
         filename = "prompt_#{@meeting.id}_#{Date.today}.txt"

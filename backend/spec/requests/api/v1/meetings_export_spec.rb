@@ -59,3 +59,26 @@ RSpec.describe "GET /api/v1/meetings/:id/export", type: :request do
     end
   end
 end
+
+RSpec.describe "GET /api/v1/meetings/:id/export_prompt", type: :request do
+  let(:user)    { create(:user) }
+  let(:project)    { create(:project, creator: user) }
+  let!(:membership) { create(:project_membership, user: user, project: project, role: "member") }
+  let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
+
+  before do
+    login_as(user)
+    create(:transcript, meeting: meeting, speaker_label: "화자1",
+           content: "테스트 발언", started_at_ms: 0, sequence_number: 1)
+  end
+
+  it "회의에 링크된 도메인 파일의 내용을 프롬프트에 포함한다" do
+    domain_file = create(:domain_file, name: "용어집", content: "## 용어\nCTQ: Critical To Quality", creator: user)
+    DomainFileLink.create!(owner: meeting, domain_file: domain_file)
+
+    get "/api/v1/meetings/#{meeting.id}/export_prompt"
+
+    expect(response).to have_http_status(:ok)
+    expect(response.body).to include("CTQ: Critical To Quality")
+  end
+end
