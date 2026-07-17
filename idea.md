@@ -91,6 +91,8 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
   - 폴더(디렉토리) 서브트리+소속 회의 통째로 `.ddobak-folder.tgz` 내보내기/가져오기 (프로젝트/폴더/회의 3단 완성)
   - 공유 `Transfer::Archive`(보안 primitive)·`MeetingSerializer`/`MeetingRestorer`. 기존 프로젝트 export/import 무수정
 23. 회의중에는 뒤로가기 안되도록 보호
+24. 도메인 용어 처리 기능
+25. 회원가입 시 패스워드 2번 입력 하도록 변경
 
 
 ## 향후 추가 계획 — 미완료
