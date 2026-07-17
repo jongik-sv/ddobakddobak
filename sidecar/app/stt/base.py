@@ -30,6 +30,27 @@ class SttAdapter(ABC):
         """모델이 로드되었는지 여부."""
         return self._is_loaded
 
+    @property
+    def gpu_resident(self) -> bool:
+        """GPU 상주 여부. 유휴 오프로드 미지원 어댑터(whisper_cpp 등)는 로드 여부로 대체한다."""
+        return self._is_loaded
+
+    @property
+    def resident_state(self) -> str:
+        """모델 상주 상태: 'gpu' | 'cpu' | 'unloaded'.
+
+        유휴 오프로드를 지원하는 어댑터(Qwen3TransformersAdapter, FasterWhisperAdapter)는
+        이 프로퍼티를 오버라이드해 실제 IdleOffloadController 상태를 반환한다.
+        """
+        return "gpu" if self._is_loaded else "unloaded"
+
+    async def maybe_offload(self, idle_unload_sec: float, idle_full_unload_sec: float) -> None:
+        """유휴 시간 기반 GPU 오프로드 점검. 기본은 no-op(오프로드 미지원 엔진).
+
+        백그라운드 루프(app.main._idle_offload_loop)가 주기적으로 호출한다.
+        """
+        return None
+
     @abstractmethod
     async def load_model(self) -> None:
         """모델 로드 (앱 시작 시 1회 호출).

@@ -24,6 +24,10 @@ def _load_settings_yaml() -> dict:
                 env["STT_ENGINE"] = str(stt_engine)
             if file_engine := (cfg.get("stt") or {}).get("file_engine"):
                 env["STT_FILE_ENGINE"] = str(file_engine)
+            if (idle_unload := (cfg.get("stt") or {}).get("idle_unload_sec")) is not None:
+                env["STT_IDLE_UNLOAD_SEC"] = str(idle_unload)
+            if (idle_full_unload := (cfg.get("stt") or {}).get("idle_full_unload_sec")) is not None:
+                env["STT_IDLE_FULL_UNLOAD_SEC"] = str(idle_full_unload)
 
             # 화자분리 엔진
             if diar_engine := (cfg.get("diarization") or {}).get("engine"):
@@ -118,6 +122,15 @@ class Settings(BaseSettings):
     # [재시작 필요] 화자분리 엔진. auto=speakrs(CoreML 바이너리 있으면), 없으면 비활성
     # (speakrs | auto)
     DIARIZATION_ENGINE: str = "auto"
+
+    # GPU 유휴 오프로드 — 1단계(GPU 비우기) TTL(초). 0=비활성.
+    # Qwen3(transformers 백엔드): GPU → CPU(RAM 상주). faster_whisper: 완전 언로드(CTranslate2는 CPU 이동 불가).
+    STT_IDLE_UNLOAD_SEC: int = 600
+    # GPU 유휴 오프로드 — 2단계(완전 해제) TTL(초). 0=비활성.
+    # 1단계로 CPU에 상주 중인 모델(Qwen3)을 대상으로, 마지막 추론 시각 기준 이 시간까지 유휴가
+    # 지속되면 모델 객체 자체를 해제한다(다음 사용 시 디스크에서 재로드). idle_unload_sec 이하로
+    # 설정되면 무시(경고 로그 후 비활성 취급)된다.
+    STT_IDLE_FULL_UNLOAD_SEC: int = 3600
 
     # LLM 설정 — 아래 항목 변경 시 모두 [재시작 필요]
     LLM_PROVIDER: str = "anthropic"

@@ -16,6 +16,7 @@ import numpy as np
 from app.stt import lang_utils
 from app.stt.audio_utils import is_hallucination, pcm_bytes_to_float32
 from app.stt.base import SttAdapter, TranscriptSegment
+from app.stt.idle_offload import IdleOffloadController, ResidentState
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,19 @@ class Qwen3TransformersAdapter(SttAdapter):
             )
         self._model = None
 
+        # GPU 유휴 오프로드 — transformers 백엔드만 지원(모델 가중치를 .to()로 이동 가능).
+        # vLLM 백엔드는 자체 프로세스 내 GPU 메모리를 선점(reserve)해 런타임 이동이 불가능하므로
+        # 콜백을 배선하지 않는다(= no-op, 상시 GPU 상주 취급).
+        supports_offload = self._backend == "transformers"
+        self._idle = IdleOffloadController(
+            name=f"qwen3_transformers({self._model_id})",
+            stage1_offload=self._offload_to_cpu if supports_offload else None,
+            stage1_target=ResidentState.CPU,
+            reload_from_cpu=self._reload_from_cpu if supports_offload else None,
+            stage2_offload=self._offload_full if supports_offload else None,
+            reload_from_unloaded=self._reload_full if supports_offload else None,
+        )
+
     def set_context(self, context: str | None) -> None:
         """인식 바이어스용 context(도메인 용어·참석자명 등)를 설정한다. None/빈값이면 비활성."""
         self._context = context or ""
@@ -81,62 +95,121 @@ class Qwen3TransformersAdapter(SttAdapter):
             ) from e
 
         loop = asyncio.get_running_loop()
+        self._model = await loop.run_in_executor(None, self._load_sync)
+        self._is_loaded = True
+        self._idle.mark_loaded()
+        logger.info("Qwen3-ASR 모델 로드 완료 (model=%s)", self._model_id)
 
-        def _load():
-            import torch
-            from qwen_asr import Qwen3ASRModel
+    def _load_sync(self):
+        """모델을 디스크/캐시에서 처음부터 로드한다 (동기, executor에서 실행).
 
-            if not torch.cuda.is_available():
-                raise RuntimeError(
-                    "Qwen3-ASR 엔진은 NVIDIA CUDA GPU가 필요합니다. "
-                    "GPU가 없는 환경에서는 'faster_whisper' 엔진을 사용하세요."
-                )
+        load_model()의 최초 로드와 2단계(완전 해제) 오프로드 후 재로드 양쪽에서 재사용한다.
+        """
+        import torch
+        from qwen_asr import Qwen3ASRModel
 
-            quant_label = f" ({self._quantization})" if self._quantization else ""
-            logger.info(
-                "Qwen3-ASR%s [backend=%s]: CUDA GPU 감지됨 — GPU 모드로 로드합니다. (device=%s)",
-                quant_label, self._backend, torch.cuda.get_device_name(0),
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "Qwen3-ASR 엔진은 NVIDIA CUDA GPU가 필요합니다. "
+                "GPU가 없는 환경에서는 'faster_whisper' 엔진을 사용하세요."
             )
 
-            if self._backend == "vllm":
-                # vLLM은 프로세스 시작 시 GPU 메모리를 선점(reserve)한다. diarization·임베딩 등
-                # 다른 모델과 같은 GPU를 공유해야 하므로 vLLM 기본값(0.9)보다 훨씬 낮은 비율을 쓴다.
-                model = Qwen3ASRModel.LLM(
-                    self._model_id,
-                    gpu_memory_utilization=self._gpu_memory_utilization,
-                    max_new_tokens=448,
-                )
-                return model
+        quant_label = f" ({self._quantization})" if self._quantization else ""
+        logger.info(
+            "Qwen3-ASR%s [backend=%s]: CUDA GPU 감지됨 — GPU 모드로 로드합니다. (device=%s)",
+            quant_label, self._backend, torch.cuda.get_device_name(0),
+        )
 
-            kwargs: dict = {
-                "device_map": "cuda:0",
-                "max_new_tokens": 448,
-            }
-
-            if self._quantization == "6bit":
-                from transformers import BitsAndBytesConfig
-                kwargs["quantization_config"] = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_compute_dtype=torch.bfloat16,
-                )
-            elif self._quantization == "8bit":
-                from transformers import BitsAndBytesConfig
-                kwargs["quantization_config"] = BitsAndBytesConfig(
-                    load_in_8bit=True,
-                )
-            else:
-                # Qwen3-ASR 가중치는 BF16 네이티브 → BF16으로 로드해야 다운캐스트(fp16 range 손실)
-                # 없이 한국어 정확도가 최대. RTX 5000 Ada는 BF16 텐서코어 네이티브 지원.
-                kwargs["dtype"] = torch.bfloat16
-
-            model = Qwen3ASRModel.from_pretrained(self._model_id, **kwargs)
+        if self._backend == "vllm":
+            # vLLM은 프로세스 시작 시 GPU 메모리를 선점(reserve)한다. diarization·임베딩 등
+            # 다른 모델과 같은 GPU를 공유해야 하므로 vLLM 기본값(0.9)보다 훨씬 낮은 비율을 쓴다.
+            model = Qwen3ASRModel.LLM(
+                self._model_id,
+                gpu_memory_utilization=self._gpu_memory_utilization,
+                max_new_tokens=448,
+            )
             return model
 
-        self._model = await loop.run_in_executor(None, _load)
-        self._is_loaded = True
-        logger.info("Qwen3-ASR 모델 로드 완료 (model=%s)", self._model_id)
+        kwargs: dict = {
+            "device_map": "cuda:0",
+            "max_new_tokens": 448,
+        }
+
+        if self._quantization == "6bit":
+            from transformers import BitsAndBytesConfig
+            kwargs["quantization_config"] = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_compute_dtype=torch.bfloat16,
+            )
+        elif self._quantization == "8bit":
+            from transformers import BitsAndBytesConfig
+            kwargs["quantization_config"] = BitsAndBytesConfig(
+                load_in_8bit=True,
+            )
+        else:
+            # Qwen3-ASR 가중치는 BF16 네이티브 → BF16으로 로드해야 다운캐스트(fp16 range 손실)
+            # 없이 한국어 정확도가 최대. RTX 5000 Ada는 BF16 텐서코어 네이티브 지원.
+            kwargs["dtype"] = torch.bfloat16
+
+        model = Qwen3ASRModel.from_pretrained(self._model_id, **kwargs)
+        return model
+
+    # ── GPU 유휴 오프로드 콜백 (transformers 백엔드 전용) ──────────────────
+    # qwen_asr.Qwen3ASRModel은 nn.Module이 아닌 래퍼이며, 실제 가중치는 `.model`
+    # 속성(HF PreTrainedModel)에 있다. 추론 시 qwen-asr 내부는 `self.model.device`를
+    # 매 호출마다 다시 읽어 입력 텐서를 배치하므로(qwen_asr/inference/qwen3_asr.py:508),
+    # `.model`만 이동시키면 별도 상태 갱신 없이 다음 추론부터 자동으로 반영된다.
+
+    async def _offload_to_cpu(self) -> None:
+        """1단계 오프로드: GPU -> CPU(RAM 상주, 가중치 유지)."""
+        loop = asyncio.get_running_loop()
+
+        def _off():
+            import torch
+            self._model.model.to("cpu")
+            torch.cuda.empty_cache()
+
+        await loop.run_in_executor(None, _off)
+
+    async def _reload_from_cpu(self) -> None:
+        """1단계 복귀: CPU -> GPU (가중치 유지, 디스크 접근 없이 빠름)."""
+        loop = asyncio.get_running_loop()
+
+        def _on():
+            self._model.model.to("cuda:0")
+
+        await loop.run_in_executor(None, _on)
+
+    async def _offload_full(self) -> None:
+        """2단계 오프로드: CPU에 상주 중이던 모델 객체를 완전히 해제한다."""
+        loop = asyncio.get_running_loop()
+
+        def _unload():
+            import gc
+            import torch
+            self._model = None
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        await loop.run_in_executor(None, _unload)
+
+    async def _reload_full(self) -> None:
+        """2단계 복귀: 디스크/캐시에서 모델을 처음부터 재로드한다 (느림, ~수 초)."""
+        loop = asyncio.get_running_loop()
+        self._model = await loop.run_in_executor(None, self._load_sync)
+
+    @property
+    def gpu_resident(self) -> bool:
+        return self._idle.gpu_resident
+
+    @property
+    def resident_state(self) -> str:
+        return self._idle.state.value
+
+    async def maybe_offload(self, idle_unload_sec: float, idle_full_unload_sec: float) -> None:
+        await self._idle.maybe_offload(idle_unload_sec, idle_full_unload_sec)
 
     async def transcribe(self, audio_chunk: bytes, languages: list[str] | None = None, mode: str = "single") -> list[TranscriptSegment]:
         """PCM 오디오 청크를 텍스트 세그먼트로 변환한다."""
@@ -153,7 +226,8 @@ class Qwen3TransformersAdapter(SttAdapter):
 
         engine_lang = lang_utils.qwen_force_lang(languages, mode)
         loop = asyncio.get_running_loop()
-        segments = await loop.run_in_executor(None, self._infer_from_pcm, audio_array, engine_lang, languages, mode, chunk_duration_ms)
+        async with self._idle:
+            segments = await loop.run_in_executor(None, self._infer_from_pcm, audio_array, engine_lang, languages, mode, chunk_duration_ms)
         return segments
 
     def _infer_from_pcm(
@@ -233,7 +307,8 @@ class Qwen3TransformersAdapter(SttAdapter):
                     ))
             return segments
 
-        return await loop.run_in_executor(None, _transcribe)
+        async with self._idle:
+            return await loop.run_in_executor(None, _transcribe)
 
     def _transcribe_pcm_file(self, file_path: str, languages: list[str] | None = None, mode: str = "single") -> list[TranscriptSegment]:
         """raw PCM 파일을 wav로 변환 후 추론."""
