@@ -583,12 +583,16 @@ module Api
         render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
       end
 
-      # 회의에 선택된 도메인 파일(용어집) 목록. 읽기 인가(set_meeting)만 필요.
+      # 회의의 도메인 파일 실효 세트. 읽기 인가(set_meeting)만 필요.
+      # selected = 회의 자체 링크. inherited = 폴더 조상체인 + 프로젝트에서 상속된 분(회의 자체
+      # 선택과 중복되는 파일은 selected 쪽에만 남고 inherited 에서는 제외 — effective_domain_files 의
+      # 우선순위 dedup 을 그대로 소비).
       def domain_files
-        render json: { domain_files: domain_files_json(@meeting) }
+        render json: { selected: selected_domain_files_json(@meeting), inherited: inherited_domain_files_json(@meeting) }
       end
 
-      # 회의의 도메인 파일 선택을 통째로 교체(빈 배열=전체 해제). control + 잠금 가드.
+      # 회의의 도메인 파일 선택을 통째로 교체(빈 배열=전체 해제). 회의 자체 링크만 교체 —
+      # 폴더/프로젝트 상속분은 영향받지 않는다. control + 잠금 가드.
       def update_domain_files
         # Rack::Test 등 form-encoded 클라이언트에서 빈 배열([])이 [""]로 왕복되는 경우가 있어 blank 제거.
         ids = Array(params[:domain_file_ids]).reject(&:blank?).map(&:to_i).uniq
@@ -601,11 +605,12 @@ module Api
         end
 
         ActiveRecord::Base.transaction do
-          @meeting.meeting_domain_files.destroy_all
-          ids.each { |id| @meeting.meeting_domain_files.create!(domain_file_id: id) }
+          @meeting.domain_file_links.destroy_all
+          ids.each { |id| @meeting.domain_file_links.create!(domain_file_id: id) }
         end
 
-        render json: { domain_files: domain_files_json(@meeting.reload) }
+        @meeting.reload
+        render json: { selected: selected_domain_files_json(@meeting), inherited: inherited_domain_files_json(@meeting) }
       end
 
       # "요약에서 용어 추출" — 동기 컨트롤러 액션(신규 잡 클래스 금지). control + 잠금 가드.
@@ -860,8 +865,18 @@ module Api
         folder_ids.include?(entry.owner_id)
       end
 
-      def domain_files_json(meeting)
-        meeting.domain_files.order(:id).map { |f| { id: f.id, name: f.name, project_id: f.project_id } }
+      def selected_domain_files_json(meeting)
+        meeting.domain_files.order("domain_file_links.id").map { |f| f.summary_json(current_user) }
+      end
+
+      def inherited_domain_files_json(meeting)
+        meeting.effective_domain_files.filter_map do |entry|
+          next if entry[:source] == "meeting"
+          entry[:file].summary_json(current_user).merge(
+            source: entry[:source],
+            owner_name: entry[:owner]&.name
+          )
+        end
       end
 
       def glossary_entry_json(entry)

@@ -4,8 +4,8 @@ module Api
       include ProjectScoped
 
       before_action :authenticate_user!
-      before_action :set_project, only: %i[show update destroy members add_member update_member remove_member]
-      before_action :authorize_project_admin!, only: %i[update destroy add_member update_member remove_member]
+      before_action :set_project, only: %i[show update destroy members add_member update_member remove_member domain_files update_domain_files]
+      before_action :authorize_project_admin!, only: %i[update destroy add_member update_member remove_member update_domain_files]
 
       def index
         # 개인 프로젝트는 소유자(멤버)에게만 — admin도 남의 개인 프로젝트는 목록에서 제외.
@@ -97,6 +97,30 @@ module Api
         head :no_content
       end
 
+      # 프로젝트에 링크된(적용된) 도메인 파일(용어집) 목록. 읽기는 멤버면 충분(set_project).
+      def domain_files
+        render json: { domain_files: project_domain_files_json(@project) }
+      end
+
+      # 프로젝트의 도메인 파일 링크 세트를 통째로 교체(빈 배열=전체 해제). 프로젝트 관리 권한 필요.
+      def update_domain_files
+        ids = Array(params[:domain_file_ids]).reject(&:blank?).map(&:to_i).uniq
+
+        if ids.any?
+          accessible_ids = DomainFile.accessible_by(current_user).where(id: ids).pluck(:id)
+          if accessible_ids.sort != ids.sort
+            return render json: { error: "선택할 수 없는 파일이 포함되어 있습니다" }, status: :unprocessable_entity
+          end
+        end
+
+        ActiveRecord::Base.transaction do
+          @project.domain_file_links.destroy_all
+          ids.each { |id| @project.domain_file_links.create!(domain_file_id: id) }
+        end
+
+        render json: { domain_files: project_domain_files_json(@project.reload) }
+      end
+
       private
 
       def set_project
@@ -127,6 +151,10 @@ module Api
 
       def member_json(pm)
         { user_id: pm.user_id, name: pm.user.name, email: pm.user.email, role: pm.role }
+      end
+
+      def project_domain_files_json(project)
+        project.domain_files.order("domain_file_links.id").map { |f| f.summary_json(current_user) }
       end
     end
   end

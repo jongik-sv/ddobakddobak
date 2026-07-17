@@ -9,13 +9,55 @@ RSpec.describe "Api::V1 meeting domain files", type: :request do
   let!(:file_b) { create(:domain_file, name: "B사전", creator: owner) }
 
   describe "GET /api/v1/meetings/:id/domain_files" do
-    before { create(:meeting_domain_file, meeting: meeting, domain_file: file_b) }
+    before { DomainFileLink.create!(owner: meeting, domain_file: file_b) }
 
-    it "선택된 파일 목록을 id순으로 반환" do
+    it "selected는 회의 자체 링크를 id순으로 반환" do
       login_as(owner)
       get "/api/v1/meetings/#{meeting.id}/domain_files"
       expect(response).to have_http_status(:ok)
-      expect(response.parsed_body["domain_files"].map { |f| f["id"] }).to eq([ file_b.id ])
+      body = response.parsed_body
+      expect(body["selected"].map { |f| f["id"] }).to eq([ file_b.id ])
+      expect(body["inherited"]).to eq([])
+    end
+
+    it "DomainFileSummary 포맷(editable 포함)으로 반환한다" do
+      login_as(owner)
+      get "/api/v1/meetings/#{meeting.id}/domain_files"
+      entry = response.parsed_body["selected"].first
+      expect(entry.keys).to match_array(%w[id name project_id updated_at editable])
+      expect(entry["editable"]).to be true
+    end
+
+    it "폴더/프로젝트에 링크된 파일은 inherited에 source·owner_name과 함께 노출" do
+      folder = create(:folder, project: project)
+      meeting.update!(folder: folder)
+      folder_file = create(:domain_file, name: "폴더사전", creator: owner)
+      project_file = create(:domain_file, name: "프로젝트사전", creator: owner)
+      DomainFileLink.create!(owner: folder, domain_file: folder_file)
+      DomainFileLink.create!(owner: project, domain_file: project_file)
+
+      login_as(owner)
+      get "/api/v1/meetings/#{meeting.id}/domain_files"
+      inherited = response.parsed_body["inherited"]
+
+      expect(inherited.map { |f| f["id"] }).to contain_exactly(folder_file.id, project_file.id)
+      folder_entry = inherited.find { |f| f["id"] == folder_file.id }
+      expect(folder_entry["source"]).to eq("folder")
+      expect(folder_entry["owner_name"]).to eq(folder.name)
+      project_entry = inherited.find { |f| f["id"] == project_file.id }
+      expect(project_entry["source"]).to eq("project")
+      expect(project_entry["owner_name"]).to eq(project.name)
+    end
+
+    it "회의가 직접 선택한 파일은 프로젝트/폴더에도 링크되어 있어도 inherited에 중복 노출되지 않는다" do
+      DomainFileLink.create!(owner: project, domain_file: file_b)
+
+      login_as(owner)
+      get "/api/v1/meetings/#{meeting.id}/domain_files"
+      body = response.parsed_body
+
+      expect(body["selected"].map { |f| f["id"] }).to eq([ file_b.id ])
+      expect(body["inherited"]).to be_empty
     end
 
     it "회의 열람 권한이 없으면 403" do
@@ -27,15 +69,16 @@ RSpec.describe "Api::V1 meeting domain files", type: :request do
 
   describe "PUT /api/v1/meetings/:id/domain_files" do
     it "선택을 전체 교체한다" do
-      create(:meeting_domain_file, meeting: meeting, domain_file: file_a)
+      DomainFileLink.create!(owner: meeting, domain_file: file_a)
       login_as(owner)
       put "/api/v1/meetings/#{meeting.id}/domain_files", params: { domain_file_ids: [ file_b.id ] }
       expect(response).to have_http_status(:ok)
       expect(meeting.reload.domain_files.pluck(:id)).to eq([ file_b.id ])
+      expect(response.parsed_body["selected"].map { |f| f["id"] }).to eq([ file_b.id ])
     end
 
     it "빈 배열은 전체 해제" do
-      create(:meeting_domain_file, meeting: meeting, domain_file: file_a)
+      DomainFileLink.create!(owner: meeting, domain_file: file_a)
       login_as(owner)
       put "/api/v1/meetings/#{meeting.id}/domain_files", params: { domain_file_ids: [] }
       expect(response).to have_http_status(:ok)
@@ -47,6 +90,19 @@ RSpec.describe "Api::V1 meeting domain files", type: :request do
       put "/api/v1/meetings/#{meeting.id}/domain_files", params: { domain_file_ids: [ file_a.id, 999999 ] }
       expect(response).to have_http_status(:unprocessable_entity)
       expect(meeting.reload.domain_files).to be_empty
+    end
+
+    it "회의 자체 링크만 교체하고 폴더/프로젝트 상속분은 영향받지 않는다" do
+      project_file = create(:domain_file, name: "프로젝트사전", creator: owner)
+      DomainFileLink.create!(owner: project, domain_file: project_file)
+
+      login_as(owner)
+      put "/api/v1/meetings/#{meeting.id}/domain_files", params: { domain_file_ids: [ file_a.id ] }
+      expect(response).to have_http_status(:ok)
+
+      body = response.parsed_body
+      expect(body["selected"].map { |f| f["id"] }).to eq([ file_a.id ])
+      expect(body["inherited"].map { |f| f["id"] }).to eq([ project_file.id ])
     end
 
     it "잠긴 회의는 403(reject_if_locked!)" do

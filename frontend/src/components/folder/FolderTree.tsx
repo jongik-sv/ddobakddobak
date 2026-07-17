@@ -13,6 +13,7 @@ import {
   Globe,
   Lock,
   SpellCheck,
+  FileText,
   Star,
   PackageOpen,
 } from 'lucide-react'
@@ -24,6 +25,7 @@ import type { FolderNode } from '../../api/folders'
 import type { SelectedFolder } from '../../stores/folderStore'
 import CreateFolderDialog from './CreateFolderDialog'
 import GlossaryDialog from './GlossaryDialog'
+import DomainFilesDialog from './DomainFilesDialog'
 import ExportFolderDialog from './ExportFolderDialog'
 import MoveToProjectModal from '../project/MoveToProjectModal'
 import { useProjectStore } from '../../stores/projectStore'
@@ -54,6 +56,7 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
   const [showRenameDialog, setShowRenameDialog] = useState(false)
   const [showSubfolderDialog, setShowSubfolderDialog] = useState(false)
   const [showGlossaryDialog, setShowGlossaryDialog] = useState(false)
+  const [showDomainFilesDialog, setShowDomainFilesDialog] = useState(false)
   const [showMoveProject, setShowMoveProject] = useState(false)
   const [showExportDialog, setShowExportDialog] = useState(false)
   const currentProjectId = useProjectStore((s) => s.currentProjectId)
@@ -220,6 +223,16 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
                 onClick={(e) => {
                   e.stopPropagation()
                   setShowMenu(false)
+                  setShowDomainFilesDialog(true)
+                }}
+                className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm hover:bg-muted transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5" /> 도메인 파일
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowMenu(false)
                   setShowMoveProject(true)
                 }}
                 className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm hover:bg-muted transition-colors"
@@ -272,6 +285,14 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
       )}
       {showGlossaryDialog && (
         <GlossaryDialog folderId={folder.id} folderName={folder.name} onClose={() => setShowGlossaryDialog(false)} />
+      )}
+      {showDomainFilesDialog && (
+        <DomainFilesDialog
+          folderId={folder.id}
+          folderName={folder.name}
+          projectId={currentProjectId}
+          onClose={() => setShowDomainFilesDialog(false)}
+        />
       )}
       {showExportDialog && (
         <ExportFolderDialog folderId={folder.id} folderName={folder.name} onClose={() => setShowExportDialog(false)} />

@@ -4,8 +4,8 @@ module Api
       include ProjectScoped
 
       before_action :authenticate_user!
-      before_action :set_folder, only: %i[update destroy move_to_project]
-      before_action :authorize_folder_edit!, only: %i[update destroy move_to_project]
+      before_action :set_folder, only: %i[update destroy move_to_project domain_files update_domain_files]
+      before_action :authorize_folder_edit!, only: %i[update destroy move_to_project domain_files update_domain_files]
 
       def index
         project = require_project!(params[:project_id])
@@ -91,6 +91,30 @@ module Api
         render json: { moved_folders: ids.size, moved_meetings: moved_meetings }
       end
 
+      # 폴더에 링크된(적용된) 도메인 파일(용어집) 목록.
+      def domain_files
+        render json: { domain_files: folder_domain_files_json(@folder) }
+      end
+
+      # 폴더의 도메인 파일 링크 세트를 통째로 교체(빈 배열=전체 해제).
+      def update_domain_files
+        ids = Array(params[:domain_file_ids]).reject(&:blank?).map(&:to_i).uniq
+
+        if ids.any?
+          accessible_ids = DomainFile.accessible_by(current_user).where(id: ids).pluck(:id)
+          if accessible_ids.sort != ids.sort
+            return render json: { error: "선택할 수 없는 파일이 포함되어 있습니다" }, status: :unprocessable_entity
+          end
+        end
+
+        ActiveRecord::Base.transaction do
+          @folder.domain_file_links.destroy_all
+          ids.each { |id| @folder.domain_file_links.create!(domain_file_id: id) }
+        end
+
+        render json: { domain_files: folder_domain_files_json(@folder.reload) }
+      end
+
       private
 
       def set_folder
@@ -104,6 +128,10 @@ module Api
 
       def next_position(parent_id)
         Folder.where(parent_id: parent_id).maximum(:position).to_i + 1
+      end
+
+      def folder_domain_files_json(folder)
+        folder.domain_files.order("domain_file_links.id").map { |f| f.summary_json(current_user) }
       end
 
       def folder_json(folder, meeting_count = nil)

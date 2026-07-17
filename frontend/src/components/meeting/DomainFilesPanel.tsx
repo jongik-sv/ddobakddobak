@@ -1,31 +1,43 @@
 import { useState } from 'react'
-import { useDomainFiles } from '../../hooks/useDomainFiles'
-import type { DomainFile, ExtractedTerm } from '../../api/domainFiles'
+import { useDomainFiles, type DomainFileOwnerType } from '../../hooks/useDomainFiles'
+import type { DomainFile, DomainFileSummary, ExtractedTerm } from '../../api/domainFiles'
 import { errorToMessage } from '../../lib/errors'
+import { confirmDialog } from '../../lib/confirmDialog'
 import { Dialog } from '../ui/Dialog'
 import DomainFileViewerModal from './DomainFileViewerModal'
 import ExtractTermsModal from './ExtractTermsModal'
 
 interface DomainFilesPanelProps {
-  meetingId: number
+  /** 이 패널이 어느 레벨(회의/폴더/프로젝트)의 도메인 파일 링크를 다루는지 */
+  ownerType: DomainFileOwnerType
+  ownerId: number
+  /** 신규 작성·업로드 시 기본 project_id 및 "선택 가능한 파일" 목록 스코프 */
   projectId: number | null
   canEdit: boolean
+  /**
+   * true(기본)면 회의 하단 접이식(details) 패널로 렌더.
+   * false면 다이얼로그 등 다른 컨테이너 안에 바로 삽입할 콘텐츠만 렌더(제목 없음).
+   */
+  collapsible?: boolean
 }
 
 /**
- * 도메인 파일(용어집) 패널 — 회의에 연결된 도메인 파일 선택/조회 + 업로드·작성 + 요약에서 용어 추출.
- * 기존 오타 사전(GlossaryPanel)과 완전 별개 기능. GlossaryPanel과 동일한 접이식 패널 패턴.
+ * 도메인 파일(용어집) 패널 — 프로젝트/폴더/회의 3레벨 공용. 링크된 파일 선택/조회 + 업로드·작성·삭제.
+ * 회의(meeting) 변형만 상속분(inherited: 폴더·프로젝트에서 내려온 파일, 읽기전용)과
+ * "요약에서 용어 추출" 기능을 갖는다. 기존 오타 사전(GlossaryPanel)과 완전 별개 기능.
  */
-export default function DomainFilesPanel({ meetingId, projectId, canEdit }: DomainFilesPanelProps) {
-  const { selected, available, status, reload, select, createFile, uploadFile, extract } =
-    useDomainFiles(meetingId, projectId)
+export default function DomainFilesPanel({ ownerType, ownerId, projectId, canEdit, collapsible = true }: DomainFilesPanelProps) {
+  const { selected, inherited, available, status, reload, select, createFile, uploadFile, removeFile, extract } =
+    useDomainFiles(ownerType, ownerId, projectId)
 
-  const [viewerFileId, setViewerFileId] = useState<number | null>(null)
+  const [viewerFile, setViewerFile] = useState<{ id: number; editable: boolean; readOnly: boolean } | null>(null)
   const [selectOpen, setSelectOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [extractTerms, setExtractTerms] = useState<ExtractedTerm[] | null>(null)
   const [extracting, setExtracting] = useState(false)
   const [error, setError] = useState('')
+
+  const isMeeting = ownerType === 'meeting'
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -56,58 +68,122 @@ export default function DomainFilesPanel({ meetingId, projectId, canEdit }: Doma
     }
   }
 
-  return (
-    <div className="border-t bg-card px-6 py-3 shrink-0">
-      <details className="group">
-        <summary className="cursor-pointer text-sm font-semibold text-muted-foreground select-none flex items-center gap-2">
-          <span className="transition-transform group-open:rotate-90">&rsaquo;</span>
-          도메인 파일
-          {status && <span className="text-xs font-normal text-blue-500 ml-2">{status}</span>}
-        </summary>
+  const handleDeleteChip = async (f: DomainFileSummary) => {
+    if (
+      !(await confirmDialog(
+        `'${f.name}' 파일을 삭제합니다. 프로젝트·폴더·회의 등 모든 곳에 연결된 링크도 함께 사라집니다. 계속할까요?`,
+        { title: '도메인 파일 삭제', kind: 'warning' },
+      ))
+    ) {
+      return
+    }
+    setError('')
+    try {
+      await removeFile(f.id)
+    } catch (err) {
+      setError(await errorToMessage(err, '삭제 실패'))
+    }
+  }
 
-        <div className="mt-2 flex flex-col gap-2 max-w-2xl">
-          <div className="flex flex-wrap gap-1.5">
-            {selected.length === 0 && (
-              <span className="text-xs text-muted-foreground">선택된 도메인 파일이 없습니다</span>
-            )}
-            {selected.map((f) => (
+  const content = (
+    <div className="flex flex-col gap-2 max-w-2xl">
+      <div className="flex flex-wrap gap-1.5">
+        {selected.length === 0 && inherited.length === 0 && (
+          <span className="text-xs text-muted-foreground">선택된 도메인 파일이 없습니다</span>
+        )}
+        {selected.map((f) => (
+          <span
+            key={f.id}
+            className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 hover:border-blue-400 transition-colors"
+          >
+            <button
+              type="button"
+              onClick={() => setViewerFile({ id: f.id, editable: f.editable, readOnly: false })}
+              className="truncate max-w-[16rem]"
+            >
+              {f.name}
+            </button>
+            {canEdit && f.editable && (
               <button
-                key={f.id}
                 type="button"
-                onClick={() => setViewerFileId(f.id)}
-                className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 hover:border-blue-400 transition-colors"
+                onClick={() => handleDeleteChip(f)}
+                className="shrink-0 w-4 h-4 leading-none text-blue-400 hover:text-red-600"
+                title="삭제"
+                aria-label={`${f.name} 삭제`}
               >
-                {f.name}
+                &times;
+              </button>
+            )}
+          </span>
+        ))}
+      </div>
+
+      {isMeeting && inherited.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">상속된 도메인 파일 (읽기전용)</span>
+          <div className="flex flex-wrap gap-1.5">
+            {inherited.map((f) => (
+              <button
+                key={`${f.source}-${f.id}`}
+                type="button"
+                onClick={() => setViewerFile({ id: f.id, editable: false, readOnly: true })}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border"
+              >
+                <span className="truncate max-w-[12rem]">{f.name}</span>
+                <span className="text-[10px] opacity-80">
+                  {f.source === 'project' ? `프로젝트: ${f.owner_name}` : `폴더: ${f.owner_name}`}
+                </span>
               </button>
             ))}
           </div>
-
-          {canEdit && (
-            <div className="flex flex-wrap items-center gap-3">
-              <button type="button" onClick={() => setSelectOpen(true)} className="text-xs text-blue-500 hover:text-blue-700">
-                파일 선택
-              </button>
-              <label className="text-xs text-blue-500 hover:text-blue-700 cursor-pointer">
-                업로드 (.md/.txt)
-                <input type="file" accept=".md,.txt" className="hidden" onChange={handleUpload} />
-              </label>
-              <button type="button" onClick={() => setCreateOpen(true)} className="text-xs text-blue-500 hover:text-blue-700">
-                새 파일 작성
-              </button>
-              <button
-                type="button"
-                onClick={handleExtract}
-                disabled={extracting}
-                className="text-xs text-blue-500 hover:text-blue-700 disabled:opacity-50"
-              >
-                {extracting ? '추출 중...' : '요약에서 용어 추출'}
-              </button>
-            </div>
-          )}
-
-          {error && <div className="text-[11px] text-red-500">{error}</div>}
         </div>
-      </details>
+      )}
+
+      {canEdit && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" onClick={() => setSelectOpen(true)} className="text-xs text-blue-500 hover:text-blue-700">
+            파일 선택
+          </button>
+          <label className="text-xs text-blue-500 hover:text-blue-700 cursor-pointer">
+            업로드 (.md/.txt)
+            <input type="file" accept=".md,.txt" className="hidden" onChange={handleUpload} />
+          </label>
+          <button type="button" onClick={() => setCreateOpen(true)} className="text-xs text-blue-500 hover:text-blue-700">
+            새 파일 작성
+          </button>
+          {isMeeting && (
+            <button
+              type="button"
+              onClick={handleExtract}
+              disabled={extracting}
+              className="text-xs text-blue-500 hover:text-blue-700 disabled:opacity-50"
+            >
+              {extracting ? '추출 중...' : '요약에서 용어 추출'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {error && <div className="text-[11px] text-red-500">{error}</div>}
+    </div>
+  )
+
+  return (
+    <>
+      {collapsible ? (
+        <div className="border-t bg-card px-6 py-3 shrink-0">
+          <details className="group">
+            <summary className="cursor-pointer text-sm font-semibold text-muted-foreground select-none flex items-center gap-2">
+              <span className="transition-transform group-open:rotate-90">&rsaquo;</span>
+              도메인 파일
+              {status && <span className="text-xs font-normal text-blue-500 ml-2">{status}</span>}
+            </summary>
+            <div className="mt-2">{content}</div>
+          </details>
+        </div>
+      ) : (
+        content
+      )}
 
       {selectOpen && (
         <SelectDomainFilesModal
@@ -133,19 +209,28 @@ export default function DomainFilesPanel({ meetingId, projectId, canEdit }: Doma
         />
       )}
 
-      {viewerFileId != null && (
+      {viewerFile != null && (
         <DomainFileViewerModal
-          fileId={viewerFileId}
-          meetingId={meetingId}
-          canEdit={canEdit}
-          onClose={() => setViewerFileId(null)}
+          fileId={viewerFile.id}
+          meetingId={isMeeting ? ownerId : undefined}
+          canEdit={viewerFile.readOnly ? false : canEdit}
+          editable={viewerFile.editable}
+          onClose={() => setViewerFile(null)}
           onSaved={() => reload()}
+          onDeleted={
+            viewerFile.readOnly
+              ? undefined
+              : () => {
+                  setViewerFile(null)
+                  reload()
+                }
+          }
         />
       )}
 
-      {extractTerms && (
+      {isMeeting && extractTerms && (
         <ExtractTermsModal
-          meetingId={meetingId}
+          meetingId={ownerId}
           terms={extractTerms}
           files={available}
           onClose={() => setExtractTerms(null)}
@@ -155,16 +240,16 @@ export default function DomainFilesPanel({ meetingId, projectId, canEdit }: Doma
           }}
         />
       )}
-    </div>
+    </>
   )
 }
 
-/** 회의에 연결할 도메인 파일 다중 선택 모달 — 전체 교체(PUT) 방식 */
+/** owner에 링크할 도메인 파일 다중 선택 모달 — 전체 교체(PUT) 방식 */
 function SelectDomainFilesModal({
   available, selected, onClose, onConfirm,
 }: {
   available: DomainFile[]
-  selected: { id: number; name: string; project_id: number | null }[]
+  selected: DomainFileSummary[]
   onClose: () => void
   onConfirm: (ids: number[]) => Promise<void>
 }) {
@@ -173,7 +258,7 @@ function SelectDomainFilesModal({
     ...available,
     ...selected
       .filter((s) => !available.some((a) => a.id === s.id))
-      .map((s) => ({ id: s.id, name: s.name, project_id: s.project_id, created_by_id: 0, content_chars: 0, updated_at: '' })),
+      .map((s) => ({ id: s.id, name: s.name, project_id: s.project_id, created_by_id: 0, content_chars: 0, updated_at: s.updated_at })),
   ]
   const [checked, setChecked] = useState<Set<number>>(new Set(selected.map((f) => f.id)))
   const [saving, setSaving] = useState(false)

@@ -70,6 +70,19 @@ RSpec.describe DomainFile do
     end
   end
 
+  describe "#summary_json" do
+    it "DomainFileSummary 계약 필드를 반환한다(editable은 user 기준)" do
+      f = create(:domain_file, name: "요약본", creator: creator)
+      other = create(:user)
+
+      expect(f.summary_json(creator)).to eq({
+        id: f.id, name: "요약본", project_id: nil, updated_at: f.updated_at, editable: true
+      })
+      expect(f.summary_json(other)[:editable]).to be false
+      expect(f.summary_json(nil)[:editable]).to be false
+    end
+  end
+
   describe "#editable_by?" do
     it "작성자 본인은 수정 가능" do
       f = create(:domain_file, creator: creator)

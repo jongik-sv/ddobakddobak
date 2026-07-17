@@ -18,8 +18,8 @@ class Meeting < ApplicationRecord
   has_many :meeting_contacts, dependent: :destroy
   has_many :meeting_bookmarks, dependent: :destroy
   has_many :chat_messages, dependent: :destroy
-  has_many :meeting_domain_files, dependent: :destroy
-  has_many :domain_files, through: :meeting_domain_files
+  has_many :domain_file_links, as: :owner, dependent: :destroy
+  has_many :domain_files, through: :domain_file_links
 
   # 회의록 압축율 5단계 (회의 화면·미리보기에서 회의별 지정)
   SUMMARY_VERBOSITY_LEVELS = %w[very_concise concise standard detailed very_detailed].freeze
@@ -319,6 +319,42 @@ class Meeting < ApplicationRecord
 
   def current_notes_markdown
     active_summary&.notes_markdown.to_s
+  end
+
+  # 회의 실효 도메인 파일 세트 = 회의 자체 링크 + 폴더 조상체인 링크 + 프로젝트 링크(합집합, 파일 id 중복제거).
+  # 우선순위(중복 시 구체 레벨 승, 배열 순서에도 반영): meeting > 가까운 folder > 먼 folder > project.
+  # DomainReferenceBuilder는 이 순서를 그대로 소비해 캡 초과 시 project → 먼 folder → 가까운 folder →
+  # meeting 순으로 잘라내(구체 레벨이 끝까지 살아남게) 처리한다.
+  # @return [Array<Hash>] [{ file:, source: "meeting"|"folder"|"project", owner: (Folder|Project, source가 meeting이면 nil) }]
+  def effective_domain_files
+    seen = {}
+    result = []
+
+    domain_files.order("domain_file_links.id").each do |file|
+      next if seen[file.id]
+      seen[file.id] = true
+      result << { file: file, source: "meeting", owner: nil }
+    end
+
+    if folder
+      ([ folder ] + folder.ancestor_records).each do |fld|
+        fld.domain_files.order("domain_file_links.id").each do |file|
+          next if seen[file.id]
+          seen[file.id] = true
+          result << { file: file, source: "folder", owner: fld }
+        end
+      end
+    end
+
+    if project
+      project.domain_files.order("domain_file_links.id").each do |file|
+        next if seen[file.id]
+        seen[file.id] = true
+        result << { file: file, source: "project", owner: project }
+      end
+    end
+
+    result
   end
 
   # 이전 회의 참고 시드: 이 회의에 요약이 아직 없고 previous_meeting 이 지정돼 있으면,
