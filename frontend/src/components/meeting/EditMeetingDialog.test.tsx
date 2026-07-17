@@ -9,6 +9,22 @@ vi.mock('../../api/tags', () => ({
   createTag: vi.fn(),
 }))
 
+vi.mock('../../api/domainFiles', () => ({
+  getMeetingDomainFiles: vi.fn(async () => ({ selected: [], inherited: [], excluded: [] })),
+  listDomainFiles: vi.fn(async () => ({ domain_files: [] })),
+  setMeetingDomainFiles: vi.fn(),
+  getFolderDomainFiles: vi.fn(async () => ({ domain_files: [], inherited: [] })),
+  setFolderDomainFiles: vi.fn(),
+  getProjectDomainFiles: vi.fn(async () => ({ domain_files: [] })),
+  setProjectDomainFiles: vi.fn(),
+  createDomainFile: vi.fn(),
+  uploadDomainFile: vi.fn(),
+  updateDomainFile: vi.fn(),
+  deleteDomainFile: vi.fn(),
+  mergeDomainTerms: vi.fn(),
+  extractDomainTerms: vi.fn(),
+}))
+
 const meetingTypeList = [
   { value: 'general', label: '일반' },
   { value: 'standup', label: '스탠드업' },
@@ -39,48 +55,58 @@ function makeMeeting(overrides: Partial<Meeting> = {}): Meeting {
   }
 }
 
-describe('EditMeetingDialog 참여 인원', () => {
+describe('EditMeetingDialog 참석자/참여 인원 필드 제거', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('참여 인원을 입력하면 onConfirm에 expected_participants로 전달한다', async () => {
-    const onConfirm = vi.fn()
+  it('참석자, 참여 인원 입력 필드를 더 이상 렌더링하지 않는다', () => {
     render(
       <EditMeetingDialog
         meeting={makeMeeting()}
         meetingTypeList={meetingTypeList}
-        onConfirm={onConfirm}
+        onConfirm={vi.fn()}
         onClose={vi.fn()}
       />,
     )
-
-    const input = screen.getByPlaceholderText('비우면 자동 감지')
-    await userEvent.clear(input)
-    await userEvent.type(input, '5')
-    await userEvent.click(screen.getByRole('button', { name: '저장' }))
-
-    await waitFor(() => expect(onConfirm).toHaveBeenCalled())
-    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ expected_participants: 5 }))
+    expect(screen.queryByText('참석자')).not.toBeInTheDocument()
+    expect(screen.queryByText('참여 인원')).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('비우면 자동 감지')).not.toBeInTheDocument()
   })
 
-  it('비우면 null로 전달한다', async () => {
+  it('저장 payload에 attendees/expected_participants를 포함하지 않는다', async () => {
     const onConfirm = vi.fn()
     render(
       <EditMeetingDialog
-        meeting={makeMeeting({ expected_participants: 3 })}
+        meeting={makeMeeting({ attendees: '홍길동', expected_participants: 3 })}
         meetingTypeList={meetingTypeList}
         onConfirm={onConfirm}
         onClose={vi.fn()}
       />,
     )
-
-    const input = screen.getByPlaceholderText('비우면 자동 감지')
-    await userEvent.clear(input)
     await userEvent.click(screen.getByRole('button', { name: '저장' }))
-
     await waitFor(() => expect(onConfirm).toHaveBeenCalled())
-    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ expected_participants: null }))
+    const arg = onConfirm.mock.calls[0][0]
+    expect(arg).not.toHaveProperty('attendees')
+    expect(arg).not.toHaveProperty('expected_participants')
+  })
+})
+
+describe('EditMeetingDialog 도메인 파일', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('도메인 파일 섹션을 렌더링한다', () => {
+    render(
+      <EditMeetingDialog
+        meeting={makeMeeting({ project_id: 7 })}
+        meetingTypeList={meetingTypeList}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('도메인 파일')).toBeInTheDocument()
   })
 })
 

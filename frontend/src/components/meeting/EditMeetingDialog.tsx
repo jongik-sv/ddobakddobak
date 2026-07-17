@@ -8,14 +8,13 @@ import { getTags, createTag } from '../../api/tags'
 import { ENGINE_LABELS } from '../../config'
 import { ScheduleFields } from './ScheduleFields'
 import { scheduleStateFromMeeting, scheduleToPayload, type ScheduleFormState } from '../../lib/schedulePayload'
+import DomainFilesPanel from './DomainFilesPanel'
 
 export interface EditMeetingData {
   title: string
   meeting_type: string
   tag_ids: number[]
   brief_summary: string | null
-  attendees: string | null
-  expected_participants: number | null
   shared: boolean
   previous_meeting_id: number | null
   /** 예약 시작(예약 회의만). pending 일 때 포함되며 null=예약 해제. */
@@ -42,10 +41,6 @@ export default function EditMeetingDialog({
 }: EditMeetingDialogProps) {
   const [title, setTitle] = useState(meeting.title)
   const [briefSummary, setBriefSummary] = useState(meeting.brief_summary ?? '')
-  const [attendees, setAttendees] = useState(meeting.attendees ?? '')
-  const [expectedParticipants, setExpectedParticipants] = useState(
-    meeting.expected_participants != null ? String(meeting.expected_participants) : ''
-  )
   const [meetingType, setMeetingType] = useState(meeting.meeting_type)
   const [shared, setShared] = useState(meeting.shared ?? true)
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>(meeting.tags?.map((t) => t.id) ?? [])
@@ -81,8 +76,6 @@ export default function EditMeetingDialog({
       meeting_type: meetingType,
       tag_ids: selectedTagIds,
       brief_summary: briefSummary.trim() || null,
-      attendees: attendees.trim() || null,
-      expected_participants: expectedParticipants.trim() ? Number(expectedParticipants) : null,
       shared,
       previous_meeting_id: previousMeetingId ? Number(previousMeetingId) : null,
       // pending 회의만 예약(풀 트리플=null로 해제 가능)을 함께 보낸다. 비pending은 키 미포함.
@@ -141,35 +134,6 @@ export default function EditMeetingDialog({
             />
           </div>
 
-          {/* 참석자 */}
-          <div>
-            <label className="block text-sm font-medium mb-1">참석자</label>
-            <textarea
-              value={attendees}
-              onChange={(e) => setAttendees(e.target.value)}
-              rows={2}
-              placeholder="쉼표 또는 줄바꿈으로 구분 (예: 홍길동, 김영희)"
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring resize-none"
-            />
-          </div>
-
-          {/* 참여 인원 (화자분리 힌트) */}
-          <div>
-            <label className="block text-sm font-medium mb-1">참여 인원</label>
-            <input
-              type="number"
-              min={1}
-              max={100}
-              value={expectedParticipants}
-              onChange={(e) => setExpectedParticipants(e.target.value)}
-              placeholder="비우면 자동 감지"
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              화자분리 시 이 인원수 ±2명 범위로 화자를 맞춥니다.
-            </p>
-          </div>
-
           {/* STT 모델 (읽기전용) — 배치 재전사에 사용된 엔진. 실시간 녹음만 한 회의는 없음 */}
           {meeting.stt_engine && (
             <div>
@@ -219,6 +183,18 @@ export default function EditMeetingDialog({
             <p className="mt-1 text-xs text-muted-foreground">
               지정하면 이전 회의록을 이어받아 그 뒤에 이번 회의 내용을 작성합니다 (같은 폴더 회의만).
             </p>
+          </div>
+
+          {/* 도메인 파일 — 이 회의 선택분 + 프로젝트/폴더 상속분(출처 뱃지, 제외 토글) */}
+          <div>
+            <label className="block text-sm font-medium mb-1">도메인 파일</label>
+            <DomainFilesPanel
+              ownerType="meeting"
+              ownerId={meeting.id}
+              projectId={meeting.project_id ?? null}
+              canEdit={!disabled}
+              collapsible={false}
+            />
           </div>
 
           {/* 예약 시작 (아직 시작하지 않은 회의만 수정 가능) */}
