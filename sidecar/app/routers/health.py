@@ -9,7 +9,7 @@ from app.config import settings
 from app.engines import AVAILABLE_STT_ENGINES
 from app.env_utils import _persist_env
 from app.schemas import HealthResponse, UpdateSttEngineRequest
-from app.stt.factory import create_stt_adapter
+from app.stt.factory import auto_select_engine, create_stt_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -39,19 +39,29 @@ async def health(request: Request) -> HealthResponse:
         model_loaded: STT 모델 로드 여부
     """
     adapter = getattr(request.app.state, "stt_adapter", None)
+    resolved_engine = (
+        auto_select_engine() if settings.STT_ENGINE == "auto" else settings.STT_ENGINE
+    )
     return HealthResponse(
         status="ok",
-        stt_engine=settings.STT_ENGINE,
+        stt_engine=resolved_engine,
         model_loaded=adapter.is_loaded if adapter is not None else False,
     )
 
 
 @router.get("/settings/stt-engine")
 async def get_stt_engine(request: Request) -> dict:
-    """현재 STT 엔진 설정과 사용 가능한 엔진 목록을 반환한다."""
+    """현재 STT 엔진 설정과 사용 가능한 엔진 목록을 반환한다.
+
+    settings.STT_ENGINE이 "auto"면 실제 플랫폼에서 선택될 구체 엔진명으로
+    해석해 반환한다 (프론트 라디오가 "auto" 값을 모르기 때문).
+    """
     adapter = getattr(request.app.state, "stt_adapter", None)
+    resolved_engine = (
+        auto_select_engine() if settings.STT_ENGINE == "auto" else settings.STT_ENGINE
+    )
     return {
-        "current": settings.STT_ENGINE,
+        "current": resolved_engine,
         "available": AVAILABLE_STT_ENGINES,
         "model_loaded": adapter.is_loaded if adapter is not None else False,
     }

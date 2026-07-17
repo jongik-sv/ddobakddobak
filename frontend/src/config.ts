@@ -182,18 +182,23 @@ export function getWsUrl(): string {
 }
 
 // ── STT 엔진 라벨 ─────────────────────────────
-export const ENGINE_LABELS: Record<string, string> = {
-  ...Object.fromEntries(
-    Object.entries(cfg.stt_engines).map(([k, v]) => [k, v.label]),
-  ),
-  // 배치(파일 재전사) MLX Whisper 엔진 라벨
+// 실시간 STT 셀렉터 + 회의 상세(EditMeetingDialog) 등에서 쓰는 라벨. config.yaml
+// 원문 그대로 사용하며 배치 전용 override를 섞지 않는다 (whisper_cpp가 실시간/배치
+// 양쪽 available 목록에 모두 등장하므로, 여기 override하면 실시간 라디오까지 새어나감).
+export const ENGINE_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(cfg.stt_engines).map(([k, v]) => [k, v.label]),
+)
+
+// 배치(파일 재전사) STT 셀렉터 전용 라벨. 실시간 라벨을 베이스로 배치 전용 엔진
+// 라벨과 whisper_cpp 등 배치용 문구 override를 추가한다 — 이 맵은 BatchSttModelCard
+// (SttSettingsPanel.tsx)에서만 사용하고 실시간 셀렉터에는 절대 쓰지 않을 것.
+export const BATCH_ENGINE_LABELS: Record<string, string> = {
+  ...ENGINE_LABELS,
   mlx_whisper_turbo_8bit: '8bit (빠름)',
   mlx_whisper_turbo_f16: '16bit (정확, 느림)',
   mlx_whisper_turbo_beam: 'Beam 16bit (환각 적음, 정확)',
   mlx_whisper_turbo_beam_8bit: 'Beam 8bit (환각 적음, 빠름)',
   whisper_cpp: 'gguf f16 (whisper.cpp, ggml turbo)',
-  // qwen3_asr_8bit 라벨은 config.yaml(실시간 STT 셀렉터와 공유)에서 옴 — 여기서 덮어쓰면
-  // 실시간 셀렉터까지 배치용 문구가 새어나가므로 override 금지.
 }
 
 export const ENGINE_LABELS_SHORT: Record<string, string> = Object.fromEntries(

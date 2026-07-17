@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { HTTPError } from 'ky'
 import { getSttSettings, updateSttEngine, getBatchSttEngine, updateBatchSttEngine } from '../../api/settings'
 import type { SttSettings, BatchSttSettings } from '../../api/settings'
-import { ENGINE_LABELS } from '../../config'
+import { ENGINE_LABELS, BATCH_ENGINE_LABELS } from '../../config'
 
 /** STT(음성 인식) 엔진 선택 카드. */
 export function SttSettingsPanel() {
@@ -118,7 +118,7 @@ function BatchSttModelCard() {
     try {
       const result = await updateBatchSttEngine(engine)
       setSettings(result)
-      setSuccess(`배치 STT 모델이 "${ENGINE_LABELS[engine] ?? engine}"으로 변경되었습니다.`)
+      setSuccess(`배치 STT 모델이 "${BATCH_ENGINE_LABELS[engine] ?? engine}"으로 변경되었습니다.`)
     } catch (err) {
       if (err instanceof HTTPError) {
         const body = await err.response.json().catch(() => ({})) as Record<string, string>
@@ -157,7 +157,7 @@ function BatchSttModelCard() {
                 className="accent-primary"
               />
               <div>
-                <p className="text-sm font-medium">{ENGINE_LABELS[engine] ?? engine}</p>
+                <p className="text-sm font-medium">{BATCH_ENGINE_LABELS[engine] ?? engine}</p>
               </div>
             </label>
           ))}
