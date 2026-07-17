@@ -14,8 +14,8 @@ vi.mock('../../api/glossary', () => ({
 }))
 
 const terms: ExtractedTerm[] = [
-  { term: 'APM', category: '약어', definition: '자동화 공정 모니터링' },
-  { term: '라인A', category: '', definition: '1공장 조립라인' },
+  { term: 'APM', category: '약어', definition: '자동화 공정 모니터링', mispronunciations: ['에이피엠'] },
+  { term: '라인A', category: '', definition: '1공장 조립라인', mispronunciations: [] },
 ]
 
 const files: DomainFile[] = [
@@ -49,7 +49,7 @@ describe('ExtractTermsModal', () => {
     await userEvent.click(screen.getByRole('button', { name: '저장' }))
 
     await waitFor(() => expect(api.mergeDomainTerms).toHaveBeenCalledWith(1, [
-      { term: 'APM', category: '시스템명', definition: '자동화 공정 모니터링' },
+      { term: 'APM', category: '시스템명', definition: '자동화 공정 모니터링', mispronunciations: ['에이피엠'] },
     ]))
     await waitFor(() => expect(onMerged).toHaveBeenCalled())
   })
@@ -65,7 +65,7 @@ describe('ExtractTermsModal', () => {
 
     await waitFor(() => expect(api.createDomainFile).toHaveBeenCalledWith({
       name: '신규 용어집',
-      content: '- **APM** [약어]: 자동화 공정 모니터링\n- **라인A**: 1공장 조립라인',
+      content: '- **APM** [약어] (오인식: 에이피엠): 자동화 공정 모니터링\n- **라인A**: 1공장 조립라인',
     }))
     await waitFor(() => expect(onMerged).toHaveBeenCalled())
   })
@@ -76,9 +76,42 @@ describe('ExtractTermsModal', () => {
 
     const addButtons = screen.getAllByRole('button', { name: '교정 추가' })
     await userEvent.click(addButtons[0])
-    await userEvent.type(screen.getByPlaceholderText('잘못 인식되는 표기'), 'ㅔㅣㅔㅁ')
+    const input = screen.getByPlaceholderText('잘못 인식되는 표기')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'ㅔㅣㅔㅁ')
     await userEvent.click(screen.getByRole('button', { name: '등록' }))
 
     await waitFor(() => expect(glossaryApi.createMeetingGlossaryEntry).toHaveBeenCalledWith(7, { from_text: 'ㅔㅣㅔㅁ', to_text: 'APM' }))
+  })
+
+  it('행의 오인식 편집 컬럼을 수정하면 저장 시 배열로 변환되어 전달된다', async () => {
+    const api = await import('../../api/domainFiles')
+    const onMerged = vi.fn()
+    render(<ExtractTermsModal meetingId={1} terms={terms} files={files} onClose={vi.fn()} onMerged={onMerged} />)
+
+    const misInputs = screen.getAllByPlaceholderText('오인식 변형(쉼표로 구분, 예: 씨지엘, 시지엘)')
+    expect((misInputs[0] as HTMLInputElement).value).toBe('에이피엠')
+
+    // 두 번째 행(라인A) 체크 해제해 첫 행만 병합 대상으로 남긴다
+    const checkboxes = screen.getAllByRole('checkbox')
+    await userEvent.click(checkboxes[1])
+
+    await userEvent.type(misInputs[0], ', 에이피엠2')
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => expect(api.mergeDomainTerms).toHaveBeenCalledWith(1, [
+      { term: 'APM', category: '약어', definition: '자동화 공정 모니터링', mispronunciations: ['에이피엠', '에이피엠2'] },
+    ]))
+    await waitFor(() => expect(onMerged).toHaveBeenCalled())
+  })
+
+  it('행에 오인식 변형이 있으면 [교정 추가] 클릭 시 첫 변형으로 프리필한다', async () => {
+    render(<ExtractTermsModal meetingId={1} terms={terms} files={files} onClose={vi.fn()} onMerged={vi.fn()} />)
+
+    const addButtons = screen.getAllByRole('button', { name: '교정 추가' })
+    await userEvent.click(addButtons[0]) // APM 행 — mispronunciations: ['에이피엠']
+
+    const input = screen.getByPlaceholderText('잘못 인식되는 표기') as HTMLInputElement
+    expect(input.value).toBe('에이피엠')
   })
 })

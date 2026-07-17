@@ -23,17 +23,26 @@ interface ParsedLine {
   raw: string
   term?: string
   category?: string
+  mispronunciations?: string[]
   definition?: string
 }
 
-/** 용어 라인 규약: `- **용어** [분류]: 설명` (분류 없으면 `- **용어**: 설명`). 비매치 라인은 자유 텍스트로 보존. */
-const TERM_LINE_RE = /^-\s*\*\*(.+?)\*\*(?:\s*\[([^\]]*)\])?\s*:\s*(.*)$/
+/**
+ * 용어 라인 규약: `- **용어** [분류] (오인식: 변형1, 변형2): 설명`
+ * [분류]·(오인식: ...)는 각각 optional, 순서는 [분류] 다음 (오인식:). "오인식"|"발음" 키워드 허용, 변형 구분자 `,`.
+ * 오인식 없는 기존 라인도 그대로 매칭(하위호환). 비매치 라인은 자유 텍스트로 보존.
+ */
+const TERM_LINE_RE = /^-\s*\*\*(.+?)\*\*(?:\s*\[([^\]]*)\])?(?:\s*\((?:오인식|발음)\s*:\s*([^)]*)\))?\s*:\s*(.*)$/
 
 function parseLines(content: string): ParsedLine[] {
   return content.split('\n').map((raw) => {
     const m = raw.match(TERM_LINE_RE)
     if (!m) return { raw }
-    return { raw, term: m[1], category: m[2] ?? '', definition: m[3] }
+    const mispronunciations = (m[3] ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    return { raw, term: m[1], category: m[2] ?? '', mispronunciations, definition: m[4] }
   })
 }
 
@@ -53,7 +62,7 @@ export default function DomainFileViewerModal({
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
 
-  const [correctionTerm, setCorrectionTerm] = useState<string | null>(null)
+  const [correctionTarget, setCorrectionTarget] = useState<{ term: string; mispronunciations: string[] } | null>(null)
 
   // 편집/삭제는 이 화면(회의 등) 편집 권한 + 파일 자체의 편집 권한(작성자/관리자) 모두 필요
   const canManage = canEdit && editable
@@ -165,11 +174,16 @@ export default function DomainFileViewerModal({
                     )}
                     <span className="text-muted-foreground">: </span>
                     <span>{line.definition}</span>
+                    {line.mispronunciations && line.mispronunciations.length > 0 && (
+                      <div className="text-[11px] text-muted-foreground">
+                        오인식: {line.mispronunciations.join(', ')}
+                      </div>
+                    )}
                   </div>
                   {canEdit && meetingId != null && (
                     <button
                       type="button"
-                      onClick={() => setCorrectionTerm(line.term!)}
+                      onClick={() => setCorrectionTarget({ term: line.term!, mispronunciations: line.mispronunciations ?? [] })}
                       className="shrink-0 text-xs text-blue-500 hover:text-blue-700"
                     >
                       교정 추가
@@ -230,11 +244,12 @@ export default function DomainFileViewerModal({
         </div>
       )}
 
-      {correctionTerm != null && meetingId != null && (
+      {correctionTarget != null && meetingId != null && (
         <AddTypoCorrectionDialog
           meetingId={meetingId}
-          term={correctionTerm}
-          onClose={() => setCorrectionTerm(null)}
+          term={correctionTarget.term}
+          mispronunciations={correctionTarget.mispronunciations}
+          onClose={() => setCorrectionTarget(null)}
         />
       )}
     </Dialog>

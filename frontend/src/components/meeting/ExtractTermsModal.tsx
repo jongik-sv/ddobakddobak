@@ -15,22 +15,34 @@ interface ExtractTermsModalProps {
 
 interface TermRow extends ExtractedTerm {
   checked: boolean
+  /** 오인식 변형 편집용 원문(쉼표 구분). 저장 시 parseMispronunciations로 분리 */
+  mispronunciationsText: string
 }
 
-/** 용어 라인 규약(§3): `- **용어** [분류]: 설명` (분류 없으면 `- **용어**: 설명`) */
-function formatTermLine(term: string, category: string, definition: string): string {
+/** 쉼표로 구분된 오인식 변형 입력값을 trim·빈 항목 제거해 배열로 변환 */
+function parseMispronunciations(text: string): string[] {
+  return text.split(',').map((s) => s.trim()).filter(Boolean)
+}
+
+/** 용어 라인 규약(§3, 하위호환 확장): `- **용어** [분류] (오인식: 변형1, 변형2): 설명` */
+function formatTermLine(term: string, category: string, definition: string, mispronunciations: string[]): string {
   const cat = category.trim()
-  return cat ? `- **${term}** [${cat}]: ${definition}` : `- **${term}**: ${definition}`
+  const mis = mispronunciations.map((s) => s.trim()).filter(Boolean)
+  const catPart = cat ? ` [${cat}]` : ''
+  const misPart = mis.length > 0 ? ` (오인식: ${mis.join(', ')})` : ''
+  return `- **${term}**${catPart}${misPart}: ${definition}`
 }
 
-/** 요약에서 추출된 도메인 용어 프리뷰 — 체크 선택 + 분류/설명 인라인 수정 후 신규 파일 생성 또는 기존 파일 병합 */
+/** 요약에서 추출된 도메인 용어 프리뷰 — 체크 선택 + 분류/설명/오인식 인라인 수정 후 신규 파일 생성 또는 기존 파일 병합 */
 export default function ExtractTermsModal({ meetingId, terms, files, onClose, onMerged }: ExtractTermsModalProps) {
-  const [rows, setRows] = useState<TermRow[]>(terms.map((t) => ({ ...t, checked: true })))
+  const [rows, setRows] = useState<TermRow[]>(
+    terms.map((t) => ({ ...t, checked: true, mispronunciationsText: (t.mispronunciations ?? []).join(', ') })),
+  )
   const [target, setTarget] = useState<'new' | number>(files.length > 0 ? files[0].id : 'new')
   const [newFileName, setNewFileName] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [correctionTerm, setCorrectionTerm] = useState<string | null>(null)
+  const [correctionTarget, setCorrectionTarget] = useState<{ term: string; mispronunciations: string[] } | null>(null)
 
   const updateRow = (i: number, patch: Partial<TermRow>) => {
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
@@ -48,12 +60,19 @@ export default function ExtractTermsModal({ meetingId, terms, files, onClose, on
           setError('새 파일 이름을 입력하세요')
           return
         }
-        const content = selectedRows.map((r) => formatTermLine(r.term, r.category, r.definition)).join('\n')
+        const content = selectedRows
+          .map((r) => formatTermLine(r.term, r.category, r.definition, parseMispronunciations(r.mispronunciationsText)))
+          .join('\n')
         await createDomainFile({ name: newFileName.trim(), content })
       } else {
         await mergeDomainTerms(
           target,
-          selectedRows.map((r) => ({ term: r.term, category: r.category, definition: r.definition })),
+          selectedRows.map((r) => ({
+            term: r.term,
+            category: r.category,
+            definition: r.definition,
+            mispronunciations: parseMispronunciations(r.mispronunciationsText),
+          })),
         )
       }
       onMerged()
@@ -95,10 +114,17 @@ export default function ExtractTermsModal({ meetingId, terms, files, onClose, on
                   className="flex-1 min-w-0 rounded-md border border-border px-2 py-1 text-xs"
                 />
               </div>
+              <input
+                type="text"
+                value={r.mispronunciationsText}
+                onChange={(e) => updateRow(i, { mispronunciationsText: e.target.value })}
+                placeholder="오인식 변형(쉼표로 구분, 예: 씨지엘, 시지엘)"
+                className="mt-1 w-full rounded-md border border-border px-2 py-1 text-xs"
+              />
             </div>
             <button
               type="button"
-              onClick={() => setCorrectionTerm(r.term)}
+              onClick={() => setCorrectionTarget({ term: r.term, mispronunciations: parseMispronunciations(r.mispronunciationsText) })}
               className="shrink-0 text-xs text-blue-500 hover:text-blue-700 mt-2"
             >
               교정 추가
@@ -161,11 +187,12 @@ export default function ExtractTermsModal({ meetingId, terms, files, onClose, on
         </button>
       </div>
 
-      {correctionTerm != null && (
+      {correctionTarget != null && (
         <AddTypoCorrectionDialog
           meetingId={meetingId}
-          term={correctionTerm}
-          onClose={() => setCorrectionTerm(null)}
+          term={correctionTarget.term}
+          mispronunciations={correctionTarget.mispronunciations}
+          onClose={() => setCorrectionTarget(null)}
         />
       )}
     </Dialog>

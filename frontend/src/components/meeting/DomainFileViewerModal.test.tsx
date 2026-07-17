@@ -6,6 +6,7 @@ import DomainFileViewerModal from './DomainFileViewerModal'
 const CONTENT = [
   '- **APM** [약어]: 자동 공정 모니터링',
   '- **라인A**: 1공장 조립라인',
+  '- **CGL** [설비] (오인식: 씨지엘, 시지엘): 연속용융도금라인',
   '자유 서술 라인은 그대로 보존',
 ].join('\n')
 
@@ -39,6 +40,29 @@ describe('DomainFileViewerModal', () => {
     expect(screen.getByText('자동 공정 모니터링')).toBeInTheDocument()
     expect(screen.getByText('라인A')).toBeInTheDocument()
     expect(screen.getByText('자유 서술 라인은 그대로 보존')).toBeInTheDocument()
+  })
+
+  it('(오인식: ...) 표기가 있는 용어 라인은 변형 목록을 함께 보여준다', async () => {
+    render(<DomainFileViewerModal fileId={1} meetingId={1} canEdit={true} onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    await waitFor(() => expect(screen.getByText('CGL')).toBeInTheDocument())
+    expect(screen.getByText('[설비]')).toBeInTheDocument()
+    expect(screen.getByText('연속용융도금라인')).toBeInTheDocument()
+    expect(screen.getByText('오인식: 씨지엘, 시지엘')).toBeInTheDocument()
+  })
+
+  it('오인식 변형이 있는 용어의 [교정 추가]는 첫 변형으로 입력값을 프리필하고 나머지를 선택 칩으로 보여준다', async () => {
+    render(<DomainFileViewerModal fileId={1} meetingId={5} canEdit={true} onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    await waitFor(() => expect(screen.getByText('CGL')).toBeInTheDocument())
+    const rows = screen.getAllByRole('button', { name: '교정 추가' })
+    await userEvent.click(rows[2]) // CGL 행
+
+    const input = screen.getByPlaceholderText('잘못 인식되는 표기') as HTMLInputElement
+    expect(input.value).toBe('씨지엘')
+    const chip = screen.getByRole('button', { name: '시지엘' })
+    await userEvent.click(chip)
+    expect(input.value).toBe('시지엘')
   })
 
   it('canEdit=false면 편집 버튼이 없다', async () => {

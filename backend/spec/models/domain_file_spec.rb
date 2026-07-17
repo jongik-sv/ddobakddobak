@@ -153,6 +153,35 @@ RSpec.describe DomainFile do
 
       expect(f.content).to eq("- **용어C**: 설명C")
     end
+
+    it "mispronunciations가 있으면 [분류] 뒤 (오인식: ...) 를 붙인다" do
+      f = create(:domain_file, creator: creator, content: "")
+      f.merge_terms!([{ "term" => "CGL", "category" => "설비명", "mispronunciations" => [ "씨지엘", "씨쥐엘" ], "definition" => "용융아연도금라인" }])
+
+      expect(f.content).to eq("- **CGL** [설비명] (오인식: 씨지엘, 씨쥐엘): 용융아연도금라인")
+    end
+
+    it "분류 없이 mispronunciations만 있으면 [분류] 없이 (오인식: ...) 만 붙인다" do
+      f = create(:domain_file, creator: creator, content: "")
+      f.merge_terms!([{ "term" => "CGL", "category" => "", "mispronunciations" => [ "씨지엘" ], "definition" => "설명" }])
+
+      expect(f.content).to eq("- **CGL** (오인식: 씨지엘): 설명")
+    end
+
+    it "mispronunciations가 빈 배열이면 (오인식: ...) 을 붙이지 않는다" do
+      f = create(:domain_file, creator: creator, content: "")
+      f.merge_terms!([{ "term" => "CGL", "category" => "설비명", "mispronunciations" => [], "definition" => "설명" }])
+
+      expect(f.content).to eq("- **CGL** [설비명]: 설명")
+    end
+
+    it "교체 시 기존 오인식을 유실하지 않고 신규 오인식과 합쳐 보존한다" do
+      f = create(:domain_file, creator: creator, content: "- **CGL** (오인식: 씨지엘): 옛설명")
+      result = f.merge_terms!([{ "term" => "CGL", "definition" => "새설명", "mispronunciations" => [ "시지엘" ] }])
+
+      expect(result).to eq({ added: 0, replaced: 1 })
+      expect(f.content).to eq("- **CGL** (오인식: 씨지엘, 시지엘): 새설명")
+    end
   end
 
   describe ".normalize_key" do
@@ -170,14 +199,46 @@ RSpec.describe DomainFile do
   end
 
   describe ".parse_terms" do
-    it "용어 라인만 파싱하고 자유 텍스트는 제외한다" do
+    it "용어 라인만 파싱하고 자유 텍스트는 제외한다(기존 형식, mispronunciations는 빈 배열)" do
       content = "# 제목\n- **용어A** [공정명]: 설명A\n자유 텍스트\n- **용어B**: 설명B"
       terms = DomainFile.parse_terms(content)
 
       expect(terms).to eq([
-        { term: "용어A", category: "공정명", definition: "설명A", line_no: 1 },
-        { term: "용어B", category: "", definition: "설명B", line_no: 3 }
+        { term: "용어A", category: "공정명", mispronunciations: [], definition: "설명A", line_no: 1 },
+        { term: "용어B", category: "", mispronunciations: [], definition: "설명B", line_no: 3 }
       ])
+    end
+
+    it "(오인식: ...) 이 있으면 쉼표로 분리해 mispronunciations 배열로 반환한다" do
+      content = "- **CGL** [설비명] (오인식: 씨지엘, 씨쥐엘): 용융아연도금라인"
+      terms = DomainFile.parse_terms(content)
+
+      expect(terms).to eq([
+        { term: "CGL", category: "설비명", mispronunciations: [ "씨지엘", "씨쥐엘" ], definition: "용융아연도금라인", line_no: 0 }
+      ])
+    end
+
+    it "(발음: ...) 키워드도 오인식과 동일하게 허용한다" do
+      content = "- **CGL** (발음: 씨지엘): 설명"
+      terms = DomainFile.parse_terms(content)
+
+      expect(terms.first[:mispronunciations]).to eq([ "씨지엘" ])
+    end
+
+    it "[분류] 없이 (오인식: ...) 만 있는 라인도 파싱한다" do
+      content = "- **CGL** (오인식: 씨지엘): 설명"
+      terms = DomainFile.parse_terms(content)
+
+      expect(terms).to eq([
+        { term: "CGL", category: "", mispronunciations: [ "씨지엘" ], definition: "설명", line_no: 0 }
+      ])
+    end
+
+    it "오인식 변형 사이 공백은 strip되고 빈 변형은 제외된다" do
+      content = "- **CGL** (오인식:  씨지엘 , , 씨쥐엘 ): 설명"
+      terms = DomainFile.parse_terms(content)
+
+      expect(terms.first[:mispronunciations]).to eq([ "씨지엘", "씨쥐엘" ])
     end
   end
 end

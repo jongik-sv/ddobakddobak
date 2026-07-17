@@ -19,6 +19,8 @@ export interface ExtractedTerm {
   term: string
   category: string
   definition: string
+  /** STT 오인식 가능 변형 표기 (예: ["씨지엘", "시지엘"]). 없으면 빈 배열 */
+  mispronunciations: string[]
 }
 
 /** 프로젝트/폴더/회의 도메인 파일 링크 조회에 쓰이는 요약 형태 (§계약서 API). */

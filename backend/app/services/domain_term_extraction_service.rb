@@ -6,9 +6,10 @@ class DomainTermExtractionService
     @meeting = meeting
   end
 
-  # @return [Array<Hash>, nil] [{"term"=>, "category"=>, "definition"=>}, ...] | nil(실패)
+  # @return [Array<Hash>, nil] [{"term"=>, "category"=>, "definition"=>, "mispronunciations"=>[...]}, ...] | nil(실패)
   #   - LLM 응답이 배열이 아니거나(nil 포함) 예외 발생 시 nil (raise 금지)
   #   - term blank 항목은 drop, category blank는 "일반"로 기본값, definition은 strip
+  #   - mispronunciations는 문자열 배열로 정규화(blank 항목 제거), 없으면 빈 배열
   def call
     notes_markdown = @meeting.active_summary&.notes_markdown
     return nil if notes_markdown.blank?
@@ -34,7 +35,10 @@ class DomainTermExtractionService
     category = (item["category"] || item[:category]).to_s.strip
     category = "일반" if category.blank?
     definition = (item["definition"] || item[:definition]).to_s.strip
+    mispronunciations = Array(item["mispronunciations"] || item[:mispronunciations])
+      .map { |v| v.to_s.strip }
+      .reject(&:blank?)
 
-    { "term" => term, "category" => category, "definition" => definition }
+    { "term" => term, "category" => category, "definition" => definition, "mispronunciations" => mispronunciations }
   end
 end
