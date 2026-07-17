@@ -31,12 +31,14 @@ macos = [
 # transformers·qwen-asr는 맥에선 mlx-lm 전이 의존으로 들어오지만 Linux엔 없어 명시 필요
 cuda = [
     "faster-whisper>=1.1.0",
+    # ctranslate2 4.5+는 cuDNN 9 + cuBLAS 12 사용 — torch가 끌어오는 nvidia-cudnn 9.x를 그대로 공유.
+    # (4.4까지는 cuDNN 8 필요 → cuDNN 9만 있는 venv에서 dlopen 실패 시 프로세스 통째 abort 사고.
+    #  2026-07-17 meeting 78. 사전검사 가드는 factory._ctranslate2_cudnn_ok 참조.)
+    # 실행 시 LD_LIBRARY_PATH에 .venv/.../nvidia/{cublas,cudnn}/lib 추가 필요 (systemd 유닛 참고)
+    "ctranslate2>=4.5",
     "transformers>=4.51",
     "qwen-asr>=0.0.6",
-    # ctranslate2(faster-whisper) 4.4는 cuDNN 8 + cuBLAS 12 사용 — torch cu13 스택(cuDNN 9)과 소네임이 달라 별도 필요.
-    # 실행 시 LD_LIBRARY_PATH에 .venv/.../nvidia/{cublas,cudnn}/lib 추가 필요 (systemd 유닛 참고)
     "nvidia-cublas-cu12; sys_platform == 'linux'",
-    "nvidia-cudnn-cu12>=8.9,<9; sys_platform == 'linux'",
     # speakrs-cli CUDA 모드(ort CUDA EP)가 요구하는 CUDA 12 런타임 — cudart·cufft·curand.
     # 파이썬 의존은 아니지만 venv nvidia/ 폴더를 LD_LIBRARY_PATH 공급원으로 재사용 (uv sync 재현성)
     "nvidia-cuda-runtime-cu12; sys_platform == 'linux'",
@@ -53,8 +55,8 @@ vllm = ["qwen-asr[vllm]>=0.0.6; sys_platform == 'linux'"]
 
 [tool.uv]
 # 플랫폼 배타 extras: macos(MLX, transformers>=5)와 cuda(qwen-asr→transformers==4.57 고정)는 동시 설치 불가
-# cuda↔vllm도 배타: cuda의 ctranslate2용 cudnn<9 pin과 vllm(torch 2.9.1→cudnn 9)이 충돌.
-# vLLM 프로필 venv는 faster-whisper를 포기하고 whisper_cpp + qwen-asr(vLLM/transformers)로 구성.
+# cuda↔vllm 배타는 과거 ctranslate2 4.4의 cudnn<9 pin에서 유래 — ctranslate2>=4.5(cuDNN 9)로
+# pin은 사라졌지만 프로필 단순화(설치 용량·검증 범위)를 위해 유지.
 conflicts = [
     [{ extra = "cuda" }, { extra = "macos" }],
     [{ extra = "vllm" }, { extra = "macos" }],

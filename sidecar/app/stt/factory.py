@@ -98,6 +98,48 @@ def _cuda_available() -> bool:
         return False
 
 
+def _ctranslate2_version() -> tuple[int, int]:
+    """설치된 ctranslate2의 (major, minor). 네이티브 lib 로드 없이 metadata로만 조회."""
+    from importlib.metadata import version
+    parts = version("ctranslate2").split(".")
+    return (int(parts[0]), int(parts[1]))
+
+
+def _required_cudnn_lib() -> str:
+    """ctranslate2 CUDA 추론이 dlopen하는 cuDNN so 이름 (4.4까지 cuDNN 8, 4.5부터 9)."""
+    try:
+        ver = _ctranslate2_version()
+    except Exception:
+        ver = (4, 4)
+    return "libcudnn_ops.so.9" if ver >= (4, 5) else "libcudnn_ops_infer.so.8"
+
+
+_CUDNN_OK_CACHE: bool | None = None
+
+
+def _ctranslate2_cudnn_ok() -> bool:
+    """faster_whisper(ctranslate2) CUDA 추론이 요구하는 cuDNN을 dlopen할 수 있는지.
+
+    ctranslate2는 CUDA 추론 시작 시 cuDNN dlopen에 실패하면 경고만 찍고 프로세스를
+    통째로 abort시킨다("Could not load library libcudnn_ops_infer.so.8" 후 uvicorn 사망).
+    같은 방식(dlopen)으로 미리 검사해 엔진 선택 단계에서 걸러낸다.
+    리눅스 외 플랫폼은 so 이름 체계가 달라 검사 생략(True).
+    """
+    global _CUDNN_OK_CACHE
+    if _CUDNN_OK_CACHE is not None:
+        return _CUDNN_OK_CACHE
+    if sys.platform != "linux":
+        _CUDNN_OK_CACHE = True
+        return _CUDNN_OK_CACHE
+    import ctypes
+    try:
+        ctypes.CDLL(_required_cudnn_lib())
+        _CUDNN_OK_CACHE = True
+    except OSError:
+        _CUDNN_OK_CACHE = False
+    return _CUDNN_OK_CACHE
+
+
 def available_file_engines() -> list[str]:
     """배치(파일 재전사) STT 셀렉터에 노출할 엔진 목록(플랫폼별).
 
@@ -112,7 +154,10 @@ def available_file_engines() -> list[str]:
         if importlib.util.find_spec("vllm") is not None:
             engines.append("qwen3_asr_vllm")
         engines.append("qwen3_asr_transformers")
-        engines.append("faster_whisper")
+        # cuDNN dlopen 불가 환경에서 faster_whisper를 노출하면 선택 즉시 프로세스가
+        # abort되므로 목록에서 숨긴다 (resolve_file_engine 폴백과 동일 기준).
+        if _ctranslate2_cudnn_ok():
+            engines.append("faster_whisper")
         return engines
     return ["whisper_cpp"]
 
@@ -149,6 +194,18 @@ def resolve_file_engine(engine: str | None = None) -> str:
             f"[STT] 배치 엔진 '{engine}'는 vllm 미설치로 사용 불가 → 'qwen3_asr_transformers'로 자동 대체"
         )
         return "qwen3_asr_transformers"
+
+    # faster_whisper 폴백: ctranslate2는 CUDA 추론 시작 시 cuDNN dlopen에 실패하면
+    # 프로세스를 통째로 abort시킨다(uvicorn 사망 — 2026-07-17 meeting 78 재현).
+    # 선택 단계에서 같은 dlopen 검사로 걸러 whisper_cpp로 대체한다.
+    # CUDA 미가용이면 CPU 추론이라 cuDNN 불필요 — 검사하지 않는다.
+    if engine == "faster_whisper" and _cuda_available() and not _ctranslate2_cudnn_ok():
+        logger.warning(
+            "[STT] 배치 엔진 'faster_whisper'는 cuDNN(%s) 로드 불가 — 사용 시 프로세스가 "
+            "중단되므로 'whisper_cpp'로 자동 대체",
+            _required_cudnn_lib(),
+        )
+        return "whisper_cpp"
 
     return engine
 

@@ -209,3 +209,69 @@ def test_resolve_file_engine_vllm_available_stays_vllm(monkeypatch):
     monkeypatch.setattr(importlib.util, "find_spec", lambda name: object() if name == "vllm" else None)
 
     assert factory.resolve_file_engine("qwen3_asr_vllm") == "qwen3_asr_vllm"
+
+
+# ── resolve_file_engine: faster_whisper cuDNN 폴백 (프로세스 abort 방지) ──────
+# ctranslate2는 CUDA 추론 시작 시 cuDNN을 dlopen하는데, 실패하면 경고만 찍고
+# 프로세스를 통째로 abort시킨다(uvicorn 사망 — 2026-07-17 meeting 78 재현:
+# "Could not load library libcudnn_ops_infer.so.8"). 엔진 선택 단계에서
+# dlopen 가능 여부를 미리 확인하고 불가면 whisper_cpp로 대체해야 한다.
+
+def test_resolve_file_engine_faster_whisper_cudnn_missing_falls_back_to_whisper_cpp(monkeypatch):
+    from app.stt import factory
+    monkeypatch.setattr(factory, "_cuda_available", lambda: True)
+    monkeypatch.setattr(factory, "_ctranslate2_cudnn_ok", lambda: False)
+
+    assert factory.resolve_file_engine("faster_whisper") == "whisper_cpp"
+
+
+def test_resolve_file_engine_faster_whisper_cudnn_ok_stays(monkeypatch):
+    from app.stt import factory
+    monkeypatch.setattr(factory, "_cuda_available", lambda: True)
+    monkeypatch.setattr(factory, "_ctranslate2_cudnn_ok", lambda: True)
+
+    assert factory.resolve_file_engine("faster_whisper") == "faster_whisper"
+
+
+def test_resolve_file_engine_faster_whisper_without_cuda_skips_cudnn_check(monkeypatch):
+    """CUDA 미가용이면 ctranslate2가 CPU로 돌아 cuDNN 불필요 — 폴백하지 않는다."""
+    from app.stt import factory
+    monkeypatch.setattr(factory, "_cuda_available", lambda: False)
+
+    def _fail():
+        raise AssertionError("CUDA 없으면 cuDNN 검사를 호출하면 안 된다")
+
+    monkeypatch.setattr(factory, "_ctranslate2_cudnn_ok", _fail)
+
+    assert factory.resolve_file_engine("faster_whisper") == "faster_whisper"
+
+
+def test_available_file_engines_hides_faster_whisper_when_cudnn_missing(monkeypatch):
+    from app.stt import factory
+    monkeypatch.setattr(factory, "_is_apple_silicon", lambda: False)
+    monkeypatch.setattr(factory, "_cuda_available", lambda: True)
+    monkeypatch.setattr(factory, "_ctranslate2_cudnn_ok", lambda: False)
+
+    engines = factory.available_file_engines()
+    assert "faster_whisper" not in engines
+    assert "whisper_cpp" in engines
+
+
+def test_available_file_engines_includes_faster_whisper_when_cudnn_ok(monkeypatch):
+    from app.stt import factory
+    monkeypatch.setattr(factory, "_is_apple_silicon", lambda: False)
+    monkeypatch.setattr(factory, "_cuda_available", lambda: True)
+    monkeypatch.setattr(factory, "_ctranslate2_cudnn_ok", lambda: True)
+
+    engines = factory.available_file_engines()
+    assert "faster_whisper" in engines
+
+
+def test_required_cudnn_lib_by_ctranslate2_version(monkeypatch):
+    """ct2 4.4까지는 cuDNN 8(libcudnn_ops_infer.so.8), 4.5부터 cuDNN 9(libcudnn_ops.so.9)."""
+    from app.stt import factory
+    monkeypatch.setattr(factory, "_ctranslate2_version", lambda: (4, 4))
+    assert factory._required_cudnn_lib() == "libcudnn_ops_infer.so.8"
+
+    monkeypatch.setattr(factory, "_ctranslate2_version", lambda: (4, 5))
+    assert factory._required_cudnn_lib() == "libcudnn_ops.so.9"
