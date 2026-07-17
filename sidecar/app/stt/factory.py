@@ -1,6 +1,7 @@
 """STT Factory: STT_ENGINE 환경 변수에 따라 Adapter 인스턴스를 생성한다."""
 from __future__ import annotations
 
+import importlib.util
 import logging
 import platform
 import sys
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 _KNOWN_ENGINES: frozenset[str] = frozenset(
     {"qwen3_asr_4bit", "qwen3_asr_6bit", "qwen3_asr_8bit",
-     "qwen3_asr_transformers",
+     "qwen3_asr_transformers", "qwen3_asr_vllm",
      "mlx_whisper_turbo_8bit", "mlx_whisper_turbo_f16",
      "mlx_whisper_turbo_beam", "mlx_whisper_turbo_beam_8bit",
      "whisper_cpp", "faster_whisper", "faster_whisper_cpu",
@@ -54,7 +55,8 @@ def auto_select_engine() -> str:
 
     - macOS Apple Silicon → qwen3_asr_8bit (mlx-audio, Metal GPU)
     - macOS Intel → whisper_cpp (CPU)
-    - NVIDIA GPU (CUDA) → qwen3_asr_transformers (CJK 정확도 우수)
+    - NVIDIA GPU (CUDA) → vllm 설치 시 qwen3_asr_vllm(고속 서빙), 아니면
+      qwen3_asr_transformers (CJK 정확도 우수)
     - 그 외 (Windows/Linux 내장 GPU) → whisper_cpp (CPU 폴백)
     """
     if sys.platform == "darwin" and platform.machine() == "arm64":
@@ -64,6 +66,9 @@ def auto_select_engine() -> str:
         if torch.cuda.is_available():
             # Windows/Linux + CUDA: Qwen3-ASR이 CJK(한중일) 언어에서
             # faster_whisper보다 정확도가 높으므로 우선 선택
+            # vllm이 설치돼 있으면(실제 import는 하지 않고 find_spec으로만 확인) 더 빠른 vLLM 서빙 백엔드를 우선한다.
+            if importlib.util.find_spec("vllm") is not None:
+                return "qwen3_asr_vllm"
             return "qwen3_asr_transformers"
     except ImportError:
         pass
@@ -97,13 +102,18 @@ def available_file_engines() -> list[str]:
     """배치(파일 재전사) STT 셀렉터에 노출할 엔진 목록(플랫폼별).
 
     - Apple Silicon → whisper_cpp(기본·안정) + mlx_whisper_turbo_beam_8bit(고속)
-    - NVIDIA CUDA  → whisper_cpp + qwen3_asr_transformers(GPU, CJK 정확) + faster_whisper(GPU)
+    - NVIDIA CUDA  → whisper_cpp + (vllm 가용 시 qwen3_asr_vllm) + qwen3_asr_transformers(GPU, CJK 정확) + faster_whisper(GPU)
     - 그 외        → whisper_cpp (MLX는 Apple 전용이므로 노출하지 않음)
     """
     if _is_apple_silicon():
         return ["whisper_cpp", "mlx_whisper_turbo_beam_8bit"]
     if _cuda_available():
-        return ["whisper_cpp", "qwen3_asr_transformers", "faster_whisper"]
+        engines = ["whisper_cpp"]
+        if importlib.util.find_spec("vllm") is not None:
+            engines.append("qwen3_asr_vllm")
+        engines.append("qwen3_asr_transformers")
+        engines.append("faster_whisper")
+        return engines
     return ["whisper_cpp"]
 
 
@@ -131,6 +141,14 @@ def resolve_file_engine(engine: str | None = None) -> str:
             f"(platform={sys.platform}, arch={platform.machine()})"
         )
         return "whisper_cpp"
+
+    # vllm 폴백: 영속 설정에 qwen3_asr_vllm이 남아있어도 vllm 패키지가 제거된
+    # 환경이면 transformers 어댑터로 대체 (ImportError로 배치 전사가 죽는 것 방지).
+    if engine == "qwen3_asr_vllm" and importlib.util.find_spec("vllm") is None:
+        logger.info(
+            f"[STT] 배치 엔진 '{engine}'는 vllm 미설치로 사용 불가 → 'qwen3_asr_transformers'로 자동 대체"
+        )
+        return "qwen3_asr_transformers"
 
     return engine
 
@@ -176,6 +194,10 @@ def create_stt_adapter(engine: str | None = None) -> SttAdapter:
     if engine == "qwen3_asr_transformers":
         from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter
         return Qwen3TransformersAdapter()
+
+    if engine == "qwen3_asr_vllm":
+        from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter
+        return Qwen3TransformersAdapter(backend="vllm")
 
     if engine == "whisper_cpp":
         from app.stt.whisper_adapter import WhisperAdapter

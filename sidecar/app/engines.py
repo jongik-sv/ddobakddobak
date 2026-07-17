@@ -37,6 +37,10 @@ def _detect_available_engines() -> list[str]:
         import torch  # noqa: F401
         import qwen_asr  # noqa: F401
         if torch.cuda.is_available():
+            # vLLM 서빙 백엔드(고속) — 설치돼 있으면 노출 (실제 import는 무거워서 find_spec만 확인)
+            # auto_select_engine/available_file_engines와 노출 순서를 맞추기 위해 transformers보다 앞에 배치
+            if _has_module("vllm"):
+                available.append("qwen3_asr_vllm")
             available.append("qwen3_asr_transformers")
             # bitsandbytes 양자화 지원 확인
             try:

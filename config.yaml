@@ -31,6 +31,9 @@ stt_engines:
   qwen3_asr_transformers:
     label: "Qwen3-ASR 1.7B (CUDA)"
     short: "Qwen3 1.7B CUDA"
+  qwen3_asr_vllm:
+    label: "Qwen3-ASR 1.7B (vLLM 고속)"
+    short: "Qwen3 vLLM"
   faster_whisper:
     label: "Faster Whisper (자동)"
     short: "Faster Whisper"

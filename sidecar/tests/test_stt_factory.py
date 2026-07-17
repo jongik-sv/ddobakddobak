@@ -1,6 +1,11 @@
 """Tests for STT Factory pattern."""
-import pytest
 import asyncio
+import importlib.util
+import platform
+import sys
+import types
+
+import pytest
 
 
 def test_create_adapter_with_unknown_engine_raises_value_error():
@@ -139,3 +144,68 @@ def test_qwen3_transformers_adapter_defaults_to_bf16_full_precision():
     assert isinstance(adapter, Qwen3TransformersAdapter)
     assert adapter._quantization is None
     assert adapter._model_id == "Qwen/Qwen3-ASR-1.7B"
+
+
+# ── qwen3_asr_vllm 라우팅 (vLLM 서빙 백엔드) ─────────────────────────
+# 어댑터 __init__은 vllm/torch를 import하지 않으므로 vLLM 미설치 환경에서도 인스턴스화 검증 가능.
+
+def test_qwen3_asr_vllm_engine_routes_to_transformers_adapter_with_vllm_backend():
+    from app.stt import factory
+    from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter
+    adapter = factory.create_stt_adapter("qwen3_asr_vllm")
+    assert isinstance(adapter, Qwen3TransformersAdapter)
+    assert adapter._backend == "vllm"
+    assert adapter._quantization is None
+    assert adapter._model_id == "Qwen/Qwen3-ASR-1.7B"
+
+
+# ── auto_select_engine: CUDA + vLLM 가용 여부에 따른 분기 ────────────────
+
+def test_auto_select_engine_apple_silicon_unchanged(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+
+    from app.stt import factory
+    assert factory.auto_select_engine() == "qwen3_asr_8bit"
+
+
+def test_auto_select_engine_cuda_with_vllm_available(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+
+    fake_torch = types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: True))
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object() if name == "vllm" else None)
+
+    from app.stt import factory
+    assert factory.auto_select_engine() == "qwen3_asr_vllm"
+
+
+def test_auto_select_engine_cuda_without_vllm(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+
+    fake_torch = types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: True))
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+
+    from app.stt import factory
+    assert factory.auto_select_engine() == "qwen3_asr_transformers"
+
+
+# ── resolve_file_engine: qwen3_asr_vllm 폴백 (vllm 미설치 환경 보호) ──────
+# 영속 설정에 qwen3_asr_vllm이 남아있는데 vllm 패키지가 제거된 환경이면
+# transformers 어댑터로 대체해야 배치 전사가 ImportError로 죽지 않는다.
+
+def test_resolve_file_engine_vllm_missing_falls_back_to_transformers(monkeypatch):
+    from app.stt import factory
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+
+    assert factory.resolve_file_engine("qwen3_asr_vllm") == "qwen3_asr_transformers"
+
+
+def test_resolve_file_engine_vllm_available_stays_vllm(monkeypatch):
+    from app.stt import factory
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object() if name == "vllm" else None)
+
+    assert factory.resolve_file_engine("qwen3_asr_vllm") == "qwen3_asr_vllm"

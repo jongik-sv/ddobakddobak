@@ -31,7 +31,14 @@ class Qwen3TransformersAdapter(SttAdapter):
     - PCM 16kHz mono Int16 입력 처리
     """
 
-    def __init__(self, model_id: str = _MODEL_ID, quantization: str | None = None, context: str = ""):
+    def __init__(
+        self,
+        model_id: str = _MODEL_ID,
+        quantization: str | None = None,
+        context: str = "",
+        backend: str = "transformers",
+        gpu_memory_utilization: float = 0.3,
+    ):
         super().__init__()
         self._model_id = model_id
         self._quantization = quantization  # None(=full BF16), "6bit"(nf4 4-bit), "8bit"
@@ -39,6 +46,16 @@ class Qwen3TransformersAdapter(SttAdapter):
         # 회의 참석자명·안건·도메인 용어를 넣으면 한국어 고유명사 인식이 크게 개선된다.
         # 기본 ""(비활성) — set_context()로 회의별 주입.
         self._context = context or ""
+        # 백엔드: "transformers"(기본, HF 순정 로드) | "vllm"(vLLM 서빙, 고속·대신 GPU 메모리 선점)
+        self._backend = backend
+        # vLLM 전용: 프로세스가 점유할 GPU 메모리 비율. diarization·임베딩 등과 GPU를 공유하므로
+        # vLLM 기본값(0.9)이 아닌 보수적인 0.3으로 낮춰 잡는다. transformers 백엔드에선 미사용.
+        self._gpu_memory_utilization = gpu_memory_utilization
+        if self._backend == "vllm" and self._quantization is not None:
+            # bitsandbytes 양자화는 transformers 전용 경로(BitsAndBytesConfig)에서만 지원된다.
+            raise ValueError(
+                "vllm 백엔드는 quantization을 지원하지 않습니다 (bitsandbytes는 transformers 전용)."
+            )
         self._model = None
 
     def set_context(self, context: str | None) -> None:
@@ -77,9 +94,19 @@ class Qwen3TransformersAdapter(SttAdapter):
 
             quant_label = f" ({self._quantization})" if self._quantization else ""
             logger.info(
-                "Qwen3-ASR%s: CUDA GPU 감지됨 — GPU 모드로 로드합니다. (device=%s)",
-                quant_label, torch.cuda.get_device_name(0),
+                "Qwen3-ASR%s [backend=%s]: CUDA GPU 감지됨 — GPU 모드로 로드합니다. (device=%s)",
+                quant_label, self._backend, torch.cuda.get_device_name(0),
             )
+
+            if self._backend == "vllm":
+                # vLLM은 프로세스 시작 시 GPU 메모리를 선점(reserve)한다. diarization·임베딩 등
+                # 다른 모델과 같은 GPU를 공유해야 하므로 vLLM 기본값(0.9)보다 훨씬 낮은 비율을 쓴다.
+                model = Qwen3ASRModel.LLM(
+                    self._model_id,
+                    gpu_memory_utilization=self._gpu_memory_utilization,
+                    max_new_tokens=448,
+                )
+                return model
 
             kwargs: dict = {
                 "device_map": "cuda:0",

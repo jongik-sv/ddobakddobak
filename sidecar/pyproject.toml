@@ -47,10 +47,19 @@ cuda = [
 cpu = [
     "pywhispercpp>=1.4.1",
 ]
+# vLLM 서빙 백엔드 (CUDA 전용, 대용량 — 설치는 별도 승인 후)
+# vllm은 linux 전용 wheel만 배포 — 마커 없으면 darwin에서 유니버설 해상도가 실패한다
+vllm = ["qwen-asr[vllm]>=0.0.6; sys_platform == 'linux'"]
 
 [tool.uv]
 # 플랫폼 배타 extras: macos(MLX, transformers>=5)와 cuda(qwen-asr→transformers==4.57 고정)는 동시 설치 불가
-conflicts = [[{ extra = "cuda" }, { extra = "macos" }]]
+# cuda↔vllm도 배타: cuda의 ctranslate2용 cudnn<9 pin과 vllm(torch 2.9.1→cudnn 9)이 충돌.
+# vLLM 프로필 venv는 faster-whisper를 포기하고 whisper_cpp + qwen-asr(vLLM/transformers)로 구성.
+conflicts = [
+    [{ extra = "cuda" }, { extra = "macos" }],
+    [{ extra = "vllm" }, { extra = "macos" }],
+    [{ extra = "cuda" }, { extra = "vllm" }],
+]
 
 [dependency-groups]
 dev = [

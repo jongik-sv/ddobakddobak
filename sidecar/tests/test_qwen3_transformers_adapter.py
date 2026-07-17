@@ -8,6 +8,8 @@ model을 mock 주입하므로 CUDA/qwen-asr 없이 동작한다.
 import asyncio
 from unittest.mock import MagicMock
 
+import pytest
+
 
 def _make_adapter_with_mock_model(text: str = "안녕하세요 회의를 시작하겠습니다"):
     from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter
@@ -59,3 +61,17 @@ def test_empty_context_forwarded_as_empty_string():
         adapter.transcribe(audio, languages=["ko"], mode="single")
     )
     assert adapter._model.transcribe.call_args.kwargs.get("context") == ""
+
+
+# ── backend 파라미터 (vLLM 서빙 백엔드 배선) ─────────────────────────────
+
+def test_backend_defaults_to_transformers():
+    from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter
+    assert Qwen3TransformersAdapter()._backend == "transformers"
+
+
+def test_backend_vllm_with_quantization_raises_value_error():
+    """bitsandbytes 양자화는 transformers 전용 경로 — vllm 백엔드와 동시 지정은 즉시(__init__) 오류."""
+    from app.stt.qwen3_transformers_adapter import Qwen3TransformersAdapter
+    with pytest.raises(ValueError):
+        Qwen3TransformersAdapter(backend="vllm", quantization="8bit")
