@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { AiChatPanel } from '../AiChatPanel'
 import { useChatStore } from '../../../stores/chatStore'
+import * as chatApi from '../../../api/chat'
 
 vi.mock('../../../api/chat')
 vi.mock('../../../channels/chat', () => ({ subscribeChat: () => () => {} }))
@@ -169,5 +170,106 @@ describe('AiChatPanel', () => {
     })
     render(<AiChatPanel scopeId={7} />)
     expect(screen.queryByRole('button', { name: '질문' })).not.toBeInTheDocument()
+  })
+})
+
+describe('AiChatPanel 웹소켓 폴백 폴링', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('pending 상태 동안 3초마다 재조회하고, 완료되면 폴링을 멈춘다', async () => {
+    const getScopedChatMessages = vi.mocked(chatApi.getScopedChatMessages)
+    getScopedChatMessages.mockResolvedValue([
+      { id: 2, role: 'assistant', content: '', status: 'pending', created_at: '' },
+    ])
+    useChatStore.setState({
+      messages: [{ id: 2, role: 'assistant', content: '', status: 'pending', created_at: '' }],
+    })
+    render(<AiChatPanel scopeId={7} />)
+
+    // 마운트 시 load()가 호출한 초기 조회를 먼저 흘려보낸다.
+    await vi.advanceTimersByTimeAsync(0)
+    getScopedChatMessages.mockClear()
+
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(getScopedChatMessages).toHaveBeenCalledWith('meeting', 7)
+    expect(getScopedChatMessages).toHaveBeenCalledTimes(1)
+
+    // 답변이 완료로 바뀌면 다음 tick부터는 재조회하지 않는다.
+    getScopedChatMessages.mockResolvedValue([
+      { id: 2, role: 'assistant', content: '완료', status: 'complete', created_at: '' },
+    ])
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(getScopedChatMessages).toHaveBeenCalledTimes(2)
+
+    getScopedChatMessages.mockClear()
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(getScopedChatMessages).not.toHaveBeenCalled()
+  })
+
+  it('streaming 상태에서도 폴링하며, error가 되면 폴링을 멈춘다', async () => {
+    const getScopedChatMessages = vi.mocked(chatApi.getScopedChatMessages)
+    getScopedChatMessages.mockResolvedValue([
+      { id: 3, role: 'assistant', content: '중간', status: 'streaming', created_at: '' },
+    ])
+    useChatStore.setState({
+      messages: [{ id: 3, role: 'assistant', content: '중간', status: 'streaming', created_at: '' }],
+    })
+    render(<AiChatPanel scopeId={7} />)
+    await vi.advanceTimersByTimeAsync(0)
+    getScopedChatMessages.mockClear()
+
+    getScopedChatMessages.mockResolvedValue([
+      { id: 3, role: 'assistant', content: '', status: 'error', error_message: '실패', created_at: '' },
+    ])
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(getScopedChatMessages).toHaveBeenCalledTimes(1)
+
+    getScopedChatMessages.mockClear()
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(getScopedChatMessages).not.toHaveBeenCalled()
+  })
+
+  it('5분 안전 타임아웃이 지나면 pending이 계속돼도 폴링을 멈춘다', async () => {
+    const getScopedChatMessages = vi.mocked(chatApi.getScopedChatMessages)
+    getScopedChatMessages.mockResolvedValue([
+      { id: 4, role: 'assistant', content: '', status: 'pending', created_at: '' },
+    ])
+    useChatStore.setState({
+      messages: [{ id: 4, role: 'assistant', content: '', status: 'pending', created_at: '' }],
+    })
+    render(<AiChatPanel scopeId={7} />)
+    await vi.advanceTimersByTimeAsync(0)
+    getScopedChatMessages.mockClear()
+
+    // 5분 경과 — 안전 타임아웃으로 인터벌이 정리되어야 한다.
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+    expect(getScopedChatMessages.mock.calls.length).toBeGreaterThan(0)
+
+    getScopedChatMessages.mockClear()
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(getScopedChatMessages).not.toHaveBeenCalled()
+  })
+
+  it('언마운트 시 폴링 인터벌을 정리한다', async () => {
+    const getScopedChatMessages = vi.mocked(chatApi.getScopedChatMessages)
+    getScopedChatMessages.mockResolvedValue([
+      { id: 5, role: 'assistant', content: '', status: 'pending', created_at: '' },
+    ])
+    useChatStore.setState({
+      messages: [{ id: 5, role: 'assistant', content: '', status: 'pending', created_at: '' }],
+    })
+    const { unmount } = render(<AiChatPanel scopeId={7} />)
+    await vi.advanceTimersByTimeAsync(0)
+    unmount()
+    getScopedChatMessages.mockClear()
+
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(getScopedChatMessages).not.toHaveBeenCalled()
   })
 })

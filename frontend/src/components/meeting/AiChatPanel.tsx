@@ -28,9 +28,14 @@ export function AiChatPanel({
   onSeekMeeting?: (meetingId: number, ms: number) => void
   emptyHint?: string
 }) {
-  const { load, send } = useChatStore()
+  const { load, send, refresh } = useChatStore()
   const messages = useChatStore((s) => s.messages) ?? []
   const hasPending = messages.some((m) => m.status === 'pending')
+  // 웹소켓 실시간 반영이 간헐적으로 실패하는 문제의 폴백: pending/streaming인 assistant
+  // 메시지가 남아있는 동안 주기적으로 재조회한다. error가 되면(또는 완료되면) 자동 중단.
+  const isPolling = messages.some(
+    (m) => m.role === 'assistant' && (m.status === 'pending' || m.status === 'streaming'),
+  )
   const [draft, setDraft] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -39,6 +44,21 @@ export function AiChatPanel({
     const unsub = subscribeChat(scopeType, scopeId)
     return unsub
   }, [scopeType, scopeId, load])
+
+  useEffect(() => {
+    if (!isPolling) return
+    const POLL_INTERVAL_MS = 3000
+    const MAX_POLL_DURATION_MS = 5 * 60 * 1000 // 안전 타임아웃 — pending이 영원히 남는 케이스 대비
+    const startedAt = Date.now()
+    const interval = setInterval(() => {
+      if (Date.now() - startedAt >= MAX_POLL_DURATION_MS) {
+        clearInterval(interval)
+        return
+      }
+      void refresh(scopeType, scopeId)
+    }, POLL_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [isPolling, scopeType, scopeId, refresh])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })

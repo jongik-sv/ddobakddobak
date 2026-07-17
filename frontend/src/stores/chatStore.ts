@@ -5,6 +5,7 @@ interface ChatState {
   messages: ChatMessage[]
   loading: boolean
   load: (scopeType: ChatScopeType, scopeId: number) => Promise<void>
+  refresh: (scopeType: ChatScopeType, scopeId: number) => Promise<void>
   send: (scopeType: ChatScopeType, scopeId: number, content: string) => Promise<void>
   applyUpdate: (msg: ChatMessage) => void
   reset: () => void
@@ -20,6 +21,11 @@ export const useChatStore = create<ChatState>((set) => ({
     } finally {
       set({ loading: false })
     }
+  },
+  // 폴링 폴백용 조용한 재조회 — 웹소켓 실시간 반영 실패 시 사용.
+  // load()와 달리 loading을 건드리지 않아 리스트 깜빡임을 유발하지 않는다.
+  refresh: async (scopeType, scopeId) => {
+    set({ messages: await getScopedChatMessages(scopeType, scopeId) })
   },
   send: async (scopeType, scopeId, content) => {
     const res = await sendScopedChatMessage(scopeType, scopeId, content)

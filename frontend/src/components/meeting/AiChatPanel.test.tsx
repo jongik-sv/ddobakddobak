@@ -10,11 +10,12 @@ const state = vi.hoisted(() => ({
   ] as any[],
   send: vi.fn(),
   load: vi.fn(),
+  refresh: vi.fn(),
 }))
 
 vi.mock('../../stores/chatStore', () => ({
   useChatStore: (sel?: any) => {
-    const s = { messages: state.messages, load: state.load, send: state.send }
+    const s = { messages: state.messages, load: state.load, send: state.send, refresh: state.refresh }
     return sel ? sel(s) : s
   },
 }))
@@ -23,6 +24,7 @@ vi.mock('../../channels/chat', () => ({ subscribeChat: () => () => {} }))
 beforeEach(() => {
   state.send.mockClear()
   state.load.mockClear()
+  state.refresh.mockClear()
   // reset to default (marker message) so existing onSeek test is unaffected
   state.messages = [
     { id: 1, role: 'assistant', status: 'complete', content: '확정. ⟦t:60000|s:화자 1⟧', suggestions: [] },

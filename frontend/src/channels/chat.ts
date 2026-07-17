@@ -18,6 +18,7 @@ export function subscribeChat(scopeType: ChatScopeType, scopeId: number): () => 
       : { channel: 'ChatChannel', scope_type: scopeType, scope_id: scopeId }
   const sub = consumer.subscriptions.create(channelParams, {
     received(data: ChatMessageUpdate) {
+      console.debug('[chat] update', data.id, data.status)
       if (data.type === 'chat_message_update') {
         useChatStore.getState().applyUpdate(data)
       }
