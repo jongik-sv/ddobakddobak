@@ -39,7 +39,6 @@ function renderGrid(meetings: Meeting[], onToggleImportant = vi.fn()) {
       meetings={meetings}
       searchQuery=""
       folders={[]}
-      selectedFolderId="all"
       isDesktop
       meetingTypeMap={{}}
       onFolderSelect={noop}

@@ -49,7 +49,7 @@ describe('SetupGate', () => {
     mockHasMode.mockReturnValue(true)
     // import.meta.env.DEV는 vitest에서 기본 true이므로
     // needsSetup을 true로 만들려면 DEV=false로 오버라이드해야 함
-    vi.stubEnv('DEV', '')
+    vi.stubEnv('DEV', '' as unknown as boolean)
   })
 
   describe('서버 모드 (mode=server)', () => {
@@ -114,7 +114,7 @@ describe('SetupGate', () => {
     it('DEV=true에서 children을 즉시 렌더링한다 (개발 모드)', () => {
       mockGetMode.mockReturnValue('local')
       mockIsTauri = true
-      vi.stubEnv('DEV', 'true') // truthy string → !DEV = false → needsSetup = false
+      vi.stubEnv('DEV', 'true' as unknown as boolean) // truthy string → !DEV = false → needsSetup = false
 
       render(
         <SetupGate>
@@ -213,7 +213,7 @@ describe('SetupGate', () => {
       // 첫 실행(모드 미설정)은 DEV 여부와 무관하게 모드 선택을 먼저 거친다
       mockHasMode.mockReturnValue(false)
       mockIsTauri = true
-      vi.stubEnv('DEV', 'true')
+      vi.stubEnv('DEV', 'true' as unknown as boolean)
 
       render(
         <SetupGate>

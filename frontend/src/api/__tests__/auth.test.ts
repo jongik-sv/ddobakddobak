@@ -56,7 +56,7 @@ describe('auth API', () => {
 
   describe('logout', () => {
     it('auth/logout 엔드포인트로 DELETE 요청을 보낸다', async () => {
-      mockDelete.mockReturnValue(Promise.resolve())
+      mockDelete.mockReturnValue({ json: mockJson })
       await logout('access-123')
       expect(mockDelete).toHaveBeenCalledWith('auth/logout', {
         prefixUrl: 'https://api.example.com',
@@ -79,7 +79,7 @@ describe('auth API', () => {
       const userData = { user: { id: 1, email: 'test@example.com', name: 'Test' } }
       mockJson.mockResolvedValue(userData)
       const result = await validateToken('access-123')
-      expect(result.user.id).toBe(1)
+      expect(result.user!.id).toBe(1)
     })
 
     it('만료된 토큰일 때 예외를 전파한다', async () => {

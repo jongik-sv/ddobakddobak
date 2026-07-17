@@ -32,14 +32,21 @@ export async function generatePdf(data: MeetingExportData): Promise<Blob> {
   await renderMermaidBlocks(container)
 
   try {
-    const blob: Blob = await html2pdf()
-      .set({
-        margin: [15, 15, 15, 15],
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css'] },
-      })
+    const instance = html2pdf()
+    // html2pdf.js 타입 선언(node_modules/html2pdf.js/type.d.ts)에는 pagebreak 옵션이 빠져있지만
+    // 런타임에는 지원되는 옵션이므로, set()의 실제 파라미터 타입을 pagebreak로 확장해 전달한다.
+    type Html2PdfSetOptions = Parameters<typeof instance.set>[0] & {
+      pagebreak?: { mode?: string | string[]; before?: string | string[]; after?: string | string[]; avoid?: string | string[] }
+    }
+    const options: Html2PdfSetOptions = {
+      margin: [15, 15, 15, 15],
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['avoid-all', 'css'] },
+    }
+    const blob: Blob = await instance
+      .set(options)
       .from(container)
       .outputPdf('blob')
     return blob

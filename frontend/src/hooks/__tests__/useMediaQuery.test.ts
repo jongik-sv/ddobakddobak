@@ -36,7 +36,7 @@ describe('useMediaQuery', () => {
       addListener: vi.fn(),
       removeListener: vi.fn(),
       dispatchEvent: vi.fn(),
-    }))
+    }) as unknown as MediaQueryList)
   })
 
   it('초기값이 matchMedia.matches를 반영함', () => {

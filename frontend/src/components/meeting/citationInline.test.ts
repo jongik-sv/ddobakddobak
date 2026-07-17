@@ -8,9 +8,9 @@ describe('citation inline round-trip', () => {
   it('splits a marker into a citation inline and back', () => {
     const withInline = markersToInline(block('확정 ⟦t:60000|s:화자 1⟧'))
     const para = withInline[0]
-    expect(para.content.some((c: any) => c.type === 'citation' && c.props.ms === 60000)).toBe(true)
+    expect((para.content as any[]).some((c: any) => c.type === 'citation' && c.props.ms === 60000)).toBe(true)
     const back = inlineToMarkers(withInline)
-    const joined = back[0].content.map((c: any) => c.type === 'text' ? c.text : `⟦t:${c.props.ms}/s:${c.props.speaker}⟧`).join('')
+    const joined = (back[0].content as any[]).map((c: any) => c.type === 'text' ? c.text : `⟦t:${c.props.ms}/s:${c.props.speaker}⟧`).join('')
     expect(joined).toBe('확정 ⟦t:60000/s:화자 1⟧')
   })
 
@@ -18,7 +18,7 @@ describe('citation inline round-trip', () => {
     const input = block('시작 ⟦t:1000|s:화자 1⟧ 중간 ⟦t:2000|s:화자 2⟧ 끝')
     const withInline = markersToInline(input)
     const para = withInline[0]
-    const citations = para.content.filter((c: any) => c.type === 'citation')
+    const citations = (para.content as any[]).filter((c: any) => c.type === 'citation')
     expect(citations).toHaveLength(2)
     expect(citations[0].props.ms).toBe(1000)
     expect(citations[0].props.speaker).toBe('화자 1')
@@ -26,7 +26,7 @@ describe('citation inline round-trip', () => {
     expect(citations[1].props.speaker).toBe('화자 2')
 
     const back = inlineToMarkers(withInline)
-    const joined = back[0].content.map((c: any) => c.type === 'text' ? c.text : `⟦t:${c.props.ms}/s:${c.props.speaker}⟧`).join('')
+    const joined = (back[0].content as any[]).map((c: any) => c.type === 'text' ? c.text : `⟦t:${c.props.ms}/s:${c.props.speaker}⟧`).join('')
     expect(joined).toBe('시작 ⟦t:1000/s:화자 1⟧ 중간 ⟦t:2000/s:화자 2⟧ 끝')
   })
 
@@ -57,7 +57,7 @@ describe('citation inline round-trip', () => {
       }],
     }]
     const result = markersToInline(blocks)
-    const childContent = result[0].children[0].content
+    const childContent = result[0].children[0].content as any[]
     expect(childContent.some((c: any) => c.type === 'citation' && c.props.ms === 500)).toBe(true)
   })
 })

@@ -39,7 +39,6 @@ function renderTable(meetings: Meeting[], onToggleImportant = vi.fn()) {
       meetings={meetings}
       searchQuery=""
       folders={[]}
-      selectedFolderId="all"
       isDesktop
       meetingTypeMap={{}}
       sortField="created_at"

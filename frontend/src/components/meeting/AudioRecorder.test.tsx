@@ -10,6 +10,8 @@ const mockStop = vi.fn()
 
 const mockPause = vi.fn()
 const mockResume = vi.fn()
+const mockDiscard = vi.fn()
+const mockFeedSystemAudio = vi.fn()
 
 function stubHook(isRecording: boolean, error: string | null = null) {
   vi.mocked(useAudioRecorderModule.useAudioRecorder).mockReturnValue({
@@ -18,8 +20,10 @@ function stubHook(isRecording: boolean, error: string | null = null) {
     error,
     start: mockStart,
     stop: mockStop,
+    discard: mockDiscard,
     pause: mockPause,
     resume: mockResume,
+    feedSystemAudio: mockFeedSystemAudio,
   })
 }
 

@@ -14,7 +14,11 @@ class FakeMediaRecorder {
   state = 'inactive'
   ondataavailable: ((e: { data: Blob }) => void) | null = null
   onstop: (() => void) | null = null
-  constructor(public stream: unknown, public opts?: unknown) {
+  stream: unknown
+  opts?: unknown
+  constructor(stream: unknown, opts?: unknown) {
+    this.stream = stream
+    this.opts = opts
     lastRecorder = this
   }
   static isTypeSupported() {

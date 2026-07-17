@@ -75,7 +75,7 @@ describe('apiClient', () => {
     })
 
     it('beforeRequest 가 X-Client-Id/Platform 헤더를 세팅한다', async () => {
-      const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }))
+      const fetchMock = vi.fn(async (..._args: unknown[]) => new Response('{}', { status: 200 }))
       vi.stubGlobal('fetch', fetchMock)
 
       const { apiClient } = await import('../client')

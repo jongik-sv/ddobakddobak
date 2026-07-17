@@ -10,7 +10,7 @@ const CONTENT = [
   '자유 서술 라인은 그대로 보존',
 ].join('\n')
 
-const confirmDialog = vi.fn(async () => true)
+const confirmDialog = vi.fn(async (..._args: unknown[]) => true)
 vi.mock('../../lib/confirmDialog', () => ({
   confirmDialog: (...args: unknown[]) => confirmDialog(...args),
 }))

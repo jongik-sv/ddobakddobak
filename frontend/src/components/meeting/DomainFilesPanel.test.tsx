@@ -14,7 +14,7 @@ const availableFiles = [
   { id: 9, name: '전사 공통 용어집', project_id: 5, created_by_id: 2, content_chars: 5, updated_at: '2026-01-01T00:00:00Z', editable: false },
 ]
 
-const confirmDialog = vi.fn(async () => true)
+const confirmDialog = vi.fn(async (..._args: unknown[]) => true)
 vi.mock('../../lib/confirmDialog', () => ({
   confirmDialog: (...args: unknown[]) => confirmDialog(...args),
 }))

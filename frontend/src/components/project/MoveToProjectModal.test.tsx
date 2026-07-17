@@ -4,7 +4,7 @@ import MoveToProjectModal from './MoveToProjectModal'
 import { useProjectStore } from '../../stores/projectStore'
 import { useAuthStore } from '../../stores/authStore'
 
-const moveMeetings = vi.fn(() => Promise.resolve({ moved: 1 }))
+const moveMeetings = vi.fn((..._args: unknown[]) => Promise.resolve({ moved: 1 }))
 vi.mock('../../api/meetings', () => ({ moveMeetingsToProject: (...a: unknown[]) => moveMeetings(...a) }))
 vi.mock('../../api/folders', () => ({ moveFolderToProject: vi.fn(() => Promise.resolve({ moved_folders: 1, moved_meetings: 0 })) }))
 
