@@ -98,6 +98,88 @@ RSpec.describe MeetingSummarizationJob do
     end
   end
 
+  # summary_interval_sec 게이트: cron(SummarizationJob)은 매분 돌지만, 실제 요약 주기는
+  # 마지막 realtime 요약 생성 시각(없으면 녹음 시작 시각) 기준으로 이 잡이 자체 판단한다.
+  describe "summary_interval_sec gate (realtime)" do
+    it "does nothing when summary_interval_sec has not elapsed since the last realtime summary" do
+      meeting.update_columns(summary_interval_sec: 180)
+      create(:summary, meeting: meeting, summary_type: "realtime",
+             notes_markdown: "## 기존", generated_at: 30.seconds.ago)
+
+      expect_any_instance_of(LlmService).not_to receive(:refine_notes)
+      expect_any_instance_of(LlmService).not_to receive(:append_notes)
+
+      described_class.perform_now(meeting.id, type: "realtime")
+
+      expect(meeting.summaries.find_by(summary_type: "realtime").reload.notes_markdown).to eq("## 기존")
+      expect(meeting.transcripts.where(applied_to_minutes: false).count).to eq(2)
+    end
+
+    it "runs normally once summary_interval_sec has elapsed since the last realtime summary" do
+      meeting.update_columns(summary_interval_sec: 180)
+      create(:summary, meeting: meeting, summary_type: "realtime",
+             notes_markdown: "## 기존", generated_at: 200.seconds.ago)
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "## 갱신됨", "ok" => true })
+
+      described_class.perform_now(meeting.id, type: "realtime")
+
+      expect(meeting.summaries.find_by(summary_type: "realtime").notes_markdown).to eq("## 갱신됨")
+    end
+
+    it "falls back to the recording start time when no realtime summary exists yet, and gates on it" do
+      meeting.update_columns(summary_interval_sec: 180, started_at: 30.seconds.ago)
+
+      expect_any_instance_of(LlmService).not_to receive(:refine_notes)
+
+      described_class.perform_now(meeting.id, type: "realtime")
+
+      expect(meeting.summaries.find_by(summary_type: "realtime")).to be_nil
+      expect(meeting.transcripts.where(applied_to_minutes: false).count).to eq(2)
+    end
+
+    it "runs once the interval has elapsed since the recording start time (no prior summary)" do
+      meeting.update_columns(summary_interval_sec: 180, started_at: 200.seconds.ago)
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "## 첫 요약", "ok" => true })
+
+      described_class.perform_now(meeting.id, type: "realtime")
+
+      expect(meeting.summaries.find_by(summary_type: "realtime").notes_markdown).to eq("## 첫 요약")
+    end
+
+    # 0(안 함)의 enqueue 차단은 SummarizationJob(cron)의 책임 — 이 잡이 직접 호출되는 경우까지
+    # 대비해 게이트 자체는 0을 방어적으로 통과시켜(막지 않아) 기존 의미를 그대로 유지한다.
+    it "does not gate when summary_interval_sec is 0 (off는 cron enqueue 단에서 걸러짐)" do
+      meeting.update_columns(summary_interval_sec: 0)
+      create(:summary, meeting: meeting, summary_type: "realtime",
+             notes_markdown: "## 기존", generated_at: 1.second.ago)
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "## 갱신됨", "ok" => true })
+
+      described_class.perform_now(meeting.id, type: "realtime")
+
+      expect(meeting.summaries.find_by(summary_type: "realtime").notes_markdown).to eq("## 갱신됨")
+    end
+  end
+
+  # final은 정본 확정 안전망 — realtime 게이트(요약 주기)와 무관하게 즉시 실행되어야 한다.
+  describe "summary_interval_sec gate does not apply to final" do
+    let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
+
+    it "runs final immediately even when the realtime interval has not elapsed" do
+      meeting.update_columns(summary_interval_sec: 180)
+      create(:summary, meeting: meeting, summary_type: "realtime",
+             notes_markdown: "## 기존", generated_at: 1.second.ago)
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "## 최종 회의록", "ok" => true })
+
+      described_class.perform_now(meeting.id, type: "final")
+
+      expect(meeting.summaries.find_by(summary_type: "final").notes_markdown).to eq("## 최종 회의록")
+    end
+  end
+
   describe "final path — ok:false 가드" do
     let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
 

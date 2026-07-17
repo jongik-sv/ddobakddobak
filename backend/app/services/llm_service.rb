@@ -85,7 +85,7 @@ class LlmService
 
   # 회의록 정제: 기존 노트 + 새 자막 → 통합 회의록.
   # chronological: 증분(흐름) 회의의 통짜 생성 시 주제별 재구성 대신 시간순 요약 지시.
-  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil, verbosity: "standard", verbosity_context: :final, chronological: false, seeded_merge: false, agenda_reference: nil)
+  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil, verbosity: "standard", verbosity_context: :final, chronological: false, seeded_merge: false, agenda_reference: nil, domain_reference: nil)
     transcript_text = TextFormatter.format_transcripts(transcripts)
     return { "notes_markdown" => current_notes, "ok" => true } if transcript_text.blank?
 
@@ -93,6 +93,7 @@ class LlmService
     parts << "회의 제목: #{meeting_title}" if meeting_title.present?
     parts << "참석자: #{attendees}" if attendees.present?
     parts << agenda_reference_block(agenda_reference) if agenda_reference.present?
+    parts << domain_reference_block(domain_reference) if domain_reference.present?
     if current_notes.present?
       parts << "현재 회의록:\n#{current_notes}"
     else
@@ -137,7 +138,7 @@ class LlmService
   # 증분(append-only) 모드: 새 자막만 시간대별 새 블록 하나로 요약. 기존 회의록 불변.
   # 시간 헤딩은 호출부(job)가 붙인다. 출력이 새 블록뿐이라 작음 → 틱 빠름.
   # 반환: { "block_markdown" =>, "ok" => }. ok:false 면 호출부가 transcript 미소비(무음 손실 차단).
-  def append_notes(current_notes, transcripts, meeting_title: "", attendees: nil, verbosity: "standard", agenda_reference: nil)
+  def append_notes(current_notes, transcripts, meeting_title: "", attendees: nil, verbosity: "standard", agenda_reference: nil, domain_reference: nil)
     transcript_text = TextFormatter.format_transcripts(transcripts)
     return { "block_markdown" => "", "ok" => true } if transcript_text.blank?
 
@@ -145,6 +146,7 @@ class LlmService
     parts << "회의 제목: #{meeting_title}" if meeting_title.present?
     parts << "참석자: #{attendees}" if attendees.present?
     parts << agenda_reference_block(agenda_reference) if agenda_reference.present?
+    parts << domain_reference_block(domain_reference) if domain_reference.present?
     parts << "기존 회의록(참고용 — 수정·반복 금지):\n#{current_notes}" if current_notes.present?
     parts << "새로운 자막:\n#{transcript_text}"
     user_content = parts.join("\n\n")
@@ -161,9 +163,10 @@ class LlmService
   end
 
   # 구조화된 요약 (JSON): key_points, decisions, discussion_details, action_items
-  def summarize(transcripts, type: "realtime", context: nil)
+  def summarize(transcripts, type: "realtime", context: nil, domain_reference: nil)
     transcript_text = TextFormatter.format_transcripts(transcripts)
     user_content = "요약 유형: #{type}\n\n회의 트랜스크립트:\n#{transcript_text}"
+    user_content += "\n\n" + domain_reference_block(domain_reference) if domain_reference.present?
     user_content += "\n\n이전 요약 컨텍스트:\n#{context}" if context.present?
 
     data = call_llm_json(SUMMARIZE_SYSTEM_PROMPT, user_content)
@@ -192,6 +195,17 @@ class LlmService
     { "action_items" => [] }
   end
 
+  # 회의 요약(notes_markdown)에서 도메인 특화 용어를 추출 — "요약에서 용어 추출" 동기 액션용.
+  # DomainTermExtractionService가 호출한다. 실패(비배열 응답·예외 포함)는 nil로 통일.
+  def extract_domain_terms(notes_markdown)
+    user_content = "회의록:\n#{notes_markdown}"
+    data = call_llm_json(LlmPrompts::DomainTermsPrompts::DOMAIN_TERMS_SYSTEM_PROMPT, user_content)
+    data.is_a?(Array) ? data : nil
+  rescue => e
+    Rails.logger.error "[LlmService] extract_domain_terms failed: #{e.message}"
+    nil
+  end
+
   # 사용자 피드백 반영
   def apply_feedback(current_notes, feedback, meeting_title: "", attendees: nil)
     parts = []
@@ -213,7 +227,7 @@ class LlmService
 
   # 외부 LLM용 프롬프트 조립 (LLM 호출 없음). 압축율 분량 지시 포함(통짜 생성 = final 캡).
   # 증분(restructure=false) 회의는 시간 흐름 요약 지시를 포함 — 주제별 재구성 금지.
-  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil, attendees: nil, verbosity: "standard", restructure: true, agenda_reference: nil)
+  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil, attendees: nil, verbosity: "standard", restructure: true, agenda_reference: nil, domain_reference: nil)
     system_prompt = if sections_prompt.present?
       REFINE_NOTES_SYSTEM_PROMPT.sub(DEFAULT_SECTION_STRUCTURE, sections_prompt)
     else
@@ -227,6 +241,7 @@ class LlmService
     parts << "회의 제목: #{meeting_title}" if meeting_title.present?
     parts << "참석자: #{attendees}" if attendees.present?
     parts << agenda_reference_block(agenda_reference) if agenda_reference.present?
+    parts << domain_reference_block(domain_reference) if domain_reference.present?
     parts << (current_notes.present? ? "현재 회의록:\n#{current_notes}" : "현재 회의록: (아직 없음 — 새로 작성해주세요)")
     parts << "새로운 자막:\n#{transcript_text}" if transcript_text.present?
     user_content = parts.join("\n\n")
@@ -275,6 +290,12 @@ class LlmService
   # 안건 자료 블록: 회의록 작성 시 참고만 하고 그대로 베끼지 말라는 가드를 라벨에 명시한다.
   def agenda_reference_block(agenda_reference)
     "안건 자료(참고용 — 회의 내용 우선, 그대로 복사하지 말 것):\n#{agenda_reference}"
+  end
+
+  # 도메인 파일(용어집) 블록: 선택된 도메인 파일 병합 텍스트(DomainReferenceBuilder 산출물)를
+  # 전문용어 표기 우선순위 가드와 함께 주입한다. agenda_reference_block과 동일 패턴.
+  def domain_reference_block(domain_reference)
+    "도메인 용어집(전문용어 참고 — 용어 표기는 아래를 우선 사용):\n#{domain_reference}"
   end
 
   # 압축율(verbosity) 분량 지시를 system 프롬프트 뒤에 append.

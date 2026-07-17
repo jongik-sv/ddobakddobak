@@ -9,6 +9,7 @@ class Project < ApplicationRecord
   has_many :meetings, dependent: :restrict_with_error
   has_many :folders, dependent: :restrict_with_error
   has_many :project_invites, dependent: :destroy
+  has_many :domain_files, dependent: :nullify
 
   validates :name, presence: true
   validates :icon_type, inclusion: { in: ICON_TYPES }, allow_nil: true

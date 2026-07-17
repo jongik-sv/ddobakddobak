@@ -11,11 +11,11 @@ module Api
 
       before_action :authenticate_user!
       before_action :require_create_project!, only: %i[create upload_audio]
-      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry lock unlock dismiss_schedule]
-      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary apply_glossary_entry dismiss_schedule]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry lock unlock dismiss_schedule domain_files update_domain_files extract_terms]
+      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary apply_glossary_entry dismiss_schedule update_domain_files extract_terms]
       before_action :authorize_lock!, only: %i[lock unlock]
       # 잠긴 회의 변조 차단. lock/unlock 은 제외(아니면 영원히 못 풂). create/upload_audio/index/show/move_to_folder/scheduled 제외.
-      before_action :reject_if_locked!, only: %i[update destroy start stop reopen pause resume reset_content summarize regenerate_stt re_diarize regenerate_notes update_notes feedback reapply_glossary apply_glossary_entry dismiss_schedule]
+      before_action :reject_if_locked!, only: %i[update destroy start stop reopen pause resume reset_content summarize regenerate_stt re_diarize regenerate_notes update_notes feedback reapply_glossary apply_glossary_entry dismiss_schedule update_domain_files extract_terms]
       # 단일 녹음 기기 락: 활성 recording 회의의 제어는 점유 기기에서만(다른 기기는 409).
       # start 는 원자 전이(액션 본문)가 충돌을 처리하므로 여기 목록엔 없다.
       # reset_content 는 활성 녹음(recording && 신선 하트비트)을 다른 기기가 초기화하지 못하게
@@ -583,6 +583,46 @@ module Api
         render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
       end
 
+      # 회의에 선택된 도메인 파일(용어집) 목록. 읽기 인가(set_meeting)만 필요.
+      def domain_files
+        render json: { domain_files: domain_files_json(@meeting) }
+      end
+
+      # 회의의 도메인 파일 선택을 통째로 교체(빈 배열=전체 해제). control + 잠금 가드.
+      def update_domain_files
+        # Rack::Test 등 form-encoded 클라이언트에서 빈 배열([])이 [""]로 왕복되는 경우가 있어 blank 제거.
+        ids = Array(params[:domain_file_ids]).reject(&:blank?).map(&:to_i).uniq
+
+        if ids.any?
+          accessible_ids = DomainFile.accessible_by(current_user).where(id: ids).pluck(:id)
+          if accessible_ids.sort != ids.sort
+            return render json: { error: "선택할 수 없는 파일이 포함되어 있습니다" }, status: :unprocessable_entity
+          end
+        end
+
+        ActiveRecord::Base.transaction do
+          @meeting.meeting_domain_files.destroy_all
+          ids.each { |id| @meeting.meeting_domain_files.create!(domain_file_id: id) }
+        end
+
+        render json: { domain_files: domain_files_json(@meeting.reload) }
+      end
+
+      # "요약에서 용어 추출" — 동기 컨트롤러 액션(신규 잡 클래스 금지). control + 잠금 가드.
+      def extract_terms
+        notes_markdown = @meeting.active_summary&.notes_markdown
+        if notes_markdown.blank?
+          return render json: { error: "추출할 요약이 없습니다" }, status: :unprocessable_entity
+        end
+
+        terms = DomainTermExtractionService.new(@meeting).call
+        if terms.nil?
+          return render json: { error: "용어 추출에 실패했습니다" }, status: :unprocessable_entity
+        end
+
+        render json: { terms: terms }
+      end
+
       def update_notes
         notes_markdown = params[:notes_markdown]
         return render json: { error: "notes_markdown is required" }, status: :unprocessable_entity if notes_markdown.nil?
@@ -818,6 +858,10 @@ module Api
         return false unless folder
         folder_ids = [folder.id, *folder.ancestor_records.map(&:id)]
         folder_ids.include?(entry.owner_id)
+      end
+
+      def domain_files_json(meeting)
+        meeting.domain_files.order(:id).map { |f| { id: f.id, name: f.name, project_id: f.project_id } }
       end
 
       def glossary_entry_json(entry)
