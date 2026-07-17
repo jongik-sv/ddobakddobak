@@ -78,6 +78,22 @@ class MeetingSummarizationJob < ApplicationJob
     false
   end
 
+  # summary_interval_sec 게이트: 마지막 realtime 요약 생성 시각(없으면 녹음 시작 시각) 기준으로
+  # 간격이 아직 안 지났으면 이번 cron 틱은 건너뛴다. cron(SummarizationJob)이 매분 도는 것과
+  # 무관하게 회의별 요약 주기를 실제로 준수시켜 LLM 호출(비용)을 줄인다.
+  # 0(안 함)은 SummarizationJob의 where.not(summary_interval_sec: 0)에서 이미 걸러지므로
+  # 여기선 방어적으로만 취급 — 0 이하면 게이트를 걸지 않고 기존 동작(무제한 실행) 유지.
+  # final 경로는 이 메서드를 호출하지 않는다(게이트 없음, 즉시 실행).
+  def realtime_interval_pending?(meeting)
+    interval = meeting.summary_interval_sec.to_i
+    return false if interval <= 0
+
+    last_at = meeting.summaries.where(summary_type: "realtime").maximum(:generated_at) || meeting.started_at
+    return false if last_at.blank?
+
+    Time.current < last_at + interval.seconds
+  end
+
   def enqueued_at_time
     value = enqueued_at
     case value
@@ -110,6 +126,7 @@ class MeetingSummarizationJob < ApplicationJob
     return if meeting.pending?
     return if meeting.paused_at? # 일시정지 중 자동 요약 금지 (cron이 enqueue 후 일시정지된 경우 방어)
     return if stale_relative_to_user_action?(meeting)
+    return if realtime_interval_pending?(meeting) # summary_interval_sec 미경과 — 매분 cron 재요약(LLM 비용) 방지
 
     new_transcripts = meeting.transcripts
                              .where(applied_to_minutes: false)
@@ -122,6 +139,8 @@ class MeetingSummarizationJob < ApplicationJob
     # 안건 자료 1회 주입: 업로드 후 첫 요약(applied_at nil)에만 주입한다. 성공 시 플래그를 채워
     # 이후 매분 cron 틱마다 재주입(비용 폭증)을 막는다.
     agenda_ref = realtime_agenda_reference(meeting)
+    # 도메인 파일(용어집)은 안건과 달리 매 틱 주입 — 회의 중 선택이 바뀔 수 있어 1회주입 플래그 없음.
+    domain_ref = DomainReferenceBuilder.build(meeting)
 
     applied_ids = new_transcripts.pluck(:id)
     channel = meeting.transcription_stream
@@ -144,7 +163,8 @@ class MeetingSummarizationJob < ApplicationJob
         verbosity: meeting.summary_verbosity,
         verbosity_context: :realtime,
         seeded_merge: meeting.previous_meeting_id.present? && !meeting.summary_restructure?,
-        agenda_reference: agenda_ref
+        agenda_reference: agenda_ref,
+        domain_reference: domain_ref
       )
       notes_markdown = result["notes_markdown"]
     else
@@ -154,7 +174,8 @@ class MeetingSummarizationJob < ApplicationJob
         meeting_title: meeting.title,
         attendees: meeting.attendees,
         verbosity: meeting.summary_verbosity,
-        agenda_reference: agenda_ref
+        agenda_reference: agenda_ref,
+        domain_reference: domain_ref
       )
       # 시간 라벨은 소비셋(applied_ids) 스냅샷으로 계산 — 릴레이션 재질의는 LLM 호출(수십 초) 중
       # 도착한 자막까지 집계해 시간대가 과대/중첩된다.
@@ -277,6 +298,8 @@ class MeetingSummarizationJob < ApplicationJob
     # 증분 모드의 base 는 "가장 최근 요약"이어야 한다. current_notes_markdown 은 completed 상태에서
     # 옛 final 을 하드 우선하므로(reopen 직후 stop 시) 재개 세션에서 append 된 realtime 블록을 버리게 된다.
     latest_notes = meeting.summaries.order(generated_at: :desc, id: :desc).first&.notes_markdown.to_s
+    # final 은 안건과 마찬가지로 1회주입 플래그 없이 항상 도메인 파일을 주입한다.
+    domain_ref = DomainReferenceBuilder.build(meeting)
 
     started = true
     ok = false
@@ -296,7 +319,8 @@ class MeetingSummarizationJob < ApplicationJob
         chronological: !meeting.summary_restructure? && meeting.previous_meeting_id.blank?, # 비연결 증분 백지폴백만 시간 흐름
         seeded_merge: meeting.previous_meeting_id.present? && !meeting.summary_restructure?,
         # final(종료·재생성)은 1회주입 플래그와 무관하게 항상 안건 전체를 주입한다.
-        agenda_reference: meeting.agenda_reference.presence
+        agenda_reference: meeting.agenda_reference.presence,
+        domain_reference: domain_ref
       )
       notes_markdown = result["notes_markdown"]
     else
@@ -310,7 +334,8 @@ class MeetingSummarizationJob < ApplicationJob
           meeting_title: meeting.title,
           attendees: meeting.attendees,
           verbosity: meeting.summary_verbosity,
-          agenda_reference: meeting.agenda_reference.presence
+          agenda_reference: meeting.agenda_reference.presence,
+          domain_reference: domain_ref
         )
         notes_markdown = compose_appended_notes(latest_notes, result["block_markdown"], remaining)
       else
