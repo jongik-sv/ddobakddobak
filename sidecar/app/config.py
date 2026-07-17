@@ -113,8 +113,12 @@ class Settings(BaseSettings):
     # [재시작 필요] 배치(파일 재전사) STT 엔진. auto=whisper_cpp(전 플랫폼 공통 기본).
     # 셀렉터 노출: Apple=whisper_cpp/mlx_whisper_turbo_beam_8bit, 그 외=whisper_cpp.
     # MLX 계열(beam/greedy)은 비-Apple에서 whisper_cpp로 자동 대체된다(resolve_file_engine).
-    # (whisper_cpp | mlx_whisper_turbo_beam_8bit | mlx_whisper_turbo_beam | mlx_whisper_turbo_8bit | mlx_whisper_turbo_f16 | faster_whisper | qwen3_asr_8bit | auto)
+    # (whisper_cpp | mlx_whisper_turbo_beam_8bit | mlx_whisper_turbo_beam | mlx_whisper_turbo_8bit | mlx_whisper_turbo_f16 | faster_whisper | faster_whisper_ko | qwen3_asr_8bit | auto)
     STT_FILE_ENGINE: str = "auto"
+
+    # [재시작 필요] faster_whisper_ko 엔진이 로드할 한국어 파인튜닝 모델(CT2 변환본) 디렉토리 경로.
+    # 비우면 기본 캐시 경로(~/.cache/ddobak/stt-models/whisper-medium-komixv2-ct2) 사용.
+    STT_FASTER_WHISPER_KO_MODEL: str = ""
 
     # [재시작 필요] Hugging Face 토큰 (STT/모델 다운로드용)
     HF_TOKEN: str = ""

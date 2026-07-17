@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import os
 import platform
 import sys
+from pathlib import Path
 
 from app.stt.base import SttAdapter
 
@@ -16,7 +18,14 @@ _KNOWN_ENGINES: frozenset[str] = frozenset(
      "mlx_whisper_turbo_8bit", "mlx_whisper_turbo_f16",
      "mlx_whisper_turbo_beam", "mlx_whisper_turbo_beam_8bit",
      "whisper_cpp", "faster_whisper", "faster_whisper_cpu",
+     "faster_whisper_ko",
      "mock", "auto"}
+)
+
+# 한국어 파인튜닝 faster_whisper 모델(CT2 변환본) 기본 캐시 경로.
+# settings.STT_FASTER_WHISPER_KO_MODEL이 비어있으면 이 경로를 사용한다.
+_FASTER_WHISPER_KO_DEFAULT_MODEL_PATH = str(
+    Path.home() / ".cache" / "ddobak" / "stt-models" / "whisper-medium-komixv2-ct2"
 )
 
 # Qwen3-ASR 양자화별 모델 ID 매핑 (mlx-community repo — Apple Silicon 전용)
@@ -73,6 +82,16 @@ def auto_select_engine() -> str:
     except ImportError:
         pass
     return "whisper_cpp"
+
+
+def _faster_whisper_ko_model_path() -> str:
+    """faster_whisper_ko 엔진이 로드할 한국어 파인튜닝 CT2 모델 경로.
+
+    settings.STT_FASTER_WHISPER_KO_MODEL이 비어있지 않으면 그 값을,
+    아니면 기본 캐시 경로(_FASTER_WHISPER_KO_DEFAULT_MODEL_PATH)를 사용한다.
+    """
+    from app.config import settings
+    return settings.STT_FASTER_WHISPER_KO_MODEL or _FASTER_WHISPER_KO_DEFAULT_MODEL_PATH
 
 
 def _is_apple_silicon() -> bool:
@@ -158,6 +177,10 @@ def available_file_engines() -> list[str]:
         # abort되므로 목록에서 숨긴다 (resolve_file_engine 폴백과 동일 기준).
         if _ctranslate2_cudnn_ok():
             engines.append("faster_whisper")
+            # 한국어 파인튜닝 모델(CT2 변환본)이 로컬에 준비된 경우에만 노출한다
+            # (변환 진행 중 등으로 디렉토리가 없으면 선택해도 로드에 실패하므로 숨김).
+            if os.path.isdir(_faster_whisper_ko_model_path()):
+                engines.append("faster_whisper_ko")
         return engines
     return ["whisper_cpp"]
 
@@ -195,14 +218,25 @@ def resolve_file_engine(engine: str | None = None) -> str:
         )
         return "qwen3_asr_transformers"
 
+    # faster_whisper_ko 폴백: 한국어 파인튜닝 모델 디렉토리가 없으면(변환 미완료 등)
+    # 표준 faster_whisper로 대체한다. 이어서 아래 cudnn 가드가 적용되도록 cudnn 가드
+    # 앞에 배치한다.
+    if engine == "faster_whisper_ko" and not os.path.isdir(_faster_whisper_ko_model_path()):
+        logger.warning(
+            "[STT] 배치 엔진 'faster_whisper_ko' 모델 경로(%s)가 없어 'faster_whisper'로 자동 대체",
+            _faster_whisper_ko_model_path(),
+        )
+        engine = "faster_whisper"
+
     # faster_whisper 폴백: ctranslate2는 CUDA 추론 시작 시 cuDNN dlopen에 실패하면
     # 프로세스를 통째로 abort시킨다(uvicorn 사망 — 2026-07-17 meeting 78 재현).
     # 선택 단계에서 같은 dlopen 검사로 걸러 whisper_cpp로 대체한다.
     # CUDA 미가용이면 CPU 추론이라 cuDNN 불필요 — 검사하지 않는다.
-    if engine == "faster_whisper" and _cuda_available() and not _ctranslate2_cudnn_ok():
+    if engine in ("faster_whisper", "faster_whisper_ko") and _cuda_available() and not _ctranslate2_cudnn_ok():
         logger.warning(
-            "[STT] 배치 엔진 'faster_whisper'는 cuDNN(%s) 로드 불가 — 사용 시 프로세스가 "
+            "[STT] 배치 엔진 '%s'는 cuDNN(%s) 로드 불가 — 사용 시 프로세스가 "
             "중단되므로 'whisper_cpp'로 자동 대체",
+            engine,
             _required_cudnn_lib(),
         )
         return "whisper_cpp"
@@ -267,6 +301,10 @@ def create_stt_adapter(engine: str | None = None) -> SttAdapter:
     if engine == "faster_whisper_cpu":
         from app.stt.faster_whisper_adapter import FasterWhisperAdapter
         return FasterWhisperAdapter(device="cpu")
+
+    if engine == "faster_whisper_ko":
+        from app.stt.faster_whisper_adapter import FasterWhisperAdapter
+        return FasterWhisperAdapter(model_size=_faster_whisper_ko_model_path())
 
     if engine in _KNOWN_ENGINES:
         raise NotImplementedError(

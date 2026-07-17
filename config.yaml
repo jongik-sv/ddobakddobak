@@ -40,6 +40,9 @@ stt_engines:
   faster_whisper_cpu:
     label: "Faster Whisper (CPU)"
     short: "Whisper CPU"
+  faster_whisper_ko:
+    label: "Faster Whisper 한국어 (komixv2)"
+    short: "Whisper KO"
 
 # ── 오디오 청킹 (VAD) ─────────────────────────────
 audio:

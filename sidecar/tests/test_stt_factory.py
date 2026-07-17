@@ -1,6 +1,7 @@
 """Tests for STT Factory pattern."""
 import asyncio
 import importlib.util
+import os
 import platform
 import sys
 import types
@@ -275,3 +276,95 @@ def test_required_cudnn_lib_by_ctranslate2_version(monkeypatch):
 
     monkeypatch.setattr(factory, "_ctranslate2_version", lambda: (4, 5))
     assert factory._required_cudnn_lib() == "libcudnn_ops.so.9"
+
+
+# ── faster_whisper_ko: 한국어 파인튜닝 CT2 모델 엔진 ─────────────────────
+# seastar105/whisper-medium-komixv2의 CT2 변환본을 로컬 경로에서 로드하는 엔진.
+# 모델 경로가 준비되지 않은 환경(변환 진행 중 등)에서도 안전하게 폴백해야 한다.
+
+def test_faster_whisper_ko_registered_in_known_engines():
+    from app.stt import factory
+    assert "faster_whisper_ko" in factory._KNOWN_ENGINES
+
+
+def test_faster_whisper_ko_model_path_uses_settings_override(monkeypatch):
+    from app.stt import factory
+    from app.config import settings
+    monkeypatch.setattr(settings, "STT_FASTER_WHISPER_KO_MODEL", "/custom/model/path")
+    assert factory._faster_whisper_ko_model_path() == "/custom/model/path"
+
+
+def test_faster_whisper_ko_model_path_falls_back_to_default(monkeypatch):
+    from app.stt import factory
+    from app.config import settings
+    monkeypatch.setattr(settings, "STT_FASTER_WHISPER_KO_MODEL", "")
+    assert factory._faster_whisper_ko_model_path() == factory._FASTER_WHISPER_KO_DEFAULT_MODEL_PATH
+
+
+def test_create_stt_adapter_faster_whisper_ko_uses_custom_model_size(monkeypatch):
+    from app.stt import factory
+    from app.stt.faster_whisper_adapter import FasterWhisperAdapter
+    monkeypatch.setattr(factory, "_faster_whisper_ko_model_path", lambda: "/fake/komixv2-ct2")
+
+    adapter = factory.create_stt_adapter("faster_whisper_ko")
+
+    assert isinstance(adapter, FasterWhisperAdapter)
+    assert adapter._model_size == "/fake/komixv2-ct2"
+    assert adapter._device == "auto"
+
+
+def test_resolve_file_engine_faster_whisper_ko_missing_dir_falls_back_to_faster_whisper(monkeypatch):
+    from app.stt import factory
+    monkeypatch.setattr(factory, "_faster_whisper_ko_model_path", lambda: "/nonexistent/path")
+    monkeypatch.setattr(os.path, "isdir", lambda p: False)
+    monkeypatch.setattr(factory, "_cuda_available", lambda: True)
+    monkeypatch.setattr(factory, "_ctranslate2_cudnn_ok", lambda: True)
+
+    assert factory.resolve_file_engine("faster_whisper_ko") == "faster_whisper"
+
+
+def test_resolve_file_engine_faster_whisper_ko_present_dir_stays(monkeypatch):
+    from app.stt import factory
+    monkeypatch.setattr(factory, "_faster_whisper_ko_model_path", lambda: "/existing/path")
+    monkeypatch.setattr(os.path, "isdir", lambda p: True)
+    monkeypatch.setattr(factory, "_cuda_available", lambda: True)
+    monkeypatch.setattr(factory, "_ctranslate2_cudnn_ok", lambda: True)
+
+    assert factory.resolve_file_engine("faster_whisper_ko") == "faster_whisper_ko"
+
+
+def test_resolve_file_engine_faster_whisper_ko_dir_present_but_cudnn_missing_falls_back_to_whisper_cpp(monkeypatch):
+    """모델 디렉토리는 있지만 cuDNN dlopen이 안 되면 whisper_cpp로 대체돼야 한다."""
+    from app.stt import factory
+    monkeypatch.setattr(factory, "_faster_whisper_ko_model_path", lambda: "/existing/path")
+    monkeypatch.setattr(os.path, "isdir", lambda p: True)
+    monkeypatch.setattr(factory, "_cuda_available", lambda: True)
+    monkeypatch.setattr(factory, "_ctranslate2_cudnn_ok", lambda: False)
+
+    assert factory.resolve_file_engine("faster_whisper_ko") == "whisper_cpp"
+
+
+def test_available_file_engines_includes_faster_whisper_ko_when_model_dir_exists(monkeypatch):
+    from app.stt import factory
+    monkeypatch.setattr(factory, "_is_apple_silicon", lambda: False)
+    monkeypatch.setattr(factory, "_cuda_available", lambda: True)
+    monkeypatch.setattr(factory, "_ctranslate2_cudnn_ok", lambda: True)
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(os.path, "isdir", lambda p: True)
+
+    engines = factory.available_file_engines()
+    assert "faster_whisper" in engines
+    assert "faster_whisper_ko" in engines
+
+
+def test_available_file_engines_excludes_faster_whisper_ko_when_model_dir_missing(monkeypatch):
+    from app.stt import factory
+    monkeypatch.setattr(factory, "_is_apple_silicon", lambda: False)
+    monkeypatch.setattr(factory, "_cuda_available", lambda: True)
+    monkeypatch.setattr(factory, "_ctranslate2_cudnn_ok", lambda: True)
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(os.path, "isdir", lambda p: False)
+
+    engines = factory.available_file_engines()
+    assert "faster_whisper" in engines
+    assert "faster_whisper_ko" not in engines
