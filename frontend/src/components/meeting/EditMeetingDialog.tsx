@@ -236,6 +236,13 @@ export default function EditMeetingDialog({
                 onChange={(e) => setOwnerId(Number(e.target.value))}
                 className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
               >
+                {/* 현 소유자가 프로젝트 멤버가 아닌 경우(관리자 이관 등) — 옵션에 없으면
+                    브라우저가 첫 멤버를 표시해 소유자가 잘못 보이므로 실소유자를 명시한다. */}
+                {meeting.created_by && !projectMembers.some((m) => m.user_id === meeting.created_by?.id) && (
+                  <option value={meeting.created_by.id}>
+                    {meeting.created_by.name} (프로젝트 멤버 아님)
+                  </option>
+                )}
                 {projectMembers.map((m) => (
                   <option key={m.user_id} value={m.user_id}>
                     {m.name} ({m.email})
