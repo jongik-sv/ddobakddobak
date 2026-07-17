@@ -1,4 +1,5 @@
 """실시간/배치 STT 및 파일 변환 라우터."""
+import asyncio
 import base64
 import dataclasses
 import logging
@@ -181,9 +182,13 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
                 languages=request.languages,
                 mode=request.mode,
                 meeting_id=request.meeting_id,
+                gpu_lock=http_request.app.state.gpu_lock,
             )
         else:
-            # 분할 없이 Whisper 내부 윈도우(~30초)로 처리
+            # 분할 없이 Whisper 내부 윈도우(~30초)로 처리.
+            # 이 경로는 gpu_lock을 잡지 않는다 — Rails는 file_chunk_sec=30을 항상 전달하므로
+            # 여기는 직접 호출 전용(비프로덕션 경로)이고, 파일 전체 추론 동안 락을 쥐면
+            # 실시간 /transcribe가 그만큼(수십 초~수 분) 굶는 역효과가 난다.
             segments = await file_adapter.transcribe(
                 audio_bytes, languages=request.languages, mode=request.mode
             )
@@ -212,7 +217,10 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
         diar_engine = _resolve_diar_engine()
         try:
             if diar_engine == "speakrs":
-                # speakrs는 별도 프로세스(CoreML)라 Metal 경쟁 없음 → gpu_lock 불필요
+                # speakrs는 별도 프로세스라 STT와 프로세스는 분리돼 있지만, 이 배포는
+                # systemd SPEAKRS_MODE=cuda로 떠 있어 STT와 같은 GPU를 두고 경쟁한다
+                # (CoreML 전제로 "경쟁 없음"이라 적혀 있던 과거 주석은 부정확 — 이번 범위는
+                # STT 추론 호출 락뿐이라 여기에 게이트를 추가하지는 않는다. 필요성 실측 후 검토).
                 from app.diarization.batch_processor import batch_diarize_speakrs
                 segments = await batch_diarize_speakrs(
                     audio_bytes, segments, meeting_id=request.meeting_id,
@@ -289,7 +297,9 @@ async def diarize_file(request: DiarizeFileRequest) -> DiarizeFileResponse:
     diar_cfg = request.diarization_config or {}
     ahc_threshold = diar_cfg.get("ahc_threshold")
 
-    # 3. 화자분리만 재실행 — speakrs(별도 프로세스, Metal 경쟁 없음 → gpu_lock 불필요)
+    # 3. 화자분리만 재실행 — speakrs(별도 프로세스). 이 배포는 SPEAKRS_MODE=cuda라
+    # STT와 GPU를 공유·경쟁한다(과거 "Metal 경쟁 없음" 주석은 부정확). 이번 범위는
+    # STT 추론 호출 락뿐이라 여기에 gpu_lock을 추가하지는 않는다.
     segs = transcript_segments
     try:
         from app.diarization.batch_processor import batch_diarize_speakrs
@@ -323,10 +333,19 @@ async def _chunked_transcribe(
     languages: list[str] | None = None,
     mode: str = "single",
     meeting_id: int | None = None,
+    gpu_lock: asyncio.Lock | None = None,
 ) -> list:
     """Qwen3 등 내부 분할이 없는 엔진을 위해 오디오를 청크로 나눠 처리한다.
 
     각 청크의 타임스탬프를 전체 파일 기준 절대값으로 보정한다.
+
+    gpu_lock: 청크마다 GPU 추론 호출(adapter.transcribe)만 감싸는 락. Rails가 항상
+    file_chunk_sec=30을 전달하므로 배치는 이 경로를 청크 루프로 돈다 — 청크마다
+    락을 잡았다 놓으면(asyncio.Lock은 FIFO) 대기 중인 실시간 /transcribe 요청이
+    다음 청크보다 먼저 락을 획득해, 실시간 최대 대기가 청크 1개 GPU 시간으로
+    제한된다. 파일 슬라이싱·세그먼트 후처리·진행률 갱신은 락 밖에서 수행한다.
+    미전달(None) 시 매 호출마다 새 락을 만들어 사용 — 항상 비경합이라 기존
+    호출부(단독 테스트 등)의 동작은 바뀌지 않는다.
     """
     from app.stt.base import TranscriptSegment
 
@@ -350,7 +369,11 @@ async def _chunked_transcribe(
 
         offset_ms = int(offset / bytes_per_sec * 1000)
         try:
-            segments = await adapter.transcribe(chunk, languages=languages, mode=mode)
+            # 청크마다 새로 acquire — 대기자(실시간 요청)가 있으면 asyncio.Lock의
+            # FIFO 특성상 이 태스크가 재획득보다 뒤로 밀려 실시간이 먼저 나간다.
+            lock = gpu_lock if gpu_lock is not None else asyncio.Lock()
+            async with lock:
+                segments = await adapter.transcribe(chunk, languages=languages, mode=mode)
         except Exception as e:
             # 한 청크 실패(예: beam 디코더 빈 시퀀스 엣지케이스)가 전체 파일 전사를
             # 죽이지 않도록 해당 청크만 스킵한다. 30s 공백은 전체 실패보다 낫다.
@@ -397,12 +420,16 @@ async def ws_transcribe(websocket: WebSocket):
     """
     await websocket.accept()
     adapter = websocket.app.state.stt_adapter
+    gpu_lock = websocket.app.state.gpu_lock
     seq = 0
 
     try:
         while True:
             audio_bytes = await websocket.receive_bytes()
-            segments = await adapter.transcribe(audio_bytes)
+            # frontend가 쓰지 않는 경로지만, /transcribe와 동일하게 GPU 추론 호출을
+            # gpu_lock으로 감싼다(누락돼 있었음 — 배치 청크 락과 인터리빙되도록).
+            async with gpu_lock:
+                segments = await adapter.transcribe(audio_bytes)
 
             for seg in segments:
                 seq += 1
