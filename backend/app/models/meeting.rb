@@ -433,6 +433,8 @@ class Meeting < ApplicationRecord
   end
 
   def self.extract_brief_summary(notes_markdown, max_length: 150)
+    # 인용 마커(⟦t:…⟧, ⟦m:…⟧) 제거 — 절단 전에 지워야 반토막 마커가 남지 않는다
+    notes_markdown = notes_markdown.gsub(/⟦[^⟧]*⟧/, "").gsub(/[ \t]{2,}/, " ")
     lines = notes_markdown.lines.map(&:strip).reject(&:empty?)
 
     # 마크다운 헤더, 구분선, 빈 블릿 등 건너뛰고 실제 내용 추출
