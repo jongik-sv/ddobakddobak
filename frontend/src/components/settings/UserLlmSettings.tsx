@@ -36,10 +36,16 @@ export default function UserLlmSettings() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  const initFormFromSettings = useCallback((data: UserLlmSettingsResponse) => {
-    // 서버 진실로부터 새로 채우므로 프리셋별 폼 캐시도 초기화(로드·초기화·none 저장 시).
-    summaryFormCacheRef.current = {}
-    chatFormCacheRef.current = {}
+  const initFormFromSettings = useCallback((data: UserLlmSettingsResponse, opts?: { resetCache?: boolean }) => {
+    // 서버 진실로부터 새로 채운다. 프리셋별 폼 캐시는 명시적으로 요청된 경우에만 초기화한다
+    // (최초 로드·전체 초기화 버튼). '선택 안함' 저장 후에는 캐시를 지우지 않아야, 같은 세션 안에서
+    // 이전에 입력해 둔 다른 프리셋(예: '직접 입력')의 값이 저장 직후에도 유지된다
+    // (BUG: 예전엔 여기서 항상 캐시를 지워, '직접 입력→선택 안함(저장)→직접 입력'을 거치면
+    //  캐시에 남아있던 입력값까지 함께 사라졌었다).
+    if (opts?.resetCache ?? true) {
+      summaryFormCacheRef.current = {}
+      chatFormCacheRef.current = {}
+    }
     const ls = data.llm_settings
     const sid = presetIdFromUserConfig(ls.provider ?? null, ls.base_url ?? null) ?? 'none'
     setSummaryPresetId(sid)
@@ -62,12 +68,33 @@ export default function UserLlmSettings() {
       .finally(() => setLoading(false))
   }, [initFormFromSettings])
 
+  // 프리셋 전환 시 폼을 채울 값을 정한다: 캐시가 있으면 그대로, 없으면 프리셋 자체의 기본값을
+  // 우선하되(예: Z.AI 카드는 z.ai 엔드포인트를 프리필해야 함) 프리셋에 기본값이 없는 필드(대표적으로
+  // '직접 입력')는 leftover(서버가 보존해 둔 이전 잔존값)로 채운다. 이렇게 해야 '직접 입력 저장 →
+  // 선택 안함 저장 → 직접 입력 재선택'에서 base_url/model이 살아있으면서도, 새로 고른 프리셋의
+  // 고유 기본값(zai 엔드포인트 등)을 덮어쓰지 않는다.
+  const resolvePresetForm = (
+    id: string,
+    cached: { base_url: string; model: string; auth_token: string } | undefined,
+    leftover: { base_url: string; model: string; auth_token: string } | null,
+  ) => {
+    if (cached) return cached
+    const defaults = presetFormDefaults(id)
+    if (!leftover) return defaults
+    return {
+      base_url: defaults.base_url || leftover.base_url,
+      model: defaults.model || leftover.model,
+      auth_token: defaults.auth_token || leftover.auth_token,
+    }
+  }
+
   const handleSummarySelect = (id: string) => {
     // 현재 입력값을 이전 프리셋 아래 캐시 → 다시 돌아오면 복원(입력 유실 방지).
     summaryFormCacheRef.current[summaryPresetId] = summaryForm
+    const leftover = summaryPresetId === 'none' ? summaryForm : null
+    const fallback = resolvePresetForm(id, summaryFormCacheRef.current[id], leftover)
     setSummaryPresetId(id)
-    const cached = summaryFormCacheRef.current[id]
-    setSummaryForm(id === 'none' ? { base_url: '', model: '', auth_token: '' } : (cached ?? presetFormDefaults(id)))
+    setSummaryForm(id === 'none' ? { base_url: '', model: '', auth_token: '' } : fallback)
     setTestResult(null)
     setError(null)
     setSuccess(null)
@@ -75,10 +102,13 @@ export default function UserLlmSettings() {
 
   const handleChatSelect = (id: string) => {
     chatFormCacheRef.current[chatPresetId] = chatForm
+    // '' (요약과 동일) / 'server' (서버 모델·선택 안함) 는 프로바이더 폼이 없으므로 비운다.
+    const wasNoneLike = chatPresetId === '' || chatPresetId === 'server'
+    const isNoneLike = id === '' || id === 'server'
+    const leftover = wasNoneLike ? chatForm : null
+    const fallback = resolvePresetForm(id, chatFormCacheRef.current[id], leftover)
     setChatPresetId(id)
-    // '' (요약과 동일) / 'server' (서버 모델) 는 프로바이더 폼이 없으므로 비운다. 그 외엔 캐시 복원.
-    const cached = chatFormCacheRef.current[id]
-    setChatForm(id === '' || id === 'server' ? { base_url: '', model: '', auth_token: '' } : (cached ?? presetFormDefaults(id)))
+    setChatForm(isNoneLike ? { base_url: '', model: '', auth_token: '' } : fallback)
     setError(null)
     setSuccess(null)
   }
@@ -94,17 +124,22 @@ export default function UserLlmSettings() {
       // 챗 특수옵션: '' = 요약과 동일(chat_provider=null) / 'server' = 서버 모델 강제(센티넬)
       const isServerChat = chatPresetId === 'server'
       const cp = (chatPresetId === '' || isServerChat) ? null : SERVICE_PRESETS.find((p) => p.id === chatPresetId) ?? null
-      const chatPayload = {
-        chat_provider: isServerChat ? 'server' : (cp ? cp.provider : null),
-        chat_base_url: isServerChat ? null : (cp ? (chatForm.base_url || null) : null),
-        // 서버 모델은 개인 모델 override 없음. 그 외엔 chatForm.model(레거시 보존).
-        chat_model: isServerChat ? null : (chatForm.model || null),
-        chat_api_key: isServerChat ? '' : chatForm.auth_token,
-      }
+      // '선택 안함'(server 센티넬)은 chat_model/base_url/api_key 키 자체를 보내지 않는다 —
+      // 백엔드가 provider만 바꾸고 값을 보존해 재선택("직접 입력") 시 프리필할 수 있게 한다
+      // (BUG: 예전엔 매번 null/''을 명시적으로 보내 저장된 값이 지워졌었다).
+      const chatPayload = isServerChat
+        ? { chat_provider: 'server' as const }
+        : {
+            chat_provider: cp ? cp.provider : null,
+            chat_base_url: cp ? (chatForm.base_url || null) : null,
+            // 요약과 동일(cp=null)이어도 레거시 챗 모델 입력은 그대로 반영한다.
+            chat_model: chatForm.model || null,
+            chat_api_key: chatForm.auth_token,
+          }
       if (summaryPresetId === 'none') {
         const result = await updateUserLlmSettings({ llm_settings: { provider: '', ...chatPayload } })
         setSettings(result)
-        initFormFromSettings(result)
+        initFormFromSettings(result, { resetCache: false })
         setChatForm((f) => ({ ...f, auth_token: '' }))
         setSuccess('저장되었습니다.')
         return

@@ -332,7 +332,9 @@ describe('UserLlmSettings', () => {
     expect(within(chatGrid).getByText('선택 안함')).toBeInTheDocument()
   })
 
-  it("챗 '선택 안함' 선택 후 저장하면 chat_provider='server', chat_model=null 을 담는다", async () => {
+  // '선택 안함'은 chat_model/base_url/api_key 키 자체를 보내지 않는다(보존 위임) — 이전엔
+  // 매번 null/''을 명시적으로 보내 백엔드가 저장값을 지워버렸다(값 유실 버그).
+  it("챗 '선택 안함' 선택 후 저장하면 chat_provider='server'만 보내고 chat_model 등은 생략한다", async () => {
     mockGetUserLlmSettings.mockResolvedValue(configuredResponse)
     mockUpdateUserLlmSettings.mockResolvedValue(configuredResponse)
     render(<UserLlmSettings />)
@@ -341,12 +343,54 @@ describe('UserLlmSettings', () => {
     fireEvent.click(within(chatGrid).getByText('선택 안함').closest('button')!)
     fireEvent.click(screen.getAllByRole('button', { name: /저장/ })[0])
     await waitFor(() => {
-      expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          llm_settings: expect.objectContaining({ chat_provider: 'server', chat_model: null }),
-        }),
-      )
+      expect(mockUpdateUserLlmSettings).toHaveBeenCalled()
     })
+    const call = mockUpdateUserLlmSettings.mock.calls[0][0] as { llm_settings: Record<string, unknown> }
+    expect(call.llm_settings.chat_provider).toBe('server')
+    expect(call.llm_settings).not.toHaveProperty('chat_model')
+    expect(call.llm_settings).not.toHaveProperty('chat_base_url')
+    expect(call.llm_settings).not.toHaveProperty('chat_api_key')
+  })
+
+  // 챗 '직접 입력' → '선택 안함'(저장) → 다시 '직접 입력'으로 돌아와도 base_url/model이 유지된다.
+  // (BUG: 예전엔 '선택 안함' 저장 시 백엔드가 값을 지우고, 프론트도 저장 후 프리셋 캐시를 지워
+  //  재선택 시 presetFormDefaults로 리셋되며 통째로 사라졌다.)
+  it("챗 '직접 입력' 저장 → '선택 안함' 저장 → '직접 입력' 재선택 시 base_url/model이 유지된다", async () => {
+    mockGetUserLlmSettings.mockResolvedValue(unconfiguredResponse)
+    mockUpdateUserLlmSettings.mockImplementation(async (payload) => {
+      const ls = (payload as { llm_settings: Record<string, unknown> }).llm_settings
+      return {
+        ...unconfiguredResponse,
+        llm_settings: {
+          ...unconfiguredResponse.llm_settings,
+          chat_provider: (ls.chat_provider as string | null | undefined) ?? null,
+          chat_model: 'chat_model' in ls ? (ls.chat_model as string | null) : 'gpt-4o',
+          chat_base_url: 'chat_base_url' in ls ? (ls.chat_base_url as string | null) : 'https://my.chat.endpoint/v1',
+        },
+      }
+    })
+    render(<UserLlmSettings />)
+    const chatGrid = await screen.findByTestId('user-chat-service-grid')
+    const chatCard = screen.getByTestId('user-chat-card')
+
+    // OpenAI(직접 입력 계열) 선택 + base_url/model 입력 후 저장
+    fireEvent.click(within(chatGrid).getByText('OpenAI').closest('button')!)
+    fireEvent.change(within(chatCard).getByLabelText('API Base URL'), { target: { value: 'https://my.chat.endpoint/v1' } })
+    fireEvent.change(within(chatCard).getByLabelText('모델명'), { target: { value: 'gpt-4o' } })
+    fireEvent.click(screen.getAllByRole('button', { name: /저장/ })[0])
+    await waitFor(() => expect(screen.getByText(/저장되었습니다/)).toBeInTheDocument())
+
+    // '선택 안함'으로 전환 후 저장
+    fireEvent.click(within(chatGrid).getByText('선택 안함').closest('button')!)
+    fireEvent.click(screen.getAllByRole('button', { name: /저장/ })[0])
+    await waitFor(() => expect(mockUpdateUserLlmSettings).toHaveBeenCalledTimes(2))
+
+    // 다시 OpenAI(직접 입력)로 재선택 — base_url/model이 남아있어야 한다
+    await screen.findByTestId('user-chat-service-grid')
+    fireEvent.click(within(screen.getByTestId('user-chat-service-grid')).getByText('OpenAI').closest('button')!)
+    const refreshedChatCard = screen.getByTestId('user-chat-card')
+    expect((within(refreshedChatCard).getByLabelText('API Base URL') as HTMLInputElement).value).toBe('https://my.chat.endpoint/v1')
+    expect((within(refreshedChatCard).getByLabelText('모델명') as HTMLInputElement).value).toBe('gpt-4o')
   })
 
   it("로드: 저장된 chat_provider='server' 는 '선택 안함' 선택으로 복원", async () => {

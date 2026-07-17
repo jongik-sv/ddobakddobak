@@ -128,8 +128,15 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(user.reload.llm_api_key).to be_nil
     end
 
-    it "provider 빈값 시 전체 초기화한다" do
-      user.update!(llm_provider: "anthropic", llm_api_key: "sk-xxx", llm_model: "claude-sonnet-4-6")
+    # BUG(선택 안함 값 유실): provider만 비워 보내는 요청(model/base_url/api_key 키 자체를
+    # 보내지 않음)은 "요약 선택 안함" 저장이지 전체 초기화가 아니다. reset_all 없이는
+    # provider(=미설정 판정 기준)만 비우고 model/base_url/api_key 는 보존해 재선택 시
+    # 프리필할 수 있어야 한다. 완전 초기화가 필요하면 reset_all:true 를 써야 한다.
+    it "provider 빈값(reset_all 없음) 시 provider만 비우고 model/base_url/api_key는 보존한다" do
+      user.update!(
+        llm_provider: "anthropic", llm_api_key: "sk-xxx",
+        llm_model: "claude-sonnet-4-6", llm_base_url: "http://localhost:11434/v1"
+      )
 
       put "/api/v1/user/llm_settings", params: {
         llm_settings: { provider: "" }
@@ -138,12 +145,22 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(response).to have_http_status(:ok)
       user.reload
       expect(user.llm_provider).to be_nil
-      expect(user.llm_api_key).to be_nil
-      expect(user.llm_model).to be_nil
-      expect(user.llm_base_url).to be_nil
+      expect(user.llm_configured?).to be(false)
+      expect(user.llm_api_key).to eq("sk-xxx")
+      expect(user.llm_model).to eq("claude-sonnet-4-6")
+      expect(user.llm_base_url).to eq("http://localhost:11434/v1")
+
+      # GET 에서도 잔존값이 그대로 노출되어야 프론트가 재선택 시 프리필할 수 있다.
+      get "/api/v1/user/llm_settings"
+      body = response.parsed_body
+      expect(body["llm_settings"]["configured"]).to be false
+      expect(body["llm_settings"]["provider"]).to be_nil
+      expect(body["llm_settings"]["model"]).to eq("claude-sonnet-4-6")
+      expect(body["llm_settings"]["base_url"]).to eq("http://localhost:11434/v1")
+      expect(body["llm_settings"]["api_key_masked"]).to include("*")
     end
 
-    it "provider null 시 전체 초기화한다" do
+    it "provider null(reset_all 없음) 시에도 api_key를 보존한다" do
       user.update!(llm_provider: "anthropic", llm_api_key: "sk-xxx")
 
       put "/api/v1/user/llm_settings", params: {
@@ -153,6 +170,24 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(response).to have_http_status(:ok)
       user.reload
       expect(user.llm_provider).to be_nil
+      expect(user.llm_api_key).to eq("sk-xxx")
+    end
+
+    it "provider 빈값 + model/base_url/api_key를 명시적으로 빈 값 전송 시 그 필드만 지운다" do
+      user.update!(
+        llm_provider: "anthropic", llm_api_key: "sk-xxx",
+        llm_model: "claude-sonnet-4-6", llm_base_url: "http://old.url"
+      )
+
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "", model: "", base_url: "", api_key: "" }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_provider).to be_nil
+      expect(user.llm_model).to be_nil
+      expect(user.llm_base_url).to be_nil
       expect(user.llm_api_key).to be_nil
     end
 
@@ -291,11 +326,11 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
 
       expect(response).to have_http_status(:ok)
       user.reload
-      # 요약 컬럼은 비워짐
+      # 요약: provider만 비워짐, model/api_key는 보존(재선택 시 프리필)
       expect(user.llm_provider).to be_nil
-      expect(user.llm_api_key).to be_nil
-      expect(user.llm_model).to be_nil
-      expect(user.llm_base_url).to be_nil
+      expect(user.llm_configured?).to be(false)
+      expect(user.llm_api_key).to eq("sk-xxx")
+      expect(user.llm_model).to eq("claude-sonnet-4-6")
       # 챗 컬럼은 보존
       expect(user.chat_llm_provider).to eq("anthropic")
       expect(user.chat_llm_api_key).to eq("k")
@@ -321,10 +356,11 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
 
       expect(response).to have_http_status(:ok)
       user.reload
-      # 요약 컬럼은 비워짐
+      # 요약: provider만 비워짐, model/api_key는 보존(재선택 시 프리필)
       expect(user.llm_provider).to be_nil
-      expect(user.llm_api_key).to be_nil
-      expect(user.llm_model).to be_nil
+      expect(user.llm_configured?).to be(false)
+      expect(user.llm_api_key).to eq("sk-xxx")
+      expect(user.llm_model).to eq("claude-sonnet-4-6")
       # 챗 컬럼은 요청대로 저장됨
       expect(user.chat_llm_provider).to eq("openai")
       expect(user.chat_llm_api_key).to eq("chatkey")
@@ -384,6 +420,54 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(user.reload.chat_llm_model).to eq("gpt-4o")
+    end
+
+    # ============================================================
+    # BUG(AI챗 '선택 안함' 값 유실): chat_provider='server' 센티넬(AI챗 카드의 '선택 안함')로
+    #   전환해도 chat_model/chat_base_url/chat_api_key 는 보존해야 재선택 시 프리필된다.
+    # ============================================================
+    it "chat_provider='server'(AI챗 선택 안함) 저장 시 chat_model/base_url/api_key를 보존한다" do
+      user.update!(
+        llm_provider: "anthropic", llm_api_key: "sk-sum",
+        chat_llm_provider: "openai", chat_llm_api_key: "chatkey",
+        chat_llm_model: "gpt-4o", chat_llm_base_url: "http://localhost:11434/v1"
+      )
+
+      # 프론트는 '선택 안함' 전환 시 chat_model/base_url/api_key 키 자체를 보내지 않는다
+      # (보존 위임) — 그 계약대로 chat_provider만 보낸다.
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "anthropic", chat_provider: "server" }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.chat_llm_provider).to eq("server")
+      expect(user.chat_llm_model).to eq("gpt-4o")
+      expect(user.chat_llm_base_url).to eq("http://localhost:11434/v1")
+      expect(user.chat_llm_api_key).to eq("chatkey")
+
+      # server 센티넬은 effective_chat_llm_config 에서 항상 서버 기본으로 라우팅되어야 한다
+      # (보존된 개인 챗 키가 있어도 우회되지 않음).
+      expect(user.effective_chat_llm_config[:provider]).not_to eq("openai")
+    end
+
+    it "chat_provider=''(요약과 동일) 저장 시에도 chat_model/base_url/api_key를 보존한다" do
+      user.update!(
+        llm_provider: "anthropic", llm_api_key: "sk-sum",
+        chat_llm_provider: "openai", chat_llm_api_key: "chatkey",
+        chat_llm_model: "gpt-4o", chat_llm_base_url: "http://localhost:11434/v1"
+      )
+
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "anthropic", chat_provider: "" }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.chat_llm_provider).to be_nil
+      expect(user.chat_llm_model).to eq("gpt-4o")
+      expect(user.chat_llm_base_url).to eq("http://localhost:11434/v1")
+      expect(user.chat_llm_api_key).to eq("chatkey")
     end
   end
 

@@ -25,6 +25,7 @@ module Api
           #     (BUG #2: 챗 provider가 별도 설정돼 있을 때 조용히 지워지는 것을 막는다).
           if attrs[:llm_provider].blank?
             reset_all = ActiveModel::Type::Boolean.new.cast(params.dig(:llm_settings, :reset_all))
+            ls = params.fetch(:llm_settings, {})
 
             if reset_all
               current_user.update!(
@@ -33,8 +34,14 @@ module Api
                 llm_enabled: true
               )
             else
-              base = { llm_provider: nil, llm_api_key: nil, llm_model: nil, llm_base_url: nil, llm_enabled: true }
-              ls = params.fetch(:llm_settings, {})
+              # "선택 안함" 저장: provider만 비워 미설정 판정(llm_has_settings?)이 되게 하고,
+              # model/base_url/api_key 컬럼은 보존한다 — 재선택("직접 입력") 시 프리필 가능하도록.
+              # 단, 사용자가 해당 필드를 명시적으로 빈 값(""/null)으로 보낸 경우엔 그 의도를 반영해 지운다.
+              base = { llm_provider: nil, llm_enabled: true }
+              base[:llm_model]    = nil if ls.key?(:model)    && ls[:model].blank?
+              base[:llm_base_url] = nil if ls.key?(:base_url) && ls[:base_url].blank?
+              base[:llm_api_key]  = nil if ls.key?(:api_key)  && ls[:api_key].blank?
+
               chat_sent = %i[chat_provider chat_model chat_base_url chat_api_key].any? { |k| ls.key?(k) }
               chat = chat_sent ? attrs.slice(:chat_llm_provider, :chat_llm_model, :chat_llm_base_url, :chat_llm_api_key) : {}
               current_user.update!(base.merge(chat))
@@ -137,14 +144,27 @@ module Api
             llm_provider: p[:provider],
             llm_model: p[:model],
             llm_base_url: p[:base_url].presence,
-            chat_llm_model: p[:chat_model].presence,
-            chat_llm_provider: p[:chat_provider].presence,
-            chat_llm_base_url: p[:chat_base_url].presence
+            chat_llm_provider: p[:chat_provider].presence
           }
 
           # provider 저장(빈값 아님) 시 개인 LLM을 (재)활성화한다.
           # 빈 provider 초기화 분기는 자체 update! 로 처리하므로 이 attrs 를 읽지 않는다.
           attrs[:llm_enabled] = true if p[:provider].present?
+
+          # chat_model/chat_base_url: chat_provider가 비거나(=요약과 동일) 'server' 센티넬
+          # (=AI챗 '선택 안함')로 전환되는 경우엔 값을 보존한다 — 이후 다시 provider를 고를 때
+          # 프리필할 수 있도록. 사용자가 해당 필드를 명시적으로 빈 값으로 보낸 경우만 지운다.
+          # (그 외, 실제 provider로의 전환/유지 시엔 기존과 동일하게 전송값을 그대로 반영한다.)
+          chat_cleared = p[:chat_provider].blank? || p[:chat_provider] == ::User::CHAT_SERVER_SENTINEL
+          if chat_cleared
+            attrs[:chat_llm_model] =
+              (p.key?(:chat_model) && p[:chat_model].blank?) ? nil : (p[:chat_model].presence || current_user.chat_llm_model)
+            attrs[:chat_llm_base_url] =
+              (p.key?(:chat_base_url) && p[:chat_base_url].blank?) ? nil : (p[:chat_base_url].presence || current_user.chat_llm_base_url)
+          else
+            attrs[:chat_llm_model] = p[:chat_model].presence
+            attrs[:chat_llm_base_url] = p[:chat_base_url].presence
+          end
 
           # api_key 처리:
           #   - 값 있으면 → 갱신
@@ -161,10 +181,14 @@ module Api
             attrs[:llm_api_key] = p[:api_key]
           end
 
-          # chat_llm_api_key: 동일 규약(chat_provider 전환 기준)
+          # chat_llm_api_key: chat_cleared(요약과 동일/선택 안함으로 전환) 시엔 명시적으로 빈 값을
+          # 보낸 경우에만 지우고, 그 외(키 미전송)엔 보존한다. 실제 provider 전환 시엔 기존 규약
+          # (chat_provider_changed 기준 stale key 정리, FIX 1)을 그대로 적용한다.
           chat_provider_changed = p[:chat_provider].present? && p[:chat_provider] != current_user.chat_llm_provider
           if p.key?(:chat_api_key) && p[:chat_api_key].present?
             attrs[:chat_llm_api_key] = p[:chat_api_key]
+          elsif chat_cleared
+            attrs[:chat_llm_api_key] = nil if p.key?(:chat_api_key) && p[:chat_api_key].blank?
           elsif chat_provider_changed
             attrs[:chat_llm_api_key] = nil
           elsif p.key?(:chat_api_key) && p[:chat_api_key] != ""
