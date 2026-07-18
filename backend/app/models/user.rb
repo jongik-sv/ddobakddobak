@@ -9,6 +9,7 @@ class User < ApplicationRecord
   has_many :projects, through: :project_memberships
   has_many :created_projects, class_name: "Project", foreign_key: :created_by_id, inverse_of: :creator
   has_many :chat_messages, dependent: :destroy
+  has_many :llm_profiles, dependent: :destroy
 
   after_create { EnsurePersonalProject.call(self) }
   # 유저 삭제 시 본인 소유 "개인" 프로젝트(personal: true)만 정리한다.
