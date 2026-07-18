@@ -104,3 +104,7 @@ certs/lan-key.pem
 
 # 실제 회의록 샘플 — 사내 민감정보, PUBLIC repo 커밋 금지
 /docs/회의록샘플/
+
+# Claude 메모리 비밀 내보내기 (수동 이동 전용, 커밋 금지)
+docs/claude-memory-secrets-*.md
+.caddy.log
