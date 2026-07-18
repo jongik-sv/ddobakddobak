@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react'
 import { Maximize2 } from 'lucide-react'
 import '@blocknote/mantine/style.css'
+import './blocknoteOverrides.css'
 import { BlockNoteView } from '@blocknote/mantine'
 import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuItems } from '@blocknote/react'
 import { insertOrUpdateBlockForSlashMenu } from '@blocknote/core'

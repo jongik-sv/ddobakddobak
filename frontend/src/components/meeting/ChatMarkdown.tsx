@@ -53,13 +53,13 @@ const MAP: Components = {
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   code: ({ children }) => (
-    <code className="bg-black/10 rounded px-1 py-0.5 text-xs font-mono">{children}</code>
+    <code className="bg-md-inline-code-bg rounded-[var(--md-inline-code-radius)] px-1 py-0.5 text-xs font-mono">{children}</code>
   ),
   pre: ({ node, children }) => {
     const mermaidCode = mermaidCodeFromNode(node as HastNode | undefined)
     if (mermaidCode != null) return <ChatMermaid code={mermaidCode} />
     return (
-      <pre className="bg-gray-800 text-gray-100 rounded p-2 overflow-x-auto text-xs my-1 [&_code]:bg-transparent [&_code]:p-0">
+      <pre className="bg-md-code-bg text-md-code-fg rounded-[var(--md-code-radius)] p-2 overflow-x-auto text-xs my-1 [&_code]:bg-transparent [&_code]:p-0">
         {children}
       </pre>
     )
@@ -129,7 +129,7 @@ export function ChatMarkdown({
         )
       }
       return (
-        <a href={href} className="text-blue-600 underline" target="_blank" rel="noopener noreferrer">
+        <a href={href} className="text-md-link underline" target="_blank" rel="noopener noreferrer">
           {children}
         </a>
       )

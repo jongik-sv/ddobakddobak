@@ -1,7 +1,8 @@
 module LlmPrompts
   # AI Chat 시스템 프롬프트: 단일 회의 / 폴더·프로젝트 챗 / 쿼리 확장.
-  # FOLDER_CHAT_SYSTEM_PROMPT 는 CitationPrompts::FOLDER_CHAT_CITATION_INSTRUCTION 을
-  # 로드 시점에 보간하므로, 그 상수가 정의된 CitationPrompts 가 먼저 로드돼야 한다.
+  # FOLDER_CHAT_SYSTEM_PROMPT 는 CitationPrompts::FOLDER_CHAT_CITATION_INSTRUCTION 을,
+  # 두 챗 프롬프트 모두 MermaidPrompts::CHAT_DIAGRAM_INSTRUCTION 을 로드 시점에 보간하므로,
+  # 그 상수가 정의된 CitationPrompts·MermaidPrompts 가 먼저 로드돼야 한다.
   module ChatPrompts
     # AI Chat(회의에 질문): 단일 회의의 요약+전사+직전 대화를 근거로 자연어 질문에 답한다.
     MEETING_CHAT_SYSTEM_PROMPT = <<~PROMPT.freeze
@@ -22,6 +23,8 @@ module LlmPrompts
         - 마커는 문장 끝·표 셀 안에만. 코드블록 안 금지.
       - 결정사항·할 일은 회의에서 언급된 것만. 없으면 없다고 할 것.
       - 이전 대화가 있으면 맥락 이어 답할 것.
+
+      #{MermaidPrompts::CHAT_DIAGRAM_INSTRUCTION}
 
       후속 질문:
       - 답변 본문 출력 후 맨 마지막 줄에 정확히 한 번 후속 질문 3개 덧붙임.
@@ -55,6 +58,8 @@ module LlmPrompts
       - 이전 대화 맥락 이어 답할 것.
 
       #{CitationPrompts::FOLDER_CHAT_CITATION_INSTRUCTION}
+
+      #{MermaidPrompts::CHAT_DIAGRAM_INSTRUCTION}
 
       후속 질문:
       - 답변 본문 출력 후 맨 마지막 줄에 정확히 한 번 후속 질문 3개 덧붙임.

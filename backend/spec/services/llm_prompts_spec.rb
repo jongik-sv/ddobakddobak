@@ -129,4 +129,40 @@ RSpec.describe LlmPrompts do
       expect(LlmPrompts::FOLDER_CHAT_SYSTEM_PROMPT).to include("서론·맺음말")
     end
   end
+
+  describe "챗 mermaid 다이어그램 지시 (idea.md 30-①)" do
+    it "MermaidPrompts::CHAT_DIAGRAM_INSTRUCTION: [필수] 파싱 안전 규칙 보존" do
+      p = LlmPrompts::MermaidPrompts::CHAT_DIAGRAM_INSTRUCTION
+      expect(p).to include("[필수]")
+      expect(p).to include('A["')
+      expect(p).to include("<br/>")
+      expect(p).to include('id["라벨"]')
+    end
+
+    it "MermaidPrompts::CHAT_DIAGRAM_INSTRUCTION: mindmap [필수] 규칙에 회의록판과 동일한 ✅/❌ 예시 포함(축약 금지)" do
+      p = LlmPrompts::MermaidPrompts::CHAT_DIAGRAM_INSTRUCTION
+      expect(p).to include('Man1["취업공수<br/>(출근일 × 근무시간)"]')  # ✅ 예시: leaf도 id 포함
+      # "취업공수<br/>(출근일 × 근무시간)" 는 ✅ 예시(Man1["..."]) 안에도 부분문자열로 포함되므로
+      # 단순 include만으로는 ❌ 예시(id 없는 bare 따옴표 leaf)를 지워도 통과하는 vacuous 단언이 된다.
+      # 정확히 2회(✅ 예시 내 1회 + ❌ 예시 단독 1회) 등장해야 함을 scan으로 강제한다.
+      expect(p.scan('"취업공수<br/>(출근일 × 근무시간)"').size).to eq(2)
+      expect(p).to include("잘못된 예 (잎이 id 없는 bare 따옴표 → 파싱 실패)")
+    end
+
+    it "MEETING_CHAT: 공유 mermaid 지시 + 챗 전용 절제 지침(답변당 최대 1개) 포함" do
+      p = LlmPrompts::MEETING_CHAT_SYSTEM_PROMPT
+      expect(p).to include("```mermaid")
+      expect(p).to include("답변당 최대 1개")
+      expect(p).to include('A["')
+      expect(p).to include('id["라벨"]')
+    end
+
+    it "FOLDER_CHAT: 공유 mermaid 지시 + 챗 전용 절제 지침(답변당 최대 1개) 포함" do
+      p = LlmPrompts::FOLDER_CHAT_SYSTEM_PROMPT
+      expect(p).to include("```mermaid")
+      expect(p).to include("답변당 최대 1개")
+      expect(p).to include('A["')
+      expect(p).to include('id["라벨"]')
+    end
+  end
 end

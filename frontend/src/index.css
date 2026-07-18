@@ -23,6 +23,16 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+
+  /* 마크다운 렌더러 공용 토큰 — 챗(ChatMarkdown.tsx)과 회의록(BlockNote,
+     blocknoteOverrides.css)이 공유하는 코드블록/인라인코드/링크 "질감" 값.
+     원본은 아래 :root의 --md-*(일반 CSS 변수). @theme inline은 유틸리티 클래스에
+     값을 인라인할 뿐 :root에 --color-* 변수를 남기지 않으므로(위 --color-border도
+     동일), blocknoteOverrides.css 같은 순수 CSS 파일은 --md-*를 직접 참조한다. */
+  --color-md-code-bg: var(--md-code-bg);
+  --color-md-code-fg: var(--md-code-fg);
+  --color-md-inline-code-bg: var(--md-inline-code-bg);
+  --color-md-link: var(--md-link);
 }
 
 @layer base {
@@ -48,6 +58,21 @@
     --ring: 240 5.9% 10%;
     --radius: 0.5rem;
     color-scheme: light;
+
+    /* 마크다운 코드블록·링크 색 — 챗·회의록 공통, 테마 불문 동일 값(다크 고정 코드블록 톤). */
+    --md-code-bg: #1f2937;
+    --md-code-fg: #f3f4f6;
+    --md-link: #2563eb;
+    /* 인라인코드 칩 배경 — 테마 반응형(라이트/다크 --foreground 추종). @theme의
+       --color-md-inline-code-bg와 blocknoteOverrides.css가 여기 한 곳만 참조한다. */
+    --md-inline-code-bg: hsl(var(--foreground) / 0.1);
+    /* 마크다운 코드블록 radius/여백/폰트크기. radius는 챗·회의록 공유 texture 토큰.
+       padding·font-size는 BlockNote 코드블록 전용(코어 기본값 24px/16px가 문서에도 과함) —
+       챗은 말풍선 밀도(p-2/text-xs)를 그대로 유지한다(문서-말풍선 스케일 차이는 의도). */
+    --md-code-radius: 0.5rem;
+    --md-inline-code-radius: 0.25rem;
+    --md-code-padding: 12px;
+    --md-code-font-size: 13px;
   }
 
   .dark {
@@ -71,6 +96,10 @@
     --input: 240 3.7% 15.9%;
     --ring: 240 4.9% 83.9%;
     color-scheme: dark;
+
+    /* 다크모드 마크다운 링크색 — 라이트 #2563eb는 다크 배경(#1f1f1f)에서 대비 3.2:1로 WCAG AA 미달.
+       다크에서만 더 밝은 톤으로 교체(코드블록 배경 --md-code-bg는 테마 불문 고정 유지). */
+    --md-link: #60a5fa;
   }
 
   * {

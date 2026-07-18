@@ -8,7 +8,7 @@ const clampZoom = (z: number) => Math.min(ZMAX, Math.max(ZMIN, Math.round(z * 10
 // 잘못된 mermaid 또는 렌더 실패 시 원문을 보여주는 폴백 — ChatMarkdown의 pre 스타일과 동일.
 function CodeFallback({ code }: { code: string }) {
   return (
-    <pre className="bg-gray-800 text-gray-100 rounded p-2 overflow-x-auto text-xs my-1">
+    <pre className="bg-md-code-bg text-md-code-fg rounded-[var(--md-code-radius)] p-2 overflow-x-auto text-xs my-1">
       <code className="bg-transparent p-0 font-mono">{code}</code>
     </pre>
   )
