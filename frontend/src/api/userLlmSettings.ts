@@ -44,6 +44,7 @@ export interface UserLlmTestParams {
   model: string
   api_key?: string
   base_url?: string
+  profile_id?: number
 }
 
 export interface UserLlmTestResult {
