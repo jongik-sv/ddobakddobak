@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import MeetingsPage from './MeetingsPage'
@@ -570,5 +570,230 @@ describe('MeetingsPage 모바일 대응 (TSK-03-02)', () => {
       const root = screen.getByRole('heading', { level: 1 }).closest('div.min-h-screen')
       expect(root?.className).toContain('p-4')
     })
+  })
+})
+
+/* ================================================================== */
+/*  idea.md 29: 회의 목록 깜빡임 방지 — 폴더 전환은 즉시, 검색/필터는 디바운스   */
+/* ================================================================== */
+describe('MeetingsPage 목록 깜빡임 방지 (idea.md 29)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    mockIsDesktop = true
+    useAuthStore.setState({ user: { id: 1, email: 'me@x.com', name: '사용자1', role: 'member' } })
+    useMeetingStore.getState().reset()
+    // URL(?folder=)이 folderId의 단일 소스다(MeetingsPage의 URL→folderId 동기화 effect) —
+    // 이전 테스트가 남긴 folder 쿼리가 새 테스트로 새어나가지 않게 매 테스트 시작 시 비운다.
+    stableSearchParams.delete('folder')
+    mockGetMeetings.mockResolvedValue({
+      meetings,
+      meta: { total: 3, page: 1, per: 20 },
+    })
+    useMeetingStore.setState({
+      meetings,
+      meta: { total: 3, page: 1, per: 20 },
+      isLoading: false,
+      hasLoadedOnce: true,
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    stableSearchParams.delete('folder')
+  })
+
+  it('폴더 변경(folderId) 시 300ms 대기 없이 즉시 fetch가 호출된다', async () => {
+    renderPage()
+    // 마운트 시 기존 300ms 디바운스 fetch를 먼저 흘려보낸다.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    mockGetMeetings.mockClear()
+
+    // 실제 앱에서는 navigate(folderPath(id))가 URL을 먼저 바꾸고, URL→folderId 동기화
+    // effect가 스토어에 반영한다. 여기선 그 결과 상태(URL + 스토어)를 함께 맞춰 재현한다 —
+    // URL을 갱신하지 않으면 동기화 effect가 folderId를 'all'로 되돌려 버려 거짓 통과가 난다.
+    act(() => {
+      stableSearchParams.set('folder', '5')
+      useMeetingStore.getState().setFolderId(5)
+    })
+
+    // 딜레이 없이(0ms) 곧바로 fetch가 발생해야 한다.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(mockGetMeetings).toHaveBeenCalledTimes(1)
+    // 선택한 폴더 파라미터(folder_id)가 실제 fetch 인자에 반영되는지 검증.
+    expect(mockGetMeetings).toHaveBeenCalledWith(expect.objectContaining({ folder_id: 5 }))
+  })
+
+  it('검색어 입력(searchQuery)은 300ms 디바운스 후에만 fetch가 호출된다', async () => {
+    renderPage()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    mockGetMeetings.mockClear()
+
+    act(() => {
+      useMeetingStore.getState().setSearchQuery('테스트')
+    })
+
+    // 300ms 미만에서는 아직 호출되지 않아야 한다.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299)
+    })
+    expect(mockGetMeetings).not.toHaveBeenCalled()
+
+    // 300ms 경과 후 호출된다.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(mockGetMeetings).toHaveBeenCalledTimes(1)
+  })
+
+  it('재조회 중(isRefreshing)에는 목록 래퍼가 dim 처리되고, 완료 후 복귀한다', async () => {
+    renderPage()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+
+    const gridWrapper = screen.getByText('첫 번째 회의').closest('[class*="opacity-"]')
+    expect(gridWrapper?.className).toContain('opacity-100')
+
+    let resolveRefresh!: (v: { meetings: typeof meetings; meta: { total: number; page: number; per: number } }) => void
+    mockGetMeetings.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRefresh = resolve
+        }),
+    )
+
+    act(() => {
+      useMeetingStore.getState().setFolderId(7)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    expect(useMeetingStore.getState().isRefreshing).toBe(true)
+    const dimmedWrapper = screen.getByText('첫 번째 회의').closest('[class*="opacity-"]')
+    expect(dimmedWrapper?.className).toContain('opacity-60')
+
+    await act(async () => {
+      resolveRefresh({ meetings, meta: { total: 3, page: 1, per: 20 } })
+      await Promise.resolve()
+    })
+
+    expect(useMeetingStore.getState().isRefreshing).toBe(false)
+    const restoredWrapper = screen.getByText('첫 번째 회의').closest('[class*="opacity-"]')
+    expect(restoredWrapper?.className).toContain('opacity-100')
+  })
+
+  it('빈 목록 상태에서 폴더 전환 시 isRefreshing 동안 빈 메시지는 마운트 유지되며 지연 페이드(opacity-0/delay-150) 처리된다', async () => {
+    mockGetMeetings.mockResolvedValue({
+      meetings: [],
+      meta: { total: 0, page: 1, per: 20 },
+    })
+    useMeetingStore.setState({
+      meetings: [],
+      meta: { total: 0, page: 1, per: 20 },
+      isLoading: false,
+      hasLoadedOnce: true,
+    })
+
+    renderPage()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+
+    // 전제: 빈 폴더 상태에서는 정상적으로 빈 메시지가 보인다.
+    const emptyMessage = screen.getByText('회의가 없습니다.')
+    expect(emptyMessage).toBeInTheDocument()
+    expect(emptyMessage.className).toContain('opacity-100')
+    expect(emptyMessage).toHaveAttribute('aria-hidden', 'false')
+
+    let resolveRefresh!: (v: { meetings: []; meta: { total: number; page: number; per: number } }) => void
+    mockGetMeetings.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRefresh = resolve
+        }),
+    )
+
+    act(() => {
+      useMeetingStore.getState().setFolderId(9)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    // 재조회 중(응답 대기) — 빈 메시지는 언마운트되지 않고 유지된 채, 그리드와 동일한
+    // 지연 페이드 패턴(150ms 유예 후 opacity-0)으로만 처리되어야 한다.
+    expect(useMeetingStore.getState().isRefreshing).toBe(true)
+    const refreshingMessage = screen.getByText('회의가 없습니다.')
+    expect(refreshingMessage).toBeInTheDocument()
+    expect(refreshingMessage.className).toContain('opacity-0')
+    expect(refreshingMessage.className).toContain('delay-150')
+    // 접근성: opacity-0은 접근성 트리에서 제거되지 않으므로 리프레시 동안 aria-hidden 처리.
+    expect(refreshingMessage).toHaveAttribute('aria-hidden', 'true')
+
+    await act(async () => {
+      resolveRefresh({ meetings: [], meta: { total: 0, page: 1, per: 20 } })
+      await Promise.resolve()
+    })
+
+    expect(useMeetingStore.getState().isRefreshing).toBe(false)
+  })
+
+  it('빈→빈 재조회 시 빈 상태 메시지가 언마운트되지 않는다(동일 DOM 노드 유지)', async () => {
+    mockGetMeetings.mockResolvedValue({
+      meetings: [],
+      meta: { total: 0, page: 1, per: 20 },
+    })
+    useMeetingStore.setState({
+      meetings: [],
+      meta: { total: 0, page: 1, per: 20 },
+      isLoading: false,
+      hasLoadedOnce: true,
+    })
+
+    renderPage()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+
+    const beforeNode = screen.getByText('회의가 없습니다.')
+    expect(beforeNode).toBeInTheDocument()
+
+    let resolveRefresh!: (v: { meetings: []; meta: { total: number; page: number; per: number } }) => void
+    mockGetMeetings.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRefresh = resolve
+        }),
+    )
+
+    // 빈 폴더 → 빈 폴더 전환(검색 0건 재조회 등)을 재현한다.
+    act(() => {
+      useMeetingStore.getState().setFolderId(9)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    expect(useMeetingStore.getState().isRefreshing).toBe(true)
+    // 언마운트→재마운트가 일어났다면 새 DOM 노드가 생성되므로 참조가 달라진다.
+    // 동일 노드 참조를 유지해야 깜빡임(blink) 없이 페이드만 적용된 것이다.
+    const duringNode = screen.getByText('회의가 없습니다.')
+    expect(duringNode).toBe(beforeNode)
+
+    await act(async () => {
+      resolveRefresh({ meetings: [], meta: { total: 0, page: 1, per: 20 } })
+      await Promise.resolve()
+    })
+
+    expect(useMeetingStore.getState().isRefreshing).toBe(false)
+    const afterNode = screen.getByText('회의가 없습니다.')
+    expect(afterNode).toBe(beforeNode)
   })
 })

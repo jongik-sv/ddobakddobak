@@ -19,6 +19,8 @@ interface MeetingState {
   folderId: SelectedFolder
   /** true면 중요 필터를 해제하고 전체 회의를 가져온다(show_all=1). 기본 false. */
   showAll: boolean
+  /** true면 최초 성공 로드를 1회 이상 마쳤음(스켈레톤은 이 시점 이전에만 노출). */
+  hasLoadedOnce: boolean
   isLoading: boolean
   isRefreshing: boolean
   error: string | null
@@ -47,10 +49,15 @@ const initialState = {
   dateTo: '',
   folderId: 'all' as SelectedFolder,
   showAll: false,
+  hasLoadedOnce: false,
   isLoading: false,
   isRefreshing: false,
   error: null as string | null,
 }
+
+// fetchMeetings 요청 시퀀스 번호 — 응답 도착 시 최신 요청이 아니면 무시(경쟁 가드).
+// 스토어 상태가 아니라 모듈 클로저 변수로 둔다(re-render/구독과 무관하게 단조 증가만 하면 됨).
+let fetchSeq = 0
 
 export const useMeetingStore = create<MeetingState>()((set, get) => ({
   ...initialState,
@@ -64,8 +71,10 @@ export const useMeetingStore = create<MeetingState>()((set, get) => ({
   toggleShowAll: () => set((state) => ({ showAll: !state.showAll })),
 
   fetchMeetings: async (page = 1) => {
-    const hasData = get().meetings.length > 0
-    set({ isLoading: !hasData, isRefreshing: true, error: null })
+    const seq = ++fetchSeq
+    const { hasLoadedOnce } = get()
+    // 최초 로드 이전에만 isLoading(스켈레톤). 이후 재조회는 isRefreshing(지연 dim)만 토글.
+    set({ isLoading: !hasLoadedOnce, isRefreshing: hasLoadedOnce, error: null })
     try {
       const { searchQuery, statusFilter, dateFrom, dateTo, folderId, showAll } = get()
       const params: GetMeetingsParams = { page, per: 20 }
@@ -81,8 +90,10 @@ export const useMeetingStore = create<MeetingState>()((set, get) => ({
       const projectId = useProjectStore.getState().currentProjectId
       if (projectId != null) params.project_id = projectId
       const data = await getMeetings(params)
-      set({ meetings: data.meetings, meta: data.meta, isLoading: false, isRefreshing: false })
+      if (seq !== fetchSeq) return // 더 최신 요청이 이미 시작됨 — stale 응답 무시
+      set({ meetings: data.meetings, meta: data.meta, isLoading: false, isRefreshing: false, hasLoadedOnce: true })
     } catch {
+      if (seq !== fetchSeq) return // stale 에러도 최신 상태를 덮지 않는다
       set({ error: '회의 목록을 불러오지 못했습니다.', isLoading: false, isRefreshing: false })
     }
   },

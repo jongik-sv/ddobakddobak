@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { LayoutGrid, List, Plus, Eye, EyeOff } from 'lucide-react'
 import { Tooltip } from '../components/ui/Tooltip'
@@ -44,6 +44,7 @@ export default function MeetingsPage() {
     folderId,
     showAll,
     isLoading,
+    isRefreshing,
     error,
     setSearchQuery,
     setStatusFilter,
@@ -121,12 +122,19 @@ export default function MeetingsPage() {
     if (folderId !== target) setFolderId(target)
   }, [searchParams, selectedFolderId, folderId, setSelectedFolder, setFolderId])
 
+  // 이전 folderId를 기억 — 폴더 전환은 지연 없이 즉시 fetch(깜빡임 방지),
+  // 검색어/상태/날짜 필터 변경은 기존 300ms 디바운스를 유지한다.
+  const prevFolderIdRef = useRef(folderId)
+
   // 필터 변경 시 디바운스 후 fetch (folderId 포함 — 폴더 선택은 URL→folderId로 반영됨)
   useEffect(() => {
+    const folderChanged = prevFolderIdRef.current !== folderId
+    prevFolderIdRef.current = folderId
+    const delay = folderChanged ? 0 : 300
     const timer = setTimeout(() => {
       fetchMeetings(1)
       setCurrentPage(1)
-    }, 300)
+    }, delay)
     return () => clearTimeout(timer)
   }, [searchQuery, statusFilter, dateFrom, dateTo, folderId, fetchMeetings]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -401,46 +409,65 @@ export default function MeetingsPage() {
       {isLoading && meetings.length === 0 ? (
         <MeetingsGridSkeleton />
       ) : childFolders.length === 0 && meetings.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">회의가 없습니다.</div>
-      ) : viewMode === 'card' ? (
-        <MeetingCardGrid
-          childFolders={childFolders}
-          meetings={meetings}
-          searchQuery={searchQuery}
-          folders={folders}
-          isDesktop={isDesktop}
-          meetingTypeMap={meetingTypeMap}
-          onFolderSelect={handleFolderSelect}
-          onMeetingOpen={handleMeetingOpen}
-          onEdit={setEditingMeeting}
-          onMove={setMovingMeeting}
-          onMoveProject={setMovingProjectMeeting}
-          onDelete={handleDeleteMeeting}
-          onStop={handleStopMeeting}
-          onExport={setExportingMeeting}
-          onToggleImportant={handleToggleImportant}
-        />
+        <div
+          aria-hidden={isRefreshing}
+          className={
+            isRefreshing
+              ? 'text-center py-8 text-muted-foreground opacity-0 transition-opacity duration-200 delay-150'
+              : 'text-center py-8 text-muted-foreground opacity-100 transition-opacity duration-200'
+          }
+        >
+          회의가 없습니다.
+        </div>
       ) : (
-        <MeetingListTable
-          childFolders={childFolders}
-          meetings={sortedMeetings}
-          searchQuery={searchQuery}
-          folders={folders}
-          isDesktop={isDesktop}
-          meetingTypeMap={meetingTypeMap}
-          sortField={sortField}
-          sortDirection={sortDirection}
-          onSort={handleSort}
-          onFolderSelect={handleFolderSelect}
-          onMeetingOpen={handleMeetingOpen}
-          onEdit={setEditingMeeting}
-          onMove={setMovingMeeting}
-          onMoveProject={setMovingProjectMeeting}
-          onDelete={handleDeleteMeeting}
-          onStop={handleStopMeeting}
-          onExport={setExportingMeeting}
-          onToggleImportant={handleToggleImportant}
-        />
+        <div
+          className={
+            isRefreshing
+              ? 'opacity-60 transition-opacity duration-200 delay-150'
+              : 'opacity-100 transition-opacity duration-200'
+          }
+        >
+          {viewMode === 'card' ? (
+            <MeetingCardGrid
+              childFolders={childFolders}
+              meetings={meetings}
+              searchQuery={searchQuery}
+              folders={folders}
+              isDesktop={isDesktop}
+              meetingTypeMap={meetingTypeMap}
+              onFolderSelect={handleFolderSelect}
+              onMeetingOpen={handleMeetingOpen}
+              onEdit={setEditingMeeting}
+              onMove={setMovingMeeting}
+              onMoveProject={setMovingProjectMeeting}
+              onDelete={handleDeleteMeeting}
+              onStop={handleStopMeeting}
+              onExport={setExportingMeeting}
+              onToggleImportant={handleToggleImportant}
+            />
+          ) : (
+            <MeetingListTable
+              childFolders={childFolders}
+              meetings={sortedMeetings}
+              searchQuery={searchQuery}
+              folders={folders}
+              isDesktop={isDesktop}
+              meetingTypeMap={meetingTypeMap}
+              sortField={sortField}
+              sortDirection={sortDirection}
+              onSort={handleSort}
+              onFolderSelect={handleFolderSelect}
+              onMeetingOpen={handleMeetingOpen}
+              onEdit={setEditingMeeting}
+              onMove={setMovingMeeting}
+              onMoveProject={setMovingProjectMeeting}
+              onDelete={handleDeleteMeeting}
+              onStop={handleStopMeeting}
+              onExport={setExportingMeeting}
+              onToggleImportant={handleToggleImportant}
+            />
+          )}
+        </div>
       )}
 
       {/* 페이지네이션 */}
