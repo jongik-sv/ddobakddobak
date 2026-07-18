@@ -73,7 +73,17 @@ class LlmProfileLegacyImporter
     chat = llm["chat"] || {}
     if API_PROVIDERS.include?(chat["provider"].to_s) && llm["chat_profile_id"].blank?
       chat_preset = chat["preset_id"].presence || LlmProfile.preset_id_for(chat["provider"], chat["base_url"])
-      chat_profile = created[chat_preset] || LlmProfile.find_or_create_by!(user_id: nil, name: "#{PRESET_LABELS.fetch(chat_preset, chat_preset)} (챗)") do |p|
+      reusable = created[chat_preset]
+      # 챗 블록 값이 프리셋 프로필과 완전히 일치할 때만 재사용. 하나라도 다르면(대표적으로
+      # "같은 자격증명 + 더 작은 챗 모델" override) 전용 "(챗)" 프로필을 만들어 유실을 방지한다.
+      unless reusable &&
+             reusable.provider == chat["provider"].to_s &&
+             reusable.base_url == chat["base_url"].presence &&
+             reusable.model == chat["model"].presence &&
+             reusable.auth_token == chat["auth_token"].presence
+        reusable = nil
+      end
+      chat_profile = reusable || LlmProfile.find_or_create_by!(user_id: nil, name: "#{PRESET_LABELS.fetch(chat_preset, chat_preset)} (챗)") do |p|
         p.preset_id = chat_preset
         p.provider = chat["provider"]
         p.base_url = chat["base_url"].presence

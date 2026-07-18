@@ -79,4 +79,36 @@ RSpec.describe LlmProfileLegacyImporter do
       expect(cfg["llm"]["active_preset"]).to eq("openai") # 실체화 유지
     end
   end
+
+  describe "챗이 서버 풀로 승격된 기존 API 프리셋을 참조하되 모델이 다른 경우" do
+    let(:yaml) do
+      { "llm" => {
+        "active_preset" => "openai",
+        "presets" => {
+          "openai" => { "provider" => "openai", "auth_token" => "sk-server-123456789", "model" => "gpt-4o", "max_input_tokens" => 150_000 }
+        },
+        "chat" => { "preset_id" => "openai", "provider" => "openai", "auth_token" => "sk-server-123456789", "model" => "gpt-4o-mini" }
+      } }
+    end
+
+    it "프리셋을 그대로 재사용하지 않고 챗 전용 '(챗)' 프로필을 별도 생성해 챗 모델을 보존한다" do
+      written = nil
+      allow(File).to receive(:write).with(AppSettings::SETTINGS_PATH, anything) { |_, body| written = body; true }
+
+      described_class.run!
+
+      pool = LlmProfile.server_pool
+      openai_p = pool.find_by(preset_id: "openai", name: "OpenAI")
+      chat_p = pool.find_by(preset_id: "openai", name: "OpenAI (챗)")
+
+      expect(chat_p).to be_present
+      expect(chat_p.id).not_to eq(openai_p.id)
+      expect(chat_p.model).to eq("gpt-4o-mini")
+      expect(openai_p.model).to eq("gpt-4o") # 프리셋 프로필 자체는 그대로
+
+      cfg = YAML.safe_load(written)
+      expect(cfg["llm"]["chat_profile_id"]).to eq(chat_p.id)
+      expect(cfg["llm"]["chat"]["model"]).to eq("gpt-4o-mini") # 재실체화 후에도 챗 모델 보존
+    end
+  end
 end
