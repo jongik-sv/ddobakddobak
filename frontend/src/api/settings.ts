@@ -67,6 +67,9 @@ export interface LlmSettings {
   presets: Record<string, LlmPreset>
   offline?: boolean
   sidecar?: Record<string, unknown>
+  // 서버 풀 프로필 참조(Task 4 백엔드가 yaml에 실체화). 있으면 provider/model보다 우선.
+  active_profile_id?: number | null
+  chat_profile_id?: number | null
 }
 
 export async function getLlmSettings(): Promise<LlmSettings> {
@@ -92,6 +95,8 @@ export async function updateLlmSettings(params: {
     max_input_tokens?: number
     max_output_tokens?: number
   }
+  active_profile_id?: number | null
+  chat_profile_id?: number | null
 }): Promise<LlmSettings> {
   return apiClient.put('settings/llm', { json: params }).json()
 }
@@ -102,6 +107,7 @@ export async function testLlmConnection(params: {
   base_url?: string
   model: string
   preset_id?: string
+  profile_id?: number
 }): Promise<{ success: boolean; error?: string }> {
   return apiClient.post('settings/llm/test', { json: params }).json()
 }

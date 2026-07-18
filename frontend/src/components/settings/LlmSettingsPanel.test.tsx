@@ -2,283 +2,280 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { LlmSettingsPanel } from './LlmSettingsPanel'
 import type { LlmSettings } from '../../api/settings'
+import type { LlmProfile } from '../../api/llmProfiles'
+import { useAuthStore } from '../../stores/authStore'
 
 // API 모듈 모킹
 vi.mock('../../api/settings', () => ({
   getLlmSettings: vi.fn(),
   updateLlmSettings: vi.fn(),
   testLlmConnection: vi.fn(),
-  fetchOllamaModels: vi.fn(),
-  fetchLmStudioModels: vi.fn(),
+  fetchOllamaModels: vi.fn().mockResolvedValue([]),
+  fetchLmStudioModels: vi.fn().mockResolvedValue([]),
 }))
 
-import { getLlmSettings, updateLlmSettings, testLlmConnection, fetchOllamaModels, fetchLmStudioModels } from '../../api/settings'
+vi.mock('../../api/llmProfiles', () => ({
+  listLlmProfiles: vi.fn(),
+  createLlmProfile: vi.fn(),
+  updateLlmProfile: vi.fn(),
+  deleteLlmProfile: vi.fn(),
+}))
+
+// LlmProfilesModal(＋내부 LlmProfileForm)이 마운트 시 로컬/외부 링크 관련 모듈을 임포트한다.
+// 실제 네트워크로 새지 않도록 함께 목킹(LlmProfilesModal.test.tsx·Task 9 테스트와 동일 세트).
+vi.mock('../../api/userLlmSettings', () => ({
+  testUserLlmConnection: vi.fn(),
+  fetchUserLlmModels: vi.fn().mockResolvedValue([]),
+}))
+vi.mock('../../lib/openExternal', () => ({ openExternal: vi.fn() }))
+vi.mock('../../lib/confirmDialog', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
+
+import { getLlmSettings, updateLlmSettings, testLlmConnection } from '../../api/settings'
+import { listLlmProfiles } from '../../api/llmProfiles'
 
 const mockGetLlmSettings = vi.mocked(getLlmSettings)
 const mockUpdateLlmSettings = vi.mocked(updateLlmSettings)
 const mockTestLlmConnection = vi.mocked(testLlmConnection)
-const mockFetchOllamaModels = vi.mocked(fetchOllamaModels)
-const mockFetchLmStudioModels = vi.mocked(fetchLmStudioModels)
+const mockListLlmProfiles = vi.mocked(listLlmProfiles)
 
-const settingsResponse: LlmSettings = {
-  active_preset: 'anthropic',
-  chat_model: 'haiku',
-  presets: {
-    anthropic: {
-      provider: 'anthropic',
-      auth_token_masked: 'sk-a****5678',
-      model: 'claude-sonnet-4-6',
-      max_input_tokens: 200000,
-      max_output_tokens: 10000,
-    },
-  },
+// 서버 풀의 프로필 1개 — 요약/챗 셀렉터 드롭다운의 '내 프로필' 그룹에 노출된다.
+const serverProfile5: LlmProfile = {
+  id: 5,
+  name: 'Z.AI · 서버키',
+  preset_id: 'zai',
+  provider: 'anthropic',
+  base_url: 'https://api.z.ai/api/anthropic',
+  model: 'glm-5.2',
+  max_input_tokens: 200000,
+  max_output_tokens: 10000,
+  has_token: true,
+  auth_token_masked: 'sk-a****abcd',
 }
 
-describe('LlmSettingsPanel - AI 챗 독립 섹션', () => {
+function makeSettings(overrides: Partial<LlmSettings> = {}): LlmSettings {
+  return {
+    active_preset: 'anthropic',
+    chat_model: null,
+    chat: null,
+    presets: {},
+    active_profile_id: null,
+    chat_profile_id: null,
+    ...overrides,
+  }
+}
+
+// 프로필 참조로 설정됨 — 요약이 서버 풀 프로필(id 5)을 가리킨다.
+const profileConfiguredSettings = makeSettings({ active_profile_id: 5 })
+
+// 레거시 — active_profile_id 없음 + active_preset이 API 프리셋(프로필 미참조). 이관 전·yaml 수동 편집 등.
+const legacyUnreferencedSettings = makeSettings({
+  active_preset: 'anthropic',
+  presets: { anthropic: { provider: 'anthropic', auth_token_masked: 'sk-a****9999', model: 'claude-sonnet-4-6' } },
+})
+
+const setAdmin = () => useAuthStore.setState({ user: { id: 1, email: 'admin@x.com', name: 'Admin', role: 'admin' } } as never)
+const setMember = () => useAuthStore.setState({ user: { id: 2, email: 'member@x.com', name: 'Member', role: 'member' } } as never)
+
+describe('LlmSettingsPanel - 서버 선택 카드', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockFetchOllamaModels.mockResolvedValue([])
-    mockFetchLmStudioModels.mockResolvedValue([])
+    mockListLlmProfiles.mockResolvedValue([serverProfile5])
+    setAdmin() // 기본은 admin(CLI 그룹 노출) — 케이스⑤에서만 비admin으로 전환해 검증
   })
 
-  const chatCard = () => screen.getByTestId('chat-card')
+  const summarySel = () => screen.getByTestId('summary-selector')
+  const chatSel = () => screen.getByTestId('chat-selector')
 
-  it('기본(요약과 동일): 요약과 동일 카드 선택됨, 키/URL 숨김', async () => {
-    mockGetLlmSettings.mockResolvedValue(settingsResponse)
+  // ① 로드 — active_profile_id: 5 응답 → 요약 셀렉터 profile:5
+  it('로드: active_profile_id 응답 → 요약 셀렉터가 profile:5 선택 상태', async () => {
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
     render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('LLM 모델 설정'))
-
-    const chatGrid = screen.getByTestId('chat-service-grid')
-    const sameasBtn = within(chatGrid).getByText('요약과 동일').closest('button')!
-    expect(sameasBtn.getAttribute('aria-pressed')).toBe('true')
-    // 키/URL 필드 미노출
-    expect(within(chatCard()).queryByLabelText('API Key')).toBeNull()
-    expect(within(chatCard()).queryByLabelText('API Base URL')).toBeNull()
-  })
-
-  it('챗 서비스=OpenAI 카드 선택 시 키·base URL·모델 필드 노출', async () => {
-    mockGetLlmSettings.mockResolvedValue(settingsResponse)
-    render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('LLM 모델 설정'))
-
-    const chatGrid = screen.getByTestId('chat-service-grid')
-    fireEvent.click(within(chatGrid).getByText('OpenAI').closest('button')!)
-    expect(within(chatCard()).getByLabelText('API Key')).toBeInTheDocument()
-    expect(within(chatCard()).getByLabelText('API Base URL')).toBeInTheDocument()
-    expect(within(chatCard()).getByLabelText('모델명')).toBeInTheDocument()
-  })
-
-  it('저장: 독립 챗 설정이면 chat 객체를 전송', async () => {
-    mockGetLlmSettings.mockResolvedValue(settingsResponse)
-    mockUpdateLlmSettings.mockResolvedValue(settingsResponse)
-    render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('LLM 모델 설정'))
-
-    const chatGrid = screen.getByTestId('chat-service-grid')
-    fireEvent.click(within(chatGrid).getByText('Ollama').closest('button')!)
-    fireEvent.change(within(chatCard()).getByLabelText('API Base URL'), { target: { value: 'http://localhost:11434/v1' } })
-    fireEvent.change(within(chatCard()).getByLabelText('모델명'), { target: { value: 'llama-3.1-8b' } })
-
-    fireEvent.click(screen.getByText('저장'))
     await waitFor(() => {
-      expect(mockUpdateLlmSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          chat: expect.objectContaining({
-            preset_id: 'ollama',
-            provider: 'openai',
-            base_url: 'http://localhost:11434/v1',
-            model: 'llama-3.1-8b',
-          }),
-        }),
-      )
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
     })
+    expect(mockListLlmProfiles).toHaveBeenCalledWith('server')
   })
 
-  it('저장: 요약과 동일이면 chat.provider 빈값 + 레거시 chat_model 전송', async () => {
-    mockGetLlmSettings.mockResolvedValue(settingsResponse)
-    mockUpdateLlmSettings.mockResolvedValue(settingsResponse)
+  // ② 저장(프로필) → updateLlmSettings({ active_profile_id: 5, ... })
+  it('저장: 요약이 프로필(5) 선택 상태면 payload에 active_profile_id를 담는다', async () => {
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    mockUpdateLlmSettings.mockResolvedValue(profileConfiguredSettings)
     render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('LLM 모델 설정'))
-
-    // 기본은 '요약과 동일'. 챗 모델만 입력 (레거시 라벨 '챗 모델' 그대로)
-    fireEvent.change(screen.getByLabelText('챗 모델'), { target: { value: 'claude-haiku-4-5' } })
-    fireEvent.click(screen.getByText('저장'))
     await waitFor(() => {
-      expect(mockUpdateLlmSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          chat: expect.objectContaining({ provider: '' }),
-          chat_model: 'claude-haiku-4-5',
-        }),
-      )
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
     })
-  })
 
-  it('로드: llm.chat 있으면 해당 서비스 카드 aria-pressed true + 마스킹 키 placeholder', async () => {
-    mockGetLlmSettings.mockResolvedValue({
-      ...settingsResponse,
-      chat: { preset_id: 'openai', provider: 'openai', auth_token_masked: 'sk-c****9999',
-              base_url: '', model: 'gpt-4o-mini' },
-    })
-    render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('LLM 모델 설정'))
-
-    const chatGrid = screen.getByTestId('chat-service-grid')
-    await waitFor(() => {
-      const openaiBtn = within(chatGrid).getByText('OpenAI').closest('button')!
-      expect(openaiBtn.getAttribute('aria-pressed')).toBe('true')
-    })
-    const keyInput = within(chatCard()).getByLabelText('API Key') as HTMLInputElement
-    expect(keyInput.placeholder).toContain('sk-c****9999')
-  })
-
-  it('챗 서비스=LM Studio 선택 시 base URL에 1234 포함, API 키 필드 없음', async () => {
-    mockGetLlmSettings.mockResolvedValue(settingsResponse)
-    render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('LLM 모델 설정'))
-
-    const chatGrid = screen.getByTestId('chat-service-grid')
-    fireEvent.click(within(chatGrid).getByText('LM Studio').closest('button')!)
-    expect((within(chatCard()).getByLabelText('API Base URL') as HTMLInputElement).value).toContain('1234')
-    expect(within(chatCard()).queryByLabelText('API Key')).toBeNull()
-  })
-
-  it('챗 서비스=Ollama 선택 시 설치 모델 목록을 fetch해 챗 모델 SELECT로 렌더링', async () => {
-    mockFetchOllamaModels.mockResolvedValue(['gemma4:e2b', 'llama3.2'])
-    mockGetLlmSettings.mockResolvedValue(settingsResponse)
-    render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('LLM 모델 설정'))
-
-    const chatGrid = screen.getByTestId('chat-service-grid')
-    fireEvent.click(within(chatGrid).getByText('Ollama').closest('button')!)
-
-    await waitFor(() => {
-      const chatModelEl = within(chatCard()).getByLabelText('모델명')
-      expect(chatModelEl.tagName).toBe('SELECT')
-      const options = Array.from((chatModelEl as HTMLSelectElement).options).map((o) => o.value)
-      expect(options).toContain('gemma4:e2b')
-      expect(options).toContain('llama3.2')
-    })
-  })
-
-  it('챗 서비스=LM Studio 선택 시 모델 목록을 fetch해 챗 모델 SELECT로 렌더링', async () => {
-    mockFetchLmStudioModels.mockResolvedValue(['qwen2.5-7b', 'phi-4'])
-    mockGetLlmSettings.mockResolvedValue(settingsResponse)
-    render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('LLM 모델 설정'))
-
-    const chatGrid = screen.getByTestId('chat-service-grid')
-    fireEvent.click(within(chatGrid).getByText('LM Studio').closest('button')!)
-
-    await waitFor(() => {
-      const chatModelEl = within(chatCard()).getByLabelText('모델명')
-      expect(chatModelEl.tagName).toBe('SELECT')
-      const options = Array.from((chatModelEl as HTMLSelectElement).options).map((o) => o.value)
-      expect(options).toContain('qwen2.5-7b')
-      expect(options).toContain('phi-4')
-    })
-  })
-
-  it('presetCache 왕복: anthropic 모델 입력→openai 전환→복귀 시 값 유지', async () => {
-    mockGetLlmSettings.mockResolvedValue(settingsResponse)
-    render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('LLM 모델 설정'))
-
-    const summaryGrid = screen.getByTestId('summary-service-grid')
-    const summaryCard = screen.getByTestId('summary-card')
-
-    // '직접 입력' 토글 버튼 (버튼 타입이고 text-xs 클래스)
-    // '직접 입력' 이름의 프리셋 버튼과 구분: 모델명 토글 버튼은 type="button"이고 p.text-sm이 아님
-    const customInputBtns = within(summaryCard).getAllByRole('button', { name: '직접 입력' })
-    // 프리셋 그리드 버튼은 aria-pressed 속성이 있고, 토글은 없음
-    const modelToggleBtn = customInputBtns.find(b => b.getAttribute('aria-pressed') === null)!
-    fireEvent.click(modelToggleBtn)
-
-    // 요약 카드 내 모델명 input 확인 후 입력
-    const modelInput = () => within(summaryCard).getByLabelText('모델명') as HTMLInputElement
-    await waitFor(() => expect(modelInput().tagName).toBe('INPUT'))
-    fireEvent.change(modelInput(), { target: { value: 'my-claude' } })
-    await waitFor(() => expect(modelInput().value).toBe('my-claude'))
-
-    // openai 전환
-    fireEvent.click(within(summaryGrid).getByText('OpenAI').closest('button')!)
-    // anthropic 복귀
-    await waitFor(() => within(summaryGrid).getByText('OpenAI').closest('button')!.getAttribute('aria-pressed') === 'true')
-    fireEvent.click(within(summaryGrid).getByText('Anthropic').closest('button')!)
-
-    await waitFor(() => expect(modelInput().value).toBe('my-claude'))
-  })
-
-  it('요약 그리드 8프리셋 렌더: Z.AI·Ollama 등 존재', async () => {
-    mockGetLlmSettings.mockResolvedValue(settingsResponse)
-    render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('LLM 모델 설정'))
-
-    const summaryGrid = screen.getByTestId('summary-service-grid')
-    expect(within(summaryGrid).getByText('Z.AI')).toBeInTheDocument()
-    expect(within(summaryGrid).getByText('Ollama')).toBeInTheDocument()
-    expect(within(summaryGrid).getByText('Anthropic')).toBeInTheDocument()
-  })
-
-  // #5: 비동기 onChange(로컬 모델 자동채움)가 동시 base_url 편집을 덮어쓰지 않아야 한다.
-  // updateCurrentForm이 렌더 시점 스냅샷이 아니라 최신 캐시에 병합하므로 두 편집이 모두 유지된다.
-  it('#5 동시성: in-flight 로컬 모델 자동채움이 직후 base_url 편집을 되돌리지 않음', async () => {
-    // fetchOllamaModels를 수동 제어 가능한 promise로: resolve를 보류해 base_url 편집을 끼워넣는다.
-    let resolveFetch!: (models: string[]) => void
-    const fetchGate = new Promise<string[]>((res) => { resolveFetch = res })
-    mockFetchOllamaModels.mockReturnValue(fetchGate)
-    mockGetLlmSettings.mockResolvedValue(settingsResponse)
-
-    render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('LLM 모델 설정'))
-
-    const summaryGrid = screen.getByTestId('summary-service-grid')
-    const summaryCard = screen.getByTestId('summary-card')
-
-    // Ollama 선택 → base_url 기본값으로 loadLocal(useEffect) 발화, fetch는 게이트에서 대기
-    fireEvent.click(within(summaryGrid).getByText('Ollama').closest('button')!)
-
-    const baseInput = () => within(summaryCard).getByLabelText('API Base URL') as HTMLInputElement
-    await waitFor(() => expect(baseInput()).toBeInTheDocument())
-
-    // fetch가 아직 resolve되지 않은 사이(stale onChange 보유) base_url을 편집
-    fireEvent.change(baseInput(), { target: { value: 'http://localhost:11434/v1/custom' } })
-    await waitFor(() => expect(baseInput().value).toBe('http://localhost:11434/v1/custom'))
-
-    // 이제 보류된 fetch가 resolve → loadLocal이 onChange({ model: models[0] }) 호출(model 비어있었음)
-    resolveFetch(['gemma:2b'])
-
-    // 모델은 자동채움되지만 base_url 편집은 유지되어야 한다(되돌림 없음)
-    await waitFor(() => {
-      const modelEl = within(summaryCard).getByLabelText('모델명') as HTMLSelectElement
-      expect(modelEl.value).toBe('gemma:2b')
-    })
-    expect(baseInput().value).toBe('http://localhost:11434/v1/custom')
-  })
-
-  // #13: SERVICE_PRESETS에 없는 active_preset이어도 Test/Save 핸들러가 TypeError로 죽지 않아야 한다.
-  it('#13 안전성: 알 수 없는 selectedPreset이어도 Test/Save 핸들러가 크래시하지 않음', async () => {
-    mockGetLlmSettings.mockResolvedValue({ ...settingsResponse, active_preset: 'totally_unknown_preset' })
-    mockUpdateLlmSettings.mockResolvedValue(settingsResponse)
-    mockTestLlmConnection.mockResolvedValue({ success: true })
-    render(<LlmSettingsPanel />)
-    await waitFor(() => screen.getByText('LLM 모델 설정'))
-
-    // 저장: currentPreset이 undefined였다면 currentPreset.provider에서 TypeError로 크래시했을 것
     fireEvent.click(screen.getByText('저장'))
     await waitFor(() => expect(mockUpdateLlmSettings).toHaveBeenCalled())
-    // 폴백 프리셋(anthropic)의 provider로 전송되며 active_preset은 원래 id 유지
+    expect(mockUpdateLlmSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ active_profile_id: 5 }),
+    )
+  })
+
+  // ③ 저장(CLI claude_cli/sonnet) → { active_preset, preset_id, preset_data: { provider, model }, active_profile_id: null }
+  it('저장: 요약을 CLI(claude_cli)로 전환 후 저장하면 provider==preset_id 스키마로 전송', async () => {
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    mockUpdateLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
+    })
+
+    fireEvent.change(within(summarySel()).getByLabelText('요약 모델 프로필'), { target: { value: 'cli:claude_cli' } })
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 CLI 모델') as HTMLSelectElement).value).toBe('sonnet')
+    })
+
+    fireEvent.click(screen.getByText('저장'))
+    await waitFor(() => expect(mockUpdateLlmSettings).toHaveBeenCalled())
     expect(mockUpdateLlmSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        active_preset: 'totally_unknown_preset',
-        preset_data: expect.objectContaining({ provider: 'anthropic' }),
+        active_preset: 'claude_cli',
+        preset_id: 'claude_cli',
+        preset_data: { provider: 'claude_cli', model: 'sonnet' },
+        active_profile_id: null,
       }),
     )
+  })
 
-    // 연결 테스트: 모델 입력 후(버튼 활성화) 클릭해도 크래시 없이 결과 표시
-    const summaryCard = screen.getByTestId('summary-card')
-    fireEvent.change(within(summaryCard).getByLabelText('모델명'), { target: { value: 'some-model' } })
+  // ④ 챗 '요약과 동일' → payload에 chat:{ provider: '' } 포함
+  it("저장: 챗이 '요약과 동일'(기본)이면 payload에 chat.provider=''를 담는다", async () => {
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    mockUpdateLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
+    })
+
+    fireEvent.click(screen.getByText('저장'))
+    await waitFor(() => expect(mockUpdateLlmSettings).toHaveBeenCalled())
+    expect(mockUpdateLlmSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chat: expect.objectContaining({ provider: '' }),
+        chat_profile_id: null,
+      }),
+    )
+  })
+
+  // 저장(챗 프로필): 챗 드롭다운에서 프로필(5) 선택 후 저장 → payload chat_profile_id
+  it('저장: 챗을 프로필(5)로 전환 후 저장하면 payload에 chat_profile_id를 담는다', async () => {
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    mockUpdateLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
+    })
+
+    fireEvent.change(within(chatSel()).getByLabelText('AI 챗 모델 프로필'), { target: { value: 'profile:5' } })
+    fireEvent.click(screen.getByText('저장'))
+    await waitFor(() => expect(mockUpdateLlmSettings).toHaveBeenCalled())
+    expect(mockUpdateLlmSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ chat_profile_id: 5 }),
+    )
+  })
+
+  // 저장(챗 CLI): 챗 드롭다운에서 CLI(claude_cli) 선택 후 저장 → payload chat:{ preset_id, provider, model }, chat_profile_id:null
+  it('저장: 챗을 CLI(claude_cli)로 전환 후 저장하면 payload에 chat.preset_id/provider/model을 담는다', async () => {
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    mockUpdateLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
+    })
+
+    fireEvent.change(within(chatSel()).getByLabelText('AI 챗 모델 프로필'), { target: { value: 'cli:claude_cli' } })
+    await waitFor(() => {
+      expect((within(chatSel()).getByLabelText('AI 챗 모델 CLI 모델') as HTMLSelectElement).value).toBe('sonnet')
+    })
+
+    fireEvent.click(screen.getByText('저장'))
+    await waitFor(() => expect(mockUpdateLlmSettings).toHaveBeenCalled())
+    expect(mockUpdateLlmSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chat: { preset_id: 'claude_cli', provider: 'claude_cli', model: 'sonnet' },
+        chat_profile_id: null,
+      }),
+    )
+  })
+
+  // ⑤ 비admin+server 모드(getMode='server', jsdom 기본값) → 시스템 CLI 그룹 숨김, admin이면 노출
+  it('비admin+server 모드에서는 시스템 CLI 그룹이 숨겨지고, admin이면 노출된다', async () => {
+    setMember()
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    const { unmount } = render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
+    })
+    // optgroup label은 속성이라 텍스트 노드가 아니므로, 그룹 내부 option(예: 'Claude Code')의 존재로 판별한다.
+    expect(within(summarySel()).queryByText('Claude Code')).toBeNull()
+    unmount()
+
+    setAdmin()
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
+    })
+    expect(within(summarySel()).getByText('Claude Code')).toBeInTheDocument()
+  })
+
+  // ⑥ '프로필 관리' → dialog + listLlmProfiles가 'server'로 호출
+  it("'프로필 관리' 클릭 시 프로필 모달이 열리고 listLlmProfiles가 'server'로 호출된다", async () => {
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
+    })
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    // 마운트 시 이미 listLlmProfiles('server')가 1회 호출되어 있으므로, 모달이 열며
+    // 자체 reload를 한 번 더 호출하는지(=scope='server'로 전달됐는지)를 호출 횟수로 검증한다.
+    const callsBeforeOpen = mockListLlmProfiles.mock.calls.length
+    fireEvent.click(within(summarySel()).getByText('프로필 관리'))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    await waitFor(() => expect(mockListLlmProfiles.mock.calls.length).toBeGreaterThan(callsBeforeOpen))
+    expect(mockListLlmProfiles.mock.calls.every(([scope]) => scope === 'server')).toBe(true)
+  })
+
+  // ⑦ 레거시 폴백 — active_profile_id 없음 + active_preset이 API 프리셋(프로필 미참조) → cli:claude_cli/sonnet 폴백
+  it('레거시 폴백: active_profile_id 없이 프로필 미참조 API 프리셋이면 cli:claude_cli/sonnet으로 폴백 표시(크래시 없음)', async () => {
+    mockGetLlmSettings.mockResolvedValue(legacyUnreferencedSettings)
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('cli:claude_cli')
+    })
+    expect((within(summarySel()).getByLabelText('요약 모델 CLI 모델') as HTMLSelectElement).value).toBe('sonnet')
+    // 빈 화면·크래시 없이 챗 카드까지 정상 렌더
+    expect(chatSel()).toBeInTheDocument()
+  })
+
+  // handleLlmTest: 프로필 분기에 base_url·profile_id 동봉
+  it('연결 테스트: 요약이 프로필이면 base_url·profile_id를 동봉해 testLlmConnection을 호출한다', async () => {
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    mockTestLlmConnection.mockResolvedValue({ success: true })
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
+    })
+
     fireEvent.click(screen.getByText('연결 테스트'))
     await waitFor(() => expect(mockTestLlmConnection).toHaveBeenCalled())
-    expect(screen.getByText('연결 성공')).toBeInTheDocument()
+    expect(mockTestLlmConnection).toHaveBeenCalledWith({
+      provider: 'anthropic',
+      model: 'glm-5.2',
+      base_url: 'https://api.z.ai/api/anthropic',
+      profile_id: 5,
+    })
+    await waitFor(() => expect(screen.getByText('연결 성공')).toBeInTheDocument())
+  })
+
+  // max tokens 필드 제거 확인 (서버 프로필 폼으로 이동 완료 — Task 8)
+  it('max_input/output_tokens 필드가 패널에서 제거되었다', async () => {
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
+    })
+    expect(screen.queryByLabelText(/최대 입력 토큰/)).toBeNull()
+    expect(screen.queryByLabelText(/최대 출력 토큰/)).toBeNull()
   })
 })
