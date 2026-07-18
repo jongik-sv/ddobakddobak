@@ -50,7 +50,7 @@ const serverProfile5: LlmProfile = {
   max_input_tokens: 200000,
   max_output_tokens: 10000,
   has_token: true,
-  auth_token_masked: 'sk-a****abcd',
+  auth_token_masked: 'sk-a...abcd',
 }
 
 function makeSettings(overrides: Partial<LlmSettings> = {}): LlmSettings {
@@ -71,7 +71,7 @@ const profileConfiguredSettings = makeSettings({ active_profile_id: 5 })
 // 레거시 — active_profile_id 없음 + active_preset이 API 프리셋(프로필 미참조). 이관 전·yaml 수동 편집 등.
 const legacyUnreferencedSettings = makeSettings({
   active_preset: 'anthropic',
-  presets: { anthropic: { provider: 'anthropic', auth_token_masked: 'sk-a****9999', model: 'claude-sonnet-4-6' } },
+  presets: { anthropic: { provider: 'anthropic', auth_token_masked: 'sk-a...9999', model: 'claude-sonnet-4-6' } },
 })
 
 const setAdmin = () => useAuthStore.setState({ user: { id: 1, email: 'admin@x.com', name: 'Admin', role: 'admin' } } as never)

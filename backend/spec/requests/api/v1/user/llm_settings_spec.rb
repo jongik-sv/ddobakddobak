@@ -34,7 +34,7 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
         expect(body["llm_settings"]["model"]).to eq("claude-sonnet-4-6")
         # api_key는 마스킹되어야 함
         expect(body["llm_settings"]["api_key_masked"]).not_to eq(user.llm_api_key)
-        expect(body["llm_settings"]["api_key_masked"]).to include("*")
+        expect(body["llm_settings"]["api_key_masked"]).to include("...")
       end
 
       it "show 응답에 chat_model을 포함한다" do
@@ -103,7 +103,7 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
 
       body = response.parsed_body
       expect(body["llm_settings"]["configured"]).to be true
-      expect(body["llm_settings"]["api_key_masked"]).to include("*")
+      expect(body["llm_settings"]["api_key_masked"]).to include("...")
     end
 
     it "api_key 빈 문자열 시 기존 키를 유지한다" do
@@ -134,7 +134,7 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
     # 프리필할 수 있어야 한다. 완전 초기화가 필요하면 reset_all:true 를 써야 한다.
     it "provider 빈값(reset_all 없음) 시 provider만 비우고 model/base_url/api_key는 보존한다" do
       user.update!(
-        llm_provider: "anthropic", llm_api_key: "sk-xxx",
+        llm_provider: "anthropic", llm_api_key: "sk-xxx-abcd-1234",
         llm_model: "claude-sonnet-4-6", llm_base_url: "http://localhost:11434/v1"
       )
 
@@ -146,7 +146,7 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       user.reload
       expect(user.llm_provider).to be_nil
       expect(user.llm_configured?).to be(false)
-      expect(user.llm_api_key).to eq("sk-xxx")
+      expect(user.llm_api_key).to eq("sk-xxx-abcd-1234")
       expect(user.llm_model).to eq("claude-sonnet-4-6")
       expect(user.llm_base_url).to eq("http://localhost:11434/v1")
 
@@ -157,7 +157,7 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(body["llm_settings"]["provider"]).to be_nil
       expect(body["llm_settings"]["model"]).to eq("claude-sonnet-4-6")
       expect(body["llm_settings"]["base_url"]).to eq("http://localhost:11434/v1")
-      expect(body["llm_settings"]["api_key_masked"]).to include("*")
+      expect(body["llm_settings"]["api_key_masked"]).to include("...")
     end
 
     it "provider null(reset_all 없음) 시에도 api_key를 보존한다" do
@@ -734,7 +734,7 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       masked = body["llm_settings"]["api_key_masked"]
       expect(masked).to start_with("sk-a")
       expect(masked).to end_with("ghij")
-      expect(masked).to include("*")
+      expect(masked).to include("...")
     end
 
     it "8자 이하 키는 전체 마스킹한다" do

@@ -4,7 +4,7 @@ import { LlmSelector, type LlmSelectorValue } from './LlmSelector'
 import type { LlmProfile } from '../../api/llmProfiles'
 
 const profiles: LlmProfile[] = [
-  { id: 1, name: 'Gemini · 무료키', preset_id: 'gemini', provider: 'openai', base_url: null, model: 'gemini-3.5-flash', max_input_tokens: null, max_output_tokens: null, has_token: true, auth_token_masked: 'AIza****z8kQ' },
+  { id: 1, name: 'Gemini · 무료키', preset_id: 'gemini', provider: 'openai', base_url: null, model: 'gemini-3.5-flash', max_input_tokens: null, max_output_tokens: null, has_token: true, auth_token_masked: 'AIza...z8kQ' },
 ]
 const special = [{ id: 'none', label: '선택 안함', description: '서버 기본값 사용' }] as const
 

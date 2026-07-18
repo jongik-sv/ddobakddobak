@@ -53,7 +53,7 @@ const profile1: LlmProfile = {
   max_input_tokens: null,
   max_output_tokens: null,
   has_token: true,
-  auth_token_masked: 'AIza****z8kQ',
+  auth_token_masked: 'AIza...z8kQ',
 }
 
 function makeResponse(overrides: Partial<UserLlmSettingsResponse['llm_settings']> = {}): UserLlmSettingsResponse {

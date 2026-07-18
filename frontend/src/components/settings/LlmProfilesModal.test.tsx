@@ -28,7 +28,7 @@ const gemini: LlmProfile = {
   id: 1, name: 'Gemini · 무료키', preset_id: 'gemini', provider: 'openai',
   base_url: 'https://generativelanguage.googleapis.com/v1beta/openai',
   model: 'gemini-3.5-flash', max_input_tokens: null, max_output_tokens: null,
-  has_token: true, auth_token_masked: 'AIza****z8kQ',
+  has_token: true, auth_token_masked: 'AIza...z8kQ',
 }
 
 describe('LlmProfilesModal', () => {
@@ -45,7 +45,7 @@ describe('LlmProfilesModal', () => {
   it('열리면 목록 로드·행 표시(이름·마스킹키), 원문 키는 어디에도 없음', async () => {
     render(<LlmProfilesModal scope="personal" open onClose={() => {}} />)
     expect(await screen.findByText('Gemini · 무료키')).toBeInTheDocument()
-    expect(screen.getByText(/AIza\*+z8kQ/)).toBeInTheDocument()
+    expect(screen.getByText(/AIza\.\.\.z8kQ/)).toBeInTheDocument()
     expect(vi.mocked(listLlmProfiles)).toHaveBeenCalledWith('personal')
   })
 
