@@ -1,3 +1,5 @@
+require "yaml"
+
 module Api
   module V1
     class LlmProfilesController < ApplicationController
@@ -71,8 +73,13 @@ module Api
         profile.as_masked_json(method(:mask_token))
       end
 
-      # 서버 풀 변경 훅 — Task 4에서 settings.yaml 재실체화로 구현. 지금은 no-op.
-      def after_server_pool_change(_profile); end
+      # 서버 풀 변경 → yaml 재실체화 + ENV 재적용 (활성 참조 여부와 무관하게 항상 안전)
+      def after_server_pool_change(_profile)
+        cfg = AppSettings.load
+        LlmProfileYamlSync.apply!(cfg)
+        File.write(AppSettings::SETTINGS_PATH, YAML.dump(cfg.deep_stringify_keys))
+        AppSettings.sync_env_from!(cfg)
+      end
     end
   end
 end

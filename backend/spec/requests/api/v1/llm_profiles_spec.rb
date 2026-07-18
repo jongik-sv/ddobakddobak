@@ -47,7 +47,15 @@ RSpec.describe "Api::V1::LlmProfiles", type: :request do
   end
 
   describe "server 풀 (server mode)" do
-    before { allow_any_instance_of(ApplicationController).to receive(:server_mode?).and_return(true) }
+    before do
+      allow_any_instance_of(ApplicationController).to receive(:server_mode?).and_return(true)
+      # after_server_pool_change가 settings.yaml을 재실체화한다 — 실제 디스크 I/O 방지 기본 스텁.
+      # 재실체화 내용을 검증하는 개별 테스트는 File.exist?/read/write를 여기서 재스텁한다.
+      allow(File).to receive(:exist?).and_call_original
+      allow(File).to receive(:exist?).with(AppSettings::SETTINGS_PATH).and_return(false)
+      allow(File).to receive(:write).and_call_original
+      allow(File).to receive(:write).with(AppSettings::SETTINGS_PATH, anything).and_return(true)
+    end
 
     it "admin은 CRUD 가능, 풀은 user_id nil로 저장" do
       login_as(admin)
@@ -74,6 +82,27 @@ RSpec.describe "Api::V1::LlmProfiles", type: :request do
       expect(response).to have_http_status(:forbidden)
       delete "/api/v1/llm_profiles/#{sp.id}"
       expect(response).to have_http_status(:forbidden)
+    end
+
+    it "활성 서버 프로필 편집 시 yaml 재실체화" do
+      # after_server_pool_change가 LLM_PROVIDER/OPENAI_API_KEY 등을 갱신한다 —
+      # 다른 spec 파일과 같은 프로세스에서 돌 때 새는 것을 막기 위해 복원한다.
+      keys = %w[LLM_PROVIDER LLM_MODEL LLM_MAX_INPUT_TOKENS LLM_MAX_OUTPUT_TOKENS
+                OPENAI_API_KEY OPENAI_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL]
+      prev_env = keys.index_with { |k| ENV[k] }
+
+      login_as(admin)
+      sp = LlmProfile.create!(user_id: nil, name: "S", preset_id: "openai", provider: "openai", model: "old", auth_token: "sk-xxxx-12345678")
+      allow(File).to receive(:exist?).and_call_original
+      allow(File).to receive(:exist?).with(AppSettings::SETTINGS_PATH).and_return(true)
+      allow(File).to receive(:read).with(AppSettings::SETTINGS_PATH).and_return(YAML.dump({ "llm" => { "active_profile_id" => sp.id } }))
+      written = nil
+      allow(File).to receive(:write).with(AppSettings::SETTINGS_PATH, anything) { |_, body| written = body; true }
+      patch "/api/v1/llm_profiles/#{sp.id}", params: { profile: { model: "gpt-4o" } }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(YAML.safe_load(written)["llm"]["presets"]["openai"]["model"]).to eq("gpt-4o")
+    ensure
+      keys.each { |k| prev_env[k].nil? ? ENV.delete(k) : ENV[k] = prev_env[k] }
     end
   end
 end
