@@ -862,5 +862,45 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(response).to have_http_status(:ok)
       expect(user.reload.llm_profile_id).to be_nil
     end
+
+    # ============================================================
+    # REVIEW FIX: 프로필-only PUT(provider/chat_provider 키 자체가 없는 요청)이
+    #   반대편 슬롯(요약/챗)의 기존 레거시 설정을 nil로 wipe하던 회귀.
+    #   normalize_params가 요청에 없는 키까지 무조건 attrs에 nil로 채워 넣던 게 원인.
+    # ============================================================
+    it "chat_llm_profile_id만 PUT해도 기존 요약(summary) 설정이 보존된다" do
+      user.update!(llm_provider: "anthropic", llm_api_key: "sk-keep-1234567890", llm_model: "claude-sonnet-4-6")
+      put "/api/v1/user/llm_settings", params: { llm_settings: { chat_llm_profile_id: profile.id } }, as: :json
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_provider).to eq("anthropic")
+      expect(user.llm_api_key).to eq("sk-keep-1234567890")
+      expect(user.llm_model).to eq("claude-sonnet-4-6")
+      expect(user.chat_llm_profile_id).to eq(profile.id)
+    end
+
+    it "llm_profile_id만 PUT해도 기존 챗(chat) 설정이 보존된다" do
+      user.update!(
+        chat_llm_provider: "openai", chat_llm_api_key: "chatkey",
+        chat_llm_model: "gpt-4o", chat_llm_base_url: "http://localhost:11434/v1"
+      )
+      put "/api/v1/user/llm_settings", params: { llm_settings: { llm_profile_id: profile.id } }, as: :json
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_profile_id).to eq(profile.id)
+      expect(user.chat_llm_provider).to eq("openai")
+      expect(user.chat_llm_api_key).to eq("chatkey")
+      expect(user.chat_llm_model).to eq("gpt-4o")
+      expect(user.chat_llm_base_url).to eq("http://localhost:11434/v1")
+    end
+
+    it "reset_all: true는 요청에 키가 없어도 프로필 참조까지 무조건 해제한다" do
+      user.update!(llm_profile_id: profile.id, chat_llm_profile_id: profile.id)
+      put "/api/v1/user/llm_settings", params: { llm_settings: { provider: "", reset_all: true } }, as: :json
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_profile_id).to be_nil
+      expect(user.chat_llm_profile_id).to be_nil
+    end
   end
 end

@@ -51,12 +51,13 @@ module Api
             profile_id_attrs = attrs.slice(:llm_profile_id, :chat_llm_profile_id)
 
             if reset_all
+              # 전체 초기화는 요청에 llm_profile_id/chat_llm_profile_id 키가 없어도 무조건
+              # 프로필 참조까지 해제한다(REVIEW FIX: reset_all이 활성 프로필 참조를 해제 안 함).
               current_user.update!(
-                {
-                  llm_provider: nil, llm_api_key: nil, llm_model: nil, llm_base_url: nil,
-                  chat_llm_model: nil, chat_llm_provider: nil, chat_llm_api_key: nil, chat_llm_base_url: nil,
-                  llm_enabled: true
-                }.merge(profile_id_attrs)
+                llm_provider: nil, llm_api_key: nil, llm_model: nil, llm_base_url: nil,
+                chat_llm_model: nil, chat_llm_provider: nil, chat_llm_api_key: nil, chat_llm_base_url: nil,
+                llm_enabled: true,
+                llm_profile_id: nil, chat_llm_profile_id: nil
               )
             else
               # "선택 안함" 저장: provider만 비워 미설정 판정(llm_has_settings?)이 되게 하고,
@@ -183,31 +184,27 @@ module Api
             :chat_provider, :chat_api_key, :chat_model, :chat_base_url, :chat_llm_profile_id
           )
 
-          attrs = {
-            llm_provider: p[:provider],
-            llm_model: p[:model],
-            llm_base_url: p[:base_url].presence,
-            chat_llm_provider: p[:chat_provider].presence
-          }
+          # 요청에 실제로 전송된 필드만 반환 해시에 포함한다 — 키 자체가 없으면 해당 컬럼은
+          # 건드리지 않는다(보존). 프로필-only 페이로드(예: { chat_llm_profile_id: N })처럼
+          # provider/model/base_url 등이 아예 전송되지 않는 요청이 반대편 슬롯(요약/챗)의
+          # 기존 설정을 nil 로 wipe 하는 걸 막기 위함이다 — 기존 프론트는 폼 전체 필드를 항상
+          # 함께 보내므로(REVIEW FIX: 프로필-only PUT 데이터손실) 이 변경은 실전 페이로드에 영향 없다.
+          attrs = {}
+          attrs[:llm_provider] = p[:provider] if p.key?(:provider)
+          attrs[:llm_model] = p[:model] if p.key?(:model)
+          attrs[:llm_base_url] = p[:base_url].presence if p.key?(:base_url)
+          attrs[:chat_llm_provider] = p[:chat_provider].presence if p.key?(:chat_provider)
+          attrs[:chat_llm_model] = p[:chat_model].presence if p.key?(:chat_model)
+          attrs[:chat_llm_base_url] = p[:chat_base_url].presence if p.key?(:chat_base_url)
 
           # provider 저장(빈값 아님) 시 개인 LLM을 (재)활성화한다.
           # 빈 provider 초기화 분기는 자체 update! 로 처리하므로 이 attrs 를 읽지 않는다.
           attrs[:llm_enabled] = true if p[:provider].present?
 
-          # chat_model/chat_base_url: chat_provider가 비거나(=요약과 동일) 'server' 센티넬
-          # (=AI챗 '선택 안함')로 전환되는 경우엔 값을 보존한다 — 이후 다시 provider를 고를 때
-          # 프리필할 수 있도록. 사용자가 해당 필드를 명시적으로 빈 값으로 보낸 경우만 지운다.
-          # (그 외, 실제 provider로의 전환/유지 시엔 기존과 동일하게 전송값을 그대로 반영한다.)
+          # chat_provider가 비거나(=요약과 동일) 'server' 센티넬(=AI챗 '선택 안함')인지 여부.
+          # chat_llm_api_key 클리어 판정에 쓰인다(모델/base_url은 위에서 키 존재 여부만으로
+          # 이미 보존/반영이 결정되므로 여기선 재사용하지 않는다).
           chat_cleared = p[:chat_provider].blank? || p[:chat_provider] == ::User::CHAT_SERVER_SENTINEL
-          if chat_cleared
-            attrs[:chat_llm_model] =
-              (p.key?(:chat_model) && p[:chat_model].blank?) ? nil : (p[:chat_model].presence || current_user.chat_llm_model)
-            attrs[:chat_llm_base_url] =
-              (p.key?(:chat_base_url) && p[:chat_base_url].blank?) ? nil : (p[:chat_base_url].presence || current_user.chat_llm_base_url)
-          else
-            attrs[:chat_llm_model] = p[:chat_model].presence
-            attrs[:chat_llm_base_url] = p[:chat_base_url].presence
-          end
 
           # api_key 처리:
           #   - 값 있으면 → 갱신
