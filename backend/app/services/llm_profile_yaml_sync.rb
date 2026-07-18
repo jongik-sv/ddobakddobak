@@ -32,6 +32,29 @@ class LlmProfileYamlSync
     cfg
   end
 
+  # 삭제된 서버 프로필의 실체화 흔적을 정리한다. apply!는 참조(active_profile_id/chat_profile_id)만
+  # 지우고 실체화 블록은 남기므로, 그대로 두면 sync_env 가 삭제된 자격증명을 재방출한다(I-3).
+  # 프로필에서 실체화된 블록만 제거하기 위해, 참조가 이 프로필을 가리켰고 프리셋 키까지 일치할 때만
+  # 정리한다 — presets 에 공존하는 CLI·수동 프리셋은 보존한다. (프로필 destroy 후 호출)
+  def self.detach_profile!(cfg, profile)
+    llm = cfg["llm"] or return cfg
+
+    if llm["active_profile_id"].present? && llm["active_profile_id"] == profile.id
+      llm.delete("active_profile_id")
+      if llm["active_preset"] == profile.preset_id
+        llm.delete("active_preset")
+        llm["presets"]&.delete(profile.preset_id)
+      end
+    end
+
+    if llm["chat_profile_id"].present? && llm["chat_profile_id"] == profile.id
+      llm.delete("chat_profile_id")
+      llm.delete("chat") if llm.dig("chat", "preset_id") == profile.preset_id
+    end
+
+    cfg
+  end
+
   def self.materialize(profile)
     {
       "provider" => profile.provider,

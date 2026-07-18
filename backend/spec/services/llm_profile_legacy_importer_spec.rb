@@ -42,6 +42,15 @@ RSpec.describe LlmProfileLegacyImporter do
       expect(server_user.reload.chat_llm_provider).to eq("server")
     end
 
+    it "동일 유저의 요약·챗이 같은 이름을 낳으면 (2) 접미로 dedup한다" do
+      u = create(:user,
+        llm_provider: "anthropic", llm_api_key: "k1-123456789", llm_model: "claude-x",
+        chat_llm_provider: "anthropic", chat_llm_api_key: "k2-123456789", chat_llm_model: "claude-x")
+      described_class.run!
+      names = u.reload.llm_profiles.pluck(:name)
+      expect(names).to contain_exactly("Anthropic · claude-x", "Anthropic · claude-x (2)")
+    end
+
     it "멱등 — 두 번 실행해도 프로필이 늘지 않는다" do
       create(:user, llm_provider: "openai", llm_api_key: "sk-123456789", llm_model: "gpt-4o")
       described_class.run!

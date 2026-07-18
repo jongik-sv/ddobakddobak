@@ -84,6 +84,79 @@ RSpec.describe "Api::V1::LlmProfiles", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
+    # ============================================================
+    # I-3: 서버 active/chat 프로필 삭제 시 참조만 제거하고 실체화 블록(평문 토큰 포함)이
+    #   잔존해 sync_env 가 삭제된 자격증명을 재방출하던 회귀. 프로필에서 실체화된 블록만
+    #   정리하고 CLI·수동 프리셋은 보존해야 한다.
+    # ============================================================
+    it "활성 서버 프로필 삭제 시 실체화된 요약 프리셋 블록(토큰)까지 정리한다" do
+      keys = %w[LLM_PROVIDER LLM_MODEL LLM_MAX_INPUT_TOKENS LLM_MAX_OUTPUT_TOKENS
+                OPENAI_API_KEY OPENAI_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL]
+      prev_env = keys.index_with { |k| ENV[k] }
+
+      login_as(admin)
+      sp = LlmProfile.create!(user_id: nil, name: "S", preset_id: "openai", provider: "openai",
+                              model: "gpt-4o", auth_token: "sk-del-secret-123456")
+      # 삭제 직전 yaml 상태: active 참조 + 이미 실체화된 프리셋 블록(토큰 포함) + 무관한 수동 프리셋.
+      disk = { "llm" => {
+        "active_profile_id" => sp.id,
+        "active_preset" => "openai",
+        "presets" => {
+          "openai" => { "provider" => "openai", "auth_token" => "sk-del-secret-123456", "model" => "gpt-4o",
+                        "max_input_tokens" => 200_000, "max_output_tokens" => 10_000 },
+          "claude_cli" => { "provider" => "claude_cli", "model" => "sonnet" }
+        }
+      } }
+      allow(File).to receive(:exist?).and_call_original
+      allow(File).to receive(:exist?).with(AppSettings::SETTINGS_PATH).and_return(true)
+      allow(File).to receive(:read).with(AppSettings::SETTINGS_PATH).and_return(YAML.dump(disk))
+      written = nil
+      allow(File).to receive(:write).with(AppSettings::SETTINGS_PATH, anything) { |_, body| written = body; true }
+
+      delete "/api/v1/llm_profiles/#{sp.id}"
+      expect(response).to have_http_status(:no_content)
+
+      cfg = YAML.safe_load(written)
+      expect(cfg["llm"]).not_to have_key("active_profile_id")
+      expect(cfg["llm"]["presets"]).not_to have_key("openai") # 실체화 블록 제거
+      expect(cfg["llm"]["presets"]).to have_key("claude_cli") # 수동 프리셋은 보존
+      expect(written).not_to include("sk-del-secret") # 평문 토큰 잔류 없음
+      expect(ENV["ANTHROPIC_AUTH_TOKEN"].to_s).not_to include("sk-del-secret")
+    ensure
+      keys.each { |k| prev_env[k].nil? ? ENV.delete(k) : ENV[k] = prev_env[k] }
+    end
+
+    it "활성 서버 챗 프로필 삭제 시 실체화된 llm.chat 블록(토큰)까지 정리한다" do
+      keys = %w[CHAT_LLM_PROVIDER CHAT_LLM_AUTH_TOKEN CHAT_LLM_MODEL CHAT_LLM_BASE_URL]
+      prev_env = keys.index_with { |k| ENV[k] }
+
+      login_as(admin)
+      cp = LlmProfile.create!(user_id: nil, name: "C", preset_id: "zai", provider: "anthropic",
+                              base_url: "https://api.z.ai/api/anthropic", model: "glm-5.2",
+                              auth_token: "zk-del-secret-123456")
+      disk = { "llm" => {
+        "chat_profile_id" => cp.id,
+        "chat" => { "preset_id" => "zai", "provider" => "anthropic", "auth_token" => "zk-del-secret-123456",
+                    "base_url" => "https://api.z.ai/api/anthropic", "model" => "glm-5.2" }
+      } }
+      allow(File).to receive(:exist?).and_call_original
+      allow(File).to receive(:exist?).with(AppSettings::SETTINGS_PATH).and_return(true)
+      allow(File).to receive(:read).with(AppSettings::SETTINGS_PATH).and_return(YAML.dump(disk))
+      written = nil
+      allow(File).to receive(:write).with(AppSettings::SETTINGS_PATH, anything) { |_, body| written = body; true }
+
+      delete "/api/v1/llm_profiles/#{cp.id}"
+      expect(response).to have_http_status(:no_content)
+
+      cfg = YAML.safe_load(written)
+      expect(cfg["llm"]).not_to have_key("chat_profile_id")
+      expect(cfg["llm"]).not_to have_key("chat") # 실체화 챗 블록 제거
+      expect(written).not_to include("zk-del-secret")
+      expect(ENV["CHAT_LLM_AUTH_TOKEN"].to_s).not_to include("zk-del-secret")
+    ensure
+      keys.each { |k| prev_env[k].nil? ? ENV.delete(k) : ENV[k] = prev_env[k] }
+    end
+
     it "활성 서버 프로필 편집 시 yaml 재실체화" do
       # after_server_pool_change가 LLM_PROVIDER/OPENAI_API_KEY 등을 갱신한다 —
       # 다른 spec 파일과 같은 프로세스에서 돌 때 새는 것을 막기 위해 복원한다.

@@ -34,7 +34,7 @@ module Api
 
       def destroy
         @profile.destroy!
-        after_server_pool_change(@profile) if @profile.user_id.nil?
+        after_server_pool_change(@profile, destroyed: true) if @profile.user_id.nil?
         head :no_content
       end
 
@@ -74,8 +74,10 @@ module Api
       end
 
       # 서버 풀 변경 → yaml 재실체화 + ENV 재적용 (활성 참조 여부와 무관하게 항상 안전)
-      def after_server_pool_change(_profile)
+      # destroy: 삭제된 프로필의 실체화 블록(평문 토큰)까지 정리해 sync_env 재방출을 막는다(I-3).
+      def after_server_pool_change(profile, destroyed: false)
         cfg = AppSettings.load
+        LlmProfileYamlSync.detach_profile!(cfg, profile) if destroyed
         LlmProfileYamlSync.apply!(cfg)
         File.write(AppSettings::SETTINGS_PATH, YAML.dump(cfg.deep_stringify_keys))
         AppSettings.sync_env_from!(cfg)

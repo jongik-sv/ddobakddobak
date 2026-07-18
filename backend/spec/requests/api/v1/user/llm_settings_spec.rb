@@ -849,6 +849,27 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(user.effective_chat_llm_config).to eq(user.server_chat_llm_config)
     end
 
+    # ============================================================
+    # I-1: 요약='선택 안함'(provider:'') + 챗=프로필 전환을 동시에 저장하면
+    #   이전 chat_llm_provider='server' 센티넬이 잔존해(reset 분기가 프로필 레거시
+    #   클리어를 떨굼) 새 챗 프로필이 effective_chat 에서 조용히 무시되던 회귀.
+    # ============================================================
+    it "요약='선택 안함' + 챗=프로필 저장 시 이전 'server' 센티넬을 클리어해 챗 프로필이 유효하다" do
+      user.update!(chat_llm_provider: "server")
+
+      # 프론트 페이로드: 요약='선택 안함'(provider:'', llm_profile_id:null) + 챗=프로필
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "", llm_profile_id: nil, chat_llm_profile_id: profile.id }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.chat_llm_profile_id).to eq(profile.id)
+      expect(user.chat_llm_provider).to be_nil # 잔존 센티넬 클리어
+      # 센티넬이 사라졌으므로 챗 해석이 새 챗 프로필 값을 쓴다(서버 기본으로 오라우팅되지 않음).
+      expect(user.effective_chat_llm_config).to eq(profile.to_llm_config)
+    end
+
     it "test 액션 profile_id 토큰 폴백" do
       svc = instance_double(LlmService, test_connection: { "success" => true })
       expect(LlmService).to receive(:new).with(llm_config: hash_including(auth_token: "AIza-tok-123456789")).and_return(svc)

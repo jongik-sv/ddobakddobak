@@ -50,6 +50,17 @@ module Api
             ls = params.fetch(:llm_settings, {})
             profile_id_attrs = attrs.slice(:llm_profile_id, :chat_llm_profile_id)
 
+            # 프로필 참조가 세팅되면 반대편 레거시 컬럼도 클리어해 상호배타를 지킨다.
+            # 이 분기는 base/chat 를 재구성하면서 상단 profile_attrs 의 레거시 클리어를 떨구므로
+            # 여기서 복원한다 — 특히 요약='선택 안함' + 챗=프로필 저장 시 이전 chat_llm_provider='server'
+            # 센티넬이 잔존해(effective_chat 우선순위상) 새 챗 프로필이 조용히 무시되던 회귀(I-1)를 막는다.
+            if profile_id_attrs[:llm_profile_id].present?
+              profile_id_attrs.merge!(llm_provider: nil, llm_api_key: nil, llm_model: nil, llm_base_url: nil)
+            end
+            if profile_id_attrs[:chat_llm_profile_id].present?
+              profile_id_attrs.merge!(chat_llm_provider: nil, chat_llm_api_key: nil, chat_llm_model: nil, chat_llm_base_url: nil)
+            end
+
             if reset_all
               # 전체 초기화는 요청에 llm_profile_id/chat_llm_profile_id 키가 없어도 무조건
               # 프로필 참조까지 해제한다(REVIEW FIX: reset_all이 활성 프로필 참조를 해제 안 함).
