@@ -29,6 +29,9 @@ class ProjectImporter
   CHUNK_SIZE = 64 * 1024
   # 압축해제 누적 바이트 상한(zip-bomb 가드). 컨트롤러 업로드 상한과 동일 수준(3GB).
   MAX_DECOMPRESSED_BYTES = 3 * 1024 * 1024 * 1024
+  # 전사는 회의당 수만 건까지 갈 수 있어 건당 insert 는 SQLite 변수 상한
+  # (32766)을 넘길 수 없다. 11컬럼 기준 한 배치가 상한을 넘지 않도록 보수적으로 둔다.
+  TRANSCRIPT_INSERT_BATCH_SIZE = 1000
 
   # @param io_or_path [IO, String] tar.gz 스트림 또는 파일 경로
   # @param user [User] import 실행자(=새 콘텐츠 소유자)
@@ -292,9 +295,7 @@ class ProjectImporter
   end
 
   def import_meeting_children(meeting, m, tag_map)
-    (m["transcripts"] || []).each do |t|
-      meeting.transcripts.create!(sanitize(t, Transcript).merge("meeting_id" => meeting.id))
-    end
+    import_transcripts(meeting, m)
     (m["summaries"] || []).each do |s|
       meeting.summaries.create!(sanitize(s, Summary).merge("meeting_id" => meeting.id))
     end
@@ -330,6 +331,47 @@ class ProjectImporter
     end
     import_attachments(meeting, m["attachments"] || [])
     import_taggings(meeting, m["tag_ids"] || [], tag_map)
+  end
+
+  # 전사 복원: 건당 create! (35k건 ≈ 73k쿼리·117s) → 배치 insert_all 로 전환.
+  # Transfer::MeetingRestorer#restore_transcripts 와 동일한 접근(주석 참고).
+  # insert_all 주의점:
+  #   - 검증·콜백·타임스탬프를 건너뛴다. created_at 을 직접 세팅한다
+  #     (transcripts 에는 updated_at 컬럼이 없다 → column_names 로 방어).
+  #   - 단일 insert_all 은 SQLite 변수 상한을 넘길 수 있어 배치로 분할한다.
+  #   - after_save :fts_upsert 콜백이 건너뛰어지므로 FTS 색인을 벌크로 재구축한다.
+  #   - meeting_id 는 새 회의 id 로, id 는 sanitize 가 제거해 DB 가 채운다(create! 와 동일).
+  def import_transcripts(meeting, m)
+    now     = Time.current
+    ts_cols = Transcript.column_names
+    rows = (m["transcripts"] || []).map do |t|
+      row = sanitize(t, Transcript)
+      row["meeting_id"]   = meeting.id
+      row["created_at"] ||= now if ts_cols.include?("created_at")
+      row["updated_at"] ||= now if ts_cols.include?("updated_at")
+      row
+    end
+    return if rows.empty?
+
+    rows.each_slice(TRANSCRIPT_INSERT_BATCH_SIZE) do |batch|
+      Transcript.insert_all(batch)
+    end
+
+    reindex_transcripts_fts(meeting)
+  end
+
+  # insert_all 은 after_save :fts_upsert 콜백을 건너뛰므로 전사 FTS 색인을 벌크로 재구축.
+  # 새로 삽입된 id 라 기존 FTS 행이 없으므로 DELETE 없이 INSERT…SELECT 한 번.
+  # fts_upsert 와 동일하게, 색인 실패가 데이터 복원 자체를 중단시키지 않도록 경고만 남긴다.
+  def reindex_transcripts_fts(meeting)
+    conn = ActiveRecord::Base.connection
+    conn.execute(ActiveRecord::Base.sanitize_sql_array([
+      "INSERT INTO transcripts_fts(content, speaker_label, speaker_name, source_id) " \
+      "SELECT content, speaker_label, speaker_name, id FROM transcripts WHERE meeting_id = ?",
+      meeting.id
+    ]))
+  rescue => e
+    Rails.logger.warn("ProjectImporter: transcripts_fts reindex failed for meeting##{meeting.id}: #{e.message}")
   end
 
   # blocks: parent_block_id 자기참조 → 2-pass 로 계층 보존.

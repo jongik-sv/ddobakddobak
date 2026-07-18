@@ -383,4 +383,124 @@ RSpec.describe ProjectImporter do
       expect(link_att.url).to eq("https://example.com/doc")
     end
   end
+
+  # ── 전사 배치 복원 (insert_all 회귀 가드) ──
+  #
+  # 실제 버그(35k 전사 = 건당 create! → ~73k쿼리·117s) 회귀 가드.
+  # Transfer::MeetingRestorer#restore_transcripts 에 적용된 것과 동일한 배치 insert_all
+  # 접근을 ProjectImporter#import_meeting_children 에도 적용했는지 검증한다.
+  describe "전사 배치 복원" do
+    # 여러 전사가 필드·정렬 그대로 라운드트립되는지 검증한다.
+    # 시퀀스 역순으로 생성하고, 필드값을 서로 다르게 두어 행-필드 매핑 오류를 잡는다.
+    let!(:multi_meeting) do
+      create(:meeting, project: project, creator: owner, title: "전사 다건 회의")
+    end
+    let!(:t3) do
+      create(:transcript, meeting: multi_meeting, sequence_number: 3, content: "세 번째 발화",
+                          speaker_label: "SPEAKER_02", speaker_name: "다희",
+                          started_at_ms: 6000, ended_at_ms: 9000)
+    end
+    let!(:t1) do
+      create(:transcript, meeting: multi_meeting, sequence_number: 1, content: "첫 번째 발화 유니크토큰",
+                          speaker_label: "SPEAKER_00", speaker_name: "가영",
+                          started_at_ms: 0, ended_at_ms: 3000)
+    end
+    let!(:t2) do
+      create(:transcript, meeting: multi_meeting, sequence_number: 2, content: "두 번째 발화",
+                          speaker_label: "SPEAKER_01", speaker_name: nil,
+                          started_at_ms: 3000, ended_at_ms: 6000)
+    end
+
+    it "모든 전사를 개수·필드·정렬(sequence_number)·meeting_id 그대로 복원한다" do
+      new_project = described_class.new(export_io, importer).run!
+      new_meeting = new_project.meetings.find { |mtg| mtg.title == "전사 다건 회의" }
+      ts          = new_meeting.transcripts.to_a  # default_scope: order(:sequence_number)
+
+      expect(ts.size).to eq(3)
+      expect(ts.map(&:sequence_number)).to eq([ 1, 2, 3 ])
+      expect(ts.map(&:content)).to eq([ "첫 번째 발화 유니크토큰", "두 번째 발화", "세 번째 발화" ])
+      expect(ts.map(&:speaker_label)).to eq([ "SPEAKER_00", "SPEAKER_01", "SPEAKER_02" ])
+      expect(ts.map(&:speaker_name)).to eq([ "가영", nil, "다희" ])
+      expect(ts.map(&:started_at_ms)).to eq([ 0, 3000, 6000 ])
+      expect(ts.map(&:ended_at_ms)).to eq([ 3000, 6000, 9000 ])
+
+      # meeting_id 재지정 확인
+      expect(ts.map(&:meeting_id).uniq).to eq([ new_meeting.id ])
+      # insert_all 은 타임스탬프를 자동 설정하지 않으므로 수동 세팅 회귀 가드
+      # (transcripts 테이블에는 created_at 만 있고 updated_at 컬럼은 없다)
+      expect(ts.map(&:created_at)).to all(be_present)
+    end
+
+    it "복원된 전사를 FTS 로 검색할 수 있다 (insert_all 이 콜백을 건너뛰므로 수동 색인 회귀 가드)" do
+      new_project = described_class.new(export_io, importer).run!
+      new_meeting = new_project.meetings.find { |mtg| mtg.title == "전사 다건 회의" }
+
+      conn       = ActiveRecord::Base.connection
+      rows       = conn.execute("SELECT source_id FROM transcripts_fts WHERE transcripts_fts MATCH '유니크토큰'")
+      source_ids = rows.map { |r| r.is_a?(Hash) ? r["source_id"] : r.first }
+      target     = new_meeting.transcripts.find { |t| t.content.include?("유니크토큰") }
+
+      expect(source_ids).to include(target.id)
+    end
+
+    # 단일 insert_all 은 SQLite 변수 상한(32766)을 넘겨 3000+ 행에서 실패하므로
+    # 배치 분할이 필수다. 원본 소스 전사를 3100건 실제로 생성하지 않고(느림·목적과 무관)
+    # manifest 를 직접 조립해 ProjectImporter 에 먹여, (a) 전량 복원 + 정렬 보존 +
+    # meeting_id 재지정, (b) 건당 insert 가 아닌 소수 배치 쿼리임을 단언한다.
+    def manifest_io(manifest_hash)
+      io  = StringIO.new
+      gz  = Zlib::GzipWriter.new(io)
+      tar = Gem::Package::TarWriter.new(gz)
+      json = JSON.generate(manifest_hash).b
+      tar.add_file_simple("manifest.json", 0o644, json.bytesize) { |e| e.write(json) }
+      tar.close
+      gz.finish
+      io.rewind
+      io
+    end
+
+    it "3100 전사를 전량 복원하며 건당 insert 가 아닌 배치로 처리한다" do
+      base_meeting = create(:meeting, project: project, creator: owner, title: "대량 전사")
+      manifest = {
+        "format_version" => 1,
+        "project"        => project.attributes,
+        "folders"        => [],
+        "tags"           => [],
+        "meetings"       => [
+          base_meeting.attributes.merge(
+            "transcripts" => (1..3100).map do |i|
+              {
+                "content"         => "대량 발화 #{i}",
+                "speaker_label"   => "SPEAKER_00",
+                "started_at_ms"   => i * 10,
+                "ended_at_ms"     => i * 10 + 5,
+                "sequence_number" => i
+              }
+            end
+          )
+        ]
+      }
+
+      transcript_inserts = 0
+      counter = lambda do |*args|
+        sql = args.last[:sql].to_s
+        if sql.start_with?("INSERT INTO") && sql.include?("transcripts") && !sql.include?("transcripts_fts")
+          transcript_inserts += 1
+        end
+      end
+
+      new_project = nil
+      ActiveSupport::Notifications.subscribed(counter, "sql.active_record") do
+        new_project = described_class.new(manifest_io(manifest), importer).run!
+      end
+
+      new_meeting = new_project.meetings.find { |mtg| mtg.title == "대량 전사" }
+      expect(new_meeting.transcripts.count).to eq(3100)
+      expect(new_meeting.transcripts.pluck(:sequence_number)).to eq((1..3100).to_a)
+      # 건당 insert(3100회) 가 아니라 배치(수십 회 이하) 여야 한다.
+      # (관찰값: 배치크기 1000 → 3100건은 4회. 정확한 배치 수를 하드코딩하지 않고
+      #  느슨한 상한으로 둔다 — MeetingRestorer 회귀 가드와 동일한 설계.)
+      expect(transcript_inserts).to be < 100
+    end
+  end
 end

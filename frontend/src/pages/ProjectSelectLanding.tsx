@@ -54,9 +54,9 @@ export default function ProjectSelectLanding() {
   }
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 p-4 md:flex">
-        <h2 className="mb-4 px-2 text-sm font-semibold text-zinc-400">프로젝트</h2>
+    <div className="flex min-h-screen bg-background text-foreground">
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-card p-4 md:flex">
+        <h2 className="mb-4 px-2 text-sm font-semibold text-muted-foreground">프로젝트</h2>
         <nav className="flex-1 space-y-1 overflow-y-auto">
           {myProjects.map((p) => (
             <button
@@ -64,8 +64,8 @@ export default function ProjectSelectLanding() {
               type="button"
               aria-current={p.id === highlightId ? 'true' : undefined}
               onClick={() => enter(p)}
-              className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-zinc-800 ${
-                p.id === highlightId ? 'bg-zinc-800 ring-1 ring-indigo-500' : ''
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-accent ${
+                p.id === highlightId ? 'bg-accent ring-1 ring-indigo-500' : ''
               }`}
             >
               <ProjectIcon project={p} size={22} />
@@ -78,7 +78,7 @@ export default function ProjectSelectLanding() {
           <button
             type="button"
             onClick={() => setDialogOpen(true)}
-            className="mt-2 flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-indigo-400 transition-colors hover:bg-zinc-800"
+            className="mt-2 flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-indigo-400 transition-colors hover:bg-accent"
           >
             <Plus className="h-4 w-4" /> 새 프로젝트
           </button>
@@ -87,18 +87,18 @@ export default function ProjectSelectLanding() {
 
       <main className="flex-1 overflow-y-auto p-8">
         <div>
-          <h1 className="mb-1 text-2xl font-bold text-zinc-100">프로젝트 선택</h1>
-          <p className="mb-6 text-sm text-zinc-400">작업할 프로젝트를 선택하세요.</p>
+          <h1 className="mb-1 text-2xl font-bold text-foreground">프로젝트 선택</h1>
+          <p className="mb-6 text-sm text-muted-foreground">작업할 프로젝트를 선택하세요.</p>
 
           {error && (
-            <div role="alert" className="mb-4 rounded-md bg-red-950 px-4 py-2 text-sm text-red-300">
+            <div role="alert" className="mb-4 rounded-md bg-destructive/10 px-4 py-2 text-sm text-destructive">
               {error}
               <button onClick={() => fetchProjects()} className="ml-2 underline">다시 시도</button>
             </div>
           )}
 
           {isLoading && myProjects.length === 0 ? (
-            <p className="text-sm text-zinc-500">불러오는 중…</p>
+            <p className="text-sm text-muted-foreground">불러오는 중…</p>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {myProjects.map((p) => (
@@ -107,19 +107,19 @@ export default function ProjectSelectLanding() {
                   type="button"
                   aria-current={p.id === highlightId ? 'true' : undefined}
                   onClick={() => enter(p)}
-                  className={`flex h-[160px] flex-col items-start rounded-xl border bg-zinc-900 p-4 text-left transition-colors hover:border-indigo-500 md:h-[250px] ${
-                    p.id === highlightId ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-zinc-800'
+                  className={`flex h-[160px] flex-col items-start rounded-xl border bg-card p-4 text-left transition-colors hover:border-indigo-500 md:h-[250px] ${
+                    p.id === highlightId ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-border'
                   }`}
                 >
                   <div className="flex w-full items-start gap-3">
                     <ProjectIcon project={p} size={56} />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-zinc-100">{projectDisplayName(p)}</p>
-                      <p className="mt-0.5 text-xs text-zinc-500">멤버 {p.member_count} · 회의 {p.meeting_count}</p>
+                      <p className="truncate font-semibold text-card-foreground">{projectDisplayName(p)}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">멤버 {p.member_count} · 회의 {p.meeting_count}</p>
                     </div>
                     {p.id === highlightId && <Star className="h-4 w-4 shrink-0 text-indigo-400" />}
                   </div>
-                  {p.description && <p className="mt-3 line-clamp-2 text-xs text-zinc-500">{p.description}</p>}
+                  {p.description && <p className="mt-3 line-clamp-2 text-xs text-muted-foreground">{p.description}</p>}
                 </button>
               ))}
 
@@ -127,7 +127,7 @@ export default function ProjectSelectLanding() {
                 <button
                   type="button"
                   onClick={() => setDialogOpen(true)}
-                  className="flex h-[160px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-700 p-4 text-sm font-medium text-zinc-400 transition-colors hover:border-indigo-500 hover:text-indigo-400 md:h-[250px]"
+                  className="flex h-[160px] items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border p-4 text-sm font-medium text-muted-foreground transition-colors hover:border-indigo-500 hover:text-indigo-400 md:h-[250px]"
                 >
                   <Plus className="h-5 w-5" /> 새 프로젝트
                 </button>

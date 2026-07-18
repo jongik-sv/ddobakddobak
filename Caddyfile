@@ -1,11 +1,22 @@
 {
 	# mkcert 수동 인증서 사용 → Let's Encrypt 자동발급 비활성
 	auto_https off
+	# HTTP/3(QUIC/UDP 443) 비활성 — 회사망 등에서 UDP 443이 막히면 브라우저가 alt-svc로 h3 전환 후
+	# 요청이 응답 없이 행(Request timed out) 걸린다. h1/h2(TCP)로 고정해 회피.
+	servers {
+		protocols h1 h2
+	}
 }
 
 # LAN HTTPS 단일 진입점 (폰에서 https://<mac-ip>:13443 접속)
-https://localhost:13443, https://127.0.0.1:13443, https://10.110.14.219:13443, https://jangjong-ig-ui-MacBookAir.local:13443 {
+# [::1] 포함 필수 — 브라우저는 localhost를 IPv6 ::1로 먼저 해석하므로, ::1 리스너가 없으면
+# https://localhost 접속이 "연결 거부"된다(curl은 IPv4라 됨).
+https://localhost:13443, https://127.0.0.1:13443, https://[::1]:13443, https://10.110.14.219:13443, https://jangjong-ig-ui-MacBookAir.local:13443 {
 	tls /Users/jji/project/ddobakddobak/certs/10.110.14.219+3.pem /Users/jji/project/ddobakddobak/certs/10.110.14.219+3-key.pem
+
+	# 과거 h3 광고(alt-svc h3; ma=30일)를 캐시한 브라우저가 사라진 UDP443로 붙어 실패하는 것 방지 —
+	# TCP 응답에 이 헤더를 실어 캐시된 대체프로토콜을 즉시 무효화한다.
+	header Alt-Svc clear
 
 	# 온디바이스 STT 모델(~2.7GB) 정적 제공 (T11 / 자동결정 A19·A22).
 	# 모바일 download_cohere_model이 <base>/api/v1/cohere-onnx/<file>로 요청한다

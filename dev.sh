@@ -17,7 +17,12 @@ SESSION="ddobak"
 RAILS_PORT="${RAILS_PORT:-13323}"
 SIDECAR_PORT="${SIDECAR_PORT:-13324}"
 FRONTEND_PORT="${FRONTEND_PORT:-13325}"
-CADDY_PORT="${CADDY_PORT:-13443}"
+CADDY_PORT="${CADDY_PORT:-443}"
+
+# 1024 미만 포트(443 등)는 바인딩에 root 권한 필요 → caddy만 sudo로 기동한다.
+if [ "$CADDY_PORT" -lt 1024 ]; then CADDY_PRIV=1; else CADDY_PRIV=0; fi
+# URL 표시용 포트 접미사: 443이면 생략(프로덕션처럼 포트 없는 주소).
+if [ "$CADDY_PORT" = "443" ]; then PORT_SFX=""; else PORT_SFX=":${CADDY_PORT}"; fi
 
 # 활성 기본 인터페이스의 LAN IP 자동 감지 (다른 PC/폰에서 웹 UI 접근 안내 + 인증서 일치 확인용).
 DEFAULT_IFACE="$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')"
@@ -28,7 +33,7 @@ LAN_KEY="$PROJECT_ROOT/certs/lan-key.pem"
 CADDY_LOCAL="$PROJECT_ROOT/Caddyfile.local"
 
 RAILS_CMD="SERVER_MODE=true bin/rails server -p ${RAILS_PORT} -b 0.0.0.0"
-[ -n "$LAN_IP" ] && RAILS_CMD="LAN_WEB_URL=https://${LAN_IP}:${CADDY_PORT} ${RAILS_CMD}"
+[ -n "$LAN_IP" ] && RAILS_CMD="LAN_WEB_URL=https://${LAN_IP}${PORT_SFX} ${RAILS_CMD}"
 SIDECAR_CMD="uv run uvicorn app.main:app --host 0.0.0.0 --port ${SIDECAR_PORT}"
 # Caddy: LAN HTTPS 단일 origin(:${CADDY_PORT}). /api·/auth·/cable→rails, 그 외→vite.
 # 다른 PC/폰 브라우저는 https://<LAN_IP>:${CADDY_PORT} 한 곳만 접속(같은 origin이라 CORS·IP입력 불필요).
@@ -122,7 +127,7 @@ ensure_lan_tls() {
 
   awk -v port="$CADDY_PORT" -v ip="$LAN_IP" -v host="$localhost_name" -v cert="$cert_use" -v key="$key_use" '
     /^https:\/\// && /\{[[:space:]]*$/ && !site {
-      line = "https://localhost:" port ", https://127.0.0.1:" port ", https://" ip ":" port
+      line = "https://localhost:" port ", https://127.0.0.1:" port ", https://[::1]:" port ", https://" ip ":" port
       if (host != "") line = line ", https://" host ":" port
       print line " {"; site=1; inblk=1; next
     }
@@ -147,14 +152,28 @@ start_backend() {
   tmux new-window -t "$SESSION" -n sidecar -c "$PROJECT_ROOT/sidecar"
   tmux send-keys -t "$SESSION:sidecar" "$SIDECAR_CMD" Enter
 
-  tmux new-window -t "$SESSION" -n caddy -c "$PROJECT_ROOT"
-  tmux send-keys -t "$SESSION:caddy" "$CADDY_CMD" Enter
+  if [ "$CADDY_PRIV" = "1" ]; then
+    # 443 등 1024 미만 포트는 root 필요 → caddy만 sudo 백그라운드로 기동(로그: .caddy.log).
+    # sudo -v를 현재 터미널에서 먼저 받아 캐시 → 이어지는 sudo가 재프롬프트 없이 실행된다.
+    caddy stop >/dev/null 2>&1 || true   # 잔여 caddy 정리(포트 중복 바인딩 방지)
+    echo "[info] caddy가 :${CADDY_PORT} 바인딩에 관리자 권한 필요 — sudo 인증"
+    if ! sudo -v; then
+      echo "[error] sudo 인증 실패 → caddy 미기동. rails/sidecar는 실행 중." >&2
+    else
+      sudo nohup caddy run --config "$CADDY_LOCAL" --adapter caddyfile \
+        > "$PROJECT_ROOT/.caddy.log" 2>&1 &
+      echo "[info] caddy(sudo) 백그라운드 기동 → 로그: tail -f $PROJECT_ROOT/.caddy.log"
+    fi
+  else
+    tmux new-window -t "$SESSION" -n caddy -c "$PROJECT_ROOT"
+    tmux send-keys -t "$SESSION:caddy" "$CADDY_CMD" Enter
+  fi
 
   echo "[info]   - rails   : http://localhost:${RAILS_PORT}"
   echo "[info]   - sidecar : http://localhost:${SIDECAR_PORT}"
-  echo "[info]   - caddy   : https://localhost:${CADDY_PORT}  (LAN 웹 단일 진입점)"
+  echo "[info]   - caddy   : https://localhost${PORT_SFX}  (LAN 웹 단일 진입점)"
   if [ -n "$LAN_IP" ]; then
-    echo "[info]   - LAN 웹  : https://${LAN_IP}:${CADDY_PORT}  (다른 PC/폰 브라우저, 같은 origin → 서버주소 입력·CORS 불필요)"
+    echo "[info]   - LAN 웹  : https://${LAN_IP}${PORT_SFX}  (다른 PC/폰 브라우저, 같은 origin → 서버주소 입력·CORS 불필요)"
   fi
   echo "[info] 로그 확인: tmux attach -t $SESSION  (Ctrl+b n / p 로 윈도우 이동)"
 }
@@ -190,6 +209,8 @@ case "${1:-all}" in
     else
       echo "[info] 실행 중인 tmux 세션 '$SESSION'이 없습니다."
     fi
+    # 백그라운드 caddy(sudo/443)도 종료 (admin API, sudo 불필요)
+    if caddy stop >/dev/null 2>&1; then echo "[info] caddy 종료 완료."; fi
     ;;
   -h|--help|help)
     sed -n '2,10p' "$0"

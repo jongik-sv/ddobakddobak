@@ -26,6 +26,10 @@ module Transfer
   class MeetingRestorer
     attr_reader :copied_paths
 
+    # 전사는 회의당 수만 건까지 갈 수 있어 건당 insert 는 SQLite 변수 상한
+    # (32766)을 넘길 수 없다. 11컬럼 기준 한 배치가 상한을 넘지 않도록 보수적으로 둔다.
+    TRANSCRIPT_INSERT_BATCH_SIZE = 1000
+
     # @param meeting_hash [Hash]          MeetingSerializer#as_hash 와 동일 구조(문자열 키)
     # @param user [User]                  새 컨텐츠 소유자
     # @param project [Project]            대상 프로젝트
@@ -91,10 +95,44 @@ module Transfer
       restore_taggings(meeting)
     end
 
+    # 전사 복원: 건당 create! (35k건 ≈ 73k쿼리·117s) → 배치 insert_all 로 전환.
+    # insert_all 주의점:
+    #   - 검증·콜백·타임스탬프를 건너뛴다. created_at 을 직접 세팅한다
+    #     (transcripts 에는 updated_at 컬럼이 없다 → column_names 로 방어).
+    #   - 단일 insert_all 은 SQLite 변수 상한을 넘길 수 있어 배치로 분할한다.
+    #   - after_save :fts_upsert 콜백이 건너뛰어지므로 FTS 색인을 벌크로 재구축한다.
+    #   - meeting_id 는 새 회의 id 로, id 는 sanitize 가 제거해 DB 가 채운다(create! 와 동일).
     def restore_transcripts(meeting)
-      (@m["transcripts"] || []).each do |t|
-        meeting.transcripts.create!(sanitize(Transcript, t).merge("meeting_id" => meeting.id))
+      now     = Time.current
+      ts_cols = Transcript.column_names
+      rows = (@m["transcripts"] || []).map do |t|
+        row = sanitize(Transcript, t)
+        row["meeting_id"]   = meeting.id
+        row["created_at"] ||= now if ts_cols.include?("created_at")
+        row["updated_at"] ||= now if ts_cols.include?("updated_at")
+        row
       end
+      return if rows.empty?
+
+      rows.each_slice(TRANSCRIPT_INSERT_BATCH_SIZE) do |batch|
+        Transcript.insert_all(batch)
+      end
+
+      reindex_transcripts_fts(meeting)
+    end
+
+    # insert_all 은 after_save :fts_upsert 콜백을 건너뛰므로 전사 FTS 색인을 벌크로 재구축.
+    # 새로 삽입된 id 라 기존 FTS 행이 없으므로 DELETE 없이 INSERT…SELECT 한 번.
+    # fts_upsert 와 동일하게, 색인 실패가 데이터 복원 자체를 중단시키지 않도록 경고만 남긴다.
+    def reindex_transcripts_fts(meeting)
+      conn = ActiveRecord::Base.connection
+      conn.execute(ActiveRecord::Base.sanitize_sql_array([
+        "INSERT INTO transcripts_fts(content, speaker_label, speaker_name, source_id) " \
+        "SELECT content, speaker_label, speaker_name, id FROM transcripts WHERE meeting_id = ?",
+        meeting.id
+      ]))
+    rescue => e
+      Rails.logger.warn("MeetingRestorer: transcripts_fts reindex failed for meeting##{meeting.id}: #{e.message}")
     end
 
     def restore_summaries(meeting)
