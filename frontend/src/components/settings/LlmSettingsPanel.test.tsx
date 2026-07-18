@@ -31,12 +31,13 @@ vi.mock('../../lib/openExternal', () => ({ openExternal: vi.fn() }))
 vi.mock('../../lib/confirmDialog', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
 
 import { getLlmSettings, updateLlmSettings, testLlmConnection } from '../../api/settings'
-import { listLlmProfiles } from '../../api/llmProfiles'
+import { listLlmProfiles, deleteLlmProfile } from '../../api/llmProfiles'
 
 const mockGetLlmSettings = vi.mocked(getLlmSettings)
 const mockUpdateLlmSettings = vi.mocked(updateLlmSettings)
 const mockTestLlmConnection = vi.mocked(testLlmConnection)
 const mockListLlmProfiles = vi.mocked(listLlmProfiles)
+const mockDeleteLlmProfile = vi.mocked(deleteLlmProfile)
 
 // 서버 풀의 프로필 1개 — 요약/챗 셀렉터 드롭다운의 '내 프로필' 그룹에 노출된다.
 const serverProfile5: LlmProfile = {
@@ -110,6 +111,12 @@ describe('LlmSettingsPanel - 서버 선택 카드', () => {
     expect(mockUpdateLlmSettings).toHaveBeenCalledWith(
       expect.objectContaining({ active_profile_id: 5 }),
     )
+    // 프로필 참조 저장은 preset 키를 함께 보내지 않는다(데이터손실 방어) — objectContaining은
+    // 잉여 키를 무시하므로 부재는 .not.toHaveProperty로만 잡힌다(T10-3 회귀 가드).
+    const payload = mockUpdateLlmSettings.mock.calls[0][0]
+    expect(payload).not.toHaveProperty('active_preset')
+    expect(payload).not.toHaveProperty('preset_id')
+    expect(payload).not.toHaveProperty('preset_data')
   })
 
   // ③ 저장(CLI claude_cli/sonnet) → { active_preset, preset_id, preset_data: { provider, model }, active_profile_id: null }
@@ -277,5 +284,34 @@ describe('LlmSettingsPanel - 서버 선택 카드', () => {
     })
     expect(screen.queryByLabelText(/최대 입력 토큰/)).toBeNull()
     expect(screen.queryByLabelText(/최대 출력 토큰/)).toBeNull()
+  })
+
+  // I-2: 모달에서 현재 선택된 프로필을 삭제하면 부모 카드 선택이 stale(profile:5) 되어
+  //   재저장 시 dangling id로 422가 났다. onChanged 폴백으로 선택이 조정돼야 한다.
+  it('모달에서 선택된 프로필 삭제 시 요약 선택이 폴백돼 재저장이 dangling id를 보내지 않는다', async () => {
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    mockUpdateLlmSettings.mockResolvedValue(makeSettings({ active_profile_id: null, active_preset: 'claude_cli' }))
+    mockDeleteLlmProfile.mockResolvedValue(undefined as never)
+    mockListLlmProfiles
+      .mockResolvedValueOnce([serverProfile5]) // 패널 마운트
+      .mockResolvedValueOnce([serverProfile5]) // 모달 open reload
+      .mockResolvedValue([]) // 삭제 후 reload(이후 빈 목록)
+
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
+    })
+
+    fireEvent.click(within(summarySel()).getByText('프로필 관리'))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+
+    fireEvent.click(await screen.findByLabelText('Z.AI · 서버키 삭제'))
+    await waitFor(() => expect(mockDeleteLlmProfile).toHaveBeenCalledWith(5))
+    await waitFor(() => expect(mockListLlmProfiles.mock.calls.length).toBeGreaterThanOrEqual(3))
+
+    fireEvent.click(screen.getByText('저장'))
+    await waitFor(() => expect(mockUpdateLlmSettings).toHaveBeenCalled())
+    const payload = mockUpdateLlmSettings.mock.calls[0][0]
+    expect(payload.active_profile_id).toBeNull() // profile:5 잔존이면 5가 담겨 실패(RED)
   })
 })

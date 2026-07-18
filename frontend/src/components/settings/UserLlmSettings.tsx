@@ -162,6 +162,15 @@ export default function UserLlmSettings() {
   // 토글 OFF이고 설정이 있으면 폼을 숨긴다 (배너만 표시)
   const showForm = !hasSettings || isEnabled
 
+  // 모달 CRUD 후 프로필 목록 갱신. 현재 선택 중인 프로필이 삭제돼 목록에서 사라지면
+  // 선택이 dangling 상태(재저장 시 422)가 되므로 특수옵션 폴백으로 조정한다(I-2).
+  const handleProfilesChanged = useCallback((next: LlmProfile[]) => {
+    setProfiles(next)
+    const ids = new Set(next.map((p) => p.id))
+    setSummarySel((sel) => (sel.type === 'profile' && !ids.has(sel.profileId) ? { type: 'special', id: 'none' } : sel))
+    setChatSel((sel) => (sel.type === 'profile' && !ids.has(sel.profileId) ? { type: 'special', id: '' } : sel))
+  }, [])
+
   const openManage = () => setProfilesModal({ open: true, create: false })
   const openCreate = () => setProfilesModal({ open: true, create: true })
 
@@ -329,7 +338,7 @@ export default function UserLlmSettings() {
         open={profilesModal.open}
         initialCreate={profilesModal.create}
         onClose={() => setProfilesModal((s) => ({ ...s, open: false }))}
-        onChanged={setProfiles}
+        onChanged={handleProfilesChanged}
       />
     </div>
   )

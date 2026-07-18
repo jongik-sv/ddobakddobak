@@ -34,12 +34,13 @@ vi.mock('../../lib/confirmDialog', () => ({ confirmDialog: vi.fn().mockResolvedV
 vi.mock('../../config', async (orig) => ({ ...(await orig() as object), getMode: vi.fn(() => 'local') }))
 
 import { getUserLlmSettings, updateUserLlmSettings, testUserLlmConnection } from '../../api/userLlmSettings'
-import { listLlmProfiles } from '../../api/llmProfiles'
+import { listLlmProfiles, deleteLlmProfile } from '../../api/llmProfiles'
 
 const mockGetUserLlmSettings = vi.mocked(getUserLlmSettings)
 const mockUpdateUserLlmSettings = vi.mocked(updateUserLlmSettings)
 const mockTestUserLlmConnection = vi.mocked(testUserLlmConnection)
 const mockListLlmProfiles = vi.mocked(listLlmProfiles)
+const mockDeleteLlmProfile = vi.mocked(deleteLlmProfile)
 
 // 개인 풀의 프로필 1개 — 요약/챗 셀렉터 드롭다운의 '내 프로필' 그룹에 노출된다.
 const profile1: LlmProfile = {
@@ -282,5 +283,35 @@ describe('UserLlmSettings', () => {
     expect(mockUpdateUserLlmSettings).toHaveBeenCalledWith({
       llm_settings: { provider: '', reset_all: true },
     })
+  })
+
+  // I-2: 모달에서 선택된 프로필 삭제 시 부모 카드 선택이 stale(profile:1) 되어 재저장 시
+  //   dangling id로 422가 났다. onChanged 폴백으로 '선택 안함'(none)으로 조정돼야 한다.
+  it('모달에서 선택된 프로필 삭제 시 요약 선택이 폴백돼 재저장이 dangling id를 보내지 않는다', async () => {
+    mockGetUserLlmSettings.mockResolvedValue(profileConfiguredResponse)
+    mockUpdateUserLlmSettings.mockResolvedValue(unconfiguredResponse)
+    mockDeleteLlmProfile.mockResolvedValue(undefined as never)
+    mockListLlmProfiles
+      .mockResolvedValueOnce([profile1]) // 카드 마운트
+      .mockResolvedValueOnce([profile1]) // 모달 open reload
+      .mockResolvedValue([]) // 삭제 후 reload(이후 빈 목록)
+
+    render(<UserLlmSettings />)
+    const summarySel = await screen.findByTestId('user-summary-selector')
+    await waitFor(() => {
+      expect((within(summarySel).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:1')
+    })
+
+    fireEvent.click(within(summarySel).getByText('프로필 관리'))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+
+    fireEvent.click(await screen.findByLabelText('Gemini · 무료키 삭제'))
+    await waitFor(() => expect(mockDeleteLlmProfile).toHaveBeenCalledWith(1))
+    await waitFor(() => expect(mockListLlmProfiles.mock.calls.length).toBeGreaterThanOrEqual(3))
+
+    fireEvent.click(screen.getAllByRole('button', { name: /저장/ })[0])
+    await waitFor(() => expect(mockUpdateUserLlmSettings).toHaveBeenCalled())
+    const payload = mockUpdateUserLlmSettings.mock.calls[0][0].llm_settings
+    expect(payload).toMatchObject({ provider: '', llm_profile_id: null }) // profile:1 잔존이면 llm_profile_id 미포함/1이라 실패(RED)
   })
 })

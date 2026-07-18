@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { SERVICE_PRESETS, CLI_PRESET_IDS, PROFILE_PRESETS, CLI_PRESETS, isLocalListable, presetIdFromUserConfig } from './llmServicePresets'
 
 describe('llmServicePresets', () => {
-  it('9개 프리셋 + zai glm-5.2 보유', () => {
+  it('10개 프리셋 + zai glm-5.2 보유', () => {
     const ids = SERVICE_PRESETS.map((p) => p.id)
     expect(ids).toEqual(['claude_cli', 'gemini_cli', 'codex_cli', 'anthropic', 'zai', 'gemini', 'openai', 'ollama', 'lmstudio', 'custom'])
     expect(SERVICE_PRESETS.find((p) => p.id === 'zai')!.suggestedModels).toContain('glm-5.2')
