@@ -72,6 +72,56 @@ class AppSettings
       chat["base_url"].to_s.match?(CHAT_LOCAL_HOST_RE)
   end
 
+  # SettingsController#sync_active_llm_to_env 본문의 verbatim move(cfg 인자화만) — 동작 변경 금지.
+  def self.sync_env_from!(cfg)
+    llm = cfg["llm"] || {}
+    active_id = llm["active_preset"]
+    preset = llm.dig("presets", active_id) || {}
+    provider = preset["provider"] || "anthropic"
+
+    ENV["STT_ENGINE"] = cfg.dig("stt", "engine").to_s if cfg.dig("stt", "engine")
+    ENV["HF_TOKEN"] = cfg.dig("hf", "token").to_s if cfg.dig("hf", "token")
+
+    ENV["LLM_PROVIDER"] = provider
+    ENV["LLM_MODEL"] = preset["model"].to_s if preset["model"]
+    ENV["LLM_MAX_INPUT_TOKENS"] = (preset["max_input_tokens"] || 200_000).to_s
+    ENV["LLM_MAX_OUTPUT_TOKENS"] = (preset["max_output_tokens"] || 10_000).to_s
+
+    # 전역 AI Chat. 매핑은 AppSettings.chat_llm_env 로 일원화 — 부팅(load_env.rb)과 공유.
+    # 런타임 저장: 해시에 있는 키는 set, 없는 키는 삭제(설정 해제 반영).
+    chat_env = AppSettings.chat_llm_env(llm)
+    AppSettings::CHAT_LLM_ENV_KEYS.each do |k|
+      chat_env.key?(k) ? ENV[k] = chat_env[k] : ENV.delete(k)
+    end
+
+    if provider == "openai"
+      ENV["OPENAI_API_KEY"] = preset["auth_token"].to_s
+      if preset["base_url"].present?
+        ENV["OPENAI_BASE_URL"] = preset["base_url"]
+      else
+        ENV.delete("OPENAI_BASE_URL")
+      end
+    else
+      ENV["ANTHROPIC_AUTH_TOKEN"] = preset["auth_token"].to_s
+      if preset["base_url"].present?
+        ENV["ANTHROPIC_BASE_URL"] = preset["base_url"]
+      else
+        ENV.delete("ANTHROPIC_BASE_URL")
+      end
+    end
+
+    # app settings
+    ENV["SUMMARY_INTERVAL_SEC"] = cfg.dig("summary", "interval_sec").to_s if cfg.dig("summary", "interval_sec")
+    # NOTE: 회의 언어 ENV(SELECTED_LANGUAGES/LANGUAGE_MODE) 동기화 제거됨.
+    #       사용자별 설정(User#effective_language_config)이 권위 소스.
+    #       ENV는 User.server_default_language_config의 폴백 기본값으로만 사용.
+    if (audio = cfg["audio"])
+      %w[silence_threshold speech_threshold silence_duration_ms max_chunk_sec min_chunk_sec preroll_ms overlap_ms file_chunk_sec].each do |k|
+        ENV["AUDIO_#{k.upcase}"] = audio[k].to_s if audio[k]
+      end
+    end
+  end
+
   def self.diarization_config
     d = load["diarization"] || {}
     {

@@ -783,4 +783,145 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(response).to have_http_status(:unauthorized)
     end
   end
+
+  # ============================================================
+  # 프로필 참조 (llm_profile_id)
+  # ============================================================
+  describe "프로필 참조 (llm_profile_id)" do
+    let(:profile) do
+      LlmProfile.create!(user: user, name: "P", preset_id: "gemini", provider: "openai",
+                         base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
+                         model: "gemini-3.5-flash", auth_token: "AIza-tok-123456789")
+    end
+
+    it "PUT llm_profile_id → 참조 저장 + 레거시 요약 컬럼 클리어 + 응답에 id 포함" do
+      user.update!(llm_provider: "anthropic", llm_api_key: "sk-old-1234567890", llm_model: "old")
+      put "/api/v1/user/llm_settings", params: { llm_settings: { llm_profile_id: profile.id } }, as: :json
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_profile_id).to eq(profile.id)
+      expect(user.llm_provider).to be_nil
+      expect(user.llm_api_key).to be_nil
+      body = response.parsed_body["llm_settings"]
+      expect(body["llm_profile_id"]).to eq(profile.id)
+      expect(body["provider"]).to eq("openai")
+      expect(body["model"]).to eq("gemini-3.5-flash")
+      expect(body["configured"]).to be true
+    end
+
+    it "effective_llm_config가 프로필 값을 반환한다" do
+      user.update!(llm_profile_id: profile.id)
+      expect(user.effective_llm_config).to eq(profile.to_llm_config)
+    end
+
+    it "llm_enabled=false면 프로필이 있어도 서버 기본으로 폴백" do
+      user.update!(llm_profile_id: profile.id, llm_enabled: false)
+      expect(user.effective_llm_config).to eq(User.server_default_llm_config)
+    end
+
+    it "CLI provider 저장 시 llm_profile_id가 클리어된다(상호배타)" do
+      user.update!(llm_profile_id: profile.id)
+      put "/api/v1/user/llm_settings", params: { llm_settings: { provider: "claude_cli", model: "sonnet" } }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(user.reload.llm_profile_id).to be_nil
+      expect(user.llm_provider).to eq("claude_cli")
+    end
+
+    it "타인/서버풀 프로필 id는 422" do
+      other = LlmProfile.create!(user: create(:user), name: "O", preset_id: "openai", provider: "openai")
+      server = LlmProfile.create!(user_id: nil, name: "S", preset_id: "openai", provider: "openai")
+      [ other, server ].each do |p|
+        put "/api/v1/user/llm_settings", params: { llm_settings: { llm_profile_id: p.id } }, as: :json
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+      expect(user.reload.llm_profile_id).to be_nil
+    end
+
+    it "chat_llm_profile_id 참조 — 챗 해석이 챗 프로필 값을 쓴다" do
+      put "/api/v1/user/llm_settings", params: { llm_settings: { chat_llm_profile_id: profile.id } }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(user.reload.chat_llm_profile_id).to eq(profile.id)
+      expect(user.effective_chat_llm_config).to eq(profile.to_llm_config)
+    end
+
+    it "챗 'server' 센티넬은 챗 프로필보다 우선(현행 유지)" do
+      user.update!(chat_llm_profile_id: profile.id, chat_llm_provider: "server")
+      expect(user.effective_chat_llm_config).to eq(user.server_chat_llm_config)
+    end
+
+    # ============================================================
+    # I-1: 요약='선택 안함'(provider:'') + 챗=프로필 전환을 동시에 저장하면
+    #   이전 chat_llm_provider='server' 센티넬이 잔존해(reset 분기가 프로필 레거시
+    #   클리어를 떨굼) 새 챗 프로필이 effective_chat 에서 조용히 무시되던 회귀.
+    # ============================================================
+    it "요약='선택 안함' + 챗=프로필 저장 시 이전 'server' 센티넬을 클리어해 챗 프로필이 유효하다" do
+      user.update!(chat_llm_provider: "server")
+
+      # 프론트 페이로드: 요약='선택 안함'(provider:'', llm_profile_id:null) + 챗=프로필
+      put "/api/v1/user/llm_settings", params: {
+        llm_settings: { provider: "", llm_profile_id: nil, chat_llm_profile_id: profile.id }
+      }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.chat_llm_profile_id).to eq(profile.id)
+      expect(user.chat_llm_provider).to be_nil # 잔존 센티넬 클리어
+      # 센티넬이 사라졌으므로 챗 해석이 새 챗 프로필 값을 쓴다(서버 기본으로 오라우팅되지 않음).
+      expect(user.effective_chat_llm_config).to eq(profile.to_llm_config)
+    end
+
+    it "test 액션 profile_id 토큰 폴백" do
+      svc = instance_double(LlmService, test_connection: { "success" => true })
+      expect(LlmService).to receive(:new).with(llm_config: hash_including(auth_token: "AIza-tok-123456789")).and_return(svc)
+      post "/api/v1/user/llm_settings/test", params: { provider: "openai", model: "gemini-3.5-flash", profile_id: profile.id }, as: :json
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "llm_profile_id: null → 참조 해제(선택 안함)" do
+      user.update!(llm_profile_id: profile.id)
+      put "/api/v1/user/llm_settings", params: { llm_settings: { provider: "", llm_profile_id: nil } }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(user.reload.llm_profile_id).to be_nil
+    end
+
+    # ============================================================
+    # REVIEW FIX: 프로필-only PUT(provider/chat_provider 키 자체가 없는 요청)이
+    #   반대편 슬롯(요약/챗)의 기존 레거시 설정을 nil로 wipe하던 회귀.
+    #   normalize_params가 요청에 없는 키까지 무조건 attrs에 nil로 채워 넣던 게 원인.
+    # ============================================================
+    it "chat_llm_profile_id만 PUT해도 기존 요약(summary) 설정이 보존된다" do
+      user.update!(llm_provider: "anthropic", llm_api_key: "sk-keep-1234567890", llm_model: "claude-sonnet-4-6")
+      put "/api/v1/user/llm_settings", params: { llm_settings: { chat_llm_profile_id: profile.id } }, as: :json
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_provider).to eq("anthropic")
+      expect(user.llm_api_key).to eq("sk-keep-1234567890")
+      expect(user.llm_model).to eq("claude-sonnet-4-6")
+      expect(user.chat_llm_profile_id).to eq(profile.id)
+    end
+
+    it "llm_profile_id만 PUT해도 기존 챗(chat) 설정이 보존된다" do
+      user.update!(
+        chat_llm_provider: "openai", chat_llm_api_key: "chatkey",
+        chat_llm_model: "gpt-4o", chat_llm_base_url: "http://localhost:11434/v1"
+      )
+      put "/api/v1/user/llm_settings", params: { llm_settings: { llm_profile_id: profile.id } }, as: :json
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_profile_id).to eq(profile.id)
+      expect(user.chat_llm_provider).to eq("openai")
+      expect(user.chat_llm_api_key).to eq("chatkey")
+      expect(user.chat_llm_model).to eq("gpt-4o")
+      expect(user.chat_llm_base_url).to eq("http://localhost:11434/v1")
+    end
+
+    it "reset_all: true는 요청에 키가 없어도 프로필 참조까지 무조건 해제한다" do
+      user.update!(llm_profile_id: profile.id, chat_llm_profile_id: profile.id)
+      put "/api/v1/user/llm_settings", params: { llm_settings: { provider: "", reset_all: true } }, as: :json
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_profile_id).to be_nil
+      expect(user.chat_llm_profile_id).to be_nil
+    end
+  end
 end

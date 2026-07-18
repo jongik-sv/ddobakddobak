@@ -15,23 +15,60 @@ module Api
 
         # PUT /api/v1/user/llm_settings
         def update
-          attrs = normalize_params
+          raw = params.require(:llm_settings)
 
-          # provider가 빈값이면 초기화 분기.
+          # 1) 프로필 참조 추출 — provider와 독립적으로 처리한다.
+          #    참조가 세팅되면(id present) 레거시 요약/챗 컬럼을 클리어해 상호배타를 지킨다.
+          profile_attrs = {}
+          if raw.key?(:llm_profile_id)
+            id = own_profile_id!(raw[:llm_profile_id])
+            return if performed?
+            profile_attrs[:llm_profile_id] = id
+            profile_attrs.merge!(llm_provider: nil, llm_api_key: nil, llm_model: nil, llm_base_url: nil) if id
+          end
+          if raw.key?(:chat_llm_profile_id)
+            id = own_profile_id!(raw[:chat_llm_profile_id])
+            return if performed?
+            profile_attrs[:chat_llm_profile_id] = id
+            profile_attrs.merge!(chat_llm_provider: nil, chat_llm_api_key: nil, chat_llm_model: nil, chat_llm_base_url: nil) if id
+          end
+
+          attrs = normalize_params.merge(profile_attrs)
+
+          # 2) 상호배타 — provider를 직접 지정(CLI 등)하면 반대편 참조는 해제한다.
+          attrs[:llm_profile_id] = nil if raw[:provider].present? && !raw.key?(:llm_profile_id)
+          attrs[:chat_llm_profile_id] = nil if raw.key?(:chat_provider) && !raw.key?(:chat_llm_profile_id)
+
+          # provider를 명시적으로 비운 경우(""/null 로 전송)에만 초기화 분기.
           #   - reset_all(전체 초기화 버튼) → 요약 + 챗 모두 초기화
           #   - reset_all 아님(요약='선택 안함' 저장) → 요약 컬럼만 초기화.
           #     단, 요청에 챗 설정(chat_*)이 함께 오면 그 값을 반영한다 — 요약='선택 안함'이어도
           #     개인 챗 모델을 독립 저장할 수 있어야 하기 때문. 챗 키가 아예 없으면 기존 챗 보존
           #     (BUG #2: 챗 provider가 별도 설정돼 있을 때 조용히 지워지는 것을 막는다).
-          if attrs[:llm_provider].blank?
+          if raw.key?(:provider) && raw[:provider].blank?
             reset_all = ActiveModel::Type::Boolean.new.cast(params.dig(:llm_settings, :reset_all))
             ls = params.fetch(:llm_settings, {})
+            profile_id_attrs = attrs.slice(:llm_profile_id, :chat_llm_profile_id)
+
+            # 프로필 참조가 세팅되면 반대편 레거시 컬럼도 클리어해 상호배타를 지킨다.
+            # 이 분기는 base/chat 를 재구성하면서 상단 profile_attrs 의 레거시 클리어를 떨구므로
+            # 여기서 복원한다 — 특히 요약='선택 안함' + 챗=프로필 저장 시 이전 chat_llm_provider='server'
+            # 센티넬이 잔존해(effective_chat 우선순위상) 새 챗 프로필이 조용히 무시되던 회귀(I-1)를 막는다.
+            if profile_id_attrs[:llm_profile_id].present?
+              profile_id_attrs.merge!(llm_provider: nil, llm_api_key: nil, llm_model: nil, llm_base_url: nil)
+            end
+            if profile_id_attrs[:chat_llm_profile_id].present?
+              profile_id_attrs.merge!(chat_llm_provider: nil, chat_llm_api_key: nil, chat_llm_model: nil, chat_llm_base_url: nil)
+            end
 
             if reset_all
+              # 전체 초기화는 요청에 llm_profile_id/chat_llm_profile_id 키가 없어도 무조건
+              # 프로필 참조까지 해제한다(REVIEW FIX: reset_all이 활성 프로필 참조를 해제 안 함).
               current_user.update!(
                 llm_provider: nil, llm_api_key: nil, llm_model: nil, llm_base_url: nil,
                 chat_llm_model: nil, chat_llm_provider: nil, chat_llm_api_key: nil, chat_llm_base_url: nil,
-                llm_enabled: true
+                llm_enabled: true,
+                llm_profile_id: nil, chat_llm_profile_id: nil
               )
             else
               # "선택 안함" 저장: provider만 비워 미설정 판정(llm_has_settings?)이 되게 하고,
@@ -44,12 +81,12 @@ module Api
 
               chat_sent = %i[chat_provider chat_model chat_base_url chat_api_key].any? { |k| ls.key?(k) }
               chat = chat_sent ? attrs.slice(:chat_llm_provider, :chat_llm_model, :chat_llm_base_url, :chat_llm_api_key) : {}
-              current_user.update!(base.merge(chat))
+              current_user.update!(base.merge(chat).merge(profile_id_attrs))
             end
             return render json: build_response
           end
 
-          unless VALID_PROVIDERS.include?(attrs[:llm_provider])
+          if attrs[:llm_provider].present? && !VALID_PROVIDERS.include?(attrs[:llm_provider])
             return render json: { error: "provider는 #{VALID_PROVIDERS.join(', ')} 중 하나여야 합니다" },
                           status: :unprocessable_entity
           end
@@ -83,7 +120,14 @@ module Api
           end
 
           model = params.require(:model)
-          api_key = params[:api_key].presence || current_user.llm_api_key
+          api_key = params[:api_key].presence
+          if api_key.blank? && params[:profile_id].present?
+            profile = LlmProfile.find_by(id: params[:profile_id])
+            if profile && (profile.user_id == current_user.id || (profile.user_id.nil? && current_user&.admin?))
+              api_key = profile.auth_token
+            end
+          end
+          api_key ||= saved_api_key_for(provider)
           base_url = params[:base_url].presence || current_user.llm_base_url
 
           llm_config = {
@@ -122,6 +166,17 @@ module Api
 
         private
 
+        # 본인 소유 개인 프로필만 참조 가능. 그 외(타인·서버풀·없는 id)는 422 렌더.
+        # blank(명시적 해제)는 nil 반환. 렌더 여부는 호출부에서 performed?로 판단.
+        def own_profile_id!(raw)
+          return nil if raw.blank?
+          id = raw.to_i
+          unless LlmProfile.personal_for(current_user).exists?(id)
+            render json: { error: "유효하지 않은 프로필입니다" }, status: :unprocessable_entity
+          end
+          id
+        end
+
         # '모델 새로고침' 시 폼에 키가 없으면(마스킹된 기존 설정) 저장된 개인 키로 조회한다.
         # 요약/챗 중 provider 가 일치하는 슬롯의 키를 우선 쓰되, 없으면 아무 저장 키나 폴백.
         def saved_api_key_for(provider)
@@ -136,35 +191,31 @@ module Api
 
         def normalize_params
           p = params.require(:llm_settings).permit(
-            :provider, :api_key, :model, :base_url,
-            :chat_provider, :chat_api_key, :chat_model, :chat_base_url
+            :provider, :api_key, :model, :base_url, :llm_profile_id,
+            :chat_provider, :chat_api_key, :chat_model, :chat_base_url, :chat_llm_profile_id
           )
 
-          attrs = {
-            llm_provider: p[:provider],
-            llm_model: p[:model],
-            llm_base_url: p[:base_url].presence,
-            chat_llm_provider: p[:chat_provider].presence
-          }
+          # 요청에 실제로 전송된 필드만 반환 해시에 포함한다 — 키 자체가 없으면 해당 컬럼은
+          # 건드리지 않는다(보존). 프로필-only 페이로드(예: { chat_llm_profile_id: N })처럼
+          # provider/model/base_url 등이 아예 전송되지 않는 요청이 반대편 슬롯(요약/챗)의
+          # 기존 설정을 nil 로 wipe 하는 걸 막기 위함이다 — 기존 프론트는 폼 전체 필드를 항상
+          # 함께 보내므로(REVIEW FIX: 프로필-only PUT 데이터손실) 이 변경은 실전 페이로드에 영향 없다.
+          attrs = {}
+          attrs[:llm_provider] = p[:provider] if p.key?(:provider)
+          attrs[:llm_model] = p[:model] if p.key?(:model)
+          attrs[:llm_base_url] = p[:base_url].presence if p.key?(:base_url)
+          attrs[:chat_llm_provider] = p[:chat_provider].presence if p.key?(:chat_provider)
+          attrs[:chat_llm_model] = p[:chat_model].presence if p.key?(:chat_model)
+          attrs[:chat_llm_base_url] = p[:chat_base_url].presence if p.key?(:chat_base_url)
 
           # provider 저장(빈값 아님) 시 개인 LLM을 (재)활성화한다.
           # 빈 provider 초기화 분기는 자체 update! 로 처리하므로 이 attrs 를 읽지 않는다.
           attrs[:llm_enabled] = true if p[:provider].present?
 
-          # chat_model/chat_base_url: chat_provider가 비거나(=요약과 동일) 'server' 센티넬
-          # (=AI챗 '선택 안함')로 전환되는 경우엔 값을 보존한다 — 이후 다시 provider를 고를 때
-          # 프리필할 수 있도록. 사용자가 해당 필드를 명시적으로 빈 값으로 보낸 경우만 지운다.
-          # (그 외, 실제 provider로의 전환/유지 시엔 기존과 동일하게 전송값을 그대로 반영한다.)
+          # chat_provider가 비거나(=요약과 동일) 'server' 센티넬(=AI챗 '선택 안함')인지 여부.
+          # chat_llm_api_key 클리어 판정에 쓰인다(모델/base_url은 위에서 키 존재 여부만으로
+          # 이미 보존/반영이 결정되므로 여기선 재사용하지 않는다).
           chat_cleared = p[:chat_provider].blank? || p[:chat_provider] == ::User::CHAT_SERVER_SENTINEL
-          if chat_cleared
-            attrs[:chat_llm_model] =
-              (p.key?(:chat_model) && p[:chat_model].blank?) ? nil : (p[:chat_model].presence || current_user.chat_llm_model)
-            attrs[:chat_llm_base_url] =
-              (p.key?(:chat_base_url) && p[:chat_base_url].blank?) ? nil : (p[:chat_base_url].presence || current_user.chat_llm_base_url)
-          else
-            attrs[:chat_llm_model] = p[:chat_model].presence
-            attrs[:chat_llm_base_url] = p[:chat_base_url].presence
-          end
 
           # api_key 처리:
           #   - 값 있으면 → 갱신
@@ -201,19 +252,35 @@ module Api
         def build_response
           server_default = ::User.server_default_llm_config
 
+          # 프로필 선택 시 표시 필드(provider/model/base_url/api_key_masked)는 프로필 값을 우선한다
+          # — 레거시 컬럼은 프로필 참조 시 클리어되므로(update 액션) 프로필 값이 곧 실제 설정이다.
+          profile = current_user.llm_profile
+          provider_for_display = profile&.provider || current_user.llm_provider
+          model_for_display = profile&.model || current_user.llm_model
+          base_url_for_display = profile&.base_url || current_user.llm_base_url
+          masked = profile&.auth_token.present? ? mask_token(profile.auth_token) : mask_token(current_user.llm_api_key)
+
+          chat_profile = current_user.chat_llm_profile
+          chat_provider_for_display = chat_profile&.provider || current_user.chat_llm_provider
+          chat_model_for_display = chat_profile&.model || current_user.chat_llm_model
+          chat_base_url_for_display = chat_profile&.base_url || current_user.chat_llm_base_url
+          chat_masked = chat_profile&.auth_token.present? ? mask_token(chat_profile.auth_token) : mask_token(current_user.chat_llm_api_key)
+
           {
             llm_settings: {
-              provider: current_user.llm_provider,
-              api_key_masked: mask_token(current_user.llm_api_key),
-              model: current_user.llm_model,
-              base_url: current_user.llm_base_url,
+              provider: provider_for_display,
+              api_key_masked: masked,
+              model: model_for_display,
+              base_url: base_url_for_display,
               configured: current_user.llm_configured?,
               enabled: current_user.llm_enabled?,
               has_settings: current_user.llm_has_settings?,
-              chat_provider: current_user.chat_llm_provider,
-              chat_model: current_user.chat_llm_model,
-              chat_base_url: current_user.chat_llm_base_url,
-              chat_api_key_masked: mask_token(current_user.chat_llm_api_key),
+              llm_profile_id: current_user.llm_profile_id,
+              chat_llm_profile_id: current_user.chat_llm_profile_id,
+              chat_provider: chat_provider_for_display,
+              chat_model: chat_model_for_display,
+              chat_base_url: chat_base_url_for_display,
+              chat_api_key_masked: chat_masked,
               chat_configured: current_user.chat_llm_configured?,
               # 4-tier 카스케이드(개인챗>개인요약>전역챗>전역요약)로 실제 답변할 모델의 표시명.
               # FolderChatJob 과 동일한 effective_chat_llm_config 을 쓰므로 폴더챗 미리보기와 일치한다.
@@ -222,7 +289,7 @@ module Api
             server_default: {
               provider: server_default[:provider],
               model: server_default[:model],
-              has_key: server_default[:api_key].present?
+              has_key: server_default[:auth_token].present? || AppSettings::CLI_LLM_PROVIDERS.include?(server_default[:provider].to_s)
             }
           }
         end

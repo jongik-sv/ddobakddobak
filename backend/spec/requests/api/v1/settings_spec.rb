@@ -75,6 +75,40 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
       get "/api/v1/settings/hf"
       expect(response).to have_http_status(:ok)
     end
+
+    describe "프로필 참조 (active_profile_id/chat_profile_id)" do
+      # active_profile_id 실체화가 LLM_PROVIDER/OPENAI_API_KEY 등을 갱신한다 —
+      # 다른 spec 파일과 같은 프로세스에서 돌 때 새는 것을 막기 위해 복원한다.
+      around do |example|
+        keys = %w[LLM_PROVIDER LLM_MODEL LLM_MAX_INPUT_TOKENS LLM_MAX_OUTPUT_TOKENS
+                  OPENAI_API_KEY OPENAI_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL]
+        prev = keys.index_with { |k| ENV[k] }
+        example.run
+        keys.each { |k| prev[k].nil? ? ENV.delete(k) : ENV[k] = prev[k] }
+      end
+
+      it "PUT settings/llm active_profile_id → yaml에 실체화·응답에 id 포함" do
+        profile = LlmProfile.create!(user_id: nil, name: "SP", preset_id: "openai", provider: "openai",
+                                     model: "gpt-4o-mini", auth_token: "sk-xxxx-12345678")
+        written = nil
+        allow(File).to receive(:write).with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_, body|
+          written = body
+          allow(File).to receive(:read).with(Api::V1::SettingsController::SETTINGS_PATH).and_return(body)
+          true
+        end
+        put "/api/v1/settings/llm", params: { active_profile_id: profile.id }, as: :json
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body["active_profile_id"]).to eq(profile.id)
+        cfg = YAML.safe_load(written)
+        expect(cfg["llm"]["active_preset"]).to eq("openai")
+        expect(cfg["llm"]["presets"]["openai"]).to include("model" => "gpt-4o-mini", "auth_token" => "sk-xxxx-12345678")
+      end
+
+      it "서버 풀에 없는 active_profile_id는 422" do
+        put "/api/v1/settings/llm", params: { active_profile_id: 424_242 }, as: :json
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+    end
   end
 
   # ============================================================

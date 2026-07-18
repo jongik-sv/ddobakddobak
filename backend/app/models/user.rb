@@ -9,6 +9,9 @@ class User < ApplicationRecord
   has_many :projects, through: :project_memberships
   has_many :created_projects, class_name: "Project", foreign_key: :created_by_id, inverse_of: :creator
   has_many :chat_messages, dependent: :destroy
+  has_many :llm_profiles, dependent: :destroy
+  belongs_to :llm_profile, class_name: "LlmProfile", optional: true
+  belongs_to :chat_llm_profile, class_name: "LlmProfile", optional: true
 
   after_create { EnsurePersonalProject.call(self) }
   # 유저 삭제 시 본인 소유 "개인" 프로젝트(personal: true)만 정리한다.
@@ -69,11 +72,14 @@ class User < ApplicationRecord
 
   # 설정 자체가 존재하는지 (활성 여부와 무관)
   def llm_has_settings?
-    llm_provider.present? && (llm_api_key.present? || llm_provider_cli?)
+    llm_profile_id.present? ||
+      (llm_provider.present? && (llm_api_key.present? || llm_provider_cli?))
   end
 
   def effective_llm_config
     if llm_configured?
+      return llm_profile.to_llm_config if llm_profile
+
       {
         provider: llm_provider,
         auth_token: llm_api_key,
@@ -94,6 +100,7 @@ class User < ApplicationRecord
   #   4) 전역 요약 + ENV["CHAT_LLM_MODEL"] 모델 override
   def effective_chat_llm_config
     return server_chat_llm_config if chat_llm_provider == CHAT_SERVER_SENTINEL
+    return chat_llm_profile.to_llm_config if chat_llm_profile
 
     if chat_llm_configured?
       return {
@@ -154,6 +161,7 @@ class User < ApplicationRecord
   # 개인 설정이 없으면 nil을 반환하여 sidecar가 서버 기본값을 사용하도록 한다.
   def sidecar_llm_config
     return nil unless llm_configured?
+    return llm_profile.to_llm_config if llm_profile
 
     {
       provider: llm_provider,

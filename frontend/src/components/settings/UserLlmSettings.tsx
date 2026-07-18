@@ -1,33 +1,47 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   getUserLlmSettings,
   updateUserLlmSettings,
   testUserLlmConnection,
   toggleUserLlm,
-  fetchUserLlmModels,
 } from '../../api/userLlmSettings'
 import type {
   UserLlmSettingsResponse,
   UserLlmTestResult,
 } from '../../api/userLlmSettings'
+import { listLlmProfiles, type LlmProfile } from '../../api/llmProfiles'
 import { UserLlmStatusBanner } from './UserLlmStatusBanner'
-import LlmProviderCard from './LlmProviderCard'
-import { SERVICE_PRESETS, presetIdFromUserConfig, presetFormDefaults } from './llmServicePresets'
+import LlmProfilesModal from './LlmProfilesModal'
+import { LlmSelector, type LlmSelectorValue } from './LlmSelector'
+import { CLI_PRESET_IDS } from './llmServicePresets'
+import { getMode } from '../../config'
+
+// 응답 → 선택값 매핑. llm_profile_id 가 있으면 프로필 참조가 최우선(레거시 provider/model 필드는 무시).
+// 그 다음 provider 가 CLI 프리셋이면 cli, 그 외(빈 값 포함)는 '선택 안함'(none).
+const toSummarySel = (ls: UserLlmSettingsResponse['llm_settings']): LlmSelectorValue => {
+  if (ls.llm_profile_id) return { type: 'profile', profileId: ls.llm_profile_id }
+  if (ls.provider && CLI_PRESET_IDS.has(ls.provider)) return { type: 'cli', presetId: ls.provider, model: ls.model ?? '' }
+  return { type: 'special', id: 'none' }
+}
+
+// 챗도 동일하되 특수옵션이 둘: 'server'(서버 모델 강제 센티넬) / ''(요약과 동일, 레거시 모델 오버라이드 가능).
+const toChatSel = (ls: UserLlmSettingsResponse['llm_settings']): LlmSelectorValue => {
+  if (ls.chat_llm_profile_id) return { type: 'profile', profileId: ls.chat_llm_profile_id }
+  if (ls.chat_provider === 'server') return { type: 'special', id: 'server' }
+  if (ls.chat_provider && CLI_PRESET_IDS.has(ls.chat_provider)) return { type: 'cli', presetId: ls.chat_provider, model: ls.chat_model ?? '' }
+  return { type: 'special', id: '' }
+}
 
 export default function UserLlmSettings() {
   const [settings, setSettings] = useState<UserLlmSettingsResponse | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const [summaryPresetId, setSummaryPresetId] = useState('none')
-  const [summaryForm, setSummaryForm] = useState({ base_url: '', model: '', auth_token: '' })
-  const [chatPresetId, setChatPresetId] = useState('')
-  const [chatForm, setChatForm] = useState({ base_url: '', model: '', auth_token: '' })
-
-  // 프리셋별 폼 입력값 캐시. 프리셋을 전환했다가 되돌아와도 앞서 입력한 base_url/model/키가
-  // 초기화되지 않게 한다(특히 '직접 입력'(custom)은 기본값이 없어 전환 시 유실되던 문제).
-  type PresetForm = { base_url: string; model: string; auth_token: string }
-  const summaryFormCacheRef = useRef<Record<string, PresetForm>>({})
-  const chatFormCacheRef = useRef<Record<string, PresetForm>>({})
+  const [summarySel, setSummarySel] = useState<LlmSelectorValue>({ type: 'special', id: 'none' })
+  const [chatSel, setChatSel] = useState<LlmSelectorValue>({ type: 'special', id: '' })
+  // 챗='요약과 동일'(special '')일 때만 노출되는 레거시 챗 모델 오버라이드 입력값.
+  const [chatFollowModel, setChatFollowModel] = useState('')
+  const [profiles, setProfiles] = useState<LlmProfile[]>([])
+  const [profilesModal, setProfilesModal] = useState<{ open: boolean; create: boolean }>({ open: false, create: false })
 
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -36,127 +50,44 @@ export default function UserLlmSettings() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  const initFormFromSettings = useCallback((data: UserLlmSettingsResponse, opts?: { resetCache?: boolean }) => {
-    // 서버 진실로부터 새로 채운다. 프리셋별 폼 캐시는 명시적으로 요청된 경우에만 초기화한다
-    // (최초 로드·전체 초기화 버튼). '선택 안함' 저장 후에는 캐시를 지우지 않아야, 같은 세션 안에서
-    // 이전에 입력해 둔 다른 프리셋(예: '직접 입력')의 값이 저장 직후에도 유지된다
-    // (BUG: 예전엔 여기서 항상 캐시를 지워, '직접 입력→선택 안함(저장)→직접 입력'을 거치면
-    //  캐시에 남아있던 입력값까지 함께 사라졌었다).
-    if (opts?.resetCache ?? true) {
-      summaryFormCacheRef.current = {}
-      chatFormCacheRef.current = {}
-    }
+  // 서버 응답을 진실로 선택값·챗 오버라이드 입력을 다시 채운다(최초 로드·저장·초기화 공통).
+  const applySettings = useCallback((data: UserLlmSettingsResponse) => {
+    setSettings(data)
     const ls = data.llm_settings
-    const sid = presetIdFromUserConfig(ls.provider ?? null, ls.base_url ?? null) ?? 'none'
-    setSummaryPresetId(sid)
-    setSummaryForm({ base_url: ls.base_url ?? '', model: ls.model ?? '', auth_token: '' })
-    const cid = presetIdFromUserConfig(ls.chat_provider ?? null, ls.chat_base_url ?? null) ?? ''
-    setChatPresetId(cid)
-    setChatForm({ base_url: ls.chat_base_url ?? '', model: ls.chat_model ?? '', auth_token: '' })
+    setSummarySel(toSummarySel(ls))
+    setChatSel(toChatSel(ls))
+    setChatFollowModel(ls.chat_model ?? '')
     setTestResult(null)
   }, [])
 
   useEffect(() => {
-    getUserLlmSettings()
-      .then((data) => {
-        setSettings(data)
-        initFormFromSettings(data)
+    Promise.all([getUserLlmSettings(), listLlmProfiles('personal')])
+      .then(([data, profs]) => {
+        setProfiles(profs)
+        applySettings(data)
       })
       .catch(() => {
         setError('설정을 불러오지 못했습니다.')
       })
       .finally(() => setLoading(false))
-  }, [initFormFromSettings])
-
-  // 프리셋 전환 시 폼을 채울 값을 정한다: 캐시가 있으면 그대로, 없으면 프리셋 자체의 기본값을
-  // 우선하되(예: Z.AI 카드는 z.ai 엔드포인트를 프리필해야 함) 프리셋에 기본값이 없는 필드(대표적으로
-  // '직접 입력')는 leftover(서버가 보존해 둔 이전 잔존값)로 채운다. 이렇게 해야 '직접 입력 저장 →
-  // 선택 안함 저장 → 직접 입력 재선택'에서 base_url/model이 살아있으면서도, 새로 고른 프리셋의
-  // 고유 기본값(zai 엔드포인트 등)을 덮어쓰지 않는다.
-  const resolvePresetForm = (
-    id: string,
-    cached: { base_url: string; model: string; auth_token: string } | undefined,
-    leftover: { base_url: string; model: string; auth_token: string } | null,
-  ) => {
-    if (cached) return cached
-    const defaults = presetFormDefaults(id)
-    if (!leftover) return defaults
-    return {
-      base_url: defaults.base_url || leftover.base_url,
-      model: defaults.model || leftover.model,
-      auth_token: defaults.auth_token || leftover.auth_token,
-    }
-  }
-
-  const handleSummarySelect = (id: string) => {
-    // 현재 입력값을 이전 프리셋 아래 캐시 → 다시 돌아오면 복원(입력 유실 방지).
-    summaryFormCacheRef.current[summaryPresetId] = summaryForm
-    const leftover = summaryPresetId === 'none' ? summaryForm : null
-    const fallback = resolvePresetForm(id, summaryFormCacheRef.current[id], leftover)
-    setSummaryPresetId(id)
-    setSummaryForm(id === 'none' ? { base_url: '', model: '', auth_token: '' } : fallback)
-    setTestResult(null)
-    setError(null)
-    setSuccess(null)
-  }
-
-  const handleChatSelect = (id: string) => {
-    chatFormCacheRef.current[chatPresetId] = chatForm
-    // '' (요약과 동일) / 'server' (서버 모델·선택 안함) 는 프로바이더 폼이 없으므로 비운다.
-    const wasNoneLike = chatPresetId === '' || chatPresetId === 'server'
-    const isNoneLike = id === '' || id === 'server'
-    const leftover = wasNoneLike ? chatForm : null
-    const fallback = resolvePresetForm(id, chatFormCacheRef.current[id], leftover)
-    setChatPresetId(id)
-    setChatForm(isNoneLike ? { base_url: '', model: '', auth_token: '' } : fallback)
-    setError(null)
-    setSuccess(null)
-  }
+  }, [applySettings])
 
   const handleSave = async () => {
     setSaving(true)
     setError(null)
     setSuccess(null)
     try {
-      // 챗 payload는 요약 선택과 무관하게 한 번 구성한다 — 요약='선택 안함'(none)이어도
-      // 개인 챗 모델을 함께 저장할 수 있어야 하기 때문(BUG: none 분기가 chat_* 를 누락해
-      // 챗이 항상 '요약과 동일'로 되돌아가던 문제).
-      // 챗 특수옵션: '' = 요약과 동일(chat_provider=null) / 'server' = 서버 모델 강제(센티넬)
-      const isServerChat = chatPresetId === 'server'
-      const cp = (chatPresetId === '' || isServerChat) ? null : SERVICE_PRESETS.find((p) => p.id === chatPresetId) ?? null
-      // '선택 안함'(server 센티넬)은 chat_model/base_url/api_key 키 자체를 보내지 않는다 —
-      // 백엔드가 provider만 바꾸고 값을 보존해 재선택("직접 입력") 시 프리필할 수 있게 한다
-      // (BUG: 예전엔 매번 null/''을 명시적으로 보내 저장된 값이 지워졌었다).
-      const chatPayload = isServerChat
-        ? { chat_provider: 'server' as const }
-        : {
-            chat_provider: cp ? cp.provider : null,
-            chat_base_url: cp ? (chatForm.base_url || null) : null,
-            // 요약과 동일(cp=null)이어도 레거시 챗 모델 입력은 그대로 반영한다.
-            chat_model: chatForm.model || null,
-            chat_api_key: chatForm.auth_token,
-          }
-      if (summaryPresetId === 'none') {
-        const result = await updateUserLlmSettings({ llm_settings: { provider: '', ...chatPayload } })
-        setSettings(result)
-        initFormFromSettings(result, { resetCache: false })
-        setChatForm((f) => ({ ...f, auth_token: '' }))
-        setSuccess('저장되었습니다.')
-        return
-      }
-      const sp = SERVICE_PRESETS.find((p) => p.id === summaryPresetId)!
-      const result = await updateUserLlmSettings({
-        llm_settings: {
-          provider: sp.provider,
-          ...(summaryForm.auth_token ? { api_key: summaryForm.auth_token } : {}),
-          model: summaryForm.model,
-          base_url: summaryForm.base_url || null,
-          ...chatPayload,
-        },
-      })
-      setSettings(result)
-      setSummaryForm((f) => ({ ...f, auth_token: '' }))
-      setChatForm((f) => ({ ...f, auth_token: '' }))
+      const summaryPayload =
+        summarySel.type === 'profile' ? { llm_profile_id: summarySel.profileId } :
+        summarySel.type === 'cli' ? { provider: summarySel.presetId, model: summarySel.model } :
+        { provider: '', llm_profile_id: null }
+      const chatPayload =
+        chatSel.type === 'profile' ? { chat_llm_profile_id: chatSel.profileId } :
+        chatSel.type === 'cli' ? { chat_provider: chatSel.presetId, chat_model: chatSel.model } :
+        chatSel.id === 'server' ? { chat_provider: 'server' as const } :
+        { chat_provider: null, chat_llm_profile_id: null, chat_model: chatFollowModel || null }
+      const result = await updateUserLlmSettings({ llm_settings: { ...summaryPayload, ...chatPayload } })
+      applySettings(result)
       setSuccess('저장되었습니다.')
     } catch {
       setError('저장에 실패했습니다.')
@@ -166,17 +97,23 @@ export default function UserLlmSettings() {
   }
 
   const handleTest = async () => {
-    if (summaryPresetId === 'none') return
+    if (summarySel.type === 'special') return
     setTesting(true)
     setTestResult(null)
-    const sp = SERVICE_PRESETS.find((p) => p.id === summaryPresetId)
     try {
-      const result = await testUserLlmConnection({
-        provider: sp?.provider ?? summaryPresetId,
-        model: summaryForm.model,
-        ...(summaryForm.auth_token ? { api_key: summaryForm.auth_token } : {}),
-        ...(summaryForm.base_url ? { base_url: summaryForm.base_url } : {}),
-      })
+      let result: UserLlmTestResult
+      if (summarySel.type === 'profile') {
+        const p = profiles.find((pr) => pr.id === summarySel.profileId)
+        // base_url 동봉 필수 — 없으면 커스텀 엔드포인트 프로필이 기본 URL로 테스트된다.
+        result = await testUserLlmConnection({
+          provider: p?.provider ?? '',
+          model: p?.model ?? '',
+          base_url: p?.base_url ?? undefined,
+          profile_id: summarySel.profileId,
+        })
+      } else {
+        result = await testUserLlmConnection({ provider: summarySel.presetId, model: summarySel.model })
+      }
       setTestResult(result)
     } catch {
       setTestResult({ success: false, error: '테스트 요청에 실패했습니다.' })
@@ -195,8 +132,7 @@ export default function UserLlmSettings() {
       const result = await updateUserLlmSettings({
         llm_settings: { provider: '', reset_all: true },
       })
-      setSettings(result)
-      initFormFromSettings(result)
+      applySettings(result)
       setSuccess(null)
     } catch {
       setError('초기화에 실패했습니다.')
@@ -221,22 +157,22 @@ export default function UserLlmSettings() {
 
   const hasSettings = settings?.llm_settings.has_settings ?? false
   const isEnabled = settings?.llm_settings.enabled ?? true
-
-  // 저장된 provider와 현재 선택한 카드가 일치할 때만 마스크를 넘긴다.
-  // 다른 provider로 전환하면 stale 마스크가 키 placeholder/"현재:" 로 잘못 노출되어
-  // 키 없이 저장하도록 유도하는 버그를 막는다.
-  const savedSummaryPresetId = settings
-    ? presetIdFromUserConfig(settings.llm_settings.provider ?? null, settings.llm_settings.base_url ?? null) ?? 'none'
-    : 'none'
-  const savedChatPresetId = settings
-    ? presetIdFromUserConfig(settings.llm_settings.chat_provider ?? null, settings.llm_settings.chat_base_url ?? null) ?? ''
-    : ''
-  const summaryMask =
-    summaryPresetId === savedSummaryPresetId ? settings?.llm_settings.api_key_masked ?? undefined : undefined
-  const chatMask =
-    chatPresetId === savedChatPresetId ? settings?.llm_settings.chat_api_key_masked ?? undefined : undefined
+  // 개인 설정 카드는 admin OR 없이 로컬 모드에서만 CLI를 노출한다(기존 규약 그대로).
+  const cliAllowed = getMode() === 'local'
   // 토글 OFF이고 설정이 있으면 폼을 숨긴다 (배너만 표시)
   const showForm = !hasSettings || isEnabled
+
+  // 모달 CRUD 후 프로필 목록 갱신. 현재 선택 중인 프로필이 삭제돼 목록에서 사라지면
+  // 선택이 dangling 상태(재저장 시 422)가 되므로 특수옵션 폴백으로 조정한다(I-2).
+  const handleProfilesChanged = useCallback((next: LlmProfile[]) => {
+    setProfiles(next)
+    const ids = new Set(next.map((p) => p.id))
+    setSummarySel((sel) => (sel.type === 'profile' && !ids.has(sel.profileId) ? { type: 'special', id: 'none' } : sel))
+    setChatSel((sel) => (sel.type === 'profile' && !ids.has(sel.profileId) ? { type: 'special', id: '' } : sel))
+  }, [])
+
+  const openManage = () => setProfilesModal({ open: true, create: false })
+  const openCreate = () => setProfilesModal({ open: true, create: true })
 
   return (
     <div className="rounded-lg border bg-card p-6">
@@ -286,49 +222,49 @@ export default function UserLlmSettings() {
 
           {showForm && (<>
           {/* 요약 모델 카드 */}
-          <LlmProviderCard
+          <LlmSelector
             title="요약 모델"
             idPrefix="user-summary"
-            presets={SERVICE_PRESETS}
-            noneOption={{ id: 'none', label: '선택 안함', description: '서버 기본 LLM 사용' }}
-            value={{ presetId: summaryPresetId, ...summaryForm }}
-            maskedToken={summaryMask}
-            onSelectPreset={handleSummarySelect}
-            onChange={(p) => setSummaryForm((f) => ({ ...f, ...p }))}
-            onFetchModels={fetchUserLlmModels}
+            specialOptions={[{ id: 'none', label: '선택 안함', description: '서버 기본 LLM 사용' }]}
+            profiles={profiles}
+            cliAllowed={cliAllowed}
+            value={summarySel}
+            onChange={setSummarySel}
+            onManageProfiles={openManage}
+            onCreateProfile={openCreate}
           />
 
           {/* AI 챗 모델 카드 */}
-          <LlmProviderCard
+          <LlmSelector
             title="AI 챗 모델"
             idPrefix="user-chat"
-            presets={SERVICE_PRESETS}
-            noneOptions={[
+            specialOptions={[
               { id: '', label: '요약과 동일', description: '요약 모델 그대로 사용' },
               { id: 'server', label: '선택 안함', description: '서버 기본 챗 모델 사용' },
             ]}
-            value={{ presetId: chatPresetId, ...chatForm }}
-            maskedToken={chatMask}
-            onSelectPreset={handleChatSelect}
-            onChange={(p) => setChatForm((f) => ({ ...f, ...p }))}
-            onFetchModels={fetchUserLlmModels}
+            profiles={profiles}
+            cliAllowed={cliAllowed}
+            value={chatSel}
+            onChange={setChatSel}
+            onManageProfiles={openManage}
+            onCreateProfile={openCreate}
           />
 
-          {/* 레거시 챗 모델 입력 — chatPresetId='' 일 때만 표시 */}
-          {chatPresetId === '' && (
+          {/* 레거시 챗 모델 입력 — 챗이 '요약과 동일'(special '') 일 때만 표시 */}
+          {chatSel.type === 'special' && chatSel.id === '' && (
             <div className="mt-2">
               <label htmlFor="user-chat-legacy-model" className="block text-xs text-muted-foreground mb-1">챗 모델 (AI 챗에만 적용)</label>
               <input
                 id="user-chat-legacy-model"
-                value={chatForm.model}
-                onChange={(e) => setChatForm((f) => ({ ...f, model: e.target.value }))}
+                value={chatFollowModel}
+                onChange={(e) => setChatFollowModel(e.target.value)}
                 placeholder="예: gpt-4o / llama-3.1-8b"
                 className="w-full rounded border px-2 py-1 text-sm"
               />
             </div>
           )}
 
-          {summaryPresetId === 'none' && (
+          {summarySel.type === 'special' && (
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -341,12 +277,12 @@ export default function UserLlmSettings() {
             </div>
           )}
 
-          {summaryPresetId && summaryPresetId !== 'none' && (
+          {summarySel.type !== 'special' && (
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleTest}
-                disabled={testing || !summaryForm.model}
+                disabled={testing}
                 className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50 transition-colors min-h-[44px]"
               >
                 {testing ? '테스트 중...' : '연결 테스트'}
@@ -354,7 +290,7 @@ export default function UserLlmSettings() {
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={saving || !summaryForm.model}
+                disabled={saving}
                 className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors min-h-[44px]"
               >
                 {saving ? '저장 중...' : '저장'}
@@ -396,6 +332,14 @@ export default function UserLlmSettings() {
           )}
         </div>
       )}
+
+      <LlmProfilesModal
+        scope="personal"
+        open={profilesModal.open}
+        initialCreate={profilesModal.create}
+        onClose={() => setProfilesModal((s) => ({ ...s, open: false }))}
+        onChanged={handleProfilesChanged}
+      />
     </div>
   )
 }

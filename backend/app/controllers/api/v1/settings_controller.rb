@@ -100,7 +100,9 @@ module Api
           active_preset: active,
           chat_model: llm_cfg["chat_model"],
           chat: masked_chat,
-          presets: masked_presets
+          presets: masked_presets,
+          active_profile_id: llm_cfg["active_profile_id"],
+          chat_profile_id: llm_cfg["chat_profile_id"]
         }
       end
 
@@ -151,6 +153,22 @@ module Api
           llm_cfg["presets"][preset_id] = existing
         end
 
+        # 프로필 참조(서버 풀) — 값 검증 후 참조 저장, 실체화는 LlmProfileYamlSync가 담당
+        %w[active_profile_id chat_profile_id].each do |key|
+          next unless params.key?(key)
+          raw = params[key]
+          if raw.present?
+            unless LlmProfile.server_pool.exists?(raw.to_i)
+              return render json: { error: "유효하지 않은 프로필입니다" }, status: :unprocessable_entity
+            end
+            llm_cfg[key] = raw.to_i
+          else
+            llm_cfg.delete(key)
+          end
+        end
+
+        LlmProfileYamlSync.apply!(cfg)
+
         save_settings(cfg)
         sync_active_llm_to_env
 
@@ -171,6 +189,10 @@ module Api
         if auth_token.blank? && params[:preset_id].present?
           stored = load_settings.dig("llm", "presets", params[:preset_id])
           auth_token = stored&.dig("auth_token")
+        end
+
+        if auth_token.blank? && params[:profile_id].present?
+          auth_token = LlmProfile.server_pool.find_by(id: params[:profile_id])&.auth_token
         end
 
         llm_config = {
@@ -312,53 +334,7 @@ module Api
       # ── ENV 동기화 (기존 코드 호환) ──
 
       def sync_active_llm_to_env
-        cfg = load_settings
-        llm = cfg["llm"] || {}
-        active_id = llm["active_preset"]
-        preset = llm.dig("presets", active_id) || {}
-        provider = preset["provider"] || "anthropic"
-
-        ENV["STT_ENGINE"] = cfg.dig("stt", "engine").to_s if cfg.dig("stt", "engine")
-        ENV["HF_TOKEN"] = cfg.dig("hf", "token").to_s if cfg.dig("hf", "token")
-
-        ENV["LLM_PROVIDER"] = provider
-        ENV["LLM_MODEL"] = preset["model"].to_s if preset["model"]
-        ENV["LLM_MAX_INPUT_TOKENS"] = (preset["max_input_tokens"] || 200_000).to_s
-        ENV["LLM_MAX_OUTPUT_TOKENS"] = (preset["max_output_tokens"] || 10_000).to_s
-
-        # 전역 AI Chat. 매핑은 AppSettings.chat_llm_env 로 일원화 — 부팅(load_env.rb)과 공유.
-        # 런타임 저장: 해시에 있는 키는 set, 없는 키는 삭제(설정 해제 반영).
-        chat_env = AppSettings.chat_llm_env(llm)
-        AppSettings::CHAT_LLM_ENV_KEYS.each do |k|
-          chat_env.key?(k) ? ENV[k] = chat_env[k] : ENV.delete(k)
-        end
-
-        if provider == "openai"
-          ENV["OPENAI_API_KEY"] = preset["auth_token"].to_s
-          if preset["base_url"].present?
-            ENV["OPENAI_BASE_URL"] = preset["base_url"]
-          else
-            ENV.delete("OPENAI_BASE_URL")
-          end
-        else
-          ENV["ANTHROPIC_AUTH_TOKEN"] = preset["auth_token"].to_s
-          if preset["base_url"].present?
-            ENV["ANTHROPIC_BASE_URL"] = preset["base_url"]
-          else
-            ENV.delete("ANTHROPIC_BASE_URL")
-          end
-        end
-
-        # app settings
-        ENV["SUMMARY_INTERVAL_SEC"] = cfg.dig("summary", "interval_sec").to_s if cfg.dig("summary", "interval_sec")
-        # NOTE: 회의 언어 ENV(SELECTED_LANGUAGES/LANGUAGE_MODE) 동기화 제거됨.
-        #       사용자별 설정(User#effective_language_config)이 권위 소스.
-        #       ENV는 User.server_default_language_config의 폴백 기본값으로만 사용.
-        if (audio = cfg["audio"])
-          %w[silence_threshold speech_threshold silence_duration_ms max_chunk_sec min_chunk_sec preroll_ms overlap_ms file_chunk_sec].each do |k|
-            ENV["AUDIO_#{k.upcase}"] = audio[k].to_s if audio[k]
-          end
-        end
+        AppSettings.sync_env_from!(load_settings)
       end
     end
   end

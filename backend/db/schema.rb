@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_17_000007) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_18_000003) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -127,6 +127,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_000007) do
     t.datetime "updated_at", null: false
     t.index ["owner_type", "owner_id", "from_text", "match_type"], name: "idx_glossary_unique_from", unique: true
     t.index ["owner_type", "owner_id"], name: "index_glossary_entries_on_owner_type_and_owner_id"
+  end
+
+  create_table "llm_profiles", force: :cascade do |t|
+    t.text "auth_token"
+    t.string "base_url"
+    t.datetime "created_at", null: false
+    t.integer "max_input_tokens"
+    t.integer "max_output_tokens"
+    t.string "model"
+    t.string "name", null: false
+    t.string "preset_id", null: false
+    t.string "provider", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id"
+    t.index ["user_id", "name"], name: "index_llm_profiles_on_user_id_and_name", unique: true
+    t.index ["user_id"], name: "index_llm_profiles_on_user_id"
   end
 
   create_table "meeting_attachments", force: :cascade do |t|
@@ -369,6 +385,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_000007) do
     t.text "chat_llm_api_key"
     t.string "chat_llm_base_url"
     t.string "chat_llm_model"
+    t.bigint "chat_llm_profile_id"
     t.string "chat_llm_provider"
     t.datetime "created_at", null: false
     t.string "email", default: "", null: false
@@ -379,14 +396,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_000007) do
     t.string "llm_base_url"
     t.boolean "llm_enabled", default: true, null: false
     t.string "llm_model"
+    t.bigint "llm_profile_id"
     t.string "llm_provider"
     t.string "name", default: "", null: false
     t.string "refresh_token_jti"
     t.string "role", default: "member", null: false
     t.string "selected_languages"
     t.datetime "updated_at", null: false
+    t.index ["chat_llm_profile_id"], name: "index_users_on_chat_llm_profile_id"
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["jti"], name: "index_users_on_jti", unique: true
+    t.index ["llm_profile_id"], name: "index_users_on_llm_profile_id"
     t.index ["refresh_token_jti"], name: "index_users_on_refresh_token_jti", unique: true
     t.check_constraint "role IN ('admin','manager','member')", name: "chk_users_role"
   end
@@ -396,6 +416,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_000007) do
   add_foreign_key "domain_file_links", "domain_files", on_delete: :cascade
   add_foreign_key "domain_files", "projects"
   add_foreign_key "domain_files", "users", column: "created_by_id"
+  add_foreign_key "llm_profiles", "users"
   add_foreign_key "meeting_bookmarks", "meetings"
   add_foreign_key "meeting_contacts", "meeting_attachments", column: "source_attachment_id", on_delete: :nullify
   add_foreign_key "meeting_contacts", "meetings"
