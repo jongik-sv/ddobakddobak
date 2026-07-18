@@ -783,4 +783,84 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       expect(response).to have_http_status(:unauthorized)
     end
   end
+
+  # ============================================================
+  # 프로필 참조 (llm_profile_id)
+  # ============================================================
+  describe "프로필 참조 (llm_profile_id)" do
+    let(:profile) do
+      LlmProfile.create!(user: user, name: "P", preset_id: "gemini", provider: "openai",
+                         base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
+                         model: "gemini-3.5-flash", auth_token: "AIza-tok-123456789")
+    end
+
+    it "PUT llm_profile_id → 참조 저장 + 레거시 요약 컬럼 클리어 + 응답에 id 포함" do
+      user.update!(llm_provider: "anthropic", llm_api_key: "sk-old-1234567890", llm_model: "old")
+      put "/api/v1/user/llm_settings", params: { llm_settings: { llm_profile_id: profile.id } }, as: :json
+      expect(response).to have_http_status(:ok)
+      user.reload
+      expect(user.llm_profile_id).to eq(profile.id)
+      expect(user.llm_provider).to be_nil
+      expect(user.llm_api_key).to be_nil
+      body = response.parsed_body["llm_settings"]
+      expect(body["llm_profile_id"]).to eq(profile.id)
+      expect(body["provider"]).to eq("openai")
+      expect(body["model"]).to eq("gemini-3.5-flash")
+      expect(body["configured"]).to be true
+    end
+
+    it "effective_llm_config가 프로필 값을 반환한다" do
+      user.update!(llm_profile_id: profile.id)
+      expect(user.effective_llm_config).to eq(profile.to_llm_config)
+    end
+
+    it "llm_enabled=false면 프로필이 있어도 서버 기본으로 폴백" do
+      user.update!(llm_profile_id: profile.id, llm_enabled: false)
+      expect(user.effective_llm_config).to eq(User.server_default_llm_config)
+    end
+
+    it "CLI provider 저장 시 llm_profile_id가 클리어된다(상호배타)" do
+      user.update!(llm_profile_id: profile.id)
+      put "/api/v1/user/llm_settings", params: { llm_settings: { provider: "claude_cli", model: "sonnet" } }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(user.reload.llm_profile_id).to be_nil
+      expect(user.llm_provider).to eq("claude_cli")
+    end
+
+    it "타인/서버풀 프로필 id는 422" do
+      other = LlmProfile.create!(user: create(:user), name: "O", preset_id: "openai", provider: "openai")
+      server = LlmProfile.create!(user_id: nil, name: "S", preset_id: "openai", provider: "openai")
+      [ other, server ].each do |p|
+        put "/api/v1/user/llm_settings", params: { llm_settings: { llm_profile_id: p.id } }, as: :json
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+      expect(user.reload.llm_profile_id).to be_nil
+    end
+
+    it "chat_llm_profile_id 참조 — 챗 해석이 챗 프로필 값을 쓴다" do
+      put "/api/v1/user/llm_settings", params: { llm_settings: { chat_llm_profile_id: profile.id } }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(user.reload.chat_llm_profile_id).to eq(profile.id)
+      expect(user.effective_chat_llm_config).to eq(profile.to_llm_config)
+    end
+
+    it "챗 'server' 센티넬은 챗 프로필보다 우선(현행 유지)" do
+      user.update!(chat_llm_profile_id: profile.id, chat_llm_provider: "server")
+      expect(user.effective_chat_llm_config).to eq(user.server_chat_llm_config)
+    end
+
+    it "test 액션 profile_id 토큰 폴백" do
+      svc = instance_double(LlmService, test_connection: { "success" => true })
+      expect(LlmService).to receive(:new).with(llm_config: hash_including(auth_token: "AIza-tok-123456789")).and_return(svc)
+      post "/api/v1/user/llm_settings/test", params: { provider: "openai", model: "gemini-3.5-flash", profile_id: profile.id }, as: :json
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "llm_profile_id: null → 참조 해제(선택 안함)" do
+      user.update!(llm_profile_id: profile.id)
+      put "/api/v1/user/llm_settings", params: { llm_settings: { provider: "", llm_profile_id: nil } }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(user.reload.llm_profile_id).to be_nil
+    end
+  end
 end
