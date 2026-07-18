@@ -22,6 +22,7 @@ class MeetingChatJob < ApplicationJob
     model_name = LlmModelName.humanize(config[:model])
     raw = stream_answer(answer, config, ctx[:system_prompt], ctx[:user_content], model_name)
     content, suggestions = split_followups(raw)
+    content = LlmService::TextFormatter.fix_mermaid_quotes(content)
     answer.update!(content: content, suggestions: suggestions, model_name: model_name, status: "complete")
   rescue => e
     answer&.update(status: "error", error_message: e.message)

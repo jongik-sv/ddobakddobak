@@ -57,6 +57,17 @@ RSpec.describe FolderChatJob, type: :job do
     expect(answer.suggestions).to eq(%w[q1 q2 q3])
   end
 
+  it "mermaid 코드블록 노드 라벨에 따옴표가 없으면 저장 전 새니타이즈한다" do
+    raw = "답변\n```mermaid\nflowchart TD\n  A[따옴표 없음] --> B[따옴표 없음]\n```"
+    fake = instance_double(LlmService, answer_question: raw)
+    allow(LlmService).to receive(:new).and_return(fake)
+
+    FolderChatJob.perform_now(answer.id)
+    answer.reload
+    expect(answer.content).to include('A["따옴표 없음"]')
+    expect(answer.content).to include('B["따옴표 없음"]')
+  end
+
   it "질문 content를 query_text로 FolderChatContext에 넘긴다" do
     expect(FolderChatContext).to receive(:build).with(
       hash_including(query_text: "예산?")

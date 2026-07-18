@@ -7,6 +7,10 @@ require "digest"
 # (1) 각 상수의 바이트 동일성 — heredoc 인덴트/포맷 drift 차단,
 # (2) qualified(LlmPrompts::X) + unqualified(include LlmPrompts 후 X) 양쪽 접근,
 # 을 동시에 가드한다. 이동 전 원본값을 SHA256 로 떠서 박았다(손으로 옮겨 적지 않음).
+#
+# MEETING_CHAT_SYSTEM_PROMPT·FOLDER_CHAT_SYSTEM_PROMPT 는 idea.md 30-① (AI 챗 mermaid 백엔드 활성화)
+# 에서 MermaidPrompts::CHAT_DIAGRAM_INSTRUCTION 보간이 추가되어 내용이 의도적으로 변경됐다.
+# 두 값의 baseline 만 갱신했고 나머지 상수는 그대로 바이트 동일성을 가드한다.
 RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
   # 이동 전 baseline: name => [sha256(value), bytesize]. String 상수만.
   BASELINE_SHA = {
@@ -20,9 +24,9 @@ RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
     "COMPRESS_AGENDA_SYSTEM_PROMPT" => ["2f5a182f91fab66712c614028079a9553da55088587634f549dfad895118481d", 505],
     "CITATION_MARKER_INSTRUCTION" => ["0c1918c05a8a563d1056494b891bae35baf67c451d16005e7b3ffd3a9ce34ccb", 1013],
     "FOLDER_CHAT_CITATION_INSTRUCTION" => ["589520d25880ece86e92a1510ad3c447ec8081b912aa9ad8d27bd997a7b734d5", 573],
-    "MEETING_CHAT_SYSTEM_PROMPT" => ["ad1601cb806e9857b6fd6bcc03440fa17619916b44bcdd596a6924f86aec1aa8", 2113],
+    "MEETING_CHAT_SYSTEM_PROMPT" => ["db664f098abb908032280fc22c70460e6d825f82727dce785eb24b7912206192", 4498],
     "FOLDER_CHAT_EXPANSION_PROMPT" => ["c8a9ad72d07a4f00efcd3e113c2b81421f87334ecb800d0bfbec3e348457a5fc", 778],
-    "FOLDER_CHAT_SYSTEM_PROMPT" => ["0275709dd10a494c13a3475c27f3ddd63bc6f753a328a55b5755ad18c8484f30", 1689]
+    "FOLDER_CHAT_SYSTEM_PROMPT" => ["d3351a4a18decd41d541cbe1e5797df66a798ef379ad66586680b74fe4feae82", 4074]
   }.freeze
 
   describe "상수 바이트 동일성 (이동 전 == 이동 후)" do

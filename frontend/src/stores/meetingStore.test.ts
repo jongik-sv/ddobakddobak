@@ -125,6 +125,89 @@ describe('meetingStore', () => {
     expect(state.isLoading).toBe(false)
   })
 
+  /* ── idea.md 29: 목록 깜빡임 방지 — 경쟁 가드 · hasLoadedOnce/isRefreshing ── */
+
+  it('경쟁 가드: 느린 이전 요청이 늦게 도착해도 최신 응답을 덮지 않는다', async () => {
+    let resolveFirst!: (v: { meetings: typeof mockMeeting[]; meta: { total: number; page: number; per: number } }) => void
+    const firstPromise = new Promise<{ meetings: typeof mockMeeting[]; meta: { total: number; page: number; per: number } }>((resolve) => {
+      resolveFirst = resolve
+    })
+    mockGetMeetings
+      .mockImplementationOnce(() => firstPromise)
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          meetings: [{ ...mockMeeting, id: 2, title: '두번째 응답' }],
+          meta: { total: 1, page: 1, per: 20 },
+        }),
+      )
+
+    // 첫 요청(느림) 시작 → 두번째 요청(빠름) 시작 → 두번째가 먼저 응답 도착
+    const p1 = useMeetingStore.getState().fetchMeetings(1)
+    const p2 = useMeetingStore.getState().fetchMeetings(1)
+    await p2
+
+    expect(useMeetingStore.getState().meetings[0].title).toBe('두번째 응답')
+
+    // 뒤늦게 도착한 첫 요청 응답이 최신 상태를 덮어쓰면 안 된다
+    resolveFirst({ meetings: [{ ...mockMeeting, id: 1, title: '첫번째 응답(stale)' }], meta: { total: 1, page: 1, per: 20 } })
+    await p1
+
+    expect(useMeetingStore.getState().meetings[0].title).toBe('두번째 응답')
+  })
+
+  it('경쟁 가드: 뒤늦게 도착한 이전 요청의 에러도 최신 상태를 덮지 않는다', async () => {
+    let rejectFirst!: (e: Error) => void
+    const firstPromise = new Promise<never>((_resolve, reject) => {
+      rejectFirst = reject
+    })
+    mockGetMeetings
+      .mockImplementationOnce(() => firstPromise)
+      .mockImplementationOnce(() =>
+        Promise.resolve({ meetings: [mockMeeting], meta: { total: 1, page: 1, per: 20 } }),
+      )
+
+    const p1 = useMeetingStore.getState().fetchMeetings(1)
+    const p2 = useMeetingStore.getState().fetchMeetings(1)
+    await p2
+
+    expect(useMeetingStore.getState().error).toBeNull()
+    expect(useMeetingStore.getState().meetings).toHaveLength(1)
+
+    rejectFirst(new Error('stale 에러'))
+    await p1.catch(() => {})
+
+    // stale 에러가 최신 성공 상태를 덮으면 안 된다
+    expect(useMeetingStore.getState().error).toBeNull()
+    expect(useMeetingStore.getState().meetings).toHaveLength(1)
+  })
+
+  it('최초 로드 완료 후에는 hasLoadedOnce=true, 재조회는 isLoading이 아니라 isRefreshing으로 토글된다', async () => {
+    mockGetMeetings.mockResolvedValue({ meetings: [mockMeeting], meta: { total: 1, page: 1, per: 20 } })
+
+    expect(useMeetingStore.getState().hasLoadedOnce).toBe(false)
+    await useMeetingStore.getState().fetchMeetings(1)
+
+    expect(useMeetingStore.getState().hasLoadedOnce).toBe(true)
+    expect(useMeetingStore.getState().isLoading).toBe(false)
+    expect(useMeetingStore.getState().isRefreshing).toBe(false)
+
+    // 두번째 fetch: 진행 중에는 isLoading이 아니라 isRefreshing만 켜져야 한다
+    let resolveSecond!: (v: { meetings: typeof mockMeeting[]; meta: { total: number; page: number; per: number } }) => void
+    const second = new Promise<{ meetings: typeof mockMeeting[]; meta: { total: number; page: number; per: number } }>((resolve) => {
+      resolveSecond = resolve
+    })
+    mockGetMeetings.mockImplementationOnce(() => second)
+
+    const p = useMeetingStore.getState().fetchMeetings(1)
+    expect(useMeetingStore.getState().isLoading).toBe(false)
+    expect(useMeetingStore.getState().isRefreshing).toBe(true)
+
+    resolveSecond({ meetings: [mockMeeting], meta: { total: 1, page: 1, per: 20 } })
+    await p
+
+    expect(useMeetingStore.getState().isRefreshing).toBe(false)
+  })
+
   it('addMeeting으로 목록 맨 앞에 추가', () => {
     useMeetingStore.setState({ meetings: [mockMeeting] })
     const newMeeting = { ...mockMeeting, id: 2, title: '새 회의' }

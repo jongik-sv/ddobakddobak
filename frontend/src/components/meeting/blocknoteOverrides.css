@@ -1,0 +1,40 @@
+/* AI 회의록(BlockNote) 마크다운 스타일 오버라이드.
+   챗(ChatMarkdown.tsx)과 공유하는 "질감" 토큰(색·radius·칩 유무)을 적용한다.
+   토큰 원본은 ../../index.css의 --md-*(일반 CSS 변수) / --border, --foreground(테마 반응형).
+   렌더러(BlockNote)는 그대로 유지 — 여기서는 코어 기본 스타일을 안정 훅(.bn-* / data-content-type)으로만 덮어쓴다. */
+
+/* 코드블록: 배경·텍스트색·radius는 챗과 동일 토큰 공유.
+   padding·폰트크기는 코어 기본값(24px/16px)이 문서 밀도에도 과해 축소만 한다
+   (챗의 p-2/text-xs와 픽셀을 맞추는 것은 아님 — 문서·말풍선 스케일 차이는 의도). */
+.bn-block-content[data-content-type="codeBlock"] {
+  background-color: var(--md-code-bg);
+  color: var(--md-code-fg);
+  border-radius: var(--md-code-radius);
+}
+.bn-block-content[data-content-type="codeBlock"] > pre {
+  padding: var(--md-code-padding);
+  font-size: var(--md-code-font-size);
+}
+
+/* 인라인 코드: 코어 기본값은 font-family만 지정하고 배경 칩이 전혀 없음(버그) —
+   챗과 같은 "칩" 텍스처(배경·radius·여백)를 추가한다. */
+.bn-inline-content code {
+  background-color: var(--md-inline-code-bg);
+  border-radius: var(--md-inline-code-radius);
+  padding: 0.1em 0.3em;
+}
+
+/* 표: 코어 기본값은 #ddd 하드코딩이라 다크모드에서 배경과 거의 구분되지 않는다(버그) —
+   프로젝트 --border 토큰(다크모드 자동 전환)으로 교체. padding도 문서 밀도에 맞게 축소. */
+.bn-editor [data-content-type="table"] th,
+.bn-editor [data-content-type="table"] td {
+  border-color: hsl(var(--border));
+  padding: 8px 4px;
+}
+
+/* 링크: 코어/Mantine 모두 앵커 색을 지정하지 않아(Tailwind preflight로 인해) 본문과
+   구분되지 않는다 — 챗과 동일한 마크다운 링크 토큰 + 밑줄로 클릭 가능함을 드러낸다. */
+.bn-editor a {
+  color: var(--md-link);
+  text-decoration: underline;
+}
