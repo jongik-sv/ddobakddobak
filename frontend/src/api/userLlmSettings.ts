@@ -16,6 +16,8 @@ export interface UserLlmSettingsResponse {
     chat_configured?: boolean
     // 4-tier 카스케이드로 실제 답변할 모델의 표시명(폴더챗 미리보기용).
     effective_chat_model?: string | null
+    llm_profile_id?: number | null
+    chat_llm_profile_id?: number | null
   }
   server_default: {
     provider: string | null
@@ -26,7 +28,8 @@ export interface UserLlmSettingsResponse {
 
 export interface UserLlmSettingsUpdateParams {
   llm_settings: {
-    provider: string
+    // 프로필-only 저장(예: { llm_profile_id }만 보냄)을 허용하기 위해 완화.
+    provider?: string
     api_key?: string
     model?: string
     base_url?: string | null
@@ -36,6 +39,8 @@ export interface UserLlmSettingsUpdateParams {
     chat_base_url?: string | null
     // true 면 요약·챗 전체 초기화. 생략/false 면 요약만 비우고 챗 설정은 보존.
     reset_all?: boolean
+    llm_profile_id?: number | null
+    chat_llm_profile_id?: number | null
   }
 }
 
