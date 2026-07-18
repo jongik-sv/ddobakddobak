@@ -194,6 +194,9 @@ Rails.application.routes.draw do
         end
       end
 
+      # LLM 프로필 (서버 풀 scope=server / 개인 풀 scope=personal)
+      resources :llm_profiles, only: %i[index create update destroy]
+
       # User-scoped settings
       namespace :user do
         resource :llm_settings, only: [ :show, :update ] do
