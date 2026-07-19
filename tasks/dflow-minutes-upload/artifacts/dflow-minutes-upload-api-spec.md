@@ -28,7 +28,7 @@
 | # | 기능 | 내용 |
 |---|---|---|
 | T1 | 전송 식별자 | `meetings.public_uid` (UUIDv7, 최초 전송 시 발급·불변) — D'Flow `external_id`의 원천 |
-| T2 | 전송 기능 | 회의 상세 "D'Flow로 보내기" — 서버(Rails)가 export md를 D'Flow API로 POST |
+| T2 | 전송 기능 | 회의록 **내보내기 메뉴 안** "D'Flow로 전송" — 서버(Rails)가 export md를 D'Flow API로 POST |
 | T3 | 설정·자동 매핑 | D'Flow URL·시크릿(관리자). team은 **최상위 폴더명으로 자동 판정**(MES/PMO/ERP/가공/MDM), 제목은 `<하위폴더명>-<원제목>` 자동 조립 — 수동 매핑 설정 없음 |
 | T4 | 연결 관리 | public_uid 보기/수동 입력/해제/재발급 + D'Flow 기존 레코드 검색·연결 (F3 사용) |
 | T5 | 상태 표시 | 회의 상세에 전송됨/재전송 필요 배지, "D'Flow에서 보기" 링크 |
