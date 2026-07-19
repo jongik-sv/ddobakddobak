@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import { Maximize2, Download } from 'lucide-react'
 import { useChatStore } from '../../stores/chatStore'
 import { subscribeChat } from '../../channels/chat'
 import { ChatMarkdown } from './ChatMarkdown'
-import type { ChatScopeType } from '../../api/chat'
+import { ChatExpandDialog } from './ChatExpandDialog'
+import { downloadChatAnswer } from '../../lib/chatExport'
+import type { ChatMessage, ChatScopeType } from '../../api/chat'
 
 function ModelBadge() {
   return (
@@ -38,6 +41,9 @@ export function AiChatPanel({
   )
   const [draft, setDraft] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const [expandedMessage, setExpandedMessage] = useState<ChatMessage | null>(null)
+  const [savingMessageId, setSavingMessageId] = useState<number | null>(null)
+  const [saveError, setSaveError] = useState<{ id: number; message: string } | null>(null)
 
   useEffect(() => {
     load(scopeType, scopeId)
@@ -71,6 +77,18 @@ export function AiChatPanel({
     void send(scopeType, scopeId, q)
   }
 
+  const handleSaveAnswer = async (m: ChatMessage) => {
+    setSavingMessageId(m.id)
+    setSaveError(null)
+    try {
+      await downloadChatAnswer(m.content)
+    } catch {
+      setSaveError({ id: m.id, message: '저장에 실패했습니다. 다시 시도해 주세요.' })
+    } finally {
+      setSavingMessageId(null)
+    }
+  }
+
   return (
     <div className="flex flex-col h-full bg-card">
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
@@ -78,8 +96,8 @@ export function AiChatPanel({
           <p className="text-sm text-muted-foreground">{emptyHint ?? '이 회의 내용에 대해 무엇이든 물어보세요.'}</p>
         )}
         {messages.map((m) => {
-          const suggestions =
-            m.role === 'assistant' && m.status === 'complete' ? (m.suggestions ?? []) : []
+          const isCompleteAssistant = m.role === 'assistant' && m.status === 'complete'
+          const suggestions = isCompleteAssistant ? (m.suggestions ?? []) : []
           return (
             <div
               key={m.id}
@@ -116,6 +134,32 @@ export function AiChatPanel({
                   m.content
                 )}
               </div>
+              {isCompleteAssistant && (
+                <div className="mt-1 flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedMessage(m)}
+                    aria-label="확대 보기"
+                    title="확대 보기"
+                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveAnswer(m)}
+                    disabled={savingMessageId === m.id}
+                    aria-label={savingMessageId === m.id ? 'MD 저장 중...' : 'MD 저장'}
+                    title="MD 저장"
+                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+              {saveError?.id === m.id && (
+                <p className="mt-0.5 text-xs text-red-500">{saveError.message}</p>
+              )}
               {suggestions.length > 0 && (
                 <div data-testid="chat-suggestions" className="mt-1.5 flex flex-wrap gap-1.5">
                   {suggestions.slice(0, 3).map((q, i) => (
@@ -159,6 +203,14 @@ export function AiChatPanel({
           전송
         </button>
       </div>
+      {expandedMessage && (
+        <ChatExpandDialog
+          content={expandedMessage.content}
+          onSeek={onSeek}
+          onSeekMeeting={onSeekMeeting}
+          onClose={() => setExpandedMessage(null)}
+        />
+      )}
     </div>
   )
 }
