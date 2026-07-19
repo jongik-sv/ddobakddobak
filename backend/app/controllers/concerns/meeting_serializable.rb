@@ -70,6 +70,11 @@ module MeetingSerializable
       # 이전 회의 참고: 배지 표시용 (id + 제목). list 응답엔 미포함(N+1 회피).
       json[:previous_meeting_id] = meeting.previous_meeting_id
       json[:previous_meeting_title] = meeting.previous_meeting&.title
+      # D'Flow 전송 상태(배지·다이얼로그 초기 상태용) — status 액션 재호출 없이 렌더.
+      json[:public_uid] = meeting.public_uid
+      json[:dflow_synced_at] = meeting.dflow_synced_at
+      json[:dflow_url] = meeting.dflow_url
+      json[:dflow_needs_resync] = meeting.dflow_needs_resync?
       # transcripts를 한 번만 로드해 max 집계와 직렬화에 재사용(기존 3쿼리 → 1쿼리).
       # 빈 컬렉션이면 max가 nil → to_i로 0 (기존 .maximum(:col).to_i와 동일).
       ordered_transcripts = meeting.transcripts.order(:started_at_ms).to_a

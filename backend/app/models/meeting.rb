@@ -380,6 +380,37 @@ class Meeting < ApplicationRecord
     active_summary&.notes_markdown.to_s
   end
 
+  # D'Flow 전송 team 자동 판정 재료: 폴더 체인의 최상위 폴더명. 폴더 없으면 nil.
+  def dflow_root_folder_name
+    dflow_folder_chain.last&.name
+  end
+
+  # D'Flow 전송 제목 자동 조립 재료: 최상위 바로 아래 폴더명. 3단계 이상이면 그 아래는 무시.
+  def dflow_sub_folder_name
+    chain = dflow_folder_chain
+    chain.length >= 2 ? chain[-2].name : nil
+  end
+
+  # D'Flow 전송 제목: "<하위폴더명>-<원제목>" (하위 폴더 없으면 원제목). 200자 초과 시 원제목 쪽을 잘라 맞춘다.
+  def dflow_auto_title
+    stripped = title.to_s.strip
+    sub = dflow_sub_folder_name
+    return stripped[0, 200] if sub.nil?
+
+    prefix = "#{sub}-"
+    full = "#{prefix}#{stripped}"
+    return full unless full.length > 200
+
+    prefix + stripped[0, 200 - prefix.length]
+  end
+
+  # 최초 전송 이후 재전송이 필요한지(로컬 편집/요약 갱신이 마지막 전송보다 최신인지).
+  def dflow_needs_resync?
+    return false if public_uid.blank? || dflow_synced_at.blank?
+    edited = [ last_user_edit_at, active_summary&.updated_at ].compact.max
+    edited.present? && edited > dflow_synced_at
+  end
+
   # 회의 실효 도메인 파일 세트 = 회의 자체 링크 + 폴더 조상체인 링크 + 프로젝트 링크(합집합, 파일 id 중복제거).
   # 우선순위(중복 시 구체 레벨 승, 배열 순서에도 반영): meeting > 가까운 folder > 먼 folder > project.
   # DomainReferenceBuilder는 이 순서를 그대로 소비해 캡 초과 시 project → 먼 folder → 가까운 folder →
@@ -535,5 +566,12 @@ class Meeting < ApplicationRecord
   def previous_meeting_not_self
     return if previous_meeting_id.blank? || id.blank?
     errors.add(:previous_meeting_id, "는 자기 자신일 수 없습니다") if previous_meeting_id == id
+  end
+
+  # 폴더 체인(가까운→먼): 자기 폴더 + 조상들. ancestor_records가 자기 자신을 제외하므로 앞에 붙인다
+  # (effective_domain_files 등 기존 선례와 동일 패턴, meeting.rb / meetings_controller.rb).
+  def dflow_folder_chain
+    return [] unless folder
+    [ folder ] + folder.ancestor_records
   end
 end
