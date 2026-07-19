@@ -89,3 +89,39 @@ describe('ChatMarkdown mermaid 분기', () => {
     expect(container.querySelector('pre')).toBeTruthy()
   })
 })
+
+describe('ChatMarkdown <br> raw HTML 표적 변환', () => {
+  it('<br> → 줄바꿈(br) 렌더, 리터럴 "<br>" 텍스트 없음', () => {
+    const { container } = render(<ChatMarkdown content={'첫째<br>둘째'} />)
+    expect(container.querySelector('br')).toBeTruthy()
+    expect(container.textContent).not.toContain('<br>')
+  })
+
+  it('<br/> → 줄바꿈(br) 렌더', () => {
+    const { container } = render(<ChatMarkdown content={'첫째<br/>둘째'} />)
+    expect(container.querySelector('br')).toBeTruthy()
+    expect(container.textContent).not.toContain('<br/>')
+  })
+
+  it('<br /> → 줄바꿈(br) 렌더', () => {
+    const { container } = render(<ChatMarkdown content={'첫째<br />둘째'} />)
+    expect(container.querySelector('br')).toBeTruthy()
+    expect(container.textContent).not.toContain('<br />')
+  })
+
+  it('GFM 표 셀 안 <br/> → 표 구조 유지 + 셀 내부 br 렌더', () => {
+    const md = '| A | B |\n| --- | --- |\n| x | line1<br/>line2 |'
+    const { container } = render(<ChatMarkdown content={md} />)
+    expect(container.querySelector('table')).toBeTruthy()
+    const cells = container.querySelectorAll('td')
+    expect(cells.length).toBe(2)
+    const lastCell = cells[cells.length - 1]
+    expect(lastCell.querySelector('br')).toBeTruthy()
+    expect(lastCell.textContent).not.toContain('<br')
+  })
+
+  it('<script> 등 다른 raw HTML은 절대 엘리먼트로 렌더/실행되지 않는다', () => {
+    const { container } = render(<ChatMarkdown content={'<script>alert(1)</script>'} />)
+    expect(container.querySelector('script')).toBeNull()
+  })
+})

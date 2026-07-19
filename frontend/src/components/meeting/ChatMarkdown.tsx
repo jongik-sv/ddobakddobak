@@ -26,6 +26,39 @@ type HastNode = {
   value?: string
 }
 
+// react-markdown(v10)은 remark-rehype에 allowDangerousHtml:true를 강제로 넘겨 raw HTML을
+// hast `type: 'raw'` 노드로 만들고, rehypePlugins 실행 후에도 남아있는 raw 노드는 자체
+// post-processing에서 안전하게 일반 텍스트로 다운그레이드한다(스크립트 등 실행 방지).
+// 즉 여기서 처리하지 않는 모든 raw 노드는 여전히 안전하게 무해화된다.
+type RawCapableNode = {
+  type?: string
+  value?: string
+  children?: RawCapableNode[]
+}
+
+const BR_RAW_RE = /^<br\s*\/?\s*>$/i
+
+// hast 트리를 재귀 순회하며 `<br>`/`<br/>`/`<br />` 리터럴 raw 노드만 실제 <br> 엘리먼트로
+// 치환한다. 그 외 태그(script 등)는 절대 건드리지 않으므로 위 post-processing에 의해
+// 계속 텍스트로 무해화된다 — br만 표적 허용하는 이유.
+function promoteBrRawNodes(node: RawCapableNode): void {
+  if (!Array.isArray(node.children)) return
+  node.children = node.children.map((child) => {
+    if (child?.type === 'raw' && typeof child.value === 'string' && BR_RAW_RE.test(child.value)) {
+      return { type: 'element', tagName: 'br', properties: {}, children: [] } as RawCapableNode
+    }
+    return child
+  })
+  for (const child of node.children) promoteBrRawNodes(child)
+}
+
+// react-markdown용 rehype 플러그인: 트리를 그 자리에서 변형(mutate)한다(unified 관용 패턴).
+function rehypeChatBr() {
+  return (tree: RawCapableNode) => {
+    promoteBrRawNodes(tree)
+  }
+}
+
 // react-markdown이 넘기는 hast node에서 ```mermaid 코드 텍스트를 추출. 아니면 null.
 export function mermaidCodeFromNode(node: HastNode | undefined): string | null {
   const codeEl = node?.children?.[0]
@@ -41,7 +74,10 @@ export function mermaidCodeFromNode(node: HastNode | undefined): string | null {
 
 // Compact chat-bubble markdown styles. No @tailwindcss/typography is installed,
 // so every element is styled explicitly via component overrides.
-// react-markdown does NOT render raw HTML by default (no rehype-raw) — keep it safe.
+// react-markdown does NOT render arbitrary raw HTML (no rehype-raw) — stays safe by
+// default. We only special-case `<br>`/`<br/>`/`<br />` via rehypeChatBr below because
+// the backend's mermaid prompt teaches the LLM that syntax and it leaks into plain
+// text/table cells; everything else stays inert text. See rehypeChatBr above.
 const MAP: Components = {
   h1: ({ children }) => <h1 className="text-base font-semibold mt-2 first:mt-0">{children}</h1>,
   h2: ({ children }) => <h2 className="text-sm font-semibold mt-2 first:mt-0">{children}</h2>,
@@ -137,7 +173,12 @@ export function ChatMarkdown({
   }
   return (
     <div className="text-sm leading-relaxed break-words space-y-1">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={urlTransform}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeChatBr]}
+        components={components}
+        urlTransform={urlTransform}
+      >
         {markersToSeekLinks(content)}
       </ReactMarkdown>
     </div>
