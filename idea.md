@@ -140,7 +140,7 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
 32. 회의록 D'Flow에 바로 업로드 기능
   - 또박또박 : ddobak-dflow-sender-spec.md
   - D'Flow : dflow-minutes-upload-api-spec.md
-33. AI 챗의 AI 답변을 크게 키워서 볼 수 있도록 해줘. md 파일 저장도 되면 좋겠다. 물론 마커는 빼고 파일로 저장해야된다.
+33. AI 챗의 AI 답변을 크게 키워서 볼 수 있도록 해줘. md 파일 저장도 되면 좋겠다. 물론 마커는 빼고 파일로 저장해야된다. (완)
 34. AI 회의록에 글자크기 조절 옵션 (mdview 참고)
   - 계획:
     - 현황: 회의록 본문은 BlockNote 렌더(`AiSummaryPanel.tsx`), 본문 글자크기 조절 지점 전무(오버라이드는 코드블록 `--md-code-font-size`뿐)
