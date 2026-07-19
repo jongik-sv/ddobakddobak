@@ -11,10 +11,10 @@
 | # | 기능 | 내용 | 주요 신규 파일 |
 |---|---|---|---|
 | T1 | 전송 식별자 | `meetings.public_uid` (UUIDv7, 최초 전송 시 발급·불변) + `dflow_synced_at`·`dflow_url` | 마이그레이션 1 |
-| T2 | 전송 기능 | 회의 상세 "D'Flow로 보내기" — Rails가 export md를 D'Flow `POST /minutes`로 upsert | `DflowClient`, `DflowUploadService`, 컨트롤러, `SendToDflowDialog` |
+| T2 | 전송 기능 | **회의록 내보내기 메뉴 안** "D'Flow로 전송" — Rails가 export md를 D'Flow `POST /minutes`로 upsert | `DflowClient`, `DflowUploadService`, 컨트롤러, `SendToDflowDialog`, `ExportButton` 수정 |
 | T3 | 설정·자동 판정 | D'Flow URL·시크릿(관리자, settings.yaml). team = **최상위 폴더명 자동**(meta.teams 대조), 제목 = `<하위폴더명>-<원제목>` 자동 조립 — **수동 매핑 없음** | `DflowSettingsPanel`, 설정 탭 |
 | T4 | 연결 관리 | public_uid 보기/수동 입력/해제/재발급 + D'Flow 기존 레코드 검색·연결(claim) | 다이얼로그 내 연결 관리 섹션 |
-| T5 | 상태 표시 | 회의 상세 배지(전송됨/재전송 필요), "D'Flow에서 보기" 링크 | `MeetingActionHeader`·`MeetingActions` 수정 |
+| T5 | 상태 표시 | 회의 상세 배지(전송됨/재전송 필요), "D'Flow에서 보기" 링크 | `MeetingActionHeader` 수정 |
 | T6 | export 호환 | 회의/폴더/프로젝트 export(tgz)·JSON export에 public_uid·매핑 포함, import 시 충돌 처리 | `meeting_restorer` 수정, `MeetingExportSerializer` 수정 |
 
 범위 제외(v1): 자동 전송(회의 완료 시 자동 업로드 — v1.1 후보, 폴더 단위 opt-in으로), 첨부 전송, 전송 이력 테이블, **D'Flow 회의 연결(`meeting_id`)** — 계약상 선택 필드지만 또박또박 v1은 보내지 않는다(payload에 미포함, D'Flow 측은 nullable이라 무해. 연결이 필요하면 D'Flow UI에서 수동 지정).
@@ -220,7 +220,9 @@ end
 
 ### 4.4 회의 상세 노출
 
-- 버튼: `MeetingActions.tsx:132` `ExportButton` 인접에 "D'Flow" 버튼 (노출: `canEdit && meeting.status === 'completed'` — 다른 완료 전용 액션 관례) → `SendToDflowDialog` 오픈.
+- **진입점: 회의록 내보내기(`ExportButton.tsx`) 드롭다운 패널 하단** (사용자 확정) — 기존 포맷 선택(md/pdf/docx/prompt)·다운로드 구획 아래에 구분선 + "D'Flow로 전송" 항목 추가 → `SendToDflowDialog` 오픈. 항목 노출 조건: `meeting.status === 'completed'` && dflow 설정 enabled (미충족 시 항목 자체 숨김). `MeetingActions.tsx`는 수정 불필요 — ExportButton 내부만 변경.
+- **패널 폭 확대** (사용자 확정): 현재 `w-64` (ExportButton.tsx 패널 클래스) → D'Flow 구획·상태 텍스트가 들어가므로 `w-80`(320px)으로 확대. 기존 포맷 버튼 그룹·체크박스 레이아웃이 넓어진 폭에서 어색하지 않은지 구현 시 확인.
+- 전송 상태 요약(전송됨/재전송 필요)도 이 항목 옆에 작은 텍스트로 표시 가능(선택).
 - 배지: `MeetingActionHeader.tsx:93-128` 배지 열에 pill 추가 — `dflow_synced_at && !needs_resync` → "D'Flow ✓" / `needs_resync` → "D'Flow 재전송 필요" (수정됨) / 미전송이면 배지 없음.
 
 ---

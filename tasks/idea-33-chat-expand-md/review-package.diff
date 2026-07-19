@@ -1,0 +1,391 @@
+ M frontend/src/components/meeting/AiChatPanel.tsx
+ A frontend/src/components/meeting/ChatExpandDialog.tsx
+ A frontend/src/lib/chatExport.test.ts
+ A frontend/src/lib/chatExport.ts
+---DIFF---
+diff --git a/frontend/src/components/meeting/AiChatPanel.tsx b/frontend/src/components/meeting/AiChatPanel.tsx
+index e49a7dd7..010eae3d 100644
+--- a/frontend/src/components/meeting/AiChatPanel.tsx
++++ b/frontend/src/components/meeting/AiChatPanel.tsx
+@@ -1,15 +1,18 @@
+ import { useEffect, useRef, useState } from 'react'
++import { Maximize2, Download } from 'lucide-react'
+ import { useChatStore } from '../../stores/chatStore'
+ import { subscribeChat } from '../../channels/chat'
+ import { ChatMarkdown } from './ChatMarkdown'
+-import type { ChatScopeType } from '../../api/chat'
++import { ChatExpandDialog } from './ChatExpandDialog'
++import { downloadChatAnswer } from '../../lib/chatExport'
++import type { ChatMessage, ChatScopeType } from '../../api/chat'
+ 
+ function ModelBadge() {
+   return (
+     <span
+       aria-hidden
+       className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground text-[11px]"
+     >
+       🤖
+     </span>
+   )
+@@ -31,20 +34,22 @@ export function AiChatPanel({
+   const { load, send, refresh } = useChatStore()
+   const messages = useChatStore((s) => s.messages) ?? []
+   const hasPending = messages.some((m) => m.status === 'pending')
+   // 웹소켓 실시간 반영이 간헐적으로 실패하는 문제의 폴백: pending/streaming인 assistant
+   // 메시지가 남아있는 동안 주기적으로 재조회한다. error가 되면(또는 완료되면) 자동 중단.
+   const isPolling = messages.some(
+     (m) => m.role === 'assistant' && (m.status === 'pending' || m.status === 'streaming'),
+   )
+   const [draft, setDraft] = useState('')
+   const bottomRef = useRef<HTMLDivElement>(null)
++  const [expandedMessage, setExpandedMessage] = useState<ChatMessage | null>(null)
++  const [savingMessageId, setSavingMessageId] = useState<number | null>(null)
+ 
+   useEffect(() => {
+     load(scopeType, scopeId)
+     const unsub = subscribeChat(scopeType, scopeId)
+     return unsub
+   }, [scopeType, scopeId, load])
+ 
+   useEffect(() => {
+     if (!isPolling) return
+     const POLL_INTERVAL_MS = 3000
+@@ -64,20 +69,29 @@ export function AiChatPanel({
+     bottomRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
+   }, [messages])
+ 
+   const submit = () => {
+     const q = draft.trim()
+     if (!q) return
+     setDraft('')
+     void send(scopeType, scopeId, q)
+   }
+ 
++  const handleSaveAnswer = async (m: ChatMessage) => {
++    setSavingMessageId(m.id)
++    try {
++      await downloadChatAnswer(m.content)
++    } finally {
++      setSavingMessageId(null)
++    }
++  }
++
+   return (
+     <div className="flex flex-col h-full bg-card">
+       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+         {messages.length === 0 && (
+           <p className="text-sm text-muted-foreground">{emptyHint ?? '이 회의 내용에 대해 무엇이든 물어보세요.'}</p>
+         )}
+         {messages.map((m) => {
+           const suggestions =
+             m.role === 'assistant' && m.status === 'complete' ? (m.suggestions ?? []) : []
+           return (
+@@ -109,20 +123,43 @@ export function AiChatPanel({
+                 ) : m.status === 'streaming' && m.role === 'assistant' ? (
+                   <span className="whitespace-pre-wrap">{m.content}</span>
+                 ) : m.status === 'error' ? (
+                   <span className="text-red-500">답변 실패: {m.error_message}</span>
+                 ) : m.role === 'assistant' && m.status === 'complete' ? (
+                   <ChatMarkdown content={m.content} onSeek={onSeek} onSeekMeeting={onSeekMeeting} />
+                 ) : (
+                   m.content
+                 )}
+               </div>
++              {m.role === 'assistant' && m.status === 'complete' && (
++                <div className="mt-1 flex items-center gap-0.5">
++                  <button
++                    type="button"
++                    onClick={() => setExpandedMessage(m)}
++                    aria-label="확대 보기"
++                    title="확대 보기"
++                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
++                  >
++                    <Maximize2 className="w-3.5 h-3.5" />
++                  </button>
++                  <button
++                    type="button"
++                    onClick={() => void handleSaveAnswer(m)}
++                    disabled={savingMessageId === m.id}
++                    aria-label={savingMessageId === m.id ? 'MD 저장 중...' : 'MD 저장'}
++                    title="MD 저장"
++                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
++                  >
++                    <Download className="w-3.5 h-3.5" />
++                  </button>
++                </div>
++              )}
+               {suggestions.length > 0 && (
+                 <div data-testid="chat-suggestions" className="mt-1.5 flex flex-wrap gap-1.5">
+                   {suggestions.slice(0, 3).map((q, i) => (
+                     <button
+                       key={i}
+                       type="button"
+                       disabled={hasPending}
+                       onClick={() => {
+                         if (hasPending) return
+                         void send(scopeType, scopeId, q)
+@@ -152,13 +189,21 @@ export function AiChatPanel({
+             if (e.key === 'Enter' && !e.nativeEvent.isComposing) submit()
+           }}
+         />
+         <button
+           onClick={submit}
+           className="px-4 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+         >
+           전송
+         </button>
+       </div>
++      {expandedMessage && (
++        <ChatExpandDialog
++          content={expandedMessage.content}
++          onSeek={onSeek}
++          onSeekMeeting={onSeekMeeting}
++          onClose={() => setExpandedMessage(null)}
++        />
++      )}
+     </div>
+   )
+ }
+diff --git a/frontend/src/components/meeting/ChatExpandDialog.tsx b/frontend/src/components/meeting/ChatExpandDialog.tsx
+new file mode 100644
+index 00000000..5cd519b0
+--- /dev/null
++++ b/frontend/src/components/meeting/ChatExpandDialog.tsx
+@@ -0,0 +1,80 @@
++import { useState } from 'react'
++import { Download } from 'lucide-react'
++import { Dialog } from '../ui/Dialog'
++import { ChatMarkdown } from './ChatMarkdown'
++import { downloadChatAnswer } from '../../lib/chatExport'
++
++// ChatMarkdown 루트가 text-sm/leading-relaxed/h*/code/pre/table에 크기를 직접 박아 넣으므로
++// (react-markdown 커스텀 컴포넌트, 클래스가 엘리먼트에 직접 붙음) 부모에서 상속으로는 확대할 수
++// 없다. ChatMarkdown.tsx는 이 작업 범위 밖(다른 파일 수정 금지)이라, 이 컴포넌트 전용 클래스로
++// 스코프를 좁힌 후 해당 Tailwind 클래스들을 셀렉터 특이도로 덮어쓴다(.scope 조합 클래스이므로
++// 항상 순수 유틸리티 클래스보다 특이도가 높아 순서와 무관하게 이긴다).
++const ENLARGE_CSS = `
++  .chat-expand-answer .text-sm.leading-relaxed { font-size: 1.0625rem; line-height: 1.9; }
++  .chat-expand-answer h1.text-base { font-size: 1.375rem; }
++  .chat-expand-answer h2.text-sm, .chat-expand-answer h3.text-sm { font-size: 1.1875rem; }
++  .chat-expand-answer code.text-xs { font-size: 0.9375rem; }
++  .chat-expand-answer pre.text-xs { font-size: 0.9375rem; }
++  .chat-expand-answer table.text-xs { font-size: 0.9375rem; }
++`
++
++export function ChatExpandDialog({
++  content,
++  onSeek,
++  onSeekMeeting,
++  onClose,
++}: {
++  content: string
++  onSeek?: (ms: number) => void
++  onSeekMeeting?: (meetingId: number, ms: number) => void
++  onClose: () => void
++}) {
++  const [isSaving, setIsSaving] = useState(false)
++
++  const handleSave = async () => {
++    setIsSaving(true)
++    try {
++      await downloadChatAnswer(content)
++    } finally {
++      setIsSaving(false)
++    }
++  }
++
++  return (
++    <Dialog
++      onClose={onClose}
++      closeOnBackdrop
++      ariaLabel="AI 답변 확대 보기"
++      className="w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-xl bg-card shadow-2xl border border-border flex flex-col"
++    >
++      <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
++        <h2 className="text-sm font-semibold text-foreground">AI 답변</h2>
++        <div className="flex items-center gap-1">
++          <button
++            type="button"
++            onClick={() => void handleSave()}
++            disabled={isSaving}
++            aria-label={isSaving ? 'MD 저장 중...' : 'MD 저장'}
++            title="MD 저장"
++            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
++          >
++            <Download className="w-4 h-4" />
++            <span>{isSaving ? '저장 중...' : 'MD 저장'}</span>
++          </button>
++          <button
++            type="button"
++            onClick={onClose}
++            aria-label="닫기"
++            className="px-2.5 py-1.5 text-sm text-muted-foreground hover:text-foreground rounded-md hover:bg-accent transition-colors"
++          >
++            닫기 <span aria-hidden="true">✕</span>
++          </button>
++        </div>
++      </div>
++      <div className="chat-expand-answer flex-1 overflow-y-auto px-5 py-4">
++        <style>{ENLARGE_CSS}</style>
++        <ChatMarkdown content={content} onSeek={onSeek} onSeekMeeting={onSeekMeeting} />
++      </div>
++    </Dialog>
++  )
++}
+diff --git a/frontend/src/lib/chatExport.test.ts b/frontend/src/lib/chatExport.test.ts
+new file mode 100644
+index 00000000..e7b784a9
+--- /dev/null
++++ b/frontend/src/lib/chatExport.test.ts
+@@ -0,0 +1,96 @@
++import { describe, it, expect, vi, beforeEach } from 'vitest'
++
++// lib/download의 텍스트 저장 스파이 (localExport.test.ts와 동일 패턴).
++const downloadText = vi.fn().mockResolvedValue(undefined)
++vi.mock('./download', () => ({
++  downloadText: (...a: unknown[]) => downloadText(...a),
++}))
++
++import { chatAnswerToMarkdown, downloadChatAnswer } from './chatExport'
++
++beforeEach(() => {
++  vi.clearAllMocks()
++})
++
++describe('chatAnswerToMarkdown', () => {
++  it('(a) 인라인 인용 마커를 제거한다', () => {
++    const md = chatAnswerToMarkdown('예산은 5천만원으로 결정됐습니다. ⟦t:125000|s:화자 1⟧')
++    expect(md).toBe('예산은 5천만원으로 결정됐습니다.\n')
++    expect(md).not.toContain('⟦')
++  })
++
++  it('(b) 크로스미팅(폴더) 인용 마커를 제거한다', () => {
++    const md = chatAnswerToMarkdown('지난 회의에서 합의됨. ⟦m:142/t:125000/s:화자 1⟧')
++    expect(md).toBe('지난 회의에서 합의됨.\n')
++    expect(md).not.toContain('⟦')
++    expect(md).not.toContain('m:142')
++  })
++
++  it('(b-2) 인라인 마커와 크로스미팅 마커가 섞여 있어도 모두 제거한다', () => {
++    const md = chatAnswerToMarkdown(
++      '첫 결정 ⟦t:1000|s:화자 1⟧ 그리고 지난 회의 결정 ⟦m:5/t:2000/s:화자 2⟧ 끝.',
++    )
++    expect(md).not.toContain('⟦')
++    expect(md).toBe('첫 결정  그리고 지난 회의 결정  끝.\n')
++  })
++
++  it('(c) <br> 변형들을 개행으로 치환한다 (대소문자·공백·self-close 무관)', () => {
++    const md = chatAnswerToMarkdown('첫줄<br>둘째줄<br/>셋째줄<br />넷째줄<BR>다섯째줄')
++    expect(md).toBe('첫줄\n둘째줄\n셋째줄\n넷째줄\n다섯째줄\n')
++  })
++
++  it('(c-2) 인라인(문장 중간)의 <br>도 개행으로 치환한다', () => {
++    const md = chatAnswerToMarkdown('앞부분 <br> 뒷부분')
++    expect(md).toBe('앞부분 \n 뒷부분\n')
++  })
++
++  it('(d) 코드블록·표·mermaid 펜스 등 일반 마크다운 문법은 원본 보존', () => {
++    const content = [
++      '# 제목',
++      '',
++      '```mermaid',
++      'graph TD; A-->B;',
++      '```',
++      '',
++      '| 항목 | 값 |',
++      '| --- | --- |',
++      '| a | 1 |',
++      '',
++      '```js',
++      'const x = 1',
++      '```',
++      '',
++      '- 목록1',
++      '- 목록2',
++    ].join('\n')
++    const md = chatAnswerToMarkdown(content)
++    expect(md).toContain('```mermaid')
++    expect(md).toContain('graph TD; A-->B;')
++    expect(md).toContain('| 항목 | 값 |')
++    expect(md).toContain('```js')
++    expect(md).toContain('const x = 1')
++    expect(md).toContain('- 목록1')
++    expect(md).toContain('# 제목')
++  })
++
++  it('(e) 마커 제거로 생긴 줄 끝 잉여 공백을 정리한다', () => {
++    const md = chatAnswerToMarkdown('첫 줄 ⟦t:1000|s:화자 1⟧   \n둘째 줄')
++    expect(md).toBe('첫 줄\n둘째 줄\n')
++  })
++
++  it('끝에 개행을 정확히 1개로 정리한다 (여러 개 → 1개, 없음 → 1개 추가)', () => {
++    expect(chatAnswerToMarkdown('내용\n\n\n')).toBe('내용\n')
++    expect(chatAnswerToMarkdown('내용')).toBe('내용\n')
++  })
++})
++
++describe('downloadChatAnswer', () => {
++  it('마커가 제거된 마크다운을 text/markdown Blob으로 downloadText 호출한다', async () => {
++    await downloadChatAnswer('결정: 5천만원 ⟦t:1000|s:화자 1⟧')
++    expect(downloadText).toHaveBeenCalledTimes(1)
++    const [content, filename, mime] = downloadText.mock.calls[0]
++    expect(content).toBe('결정: 5천만원\n')
++    expect(filename).toMatch(/^ai-answer-\d{8}-\d{6}\.md$/)
++    expect(mime).toBe('text/markdown;charset=utf-8')
++  })
++})
+diff --git a/frontend/src/lib/chatExport.ts b/frontend/src/lib/chatExport.ts
+new file mode 100644
+index 00000000..cf089192
+--- /dev/null
++++ b/frontend/src/lib/chatExport.ts
+@@ -0,0 +1,49 @@
++/**
++ * AI 챗 답변 내보내기 — 인용 마커를 제거한 순수 마크다운으로 변환·저장한다.
++ * (idea.md 33: "md 파일 저장도 되면 좋겠다. 물론 마커는 빼고 파일로 저장해야된다.")
++ */
++import { FOLDER_CITATION_RE, stripCitationMarkers } from './citationMarkers'
++import { downloadText } from './download'
++
++// <br>/<br/>/<br />, 대소문자 무관, 인라인(문장 중간) 포함.
++const BR_TAG_RE = /<br\s*\/?\s*>/gi
++
++function pad2(n: number): string {
++  return String(n).padStart(2, '0')
++}
++
++/**
++ * 챗 답변 원문(인용 마커 포함)을 저장용 순수 마크다운으로 변환한다.
++ * - 인용 마커(인라인 ⟦t:.../s:...⟧ + 크로스미팅 ⟦m:.../t:.../s:...⟧) 전부 제거.
++ *   FOLDER_CITATION_RE를 먼저 제거해야 CITATION_RE 오매칭을 피한다(ChatMarkdown의
++ *   markersToSeekLinks와 동일한 순서 규칙).
++ * - <br> 계열 리터럴을 실제 개행으로 치환.
++ * - 그 외 마크다운 문법(코드블록, 표, mermaid 펜스 등)은 원본 그대로 보존.
++ * - 끝은 개행 1개로 정리.
++ */
++export function chatAnswerToMarkdown(content: string): string {
++  const withoutFolderMarkers = content.replace(new RegExp(FOLDER_CITATION_RE.source, 'g'), '')
++  // stripCitationMarkers가 인라인 마커 제거 + 그로 인해 생긴 줄끝(개행 직전/문자열 끝) 잉여
++  // 공백 정리를 함께 처리한다. 폴더 마커 제거로 생긴 잉여 공백도 이 시점에 같이 정리된다.
++  const withoutMarkers = stripCitationMarkers(withoutFolderMarkers)
++  const withNewlines = withoutMarkers.replace(BR_TAG_RE, '\n')
++  return withNewlines.replace(/\s+$/, '') + '\n'
++}
++
++/** 로컬 시각 기준 `ai-answer-YYYYMMDD-HHmmss.md` 파일명. */
++function buildFilename(now: Date): string {
++  const y = now.getFullYear()
++  const mo = pad2(now.getMonth() + 1)
++  const d = pad2(now.getDate())
++  const h = pad2(now.getHours())
++  const mi = pad2(now.getMinutes())
++  const s = pad2(now.getSeconds())
++  return `ai-answer-${y}${mo}${d}-${h}${mi}${s}.md`
++}
++
++/** 챗 답변을 마커 제거된 .md 파일로 다운로드한다(브라우저 anchor / Tauri 저장 다이얼로그 자동 분기). */
++export async function downloadChatAnswer(content: string): Promise<void> {
++  const markdown = chatAnswerToMarkdown(content)
++  const filename = buildFilename(new Date())
++  await downloadText(markdown, filename, 'text/markdown;charset=utf-8')
++}
