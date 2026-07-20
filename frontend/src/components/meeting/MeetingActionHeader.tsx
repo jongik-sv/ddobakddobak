@@ -111,6 +111,15 @@ export function MeetingActionHeader({
             {isDesktop ? meeting.status : (STATUS_SHORT_LABEL[meeting.status] ?? meeting.status)}
           </span>
         )}
+        {meeting.summarizing && (
+          <span
+            className={`shrink-0 inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 ${isDesktop ? 'px-2 py-0.5 text-xs' : 'px-1.5 py-0 text-[10px]'}`}
+            title="요약 생성 중 — 완료까지 수십 초 걸릴 수 있습니다"
+          >
+            <span className="inline-block w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+            {isDesktop ? '요약중' : '요약'}
+          </span>
+        )}
         {meetingTypeLabel && (
           <span className={`shrink-0 rounded-full bg-blue-50 text-blue-600 border border-blue-200 ${isDesktop ? 'px-2 py-0.5 text-xs' : 'px-1.5 py-0 text-[10px]'}`}>
             {meetingTypeLabel}

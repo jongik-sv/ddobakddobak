@@ -223,6 +223,32 @@ RSpec.describe Meeting, type: :model do
       end
     end
 
+    # 요약 진행 중 상태(summarizing) 토글 — MeetingSummarizationJob 의 시작/종료 브로드캐스트가 호출.
+    describe "#record_summary_start! / #record_summary_finished!" do
+      it "start 는 summarizing=true 와 시작 시각을 기록한다" do
+        expect(meeting.summarizing).to be false
+
+        meeting.record_summary_start!
+
+        expect(meeting.reload.summarizing).to be true
+        expect(meeting.summarization_started_at).to be_present
+      end
+
+      it "finished 는 summarizing=false 로 되돌리고 시작 시각을 nil 로 클리어한다" do
+        meeting.record_summary_start!
+
+        meeting.record_summary_finished!
+
+        expect(meeting.reload.summarizing).to be false
+        expect(meeting.summarization_started_at).to be_nil
+      end
+
+      it "finished 는 멱등 — 시작하지 않은 회의에 호출돼도 무해하다 (give-up 경로)" do
+        expect { meeting.record_summary_finished! }.not_to raise_error
+        expect(meeting.reload.summarizing).to be false
+      end
+    end
+
     describe "#purge_transcription_content!" do
       it "콘텐츠 초기화 시 summary_error 도 함께 클리어한다 (재전사·리셋 후 오탐 배지 방지)" do
         meeting.update_columns(summary_error_message: "옛 실패", summary_error_at: Time.current)

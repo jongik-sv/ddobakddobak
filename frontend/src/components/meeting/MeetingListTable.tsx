@@ -190,7 +190,7 @@ export function MeetingListTable({
               </div>
               <span className="text-xs text-muted-foreground truncate">{meeting.created_by?.name || '-'}</span>
               <span className="text-xs text-muted-foreground">{formatDate(meeting.created_at)}</span>
-              <StatusBadge status={meeting.status} scheduled={meeting.status === 'pending' && !!meeting.scheduled_start_time} paused={meeting.status === 'recording' && !!meeting.paused_at} />
+              <StatusBadge status={meeting.status} scheduled={meeting.status === 'pending' && !!meeting.scheduled_start_time} paused={meeting.status === 'recording' && !!meeting.paused_at} summarizing={meeting.summarizing} />
               <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
               <div className="flex items-center justify-end gap-1">
                 <MeetingActionButtons

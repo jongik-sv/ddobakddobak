@@ -33,6 +33,17 @@ RSpec.describe MeetingSummarizationJob do
       expect(meeting.transcripts.where(applied_to_minutes: true).count).to eq(2)
     end
 
+    # idea.md 36: 요약 진행 중 상태 영속화 — 시작/종료 브로드캐스트가 record_summary_start!/finished! 를 호출.
+    it "persists summarizing during the run and clears it on completion (목록 배지 유지용)" do
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "## 회의록", "ok" => true })
+
+      described_class.perform_now(meeting.id, type: "realtime")
+
+      expect(meeting.reload.summarizing).to be false
+      expect(meeting.summarization_started_at).to be_nil
+    end
+
     it "does NOT consume transcripts when refine_notes returns ok:false (D8 anchor-C1)" do
       allow_any_instance_of(LlmService).to receive(:refine_notes)
         .and_return({ "notes_markdown" => "기존 내용", "ok" => false })

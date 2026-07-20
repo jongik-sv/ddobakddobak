@@ -11,7 +11,35 @@ export const STATUS_FILTER_TABS = [
   { value: 'pending', label: '대기중' },
 ] as const
 
-export function StatusBadge({ status, scheduled, paused }: { status: Meeting['status']; scheduled?: boolean; paused?: boolean }) {
+export function StatusBadge({
+  status,
+  scheduled,
+  paused,
+  summarizing,
+}: {
+  status: Meeting['status']
+  scheduled?: boolean
+  paused?: boolean
+  /** 서버 영속 "요약 진행 중" — regenerate/summarize/final/realtime 실행 중.
+   *  새로고침·페이지 이탈 후에도 유지되는 보조 상태 배지(파란색 pulse). */
+  summarizing?: boolean
+}) {
+  // 기존 status 분기 로직은 그대로 두고, summarizing=true 일 때만 "요약중" 보조 배지를
+  // 추가로 덧붙인다 — completed(재생성 중)가 가장 흔한 케이스라 status 와 겹쳐 표시.
+  const statusBadge = renderStatusBadge(status, scheduled, paused)
+  if (!summarizing) return statusBadge
+  return (
+    <>
+      {statusBadge}
+      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 flex items-center gap-1 whitespace-nowrap shrink-0">
+        <span className="inline-block w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+        요약중
+      </span>
+    </>
+  )
+}
+
+function renderStatusBadge(status: Meeting['status'], scheduled?: boolean, paused?: boolean) {
   if (status === 'pending') {
     if (scheduled === true) {
       return (

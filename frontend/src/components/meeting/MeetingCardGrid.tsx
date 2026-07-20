@@ -115,7 +115,7 @@ export function MeetingCardGrid({
                 )}
                 <h3 className="font-medium text-sm line-clamp-2">{meeting.title}</h3>
               </div>
-              <StatusBadge status={meeting.status} scheduled={meeting.status === 'pending' && !!meeting.scheduled_start_time} paused={meeting.status === 'recording' && !!meeting.paused_at} />
+              <StatusBadge status={meeting.status} scheduled={meeting.status === 'pending' && !!meeting.scheduled_start_time} paused={meeting.status === 'recording' && !!meeting.paused_at} summarizing={meeting.summarizing} />
             </div>
             {meeting.status === 'pending' && meeting.scheduled_start_time && (
               <div className="text-xs text-indigo-600 mb-2 flex items-center gap-1 min-w-0">

@@ -32,3 +32,27 @@ describe('StatusBadge 일시정지 표시', () => {
     expect(screen.getByText('예약중')).toBeInTheDocument()
   })
 })
+
+describe('StatusBadge 요약중 표시', () => {
+  it('summarizing=true면 "요약중" 파란 배지를 pulse 점과 함께 표시한다', () => {
+    render(<StatusBadge status="completed" summarizing={true} />)
+    const badge = screen.getByText('요약중')
+    expect(badge).toBeInTheDocument()
+    expect(badge.className).toContain('bg-blue-100')
+    expect(badge.className).toContain('text-blue-700')
+    expect(badge.querySelector('.animate-pulse')).not.toBeNull()
+  })
+
+  it('summarizing=true여도 기존 status 배지는 함께 표시한다 (보조 상태)', () => {
+    // completed + 요약중(재생성) 이 가장 흔한 케이스 — 완료 배지와 요약중 배지가 겹침.
+    render(<StatusBadge status="completed" summarizing={true} />)
+    expect(screen.getByText('완료')).toBeInTheDocument()
+    expect(screen.getByText('요약중')).toBeInTheDocument()
+  })
+
+  it('summarizing 미지정이면 요약중 배지를 표시하지 않는다 (회귀 가드)', () => {
+    render(<StatusBadge status="completed" />)
+    expect(screen.queryByText('요약중')).not.toBeInTheDocument()
+    expect(screen.getByText('완료')).toBeInTheDocument()
+  })
+})

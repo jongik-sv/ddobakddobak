@@ -519,6 +519,22 @@ class Meeting < ApplicationRecord
     update_columns(summary_error_message: nil, summary_error_at: nil)
   end
 
+  # ── 요약 진행 중 상태 (summarizing) ──
+  # regenerate_notes/summarize/final/realtime 요약이 실행 중임을 회의 모델에 영속화한다.
+  # 회의 상세 배지뿐 아니라 회의목록(StatusBadge)에서도 새로고침·페이지 이탈 후에도 "요약중"
+  # 상태를 유지하기 위한 단일 진입점. MeetingSummarizationJob 의 시작/종료 브로드캐스트
+  # 지점에서만 토글된다(동시성 제한으로 같은 회의 중복 실행이 없어 시작/종료 짝이 안전).
+  # update_columns: 콜백·updated_at 오염 방지(record_summary_error! 와 동일 패턴).
+  def record_summary_start!
+    update_columns(summarizing: true, summarization_started_at: Time.current)
+  end
+
+  # 종료 해제는 멱등 — 시작하지 않은 회의(broadcast_finished 만 온 give-up 경로)에
+  # 호출돼도 false 유지로 무해하다. summarization_started_at 도 함께 클리어.
+  def record_summary_finished!
+    update_columns(summarizing: false, summarization_started_at: nil)
+  end
+
   # notes_markdown에서 의미 있는 요약 텍스트를 추출하여 brief_summary 컬럼에 저장
   def refresh_brief_summary!(notes_markdown = nil)
     notes_markdown ||= (summaries.find_by(summary_type: "final") ||
