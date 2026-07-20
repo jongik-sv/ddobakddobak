@@ -35,6 +35,32 @@ class ResidentState(str, Enum):
     UNLOADED = "unloaded"
 
 
+def _release_cuda_cache(name: str) -> None:
+    """CUDA caching allocator가 쥔 캐시 블록을 OS에 반납한다.
+
+    모델을 GPU에서 내려도(.to('cpu') / del) PyTorch caching allocator는 확보했던
+    블록을 프로세스 내부 캐시로 계속 쥐고 있어 nvidia-smi 상 VRAM 사용량이 줄지
+    않는다. 오프로드(1/2단계) 완료 직후 명시적으로 반납해야 한다. CUDA가 없는
+    환경(Apple Silicon/MPS 등)에서는 아무 것도 하지 않는다.
+    """
+    try:
+        import torch
+    except ImportError:
+        return
+    if not torch.cuda.is_available():
+        return
+    try:
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+    except Exception:
+        logger.warning(
+            "[idle-offload] %s: CUDA 캐시 반납 실패 — 오프로드 자체는 이미 완료됐으므로 무시하고 계속 진행",
+            name, exc_info=True,
+        )
+        return
+    logger.info("[idle-offload] %s: CUDA 캐시 반납 완료 (empty_cache + ipc_collect)", name)
+
+
 def resolve_idle_thresholds(idle_unload_sec: float, idle_full_unload_sec: float) -> tuple[float, float]:
     """설정값 유효성 검증.
 
@@ -145,43 +171,57 @@ class IdleOffloadController:
 
     # ── 백그라운드 점검 경로 ─────────────────────────────────────────
     async def maybe_offload(self, idle_unload_sec: float, idle_full_unload_sec: float) -> None:
-        """유휴 TTL 초과 시 오프로드 실행. 추론 중이면(락 보유 중) 끝날 때까지 대기 후 판정."""
+        """유휴 TTL 초과 시 오프로드 실행. 추론 중이면(락 보유 중) 끝날 때까지 대기 후 판정.
+
+        CUDA 캐시 반납(`_release_cuda_cache`)은 상태 전이가 실제로 일어났을 때만,
+        그리고 반드시 락을 놓은 뒤에 수행한다 — empty_cache/ipc_collect는 GPU 상태에
+        따라 수백ms~1s 블로킹할 수 있어, 락을 쥔 채 부르면 그사이 도착한 추론 요청이
+        불필요하게 대기하게 된다. 락 밖에서 부르면 드물게 reload와 겹칠 수 있지만
+        empty_cache는 사용 중인 텐서를 건드리지 않으므로 정확성 문제는 없다.
+        """
         if idle_unload_sec <= 0:
             return  # 전체 비활성
+
+        did_offload = False
 
         async with self.lock:
             idle = self.idle_sec()
 
             if self.state == ResidentState.GPU:
-                if self._stage1_offload is None or idle < idle_unload_sec:
-                    return
-                t0 = self._clock()
-                logger.info(
-                    "[idle-offload] %s: 유휴 %.0fs(>= %.0fs) — 1단계 오프로드 시작 (gpu -> %s)",
-                    self.name, idle, idle_unload_sec, self._stage1_target.value,
-                )
-                await self._stage1_offload()
-                self.state = self._stage1_target
-                logger.info(
-                    "[idle-offload] %s: 1단계 오프로드 완료 (%.2fs, state=%s)",
-                    self.name, self._clock() - t0, self.state.value,
-                )
-                return
+                if self._stage1_offload is not None and idle >= idle_unload_sec:
+                    t0 = self._clock()
+                    logger.info(
+                        "[idle-offload] %s: 유휴 %.0fs(>= %.0fs) — 1단계 오프로드 시작 (gpu -> %s)",
+                        self.name, idle, idle_unload_sec, self._stage1_target.value,
+                    )
+                    await self._stage1_offload()
+                    self.state = self._stage1_target
+                    logger.info(
+                        "[idle-offload] %s: 1단계 오프로드 완료 (%.2fs, state=%s)",
+                        self.name, self._clock() - t0, self.state.value,
+                    )
+                    did_offload = True
 
-            if self.state == ResidentState.CPU:
-                if self._stage2_offload is None or idle_full_unload_sec <= 0 or idle < idle_full_unload_sec:
-                    return
-                t0 = self._clock()
-                logger.info(
-                    "[idle-offload] %s: 유휴 %.0fs(>= %.0fs) — 2단계 완전 해제 시작 (cpu -> unloaded)",
-                    self.name, idle, idle_full_unload_sec,
-                )
-                await self._stage2_offload()
-                self.state = ResidentState.UNLOADED
-                logger.info(
-                    "[idle-offload] %s: 2단계 완전 해제 완료 (%.2fs)",
-                    self.name, self._clock() - t0,
-                )
-                return
+            elif self.state == ResidentState.CPU:
+                if (
+                    self._stage2_offload is not None
+                    and idle_full_unload_sec > 0
+                    and idle >= idle_full_unload_sec
+                ):
+                    t0 = self._clock()
+                    logger.info(
+                        "[idle-offload] %s: 유휴 %.0fs(>= %.0fs) — 2단계 완전 해제 시작 (cpu -> unloaded)",
+                        self.name, idle, idle_full_unload_sec,
+                    )
+                    await self._stage2_offload()
+                    self.state = ResidentState.UNLOADED
+                    logger.info(
+                        "[idle-offload] %s: 2단계 완전 해제 완료 (%.2fs)",
+                        self.name, self._clock() - t0,
+                    )
+                    did_offload = True
 
             # UNLOADED: 이미 최소 상태 — 할 일 없음
+
+        if did_offload:
+            _release_cuda_cache(self.name)
