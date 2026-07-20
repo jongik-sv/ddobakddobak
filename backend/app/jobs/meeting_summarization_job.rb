@@ -53,6 +53,15 @@ class MeetingSummarizationJob < ApplicationJob
     LlmService.new(llm_config: llm_config)
   end
 
+  # realtime 자동 틱 전용 가드: creator 개인 LLM 설정도 없고 서버 LLM도 "선택 안함"
+  # (User.server_default_llm_config == nil, ENV LLM_PROVIDER=="none") 이면 LLM 호출 자체를
+  # 시도하지 않고 조용히 건너뛴다. 매분 cron이 도는 realtime 경로에서 NotConfiguredError를
+  # 그대로 broadcast하면 틱마다 ok:false 알림이 반복되므로 자동 경로만 무음 skip 처리한다.
+  # final(명시적 사용자 액션: 종료/수동 재생성)은 이 가드를 타지 않고 기존 에러 broadcast 유지.
+  def realtime_llm_unconfigured?(meeting)
+    (meeting.creator&.effective_llm_config || User.server_default_llm_config).nil?
+  end
+
   # realtime/타이머 경로의 안건 주입값: 업로드 후 아직 한 번도 주입 안 됐을 때만(applied_at nil)
   # 압축 안건을 반환한다. 이미 주입됐으면 nil(재주입 안 함). final 은 이 헬퍼를 쓰지 않고 항상 주입.
   def realtime_agenda_reference(meeting)
@@ -127,6 +136,10 @@ class MeetingSummarizationJob < ApplicationJob
     return if meeting.paused_at? # 일시정지 중 자동 요약 금지 (cron이 enqueue 후 일시정지된 경우 방어)
     return if stale_relative_to_user_action?(meeting)
     return if realtime_interval_pending?(meeting) # summary_interval_sec 미경과 — 매분 cron 재요약(LLM 비용) 방지
+    if realtime_llm_unconfigured?(meeting)
+      Rails.logger.info "[MeetingSummarizationJob] realtime skipped (llm not configured) meeting=#{meeting.id}"
+      return
+    end
 
     new_transcripts = meeting.transcripts
                              .where(applied_to_minutes: false)

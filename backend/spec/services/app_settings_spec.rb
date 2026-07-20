@@ -114,4 +114,31 @@ RSpec.describe AppSettings do
       end
     end
   end
+
+  # idea.md 37: 서버 LLM "선택 안함"(active_preset=="none") — presets 에 "none" 엔트리가 없으므로
+  # preset["provider"] || "anthropic" 폴백 함정이 none 을 anthropic 으로 둔갑시키지 않게 차단한다.
+  describe ".sync_env_from! — 선택 안함 (active_preset == 'none')" do
+    around do |example|
+      keys = %w[LLM_PROVIDER LLM_MODEL ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL OPENAI_API_KEY OPENAI_BASE_URL STT_ENGINE]
+      prev = keys.index_with { |k| ENV[k] }
+      example.run
+      keys.each { |k| prev[k].nil? ? ENV.delete(k) : ENV[k] = prev[k] }
+    end
+
+    it "LLM_PROVIDER=none, LLM_MODEL 삭제, auth_token/base_url 블록 스킵 — chat/stt 는 그대로 실행" do
+      ENV["LLM_MODEL"] = "stale-model"
+      ENV["ANTHROPIC_AUTH_TOKEN"] = "stale-token"
+
+      cfg = { "llm" => { "active_preset" => "none", "presets" => {} }, "stt" => { "engine" => "whisper_cpp" } }
+      described_class.sync_env_from!(cfg)
+
+      expect(ENV["LLM_PROVIDER"]).to eq("none")
+      expect(ENV.key?("LLM_MODEL")).to be(false)
+      # 함정 회귀: preset["provider"] || "anthropic" 폴백이 none 을 anthropic 으로 둔갑시켰다면
+      # 아래 블록(auth_token 갱신)이 실행돼 stale-token 이 지워졌을 것 — 스킵됐으면 불변.
+      expect(ENV["ANTHROPIC_AUTH_TOKEN"]).to eq("stale-token")
+      # 선택 안함과 무관한 블록(STT 등)은 그대로 실행된다.
+      expect(ENV["STT_ENGINE"]).to eq("whisper_cpp")
+    end
+  end
 end

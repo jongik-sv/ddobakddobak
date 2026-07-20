@@ -197,8 +197,13 @@ class User < ApplicationRecord
     { mode: ENV.fetch("LANGUAGE_MODE", "single"), languages: langs }
   end
 
+  # idea.md 37: 서버 LLM "선택 안함"(ENV LLM_PROVIDER=none)이면 nil을 반환한다.
+  # effective_llm_config(개인설정 없는 유저) → nil → LlmService.new(llm_config: nil) →
+  # server_default_config(ClientFactory) → provider none → NotConfiguredError.
   def self.server_default_llm_config
     provider = ENV.fetch("LLM_PROVIDER", "anthropic")
+    return nil if provider == "none"
+
     {
       provider: provider,
       auth_token: provider == "openai" ? ENV["OPENAI_API_KEY"] : ENV["ANTHROPIC_AUTH_TOKEN"],

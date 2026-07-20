@@ -387,6 +387,44 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
   end
 
   # ============================================================
+  # idea.md 37: 서버 LLM "선택 안함" (active_preset == "none")
+  # ============================================================
+  describe "선택 안함 (active_preset: none)" do
+    before do
+      allow_any_instance_of(ApplicationController).to receive(:server_mode?).and_return(true)
+      allow_any_instance_of(ApplicationController).to receive(:authenticate_user!).and_return(true)
+      login_as(admin)
+    end
+
+    around do |example|
+      keys = %w[LLM_PROVIDER LLM_MODEL]
+      prev = keys.index_with { |k| ENV[k] }
+      example.run
+      keys.each { |k| prev[k].nil? ? ENV.delete(k) : ENV[k] = prev[k] }
+    end
+
+    it "active_preset:none + active_profile_id:null 저장 → ENV 반영 + GET 응답 roundtrip" do
+      ENV["LLM_MODEL"] = "stale-model"
+      allow(File).to receive(:write)
+        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_p, content|
+          allow(File).to receive(:read).with(Api::V1::SettingsController::SETTINGS_PATH).and_return(content)
+          true
+        end
+
+      put "/api/v1/settings/llm", params: { active_preset: "none", active_profile_id: "" }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["active_preset"]).to eq("none")
+      expect(response.parsed_body["active_profile_id"]).to be_nil
+      expect(ENV["LLM_PROVIDER"]).to eq("none")
+      expect(ENV.key?("LLM_MODEL")).to be(false)
+
+      get "/api/v1/settings/llm"
+      expect(response.parsed_body["active_preset"]).to eq("none")
+    end
+  end
+
+  # ============================================================
   # Local mode: bypasses admin check (any user can write)
   # ============================================================
   describe "local mode — member user" do

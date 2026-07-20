@@ -8,9 +8,10 @@ import { CLI_PRESET_IDS } from './llmServicePresets'
 import { getMode } from '../../config'
 import { useAuthStore } from '../../stores/authStore'
 
-// 응답 → 선택값 매핑(요약). 특수옵션 없음 — CLI 또는 서버 풀 프로필 중 반드시 하나로 귀결된다.
+// 응답 → 선택값 매핑(요약). 특수옵션 하나('none' = 선택 안함 — 요약 미실행).
 const toSummarySel = (s: LlmSettings): LlmSelectorValue => {
   if (s.active_profile_id) return { type: 'profile', profileId: s.active_profile_id }
+  if (s.active_preset === 'none') return { type: 'special', id: 'none' }
   if (s.active_preset && CLI_PRESET_IDS.has(s.active_preset))
     return { type: 'cli', presetId: s.active_preset, model: s.presets?.[s.active_preset]?.model ?? 'sonnet' }
   // 레거시 API 프리셋인데 프로필 미참조(이관 전·yaml 수동 편집 등) — 안전 폴백
@@ -111,7 +112,7 @@ export function LlmSettingsPanel() {
                 preset_data: { provider: summarySel.presetId, model: summarySel.model },
                 active_profile_id: null,
               }
-            : { active_profile_id: null }
+            : { active_preset: 'none', active_profile_id: null }
       const chatPayload =
         chatSel.type === 'profile'
           ? { chat_profile_id: chatSel.profileId }
@@ -165,11 +166,11 @@ export function LlmSettingsPanel() {
 
       {!loading && (
         <div className="space-y-4">
-          {/* 요약 모델 카드 — 특수옵션 없음(CLI 또는 서버 풀 프로필 필수 선택) */}
+          {/* 요약 모델 카드 — 특수옵션 '선택 안함'(선택 시 요약이 실행되지 않음) */}
           <LlmSelector
             title="요약 모델"
             idPrefix="summary"
-            specialOptions={[]}
+            specialOptions={[{ id: 'none', label: '선택 안함', description: '요약을 실행하지 않습니다' }]}
             profiles={profiles}
             cliAllowed={cliAllowed}
             value={summarySel}
@@ -205,11 +206,18 @@ export function LlmSettingsPanel() {
             </div>
           )}
 
+          {/* 요약 '선택 안함' + 챗 '요약과 동일' 조합이면 챗도 함께 멈춘다는 사실을 안내 */}
+          {summarySel.type === 'special' && summarySel.id === 'none' && chatSel.type === 'special' && chatSel.id === '' && (
+            <p className="text-sm text-muted-foreground">
+              요약 모델이 '선택 안함'이면 AI 챗(요약과 동일)도 실행되지 않습니다.
+            </p>
+          )}
+
           {/* 버튼 + 결과 */}
           <div className="flex items-center gap-2">
             <button
               onClick={handleLlmTest}
-              disabled={llmTesting}
+              disabled={llmTesting || summarySel.type === 'special'}
               className="px-4 py-2 rounded-md text-sm font-medium border border-blue-600 text-blue-600 hover:bg-blue-50 disabled:opacity-50 transition-colors min-h-[44px]"
             >
               {llmTesting ? '테스트 중...' : '연결 테스트'}

@@ -779,6 +779,8 @@ module Api
           type:        "text/plain; charset=utf-8",
           disposition: "attachment",
           filename:    filename
+      rescue LlmService::LlmError => e
+        render json: { error: e.message }, status: :unprocessable_entity
       end
 
       # POST /api/v1/meetings/:id/lock — 회의를 잠금(완전 읽기전용). 소유자/admin 만(authorize_lock!).

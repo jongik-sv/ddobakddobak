@@ -233,6 +233,27 @@ RSpec.describe User, type: :model do
     end
   end
 
+  # idea.md 37: 서버 LLM "선택 안함" — ENV LLM_PROVIDER=none 이면 서버 기본 config 자체가 없다(nil).
+  # effective_llm_config(개인설정 없는 유저) → nil → LlmService.new(llm_config: nil) →
+  # server_default_config(ClientFactory) → provider none → NotConfiguredError.
+  describe ".server_default_llm_config" do
+    around do |example|
+      prev = ENV["LLM_PROVIDER"]
+      example.run
+      prev.nil? ? ENV.delete("LLM_PROVIDER") : ENV["LLM_PROVIDER"] = prev
+    end
+
+    it "LLM_PROVIDER=none 이면 nil을 반환한다" do
+      ENV["LLM_PROVIDER"] = "none"
+      expect(User.server_default_llm_config).to be_nil
+    end
+
+    it "그 외에는 기존처럼 provider config 해시를 반환한다" do
+      ENV["LLM_PROVIDER"] = "anthropic"
+      expect(User.server_default_llm_config[:provider]).to eq("anthropic")
+    end
+  end
+
   describe "개인 프로젝트 자동 생성" do
     it "유저 생성 시 personal 프로젝트와 admin 멤버십이 만들어진다" do
       user = create(:user)

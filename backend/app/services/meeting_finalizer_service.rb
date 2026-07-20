@@ -1,21 +1,21 @@
 class MeetingFinalizerService
   def initialize(meeting)
     @meeting = meeting
-    @llm = LlmService.new(llm_config: meeting.creator&.effective_llm_config)
   end
 
   def call
     transcripts = @meeting.transcripts.order(:sequence_number)
     return if transcripts.empty?
 
+    llm = LlmService.new(llm_config: @meeting.creator&.effective_llm_config)
     payload = Transcript.to_sidecar_payload(transcripts)
 
     # Action Items 추출 (structured JSON)
-    items_result = @llm.summarize_action_items(payload)
+    items_result = llm.summarize_action_items(payload)
     save_action_items(items_result["action_items"] || [])
 
     # Decisions 추출 (summarize에서 decisions 가져오기)
-    summary_result = @llm.summarize(payload, type: "final")
+    summary_result = llm.summarize(payload, type: "final")
     save_decisions(summary_result["decisions"] || [])
   rescue => e
     Rails.logger.error "[MeetingFinalizerService] meeting=#{@meeting.id} error=#{e.message}"

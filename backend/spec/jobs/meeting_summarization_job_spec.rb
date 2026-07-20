@@ -1,6 +1,18 @@
 require "rails_helper"
 
 RSpec.describe MeetingSummarizationJob do
+  # idea.md 37 realtime 가드(llm not configured 시 skip)가 User.server_default_llm_config에
+  # 의존하므로, 로컬 개발용 settings.yaml(gitignored, 수동 QA로 active_preset:none 일 수 있음)이
+  # 실행 ENV["LLM_PROVIDER"]를 오염시키지 않도록 파일 전체에서 "서버 LLM 구성됨" 상태로 고정한다.
+  # "선택 안함"을 실제로 테스트하는 하위 describe는 자체 around에서 이 값을 다시 "none"으로 덮는다.
+  around do |example|
+    prev = ENV["LLM_PROVIDER"]
+    ENV["LLM_PROVIDER"] = "anthropic"
+    example.run
+  ensure
+    prev.nil? ? ENV.delete("LLM_PROVIDER") : ENV["LLM_PROVIDER"] = prev
+  end
+
   let(:user)    { create(:user) }
   let(:project)    { create(:project, creator: user) }
   let(:meeting) { create(:meeting, project: project, creator: user, status: "recording") }
@@ -412,6 +424,60 @@ RSpec.describe MeetingSummarizationJob do
       ensure
         mutex.unlock
         described_class::MEETING_LOCKS.delete(meeting.id)
+      end
+    end
+  end
+
+  # idea.md 37: 서버 LLM "선택 안함"(LLM_PROVIDER=none) — 개인 LLM 미설정 creator 는 요약이
+  # 차단되고 명확한 안내가 broadcast/영속 기록된다. 개인 설정이 있으면 카스케이드로 정상 동작(요구사항 유지).
+  describe "server LLM 선택 안함 (idea.md 37: LLM_PROVIDER=none)" do
+    around do |example|
+      prev = ENV["LLM_PROVIDER"]
+      ENV["LLM_PROVIDER"] = "none"
+      example.run
+      prev.nil? ? ENV.delete("LLM_PROVIDER") : ENV["LLM_PROVIDER"] = prev
+    end
+
+    context "creator 개인 LLM 설정 없음" do
+      it "realtime: LLM을 호출하지 않고 broadcast 없이 조용히 skip 한다 (cron 매틱 ok:false 알림 스팸 방지)" do
+        allow(ActionCable.server).to receive(:broadcast)
+        expect_any_instance_of(LlmService).not_to receive(:refine_notes)
+        expect_any_instance_of(LlmService).not_to receive(:append_notes)
+
+        described_class.perform_now(meeting.id, type: "realtime")
+
+        expect(ActionCable.server).not_to have_received(:broadcast)
+        expect(meeting.summaries.find_by(summary_type: "realtime")).to be_nil
+      end
+
+      it "final: LLM을 호출하지 않고 record_summary_error! + ok:false broadcast" do
+        final_meeting = create(:meeting, project: project, creator: user, status: "completed")
+        create(:transcript, meeting: final_meeting, sequence_number: 1, content: "발화")
+        allow(ActionCable.server).to receive(:broadcast)
+        expect_any_instance_of(LlmService).not_to receive(:refine_notes)
+
+        described_class.perform_now(final_meeting.id, type: "final")
+
+        expect(final_meeting.reload.summary_error_message).to include("선택 안함")
+        expect(final_meeting.summary_error_at).to be_present
+        expect(ActionCable.server).to have_received(:broadcast).with(
+          final_meeting.transcription_stream,
+          hash_including(type: "summarization_finished", summary_type: "final",
+                         ok: false, error: a_string_including("선택 안함"))
+        )
+      end
+    end
+
+    context "creator 개인 LLM 설정 있음 (카스케이드 유지 — 서버 선택 안함과 무관하게 정상 동작)" do
+      let(:user) { create(:user, :with_llm_config) }
+
+      it "realtime: 개인 설정으로 정상 동작한다 (LLM stub 호출됨)" do
+        allow_any_instance_of(LlmService).to receive(:refine_notes)
+          .and_return({ "notes_markdown" => "## 개인 설정 요약", "ok" => true })
+
+        described_class.perform_now(meeting.id, type: "realtime")
+
+        expect(meeting.summaries.find_by(summary_type: "realtime").notes_markdown).to eq("## 개인 설정 요약")
       end
     end
   end
