@@ -75,6 +75,12 @@ Rails.application.routes.draw do
           get   :domain_files
           put   :domain_files, to: "meetings#update_domain_files"
           post  :extract_terms
+          # D'Flow 전송/연결 관리. ⚠️ `post :upload` 처럼 심볼만 쓰면 경로가 /meetings/:id/upload 가 됨
+          # (기존 :start 라우트로 확인) — dflow/ 프리픽스를 원하므로 반드시 문자열 경로로 선언한다.
+          post "dflow/upload", to: "meeting_dflow#upload"
+          get  "dflow/status", to: "meeting_dflow#status"
+          put  "dflow/link",   to: "meeting_dflow#link"
+          post "dflow/claim",  to: "meeting_dflow#claim"
         end
         resources :action_items,
           only: %i[index create],
@@ -222,6 +228,10 @@ Rails.application.routes.draw do
       put  "settings/app", to: "settings#update_app_settings"
       get  "settings/dflow", to: "settings#dflow"
       put  "settings/dflow", to: "settings#update_dflow"
+
+      # D'Flow 조회 프록시(시크릿을 프런트에 보내지 않기 위함). 인증: 로그인 사용자면 허용.
+      get "dflow/minutes", to: "meeting_dflow#minutes"
+      get "dflow/meta",    to: "meeting_dflow#meta"
     end
   end
 end
