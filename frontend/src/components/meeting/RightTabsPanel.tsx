@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { AiChatPanel } from './AiChatPanel'
+import { useUiStore } from '../../stores/uiStore'
 
 type Tab = 'memo' | 'corrections' | 'chat'
 type ChatScope = 'meeting' | 'folder' | 'project'
@@ -24,7 +25,9 @@ export function RightTabsPanel({
   onSeekMeeting?: (meetingId: number, ms: number) => void
 }) {
   const [tab, setTab] = useState<Tab>('chat')
-  const [chatScope, setChatScope] = useState<ChatScope>('meeting')
+  // 회의 전환(다른 회의 navigate) 시에도 보던 스코프 유지 — 로컬 state 대신 uiStore로 전역화.
+  const chatScope = useUiStore((s) => s.meetingChatScope)
+  const setChatScope = useUiStore((s) => s.setMeetingChatScope)
   const btn = (t: Tab) =>
     `px-3 py-1.5 text-sm font-medium ${
       tab === t ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'

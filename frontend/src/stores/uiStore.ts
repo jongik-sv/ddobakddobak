@@ -82,6 +82,10 @@ interface UiState {
   folderChatScope: { folderId: number | null; projectId: number | null; folderName?: string } | null
   openFolderChat: (scope: { folderId: number | null; projectId: number | null; folderName?: string }) => void
   closeFolderChat: () => void
+  /** 회의 상세 RightTabsPanel의 AI 챗 스코프(회의 전환 시에도 유지).
+   *  folderChatScope와 동일하게 세션만 유지(localStorage 미영속) — 페이지 새로고침 시 'meeting'으로 시작. */
+  meetingChatScope: 'meeting' | 'folder' | 'project'
+  setMeetingChatScope: (scope: 'meeting' | 'folder' | 'project') => void
   summaryFontSize: number
   setSummaryFontSize: (px: number) => void
   memoVisible: boolean
@@ -131,6 +135,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   folderChatScope: null,
   openFolderChat: (scope) => set({ folderChatOpen: true, folderChatScope: scope }),
   closeFolderChat: () => set({ folderChatOpen: false }),
+  meetingChatScope: 'meeting',
+  setMeetingChatScope: (scope) => set({ meetingChatScope: scope }),
   summaryFontSize: loadSummaryFontSize(),
   setSummaryFontSize: (px) => {
     const v = clampSummaryFontSize(px)
