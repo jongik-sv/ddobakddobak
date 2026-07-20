@@ -76,6 +76,12 @@ interface UiState {
   setSidebarWidth: (width: number) => void
   folderChatWidth: number
   setFolderChatWidth: (width: number) => void
+  /** 폴더/프로젝트 챗 드로어(회의 상세로 이동해도 유지). open=false면 드로어 미출력.
+   *  folderChatScope는 세션만 유지(localStorage 미영속) — 페이지 새로고침 시 닫힌 상태로 시작. */
+  folderChatOpen: boolean
+  folderChatScope: { folderId: number | null; projectId: number | null; folderName?: string } | null
+  openFolderChat: (scope: { folderId: number | null; projectId: number | null; folderName?: string }) => void
+  closeFolderChat: () => void
   summaryFontSize: number
   setSummaryFontSize: (px: number) => void
   memoVisible: boolean
@@ -121,6 +127,10 @@ export const useUiStore = create<UiState>((set, get) => ({
     try { localStorage.setItem('folderChatWidth', String(w)) } catch { /* 무시 */ }
     set({ folderChatWidth: w })
   },
+  folderChatOpen: false,
+  folderChatScope: null,
+  openFolderChat: (scope) => set({ folderChatOpen: true, folderChatScope: scope }),
+  closeFolderChat: () => set({ folderChatOpen: false }),
   summaryFontSize: loadSummaryFontSize(),
   setSummaryFontSize: (px) => {
     const v = clampSummaryFontSize(px)
