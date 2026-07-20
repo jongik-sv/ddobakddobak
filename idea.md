@@ -148,7 +148,7 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
     - 삽입 위치 2곳: `AiSummaryPanel.tsx` 헤더(전체보기 버튼 옆) + `AiSummaryFullViewModal.tsx` 헤더 — 같은 회의록을 다른 마운트로 렌더하므로 값 공유 필수
     - 상태/영속: `uiStore.ts`의 `sidebarWidth`/`folderChatWidth` 패턴 그대로 — `summaryFontSize` 필드 + clamp 헬퍼 + localStorage
     - 적용: 본문 wrapper에 `fontSize` 인라인(또는 CSS 변수) 주입. BlockNote 내부가 px 하드코딩이면 추가 오버라이드 필요(구현 시 실측)
-35. AI 챗(폴더/프로젝트)에서 마커를 누르면 해당 회의가 열릴때 회의 뿐만 아니라 AI 챗이 새로 열리기 때문에 위치가 초기화 되어서 불편하다. AI 챗은 그대로 두는 것이 좋겠다.
+35. AI 챗(폴더/프로젝트)에서 마커를 누르면 해당 회의가 열릴때 회의 뿐만 아니라 AI 챗이 새로 열리기 때문에 위치가 초기화 되어서 불편하다. AI 챗은 그대로 두는 것이 좋겠다. (완 — 1단계 chatStore 스코프 캐시 맵 개편으로 리마운트 시 대화·draft·스크롤 즉시 복원 + 2단계 FolderChatDrawer를 GatedApp 루트로 승격·uiStore 전역화·onSeekMeeting onClose 제거로 회의 상세 이동 시에도 챗 드로어가 실제로 유지)
   - 계획:
     - 원인 3중: ① `/meetings`↔`/meetings/:id`가 서로 다른 Route element라 마커 클릭 navigate 시 `FolderChatDrawer`(챗 포함) 통째 unmount ② 회의 상세에서도 첫 방문 회의면 `MeetingPageSkeleton` 분기가 `RightTabsPanel`을 갈아엎어 리마운트 ③ `chatStore`가 스코프 키 없는 단일 `messages` 배열이라 복원용 캐시조차 없음(항상 서버 재조회)
     - 1단계(난이도 중, 즉효): `chatStore`를 스코프 키 맵(`{scope:scopeId → {messages, draft, scrollTop}}`)으로 개편 + `AiChatPanel` 로컬 state를 스토어로 승격, 로드는 "캐시 우선 표시 후 백그라운드 refresh" — 리마운트돼도 대화·스크롤 즉시 복원
@@ -156,6 +156,6 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
     - 부수 수정: `AiChatPanel.tsx:69-71`이 `messages` 변경마다 무조건 맨 아래 스크롤 — 복원과 충돌하므로 "신규 메시지일 때만" 조건 필요
     - 진행:
       - 1단계 완료(feature/idea-35, 2026-07): `chatStore`를 `Record<scopeKey, ChatScopeState>`로 개편(messages·loading·draft·scrollTop·expandedMessage·savingMessageId·saveError), `AiChatPanel` 로컬 state→스토어 승격, 캐시 우선 로드, 신규 메시지 추가 시에만 하단 스크롤(scrollTop 복원과 충돌 회피), `applyUpdate`/`subscribeChat` 스코프 명시 전달. 리마운트 시 캐시로 대화·draft·스크롤 즉시 복원.
-      - 2단계 미구현(후속 티켓): `FolderChatDrawer`를 라우트 공통 부모로 승격 + `onSeekMeeting`의 `onClose()` 제거 + `MeetingPage` 스켈레톤 가드 축소 — 라우트 이동에도 챗이 "실제로" 안 죽게. 1단계는 리마운트 시 캐시로 즉시 복원이지만 여전히 마운트 비용(웹소켓 재구독·load 백그라운드 refresh)이 발생; 2단계가 원문 "그대로 유지"의 완전한 충족.
+      - 2단계 완료(feature/idea-35-2, 2026-07, main 머지 3baeda74): `FolderChatDrawer`를 GatedApp 루트(App.tsx 글로벌 영역, Routes 형제)로 승격 + open/scope 상태 `uiStore` 전역화(folderChatOpen/folderChatScope) + `onSeekMeeting`의 `onClose()` 제거 — 라우트 이동에도 챗이 "실제로" 안 죽음. 회의 상세의 `RightTabsPanel`(meeting 스코프)과 전역 드로어(folder/project 스코프) 공존. 보류: MeetingPageSkeleton 가드 축소(MeetingPage.tsx:346, 별개 후속).
 36. 요약 재실행 중 다른 화면으로 이동하면 요약되고 있는지 알 방법이 없다. 회의 자체의 요약중 상태가 있어야 UI 에서 확인할 수 있다. 회의목록에서도 요약이 진행중인지 알수 있으면 좋겠다. (완 — summarizing:boolean + summarization_started_at 영속화. MeetingSummarizationJob#broadcast_started/finished 에서 record_summary_start!/finished! 짝(동시성 제한으로 중복 없음). meeting_json 노출 → StatusBadge 파란 "요약중" pulse + MeetingActionHeader 상단. 이탈·새로고침 후에도 유지, 완료 시 소멸, 실패 시 기존 실패배지)
 37. 서버 LLM 모델 설정에 선택 안함 추가해줘. 선택 안함 추가하면 요약이 실행이 안되게 하고 싶어. (완 — 자동 realtime 틱은 무음 skip, 회의종료/수동 재생성은 에러 안내)
