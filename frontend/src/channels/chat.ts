@@ -20,7 +20,9 @@ export function subscribeChat(scopeType: ChatScopeType, scopeId: number): () => 
     received(data: ChatMessageUpdate) {
       console.debug('[chat] update', data.id, data.status)
       if (data.type === 'chat_message_update') {
-        useChatStore.getState().applyUpdate(data)
+        // 구독은 스코프별로 생성되므로, 도착한 업데이트는 이 스코프에만 적용한다.
+        // (스코프 키 맵 도입 — 다른 스코프의 캐시를 건드리지 않음)
+        useChatStore.getState().applyUpdate(scopeType, scopeId, data)
       }
     },
   })

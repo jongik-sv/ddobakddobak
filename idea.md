@@ -154,5 +154,8 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
     - 1단계(난이도 중, 즉효): `chatStore`를 스코프 키 맵(`{scope:scopeId → {messages, draft, scrollTop}}`)으로 개편 + `AiChatPanel` 로컬 state를 스토어로 승격, 로드는 "캐시 우선 표시 후 백그라운드 refresh" — 리마운트돼도 대화·스크롤 즉시 복원
     - 2단계(난이도 상, 원문 "그대로 유지" 충족): `FolderChatDrawer`를 라우트 공통 부모(AppLayout)로 승격 + 열림/스코프 상태 `uiStore` 전역화 + `onSeekMeeting`에서 `onClose()` 제거 + `MeetingPage` 스켈레톤 가드 범위 축소 — 라우트 이동에도 챗이 실제로 안 죽음. 회의 상세의 `RightTabsPanel` 챗과 전역 드로어 공존 UX 정리 필요
     - 부수 수정: `AiChatPanel.tsx:69-71`이 `messages` 변경마다 무조건 맨 아래 스크롤 — 복원과 충돌하므로 "신규 메시지일 때만" 조건 필요
+    - 진행:
+      - 1단계 완료(feature/idea-35, 2026-07): `chatStore`를 `Record<scopeKey, ChatScopeState>`로 개편(messages·loading·draft·scrollTop·expandedMessage·savingMessageId·saveError), `AiChatPanel` 로컬 state→스토어 승격, 캐시 우선 로드, 신규 메시지 추가 시에만 하단 스크롤(scrollTop 복원과 충돌 회피), `applyUpdate`/`subscribeChat` 스코프 명시 전달. 리마운트 시 캐시로 대화·draft·스크롤 즉시 복원.
+      - 2단계 미구현(후속 티켓): `FolderChatDrawer`를 라우트 공통 부모로 승격 + `onSeekMeeting`의 `onClose()` 제거 + `MeetingPage` 스켈레톤 가드 축소 — 라우트 이동에도 챗이 "실제로" 안 죽게. 1단계는 리마운트 시 캐시로 즉시 복원이지만 여전히 마운트 비용(웹소켓 재구독·load 백그라운드 refresh)이 발생; 2단계가 원문 "그대로 유지"의 완전한 충족.
 36. 요약 재실행 중 다른 화면으로 이동하면 요약되고 있는지 알 방법이 없다. 회의 자체의 요약중 상태가 있어야 UI 에서 확인할 수 있다. 회의목록에서도 요약이 진행중인지 알수 있으면 좋겠다.
 37. 서버 LLM 모델 설정에 선택 안함 추가해줘. 선택 안함 추가하면 요약이 실행이 안되게 하고 싶어. (완 — 자동 realtime 틱은 무음 skip, 회의종료/수동 재생성은 에러 안내)

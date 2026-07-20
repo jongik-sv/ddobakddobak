@@ -1,25 +1,30 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { AiChatPanel } from '../AiChatPanel'
-import { useChatStore } from '../../../stores/chatStore'
+import { useChatStore, emptyScope, scopeKey } from '../../../stores/chatStore'
 import * as chatApi from '../../../api/chat'
 
 vi.mock('../../../api/chat')
 vi.mock('../../../channels/chat', () => ({ subscribeChat: () => () => {} }))
 
+// 헬퍼: 스코프 state를 setState 패턴으로 세팅. messages만 받아 나머지는 빈 스코프 default.
+function setScopeMessages(scopeType: 'meeting' | 'folder' | 'project', scopeId: number, messages: any[]) {
+  useChatStore.setState((s) => ({
+    scopes: { ...s.scopes, [scopeKey(scopeType, scopeId)]: { ...emptyScope(), messages } },
+  }))
+}
+
 describe('AiChatPanel', () => {
   beforeEach(() => {
     window.HTMLElement.prototype.scrollIntoView = vi.fn()
-    useChatStore.setState({ messages: [], loading: false })
+    useChatStore.setState({ scopes: {} })
   })
 
   it('renders existing messages', () => {
-    useChatStore.setState({
-      messages: [
-        { id: 1, role: 'user', content: '질문이요', status: 'complete', created_at: '' },
-        { id: 2, role: 'assistant', content: '답변이요', status: 'complete', created_at: '' },
-      ],
-    })
+    setScopeMessages('meeting', 7, [
+      { id: 1, role: 'user', content: '질문이요', status: 'complete', created_at: '' },
+      { id: 2, role: 'assistant', content: '답변이요', status: 'complete', created_at: '' },
+    ])
     render(<AiChatPanel scopeId={7} />)
     expect(screen.getByText('질문이요')).toBeInTheDocument()
     expect(screen.getByText('답변이요')).toBeInTheDocument()
@@ -28,6 +33,7 @@ describe('AiChatPanel', () => {
   it('calls send on submit', () => {
     const send = vi.fn().mockResolvedValue(undefined)
     useChatStore.setState({ send } as any)
+    setScopeMessages('meeting', 7, [])
     render(<AiChatPanel scopeId={7} />)
     fireEvent.change(screen.getByPlaceholderText(/질문/), { target: { value: '뭐 결정됐어?' } })
     fireEvent.click(screen.getByRole('button', { name: '전송' }))
@@ -35,26 +41,24 @@ describe('AiChatPanel', () => {
   })
 
   it('shows typing indicator for pending assistant', () => {
-    useChatStore.setState({
-      messages: [{ id: 2, role: 'assistant', content: '', status: 'pending', created_at: '' }],
-    })
+    setScopeMessages('meeting', 7, [
+      { id: 2, role: 'assistant', content: '', status: 'pending', created_at: '' },
+    ])
     render(<AiChatPanel scopeId={7} />)
     expect(screen.getByTestId('chat-typing')).toBeInTheDocument()
   })
 
   it('renders suggestion chips for a complete assistant message', () => {
-    useChatStore.setState({
-      messages: [
-        {
-          id: 2,
-          role: 'assistant',
-          content: '답변이요',
-          status: 'complete',
-          created_at: '',
-          suggestions: ['다음질문1', '다음질문2', '다음질문3'],
-        },
-      ],
-    })
+    setScopeMessages('meeting', 7, [
+      {
+        id: 2,
+        role: 'assistant',
+        content: '답변이요',
+        status: 'complete',
+        created_at: '',
+        suggestions: ['다음질문1', '다음질문2', '다음질문3'],
+      },
+    ])
     render(<AiChatPanel scopeId={7} />)
     expect(screen.getByRole('button', { name: '다음질문1' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '다음질문2' })).toBeInTheDocument()
@@ -63,19 +67,17 @@ describe('AiChatPanel', () => {
 
   it('sends the question immediately when a chip is clicked', () => {
     const send = vi.fn().mockResolvedValue(undefined)
-    useChatStore.setState({
-      send,
-      messages: [
-        {
-          id: 2,
-          role: 'assistant',
-          content: '답변이요',
-          status: 'complete',
-          created_at: '',
-          suggestions: ['다음질문1', '다음질문2'],
-        },
-      ],
-    } as any)
+    useChatStore.setState({ send } as any)
+    setScopeMessages('meeting', 7, [
+      {
+        id: 2,
+        role: 'assistant',
+        content: '답변이요',
+        status: 'complete',
+        created_at: '',
+        suggestions: ['다음질문1', '다음질문2'],
+      },
+    ])
     render(<AiChatPanel scopeId={7} />)
     fireEvent.click(screen.getByRole('button', { name: '다음질문2' }))
     expect(send).toHaveBeenCalledWith('meeting', 7, '다음질문2')
@@ -83,20 +85,18 @@ describe('AiChatPanel', () => {
 
   it('disables chips while an assistant message is pending and does not call send on click', () => {
     const send = vi.fn().mockResolvedValue(undefined)
-    useChatStore.setState({
-      send,
-      messages: [
-        {
-          id: 2,
-          role: 'assistant',
-          content: '답변이요',
-          status: 'complete',
-          created_at: '',
-          suggestions: ['다음질문1', '다음질문2'],
-        },
-        { id: 3, role: 'assistant', content: '', status: 'pending', created_at: '' },
-      ],
-    } as any)
+    useChatStore.setState({ send } as any)
+    setScopeMessages('meeting', 7, [
+      {
+        id: 2,
+        role: 'assistant',
+        content: '답변이요',
+        status: 'complete',
+        created_at: '',
+        suggestions: ['다음질문1', '다음질문2'],
+      },
+      { id: 3, role: 'assistant', content: '', status: 'pending', created_at: '' },
+    ])
     render(<AiChatPanel scopeId={7} />)
     const chip = screen.getByRole('button', { name: '다음질문1' })
     expect(chip).toBeDisabled()
@@ -105,34 +105,53 @@ describe('AiChatPanel', () => {
   })
 
   it('renders no chips when suggestions are empty or absent', () => {
-    useChatStore.setState({
-      messages: [
-        { id: 2, role: 'assistant', content: '답변', status: 'complete', created_at: '', suggestions: [] },
-        { id: 3, role: 'assistant', content: '답변2', status: 'complete', created_at: '' },
-      ],
-    })
+    setScopeMessages('meeting', 7, [
+      { id: 2, role: 'assistant', content: '답변', status: 'complete', created_at: '', suggestions: [] },
+      { id: 3, role: 'assistant', content: '답변2', status: 'complete', created_at: '' },
+    ])
     render(<AiChatPanel scopeId={7} />)
     expect(screen.queryByTestId('chat-suggestions')).not.toBeInTheDocument()
   })
 
-  it('scrolls to bottom when messages update', () => {
+  it('신규 메시지 추가 시에만 하단으로 스크롤한다 (캐시 없음 케이스)', () => {
     const scrollIntoView = vi.fn()
     window.HTMLElement.prototype.scrollIntoView = scrollIntoView
-    useChatStore.setState({
-      messages: [
-        { id: 2, role: 'assistant', content: '답변이요', status: 'complete', created_at: '' },
-      ],
-    })
+    // 캐시 없이 마운트 — 첫 effect는 prevLen=0 초기화만
     render(<AiChatPanel scopeId={7} />)
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    // 신규 메시지 추가 → 하단 스크롤. setState를 act로 감싸 재렌더+이펙트 플러시.
+    act(() => {
+      setScopeMessages('meeting', 7, [
+        { id: 2, role: 'assistant', content: '답변이요', status: 'complete', created_at: '' },
+      ])
+    })
     expect(scrollIntoView).toHaveBeenCalled()
   })
 
-  it('renders a complete assistant message as formatted markdown, not literal syntax', () => {
+  it('캐시가 있으면 저장된 scrollTop을 복원하고 하단 스크롤은 하지 않는다', () => {
+    const scrollIntoView = vi.fn()
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView
+    // 캐시 세팅(scrollTop=200) — 마운트 시 restore 경로 탐
     useChatStore.setState({
-      messages: [
-        { id: 2, role: 'assistant', content: '### H\n\n**b**', status: 'complete', created_at: '' },
-      ],
+      scopes: {
+        [scopeKey('meeting', 7)]: {
+          ...emptyScope(),
+          scrollTop: 200,
+          messages: [
+            { id: 1, role: 'user', content: '오래된질문', status: 'complete', created_at: '' },
+            { id: 2, role: 'assistant', content: '오래된답변', status: 'complete', created_at: '' },
+          ],
+        },
+      },
     })
+    render(<AiChatPanel scopeId={7} />)
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it('renders a complete assistant message as formatted markdown, not literal syntax', () => {
+    setScopeMessages('meeting', 7, [
+      { id: 2, role: 'assistant', content: '### H\n\n**b**', status: 'complete', created_at: '' },
+    ])
     render(<AiChatPanel scopeId={7} />)
     // heading present
     expect(screen.getByRole('heading', { name: 'H' })).toBeInTheDocument()
@@ -145,29 +164,25 @@ describe('AiChatPanel', () => {
   })
 
   it('keeps a user message with markdown syntax literal (plain text)', () => {
-    useChatStore.setState({
-      messages: [
-        { id: 1, role: 'user', content: '**x**', status: 'complete', created_at: '' },
-      ],
-    })
+    setScopeMessages('meeting', 7, [
+      { id: 1, role: 'user', content: '**x**', status: 'complete', created_at: '' },
+    ])
     render(<AiChatPanel scopeId={7} />)
     expect(screen.getByText('**x**')).toBeInTheDocument()
     expect(screen.queryByText('x')).not.toBeInTheDocument()
   })
 
   it('does not render chips for a pending assistant message even if suggestions exist', () => {
-    useChatStore.setState({
-      messages: [
-        {
-          id: 2,
-          role: 'assistant',
-          content: '',
-          status: 'pending',
-          created_at: '',
-          suggestions: ['질문'],
-        },
-      ],
-    })
+    setScopeMessages('meeting', 7, [
+      {
+        id: 2,
+        role: 'assistant',
+        content: '',
+        status: 'pending',
+        created_at: '',
+        suggestions: ['질문'],
+      },
+    ])
     render(<AiChatPanel scopeId={7} />)
     expect(screen.queryByRole('button', { name: '질문' })).not.toBeInTheDocument()
   })
@@ -187,9 +202,9 @@ describe('AiChatPanel 웹소켓 폴백 폴링', () => {
     getScopedChatMessages.mockResolvedValue([
       { id: 2, role: 'assistant', content: '', status: 'pending', created_at: '' },
     ])
-    useChatStore.setState({
-      messages: [{ id: 2, role: 'assistant', content: '', status: 'pending', created_at: '' }],
-    })
+    setScopeMessages('meeting', 7, [
+      { id: 2, role: 'assistant', content: '', status: 'pending', created_at: '' },
+    ])
     render(<AiChatPanel scopeId={7} />)
 
     // 마운트 시 load()가 호출한 초기 조회를 먼저 흘려보낸다.
@@ -217,9 +232,9 @@ describe('AiChatPanel 웹소켓 폴백 폴링', () => {
     getScopedChatMessages.mockResolvedValue([
       { id: 3, role: 'assistant', content: '중간', status: 'streaming', created_at: '' },
     ])
-    useChatStore.setState({
-      messages: [{ id: 3, role: 'assistant', content: '중간', status: 'streaming', created_at: '' }],
-    })
+    setScopeMessages('meeting', 7, [
+      { id: 3, role: 'assistant', content: '중간', status: 'streaming', created_at: '' },
+    ])
     render(<AiChatPanel scopeId={7} />)
     await vi.advanceTimersByTimeAsync(0)
     getScopedChatMessages.mockClear()
@@ -240,9 +255,9 @@ describe('AiChatPanel 웹소켓 폴백 폴링', () => {
     getScopedChatMessages.mockResolvedValue([
       { id: 4, role: 'assistant', content: '', status: 'pending', created_at: '' },
     ])
-    useChatStore.setState({
-      messages: [{ id: 4, role: 'assistant', content: '', status: 'pending', created_at: '' }],
-    })
+    setScopeMessages('meeting', 7, [
+      { id: 4, role: 'assistant', content: '', status: 'pending', created_at: '' },
+    ])
     render(<AiChatPanel scopeId={7} />)
     await vi.advanceTimersByTimeAsync(0)
     getScopedChatMessages.mockClear()
@@ -261,9 +276,9 @@ describe('AiChatPanel 웹소켓 폴백 폴링', () => {
     getScopedChatMessages.mockResolvedValue([
       { id: 5, role: 'assistant', content: '', status: 'pending', created_at: '' },
     ])
-    useChatStore.setState({
-      messages: [{ id: 5, role: 'assistant', content: '', status: 'pending', created_at: '' }],
-    })
+    setScopeMessages('meeting', 7, [
+      { id: 5, role: 'assistant', content: '', status: 'pending', created_at: '' },
+    ])
     const { unmount } = render(<AiChatPanel scopeId={7} />)
     await vi.advanceTimersByTimeAsync(0)
     unmount()
