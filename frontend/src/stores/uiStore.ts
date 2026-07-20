@@ -43,6 +43,26 @@ function loadFolderChatWidth(): number {
   return FOLDER_CHAT_DEFAULT_WIDTH
 }
 
+/** AI 회의록(BlockNote 본문) 글자크기 조절 범위(px). mdview 패턴과 동일한 값. */
+export const SUMMARY_FONT_DEFAULT = 16
+export const SUMMARY_FONT_MIN = 11
+export const SUMMARY_FONT_MAX = 28
+export const SUMMARY_FONT_STEP = 2
+
+export function clampSummaryFontSize(px: number): number {
+  return Math.min(SUMMARY_FONT_MAX, Math.max(SUMMARY_FONT_MIN, Math.round(px)))
+}
+
+function loadSummaryFontSize(): number {
+  try {
+    const raw = localStorage.getItem('summaryFontSize')
+    if (raw) return clampSummaryFontSize(Number(raw))
+  } catch {
+    // localStorage 접근 불가(SSR/프라이빗 모드) — 기본값
+  }
+  return SUMMARY_FONT_DEFAULT
+}
+
 interface UiState {
   settingsOpen: boolean
   openSettings: () => void
@@ -56,6 +76,8 @@ interface UiState {
   setSidebarWidth: (width: number) => void
   folderChatWidth: number
   setFolderChatWidth: (width: number) => void
+  summaryFontSize: number
+  setSummaryFontSize: (px: number) => void
   memoVisible: boolean
   toggleMemo: () => void
   attachmentsVisible: boolean
@@ -98,6 +120,12 @@ export const useUiStore = create<UiState>((set, get) => ({
     const w = clampFolderChatWidth(width)
     try { localStorage.setItem('folderChatWidth', String(w)) } catch { /* 무시 */ }
     set({ folderChatWidth: w })
+  },
+  summaryFontSize: loadSummaryFontSize(),
+  setSummaryFontSize: (px) => {
+    const v = clampSummaryFontSize(px)
+    try { localStorage.setItem('summaryFontSize', String(v)) } catch { /* 무시 */ }
+    set({ summaryFontSize: v })
   },
   memoVisible: true,
   toggleMemo: () => set((s) => ({ memoVisible: !s.memoVisible })),
