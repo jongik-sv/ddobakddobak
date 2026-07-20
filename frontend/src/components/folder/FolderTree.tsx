@@ -61,6 +61,8 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
   const [showExportDialog, setShowExportDialog] = useState(false)
   const currentProjectId = useProjectStore((s) => s.currentProjectId)
   const menuRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null)
 
   const isExpanded = expandedFolderIds.has(folder.id)
   const isSelected = selectedFolderId === folder.id
@@ -73,8 +75,19 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
         setShowMenu(false)
       }
     }
+    const onDismiss = () => setShowMenu(false)
+    const onScroll = (e: Event) => {
+      if (menuRef.current && menuRef.current.contains(e.target as Node)) return
+      setShowMenu(false)
+    }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    window.addEventListener('resize', onDismiss)
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      window.removeEventListener('resize', onDismiss)
+      window.removeEventListener('scroll', onScroll, true)
+    }
   }, [showMenu])
 
   const handleSelect = () => {
@@ -159,16 +172,30 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
         </span>
         <div className="relative hidden hover-show-block-parent ml-auto" ref={menuRef}>
           <button
+            ref={triggerRef}
             onClick={(e) => {
               e.stopPropagation()
+              if (!showMenu && triggerRef.current) {
+                const rect = triggerRef.current.getBoundingClientRect()
+                const MENU_H = 410
+                const right = Math.max(8, window.innerWidth - rect.right)
+                setPos(
+                  rect.bottom + MENU_H > window.innerHeight
+                    ? { bottom: window.innerHeight - rect.top + 4, right }
+                    : { top: rect.bottom + 4, right },
+                )
+              }
               setShowMenu(!showMenu)
             }}
             className="p-2 rounded hover:bg-black/5"
           >
             <MoreHorizontal className="w-3.5 h-3.5" />
           </button>
-          {showMenu && (
-            <div className="absolute right-0 top-6 z-50 w-40 rounded-md border bg-card shadow-lg py-1">
+          {showMenu && pos && (
+            <div
+              style={pos.top != null ? { top: pos.top, right: pos.right } : { bottom: pos.bottom, right: pos.right }}
+              className="fixed z-50 w-40 max-h-[80vh] overflow-y-auto rounded-md border bg-card shadow-lg py-1"
+            >
               <button
                 onClick={(e) => {
                   e.stopPropagation()
