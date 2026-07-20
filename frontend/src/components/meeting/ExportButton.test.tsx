@@ -2,16 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ExportButton } from './ExportButton'
-import { exportMeeting, getMeeting } from '../../api/meetings'
+import { exportMeeting } from '../../api/meetings'
+import type { Meeting } from '../../api/meetings'
 import { getDflowSettings } from '../../api/dflow'
 import { downloadMarkdown } from '../../lib/markdown'
 
-vi.mock('../../api/meetings', () => ({
-  exportMeeting: vi.fn(),
-  // D'Flow 진입점: 패널 열릴 때 status/folder_path 조회용. 기본은 노출 조건 미충족(completed 아님)으로
-  // 응답해 기존 다운로드 시나리오 테스트에 영향을 주지 않는다.
-  getMeeting: vi.fn().mockResolvedValue({ id: 1, status: 'pending' }),
-}))
+vi.mock('../../api/meetings', () => ({ exportMeeting: vi.fn() }))
 vi.mock('../../api/dflow', () => ({
   getDflowSettings: vi.fn().mockResolvedValue({ enabled: false, base_url: null, api_secret_masked: '' }),
 }))
@@ -30,9 +26,35 @@ vi.mock('./SendToDflowDialog', () => ({
   ),
 }))
 
+function buildMeeting(overrides: Partial<Meeting> = {}): Meeting {
+  return {
+    id: 1,
+    title: '테스트 회의',
+    status: 'completed',
+    meeting_type: 'general',
+    created_by: { id: 1, name: '테스터' },
+    brief_summary: null,
+    folder_id: null,
+    audio_duration_ms: 0,
+    last_transcript_end_ms: 0,
+    last_sequence_number: 0,
+    memo: null,
+    attendees: null,
+    shared: true,
+    locked: false,
+    locked_at: null,
+    important: false,
+    started_at: '2026-03-25T10:00:00Z',
+    ended_at: '2026-03-25T11:00:00Z',
+    created_at: '2026-03-25T10:00:00Z',
+    ...overrides,
+  }
+}
+
 describe('ExportButton', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(getDflowSettings).mockResolvedValue({ enabled: false, base_url: null, api_secret_masked: '' })
   })
 
   it('초기에는 옵션 패널이 보이지 않는다', () => {
@@ -96,10 +118,18 @@ describe('ExportButton', () => {
   })
 
   describe("D'Flow 진입점", () => {
-    it('완료 + 연동 활성화 → 항목이 노출되고 클릭 시 다이얼로그가 열린다', async () => {
-      vi.mocked(getMeeting).mockResolvedValue({ id: 1, status: 'completed' } as never)
+    it('meeting prop 미지정 → 항목이 노출되지 않는다(다른 호출부 하위 호환)', async () => {
       vi.mocked(getDflowSettings).mockResolvedValue({ enabled: true, base_url: null, api_secret_masked: '' })
       render(<ExportButton meetingId={1} />)
+
+      await userEvent.click(screen.getByRole('button', { name: /내보내기/ }))
+      await screen.findByText('회의록 내보내기')
+      expect(screen.queryByRole('button', { name: /D'Flow로 전송/ })).not.toBeInTheDocument()
+    })
+
+    it('완료 + 연동 활성화 → 항목이 노출되고 클릭 시 다이얼로그가 열린다', async () => {
+      vi.mocked(getDflowSettings).mockResolvedValue({ enabled: true, base_url: null, api_secret_masked: '' })
+      render(<ExportButton meetingId={1} meeting={buildMeeting({ status: 'completed' })} />)
 
       await userEvent.click(screen.getByRole('button', { name: /내보내기/ }))
       const dflowItem = await screen.findByRole('button', { name: /D'Flow로 전송/ })
@@ -111,9 +141,8 @@ describe('ExportButton', () => {
     })
 
     it('완료되지 않은 회의 → 항목이 노출되지 않는다', async () => {
-      vi.mocked(getMeeting).mockResolvedValue({ id: 1, status: 'recording' } as never)
       vi.mocked(getDflowSettings).mockResolvedValue({ enabled: true, base_url: null, api_secret_masked: '' })
-      render(<ExportButton meetingId={1} />)
+      render(<ExportButton meetingId={1} meeting={buildMeeting({ status: 'recording' })} />)
 
       await userEvent.click(screen.getByRole('button', { name: /내보내기/ }))
       await screen.findByText('회의록 내보내기')
@@ -121,9 +150,8 @@ describe('ExportButton', () => {
     })
 
     it('D\'Flow 연동 비활성화 → 완료 회의여도 항목이 노출되지 않는다', async () => {
-      vi.mocked(getMeeting).mockResolvedValue({ id: 1, status: 'completed' } as never)
       vi.mocked(getDflowSettings).mockResolvedValue({ enabled: false, base_url: null, api_secret_masked: '' })
-      render(<ExportButton meetingId={1} />)
+      render(<ExportButton meetingId={1} meeting={buildMeeting({ status: 'completed' })} />)
 
       await userEvent.click(screen.getByRole('button', { name: /내보내기/ }))
       await screen.findByText('회의록 내보내기')
@@ -131,14 +159,13 @@ describe('ExportButton', () => {
     })
 
     it('전송됨 상태면 항목 옆에 상태 텍스트를 표시한다', async () => {
-      vi.mocked(getMeeting).mockResolvedValue({
-        id: 1,
-        status: 'completed',
-        dflow_synced_at: '2026-03-25T00:00:00Z',
-        dflow_needs_resync: false,
-      } as never)
       vi.mocked(getDflowSettings).mockResolvedValue({ enabled: true, base_url: null, api_secret_masked: '' })
-      render(<ExportButton meetingId={1} />)
+      render(
+        <ExportButton
+          meetingId={1}
+          meeting={buildMeeting({ status: 'completed', dflow_synced_at: '2026-03-25T00:00:00Z', dflow_needs_resync: false })}
+        />
+      )
 
       await userEvent.click(screen.getByRole('button', { name: /내보내기/ }))
       const dflowItem = await screen.findByRole('button', { name: /D'Flow로 전송/ })
@@ -146,23 +173,22 @@ describe('ExportButton', () => {
     })
 
     it('재전송 필요 상태면 항목 옆에 "재전송 필요"를 표시한다', async () => {
-      vi.mocked(getMeeting).mockResolvedValue({
-        id: 1,
-        status: 'completed',
-        dflow_synced_at: '2026-03-25T00:00:00Z',
-        dflow_needs_resync: true,
-      } as never)
       vi.mocked(getDflowSettings).mockResolvedValue({ enabled: true, base_url: null, api_secret_masked: '' })
-      render(<ExportButton meetingId={1} />)
+      render(
+        <ExportButton
+          meetingId={1}
+          meeting={buildMeeting({ status: 'completed', dflow_synced_at: '2026-03-25T00:00:00Z', dflow_needs_resync: true })}
+        />
+      )
 
       await userEvent.click(screen.getByRole('button', { name: /내보내기/ }))
       const dflowItem = await screen.findByRole('button', { name: /D'Flow로 전송/ })
       expect(dflowItem).toHaveTextContent('재전송 필요')
     })
 
-    it('상태·설정 조회 실패 → 항목이 노출되지 않는다(fail-closed)', async () => {
-      vi.mocked(getMeeting).mockRejectedValue(new Error('network error'))
-      render(<ExportButton meetingId={1} />)
+    it('연동 활성화 조회 실패 → 항목이 노출되지 않는다(fail-closed)', async () => {
+      vi.mocked(getDflowSettings).mockRejectedValue(new Error('network error'))
+      render(<ExportButton meetingId={1} meeting={buildMeeting({ status: 'completed' })} />)
 
       await userEvent.click(screen.getByRole('button', { name: /내보내기/ }))
       await screen.findByText('회의록 내보내기')

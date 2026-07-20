@@ -23,7 +23,8 @@ vi.mock('../../api/dflow', () => ({
   listDflowMinutes: vi.fn(),
 }))
 
-const confirmDialog = vi.fn(async () => true)
+const confirmDialog = vi.fn<(...args: unknown[]) => Promise<boolean>>()
+confirmDialog.mockResolvedValue(true)
 vi.mock('../../lib/confirmDialog', () => ({
   confirmDialog: (...args: unknown[]) => confirmDialog(...args),
 }))

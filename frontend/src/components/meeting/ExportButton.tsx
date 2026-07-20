@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Download } from 'lucide-react'
-import { exportMeeting, exportMeetingData, exportPrompt, getMeeting } from '../../api/meetings'
+import { exportMeeting, exportMeetingData, exportPrompt } from '../../api/meetings'
 import type { Meeting } from '../../api/meetings'
 import { getDflowSettings } from '../../api/dflow'
 import { downloadMarkdown } from '../../lib/markdown'
@@ -15,6 +15,10 @@ interface ExportButtonProps {
   meetingId: number
   meetingTitle?: string
   meetingDate?: string | null
+  /** D'Flow 진입점 노출 조건(status)과 team 자동판정 미리보기(folder_path)에 필요한 전체 meeting.
+   *  MeetingActions.tsx가 이미 들고 있는 값을 그대로 전달받는다(자체 재조회 없음). 미지정 시
+   *  D'Flow 진입점은 노출되지 않는다. */
+  meeting?: Meeting
 }
 
 /** 파일명에 사용할 수 없는 문자를 제거하고 안전한 이름을 만든다 */
@@ -30,7 +34,7 @@ function buildExportFilename(title: string | undefined, format: ExportFormat, da
   return `${baseName}_${dateStr}.${ext}`
 }
 
-export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportButtonProps) {
+export function ExportButton({ meetingId, meetingTitle, meetingDate, meeting }: ExportButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [format, setFormat] = useState<ExportFormat>('md')
   const [includeSummary, setIncludeSummary] = useState(true)
@@ -40,10 +44,9 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
   const [error, setError] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
-  // D'Flow 진입점: 패널 열릴 때마다 최신 회의 상태(status·folder_path·dflow_*)와 연동 활성화
-  // 여부를 조회한다. MeetingActions.tsx가 이미 들고 있는 meeting을 내려받지 않고(진입점 변경
-  // 범위를 ExportButton 내부로 한정) 자체 조회 — 패널을 여는 사용자 액션 빈도가 낮아 비용 작음.
-  const [dflowMeeting, setDflowMeeting] = useState<Meeting | null>(null)
+  // D'Flow 진입점: 노출 조건(status)·team 자동판정 미리보기(folder_path)는 meeting prop으로
+  // 받는다(자체 재조회 없음 — 부모가 이미 들고 있는 값 재사용). 연동 활성화 여부만 패널 열릴 때
+  // getDflowSettings()로 조회.
   const [dflowEnabled, setDflowEnabled] = useState(false)
   const [showDflowDialog, setShowDflowDialog] = useState(false)
 
@@ -62,22 +65,20 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
   useEffect(() => {
     if (!isOpen) return
     let cancelled = false
-    Promise.all([getMeeting(meetingId), getDflowSettings()])
-      .then(([meeting, settings]) => {
+    getDflowSettings()
+      .then((settings) => {
         if (cancelled) return
-        setDflowMeeting(meeting)
         setDflowEnabled(settings.enabled)
       })
       .catch(() => {
-        // 실패 시 항목을 숨긴다(fail-closed) — 노출 조건을 확인할 수 없으면 노출하지 않음.
+        // 실패 시 항목을 숨긴다(fail-closed) — 활성화 여부를 확인할 수 없으면 노출하지 않음.
         if (cancelled) return
-        setDflowMeeting(null)
         setDflowEnabled(false)
       })
     return () => {
       cancelled = true
     }
-  }, [isOpen, meetingId])
+  }, [isOpen])
 
   const exportOptions = {
     include_summary: includeSummary,
@@ -224,7 +225,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
           </div>
 
           {/* D'Flow로 전송 진입점 — 완료된 회의 + D'Flow 연동 활성화 시에만 노출 */}
-          {dflowMeeting?.status === 'completed' && dflowEnabled && (
+          {meeting?.status === 'completed' && dflowEnabled && (
             <>
               <div className="my-3 border-t border-border" />
               <button
@@ -236,9 +237,9 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
                 className="flex w-full min-h-[44px] items-center justify-between rounded-md px-3 py-2 text-sm text-foreground hover:bg-accent"
               >
                 <span>D'Flow로 전송</span>
-                {dflowMeeting.dflow_needs_resync ? (
+                {meeting.dflow_needs_resync ? (
                   <span className="text-xs text-amber-600">재전송 필요</span>
-                ) : dflowMeeting.dflow_synced_at ? (
+                ) : meeting.dflow_synced_at ? (
                   <span className="text-xs text-muted-foreground">전송됨</span>
                 ) : null}
               </button>
@@ -247,8 +248,8 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
         </div>
       )}
 
-      {showDflowDialog && dflowMeeting && (
-        <SendToDflowDialog meeting={dflowMeeting} onClose={() => setShowDflowDialog(false)} />
+      {showDflowDialog && meeting && (
+        <SendToDflowDialog meeting={meeting} onClose={() => setShowDflowDialog(false)} />
       )}
     </div>
   )

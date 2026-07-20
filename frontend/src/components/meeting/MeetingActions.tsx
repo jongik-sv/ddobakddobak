@@ -133,6 +133,7 @@ export function MeetingActions({
         meetingId={meetingId}
         meetingTitle={meeting.title}
         meetingDate={meeting.started_at ?? meeting.created_at}
+        meeting={meeting}
       />
       {canEdit && (
         <Tooltip text={locked ? lockTitle : '삭제'}>
