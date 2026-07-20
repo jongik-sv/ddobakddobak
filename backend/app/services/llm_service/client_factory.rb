@@ -7,8 +7,10 @@ class LlmService
   module ClientFactory
     module_function
 
+    # 단일 choke point: llm_config 로 직접 넘어온 provider든, server_default_config(ENV
+    # LLM_PROVIDER=none) 경유든 결과 provider가 "none"이면 여기서 raise 한다(idea.md 37).
     def resolve_config(llm_config)
-      if llm_config.present?
+      config = if llm_config.present?
         {
           provider: llm_config[:provider] || llm_config["provider"] || "anthropic",
           auth_token: llm_config[:auth_token] || llm_config["auth_token"],
@@ -19,6 +21,10 @@ class LlmService
       else
         server_default_config
       end
+
+      raise NotConfiguredError, NOT_CONFIGURED_MESSAGE if config[:provider] == NONE_PROVIDER
+
+      config
     end
 
     def server_default_config

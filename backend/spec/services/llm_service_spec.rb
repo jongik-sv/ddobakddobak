@@ -292,6 +292,41 @@ RSpec.describe LlmService, "사용자 노출 오류 메시지 정규화" do
   end
 end
 
+# idea.md 37: 서버 LLM "선택 안함"(active_preset=="none") — ClientFactory.resolve_config 가
+# provider=="none" 을 단일 choke point 에서 차단한다(직접 config 전달 / ENV 경유 서버기본 모두).
+RSpec.describe LlmService, "NotConfiguredError (idea.md 37: 서버 LLM 선택 안함)" do
+  around do |example|
+    prev = ENV["LLM_PROVIDER"]
+    example.run
+    prev.nil? ? ENV.delete("LLM_PROVIDER") : ENV["LLM_PROVIDER"] = prev
+  end
+
+  it "NotConfiguredError는 LlmError 서브클래스다 (user_facing_error_message allowlist 통과)" do
+    expect(LlmService::NotConfiguredError.ancestors).to include(LlmService::LlmError)
+  end
+
+  it "llm_config 에 provider: 'none' 을 직접 넘기면 초기화 시점에 raise 한다" do
+    expect {
+      LlmService.new(llm_config: { provider: "none" })
+    }.to raise_error(LlmService::NotConfiguredError, /선택 안함/)
+  end
+
+  it "ENV LLM_PROVIDER=none(서버 기본 경유)도 동일하게 raise 한다" do
+    ENV["LLM_PROVIDER"] = "none"
+    expect { LlmService.new }.to raise_error(LlmService::NotConfiguredError)
+  end
+
+  it "raise 된 메시지는 user_facing_error_message allowlist를 통과해 그대로 노출된다" do
+    error = begin
+      LlmService.new(llm_config: { provider: "none" })
+    rescue LlmService::NotConfiguredError => e
+      e
+    end
+    expect(LlmService.user_facing_error_message(error)).to eq(error.message)
+    expect(error.message).to include("설정 > LLM")
+  end
+end
+
 RSpec.describe LlmService, "openai 로컬(Ollama/LM Studio)" do
   it "openai 로컬(키 없음 + base_url)도 클라이언트를 만든다" do
     svc = LlmService.new(llm_config: { provider: "openai", model: "llama-3.1-8b",

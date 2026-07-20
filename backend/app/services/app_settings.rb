@@ -73,17 +73,25 @@ class AppSettings
   end
 
   # SettingsController#sync_active_llm_to_env 본문의 verbatim move(cfg 인자화만) — 동작 변경 금지.
+  # 예외: idea.md 37(서버 LLM "선택 안함") — active_preset=="none" 특수처리만 추가됨.
   def self.sync_env_from!(cfg)
     llm = cfg["llm"] || {}
     active_id = llm["active_preset"]
     preset = llm.dig("presets", active_id) || {}
-    provider = preset["provider"] || "anthropic"
+    # "선택 안함"은 presets 에 엔트리가 없으므로(만들지 않음) 아래 preset["provider"] 폴백이
+    # none 을 anthropic 으로 둔갑시키는 함정을 active_id 선검사로 차단한다(idea.md 37).
+    none_selected = active_id == "none"
+    provider = none_selected ? "none" : (preset["provider"] || "anthropic")
 
     ENV["STT_ENGINE"] = cfg.dig("stt", "engine").to_s if cfg.dig("stt", "engine")
     ENV["HF_TOKEN"] = cfg.dig("hf", "token").to_s if cfg.dig("hf", "token")
 
     ENV["LLM_PROVIDER"] = provider
-    ENV["LLM_MODEL"] = preset["model"].to_s if preset["model"]
+    if none_selected
+      ENV.delete("LLM_MODEL") # 이전 활성 프리셋의 모델이 잔류하지 않게 명시 삭제
+    else
+      ENV["LLM_MODEL"] = preset["model"].to_s if preset["model"]
+    end
     ENV["LLM_MAX_INPUT_TOKENS"] = (preset["max_input_tokens"] || 200_000).to_s
     ENV["LLM_MAX_OUTPUT_TOKENS"] = (preset["max_output_tokens"] || 10_000).to_s
 
@@ -94,19 +102,22 @@ class AppSettings
       chat_env.key?(k) ? ENV[k] = chat_env[k] : ENV.delete(k)
     end
 
-    if provider == "openai"
-      ENV["OPENAI_API_KEY"] = preset["auth_token"].to_s
-      if preset["base_url"].present?
-        ENV["OPENAI_BASE_URL"] = preset["base_url"]
+    # "선택 안함"은 대상 프로바이더가 없으므로 인증/base_url 주입을 스킵한다(idea.md 37).
+    unless none_selected
+      if provider == "openai"
+        ENV["OPENAI_API_KEY"] = preset["auth_token"].to_s
+        if preset["base_url"].present?
+          ENV["OPENAI_BASE_URL"] = preset["base_url"]
+        else
+          ENV.delete("OPENAI_BASE_URL")
+        end
       else
-        ENV.delete("OPENAI_BASE_URL")
-      end
-    else
-      ENV["ANTHROPIC_AUTH_TOKEN"] = preset["auth_token"].to_s
-      if preset["base_url"].present?
-        ENV["ANTHROPIC_BASE_URL"] = preset["base_url"]
-      else
-        ENV.delete("ANTHROPIC_BASE_URL")
+        ENV["ANTHROPIC_AUTH_TOKEN"] = preset["auth_token"].to_s
+        if preset["base_url"].present?
+          ENV["ANTHROPIC_BASE_URL"] = preset["base_url"]
+        else
+          ENV.delete("ANTHROPIC_BASE_URL")
+        end
       end
     end
 

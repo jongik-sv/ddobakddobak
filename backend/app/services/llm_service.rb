@@ -12,6 +12,18 @@ class LlmService
 
   class LlmError < StandardError; end
 
+  # 서버 LLM 모델이 "선택 안함"(settings.yaml llm.active_preset == "none") 상태일 때 전용 예외.
+  # LlmError 서브클래스라 user_facing_error_message allowlist(원문 통과, truncate 만)를 그대로 탄다.
+  # ClientFactory.resolve_config 단일 choke point 에서만 raise 한다(idea.md 37).
+  class NotConfiguredError < LlmError; end
+
+  # settings.yaml llm.active_preset == "none" 표식. presets 에는 "none" 엔트리를 만들지 않는다 —
+  # 설정 UI 의 특수옵션일 뿐 실제 프로바이더가 아니다.
+  NONE_PROVIDER = "none".freeze
+
+  # NotConfiguredError 사용자 노출 문구.
+  NOT_CONFIGURED_MESSAGE = "서버 LLM 모델이 '선택 안함' 상태입니다. 설정 > LLM에서 모델을 선택해 주세요.".freeze
+
   # 사용자 노출용 오류 메시지 상한 (broadcast·DB 영속 기록 공통 truncate)
   USER_ERROR_MAX_LENGTH = 300
   # allowlist 밖 예외를 치환하는 일반 문구 — 내부 정보(호스트:포트·경로·stderr) 유출 차단

@@ -21,7 +21,11 @@ if File.exist?(settings_path)
     llm = cfg["llm"] || {}
     active_id = llm["active_preset"]
     preset = llm.dig("presets", active_id) || {}
-    provider = preset["provider"] || "anthropic"
+    # "선택 안함"(active_preset=="none")은 presets 에 엔트리가 없어(만들지 않음) 아래
+    # preset["provider"] 폴백이 none 을 anthropic 으로 둔갑시키는 함정을 active_id 선검사로
+    # 차단한다(idea.md 37). preset 이 빈 해시라 model/token/base_url 은 ||= 조건이 자연히
+    # 스킵된다 — 외부에서 미리 주입된 ENV(Tauri 등)는 그대로 우선 유지.
+    provider = active_id == "none" ? "none" : (preset["provider"] || "anthropic")
 
     ENV["LLM_PROVIDER"] ||= provider
     ENV["LLM_MODEL"] ||= preset["model"].to_s if preset["model"]

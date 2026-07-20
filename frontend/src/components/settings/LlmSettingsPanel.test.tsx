@@ -286,6 +286,59 @@ describe('LlmSettingsPanel - 서버 선택 카드', () => {
     expect(screen.queryByLabelText(/최대 출력 토큰/)).toBeNull()
   })
 
+  // idea.md 37: 요약 카드 '선택 안함' — 렌더 + 클릭 → aria-pressed
+  it("요약 카드에 '선택 안함' 옵션이 렌더되고 클릭하면 aria-pressed가 true가 된다", async () => {
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
+    })
+
+    const noneBtn = within(summarySel()).getByText('선택 안함')
+    expect(noneBtn.closest('button')).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(noneBtn)
+    expect(noneBtn.closest('button')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  // idea.md 37: 저장 시 payload { active_preset:'none', active_profile_id:null }
+  it("요약을 '선택 안함'으로 전환 후 저장하면 payload에 active_preset:'none'을 담는다", async () => {
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    mockUpdateLlmSettings.mockResolvedValue(makeSettings({ active_preset: 'none', active_profile_id: null }))
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
+    })
+
+    fireEvent.click(within(summarySel()).getByText('선택 안함'))
+    fireEvent.click(screen.getByText('저장'))
+    await waitFor(() => expect(mockUpdateLlmSettings).toHaveBeenCalled())
+    expect(mockUpdateLlmSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ active_preset: 'none', active_profile_id: null }),
+    )
+  })
+
+  // idea.md 37: 응답 active_preset 'none' → 로드 시 '선택 안함' 활성 표시
+  it("getLlmSettings 응답 active_preset이 'none'이면 로드 시 '선택 안함'이 활성 표시된다", async () => {
+    mockGetLlmSettings.mockResolvedValue(makeSettings({ active_preset: 'none', active_profile_id: null }))
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      const noneBtn = within(summarySel()).getByText('선택 안함')
+      expect(noneBtn.closest('button')).toHaveAttribute('aria-pressed', 'true')
+    })
+  })
+
+  // idea.md 37: '선택 안함' 상태에서 연결 테스트 버튼 disabled
+  it("요약이 '선택 안함' 상태면 연결 테스트 버튼이 disabled된다", async () => {
+    mockGetLlmSettings.mockResolvedValue(profileConfiguredSettings)
+    render(<LlmSettingsPanel />)
+    await waitFor(() => {
+      expect((within(summarySel()).getByLabelText('요약 모델 프로필') as HTMLSelectElement).value).toBe('profile:5')
+    })
+
+    fireEvent.click(within(summarySel()).getByText('선택 안함'))
+    expect(screen.getByText('연결 테스트').closest('button')).toBeDisabled()
+  })
+
   // I-2: 모달에서 현재 선택된 프로필을 삭제하면 부모 카드 선택이 stale(profile:5) 되어
   //   재저장 시 dangling id로 422가 났다. onChanged 폴백으로 선택이 조정돼야 한다.
   it('모달에서 선택된 프로필 삭제 시 요약 선택이 폴백돼 재저장이 dangling id를 보내지 않는다', async () => {
