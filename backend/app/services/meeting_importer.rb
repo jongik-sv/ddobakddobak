@@ -9,6 +9,7 @@ require "tempfile"
 # 사용법:
 #   result = MeetingImporter.new(io_or_path, user: current_user, project: project, folder: nil).run!
 #   result[:meeting_id]   # 새 Meeting ID
+#   result[:warnings]     # 복원 경고 메시지 배열(예: public_uid 충돌로 D'Flow 연결 해제됨). 보통 빈 배열.
 #
 # 예외:
 #   Transfer::Archive::InvalidArchiveError  — 손상 파일, scope != "meeting", 미지원 버전, zip-bomb
@@ -30,7 +31,7 @@ class MeetingImporter
     @staged_files = []   # Tempfile 객체 보관(GC 방지)
   end
 
-  # @return [Hash] { meeting_id: Integer }
+  # @return [Hash] { meeting_id: Integer, warnings: Array<String> }
   def run!
     manifest     = read_archive
     validate_manifest!(manifest)
@@ -66,7 +67,7 @@ class MeetingImporter
     # ↓ 커밋 확정 후. 여기서 raise 해도 copied_paths 는 절대 삭제 안 됨
     EmbedBackfillJob.perform_later(meeting_id: new_meeting.id) if new_meeting.transcripts.exists?
 
-    { meeting_id: new_meeting.id }
+    { meeting_id: new_meeting.id, warnings: restorer.warnings }
   end
 
   private

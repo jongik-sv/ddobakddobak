@@ -29,6 +29,7 @@ class MeetingExportSerializer
 
     {
       id:           @meeting.id,
+      public_uid:   @meeting.public_uid,
       title:        @meeting.title,
       date:         started ? started.to_date.to_s : "미정",
       start_time:   started ? started.strftime("%H:%M") : "미정",
