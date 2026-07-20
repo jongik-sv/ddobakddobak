@@ -19,6 +19,9 @@ interface ExportButtonProps {
    *  MeetingActions.tsx가 이미 들고 있는 값을 그대로 전달받는다(자체 재조회 없음). 미지정 시
    *  D'Flow 진입점은 노출되지 않는다. */
   meeting?: Meeting
+  /** SendToDflowDialog의 전송/연결 mutation 성공 시 호출 — 상위가 meeting을 refetch해 배지·
+   *  이 항목의 상태 텍스트를 최신화하도록 전달한다(SendToDflowDialog로 그대로 전달). */
+  onChanged?: () => void
 }
 
 /** 파일명에 사용할 수 없는 문자를 제거하고 안전한 이름을 만든다 */
@@ -34,7 +37,7 @@ function buildExportFilename(title: string | undefined, format: ExportFormat, da
   return `${baseName}_${dateStr}.${ext}`
 }
 
-export function ExportButton({ meetingId, meetingTitle, meetingDate, meeting }: ExportButtonProps) {
+export function ExportButton({ meetingId, meetingTitle, meetingDate, meeting, onChanged }: ExportButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [format, setFormat] = useState<ExportFormat>('md')
   const [includeSummary, setIncludeSummary] = useState(true)
@@ -249,7 +252,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate, meeting }: 
       )}
 
       {showDflowDialog && meeting && (
-        <SendToDflowDialog meeting={meeting} onClose={() => setShowDflowDialog(false)} />
+        <SendToDflowDialog meeting={meeting} onClose={() => setShowDflowDialog(false)} onChanged={onChanged} />
       )}
     </div>
   )

@@ -28,6 +28,9 @@ import type { Meeting } from '../../api/meetings'
 interface SendToDflowDialogProps {
   meeting: Meeting
   onClose: () => void
+  /** 전송/연결 상태를 바꾸는 mutation(전송, link 설정/해제/재발급, claim/역주입) 성공 시마다 호출.
+   *  상위 페이지가 meeting을 refetch해 배지·진입점 상태 텍스트를 최신화하도록 하는 훅. */
+  onChanged?: () => void
 }
 
 const UNKNOWN_USER_MESSAGE = "D'Flow에 동일 이메일 계정이 필요합니다. D'Flow 관리자에게 계정 생성을 요청하세요."
@@ -50,7 +53,7 @@ async function parseDflowError(err: unknown, fallback: string): Promise<{ messag
  * 조회해 team 자동 판정·제목 자동 조립을 미리보기로 재현하고, 전송/연결 관리(수동 입력·해제·재발급·
  * D'Flow에서 찾기)를 제공한다. ExportButton 드롭다운의 "D'Flow로 전송" 항목에서 연다.
  */
-export default function SendToDflowDialog({ meeting, onClose }: SendToDflowDialogProps) {
+export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendToDflowDialogProps) {
   const user = useAuthStore((s) => s.user)
 
   const [status, setStatus] = useState<DflowMeetingStatusWithExists | null>(null)
@@ -125,6 +128,7 @@ export default function SendToDflowDialog({ meeting, onClose }: SendToDflowDialo
       })
       setSendResult(result)
       setStatus({ ...result, exists_on_dflow: true })
+      onChanged?.()
     } catch (err) {
       const { message, code } = await parseDflowError(err, '전송에 실패했습니다.')
       if (code === 'dflow_unknown_user') {
@@ -164,6 +168,7 @@ export default function SendToDflowDialog({ meeting, onClose }: SendToDflowDialo
       await setDflowLink(meeting.id, null)
       await refreshStatus()
       setReissueNotice(false)
+      onChanged?.()
     } catch (err) {
       const { message } = await parseDflowError(err, '연결 해제에 실패했습니다.')
       setLinkActionError(message)
@@ -181,6 +186,7 @@ export default function SendToDflowDialog({ meeting, onClose }: SendToDflowDialo
       await setDflowLink(meeting.id, null)
       await refreshStatus()
       setReissueNotice(true)
+      onChanged?.()
     } catch (err) {
       const { message } = await parseDflowError(err, '재발급 준비에 실패했습니다.')
       setLinkActionError(message)
@@ -192,19 +198,21 @@ export default function SendToDflowDialog({ meeting, onClose }: SendToDflowDialo
   async function handleManualSave() {
     setManualUidError(null)
     setManualMissingWarning(false)
-    const trimmed = manualUid.trim()
-    if (!isValidDflowUuid(trimmed)) {
+    // 서버 link는 소문자 UUID만 허용 — 대문자 붙여넣기도 통과시키기 위해 정규화 후 검증·전송.
+    const normalized = manualUid.trim().toLowerCase()
+    if (!isValidDflowUuid(normalized)) {
       setManualUidError('올바른 UUID 형식이 아닙니다.')
       return
     }
     setManualSaving(true)
     try {
-      await setDflowLink(meeting.id, trimmed)
+      await setDflowLink(meeting.id, normalized)
       const fresh = await refreshStatus()
       if (fresh && fresh.exists_on_dflow === false) {
         setManualMissingWarning(true)
       }
       setManualUid('')
+      onChanged?.()
     } catch (err) {
       const { message } = await parseDflowError(err, '연결 저장에 실패했습니다.')
       setManualUidError(message)
@@ -216,6 +224,7 @@ export default function SendToDflowDialog({ meeting, onClose }: SendToDflowDialo
   async function handleMinuteLinked() {
     await refreshStatus()
     setShowSearch(false)
+    onChanged?.()
   }
 
   return (

@@ -441,6 +441,7 @@ export default function MeetingPage() {
             onGoLive={() => navigate(`/meetings/${meetingId}/live`)}
             onDelete={deleteMeeting}
             canEdit={canEdit}
+            onChanged={refetch}
           />
         ) : undefined}
       />

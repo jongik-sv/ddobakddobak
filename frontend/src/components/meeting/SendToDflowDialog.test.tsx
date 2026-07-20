@@ -230,6 +230,26 @@ describe('SendToDflowDialog', () => {
     expect(await screen.findByText(/D'Flow에 해당 회의록이 없습니다/)).toBeInTheDocument()
   })
 
+  it('수동 입력: 대문자로 붙여넣어도 소문자로 정규화해 검증·전송한다', async () => {
+    vi.mocked(setDflowLink).mockResolvedValue({ public_uid: '01911f3e-7a3b-7000-8000-abcdefabcdef', dflow_synced_at: null, dflow_url: null, needs_resync: false })
+    vi.mocked(getDflowStatus)
+      .mockResolvedValueOnce(emptyStatus)
+      .mockResolvedValueOnce({ public_uid: '01911f3e-7a3b-7000-8000-abcdefabcdef', dflow_synced_at: null, dflow_url: null, needs_resync: false, exists_on_dflow: true })
+
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+    await userEvent.click(screen.getByText('연결 관리'))
+    await userEvent.click(screen.getByRole('button', { name: '수동 입력' }))
+    const input = screen.getByLabelText("D'Flow public_uid 수동 입력")
+    await userEvent.type(input, '01911F3E-7A3B-7000-8000-ABCDEFABCDEF')
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      // 서버 link는 소문자 전용 — 대문자 입력도 소문자로 정규화해 보내야 422를 피한다.
+      expect(setDflowLink).toHaveBeenCalledWith(1, '01911f3e-7a3b-7000-8000-abcdefabcdef')
+    })
+  })
+
   it('재발급: confirmDialog 승인 시 해제 후 안내 문구를 표시한다', async () => {
     vi.mocked(getDflowStatus)
       .mockResolvedValueOnce({ public_uid: 'existing-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false, exists_on_dflow: true })
@@ -342,6 +362,121 @@ describe('SendToDflowDialog', () => {
       await userEvent.click(linkButton)
 
       expect(await screen.findByText('이미 다른 회의에 연결된 항목입니다.')).toBeInTheDocument()
+    })
+  })
+
+  describe('onChanged 훅', () => {
+    it('전송 성공 시 onChanged를 호출한다', async () => {
+      vi.mocked(uploadToDflow).mockResolvedValue({
+        public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+      })
+      const onChanged = vi.fn()
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} onChanged={onChanged} />)
+      await screen.findByText('MES')
+
+      await userEvent.click(screen.getByRole('button', { name: '전송' }))
+
+      await waitFor(() => {
+        expect(onChanged).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    it('해제 성공 시 onChanged를 호출한다', async () => {
+      vi.mocked(getDflowStatus).mockResolvedValue({
+        public_uid: 'existing-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false, exists_on_dflow: true,
+      })
+      vi.mocked(setDflowLink).mockResolvedValue({ public_uid: null, dflow_synced_at: null, dflow_url: null, needs_resync: false })
+      const onChanged = vi.fn()
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} onChanged={onChanged} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByText('연결 관리'))
+      await screen.findByText('existing-uid')
+
+      await userEvent.click(screen.getByRole('button', { name: '해제' }))
+
+      await waitFor(() => {
+        expect(onChanged).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    it('재발급 성공 시 onChanged를 호출한다', async () => {
+      vi.mocked(getDflowStatus)
+        .mockResolvedValueOnce({ public_uid: 'existing-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false, exists_on_dflow: true })
+        .mockResolvedValueOnce(emptyStatus)
+      vi.mocked(setDflowLink).mockResolvedValue({ public_uid: null, dflow_synced_at: null, dflow_url: null, needs_resync: false })
+      const onChanged = vi.fn()
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} onChanged={onChanged} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByText('연결 관리'))
+      await screen.findByText('existing-uid')
+
+      await userEvent.click(screen.getByRole('button', { name: '재발급' }))
+
+      await waitFor(() => {
+        expect(onChanged).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    it('수동 입력 저장 성공 시 onChanged를 호출한다', async () => {
+      vi.mocked(setDflowLink).mockResolvedValue({ public_uid: '01911f3e-7a3b-7000-8000-abcdefabcdef', dflow_synced_at: null, dflow_url: null, needs_resync: false })
+      vi.mocked(getDflowStatus)
+        .mockResolvedValueOnce(emptyStatus)
+        .mockResolvedValueOnce({ public_uid: '01911f3e-7a3b-7000-8000-abcdefabcdef', dflow_synced_at: null, dflow_url: null, needs_resync: false, exists_on_dflow: true })
+      const onChanged = vi.fn()
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} onChanged={onChanged} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByText('연결 관리'))
+      await userEvent.click(screen.getByRole('button', { name: '수동 입력' }))
+      const input = screen.getByLabelText("D'Flow public_uid 수동 입력")
+      await userEvent.type(input, '01911f3e-7a3b-7000-8000-abcdefabcdef')
+      await userEvent.click(screen.getByRole('button', { name: '저장' }))
+
+      await waitFor(() => {
+        expect(onChanged).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    it("D'Flow에서 찾기로 연결(claim) 성공 시 onChanged를 호출한다", async () => {
+      vi.mocked(listDflowMinutes).mockResolvedValue({
+        items: [{
+          id: 'minute-4', title: '외부 제목4', date: '2026-07-04', team: 'MES',
+          external_id: null,
+          created_by_name: '누군가', created_at: '', updated_at: '', url: 'https://x',
+        }],
+        total: 1, page: 1, per_page: 20,
+      })
+      vi.mocked(claimDflowMinute).mockResolvedValue({ public_uid: 'new-uid', dflow_synced_at: null, dflow_url: null, needs_resync: false })
+      const onChanged = vi.fn()
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} onChanged={onChanged} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByText('연결 관리'))
+      await userEvent.click(screen.getByRole('button', { name: "D'Flow에서 찾기" }))
+      await userEvent.click(screen.getByRole('button', { name: '검색' }))
+      const linkButton = await screen.findByRole('button', { name: '연결' })
+      await userEvent.click(linkButton)
+
+      await waitFor(() => {
+        expect(onChanged).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    it('mutation 실패 시(예: 해제 실패)는 onChanged를 호출하지 않는다', async () => {
+      vi.mocked(getDflowStatus).mockResolvedValue({
+        public_uid: 'existing-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false, exists_on_dflow: true,
+      })
+      vi.mocked(setDflowLink).mockRejectedValue(makeHttpError(500, { error: 'boom' }))
+      const onChanged = vi.fn()
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} onChanged={onChanged} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByText('연결 관리'))
+      await screen.findByText('existing-uid')
+
+      await userEvent.click(screen.getByRole('button', { name: '해제' }))
+
+      await waitFor(() => {
+        expect(setDflowLink).toHaveBeenCalled()
+      })
+      expect(onChanged).not.toHaveBeenCalled()
     })
   })
 })
