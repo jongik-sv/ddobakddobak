@@ -220,6 +220,8 @@ Rails.application.routes.draw do
       put  "settings/hf", to: "settings#update_hf"
       get  "settings/app", to: "settings#app_settings"
       put  "settings/app", to: "settings#update_app_settings"
+      get  "settings/dflow", to: "settings#dflow"
+      put  "settings/dflow", to: "settings#update_dflow"
     end
   end
 end
