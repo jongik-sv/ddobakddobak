@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { Download } from 'lucide-react'
-import { exportMeeting, exportMeetingData, exportPrompt } from '../../api/meetings'
+import { exportMeeting, exportMeetingData, exportPrompt, getMeeting } from '../../api/meetings'
+import type { Meeting } from '../../api/meetings'
+import { getDflowSettings } from '../../api/dflow'
 import { downloadMarkdown } from '../../lib/markdown'
 import { downloadBlob, downloadText } from '../../lib/download'
 import { Tooltip } from '../ui/Tooltip'
 import { ACTION_NEUTRAL } from './actionButtonStyles'
+import SendToDflowDialog from './SendToDflowDialog'
 
 type ExportFormat = 'md' | 'pdf' | 'docx' | 'prompt'
 
@@ -37,6 +40,13 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
   const [error, setError] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
+  // D'Flow 진입점: 패널 열릴 때마다 최신 회의 상태(status·folder_path·dflow_*)와 연동 활성화
+  // 여부를 조회한다. MeetingActions.tsx가 이미 들고 있는 meeting을 내려받지 않고(진입점 변경
+  // 범위를 ExportButton 내부로 한정) 자체 조회 — 패널을 여는 사용자 액션 빈도가 낮아 비용 작음.
+  const [dflowMeeting, setDflowMeeting] = useState<Meeting | null>(null)
+  const [dflowEnabled, setDflowEnabled] = useState(false)
+  const [showDflowDialog, setShowDflowDialog] = useState(false)
+
   // 외부 클릭으로 패널 닫기
   useEffect(() => {
     if (!isOpen) return
@@ -48,6 +58,26 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    let cancelled = false
+    Promise.all([getMeeting(meetingId), getDflowSettings()])
+      .then(([meeting, settings]) => {
+        if (cancelled) return
+        setDflowMeeting(meeting)
+        setDflowEnabled(settings.enabled)
+      })
+      .catch(() => {
+        // 실패 시 항목을 숨긴다(fail-closed) — 노출 조건을 확인할 수 없으면 노출하지 않음.
+        if (cancelled) return
+        setDflowMeeting(null)
+        setDflowEnabled(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, meetingId])
 
   const exportOptions = {
     include_summary: includeSummary,
@@ -106,9 +136,9 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
         </button>
       </Tooltip>
 
-      {/* 옵션 패널 */}
+      {/* 옵션 패널 — D'Flow 구획을 위해 w-80(320px)으로 확대(기존 w-64) */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-64 bg-card border border-border rounded-lg shadow-lg p-4 z-50">
+        <div className="absolute right-0 top-full mt-1 w-80 bg-card border border-border rounded-lg shadow-lg p-4 z-50">
           <p className="text-sm font-medium text-foreground mb-3">회의록 내보내기</p>
 
           {/* 형식 선택 */}
@@ -192,7 +222,33 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate }: ExportBut
               {isDownloading ? '다운로드 중...' : downloadLabel}
             </button>
           </div>
+
+          {/* D'Flow로 전송 진입점 — 완료된 회의 + D'Flow 연동 활성화 시에만 노출 */}
+          {dflowMeeting?.status === 'completed' && dflowEnabled && (
+            <>
+              <div className="my-3 border-t border-border" />
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDflowDialog(true)
+                  setIsOpen(false)
+                }}
+                className="flex w-full min-h-[44px] items-center justify-between rounded-md px-3 py-2 text-sm text-foreground hover:bg-accent"
+              >
+                <span>D'Flow로 전송</span>
+                {dflowMeeting.dflow_needs_resync ? (
+                  <span className="text-xs text-amber-600">재전송 필요</span>
+                ) : dflowMeeting.dflow_synced_at ? (
+                  <span className="text-xs text-muted-foreground">전송됨</span>
+                ) : null}
+              </button>
+            </>
+          )}
         </div>
+      )}
+
+      {showDflowDialog && dflowMeeting && (
+        <SendToDflowDialog meeting={dflowMeeting} onClose={() => setShowDflowDialog(false)} />
       )}
     </div>
   )
