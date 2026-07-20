@@ -77,6 +77,11 @@ export interface Meeting {
   summary_error_message?: string | null
   /** 최근 최종 요약 실패 시각 (ISO 문자열). */
   summary_error_at?: string | null
+  /** 요약(regenerate/summarize/final/realtime) 진행 중 영속 상태. 서버가 토글 —
+   *  페이지 이탈·새로고침 후에도 회의목록 StatusBadge 와 상세 배지가 "요약중"을 표시. */
+  summarizing?: boolean
+  /** 요약 시작 시각 (ISO 문자열). summarizing=false 면 null. */
+  summarization_started_at?: string | null
   /** 이전 회의 참고: 이 회의록의 시작점(시드)이 된 회의 id (상세 응답에만 포함) */
   previous_meeting_id?: number | null
   /** 이전 회의 참고 배지 표시용 제목 (상세 응답에만 포함) */

@@ -149,6 +149,23 @@ export default function MeetingPage() {
     setSummaryError({ kind: 'final', message: meeting.summary_error_message })
   }, [meetingId, meeting, setSummaryError])
 
+  // 영속 "요약중" 상태 주입: 서버가 내려준 meeting.summarizing 을 store 에 반영해
+  // AiSummaryPanel 의 기존 isSummarizing 배지를 새로고침·페이지 진입 직후에도 띄운다.
+  // ActionCable(summarization_started/finished)이 오면 그것이 덮어쓴다(더 정확한 kind 포함).
+  // kind 추정: recording 중이면 realtime 틱, 그 외(completed 재생성 등)는 final 로 폴백.
+  const setSummarizing = useTranscriptStore((s) => s.setSummarizing)
+  useEffect(() => {
+    if (!meeting || meeting.id !== meetingId) return
+    if (!meeting.summarizing) {
+      // 서버가 이미 종료(summarizing=false)를 알림 — 잔류 배지가 있으면 해제.
+      if (useTranscriptStore.getState().isSummarizing) setSummarizing(null)
+      return
+    }
+    // broadcast 가 먼저 활성화한 상태면 그 kind 를 존중(덮어쓰지 않음).
+    if (useTranscriptStore.getState().isSummarizing) return
+    setSummarizing(meeting.status === 'recording' ? 'realtime' : 'final')
+  }, [meetingId, meeting, setSummarizing])
+
   // 메모 에디터 + 토글
   const memoVisible = useUiStore((s) => s.memoVisible)
   const toggleMemo = useUiStore((s) => s.toggleMemo)

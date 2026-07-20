@@ -320,6 +320,25 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(json["meeting"]["action_items"].first["id"]).to eq(action_item.id)
       end
 
+      # 요약 진행 중 상태 영속 필드가 meeting_json 에 노출되는지 (회의목록 StatusBadge용).
+      it "exposes summarizing + summarization_started_at in the meeting json" do
+        get "/api/v1/meetings/#{meeting.id}"
+
+        json = response.parsed_body["meeting"]
+        expect(json["summarizing"]).to be false
+        expect(json).to have_key("summarization_started_at")
+      end
+
+      it "exposes summarizing=true when a summary is in progress (영속 상태 배지용)" do
+        meeting.update_columns(summarizing: true, summarization_started_at: Time.current)
+
+        get "/api/v1/meetings/#{meeting.id}"
+
+        json = response.parsed_body["meeting"]
+        expect(json["summarizing"]).to be true
+        expect(json["summarization_started_at"]).to be_present
+      end
+
       it "returns transcripts ordered by sequence_number" do
         create(:transcript, meeting: meeting, sequence_number: 3, content: "Third")
         create(:transcript, meeting: meeting, sequence_number: 1, content: "First")

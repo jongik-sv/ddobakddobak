@@ -113,6 +113,9 @@ class MeetingSummarizationJob < ApplicationJob
   end
 
   def broadcast_started(meeting, summary_type)
+    # 요약 시작을 회의에 영속화 — 회의목록·상세 배지가 페이지 이탈·새로고침 후에도 "요약중"을
+    # 유지한다. broadcast_finished 에서 짝 맞춰 해제한다(limits_concurrency 로 중복 실행 없음).
+    meeting.record_summary_start!
     ActionCable.server.broadcast(meeting.transcription_stream, {
       type: "summarization_started",
       summary_type: summary_type
@@ -121,6 +124,9 @@ class MeetingSummarizationJob < ApplicationJob
 
   # error: 실패 사유(사용자 레포트용). ok:true 면 nil — 프론트가 ok:false + error 로 토스트/배지를 띄운다.
   def broadcast_finished(meeting, summary_type, ok:, error: nil)
+    # 요약 종료 영속화 — 멱등(broadcast_started 없이 온 give-up 경로에도 false 유지로 무해).
+    # record_summary_error! 가 먼저 불린 final 실패 경로에서도 안전 — 두 메서드는 독립 컬럼.
+    meeting.record_summary_finished!
     ActionCable.server.broadcast(meeting.transcription_stream, {
       type: "summarization_finished",
       summary_type: summary_type,

@@ -45,6 +45,10 @@ module MeetingSerializable
       # 최근 final 요약 실패 사유/시각 (성공 저장 시 클리어) — 새로고침 후에도 실패를 레포트.
       summary_error_message: meeting.summary_error_message,
       summary_error_at: meeting.summary_error_at,
+      # 요약(regenerate/summarize/final/realtime) 진행 중 영속 상태 — 회의목록 StatusBadge 와
+      # 상세 배지가 페이지 이탈·새로고침 후에도 "요약중"을 표시. 목록(full:false)에도 노출.
+      summarizing: meeting.summarizing?,
+      summarization_started_at: meeting.summarization_started_at&.iso8601,
       stt_engine: meeting.stt_engine,
       scheduled_start_time: meeting.scheduled_start_time,
       auto_start_mode: meeting.auto_start_mode,
