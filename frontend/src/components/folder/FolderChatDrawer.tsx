@@ -9,17 +9,19 @@ import { BREAKPOINTS } from '../../config'
 import { useUiStore } from '../../stores/uiStore'
 
 // 우측 슬라이드오버 폴더/프로젝트 챗. 스코프 셀렉터로 '이 폴더' ↔ '프로젝트 전체' 전환.
-export function FolderChatDrawer({
-  open, onClose, folderId, projectId, folderName,
-}: {
-  open: boolean
-  onClose: () => void
-  folderId?: number | null
-  projectId?: number | null
-  folderName?: string
-}) {
+// App.tsx(GatedApp)의 Routes와 형제인 글로벌 영역에 단일 마운트 — 라우트 전환(회의 상세로
+// 이동 등)해도 드로어가 언마운트되지 않는다(idea.md #35 2단계). 열림/스코프는 uiStore가 들고
+// 세션만 유지(localStorage 미영속) → 새로고침엔 닫힌 상태로 시작.
+export function FolderChatDrawer() {
   const navigate = useNavigate()
-  const [scope, setScope] = useState<'folder' | 'project'>(folderId ? 'folder' : 'project')
+  const open = useUiStore((s) => s.folderChatOpen)
+  const scope = useUiStore((s) => s.folderChatScope)
+  const closeFolderChat = useUiStore((s) => s.closeFolderChat)
+  const folderId = scope?.folderId ?? null
+  const projectId = scope?.projectId ?? null
+  const folderName = scope?.folderName
+
+  const [scopeTab, setScopeTab] = useState<'folder' | 'project'>(folderId ? 'folder' : 'project')
   const isDesktop = useMediaQuery(BREAKPOINTS.lg)
   const folderChatWidth = useUiStore((s) => s.folderChatWidth)
   const setFolderChatWidth = useUiStore((s) => s.setFolderChatWidth)
@@ -56,27 +58,26 @@ export function FolderChatDrawer({
 
   if (!open) return null
 
-  // scope는 마운트 시 한 번 초기화되므로 stale일 수 있음(드로어는 항상 마운트, open만 토글).
-  // 선택 스코프의 id가 없으면 다른 스코프로 폴백 → 빈 드로어로 안 뜨는 버그 방지.
+  // scope는 폴더/프로젝트 중 실제 id가 있는 쪽으로 폴백 → 빈 드로어로 안 뜨는 버그 방지.
   const effectiveScope: 'folder' | 'project' =
-    scope === 'folder' && folderId ? 'folder'
-      : scope === 'project' && projectId ? 'project'
+    scopeTab === 'folder' && folderId ? 'folder'
+      : scopeTab === 'project' && projectId ? 'project'
         : folderId ? 'folder' : 'project'
   const scopeType: ChatScopeType = effectiveScope
   const scopeId = effectiveScope === 'folder' ? folderId : projectId
   if (!scopeId) return null
 
-  // cross-meeting 인용 클릭 → 해당 회의 페이지로 이동(+seek 파라미터). 자동 seek는 Task 12.
+  // cross-meeting 인용 클릭 → 해당 회의 페이지로 이동(+seek 파라미터). 드로어는 닫지 않고 유지 —
+  // 회의 상세를 보면서 드로어의 다른 질문을 이어할 수 있다(idea.md #35 2단계 핵심).
   const onSeekMeeting = (meetingId: number, ms: number) => {
     navigate(`/meetings/${meetingId}?t=${ms}`)
-    onClose()
   }
 
   const tabBtn = (val: 'folder' | 'project', label: string, disabled?: boolean) => (
     <button
       type="button"
       disabled={disabled}
-      onClick={() => setScope(val)}
+      onClick={() => setScopeTab(val)}
       className={`px-2 py-1 text-xs rounded ${effectiveScope === val ? 'bg-blue-600 text-white' : 'text-muted-foreground'} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
     >
       {label}
@@ -90,7 +91,7 @@ export function FolderChatDrawer({
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-black/20" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/20" onClick={closeFolderChat} />
       <div className={containerClass} style={isDesktop ? { width: folderChatWidth } : undefined}>
         {isDesktop && (
           <div
@@ -110,7 +111,7 @@ export function FolderChatDrawer({
                 🤖 {chatModel}
               </span>
             )}
-            <button type="button" aria-label="닫기" onClick={onClose}><X size={18} /></button>
+            <button type="button" aria-label="닫기" onClick={closeFolderChat}><X size={18} /></button>
           </div>
         </div>
         <div className="flex-1 min-h-0">

@@ -13,7 +13,6 @@ import { useMeetingsFolderView } from '../hooks/useMeetingsFolderView'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import type { Meeting } from '../api/meetings'
 import FolderBreadcrumb from '../components/folder/FolderBreadcrumb'
-import { FolderChatDrawer } from '../components/folder/FolderChatDrawer'
 import MoveMeetingDialog from '../components/folder/MoveMeetingDialog'
 import MoveToProjectModal from '../components/project/MoveToProjectModal'
 import { useProjectStore } from '../stores/projectStore'
@@ -28,6 +27,7 @@ import { MeetingListTable } from '../components/meeting/MeetingListTable'
 import { MeetingsHeader } from '../components/meeting/MeetingsHeader'
 import ImportTransferButton from '../components/transfer/ImportTransferButton'
 import { folderName } from '../lib/meetingFormat'
+import { useUiStore } from '../stores/uiStore'
 import { VIEW_MODE_KEY, getStoredViewMode, type ViewMode, type SortField, type SortDirection } from './meetings/types'
 
 export default function MeetingsPage() {
@@ -69,8 +69,8 @@ export default function MeetingsPage() {
   const [movingProjectMeeting, setMovingProjectMeeting] = useState<Meeting | null>(null)
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
   const [exportingMeeting, setExportingMeeting] = useState<Meeting | null>(null)
-  const [askOpen, setAskOpen] = useState(false)
   const currentProjectId = useProjectStore((s) => s.currentProjectId)
+  const openFolderChat = useUiStore((s) => s.openFolderChat)
 
   // "폴더에게 묻기" 대상 폴더 id — selectedFolderId가 'all'/null이면 폴더 스코프 없음(프로젝트 전체).
   const askFolderId = typeof selectedFolderId === 'number' ? selectedFolderId : null
@@ -229,7 +229,11 @@ export default function MeetingsPage() {
         onOpenFilterSheet={() => setFilterSheetOpen(true)}
         onUploadAudio={() => setShowUploadModal(true)}
         onCreateMeeting={() => setShowModal(true)}
-        onAskFolder={() => setAskOpen(true)}
+        onAskFolder={() => openFolderChat({
+          folderId: askFolderId,
+          projectId: currentProjectId,
+          folderName: askFolderId != null ? folderName(folders, askFolderId) ?? undefined : undefined,
+        })}
         canAsk={canAsk}
       />
 
@@ -556,15 +560,6 @@ export default function MeetingsPage() {
       {exportingMeeting && (
         <ExportMeetingDialog meeting={exportingMeeting} onClose={() => setExportingMeeting(null)} />
       )}
-
-      {/* 폴더/프로젝트에게 묻기 드로어 */}
-      <FolderChatDrawer
-        open={askOpen}
-        onClose={() => setAskOpen(false)}
-        folderId={askFolderId}
-        projectId={currentProjectId}
-        folderName={askFolderId != null ? folderName(folders, askFolderId) ?? undefined : undefined}
-      />
 
       {/* 모바일 FAB (새 회의) */}
       {!isDesktop && (

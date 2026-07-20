@@ -3,10 +3,10 @@ import { getScopedChatMessages, sendScopedChatMessage, type ChatMessage, type Ch
 
 /**
  * 스코프별 챗 상태. scopeKey = `${scopeType}:${scopeId}`.
- * 폴더/프로젝트 챗(FolderChatDrawer)에서 회의 인용 마커를 클릭하면 라우트가 바뀌며
- * AiChatPanel이 리마운트된다. 단일 messages 배열이면 매번 서버 재조회+초기화로
- * 대화·draft·스크롤위치가 날아가므로, 스코프 키 맵으로 캐싱해 즉시 복원한다.
- * (idea.md #35 1단계 — 2단계 "라우트 공통 부모 승격"은 미구현)
+ * 폴더/프로젝트 챗(FolderChatDrawer)은 App.tsx 글로벌 영역에 단일 마운트되어
+ * 라우트 전환에도 언마운트되지 않는다(idea.md #35 2단계). 하지만 폴더↔프로젝트
+ * 스코프 탭 전환 등으로 AiChatPanel이 리마운트될 수 있으므로 스코프 키 맵으로
+ * messages·draft·스크롤위치를 캐싱해 즉시 복원한다(idea.md #35 1단계).
  */
 export interface ChatScopeState {
   messages: ChatMessage[]

@@ -9,6 +9,7 @@ import SetupGate from './components/SetupGate'
 import { AuthGuard } from './components/auth/AuthGuard'
 import SettingsModal from './components/settings/SettingsModal'
 import UserManagementModal from './components/settings/UserManagementModal'
+import { FolderChatDrawer } from './components/folder/FolderChatDrawer'
 import { useRecordingRecovery } from './hooks/useRecordingRecovery'
 import { ScheduledMeetingWatcher } from './components/ScheduledMeetingWatcher'
 import { ClosePrompt } from './components/ClosePrompt'
@@ -241,6 +242,9 @@ function GatedApp() {
     <RecordingLayer />
     <SettingsModal />
     <UserManagementModal />
+    {/* 폴더/프로젝트 챗 드로어 — Routes와 형제인 글로벌 영역에 단일 마운트.
+        회의 상세(/meetings/:id)로 이동해도 드로어가 언마운트되지 않는다(idea.md #35 2단계). */}
+    <FolderChatDrawer />
     </AuthGuard>
     </SetupGate>
   )
