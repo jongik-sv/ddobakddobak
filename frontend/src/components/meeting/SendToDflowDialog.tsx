@@ -287,17 +287,28 @@ export default function SendToDflowDialog({ meeting, onClose }: SendToDflowDialo
           )}
 
           {sendResult ? (
-            <div className="rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
-              전송됨
-              {sendResult.dflow_url && (
-                <>
-                  {' · '}
-                  <a href={sendResult.dflow_url} target="_blank" rel="noopener noreferrer" className="underline">
-                    D'Flow에서 보기
-                  </a>
-                </>
-              )}
-            </div>
+            <>
+              <div className="rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
+                전송됨
+                {sendResult.dflow_url && (
+                  <>
+                    {' · '}
+                    <a href={sendResult.dflow_url} target="_blank" rel="noopener noreferrer" className="underline">
+                      D'Flow에서 보기
+                    </a>
+                  </>
+                )}
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+                >
+                  닫기
+                </button>
+              </div>
+            </>
           ) : (
             <div className="flex justify-end gap-2">
               <button

@@ -111,6 +111,24 @@ describe('SendToDflowDialog', () => {
     )
   })
 
+  it('전송 성공 후 닫기 버튼이 렌더되고 클릭 시 onClose를 호출한다', async () => {
+    vi.mocked(uploadToDflow).mockResolvedValue({
+      public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://dflow.example.com/m/1', needs_resync: false,
+    })
+    const onClose = vi.fn()
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={onClose} />)
+    await screen.findByText('MES')
+
+    await userEvent.click(screen.getByRole('button', { name: '전송' }))
+    await screen.findByRole('link', { name: "D'Flow에서 보기" })
+
+    // 성공 후에는 전송 버튼 행이 사라지고 닫기 버튼만 남는다 — Esc 외 닫을 수단이 없어지는 회귀 방지.
+    expect(screen.queryByRole('button', { name: '전송' })).not.toBeInTheDocument()
+    const closeButton = screen.getByRole('button', { name: '닫기' })
+    await userEvent.click(closeButton)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('team 판정 실패 상태에서 전송 시 select 값을 teamOverride로 포함한다', async () => {
     vi.mocked(uploadToDflow).mockResolvedValue({
       public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: null, needs_resync: false,
