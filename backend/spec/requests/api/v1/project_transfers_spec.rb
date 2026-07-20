@@ -172,5 +172,39 @@ RSpec.describe "Api::V1::ProjectTransfers", type: :request do
         expect(response).to have_http_status(:forbidden)
       end
     end
+
+    # ── T7: public_uid 충돌 warnings 노출 ──────────────────────────────────
+
+    context "public_uid 충돌 아카이브 import (T7)" do
+      before { login_as(admin) }
+
+      it "201 + warnings 1건을 응답에 포함한다" do
+        meeting.update_columns(
+          public_uid:      "0199abc0-0000-7000-8000-000000000055",
+          dflow_synced_at: Time.zone.parse("2026-07-01 10:00:00"),
+          dflow_url:       "https://dflow.example.com/meetings/abc"
+        )
+        archive = export_archive
+
+        post "/api/v1/projects/import",
+             params: { file: upload_file(archive) }
+
+        expect(response).to have_http_status(:created)
+        body = response.parsed_body
+        expect(body["warnings"]).to contain_exactly(
+          "D'Flow 연결 식별자가 이미 사용 중이라 해제된 채 복원됨 — 연결 관리에서 재설정"
+        )
+      end
+
+      it "충돌이 없으면 warnings 는 빈 배열이다" do
+        archive = export_archive
+
+        post "/api/v1/projects/import",
+             params: { file: upload_file(archive) }
+
+        expect(response).to have_http_status(:created)
+        expect(response.parsed_body["warnings"]).to eq([])
+      end
+    end
   end
 end

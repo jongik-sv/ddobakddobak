@@ -97,6 +97,14 @@ export interface Meeting {
   recording_client_id?: string | null
   /** recording 상태이고 녹음 클라 하트비트가 신선한지 (서버 계산). 기기 점유 판정용. */
   recorder_active?: boolean
+  /** D'Flow 전송 식별자(UUIDv7). 최초 전송 시 발급, 이후 불변(수동 해제/재발급 제외). show=full 응답에만 포함. */
+  public_uid?: string | null
+  /** 마지막 D'Flow 전송 성공 시각(ISO 문자열). show=full 응답에만 포함. */
+  dflow_synced_at?: string | null
+  /** D'Flow 전송 응답의 상세 페이지 링크. show=full 응답에만 포함. */
+  dflow_url?: string | null
+  /** 최초 전송 이후 로컬 편집/요약 갱신이 마지막 전송보다 최신인지(서버 계산). show=full 응답에만 포함. */
+  dflow_needs_resync?: boolean
 }
 
 /** 반복 예약 규칙. days: 0=일~6=토 (weekly에서만 사용). time: "HH:MM". tz: IANA 타임존. */

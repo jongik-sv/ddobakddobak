@@ -6,7 +6,7 @@ module Api
       include TokenMasking
 
       before_action :authenticate_user!
-      before_action :require_admin!, only: %i[update_stt update_stt_file update_llm test_llm update_hf]
+      before_action :require_admin!, only: %i[update_stt update_stt_file update_llm test_llm update_hf update_dflow]
 
       SETTINGS_PATH = AppSettings::SETTINGS_PATH
 
@@ -236,6 +236,32 @@ module Api
             has_token: true
           }
         end
+      end
+
+      # ── D'Flow ──
+
+      def dflow
+        cfg = load_settings
+        dflow_cfg = cfg["dflow"] || {}
+        render json: {
+          enabled: dflow_cfg["enabled"] || false,
+          base_url: dflow_cfg["base_url"],
+          api_secret_masked: mask_token(dflow_cfg["api_secret"].to_s)
+        }
+      end
+
+      def update_dflow
+        cfg = load_settings
+        cfg["dflow"] ||= {}
+        dflow_cfg = cfg["dflow"]
+
+        dflow_cfg["enabled"] = ActiveModel::Type::Boolean.new.cast(params[:enabled]) if params.key?(:enabled)
+        dflow_cfg["base_url"] = params[:base_url] if params.key?(:base_url)
+        # 마스킹된 값 재전송 방지: present일 때만 갱신 (update_llm 관례 동일)
+        dflow_cfg["api_secret"] = params[:api_secret] if params[:api_secret].to_s.present?
+
+        save_settings(cfg)
+        dflow
       end
 
       # ── 앱 설정 (오디오/화자분리/요약 주기/언어) ──

@@ -32,7 +32,7 @@ module Api
       end
 
       # POST /api/v1/projects/:project_id/meetings/import  multipart file=<tar.gz>, body { folder_id? }
-      # → 새 Meeting 복원 후 { meeting_id: } 반환.
+      # → 새 Meeting 복원 후 { meeting_id:, warnings: } 반환.
       def import
         project = require_project!(params[:project_id])
         return unless project
@@ -62,7 +62,7 @@ module Api
           project: project,
           folder:  folder
         ).run!
-        render json: { meeting_id: result[:meeting_id] }, status: :created
+        render json: { meeting_id: result[:meeting_id], warnings: result[:warnings] }, status: :created
       rescue Transfer::Archive::UnsafeEntryError,
              Transfer::Archive::InvalidArchiveError,
              Zlib::GzipFile::Error,

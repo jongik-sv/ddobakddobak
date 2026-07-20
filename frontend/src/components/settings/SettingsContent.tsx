@@ -6,6 +6,7 @@ import { LlmSettingsPanel } from './LlmSettingsPanel'
 import VoiceSettingsTab from './VoiceSettingsTab'
 import MeetingSettingsTab from './MeetingSettingsTab'
 import UserSttSettings from './UserSttSettings'
+import { DflowSettingsPanel } from './DflowSettingsPanel'
 
 interface Props {
   /**
@@ -24,7 +25,7 @@ export default function SettingsContent({ offline = false }: Props = {}) {
   // 로컬모드/로컬계정(desktop@local)은 자동 로그인이라 비밀번호 변경 불필요
   const showPasswordSection = getMode() !== 'local' && user?.email !== 'desktop@local'
 
-  const [tab, setTab] = useState<'personal' | 'llm' | 'voice' | 'meeting'>('personal')
+  const [tab, setTab] = useState<'personal' | 'llm' | 'voice' | 'meeting' | 'dflow'>('personal')
 
   // 오프라인: 서버 fetch 패널은 모두 행/에러를 내므로 클라이언트-디바이스 전용 패널만 단일 컬럼으로.
   // UserSttSettings 안에 ModelManager(모델 다운로드·관리)가 포함되어 있다.
@@ -52,6 +53,7 @@ export default function SettingsContent({ offline = false }: Props = {}) {
     { id: 'llm', label: 'LLM' },
     { id: 'voice', label: '음성·인식' },
     { id: 'meeting', label: '회의록 설정' },
+    { id: 'dflow', label: '연동' },
   ] as const
 
   return (
@@ -78,6 +80,7 @@ export default function SettingsContent({ offline = false }: Props = {}) {
       {tab === 'llm' && <div className="max-w-2xl"><LlmSettingsPanel /></div>}
       {tab === 'voice' && <VoiceSettingsTab />}
       {tab === 'meeting' && <MeetingSettingsTab />}
+      {tab === 'dflow' && <div className="max-w-2xl"><DflowSettingsPanel /></div>}
     </div>
   )
 }

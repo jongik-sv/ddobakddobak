@@ -126,4 +126,39 @@ RSpec.describe Transfer::Archive do
       expect(result.key?("id")).to be false
     end
   end
+
+  # T7: MeetingRestorer 와 ProjectImporter 가 공유하는 public_uid 충돌 가드.
+  # 서비스별 통합 동작(경고 수집·전체 import 성공 등)은 각자의 spec 에서 검증하고,
+  # 여기서는 순수 가드 함수 자체의 계약(반환값·attrs mutate)만 단위 검증한다.
+  describe ".guard_public_uid_conflict!" do
+    let!(:existing) { create(:meeting, public_uid: "0199abc0-0000-7000-8000-000000000001") }
+
+    it "public_uid 가 blank 면 false 를 반환하고 attrs 를 건드리지 않는다" do
+      attrs = { "public_uid" => nil, "dflow_synced_at" => nil, "dflow_url" => nil }
+      expect(described_class.guard_public_uid_conflict!(attrs)).to be false
+      expect(attrs).to eq({ "public_uid" => nil, "dflow_synced_at" => nil, "dflow_url" => nil })
+    end
+
+    it "로컬에 동일 uid 가 없으면 false 를 반환하고 3필드를 보존한다" do
+      attrs = {
+        "public_uid" => "0199abc0-0000-7000-8000-000000000002",
+        "dflow_synced_at" => "2026-01-01T00:00:00Z",
+        "dflow_url" => "https://dflow.example.com/x"
+      }
+      expect(described_class.guard_public_uid_conflict!(attrs)).to be false
+      expect(attrs["public_uid"]).to eq("0199abc0-0000-7000-8000-000000000002")
+    end
+
+    it "로컬에 동일 uid 가 있으면 true 를 반환하고 3필드를 nil 로 mutate 한다" do
+      attrs = {
+        "public_uid" => existing.public_uid,
+        "dflow_synced_at" => "2026-01-01T00:00:00Z",
+        "dflow_url" => "https://dflow.example.com/x"
+      }
+      expect(described_class.guard_public_uid_conflict!(attrs)).to be true
+      expect(attrs["public_uid"]).to be_nil
+      expect(attrs["dflow_synced_at"]).to be_nil
+      expect(attrs["dflow_url"]).to be_nil
+    end
+  end
 end

@@ -383,6 +383,23 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         json = response.parsed_body
         expect(json["meeting"]["transcripts"].first["speaker_name"]).to eq("앨리스")
       end
+
+      it "D'Flow 전송 상태 필드(public_uid, dflow_synced_at, dflow_url, dflow_needs_resync)를 포함한다" do
+        meeting.update!(
+          public_uid: SecureRandom.uuid,
+          dflow_synced_at: 1.hour.ago,
+          dflow_url: "https://wbs-web.vercel.app/minutes/abc",
+          last_user_edit_at: Time.current
+        )
+
+        get "/api/v1/meetings/#{meeting.id}"
+
+        json = response.parsed_body["meeting"]
+        expect(json["public_uid"]).to eq(meeting.public_uid)
+        expect(json["dflow_synced_at"]).to be_present
+        expect(json["dflow_url"]).to eq("https://wbs-web.vercel.app/minutes/abc")
+        expect(json["dflow_needs_resync"]).to be true
+      end
     end
 
     context "존재하지 않는 회의 ID" do

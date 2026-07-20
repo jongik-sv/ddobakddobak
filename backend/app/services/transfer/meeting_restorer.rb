@@ -24,7 +24,7 @@ module Transfer
   #       Hash    → file_lookup[entry_name]              (enumerate 가능)
   #       callable → file_lookup.call(entry_name)        (enumerate 불가)
   class MeetingRestorer
-    attr_reader :copied_paths
+    attr_reader :copied_paths, :warnings
 
     # 전사는 회의당 수만 건까지 갈 수 있어 건당 insert 는 SQLite 변수 상한
     # (32766)을 넘길 수 없다. 11컬럼 기준 한 배치가 상한을 넘지 않도록 보수적으로 둔다.
@@ -47,6 +47,7 @@ module Transfer
       @previous_meeting_id = previous_meeting_id
       @tag_resolver        = tag_resolver
       @copied_paths        = []
+      @warnings            = []
     end
 
     # 새 Meeting + 자식 컬렉션을 생성하고 Meeting を 반환한다.
@@ -54,6 +55,7 @@ module Transfer
     # @return [Meeting]
     def restore!
       attrs = sanitize(Meeting, @m)
+      guard_public_uid_conflict!(attrs)
       attrs["project_id"]           = @project.id
       attrs["created_by_id"]        = @user.id
       attrs["folder_id"]            = @folder_id
@@ -78,6 +80,13 @@ module Transfer
     end
 
     private
+
+    # public_uid unique index 충돌 가드(T6/T7, 스펙 §3.4). 실제 검사·null-out 로직은
+    # ProjectImporter 와 공유하는 Transfer::Archive.guard_public_uid_conflict! 에 있다.
+    def guard_public_uid_conflict!(attrs)
+      return unless Transfer::Archive.guard_public_uid_conflict!(attrs)
+      @warnings << Transfer::Archive::PUBLIC_UID_CONFLICT_WARNING
+    end
 
     # ── 자식 복원 ──
 

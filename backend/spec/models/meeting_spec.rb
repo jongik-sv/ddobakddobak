@@ -374,4 +374,125 @@ RSpec.describe Meeting, type: :model do
       end
     end
   end
+
+  describe "D'Flow" do
+    describe "#dflow_root_folder_name / #dflow_sub_folder_name" do
+      it "폴더가 없으면 둘 다 nil" do
+        meeting = create(:meeting, folder: nil)
+        expect(meeting.dflow_root_folder_name).to be_nil
+        expect(meeting.dflow_sub_folder_name).to be_nil
+      end
+
+      it "최상위 폴더 직속이면 root=폴더명, sub=nil" do
+        root = create(:folder, name: "MDM")
+        meeting = create(:meeting, folder: root)
+        expect(meeting.dflow_root_folder_name).to eq("MDM")
+        expect(meeting.dflow_sub_folder_name).to be_nil
+      end
+
+      it "2단계 폴더면 root=최상위, sub=바로 아래" do
+        root = create(:folder, name: "MES")
+        sub = create(:folder, name: "물류", parent: root)
+        meeting = create(:meeting, folder: sub)
+        expect(meeting.dflow_root_folder_name).to eq("MES")
+        expect(meeting.dflow_sub_folder_name).to eq("물류")
+      end
+
+      it "3단계 이상 폴더면 root=최상위, sub=최상위 바로 아래(그 아래는 무시)" do
+        root = create(:folder, name: "MES")
+        mid = create(:folder, name: "APS", parent: root)
+        leaf = create(:folder, name: "2026.07 1주차 인터뷰", parent: mid)
+        meeting = create(:meeting, folder: leaf)
+        expect(meeting.dflow_root_folder_name).to eq("MES")
+        expect(meeting.dflow_sub_folder_name).to eq("APS")
+      end
+    end
+
+    describe "#dflow_auto_title" do
+      it "물류공정_260716 @ MES/물류 → 물류-물류공정_260716" do
+        root = create(:folder, name: "MES")
+        sub = create(:folder, name: "물류", parent: root)
+        meeting = create(:meeting, folder: sub, title: "물류공정_260716")
+        expect(meeting.dflow_auto_title).to eq("물류-물류공정_260716")
+      end
+
+      it "기획팀 2026.07.09 @ MES/APS/2026.07 1주차 인터뷰 → APS-기획팀 2026.07.09" do
+        root = create(:folder, name: "MES")
+        mid = create(:folder, name: "APS", parent: root)
+        leaf = create(:folder, name: "2026.07 1주차 인터뷰", parent: mid)
+        meeting = create(:meeting, folder: leaf, title: "기획팀 2026.07.09")
+        expect(meeting.dflow_auto_title).to eq("APS-기획팀 2026.07.09")
+      end
+
+      it "MDM 논의 2026.07.15 @ MDM(하위 없음) → 원제목 그대로" do
+        root = create(:folder, name: "MDM")
+        meeting = create(:meeting, folder: root, title: "MDM 논의 2026.07.15")
+        expect(meeting.dflow_auto_title).to eq("MDM 논의 2026.07.15")
+      end
+
+      it "4단계 폴더도 최상위 바로 아래(2단계) 이름을 채택한다" do
+        root = create(:folder, name: "루트")
+        lvl2 = create(:folder, name: "2단계", parent: root)
+        lvl3 = create(:folder, name: "3단계", parent: lvl2)
+        lvl4 = create(:folder, name: "4단계", parent: lvl3)
+        meeting = create(:meeting, folder: lvl4, title: "제목")
+        expect(meeting.dflow_auto_title).to eq("2단계-제목")
+      end
+
+      it "title 앞뒤 공백을 strip 한다" do
+        meeting = create(:meeting, folder: nil, title: "  공백 제목  ")
+        expect(meeting.dflow_auto_title).to eq("공백 제목")
+      end
+
+      it "200자 초과 시 원제목 쪽을 잘라 200자로 맞춘다" do
+        root = create(:folder, name: "R")
+        sub = create(:folder, name: "SUB", parent: root)
+        meeting = create(:meeting, folder: sub, title: "A" * 250)
+        result = meeting.dflow_auto_title
+        expect(result.length).to eq(200)
+        expect(result).to eq("SUB-" + ("A" * 196))
+      end
+    end
+
+    describe "#dflow_needs_resync?" do
+      it "미전송(public_uid 없음)이면 false" do
+        meeting = create(:meeting, public_uid: nil, dflow_synced_at: nil)
+        expect(meeting.dflow_needs_resync?).to be false
+      end
+
+      it "전송 후 편집 없으면 false" do
+        meeting = create(:meeting, public_uid: SecureRandom.uuid, dflow_synced_at: Time.current, last_user_edit_at: 1.hour.ago)
+        expect(meeting.dflow_needs_resync?).to be false
+      end
+
+      it "전송 후 last_user_edit_at 이 갱신되면 true" do
+        meeting = create(:meeting, public_uid: SecureRandom.uuid, dflow_synced_at: 1.hour.ago, last_user_edit_at: 2.hours.ago)
+        meeting.update!(last_user_edit_at: Time.current)
+        expect(meeting.dflow_needs_resync?).to be true
+      end
+
+      it "전송 후 summary 가 갱신되면 true" do
+        meeting = create(:meeting, public_uid: SecureRandom.uuid, dflow_synced_at: 1.hour.ago, last_user_edit_at: 2.hours.ago)
+        summary = create(:summary, meeting: meeting)
+        summary.update_column(:updated_at, Time.current)
+        expect(meeting.dflow_needs_resync?).to be true
+      end
+    end
+
+    describe "#ensure_dflow_public_uid!" do
+      it "public_uid 가 없으면 uuid_v7 을 발급하고 즉시 커밋한다" do
+        meeting = create(:meeting, public_uid: nil)
+        meeting.ensure_dflow_public_uid!
+
+        expect(meeting.public_uid).to match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
+        expect(meeting.reload.public_uid).to eq(meeting.public_uid) # DB 커밋 확인
+      end
+
+      it "이미 public_uid 가 있으면 재발급하지 않는다(재사용)" do
+        meeting = create(:meeting, public_uid: "0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77")
+        meeting.ensure_dflow_public_uid!
+        expect(meeting.public_uid).to eq("0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77")
+      end
+    end
+  end
 end

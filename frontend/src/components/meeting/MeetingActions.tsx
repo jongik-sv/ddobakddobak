@@ -18,6 +18,9 @@ interface MeetingActionsProps {
   onDelete: () => void
   /** 소유자/admin만 제어 어포던스 노출 (기본 true). */
   canEdit?: boolean
+  /** D'Flow 전송/연결 mutation 성공 시 호출(ExportButton 경유 SendToDflowDialog로 전달) — 상위가
+   *  meeting을 refetch해 배지·상태 텍스트를 최신화하도록 한다. */
+  onChanged?: () => void
 }
 
 /**
@@ -38,6 +41,7 @@ export function MeetingActions({
   onGoLive,
   onDelete,
   canEdit = true,
+  onChanged,
 }: MeetingActionsProps) {
   // 잠긴 회의: 내용을 바꾸는 모든 어포던스를 비활성(disabled + 안내 툴팁). 내보내기(읽기)는 예외.
   const locked = meeting.locked
@@ -133,6 +137,8 @@ export function MeetingActions({
         meetingId={meetingId}
         meetingTitle={meeting.title}
         meetingDate={meeting.started_at ?? meeting.created_at}
+        meeting={meeting}
+        onChanged={onChanged}
       />
       {canEdit && (
         <Tooltip text={locked ? lockTitle : '삭제'}>

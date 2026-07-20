@@ -34,6 +34,9 @@ vi.mock('./MeetingSettingsTab', () => ({
 vi.mock('./UserSttSettings', () => ({
   default: () => <div data-testid="stt-settings">stt</div>,
 }))
+vi.mock('./DflowSettingsPanel', () => ({
+  DflowSettingsPanel: () => <div data-testid="dflow-tab">dflow</div>,
+}))
 
 describe('SettingsContent tabs', () => {
   beforeEach(() => {
@@ -47,13 +50,14 @@ describe('SettingsContent tabs', () => {
     expect(screen.getByTestId('personal-tab')).toBeInTheDocument()
   })
 
-  it('admin: 4개 탭(개인설정·LLM·음성·인식·회의록 설정) 존재', () => {
+  it('admin: 5개 탭(개인설정·LLM·음성·인식·회의록 설정·연동) 존재', () => {
     mockUser = { role: 'admin', email: 'a@x.com' }
     render(<SettingsContent />)
     expect(screen.getByRole('tab', { name: /개인설정/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /LLM/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /음성.*인식/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /회의록 설정/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /연동/ })).toBeInTheDocument()
   })
 
   it('admin: LLM 탭 클릭 시 LlmSettingsPanel 렌더', () => {
@@ -75,6 +79,13 @@ describe('SettingsContent tabs', () => {
     render(<SettingsContent />)
     fireEvent.click(screen.getByRole('tab', { name: /회의록 설정/ }))
     expect(screen.getByTestId('meeting-tab')).toBeInTheDocument()
+  })
+
+  it('admin: 연동 탭 클릭 시 DflowSettingsPanel 렌더', () => {
+    mockUser = { role: 'admin', email: 'a@x.com' }
+    render(<SettingsContent />)
+    fireEvent.click(screen.getByRole('tab', { name: /연동/ }))
+    expect(screen.getByTestId('dflow-tab')).toBeInTheDocument()
   })
 
   it('local mode: 비-admin도 관리자 탭 노출', () => {

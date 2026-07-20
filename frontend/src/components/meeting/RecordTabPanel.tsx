@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { LiveRecord } from './LiveRecord'
 import { FullRecord } from './FullRecord'
+import { useTranscriptStore } from '../../stores/transcriptStore'
 
 type Tab = 'live' | 'all'
 
@@ -14,6 +15,13 @@ interface RecordTabPanelProps {
 
 export function RecordTabPanel({ meetingId, currentTimeMs = 0, onSeek, readOnly = false }: RecordTabPanelProps) {
   const [tab, setTab] = useState<Tab>('live')
+  // 탭바 건수 배지 — LiveRecord/FullRecord가 읽는 것과 동일한 finals를 구독해
+  // 탭 전환 없이도 양쪽 건수가 항상 실제 렌더 항목 수와 일치하도록 한다.
+  const finals = useTranscriptStore((s) => s.finals)
+  // 라이브 기록 = LiveRecord의 unapplied와 동일한 술어
+  const liveCount = finals.filter((f) => !f.applied).length
+  // 전체 기록 = FullRecord가 렌더하는 세그먼트 수(화자별 그룹 수 아님)
+  const allCount = finals.length
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -27,7 +35,7 @@ export function RecordTabPanel({ meetingId, currentTimeMs = 0, onSeek, readOnly 
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
-          라이브 기록
+          라이브 기록<span className="ml-1">({liveCount})</span>
         </button>
         <button
           onClick={() => setTab('all')}
@@ -37,7 +45,7 @@ export function RecordTabPanel({ meetingId, currentTimeMs = 0, onSeek, readOnly 
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
-          전체 기록
+          전체 기록<span className="ml-1">({allCount})</span>
         </button>
       </div>
 

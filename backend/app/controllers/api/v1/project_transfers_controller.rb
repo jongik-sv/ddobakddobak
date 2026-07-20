@@ -32,7 +32,7 @@ module Api
       end
 
       # POST /api/v1/projects/import  multipart file=<tar.gz>
-      # → ProjectImporter 로 새 Project 복원 후 { project_id: } 반환.
+      # → ProjectImporter 로 새 Project 복원 후 { project_id:, warnings: } 반환.
       def import
         uploaded = params[:file]
         if uploaded.blank? || !uploaded.respond_to?(:tempfile)
@@ -47,8 +47,9 @@ module Api
           return render json: { error: "gzip 아카이브가 아닙니다(.ddobak.tgz 형식 필요)" }, status: :unprocessable_entity
         end
 
-        project = ProjectImporter.new(uploaded.tempfile, current_user).run!
-        render json: { project_id: project.id }, status: :created
+        importer = ProjectImporter.new(uploaded.tempfile, current_user)
+        project  = importer.run!
+        render json: { project_id: project.id, warnings: importer.warnings }, status: :created
       rescue ProjectImporter::UnsafeEntryError,
              ProjectImporter::InvalidArchiveError,
              Zlib::GzipFile::Error,

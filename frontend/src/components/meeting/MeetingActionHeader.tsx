@@ -63,6 +63,13 @@ export function MeetingActionHeader({
     }
   }
 
+  // D'Flow 전송 상태 배지: 재전송 필요 > 전송됨 > (미전송이면 배지 없음).
+  const dflowBadge = meeting.dflow_needs_resync
+    ? { label: "D'Flow 재전송 필요", title: '회의록이 마지막 전송 이후 수정되었습니다', className: 'bg-amber-100 text-amber-700 border-amber-300' }
+    : meeting.dflow_synced_at
+      ? { label: "D'Flow ✓", title: 'D\'Flow로 전송된 회의입니다', className: 'bg-emerald-50 text-emerald-700 border-emerald-300' }
+      : null
+
   return (
     <div className={`flex items-center border-b bg-card shrink-0 ${isDesktop ? 'px-6 py-3' : 'px-3 py-2'}`}>
       <div className={`flex items-center flex-1 min-w-0 ${isDesktop ? 'gap-3' : 'gap-2'}`}>
@@ -115,6 +122,14 @@ export function MeetingActionHeader({
             title={`이전 회의 이어받음: ${meeting.previous_meeting_title}`}
           >
             {isDesktop ? `↩ 이전 회의: ${meeting.previous_meeting_title}` : '↩ 이전'}
+          </span>
+        )}
+        {dflowBadge && (
+          <span
+            className={`shrink-0 rounded-full border ${dflowBadge.className} ${isDesktop ? 'px-2 py-0.5 text-xs' : 'px-1.5 py-0 text-[10px]'}`}
+            title={dflowBadge.title}
+          >
+            {dflowBadge.label}
           </span>
         )}
         {isDesktop && meeting.tags?.map((tag) => (

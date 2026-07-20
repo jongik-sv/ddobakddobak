@@ -5,9 +5,9 @@ import { filenameFromDisposition } from './projectTransfers'
 /**
  * 회의·폴더 export/import.
  * - 회의 export: POST meetings/:id/export { include_audio } → gzip blob → 다운로드
- * - 회의 import: POST projects/:project_id/meetings/import (multipart file, folder_id?) → { meeting_id }
+ * - 회의 import: POST projects/:project_id/meetings/import (multipart file, folder_id?) → { meeting_id, warnings }
  * - 폴더 export:  POST folders/:id/export { include_audio } → gzip blob → 다운로드
- * - 폴더 import:  POST projects/:project_id/folders/import (multipart file, parent_folder_id?) → { folder_id, meeting_ids }
+ * - 폴더 import:  POST projects/:project_id/folders/import (multipart file, parent_folder_id?) → { folder_id, meeting_ids, warnings }
  *
  * 백엔드 포맷: .ddobak-meeting.tgz / .ddobak-folder.tgz
  */
@@ -49,7 +49,7 @@ export async function importMeeting(
   projectId: number,
   file: File,
   folderId?: number,
-): Promise<{ meeting_id: number }> {
+): Promise<{ meeting_id: number; warnings: string[] }> {
   const formData = new FormData()
   formData.append('file', file)
   if (folderId != null) {
@@ -57,7 +57,7 @@ export async function importMeeting(
   }
   return apiClient
     .post(`projects/${projectId}/meetings/import`, { body: formData, timeout: false })
-    .json<{ meeting_id: number }>()
+    .json<{ meeting_id: number; warnings: string[] }>()
 }
 
 // ── 폴더 export ──────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ export async function importFolder(
   projectId: number,
   file: File,
   parentFolderId?: number,
-): Promise<{ folder_id: number; meeting_ids: number[] }> {
+): Promise<{ folder_id: number; meeting_ids: number[]; warnings: string[] }> {
   const formData = new FormData()
   formData.append('file', file)
   if (parentFolderId != null) {
@@ -100,5 +100,5 @@ export async function importFolder(
   }
   return apiClient
     .post(`projects/${projectId}/folders/import`, { body: formData, timeout: false })
-    .json<{ folder_id: number; meeting_ids: number[] }>()
+    .json<{ folder_id: number; meeting_ids: number[]; warnings: string[] }>()
 }
