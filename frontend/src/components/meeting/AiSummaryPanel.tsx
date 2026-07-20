@@ -14,6 +14,7 @@ import { markersToInline, inlineToMarkers } from './citationInline'
 import { speakerAtMs } from '../../lib/citationMarkers'
 import { shouldShowDiarizationHint } from './diarizationHint'
 import { AiSummaryFullViewModal } from './AiSummaryFullViewModal'
+import { SummaryFontSizeControl } from './SummaryFontSizeControl'
 
 /**
  * Defense 2 (데이터 손실 가드): 자동저장이 파괴적인 빈 저장인지 판정한다.
@@ -46,6 +47,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
   const finals = useTranscriptStore((s) => s.finals)
   const diarizationEnabled = useAppSettingsStore((s) => s.diarizationEnabled)
   const resolvedTheme = resolveTheme(useUiStore((s) => s.theme))
+  const summaryFontSize = useUiStore((s) => s.summaryFontSize)
 
   // 실제로 화자가 둘 이상 분리됐을 때만 안내(전부 같은 화자라벨이면 거짓 "분리 완료" 차단)
   const showManualHint = useMemo(
@@ -239,6 +241,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
         </div>
         <div className="flex items-center gap-2">
           {headerExtra}
+          <SummaryFontSizeControl />
           {!hideExpand && (
             <button
               onClick={() => setShowFullView(true)}
@@ -276,7 +279,10 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
           <span className="font-semibold"> 회의록 재생성</span> 버튼으로 회의록을 만들 수 있습니다.
         </div>
       )}
-      <div className="flex-1 overflow-y-auto select-text">
+      <div
+        className="flex-1 overflow-y-auto select-text"
+        style={{ '--bn-body-font-size': `${summaryFontSize}px` } as React.CSSProperties}
+      >
         {editable ? (
           <BlockNoteView
             editor={editor}

@@ -38,3 +38,12 @@
   color: var(--md-link);
   text-decoration: underline;
 }
+
+/* 회의록 본문 글자크기 조절(idea.md #34). --bn-body-font-size는 AiSummaryPanel 본문
+   wrapper에 인라인으로 주입된다(uiStore.summaryFontSize, localStorage 영속).
+   본문 .bn-default-styles만 변수를 소비 — 헤딩은 em 단위라 본문 폰트에 비례 자동 스케일,
+   코드블록은 --md-code-font-size(13px 고정)를 그대로 유지해 본문 스케일과 분리한다.
+   변수 미설정 시 16px 폴백(기존 동일). */
+.bn-default-styles {
+  font-size: var(--bn-body-font-size, 16px);
+}
