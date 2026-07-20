@@ -7,8 +7,14 @@ test_qwen3_transformers_adapter_idle.py / test_faster_whisper_adapter_idle.py에
 import asyncio
 
 import pytest
+import torch
 
-from app.stt.idle_offload import IdleOffloadController, ResidentState, resolve_idle_thresholds
+from app.stt.idle_offload import (
+    IdleOffloadController,
+    ResidentState,
+    _release_cuda_cache,
+    resolve_idle_thresholds,
+)
 
 
 class FakeClock:
@@ -290,6 +296,160 @@ async def test_inference_waits_for_inflight_offload_then_auto_reloads():
 
     assert calls["reload_cpu"] == 1  # 오프로드 완료(CPU) 직후 추론이 자동 복귀시킴
     assert ctrl.state == ResidentState.GPU
+
+
+# ── CUDA 캐시 반납 (1/2단계 오프로드 완료 직후) ──────────────────────────
+
+def test_release_cuda_cache_calls_empty_cache_and_ipc_collect_when_available(monkeypatch):
+    calls = {"empty_cache": 0, "ipc_collect": 0}
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: calls.__setitem__("empty_cache", calls["empty_cache"] + 1))
+    monkeypatch.setattr(torch.cuda, "ipc_collect", lambda: calls.__setitem__("ipc_collect", calls["ipc_collect"] + 1))
+
+    _release_cuda_cache("test")
+
+    assert calls == {"empty_cache": 1, "ipc_collect": 1}
+
+
+def test_release_cuda_cache_is_noop_when_cuda_unavailable(monkeypatch):
+    calls = {"empty_cache": 0}
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: calls.__setitem__("empty_cache", calls["empty_cache"] + 1))
+
+    _release_cuda_cache("test")
+
+    assert calls["empty_cache"] == 0
+
+
+def test_release_cuda_cache_is_noop_when_torch_not_importable(monkeypatch):
+    """torch 자체가 없는 환경(예: 최소 배포)에서도 예외 없이 조용히 넘어가야 한다."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "torch":
+            raise ImportError("no torch")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    _release_cuda_cache("test")  # 예외 없이 반환되면 통과
+
+
+def test_release_cuda_cache_swallows_empty_cache_exception(monkeypatch, caplog):
+    """empty_cache/ipc_collect가 raise해도 예외가 상위로 전파되지 않고 경고 로그만 남긴다."""
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+
+    def boom():
+        raise RuntimeError("CUDA error: out of memory")
+
+    monkeypatch.setattr(torch.cuda, "empty_cache", boom)
+    monkeypatch.setattr(torch.cuda, "ipc_collect", lambda: None)
+
+    with caplog.at_level("WARNING"):
+        _release_cuda_cache("test")  # 예외 없이 반환되면 통과
+
+    assert any("CUDA 캐시 반납 실패" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_maybe_offload_completes_despite_cuda_release_failure(monkeypatch):
+    """캐시 반납이 실패해도 오프로드 자체(상태 전이)는 이미 끝난 뒤이므로 정상 완료돼야 한다."""
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(torch.cuda, "ipc_collect", lambda: None)
+
+    clock = FakeClock()
+    ctrl, offload_calls = _make_two_stage_controller(clock)
+    clock.advance(600)
+
+    await ctrl.maybe_offload(600, 3600)  # 예외 없이 반환되면 통과
+
+    assert ctrl.state == ResidentState.CPU
+    assert offload_calls["stage1"] == 1
+
+
+@pytest.mark.asyncio
+async def test_cuda_cache_release_happens_after_lock_is_released(monkeypatch):
+    """락을 쥔 채로 empty_cache를 부르지 않는지 확인 — 반납 시점엔 락이 이미 풀려 있어야 한다."""
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+
+    lock_state_at_release = {"locked": None}
+
+    clock = FakeClock()
+    ctrl, offload_calls = _make_two_stage_controller(clock)
+
+    def record_and_release():
+        lock_state_at_release["locked"] = ctrl.lock.locked()
+
+    monkeypatch.setattr(torch.cuda, "empty_cache", record_and_release)
+    monkeypatch.setattr(torch.cuda, "ipc_collect", lambda: None)
+
+    clock.advance(600)
+    await ctrl.maybe_offload(600, 3600)
+
+    assert offload_calls["stage1"] == 1
+    assert lock_state_at_release["locked"] is False
+
+
+@pytest.mark.asyncio
+async def test_stage1_offload_releases_cuda_cache_on_completion(monkeypatch):
+    calls = {"empty_cache": 0}
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: calls.__setitem__("empty_cache", calls["empty_cache"] + 1))
+    monkeypatch.setattr(torch.cuda, "ipc_collect", lambda: None)
+
+    clock = FakeClock()
+    ctrl, offload_calls = _make_two_stage_controller(clock)
+    clock.advance(600)
+    await ctrl.maybe_offload(600, 3600)
+
+    assert ctrl.state == ResidentState.CPU
+    assert offload_calls["stage1"] == 1
+    assert calls["empty_cache"] == 1
+
+
+@pytest.mark.asyncio
+async def test_stage2_offload_releases_cuda_cache_on_completion(monkeypatch):
+    calls = {"empty_cache": 0}
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: calls.__setitem__("empty_cache", calls["empty_cache"] + 1))
+    monkeypatch.setattr(torch.cuda, "ipc_collect", lambda: None)
+
+    clock = FakeClock()
+    ctrl, offload_calls = _make_two_stage_controller(clock)
+    clock.advance(600)
+    await ctrl.maybe_offload(600, 3600)
+    assert calls["empty_cache"] == 1  # 1단계에서 이미 1회
+
+    clock.advance(3000)
+    await ctrl.maybe_offload(600, 3600)
+
+    assert ctrl.state == ResidentState.UNLOADED
+    assert offload_calls["stage2"] == 1
+    assert calls["empty_cache"] == 2  # 2단계 완료로 1회 더
+
+
+@pytest.mark.asyncio
+async def test_reload_does_not_release_cuda_cache(monkeypatch):
+    """GPU 복귀 시점엔 캐시를 반납할 이유가 없다 — 오프로드 완료 시점에만 호출된다."""
+    calls = {"empty_cache": 0}
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: calls.__setitem__("empty_cache", calls["empty_cache"] + 1))
+    monkeypatch.setattr(torch.cuda, "ipc_collect", lambda: None)
+
+    clock = FakeClock()
+    ctrl, offload_calls = _make_two_stage_controller(clock)
+    clock.advance(600)
+    await ctrl.maybe_offload(600, 3600)
+    assert calls["empty_cache"] == 1
+
+    async with ctrl:  # CPU -> GPU 복귀
+        pass
+
+    assert offload_calls["reload_cpu"] == 1
+    assert calls["empty_cache"] == 1  # 복귀로는 늘지 않음
 
 
 # ── 설정 검증: idle_full_unload_sec <= idle_unload_sec 이상 설정 ─────────
