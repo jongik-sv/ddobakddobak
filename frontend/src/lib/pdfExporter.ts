@@ -211,23 +211,6 @@ const BASE_STYLES = `
     margin: 8px 0;
     break-inside: avoid;
   }
-  .metadata-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 12px;
-    font-size: 10pt;
-    break-inside: avoid;
-  }
-  .metadata-table td {
-    padding: 4px 8px;
-    vertical-align: top;
-  }
-  .metadata-table td:first-child {
-    font-weight: bold;
-    color: #555;
-    width: 80px;
-    white-space: nowrap;
-  }
   .action-list {
     list-style: none;
     padding-left: 0;
@@ -301,9 +284,6 @@ function renderExportHtml(data: MeetingExportData): string {
 
   // Title
   parts.push(`<h1>${esc(data.meeting.title)}</h1>`)
-
-  // Metadata
-  parts.push(renderMetadata(data.meeting))
   parts.push('<hr>')
 
   // Summary
@@ -333,23 +313,6 @@ ${parts.join('\n')}
 }
 
 // ── Section Renderers ───────────────────────────
-
-function renderMetadata(meeting: MeetingExportData['meeting']): string {
-  const statusMap: Record<string, string> = {
-    pending: '대기 중',
-    recording: '녹음 중',
-    transcribing: '변환 중',
-    completed: '완료',
-  }
-  const status = statusMap[meeting.status] ?? meeting.status
-
-  return `<table class="metadata-table">
-  <tr><td>날짜</td><td>${esc(meeting.date)}</td></tr>
-  <tr><td>시간</td><td>${esc(meeting.start_time)} ~ ${esc(meeting.end_time)}</td></tr>
-  <tr><td>상태</td><td>${esc(status)}</td></tr>
-  <tr><td>작성자</td><td>${esc(meeting.creator_name)}</td></tr>
-</table>`
-}
 
 function renderSummary(summary: MeetingExportData['summary']): string {
   if (!summary) return ''

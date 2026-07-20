@@ -22,44 +22,10 @@ export async function generateDocx(data: MeetingExportData): Promise<Blob> {
     }),
   )
 
-  // ── 2. 메타 정보 ──
-  children.push(
-    new Paragraph({
-      children: [
-        new TextRun({ text: '날짜: ', bold: true }),
-        new TextRun({ text: meeting.date }),
-      ],
-    }),
-  )
-  children.push(
-    new Paragraph({
-      children: [
-        new TextRun({ text: '시간: ', bold: true }),
-        new TextRun({ text: `${meeting.start_time} ~ ${meeting.end_time}` }),
-      ],
-    }),
-  )
-  children.push(
-    new Paragraph({
-      children: [
-        new TextRun({ text: '상태: ', bold: true }),
-        new TextRun({ text: meeting.status }),
-      ],
-    }),
-  )
-  children.push(
-    new Paragraph({
-      children: [
-        new TextRun({ text: '작성자: ', bold: true }),
-        new TextRun({ text: meeting.creator_name }),
-      ],
-    }),
-  )
-
-  // ── 3. 구분선 ──
+  // ── 2. 구분선 ──
   children.push(new Paragraph({ text: '' }))
 
-  // ── 4. 요약 ──
+  // ── 3. 요약 ──
   if (summary) {
     if (summary.type === 'notes_markdown' && summary.notes_markdown) {
       children.push(
@@ -133,7 +99,7 @@ export async function generateDocx(data: MeetingExportData): Promise<Blob> {
     }
   }
 
-  // ── 5. 메모 ──
+  // ── 4. 메모 ──
   if (data.memo) {
     children.push(new Paragraph({ text: '' }))
     children.push(
@@ -151,7 +117,7 @@ export async function generateDocx(data: MeetingExportData): Promise<Blob> {
     }
   }
 
-  // ── 6. Action Items ──
+  // ── 5. Action Items ──
   if (action_items.length > 0) {
     children.push(new Paragraph({ text: '' }))
     children.push(
@@ -181,7 +147,7 @@ export async function generateDocx(data: MeetingExportData): Promise<Blob> {
     }
   }
 
-  // ── 7. 원본 텍스트 ──
+  // ── 6. 원본 텍스트 ──
   if (transcripts.length > 0) {
     children.push(new Paragraph({ text: '' }))
     children.push(

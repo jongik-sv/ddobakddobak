@@ -28,23 +28,7 @@ class MarkdownExporter
   private
 
   def render_header
-    lines = []
-    lines << "# #{@meeting.title}"
-    lines << ""
-
-    started = @meeting.started_at
-    ended   = @meeting.ended_at
-
-    date_str  = started ? started.to_date.to_s : "미정"
-    start_str = started ? started.strftime("%H:%M") : "미정"
-    end_str   = ended   ? ended.strftime("%H:%M")   : "진행중"
-
-    lines << "- **날짜**: #{date_str}"
-    lines << "- **시간**: #{start_str} ~ #{end_str}"
-    lines << "- **상태**: #{STATUS_LABELS.fetch(@meeting.status, @meeting.status)}"
-    lines << "- **생성자**: #{@meeting.creator.name}"
-
-    lines.join("\n")
+    "# #{@meeting.title}"
   end
 
   def render_summary

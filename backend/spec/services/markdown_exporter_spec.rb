@@ -21,12 +21,12 @@ RSpec.describe MarkdownExporter do
       expect(exporter.call).to include("# 2분기 목표 회의")
     end
 
-    it "날짜를 포함한다" do
-      expect(exporter.call).to include("2026-06-02")
-    end
-
-    it "생성자 이름을 포함한다" do
-      expect(exporter.call).to include("홍길동")
+    it "날짜/시간/상태/생성자 메타 정보를 포함하지 않는다" do
+      result = exporter.call
+      expect(result).not_to include("**날짜**")
+      expect(result).not_to include("**시간**")
+      expect(result).not_to include("**상태**")
+      expect(result).not_to include("**생성자**")
     end
   end
 
