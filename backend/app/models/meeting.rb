@@ -411,6 +411,16 @@ class Meeting < ApplicationRecord
     edited.present? && edited > dflow_synced_at
   end
 
+  # 발급 순서 불변 규칙(§1.2, 계약 §4.6): uuid 생성 → update! 로 DB 커밋. D'Flow 전송(업로드/link)은
+  # 이 메서드가 반환한 뒤 호출부가 별도로 수행하며, 전송이 실패해도 여기서 커밋된 public_uid 는
+  # 유지된다(재발급 절대 금지 — 재시도 시 같은 external_id 를 재사용해야 D'Flow 쪽 upsert 가 멱등하다).
+  # DflowUploadService#call 과 MeetingDflowController#claim 양쪽이 이 메서드 하나만 호출해
+  # 불변식이 두 곳에 흩어지지 않도록 한다(이미 발급된 경우 재사용 — 아무 것도 하지 않음).
+  def ensure_dflow_public_uid!
+    return if public_uid.present?
+    update!(public_uid: SecureRandom.uuid_v7)
+  end
+
   # 회의 실효 도메인 파일 세트 = 회의 자체 링크 + 폴더 조상체인 링크 + 프로젝트 링크(합집합, 파일 id 중복제거).
   # 우선순위(중복 시 구체 레벨 승, 배열 순서에도 반영): meeting > 가까운 folder > 먼 folder > project.
   # DomainReferenceBuilder는 이 순서를 그대로 소비해 캡 초과 시 project → 먼 folder → 가까운 folder →

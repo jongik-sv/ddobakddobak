@@ -37,7 +37,9 @@ class DflowUploadService
       raise BodyTooLongError, "본문이 #{BODY_MAX_CHARS}자를 초과합니다(#{body.length}자) — 자동 절단하지 않습니다"
     end
 
-    ensure_public_uid!
+    # 발급 순서 불변 규칙(§1.2): uuid 생성 → 커밋은 Meeting#ensure_dflow_public_uid! 단일 소스에
+    # 위임한다(MeetingDflowController#claim 과 로직을 공유 — 두 곳에 흩어지지 않게).
+    @meeting.ensure_dflow_public_uid!
 
     payload = {
       user_email: @user.email,
@@ -83,13 +85,5 @@ class DflowUploadService
   def kst_date
     started = @meeting.started_at || Time.current
     started.in_time_zone("Asia/Seoul").strftime("%Y-%m-%d")
-  end
-
-  # 발급 순서 불변 규칙(§1.2, 계약 §4.6): uuid 생성 → update! 로 DB 커밋 → 그 다음에 전송.
-  # 전송이 실패해도 이 public_uid 는 유지한다(재발급 절대 금지) — 재시도 시 같은 external_id 를
-  # 재사용해 D'Flow 쪽 upsert 가 안전하게 멱등 동작한다. 이 순서를 바꾸는 리팩터링 금지.
-  def ensure_public_uid!
-    return if @meeting.public_uid.present?
-    @meeting.update!(public_uid: SecureRandom.uuid_v7)
   end
 end

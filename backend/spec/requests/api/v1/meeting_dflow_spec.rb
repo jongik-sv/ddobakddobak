@@ -197,6 +197,20 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
       expect(meeting.dflow_url).to be_nil
     end
 
+    it "새 uid로 수동 연결(값 설정)하면 이전 동기화 상태(dflow_synced_at·dflow_url)도 함께 리셋된다" do
+      meeting.update!(public_uid: "0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77", dflow_synced_at: Time.current,
+                      dflow_url: "https://x/minutes/1")
+
+      put "/api/v1/meetings/#{meeting.id}/dflow/link",
+          params: { public_uid: "1198c9f2-3a41-7c22-b1e4-9f3d2a8c1b88" }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      meeting.reload
+      expect(meeting.public_uid).to eq("1198c9f2-3a41-7c22-b1e4-9f3d2a8c1b88")
+      expect(meeting.dflow_synced_at).to be_nil
+      expect(meeting.dflow_url).to be_nil
+    end
+
     it "비소유자는 403" do
       login_as(member)
       put "/api/v1/meetings/#{meeting.id}/dflow/link",
@@ -222,6 +236,36 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
       meeting.reload
       expect(meeting.public_uid).to be_present
       expect(meeting.dflow_url).to eq("https://dflow.example.com/minutes/minute-uuid")
+    end
+
+    it "link_minute 호출 전에 public_uid 가 이미 DB에 커밋되어 있다(§1.2 발급 순서 불변 규칙)" do
+      expect(meeting.public_uid).to be_nil
+
+      allow(dflow_client).to receive(:base_url).and_return("https://dflow.example.com")
+      allow(dflow_client).to receive(:link_minute) do |minute_id:, external_id:, user_email:|
+        committed_uid = meeting.reload.public_uid
+        expect(committed_uid).to be_present
+        expect(external_id).to eq("ddobak:#{committed_uid}")
+        { "ok" => true, "id" => minute_id }
+      end
+
+      post "/api/v1/meetings/#{meeting.id}/dflow/claim", params: { minute_id: "minute-uuid" }, as: :json
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "link_minute 이 실패해도(LinkConflictError) 이미 발급된 public_uid 는 유지된다(재발급 금지)" do
+      allow(dflow_client).to receive(:link_minute).and_raise(DflowClient::LinkConflictError, "이미 연결됨")
+
+      post "/api/v1/meetings/#{meeting.id}/dflow/claim", params: { minute_id: "minute-uuid" }, as: :json
+
+      expect(response).to have_http_status(:conflict)
+      uid = meeting.reload.public_uid
+      expect(uid).to be_present
+
+      # 재시도해도 같은 uid 재사용(재발급 없음)
+      allow(dflow_client).to receive(:link_minute).and_raise(DflowClient::LinkConflictError, "여전히 충돌")
+      post "/api/v1/meetings/#{meeting.id}/dflow/claim", params: { minute_id: "minute-uuid" }, as: :json
+      expect(meeting.reload.public_uid).to eq(uid)
     end
 
     it "이미 public_uid 가 있으면 재발급하지 않는다" do

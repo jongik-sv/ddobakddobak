@@ -81,8 +81,9 @@ module Api
                         status: :unprocessable_entity
         end
 
-        # ensure_public_uid! 와 동일 규칙(§1.2): 재사용 우선, 없을 때만 발급.
-        @meeting.update!(public_uid: SecureRandom.uuid_v7) if @meeting.public_uid.blank?
+        # 발급 순서 불변 규칙(§1.2)은 Meeting#ensure_dflow_public_uid! 단일 소스에 위임한다
+        # (DflowUploadService#call 과 로직 공유 — 두 곳에 흩어지면 한쪽만 수정될 위험이 있다).
+        @meeting.ensure_dflow_public_uid!
         external_id = "ddobak:#{@meeting.public_uid}"
 
         dflow_client = DflowClient.new

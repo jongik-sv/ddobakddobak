@@ -478,5 +478,21 @@ RSpec.describe Meeting, type: :model do
         expect(meeting.dflow_needs_resync?).to be true
       end
     end
+
+    describe "#ensure_dflow_public_uid!" do
+      it "public_uid 가 없으면 uuid_v7 을 발급하고 즉시 커밋한다" do
+        meeting = create(:meeting, public_uid: nil)
+        meeting.ensure_dflow_public_uid!
+
+        expect(meeting.public_uid).to match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
+        expect(meeting.reload.public_uid).to eq(meeting.public_uid) # DB 커밋 확인
+      end
+
+      it "이미 public_uid 가 있으면 재발급하지 않는다(재사용)" do
+        meeting = create(:meeting, public_uid: "0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77")
+        meeting.ensure_dflow_public_uid!
+        expect(meeting.public_uid).to eq("0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77")
+      end
+    end
   end
 end
