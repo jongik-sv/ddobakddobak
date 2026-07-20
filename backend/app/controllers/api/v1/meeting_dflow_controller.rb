@@ -150,12 +150,12 @@ module Api
 
       def handle_upload_precondition_error(e)
         code = case e
-               when DflowUploadService::NotEnabledError    then "dflow_not_enabled"
-               when DflowUploadService::NotCompletedError  then "meeting_not_completed"
-               when DflowUploadService::NotesBlankError    then "notes_blank"
-               when DflowUploadService::TeamRequiredError  then "team_required"
-               when DflowUploadService::BodyTooLongError   then "body_too_long"
-               end
+        when DflowUploadService::NotEnabledError    then "dflow_not_enabled"
+        when DflowUploadService::NotCompletedError  then "meeting_not_completed"
+        when DflowUploadService::NotesBlankError    then "notes_blank"
+        when DflowUploadService::TeamRequiredError  then "team_required"
+        when DflowUploadService::BodyTooLongError   then "body_too_long"
+        end
         render json: { error: e.message, code: code }, status: :unprocessable_entity
       end
     end
