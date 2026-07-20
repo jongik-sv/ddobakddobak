@@ -104,6 +104,37 @@ RSpec.describe FolderImporter do
       expect(result[:meeting_ids].size).to eq(3)
       expect(result[:meeting_ids]).not_to include(meeting1.id, meeting2.id, meeting3.id)
     end
+
+    it "warnings 키를 포함하며(정상 케이스) 비어있다" do
+      expect(result).to include(:warnings)
+      expect(result[:warnings]).to eq([])
+    end
+  end
+
+  # ── public_uid 충돌 가드 (T7) ──
+  #
+  # FolderImporter 는 내부적으로 Transfer::MeetingRestorer 를 재사용하므로 null-out
+  # 동작 자체는 이미 이뤄지지만, 그 경고가 result 로 노출되지 않아 컨트롤러/프런트가
+  # 사용자에게 알릴 수단이 없었다(T4 리뷰 결함). @restorers 에 누적된 각 restorer 의
+  # warnings 를 result[:warnings] 로 노출해야 한다.
+  describe "public_uid 충돌 가드 (T7)" do
+    before do
+      meeting1.update_columns(
+        public_uid:      "0199abc0-0000-7000-8000-000000000088",
+        dflow_synced_at: Time.zone.parse("2026-07-01 10:00:00"),
+        dflow_url:       "https://dflow.example.com/meetings/abc"
+      )
+    end
+
+    it "로컬에 동일 uid 가 이미 존재하면 result[:warnings] 에 경고 1건이 담기고 import 는 성공한다" do
+      result = run_import
+
+      new_m1 = new_meeting("회의1")
+      expect(new_m1.public_uid).to be_nil
+      expect(result[:warnings]).to contain_exactly(
+        "D'Flow 연결 식별자가 이미 사용 중이라 해제된 채 복원됨 — 연결 관리에서 재설정"
+      )
+    end
   end
 
   # ── 폴더 계층 ──

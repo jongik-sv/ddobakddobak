@@ -26,10 +26,6 @@ module Transfer
   class MeetingRestorer
     attr_reader :copied_paths, :warnings
 
-    # public_uid unique 충돌 시 result 에 담는 경고 메시지(§T6, 스펙 §3.4).
-    PUBLIC_UID_CONFLICT_WARNING =
-      "D'Flow 연결 식별자가 이미 사용 중이라 해제된 채 복원됨 — 연결 관리에서 재설정".freeze
-
     # 전사는 회의당 수만 건까지 갈 수 있어 건당 insert 는 SQLite 변수 상한
     # (32766)을 넘길 수 없다. 11컬럼 기준 한 배치가 상한을 넘지 않도록 보수적으로 둔다.
     TRANSCRIPT_INSERT_BATCH_SIZE = 1000
@@ -85,22 +81,11 @@ module Transfer
 
     private
 
-    # public_uid unique index 충돌 가드(T6, 스펙 §3.4).
-    #
-    # 같은 아카이브를 중복 import 하거나 복사 목적으로 import 하면 원본과 동일한
-    # public_uid 가 로컬에 이미 존재해 create! 가 RecordNotUnique 로 전체 실패한다.
-    # 예외를 잡는 대신 사전 존재 검사(Meeting.exists?)로 충돌을 감지해, 충돌 시
-    # public_uid·dflow_synced_at·dflow_url 3필드를 null 로 복원하고 경고를 남긴다.
-    # (서버 이동처럼 로컬에 해당 uid 가 없는 정상 케이스는 3필드 그대로 보존된다.)
+    # public_uid unique index 충돌 가드(T6/T7, 스펙 §3.4). 실제 검사·null-out 로직은
+    # ProjectImporter 와 공유하는 Transfer::Archive.guard_public_uid_conflict! 에 있다.
     def guard_public_uid_conflict!(attrs)
-      uid = attrs["public_uid"]
-      return if uid.blank?
-      return unless Meeting.exists?(public_uid: uid)
-
-      attrs["public_uid"]      = nil
-      attrs["dflow_synced_at"] = nil
-      attrs["dflow_url"]       = nil
-      @warnings << PUBLIC_UID_CONFLICT_WARNING
+      return unless Transfer::Archive.guard_public_uid_conflict!(attrs)
+      @warnings << Transfer::Archive::PUBLIC_UID_CONFLICT_WARNING
     end
 
     # ── 자식 복원 ──

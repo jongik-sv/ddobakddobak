@@ -27,6 +27,9 @@ class ProjectImporter
 
   SUPPORTED_FORMAT_VERSION = 1
   CHUNK_SIZE = 64 * 1024
+
+  # 복원 경고 메시지 배열(예: public_uid 충돌로 D'Flow 연결 해제됨, T7). run! 이후 조회.
+  attr_reader :warnings
   # 압축해제 누적 바이트 상한(zip-bomb 가드). 컨트롤러 업로드 상한과 동일 수준(3GB).
   MAX_DECOMPRESSED_BYTES = 3 * 1024 * 1024 * 1024
   # 전사는 회의당 수만 건까지 갈 수 있어 건당 insert 는 SQLite 변수 상한
@@ -43,6 +46,7 @@ class ProjectImporter
     @audio_paths    = {} # "audio/<old_id>.<ext>" => staged temp 경로
     @attach_paths   = {} # "<basename>"          => staged temp 경로
     @decompressed_bytes = 0
+    @warnings       = [] # 복원 경고(예: public_uid 충돌, T7)
   end
 
   # tar.gz 를 읽어 새 Project 로 복원하고 그 Project 를 반환한다.
@@ -272,6 +276,10 @@ class ProjectImporter
       attrs["folder_id"]     = remap_id(folder_map, m["folder_id"])
       attrs["previous_meeting_id"] = nil
       attrs["audio_file_path"]     = nil
+      # public_uid unique 충돌 가드(T7) — MeetingRestorer 와 공유(Transfer::Archive).
+      if Transfer::Archive.guard_public_uid_conflict!(attrs)
+        @warnings << Transfer::Archive::PUBLIC_UID_CONFLICT_WARNING
+      end
 
       new_meeting = Meeting.new(attrs)
       new_meeting.important_explicitly_set = true # 폴더값 상속 콜백이 매니페스트값을 덮지 않게

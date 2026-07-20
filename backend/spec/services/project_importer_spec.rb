@@ -384,6 +384,63 @@ RSpec.describe ProjectImporter do
     end
   end
 
+  # ── public_uid 충돌 가드 (T7) ──
+  #
+  # 재현 시나리오: 회의를 D'Flow 전송(public_uid 발급) → 그 프로젝트를 export →
+  # 같은 서버에 import(복사). 원본 회의가 로컬에 남아있는 채로 동일 public_uid 를
+  # 가진 아카이브를 import 하면, Meeting.public_uid 의 unique index 때문에
+  # RecordNotUnique 로 프로젝트 import 전체가 롤백되던 결함(T4 리뷰에서 확인).
+  # Transfer::MeetingRestorer 의 사전검사 가드(§3.4)를 ProjectImporter 경로에도
+  # 적용해, 충돌 시 3필드만 null 로 복원하고 warnings 를 남기며 나머지는 정상
+  # 복원되어야 한다.
+  describe "public_uid 충돌 가드 (T7)" do
+    before do
+      meeting.update_columns(
+        public_uid:      "0199abc0-0000-7000-8000-000000000099",
+        dflow_synced_at: Time.zone.parse("2026-07-01 10:00:00"),
+        dflow_url:       "https://dflow.example.com/meetings/xyz"
+      )
+    end
+
+    it "로컬에 동일 uid 가 이미 존재하면 전체 import 는 성공하고 해당 회의 3필드는 null, warnings 1건이 남는다" do
+      archive  = export_io
+      importer_svc = described_class.new(archive, importer)
+
+      new_project = importer_svc.run!
+      m = new_project.meetings.first
+
+      expect(m.public_uid).to be_nil
+      expect(m.dflow_synced_at).to be_nil
+      expect(m.dflow_url).to be_nil
+      expect(importer_svc.warnings).to contain_exactly(
+        "D'Flow 연결 식별자가 이미 사용 중이라 해제된 채 복원됨 — 연결 관리에서 재설정"
+      )
+      # 충돌과 무관한 필드는 정상 복원
+      expect(m.title).to eq("주간 회의")
+    end
+
+    it "충돌이 없으면(로컬에 해당 uid 가 없는 서버 이동 시나리오) 3필드를 그대로 보존하고 warnings 가 비어있다" do
+      archive = export_io
+      meeting.destroy! # 원본을 제거해 "다른 서버로 이동" 상황을 재현
+
+      importer_svc = described_class.new(archive, importer)
+      new_project  = importer_svc.run!
+      m = new_project.meetings.first
+
+      expect(m.public_uid).to eq("0199abc0-0000-7000-8000-000000000099")
+      expect(m.dflow_synced_at).to be_within(1).of(Time.zone.parse("2026-07-01 10:00:00"))
+      expect(m.dflow_url).to eq("https://dflow.example.com/meetings/xyz")
+      expect(importer_svc.warnings).to be_empty
+    end
+
+    it "충돌이 RecordNotUnique 예외 없이 사전 검사로 처리된다(전체 import 롤백 회귀 가드)" do
+      archive = export_io
+      expect {
+        described_class.new(archive, importer).run!
+      }.not_to raise_error
+    end
+  end
+
   # ── 전사 배치 복원 (insert_all 회귀 가드) ──
   #
   # 실제 버그(35k 전사 = 건당 create! → ~73k쿼리·117s) 회귀 가드.

@@ -26,6 +26,10 @@ module Transfer
     # 압축해제 누적 바이트 상한(zip-bomb 가드). 3GB.
     MAX_DECOMPRESSED_BYTES = 3 * 1024**3
 
+    # public_uid unique index 충돌 시 남기는 경고 메시지(§T6/T7, 스펙 §3.4).
+    PUBLIC_UID_CONFLICT_WARNING =
+      "D'Flow 연결 식별자가 이미 사용 중이라 해제된 채 복원됨 — 연결 관리에서 재설정".freeze
+
     module_function
 
     # zip-slip 가드: 절대경로·".." 세그먼트·역슬래시 우회·Windows 드라이브 절대경로·null-byte 를 거부.
@@ -96,6 +100,30 @@ module Transfer
     # @return [Hash<String, Object>]
     def sanitize(model_class, attrs)
       attrs.slice(*model_class.column_names).except("id", "created_at", "updated_at")
+    end
+
+    # public_uid unique index 충돌 가드(T6/T7, 스펙 §3.4).
+    #
+    # 같은 아카이브를 중복 import 하거나 복사 목적으로 import 하면(원본이 로컬에
+    # 남아있는 채로 사본을 들여오는 경우) 원본과 동일한 public_uid 가 이미 존재해
+    # create! 가 RecordNotUnique 로 실패한다. 예외를 잡는 대신 사전 존재 검사
+    # (Meeting.exists?)로 충돌을 감지해, 충돌 시 attrs 의 public_uid·dflow_synced_at·
+    # dflow_url 3필드를 직접 null 로 mutate 한다.
+    # (서버 이동처럼 로컬에 해당 uid 가 없는 정상 케이스는 3필드 그대로 보존된다.)
+    #
+    # MeetingRestorer(회의/폴더 import 경로) 와 ProjectImporter 양쪽에서 재사용한다.
+    #
+    # @param attrs [Hash<String, Object>] 문자열 키의 회의 attrs(직접 mutate 됨)
+    # @return [Boolean] 충돌을 감지해 null 처리했으면 true, 아니면 false
+    def guard_public_uid_conflict!(attrs)
+      uid = attrs["public_uid"]
+      return false if uid.blank?
+      return false unless Meeting.exists?(public_uid: uid)
+
+      attrs["public_uid"]      = nil
+      attrs["dflow_synced_at"] = nil
+      attrs["dflow_url"]       = nil
+      true
     end
   end
 end

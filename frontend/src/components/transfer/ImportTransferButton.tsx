@@ -7,6 +7,7 @@ interface ImportResult {
   meeting_id?: number
   folder_id?: number
   meeting_ids?: number[]
+  warnings?: string[]
 }
 
 interface ImportTransferButtonProps {
@@ -31,9 +32,11 @@ export default function ImportTransferButton({
   const inputRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
   const [error, setError] = useState('')
+  const [warning, setWarning] = useState('')
 
   const handlePick = () => {
     setError('')
+    setWarning('')
     inputRef.current?.click()
   }
 
@@ -45,15 +48,23 @@ export default function ImportTransferButton({
 
     setImporting(true)
     setError('')
+    setWarning('')
     try {
       if (file.name.includes('.ddobak-folder.tgz')) {
         // 폴더 import: 현재 폴더를 parent_folder_id 로 전달
         const result = await importFolder(projectId, file, folderId)
-        onImported({ type: 'folder', folder_id: result.folder_id, meeting_ids: result.meeting_ids })
+        if (result.warnings?.length) setWarning(result.warnings.join(' '))
+        onImported({
+          type: 'folder',
+          folder_id: result.folder_id,
+          meeting_ids: result.meeting_ids,
+          warnings: result.warnings,
+        })
       } else {
         // 회의 import(.ddobak-meeting.tgz 또는 기타): 현재 폴더를 folder_id 로 전달
         const result = await importMeeting(projectId, file, folderId)
-        onImported({ type: 'meeting', meeting_id: result.meeting_id })
+        if (result.warnings?.length) setWarning(result.warnings.join(' '))
+        onImported({ type: 'meeting', meeting_id: result.meeting_id, warnings: result.warnings })
       }
     } catch {
       setError('가져오기에 실패했습니다. 올바른 내보내기 파일인지 확인해 주세요.')
@@ -84,6 +95,11 @@ export default function ImportTransferButton({
         onChange={handleFile}
         className="hidden"
       />
+      {warning && (
+        <span role="alert" className="text-xs text-amber-600">
+          {warning}
+        </span>
+      )}
       {error && (
         <span role="alert" className="text-xs text-red-600">
           {error}

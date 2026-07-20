@@ -11,6 +11,7 @@ require "tempfile"
 #   result = FolderImporter.new(io, user:, project:, parent_folder: nil).run!
 #   result[:folder_id]    # 새 루트 폴더 ID
 #   result[:meeting_ids]  # 새 회의 ID 배열
+#   result[:warnings]     # 복원 경고 메시지 배열(예: public_uid 충돌). 보통 빈 배열.
 #
 # 예외:
 #   Transfer::Archive::InvalidArchiveError  — 손상 파일·scope!="folder"·미지원 버전·zip-bomb
@@ -34,7 +35,7 @@ class FolderImporter
     @root_folder      = nil  # import 후 루트 Folder 레코드
   end
 
-  # @return [Hash] { folder_id: Integer, meeting_ids: [Integer, ...] }
+  # @return [Hash] { folder_id: Integer, meeting_ids: [Integer, ...], warnings: [String, ...] }
   def run!
     manifest     = read_archive
     validate_manifest!(manifest)
@@ -62,7 +63,9 @@ class FolderImporter
       EmbedBackfillJob.perform_later(meeting_id: mtg.id) if mtg.transcripts.exists?
     end
 
-    { folder_id: @root_folder.id, meeting_ids: new_meetings.map(&:id) }
+    # 내부 MeetingRestorer 들의 warnings 를 수집(T7) — public_uid 충돌 시 사용자에게 노출.
+    { folder_id: @root_folder.id, meeting_ids: new_meetings.map(&:id),
+      warnings: @restorers.flat_map(&:warnings) }
   end
 
   private

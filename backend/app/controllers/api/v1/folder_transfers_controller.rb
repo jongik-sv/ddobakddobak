@@ -32,7 +32,7 @@ module Api
       end
 
       # POST /api/v1/projects/:project_id/folders/import  multipart file=<tar.gz>, body { parent_folder_id? }
-      # → 새 폴더 서브트리 복원 후 { folder_id:, meeting_ids: } 반환.
+      # → 새 폴더 서브트리 복원 후 { folder_id:, meeting_ids:, warnings: } 반환.
       def import
         project = require_project!(params[:project_id])
         return unless project
@@ -62,7 +62,8 @@ module Api
           project:       project,
           parent_folder: parent_folder
         ).run!
-        render json: { folder_id: result[:folder_id], meeting_ids: result[:meeting_ids] }, status: :created
+        render json: { folder_id: result[:folder_id], meeting_ids: result[:meeting_ids],
+                       warnings: result[:warnings] }, status: :created
       rescue Transfer::Archive::UnsafeEntryError,
              Transfer::Archive::InvalidArchiveError,
              Zlib::GzipFile::Error,
