@@ -29,9 +29,9 @@ vi.mock('../../api/settings', () => ({
 vi.mock('../../lib/openExternal', () => ({ openExternal: vi.fn() }))
 vi.mock('../../lib/confirmDialog', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
 
-// CLI 프리셋은 local 모드에서만 노출된다. 이 스위트는 CLI 노출(기존 동작)을 전제로
-// 하므로 getMode를 항상 'local'로 고정한다(의도 보존).
-vi.mock('../../config', async (orig) => ({ ...(await orig() as object), getMode: vi.fn(() => 'local') }))
+// idea.md 38: CLI는 모드와 무관하게 노출된다(실행은 서버). 회귀 방지를 위해
+// getMode를 'server'로 고정 — 이 스위트의 CLI 저장 테스트가 서버 모드 노출을 증명한다.
+vi.mock('../../config', async (orig) => ({ ...(await orig() as object), getMode: vi.fn(() => 'server') }))
 
 import { getUserLlmSettings, updateUserLlmSettings, testUserLlmConnection } from '../../api/userLlmSettings'
 import { listLlmProfiles, deleteLlmProfile } from '../../api/llmProfiles'
@@ -175,6 +175,17 @@ describe('UserLlmSettings', () => {
     await waitFor(() => expect(mockUpdateUserLlmSettings).toHaveBeenCalled())
     const payload = mockUpdateUserLlmSettings.mock.calls[0][0].llm_settings
     expect(payload).toMatchObject({ provider: 'claude_cli', model: 'sonnet' })
+  })
+
+  // idea.md 38: 서버 모드(getMode='server')에서도 CLI 선택 시 서버 실행 안내문이 노출된다
+  it('서버 모드에서 CLI 선택 시 서버 실행 안내문을 표시한다', async () => {
+    mockGetUserLlmSettings.mockResolvedValue(unconfiguredResponse)
+    render(<UserLlmSettings />)
+    const summarySel = await screen.findByTestId('user-summary-selector')
+
+    fireEvent.change(within(summarySel).getByLabelText('요약 모델 프로필'), { target: { value: 'cli:claude_cli' } })
+
+    expect(screen.getByText(/CLI 모델은 내 PC가 아니라 서버에서 실행됩니다/)).toBeInTheDocument()
   })
 
   // 챗: 'server'(선택 안함=서버 모델 강제) 선택 → payload chat_provider='server'만, 다른 chat_* 키 생략

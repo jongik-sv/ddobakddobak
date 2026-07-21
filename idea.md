@@ -126,6 +126,7 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
       - 2단계 완료(feature/idea-35-2, 2026-07, main 머지 3baeda74): `FolderChatDrawer`를 GatedApp 루트(App.tsx 글로벌 영역, Routes 형제)로 승격 + open/scope 상태 `uiStore` 전역화(folderChatOpen/folderChatScope) + `onSeekMeeting`의 `onClose()` 제거 — 라우트 이동에도 챗이 "실제로" 안 죽음. 회의 상세의 `RightTabsPanel`(meeting 스코프)과 전역 드로어(folder/project 스코프) 공존. 보류: MeetingPageSkeleton 가드 축소(MeetingPage.tsx:346, 별개 후속).
 36. 요약 재실행 중 다른 화면으로 이동하면 요약되고 있는지 알 방법이 없다. 회의 자체의 요약중 상태가 있어야 UI 에서 확인할 수 있다. 회의목록에서도 요약이 진행중인지 알수 있으면 좋겠다. (완 — summarizing:boolean + summarization_started_at 영속화. MeetingSummarizationJob#broadcast_started/finished 에서 record_summary_start!/finished! 짝(동시성 제한으로 중복 없음). meeting_json 노출 → StatusBadge 파란 "요약중" pulse + MeetingActionHeader 상단. 이탈·새로고침 후에도 유지, 완료 시 소멸, 실패 시 기존 실패배지)
 37. 서버 LLM 모델 설정에 선택 안함 추가해줘. 선택 안함 추가하면 요약이 실행이 안되게 하고 싶어. (완 — 자동 realtime 틱은 무음 skip, 회의종료/수동 재생성은 에러 안내)
+38. 내 LLM 설정에 CLI 모델 추가 (실행은 로컬 실행이 아니고 서버에서 실행한다.) (완 — 백엔드는 이미 CLI 허용, 프론트 cliAllowed 로컬모드 제한 해제 + CLI 선택 시 "서버에서 실행" 안내문)
 
 ## 향후 추가 계획 — 미완료
 2. 회의 내용을 llm-wiki 로 구성해서 회의 내용을 검색하거나 요약하도록 구성
@@ -160,4 +161,4 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
 15. 회의 예약하면 미리 알림 기능할 수 있도록 추가(예 10분전 알림, 30분전 알림) 
 16. 시스템 오디오 입력은 음성이 뒤에 짤림 
 26. 최대 3개의 회의만 실행되도록 제한(회의 4개부터 유실 우려). 실시간/배치 동시/ 처리 시 실시간 우선으로 처리
-38. 내 LLM 설정에 CLI 모델 추가 (실행은 로컬 실행이 아니고 서버에서 실행한다.)
+39. 회의록 md 파일만 내보내기 하는 옵션이 있으면 좋겠어. 기존 프로젝트, 폴더 내보내기 할때 md 파일만 내보내기 하는거야. 이것은 import 할 용도가 아니라 이 내용을 llm을 입력으로 분석하기 위한거야. 또 내보낼때 폴더 모양 그대로 내보내기 되면 좋겠다.

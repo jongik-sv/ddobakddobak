@@ -14,7 +14,6 @@ import { UserLlmStatusBanner } from './UserLlmStatusBanner'
 import LlmProfilesModal from './LlmProfilesModal'
 import { LlmSelector, type LlmSelectorValue } from './LlmSelector'
 import { CLI_PRESET_IDS } from './llmServicePresets'
-import { getMode } from '../../config'
 
 // 응답 → 선택값 매핑. llm_profile_id 가 있으면 프로필 참조가 최우선(레거시 provider/model 필드는 무시).
 // 그 다음 provider 가 CLI 프리셋이면 cli, 그 외(빈 값 포함)는 '선택 안함'(none).
@@ -157,8 +156,8 @@ export default function UserLlmSettings() {
 
   const hasSettings = settings?.llm_settings.has_settings ?? false
   const isEnabled = settings?.llm_settings.enabled ?? true
-  // 개인 설정 카드는 admin OR 없이 로컬 모드에서만 CLI를 노출한다(기존 규약 그대로).
-  const cliAllowed = getMode() === 'local'
+  // idea.md 38: CLI는 항상 백엔드 서버에서 실행되므로 모드와 무관하게 개인 설정에서도 노출한다.
+  const cliAllowed = true
   // 토글 OFF이고 설정이 있으면 폼을 숨긴다 (배너만 표시)
   const showForm = !hasSettings || isEnabled
 
@@ -249,6 +248,12 @@ export default function UserLlmSettings() {
             onManageProfiles={openManage}
             onCreateProfile={openCreate}
           />
+
+          {(summarySel.type === 'cli' || chatSel.type === 'cli') && (
+            <p className="text-xs text-muted-foreground">
+              CLI 모델은 내 PC가 아니라 서버에서 실행됩니다. 서버에 해당 CLI가 설치되어 있어야 합니다.
+            </p>
+          )}
 
           {/* 레거시 챗 모델 입력 — 챗이 '요약과 동일'(special '') 일 때만 표시 */}
           {chatSel.type === 'special' && chatSel.id === '' && (
