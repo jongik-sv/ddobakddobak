@@ -138,7 +138,8 @@ export function LlmProfileForm({ scope, initial, onSaved, onCancel }: LlmProfile
         base_url: form.base_url || undefined,
         model: form.model || undefined,
         ...(form.auth_token ? { auth_token: form.auth_token } : {}),
-        ...(scope === 'server' ? { max_input_tokens: form.max_input_tokens, max_output_tokens: form.max_output_tokens } : {}),
+        max_input_tokens: form.max_input_tokens,
+        max_output_tokens: form.max_output_tokens,
       }
       const saved = initial ? await updateLlmProfile(initial.id, params) : await createLlmProfile(scope, params)
       onSaved(saved)
@@ -241,30 +242,28 @@ export function LlmProfileForm({ scope, initial, onSaved, onCancel }: LlmProfile
         {canRefresh && listError && <p className="text-xs text-yellow-600 mt-1">{listError}</p>}
       </div>
 
-      {scope === 'server' && (
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label htmlFor="profile-maxin" className="block text-sm font-medium mb-1">최대 입력 토큰</label>
-            <input id="profile-maxin" type="number" min={1} value={form.max_input_tokens}
-              onChange={(e) => {
-                const v = e.target.value
-                const n = v === '' ? NaN : parseInt(v, 10)
-                setForm((f) => ({ ...f, max_input_tokens: Number.isNaN(n) ? f.max_input_tokens : n }))
-              }}
-              className={inputCls} />
-          </div>
-          <div>
-            <label htmlFor="profile-maxout" className="block text-sm font-medium mb-1">최대 출력 토큰</label>
-            <input id="profile-maxout" type="number" min={1} value={form.max_output_tokens}
-              onChange={(e) => {
-                const v = e.target.value
-                const n = v === '' ? NaN : parseInt(v, 10)
-                setForm((f) => ({ ...f, max_output_tokens: Number.isNaN(n) ? f.max_output_tokens : n }))
-              }}
-              className={inputCls} />
-          </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label htmlFor="profile-maxin" className="block text-sm font-medium mb-1">최대 입력 토큰</label>
+          <input id="profile-maxin" type="number" min={1} value={form.max_input_tokens}
+            onChange={(e) => {
+              const v = e.target.value
+              const n = v === '' ? NaN : parseInt(v, 10)
+              setForm((f) => ({ ...f, max_input_tokens: Number.isNaN(n) ? f.max_input_tokens : n }))
+            }}
+            className={inputCls} />
         </div>
-      )}
+        <div>
+          <label htmlFor="profile-maxout" className="block text-sm font-medium mb-1">최대 출력 토큰</label>
+          <input id="profile-maxout" type="number" min={1} value={form.max_output_tokens}
+            onChange={(e) => {
+              const v = e.target.value
+              const n = v === '' ? NaN : parseInt(v, 10)
+              setForm((f) => ({ ...f, max_output_tokens: Number.isNaN(n) ? f.max_output_tokens : n }))
+            }}
+            className={inputCls} />
+        </div>
+      </div>
 
       <div>
         <label htmlFor="profile-name" className="block text-sm font-medium mb-1">프로필 이름</label>

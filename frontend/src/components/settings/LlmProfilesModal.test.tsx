@@ -82,4 +82,17 @@ describe('LlmProfilesModal', () => {
     fireEvent.click(screen.getByText('＋ 새 프로필'))
     expect(await screen.findByLabelText('최대 입력 토큰')).toBeInTheDocument()
   })
+
+  it('scope=personal도 토큰 한계 필드 노출 + 저장 페이로드 포함', async () => {
+    vi.mocked(createLlmProfile).mockResolvedValue({ ...gemini, id: 2, name: 'OpenAI · gpt-4o' })
+    render(<LlmProfilesModal scope="personal" open onClose={() => {}} />)
+    fireEvent.click(await screen.findByText('＋ 새 프로필'))
+    expect(await screen.findByLabelText('최대 입력 토큰')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('프로필 저장'))
+    await waitFor(() => expect(vi.mocked(createLlmProfile)).toHaveBeenCalled())
+    expect(vi.mocked(createLlmProfile).mock.calls[0][1]).toMatchObject({
+      max_input_tokens: 200000,
+      max_output_tokens: 10000,
+    })
+  })
 })
