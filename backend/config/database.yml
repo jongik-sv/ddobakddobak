@@ -8,9 +8,10 @@ default: &default
   adapter: sqlite3
   max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 10 } %>
   timeout: 5000
+  # busy_timeout pragma는 GVL 친화 timeout:을 C레벨 busy loop로 덮어써
+  # 락 보유 스레드 COMMIT을 GVL로 굶겨 데드락 유발(SolidQueue recurring 실증)
   pragmas:
     journal_mode: wal
-    busy_timeout: 5000
 
 development:
   <<: *default
