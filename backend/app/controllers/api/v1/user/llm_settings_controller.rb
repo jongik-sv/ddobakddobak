@@ -266,6 +266,9 @@ module Api
           chat_base_url_for_display = chat_profile&.base_url || current_user.chat_llm_base_url
           chat_masked = chat_profile&.auth_token.present? ? mask_token(chat_profile.auth_token) : mask_token(current_user.chat_llm_api_key)
 
+          # idea.md 37: 서버 LLM "선택 안함"(ENV LLM_PROVIDER=none) 조합에서는 nil이 정상 계약(user.rb 참조).
+          effective_chat_config = current_user.effective_chat_llm_config
+
           {
             llm_settings: {
               provider: provider_for_display,
@@ -284,12 +287,12 @@ module Api
               chat_configured: current_user.chat_llm_configured?,
               # 4-tier 카스케이드(개인챗>개인요약>전역챗>전역요약)로 실제 답변할 모델의 표시명.
               # FolderChatJob 과 동일한 effective_chat_llm_config 을 쓰므로 폴더챗 미리보기와 일치한다.
-              effective_chat_model: LlmModelName.humanize(current_user.effective_chat_llm_config[:model])
+              effective_chat_model: effective_chat_config && LlmModelName.humanize(effective_chat_config[:model])
             },
             server_default: {
-              provider: server_default[:provider],
-              model: server_default[:model],
-              has_key: server_default[:auth_token].present? || AppSettings::CLI_LLM_PROVIDERS.include?(server_default[:provider].to_s)
+              provider: server_default&.dig(:provider),
+              model: server_default&.dig(:model),
+              has_key: server_default&.dig(:auth_token).present? || AppSettings::CLI_LLM_PROVIDERS.include?(server_default&.dig(:provider).to_s)
             }
           }
         end
