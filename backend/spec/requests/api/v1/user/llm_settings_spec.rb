@@ -69,6 +69,33 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
       end
     end
 
+    # idea.md 37: 서버 LLM "선택 안함"(ENV LLM_PROVIDER=none) + chat_llm_provider="server" 센티넬 조합에서
+    # User#effective_chat_llm_config 는 의도적으로 nil을 반환한다 (user.rb server_default_llm_config 주석 참조).
+    # 287행이 nil을 처리하지 못해 NoMethodError → 500 이 나던 회귀.
+    context "서버 LLM 선택 안함(LLM_PROVIDER=none) + 챗='server' 센티넬" do
+      around do |example|
+        prev_provider = ENV["LLM_PROVIDER"]
+        prev_chat_provider = ENV["CHAT_LLM_PROVIDER"]
+        ENV["LLM_PROVIDER"] = "none"
+        ENV.delete("CHAT_LLM_PROVIDER")
+        example.run
+        prev_provider.nil? ? ENV.delete("LLM_PROVIDER") : ENV["LLM_PROVIDER"] = prev_provider
+        prev_chat_provider.nil? ? ENV.delete("CHAT_LLM_PROVIDER") : ENV["CHAT_LLM_PROVIDER"] = prev_chat_provider
+      end
+
+      before { user.update!(chat_llm_provider: User::CHAT_SERVER_SENTINEL) }
+
+      it "500 대신 200을 반환하고 effective_chat_model이 nil이다" do
+        expect(user.effective_chat_llm_config).to be_nil # 전제 확인
+
+        get "/api/v1/user/llm_settings"
+
+        expect(response).to have_http_status(:ok)
+        body = response.parsed_body
+        expect(body["llm_settings"]["effective_chat_model"]).to be_nil
+      end
+    end
+
     context "server_default 정보" do
       it "서버 기본 LLM 설정 정보를 반환한다" do
         get "/api/v1/user/llm_settings"
