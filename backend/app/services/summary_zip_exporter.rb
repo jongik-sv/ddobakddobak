@@ -82,9 +82,11 @@ class SummaryZipExporter
   # 선택 폴더가 zip 루트. DFS + seen 가드(FolderExporter 와 동일하게 FK 가
   # 사이클을 막지 못하는 전제). 휴지통 폴더·회의는 kept 로 제외.
   def folder_scope_pairs
-    # 스코프 루트 자체가 휴지통이면 빈 결과 → 컨트롤러 422. set_folder(컨트롤러)가
-    # kept 를 필터하지 않아 trashed 폴더 ID로도 여기까지 도달 가능(T3 리뷰 E2E 실증).
-    return [] if @folder.trashed?
+    # 루트 자신·조상 체인·소유 프로젝트 어디든 휴지통이면 빈 결과(→ 422).
+    # set_folder 가 kept 미필터라 여기서 방어. kept 폴더가 trashed 부모/프로젝트
+    # 아래 남는 상태는 일반 trash/restore 순서로 실재(재리뷰 E2E 실증).
+    return [] if ([ @folder ] + @folder.ancestor_records).any?(&:trashed?)
+    return [] if @folder.project&.trashed?
 
     pairs = []
     seen  = Set.new

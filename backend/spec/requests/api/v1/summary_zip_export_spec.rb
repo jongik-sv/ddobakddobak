@@ -54,6 +54,19 @@ RSpec.describe "Summary zip export", type: :request do
       expect(response).to have_http_status(:unprocessable_entity)
       expect(response.parsed_body["error"]).to eq("내보낼 요약이 없습니다")
     end
+
+    it "휴지통 부모 아래 kept 자식 폴더 ID로 POST 시 422 (픽스2 재리뷰 E2E: 조상 체인 가드)" do
+      trashed_parent = create(:folder, project: project, name: "버린부모", deleted_at: Time.current)
+      kept_child = create(:folder, project: project, name: "유지자식", parent_id: trashed_parent.id)
+      child_meeting = create(:meeting, project: project, creator: member, folder: kept_child,
+                              title: "자식회의", status: "completed")
+      create(:summary, meeting: child_meeting, summary_type: "final", notes_markdown: "내용")
+
+      login_as(member)
+      post "/api/v1/folders/#{kept_child.id}/export_summaries"
+
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
   end
 
   describe "POST /api/v1/projects/:id/export_summaries" do

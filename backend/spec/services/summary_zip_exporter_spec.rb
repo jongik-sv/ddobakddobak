@@ -120,6 +120,28 @@ RSpec.describe SummaryZipExporter do
       expect(export_entries(exporter)).to be_empty
     end
 
+    it "kept 루트 폴더의 부모가 휴지통이면 빈 결과다 (픽스2 재리뷰 E2E: 조상 체인 가드)" do
+      trashed_parent = create(:folder, project: project, name: "버린부모", deleted_at: Time.current)
+      kept_root = create(:folder, project: project, name: "유지루트", parent_id: trashed_parent.id)
+      m = create(:meeting, project: project, creator: owner, folder: kept_root, title: "회의")
+      add_summary!(m, "내용")
+
+      exporter = described_class.new(folder: kept_root)
+      expect(exporter.empty?).to be(true)
+      expect(export_entries(exporter)).to be_empty
+    end
+
+    it "kept 루트 폴더의 소유 project 가 휴지통이면 빈 결과다 (픽스2 재리뷰 E2E: 소유 프로젝트 가드)" do
+      trashed_project = create(:project, creator: owner, name: "버린프로젝트", deleted_at: Time.current)
+      kept_root = create(:folder, project: trashed_project, name: "유지루트")
+      m = create(:meeting, project: trashed_project, creator: owner, folder: kept_root, title: "회의")
+      add_summary!(m, "내용")
+
+      exporter = described_class.new(folder: kept_root)
+      expect(exporter.empty?).to be(true)
+      expect(export_entries(exporter)).to be_empty
+    end
+
     it "폴더 사이클이 있어도 무한루프 없이 종료한다" do
       # root→child(기존)에 root.parent_id=child 를 더해 진짜 순환을 만든다 —
       # walk 가 child.children 에서 root 를 다시 만나 seen 가드가 실제 발동된다.
