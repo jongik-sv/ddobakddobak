@@ -133,6 +133,18 @@ RSpec.describe SummaryZipExporter do
         "주간 회의/7월/중첩회의_#{d2}.md"
       )
     end
+
+    it "휴지통 폴더 하위의 kept 회의는 제외한다" do
+      trashed_f = create(:folder, project: project, name: "버린폴더", deleted_at: Time.current)
+      in_trashed = create(:meeting, project: project, creator: owner, folder: trashed_f, title: "버린폴더속")
+      ok = create(:meeting, project: project, creator: owner, folder: nil, title: "정상루트")
+      add_summary!(in_trashed, "a")
+      add_summary!(ok, "b")
+
+      entries = export_entries(described_class.new(project: project))
+      expect(entries.size).to eq(1)
+      expect(entries.keys.first).to start_with("정상루트_")
+    end
   end
 
   describe "#empty?" do

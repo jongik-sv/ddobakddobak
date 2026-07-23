@@ -97,7 +97,11 @@ class SummaryZipExporter
   # ⚠️ project.meetings 직접 순회 — 폴더 재귀로 모으면 folder_id nil 루트
   # 회의가 누락된다. 경로는 회의별 조상 체인으로 계산(루트→리프 순).
   def project_scope_pairs
-    @project.meetings.kept.includes(:folder).map do |meeting|
+    @project.meetings.kept.includes(:folder).filter_map do |meeting|
+      # 폴더 체인에 휴지통 폴더가 있으면 제외 — 폴더 스코프의 children.kept DFS와
+      # 대칭 (kept 회의가 trashed 폴더 아래 남는 상태는 실재 가능: Trash::Restorer 선례)
+      next if meeting.folder && ([meeting.folder] + meeting.folder.ancestor_records).any?(&:trashed?)
+
       parts =
         if meeting.folder
           ([meeting.folder] + meeting.folder.ancestor_records).reverse.map(&:name)
