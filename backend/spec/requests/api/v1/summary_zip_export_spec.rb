@@ -67,6 +67,27 @@ RSpec.describe "Summary zip export", type: :request do
 
       expect(response).to have_http_status(:unprocessable_entity)
     end
+
+    # C1: 회의 read 인가 우회 회귀 방지 — 같은 프로젝트 멤버라도 shared:false 회의는
+    # accessible_by(read 규칙) 밖이라, 그 폴더의 요약만 있으면 필터 후 빈 zip → 422.
+    context "가시성 인가 (C1)" do
+      let!(:member_b) { create(:user) }
+      let!(:private_folder) { create(:folder, project: project, name: "B비공개폴더") }
+      let!(:private_meeting) do
+        create(:meeting, project: project, creator: member_b, folder: private_folder,
+                         title: "B비공개회의", status: "completed", shared: false)
+      end
+      let!(:private_summary) do
+        create(:summary, meeting: private_meeting, summary_type: "final", notes_markdown: "비공개 내용")
+      end
+
+      it "B의 shared:false 회의만 있는 폴더는 A(같은 프로젝트 멤버)에게 422 (필터 후 빈 zip)" do
+        login_as(member)
+        post "/api/v1/folders/#{private_folder.id}/export_summaries"
+
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+    end
   end
 
   describe "POST /api/v1/projects/:id/export_summaries" do

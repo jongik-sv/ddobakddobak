@@ -3,7 +3,7 @@
 # 읽는 용도 — Windows 탐색기 호환을 위해 zip + EFS(initializers/rubyzip.rb).
 #
 # 사용법:
-#   exporter = SummaryZipExporter.new(folder: f)   # 또는 project: p (정확히 하나)
+#   exporter = SummaryZipExporter.new(folder: f, current_user: user)   # 또는 project: p (정확히 하나)
 #   exporter.empty?        # 요약 있는 회의 0건이면 true (컨트롤러가 422 분기)
 #   exporter.write_to(io)  # zip 스트림 기록
 #   exporter.filename      # "<slug>-summaries-YYYYMMDD.zip"
@@ -14,10 +14,11 @@ class SummaryZipExporter
   # (frontend sanitizeFilename 의 공백→_ 는 단일 다운로드 파일명용이라 안 따름)
   ILLEGAL_CHARS = %r{[/\\:*?"<>|]}
 
-  def initialize(folder: nil, project: nil)
+  def initialize(folder: nil, project: nil, current_user:)
     raise ArgumentError, "folder 또는 project 중 정확히 하나" unless folder.nil? ^ project.nil?
-    @folder  = folder
-    @project = project
+    @folder       = folder
+    @project      = project
+    @current_user = current_user
   end
 
   # 요약 있는 회의가 하나도 없으면 true.
@@ -93,7 +94,9 @@ class SummaryZipExporter
     walk = lambda do |folder, parts|
       next if seen.include?(folder.id)
       seen << folder.id
-      folder.meetings.kept.each { |m| pairs << [m, parts] }
+      # C1: 회의 read 인가 — Meeting.accessible_by(user)로 필터(목록 필터와 동일 규칙,
+      # meeting.rb:183). 프로젝트 멤버라도 shared:false 타인 회의는 여기서 제외된다.
+      folder.meetings.kept.accessible_by(@current_user).each { |m| pairs << [m, parts] }
       folder.children.kept.each { |c| walk.call(c, parts + [c.name]) }
     end
     walk.call(@folder, [])
@@ -106,7 +109,8 @@ class SummaryZipExporter
     # 스코프 루트 자체가 휴지통이면 빈 결과 → 컨트롤러 422 (folder_scope_pairs 와 대칭).
     return [] if @project.trashed?
 
-    @project.meetings.kept.includes(:folder).filter_map do |meeting|
+    # C1: 회의 read 인가 — folder_scope_pairs 와 동일하게 accessible_by 필터.
+    @project.meetings.kept.accessible_by(@current_user).includes(:folder).filter_map do |meeting|
       # 폴더 체인에 휴지통 폴더가 있으면 제외 — 폴더 스코프의 children.kept DFS와
       # 대칭 (kept 회의가 trashed 폴더 아래 남는 상태는 실재 가능: Trash::Restorer 선례)
       next if meeting.folder && ([meeting.folder] + meeting.folder.ancestor_records).any?(&:trashed?)
@@ -121,8 +125,17 @@ class SummaryZipExporter
     end
   end
 
+  # I1: Zip Slip 방지 — ILLEGAL_CHARS 는 "/" 등만 지우고 "."은 남기므로, 폴더명이
+  # 그대로 ".." 이면 zip 엔트리가 "../파일.md" 로 나가 추출 시 대상 밖에 쓰일 수
+  # 있다. 제어문자·Windows 비호환 후행 점/공백도 제거하고, 결과가 비거나 "."/".."
+  # 이면 안전한 placeholder("_")로 치환한다.
   def sanitize(name)
-    name.to_s.gsub(ILLEGAL_CHARS, "").slice(0, 100)
+    s = name.to_s.gsub(ILLEGAL_CHARS, "")
+    s = s.gsub(/[\x00-\x1f]/, "")        # 제어문자
+    s = s.sub(/[. ]+\z/, "")             # Windows 비호환 후행 점·공백
+    s = s.slice(0, 100)
+    s = "_" if s.blank? || s == "." || s == ".."
+    s
   end
 
   # 회의 날짜: 실제 시작 시각 우선, 없으면 생성일.

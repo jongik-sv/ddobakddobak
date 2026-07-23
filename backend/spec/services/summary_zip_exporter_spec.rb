@@ -34,8 +34,13 @@ RSpec.describe SummaryZipExporter do
 
   describe "생성자" do
     it "folder·project 를 동시에 주거나 둘 다 없으면 ArgumentError" do
-      expect { described_class.new }.to raise_error(ArgumentError)
-      expect { described_class.new(folder: root, project: project) }.to raise_error(ArgumentError)
+      expect { described_class.new(current_user: owner) }.to raise_error(ArgumentError)
+      expect { described_class.new(folder: root, project: project, current_user: owner) }.to raise_error(ArgumentError)
+    end
+
+    it "current_user 없이 생성하면 ArgumentError (C1: read 인가 필수 주입)" do
+      expect { described_class.new(folder: root) }.to raise_error(ArgumentError)
+      expect { described_class.new(project: project) }.to raise_error(ArgumentError)
     end
   end
 
@@ -46,7 +51,7 @@ RSpec.describe SummaryZipExporter do
       add_summary!(m1, "## 회의록\n킥오프 내용")
       add_summary!(m2, "## 회의록\n점검 내용")
 
-      entries = export_entries(described_class.new(folder: root))
+      entries = export_entries(described_class.new(folder: root, current_user: owner))
       date1 = (m1.started_at || m1.created_at).to_date.iso8601
       date2 = (m2.started_at || m2.created_at).to_date.iso8601
 
@@ -62,7 +67,7 @@ RSpec.describe SummaryZipExporter do
       with = create(:meeting, project: project, creator: owner, folder: root, title: "요약있음")
       add_summary!(with, "내용")
 
-      entries = export_entries(described_class.new(folder: root))
+      entries = export_entries(described_class.new(folder: root, current_user: owner))
       expect(entries.keys.join).not_to include("요약없음")
       expect(entries.size).to eq(1)
     end
@@ -76,7 +81,7 @@ RSpec.describe SummaryZipExporter do
       m2.update_column(:created_at, m1.created_at)
       m2.update_column(:started_at, m1.started_at)
 
-      entries = export_entries(described_class.new(folder: root))
+      entries = export_entries(described_class.new(folder: root, current_user: owner))
       date = (m1.started_at || m1.created_at).to_date.iso8601
       expect(entries.keys).to contain_exactly(
         "정기회의_#{date}.md",
@@ -88,7 +93,7 @@ RSpec.describe SummaryZipExporter do
       m = create(:meeting, project: project, creator: owner, folder: root, title: 'Q3: 매출/전략 "검토"')
       add_summary!(m, "내용")
 
-      entries = export_entries(described_class.new(folder: root))
+      entries = export_entries(described_class.new(folder: root, current_user: owner))
       date = (m.started_at || m.created_at).to_date.iso8601
       expect(entries.keys).to contain_exactly("Q3 매출전략 검토_#{date}.md")
     end
@@ -102,7 +107,7 @@ RSpec.describe SummaryZipExporter do
       add_summary!(trashed_m, "b")
       add_summary!(in_trashed, "c")
 
-      entries = export_entries(described_class.new(folder: root))
+      entries = export_entries(described_class.new(folder: root, current_user: owner))
       expect(entries.size).to eq(1)
       expect(entries.keys.first).to start_with("정상_")
     end
@@ -115,7 +120,7 @@ RSpec.describe SummaryZipExporter do
       add_summary!(m1, "a")
       add_summary!(m2, "b")
 
-      exporter = described_class.new(folder: trashed_root)
+      exporter = described_class.new(folder: trashed_root, current_user: owner)
       expect(exporter.empty?).to be(true)
       expect(export_entries(exporter)).to be_empty
     end
@@ -126,7 +131,7 @@ RSpec.describe SummaryZipExporter do
       m = create(:meeting, project: project, creator: owner, folder: kept_root, title: "회의")
       add_summary!(m, "내용")
 
-      exporter = described_class.new(folder: kept_root)
+      exporter = described_class.new(folder: kept_root, current_user: owner)
       expect(exporter.empty?).to be(true)
       expect(export_entries(exporter)).to be_empty
     end
@@ -137,7 +142,7 @@ RSpec.describe SummaryZipExporter do
       m = create(:meeting, project: trashed_project, creator: owner, folder: kept_root, title: "회의")
       add_summary!(m, "내용")
 
-      exporter = described_class.new(folder: kept_root)
+      exporter = described_class.new(folder: kept_root, current_user: owner)
       expect(exporter.empty?).to be(true)
       expect(export_entries(exporter)).to be_empty
     end
@@ -149,7 +154,85 @@ RSpec.describe SummaryZipExporter do
       root.update_column(:parent_id, child.id)
       m = create(:meeting, project: project, creator: owner, folder: root, title: "회의")
       add_summary!(m, "a")
-      expect { export_entries(described_class.new(folder: root)) }.not_to raise_error
+      expect { export_entries(described_class.new(folder: root, current_user: owner)) }.not_to raise_error
+    end
+  end
+
+  describe "가시성 필터 (C1: 회의 read 인가 — Meeting.accessible_by)" do
+    let!(:member_b) { create(:user) }
+
+    before do
+      # 실제 앱은 projects_controller#create 에서 프로젝트 생성자를 즉시 admin
+      # 멤버로 등록하지만(app/controllers/api/v1/projects_controller.rb:31), 이
+      # 팩토리(create(:project, creator: owner))는 컨트롤러를 거치지 않아 그
+      # 등록이 없다. owner 소유 회의가 없는 이 컨텍스트에서는 meeting factory의
+      # after_create 도 owner 를 멤버로 못 만들므로, 실제 불변식대로 명시 등록한다.
+      # member_b 도 회의 없이 accessible_by 검증이 필요한 케이스가 있어 함께 등록.
+      ProjectMembership.find_or_create_by!(project: project, user: owner)    { |pm| pm.role = "admin" }
+      ProjectMembership.find_or_create_by!(project: project, user: member_b) { |pm| pm.role = "member" }
+    end
+
+    it "타 멤버(B)의 shared:false 회의는 export 대상에서 제외한다" do
+      private_m = create(:meeting, project: project, creator: member_b, folder: root,
+                          title: "B비공개", shared: false)
+      add_summary!(private_m, "비공개 내용")
+
+      entries = export_entries(described_class.new(folder: root, current_user: owner))
+      expect(entries.keys.join).not_to include("B비공개")
+      expect(entries).to be_empty
+    end
+
+    it "요청자 자신의 shared:false 회의는 export 대상에 포함한다" do
+      my_private = create(:meeting, project: project, creator: owner, folder: root,
+                           title: "내비공개", shared: false)
+      add_summary!(my_private, "내용")
+
+      entries = export_entries(described_class.new(folder: root, current_user: owner))
+      expect(entries.keys.join).to include("내비공개")
+    end
+
+    it "타 멤버(B)의 shared:true(기본) 회의는 export 대상에 포함한다" do
+      shared_m = create(:meeting, project: project, creator: member_b, folder: root, title: "B공유")
+      add_summary!(shared_m, "내용")
+
+      entries = export_entries(described_class.new(folder: root, current_user: owner))
+      expect(entries.keys.join).to include("B공유")
+    end
+
+    it "프로젝트 스코프에서도 타 멤버(B)의 shared:false 회의를 제외한다" do
+      private_root_m = create(:meeting, project: project, creator: member_b, folder: nil,
+                               title: "B비공개루트", shared: false)
+      add_summary!(private_root_m, "내용")
+
+      entries = export_entries(described_class.new(project: project, current_user: owner))
+      expect(entries.keys.join).not_to include("B비공개루트")
+      expect(entries).to be_empty
+    end
+  end
+
+  describe "zip 경로 세그먼트 하드닝 (I1: Zip Slip)" do
+    it "폴더명이 '..' 이면 zip 엔트리 경로에 '..' 세그먼트가 없다 (placeholder '_')" do
+      trap = create(:folder, project: project, name: "..", parent_id: root.id)
+      m = create(:meeting, project: project, creator: owner, folder: trap, title: "탈출시도")
+      add_summary!(m, "내용")
+
+      entries = export_entries(described_class.new(folder: root, current_user: owner))
+      path = entries.keys.first
+      expect(path).not_to be_nil
+      expect(path.split("/")).not_to include("..")
+      expect(path).to start_with("_/")
+    end
+
+    it "폴더명이 전부 금지 문자('???')면 '_' 세그먼트로 치환되고 선행 슬래시가 없다" do
+      trap = create(:folder, project: project, name: "???", parent_id: root.id)
+      m = create(:meeting, project: project, creator: owner, folder: trap, title: "전부금지")
+      add_summary!(m, "내용")
+
+      entries = export_entries(described_class.new(folder: root, current_user: owner))
+      path = entries.keys.first
+      expect(path).not_to be_nil
+      expect(path).not_to start_with("/")
+      expect(path).to start_with("_/")
     end
   end
 
@@ -160,7 +243,7 @@ RSpec.describe SummaryZipExporter do
       add_summary!(root_m, "루트")
       add_summary!(nested_m, "중첩")
 
-      entries = export_entries(described_class.new(project: project))
+      entries = export_entries(described_class.new(project: project, current_user: owner))
       d1 = (root_m.started_at || root_m.created_at).to_date.iso8601
       d2 = (nested_m.started_at || nested_m.created_at).to_date.iso8601
       expect(entries.keys).to contain_exactly(
@@ -176,7 +259,7 @@ RSpec.describe SummaryZipExporter do
       add_summary!(in_trashed, "a")
       add_summary!(ok, "b")
 
-      entries = export_entries(described_class.new(project: project))
+      entries = export_entries(described_class.new(project: project, current_user: owner))
       expect(entries.size).to eq(1)
       expect(entries.keys.first).to start_with("정상루트_")
     end
@@ -186,7 +269,7 @@ RSpec.describe SummaryZipExporter do
       add_summary!(m, "a")
       project.update_column(:deleted_at, Time.current)
 
-      exporter = described_class.new(project: project)
+      exporter = described_class.new(project: project, current_user: owner)
       expect(exporter.empty?).to be(true)
       expect(export_entries(exporter)).to be_empty
     end
@@ -195,22 +278,22 @@ RSpec.describe SummaryZipExporter do
   describe "#empty?" do
     it "요약 있는 회의가 하나도 없으면 true" do
       create(:meeting, project: project, creator: owner, folder: root, title: "요약없음")
-      expect(described_class.new(folder: root).empty?).to be(true)
-      expect(described_class.new(project: project).empty?).to be(true)
+      expect(described_class.new(folder: root, current_user: owner).empty?).to be(true)
+      expect(described_class.new(project: project, current_user: owner).empty?).to be(true)
     end
   end
 
   describe "#filename" do
     it "한글 이름은 parameterize 로 비면 폴백 slug 를 쓴다" do
       today = Date.current.strftime("%Y%m%d")
-      expect(described_class.new(folder: root).filename).to eq("folder-summaries-#{today}.zip")
-      expect(described_class.new(project: project).filename).to eq("project-summaries-#{today}.zip")
+      expect(described_class.new(folder: root, current_user: owner).filename).to eq("folder-summaries-#{today}.zip")
+      expect(described_class.new(project: project, current_user: owner).filename).to eq("project-summaries-#{today}.zip")
     end
 
     it "ASCII 이름은 slug 를 쓴다" do
       f = create(:folder, project: project, name: "Weekly Sync")
       today = Date.current.strftime("%Y%m%d")
-      expect(described_class.new(folder: f).filename).to eq("weekly-sync-summaries-#{today}.zip")
+      expect(described_class.new(folder: f, current_user: owner).filename).to eq("weekly-sync-summaries-#{today}.zip")
     end
   end
 end

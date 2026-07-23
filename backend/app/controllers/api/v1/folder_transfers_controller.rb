@@ -36,7 +36,7 @@ module Api
       # 권한: set_folder 의 멤버십 스코프(비멤버 404)만 — 읽기 행위라
       # export(tgz)와 달리 editable_by? 를 요구하지 않는다(멤버 누구나).
       def export_summaries
-        exporter = SummaryZipExporter.new(folder: @folder)
+        exporter = SummaryZipExporter.new(folder: @folder, current_user: current_user)
         return render json: { error: "내보낼 요약이 없습니다" }, status: :unprocessable_entity if exporter.empty?
 
         send_zip(exporter)

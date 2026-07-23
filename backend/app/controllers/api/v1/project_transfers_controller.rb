@@ -39,7 +39,7 @@ module Api
       def export_summaries
         return render json: { error: "Forbidden" }, status: :forbidden unless @project.member?(current_user)
 
-        exporter = SummaryZipExporter.new(project: @project)
+        exporter = SummaryZipExporter.new(project: @project, current_user: current_user)
         return render json: { error: "내보낼 요약이 없습니다" }, status: :unprocessable_entity if exporter.empty?
 
         send_zip(exporter)
