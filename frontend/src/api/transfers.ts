@@ -102,3 +102,36 @@ export async function importFolder(
     .post(`projects/${projectId}/folders/import`, { body: formData, timeout: false })
     .json<{ folder_id: number; meeting_ids: number[]; warnings: string[] }>()
 }
+
+// ── 요약 zip 내보내기 ──────────────────────────────────────────────────────────────
+
+/** 요약 zip 이 비었을 때(요약 있는 회의 0건) 백엔드가 주는 상태코드. 호출부 에러 분기용. */
+export const SUMMARY_EXPORT_EMPTY_STATUS = 422
+
+/**
+ * 폴더 서브트리 회의들의 AI 요약 md 를 폴더 구조 zip 으로 다운로드.
+ * 실패 시 ky HTTPError throw — 422 = 내보낼 요약 없음(호출부에서 분기).
+ */
+export async function exportFolderSummaries(folderId: number): Promise<void> {
+  const response = await apiClient.post(`folders/${folderId}/export_summaries`, {
+    timeout: false,
+  })
+  const disposition = response.headers.get('content-disposition')
+  const filename = filenameFromDisposition(disposition) ?? `folder-${folderId}-summaries.zip`
+  const blob = await response.blob()
+  await downloadBlob(blob, filename)
+}
+
+/**
+ * 프로젝트 전체 회의(루트 회의 포함)의 AI 요약 md 를 폴더 구조 zip 으로 다운로드.
+ * 실패 시 ky HTTPError throw — 422 = 내보낼 요약 없음.
+ */
+export async function exportProjectSummaries(projectId: number): Promise<void> {
+  const response = await apiClient.post(`projects/${projectId}/export_summaries`, {
+    timeout: false,
+  })
+  const disposition = response.headers.get('content-disposition')
+  const filename = filenameFromDisposition(disposition) ?? `project-${projectId}-summaries.zip`
+  const blob = await response.blob()
+  await downloadBlob(blob, filename)
+}
