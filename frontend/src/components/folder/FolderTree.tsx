@@ -16,6 +16,7 @@ import {
   FileText,
   Star,
   PackageOpen,
+  FileDown,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useFolderStore } from '../../stores/folderStore'
@@ -32,6 +33,7 @@ import { useProjectStore } from '../../stores/projectStore'
 import { initDrag } from '../../utils/dragState'
 import { confirmDialog } from '../../lib/confirmDialog'
 import { folderPath } from '../../lib/folderNav'
+import { exportFolderSummaries, SUMMARY_EXPORT_EMPTY_STATUS } from '../../api/transfers'
 
 function countAllFolders(nodes: FolderNode[]): number {
   return nodes.reduce((sum, n) => sum + 1 + countAllFolders(n.children), 0)
@@ -59,6 +61,8 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
   const [showDomainFilesDialog, setShowDomainFilesDialog] = useState(false)
   const [showMoveProject, setShowMoveProject] = useState(false)
   const [showExportDialog, setShowExportDialog] = useState(false)
+  const [summaryExporting, setSummaryExporting] = useState(false)
+  const [summaryExportError, setSummaryExportError] = useState('')
   const currentProjectId = useProjectStore((s) => s.currentProjectId)
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -131,6 +135,25 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
     await setFolderImportant(folder.id, !folder.important)
   }
 
+  // 요약 zip 내보내기 — 다이얼로그 없이 즉시. 메뉴를 열어둔 채 진행 표시,
+  // 성공 시 닫고 실패 시 메뉴 안에 에러 한 줄(422=요약 없음).
+  const handleSummaryExport = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSummaryExporting(true)
+    setSummaryExportError('')
+    try {
+      await exportFolderSummaries(folder.id)
+      setShowMenu(false)
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      setSummaryExportError(
+        status === SUMMARY_EXPORT_EMPTY_STATUS ? '내보낼 요약이 없습니다' : '내보내기에 실패했습니다',
+      )
+    } finally {
+      setSummaryExporting(false)
+    }
+  }
+
   return (
     <>
       <div
@@ -173,11 +196,12 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
         <div className="relative hidden hover-show-block-parent ml-auto" ref={menuRef}>
           <button
             ref={triggerRef}
+            aria-label="메뉴"
             onClick={(e) => {
               e.stopPropagation()
               if (!showMenu && triggerRef.current) {
                 const rect = triggerRef.current.getBoundingClientRect()
-                const MENU_H = 410
+                const MENU_H = 455
                 const right = Math.max(8, window.innerWidth - rect.right)
                 setPos(
                   rect.bottom + MENU_H > window.innerHeight
@@ -185,6 +209,7 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
                     : { top: rect.bottom + 4, right },
                 )
               }
+              setSummaryExportError('')
               setShowMenu(!showMenu)
             }}
             className="p-2 rounded hover:bg-black/5"
@@ -276,6 +301,16 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
               >
                 <PackageOpen className="w-3.5 h-3.5" /> 내보내기(.tgz)
               </button>
+              <button
+                onClick={handleSummaryExport}
+                disabled={summaryExporting}
+                className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                <FileDown className="w-3.5 h-3.5" /> {summaryExporting ? '내보내는 중…' : '요약 내보내기(zip)'}
+              </button>
+              {summaryExportError && (
+                <p role="alert" className="px-3 py-1 text-xs text-red-600">{summaryExportError}</p>
+              )}
               <button
                 onClick={(e) => {
                   e.stopPropagation()
