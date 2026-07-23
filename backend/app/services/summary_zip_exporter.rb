@@ -82,6 +82,10 @@ class SummaryZipExporter
   # 선택 폴더가 zip 루트. DFS + seen 가드(FolderExporter 와 동일하게 FK 가
   # 사이클을 막지 못하는 전제). 휴지통 폴더·회의는 kept 로 제외.
   def folder_scope_pairs
+    # 스코프 루트 자체가 휴지통이면 빈 결과 → 컨트롤러 422. set_folder(컨트롤러)가
+    # kept 를 필터하지 않아 trashed 폴더 ID로도 여기까지 도달 가능(T3 리뷰 E2E 실증).
+    return [] if @folder.trashed?
+
     pairs = []
     seen  = Set.new
     walk = lambda do |folder, parts|
@@ -97,6 +101,9 @@ class SummaryZipExporter
   # ⚠️ project.meetings 직접 순회 — 폴더 재귀로 모으면 folder_id nil 루트
   # 회의가 누락된다. 경로는 회의별 조상 체인으로 계산(루트→리프 순).
   def project_scope_pairs
+    # 스코프 루트 자체가 휴지통이면 빈 결과 → 컨트롤러 422 (folder_scope_pairs 와 대칭).
+    return [] if @project.trashed?
+
     @project.meetings.kept.includes(:folder).filter_map do |meeting|
       # 폴더 체인에 휴지통 폴더가 있으면 제외 — 폴더 스코프의 children.kept DFS와
       # 대칭 (kept 회의가 trashed 폴더 아래 남는 상태는 실재 가능: Trash::Restorer 선례)

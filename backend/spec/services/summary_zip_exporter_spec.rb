@@ -107,6 +107,19 @@ RSpec.describe SummaryZipExporter do
       expect(entries.keys.first).to start_with("정상_")
     end
 
+    it "스코프 루트 자체가 휴지통이면 kept 자식이 있어도 빈 결과다 (T3 리뷰 E2E)" do
+      trashed_root = create(:folder, project: project, name: "버린루트", deleted_at: Time.current)
+      kept_child   = create(:folder, project: project, name: "버린루트속유지폴더", parent_id: trashed_root.id)
+      m1 = create(:meeting, project: project, creator: owner, folder: trashed_root, title: "루트직속")
+      m2 = create(:meeting, project: project, creator: owner, folder: kept_child,   title: "자식속")
+      add_summary!(m1, "a")
+      add_summary!(m2, "b")
+
+      exporter = described_class.new(folder: trashed_root)
+      expect(exporter.empty?).to be(true)
+      expect(export_entries(exporter)).to be_empty
+    end
+
     it "폴더 사이클이 있어도 무한루프 없이 종료한다" do
       # root→child(기존)에 root.parent_id=child 를 더해 진짜 순환을 만든다 —
       # walk 가 child.children 에서 root 를 다시 만나 seen 가드가 실제 발동된다.
@@ -144,6 +157,16 @@ RSpec.describe SummaryZipExporter do
       entries = export_entries(described_class.new(project: project))
       expect(entries.size).to eq(1)
       expect(entries.keys.first).to start_with("정상루트_")
+    end
+
+    it "프로젝트 자체가 휴지통이면 kept 회의가 있어도 빈 결과다 (T3 리뷰 E2E)" do
+      m = create(:meeting, project: project, creator: owner, folder: nil, title: "정상루트")
+      add_summary!(m, "a")
+      project.update_column(:deleted_at, Time.current)
+
+      exporter = described_class.new(project: project)
+      expect(exporter.empty?).to be(true)
+      expect(export_entries(exporter)).to be_empty
     end
   end
 
