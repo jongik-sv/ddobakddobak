@@ -58,6 +58,8 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
   const isUserEditingRef = useRef(false)
   const isProgrammaticRef = useRef(false)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  // 외부발 갱신(오타교정·재생성)이 replaceBlocks로 문서를 전체 치환할 때 스크롤 위치를 보존하기 위한 컨테이너 참조
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [showFullView, setShowFullView] = useState(false)
@@ -108,11 +110,15 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
       return () => { cancelled = true }
     }
     async function updateBlocks() {
+      let savedScrollTop: number | null = null
       try {
         isProgrammaticRef.current = true
         const blocks = await editor.tryParseMarkdownToBlocks(meetingNotes!)
         if (cancelled) return
         const converted = markersToInline(codeBlocksToMermaid(blocks as any[]))
+        // 외부발 갱신(오타교정·재생성)으로 문서 전체가 치환되면 블록 ID가 전부 새로 생성돼
+        // 스크롤이 맨 위로 점프한다 — 치환 직전 스크롤 위치를 저장해 뒤에서 복원한다.
+        savedScrollTop = scrollContainerRef.current?.scrollTop ?? 0
         // Defense 1: 프로그래매틱 주입을 undo 히스토리에서 제외 (Ctrl+Z로 빈 상태 복귀→소실 방지)
         editor.transact((tr: any) => {
           tr.setMeta('addToHistory', false)
@@ -121,7 +127,19 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
         prevMarkdownRef.current = meetingNotes ?? ''
       } catch { /* ignore */ } finally {
         if (!cancelled) {
-          requestAnimationFrame(() => { isProgrammaticRef.current = false })
+          requestAnimationFrame(() => {
+            isProgrammaticRef.current = false
+            if (savedScrollTop !== null && scrollContainerRef.current) {
+              scrollContainerRef.current.scrollTop = savedScrollTop
+            }
+            // mermaid 블록은 mermaid.render()가 비동기라 높이가 한 프레임 뒤에 확정되는 경우가 있어
+            // 한 프레임 더 지연시켜 재복원한다.
+            requestAnimationFrame(() => {
+              if (savedScrollTop !== null && scrollContainerRef.current) {
+                scrollContainerRef.current.scrollTop = savedScrollTop
+              }
+            })
+          })
         }
       }
     }
@@ -280,6 +298,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
         </div>
       )}
       <div
+        ref={scrollContainerRef}
         className="flex-1 overflow-y-auto select-text"
         style={{ '--bn-body-font-size': `${summaryFontSize}px` } as React.CSSProperties}
       >
