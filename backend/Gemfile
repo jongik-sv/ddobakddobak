@@ -47,6 +47,9 @@ gem "alba"
 gem "anthropic"
 gem "ruby-openai"
 
+# ZIP export (요약 zip 내보내기 — Windows 호환 zip. stdlib에 zip writer 없음)
+gem "rubyzip", "~> 3.4"
+
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri ], require: "debug/prelude"
