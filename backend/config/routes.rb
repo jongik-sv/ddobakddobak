@@ -122,6 +122,7 @@ Rails.application.routes.draw do
         member do
           post :move_to_project
           post :export, to: "folder_transfers#export"
+          post :export_summaries, to: "folder_transfers#export_summaries"
           get  :domain_files
           put  :domain_files, to: "folders#update_domain_files"
         end
@@ -179,6 +180,7 @@ Rails.application.routes.draw do
           patch  "members/:user_id", action: :update_member, as: :update_member
           delete "members/:user_id", action: :remove_member, as: :remove_member
           post :export, to: "project_transfers#export"
+          post :export_summaries, to: "project_transfers#export_summaries"
           get  :domain_files
           put  :domain_files, to: "projects#update_domain_files"
         end

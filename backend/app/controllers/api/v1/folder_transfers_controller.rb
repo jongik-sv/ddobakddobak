@@ -7,7 +7,7 @@ module Api
       include ProjectScoped
 
       before_action :authenticate_user!
-      before_action :set_folder, only: %i[export]
+      before_action :set_folder, only: %i[export export_summaries]
 
       # 업로드 상한. 오디오 동봉 시 3GB.
       MAX_IMPORT_BYTES = 3 * 1024 * 1024 * 1024
@@ -29,6 +29,17 @@ module Api
           type:        "application/gzip",
           disposition: "attachment",
           filename:    exporter.filename
+      end
+
+      # POST /api/v1/folders/:id/export_summaries
+      # 서브트리 회의들의 AI 요약 md 를 폴더 구조 그대로 zip 으로 다운로드.
+      # 권한: set_folder 의 멤버십 스코프(비멤버 404)만 — 읽기 행위라
+      # export(tgz)와 달리 editable_by? 를 요구하지 않는다(멤버 누구나).
+      def export_summaries
+        exporter = SummaryZipExporter.new(folder: @folder)
+        return render json: { error: "내보낼 요약이 없습니다" }, status: :unprocessable_entity if exporter.empty?
+
+        send_zip(exporter)
       end
 
       # POST /api/v1/projects/:project_id/folders/import  multipart file=<tar.gz>, body { parent_folder_id? }
@@ -90,6 +101,18 @@ module Api
       # "false" 문자열만 false, 미전달 시 true.
       def boolean_param(key)
         params.fetch(key, "true").to_s != "false"
+      end
+
+      def send_zip(exporter)
+        tempfile = Tempfile.new([ "summaries-export", ".zip" ])
+        tempfile.binmode
+        exporter.write_to(tempfile)
+        tempfile.flush
+
+        send_file tempfile.path,
+          type:        "application/zip",
+          disposition: "attachment",
+          filename:    exporter.filename
       end
     end
   end
