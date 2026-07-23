@@ -127,7 +127,11 @@ vi.mock('../components/meeting/MiniAudioPlayer', () => ({
 }))
 
 vi.mock('../components/meeting/TranscriptPanel', () => ({
-  TranscriptPanel: () => <div data-testid="transcript-panel" />,
+  TranscriptPanel: (props: { seekTick?: number; onSeek?: (ms: number) => void }) => (
+    <div data-testid="transcript-panel" data-seek-tick={props.seekTick}>
+      <button onClick={() => props.onSeek?.(5000)}>transcript-seek-btn</button>
+    </div>
+  ),
 }))
 
 vi.mock('../components/meeting/SpeakerPanel', () => ({
@@ -494,6 +498,26 @@ describe('MeetingPage', () => {
     await waitFor(() => {
       expect(meetingsApi.getMeeting).toHaveBeenCalledWith(1)
       expect(meetingsApi.getSummary).toHaveBeenCalledWith(1)
+    })
+  })
+
+  // #43 — seek 발생 시 TranscriptPanel에 seekTick이 증가해 전달되는지 배선 수준에서 검증한다
+  // (강제 스크롤 자체는 TranscriptPanel 단위 테스트가 커버).
+  describe('seek 배선 (#43)', () => {
+    it('seek 시 TranscriptPanel에 seekTick이 증가해 전달된다', async () => {
+      mockMeetingWithId(330)
+      renderPage('330')
+      await waitFor(() => {
+        expect(screen.getByTestId('transcript-panel')).toBeInTheDocument()
+      })
+      const beforeTick = screen.getByTestId('transcript-panel').getAttribute('data-seek-tick')
+
+      fireEvent.click(screen.getByText('transcript-seek-btn'))
+
+      await waitFor(() => {
+        const afterTick = screen.getByTestId('transcript-panel').getAttribute('data-seek-tick')
+        expect(afterTick).not.toBe(beforeTick)
+      })
     })
   })
 })

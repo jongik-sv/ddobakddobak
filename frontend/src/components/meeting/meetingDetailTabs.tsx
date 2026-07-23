@@ -42,6 +42,8 @@ interface BuildMeetingDetailTabsArgs {
   locked?: boolean
   /** AI 회의록(요약) 아래에 끼울 노드(오타수정·오타사전 등). 페이지가 생성. */
   belowSummary?: React.ReactNode
+  /** 명시적 seek(마커 클릭 등) 발생마다 증가하는 tick — TranscriptPanel 강제 스크롤 트리거. */
+  seekTick?: number
 }
 
 /** 회의 상세 모바일 탭(기록/요약/AI챗/메모) 정의를 생성한다. (순수 함수 — 훅 아님) */
@@ -67,6 +69,7 @@ export function buildMeetingDetailTabs({
   suppressAutoScroll,
   locked = false,
   belowSummary,
+  seekTick,
 }: BuildMeetingDetailTabsArgs): Tab[] {
   return [
     {
@@ -97,6 +100,7 @@ export function buildMeetingDetailTabs({
               activeSearch={activeSearch}
               suppressAutoScroll={suppressAutoScroll}
               readOnly={locked}
+              seekTick={seekTick}
             />
           </div>
         </div>

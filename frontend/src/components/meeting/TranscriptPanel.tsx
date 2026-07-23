@@ -20,6 +20,9 @@ interface TranscriptPanelProps {
   suppressAutoScroll?: boolean
   /** 잠긴 회의면 전사 인라인 편집을 막는다 (읽기 전용). 기본 false. */
   readOnly?: boolean
+  /** 명시적 seek(마커 클릭 등)가 발생할 때마다 증가하는 tick. 증가 시 suppressAutoScroll을
+   *  무시하고 강제로 스크롤한다 — 검색 중이거나 동일 세그먼트로 재-seek해도 따라가야 하므로. */
+  seekTick?: number
 }
 
 function formatTimestamp(ms: number): string {
@@ -38,6 +41,7 @@ export function TranscriptPanel({
   activeSearch = null,
   suppressAutoScroll = false,
   readOnly = false,
+  seekTick,
 }: TranscriptPanelProps) {
   const highlightedRef = useRef<HTMLDivElement | null>(null)
 
@@ -106,12 +110,18 @@ export function TranscriptPanel({
   // 오디오 위치로 뷰포트가 튀는 스크롤이 발화한다. 인덱스가 실제로 바뀔 때만 스크롤.
   const suppressRef = useRef(suppressAutoScroll)
   suppressRef.current = suppressAutoScroll
+  // seekTick이 실제로 바뀐 실행(=명시적 seek)인지 추적. 초기값을 seekTick으로 잡아
+  // 마운트 시점엔 "안 바뀜"으로 취급 — 기존 마운트 스크롤 동작(억제 존중)을 그대로 유지한다.
+  const prevSeekTickRef = useRef(seekTick)
   useEffect(() => {
-    if (suppressRef.current) return
+    const tickChanged = prevSeekTickRef.current !== seekTick
+    prevSeekTickRef.current = seekTick
+    // 명시적 seek(tick 변화)는 검색 억제보다 우선한다 — 마커 클릭은 항상 따라가야 함.
+    if (!tickChanged && suppressRef.current) return
     if (highlightedRef.current) {
       highlightedRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
-  }, [highlightedIndex])
+  }, [highlightedIndex, seekTick])
 
   if (transcripts.length === 0) {
     return (

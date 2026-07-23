@@ -155,6 +155,90 @@ describe('TranscriptPanel', () => {
   })
 })
 
+describe('TranscriptPanel seekTick (#43 — 마커 seek 후 스크롤 추적)', () => {
+  it('suppressAutoScroll=true여도 seekTick이 증가하면(명시적 seek) 강제로 스크롤한다', () => {
+    const scrollSpy = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView')
+    // currentTimeMs는 그대로 두어(highlightedIndex 불변) "동일 세그먼트로 재-seek" 케이스를 재현.
+    const { rerender } = render(
+      <TranscriptPanel
+        meetingId={1}
+        transcripts={mockTranscripts}
+        currentTimeMs={1500}
+        onSeek={vi.fn()}
+        suppressAutoScroll
+        seekTick={1}
+      />
+    )
+    scrollSpy.mockClear()
+
+    rerender(
+      <TranscriptPanel
+        meetingId={1}
+        transcripts={mockTranscripts}
+        currentTimeMs={1500}
+        onSeek={vi.fn()}
+        suppressAutoScroll
+        seekTick={2}
+      />
+    )
+    expect(scrollSpy).toHaveBeenCalled()
+    scrollSpy.mockRestore()
+  })
+
+  it('suppressAutoScroll=true이고 seekTick이 안 바뀌면(자동 재생 진행) 스크롤을 억제한다', () => {
+    const scrollSpy = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView')
+    const { rerender } = render(
+      <TranscriptPanel
+        meetingId={1}
+        transcripts={mockTranscripts}
+        currentTimeMs={0}
+        onSeek={vi.fn()}
+        suppressAutoScroll
+        seekTick={1}
+      />
+    )
+    scrollSpy.mockClear()
+
+    // highlightedIndex는 바뀌지만(0→1) seekTick은 그대로 — 검색 중 오디오가 흘러간 케이스.
+    rerender(
+      <TranscriptPanel
+        meetingId={1}
+        transcripts={mockTranscripts}
+        currentTimeMs={4000}
+        onSeek={vi.fn()}
+        suppressAutoScroll
+        seekTick={1}
+      />
+    )
+    expect(scrollSpy).not.toHaveBeenCalled()
+    scrollSpy.mockRestore()
+  })
+
+  it('suppressAutoScroll이 없으면(기본) seekTick 무관하게 highlightedIndex 변화로 스크롤한다 (기존 동작 유지)', () => {
+    const scrollSpy = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView')
+    const { rerender } = render(
+      <TranscriptPanel
+        meetingId={1}
+        transcripts={mockTranscripts}
+        currentTimeMs={0}
+        onSeek={vi.fn()}
+      />
+    )
+    scrollSpy.mockClear()
+
+    rerender(
+      <TranscriptPanel
+        meetingId={1}
+        transcripts={mockTranscripts}
+        currentTimeMs={4000}
+        onSeek={vi.fn()}
+      />
+    )
+    expect(scrollSpy).toHaveBeenCalled()
+    scrollSpy.mockRestore()
+  })
+})
+
 describe('TranscriptPanel speaker_name', () => {
   beforeEach(() => {
     useTranscriptStore.getState().reset()

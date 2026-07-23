@@ -184,6 +184,10 @@ export default function MeetingPage() {
   // 오디오 상태 (AudioPlayer ↔ MiniAudioPlayer ↔ TranscriptPanel 공유)
   const audio = useAudioPlayer(meetingId)
   const [seekMs, setSeekMs] = useState<number | null>(null)
+  // 동일 ms로 재-seek(마커 재클릭 등)해도 React state는 동일 값 setState를 bail-out하므로,
+  // 값과 무관하게 "seek이 발생했다"는 사실만 전달하는 별도 트리거가 필요하다.
+  // TranscriptPanel의 강제 스크롤 추적(#43)이 이를 사용한다.
+  const [seekTick, setSeekTick] = useState(0)
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [showFullPlayer, setShowFullPlayer] = useState(false)
   const [transcripts, setTranscripts] = useState<Transcript[]>([])
@@ -296,6 +300,10 @@ export default function MeetingPage() {
 
   function handleSeek(ms: number) {
     setSeekMs(ms)
+    setSeekTick((t) => t + 1)
+    // 낙관적 갱신: AudioPlayer의 onTimeUpdate(실제 오디오 timeupdate 경유)를 기다리면
+    // highlightedIndex/스크롤 갱신이 한 박자 늦는다 — seek 즉시 반영해 전사 하이라이트가 따라가게 한다.
+    setCurrentTimeMs(ms)
   }
 
   // 뒤로가기: 원래 폴더 목록으로 복귀. 크로스 프로젝트 진입(딥링크·전역검색)이면
@@ -421,6 +429,7 @@ export default function MeetingPage() {
     suppressAutoScroll: !!search.effectiveQuery,
     locked,
     belowSummary: typoSections,
+    seekTick,
   })
 
   return (
@@ -558,6 +567,7 @@ export default function MeetingPage() {
                   activeSearch={activeTranscriptSearch}
                   suppressAutoScroll={!!search.effectiveQuery}
                   readOnly={locked}
+                  seekTick={seekTick}
                 />
               </div>
               {/* 배치 화자분리 결과 이름 변경/초기화 (MeetingViewerPage 데스크톱과 동일 패턴) */}
