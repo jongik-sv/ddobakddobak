@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_20_000002) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_23_000002) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -95,6 +95,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_20_000002) do
     t.index ["project_id"], name: "index_domain_files_on_project_id"
   end
 
+  create_table "folder_collaborators", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "folder_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["folder_id", "user_id"], name: "index_folder_collaborators_on_folder_id_and_user_id", unique: true
+    t.index ["folder_id"], name: "index_folder_collaborators_on_folder_id"
+    t.index ["user_id"], name: "index_folder_collaborators_on_user_id"
+  end
+
   create_table "folders", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "deleted_at"
@@ -172,6 +182,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_20_000002) do
     t.integer "timestamp_ms", null: false
     t.datetime "updated_at", null: false
     t.index ["meeting_id", "timestamp_ms"], name: "index_meeting_bookmarks_on_meeting_id_and_timestamp_ms"
+  end
+
+  create_table "meeting_collaborators", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "meeting_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["meeting_id", "user_id"], name: "index_meeting_collaborators_on_meeting_id_and_user_id", unique: true
+    t.index ["meeting_id"], name: "index_meeting_collaborators_on_meeting_id"
+    t.index ["user_id"], name: "index_meeting_collaborators_on_user_id"
   end
 
   create_table "meeting_contacts", force: :cascade do |t|
@@ -422,8 +442,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_20_000002) do
   add_foreign_key "domain_file_links", "domain_files", on_delete: :cascade
   add_foreign_key "domain_files", "projects"
   add_foreign_key "domain_files", "users", column: "created_by_id"
+  add_foreign_key "folder_collaborators", "folders"
+  add_foreign_key "folder_collaborators", "users"
   add_foreign_key "llm_profiles", "users"
   add_foreign_key "meeting_bookmarks", "meetings"
+  add_foreign_key "meeting_collaborators", "meetings"
+  add_foreign_key "meeting_collaborators", "users"
   add_foreign_key "meeting_contacts", "meeting_attachments", column: "source_attachment_id", on_delete: :nullify
   add_foreign_key "meeting_contacts", "meetings"
   add_foreign_key "meeting_contacts", "users", column: "created_by_id"

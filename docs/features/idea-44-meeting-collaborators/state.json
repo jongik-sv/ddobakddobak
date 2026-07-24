@@ -1,0 +1,45 @@
+{
+  "name": "idea-44-meeting-collaborators",
+  "status": "[dd]",
+  "last": {
+    "event": "design.ok",
+    "at": "2026-07-23T07:06:25Z"
+  },
+  "phase_history": [
+    {
+      "event": "design.ok",
+      "from": "[ ]",
+      "to": "[dd]",
+      "at": "2026-07-23T07:06:25Z",
+      "elapsed_seconds": 0,
+      "verification": {
+        "ok": true,
+        "phase": "design",
+        "verified_at": "2026-07-23T07:06:20Z",
+        "checks": [
+          {
+            "name": "design.md_exists",
+            "kind": "structural",
+            "ok": true,
+            "path": "docs/features/idea-44-meeting-collaborators/design.md"
+          },
+          {
+            "name": "design.md_has_section",
+            "kind": "structural",
+            "ok": true,
+            "header_pattern": "^##+\\s*Implementation Steps"
+          },
+          {
+            "name": "design.md_checkbox_min_1",
+            "kind": "structural",
+            "ok": true,
+            "count": 45,
+            "required": 1
+          }
+        ]
+      }
+    }
+  ],
+  "updated": "2026-07-23T07:06:25Z",
+  "started_at": "2026-07-23T07:06:25Z"
+}

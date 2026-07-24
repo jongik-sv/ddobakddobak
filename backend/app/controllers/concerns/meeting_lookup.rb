@@ -13,23 +13,33 @@ module MeetingLookup
     authorize_meeting_read!
   end
 
-  # 읽기 인가: admin / 소유자 / (프로젝트 멤버 && 공유) 만 허용.
+  # 읽기 인가: admin / 소유자 / 협업자(직접·폴더상속) / (프로젝트 멤버 && 공유) 만 허용.
   # 공유 가시성은 프로젝트 멤버십 뒤에 게이트된다 — 비멤버는 shared 회의라도 못 본다(프로젝트 격리).
+  # idea 44: 협업자 분기가 없으면 폴더-상속 협업자의 주 유스케이스(비공유 회의)에서 제어 게이트에
+  # 도달하기도 전에 403이 나 기능이 동작하지 않는다.
   def authorize_meeting_read!
     return if meeting_admin?
     return if @meeting.owner?(current_user)
+    return if meeting_collaborator?(@meeting)
     # shared=true 회의는 같은 프로젝트 멤버에게만(폴더 비공개면 shared_visible?가 가림). 비멤버 차단.
     return if project_member?(@meeting) && @meeting.shared_visible?
 
     render json: { error: "이 회의에 접근할 권한이 없습니다" }, status: :forbidden
   end
 
-  # 제어 인가: admin / 소유자만 허용. 공유 가시성 멤버는 읽기 전용 — 제어 불가.
+  # 제어 인가: admin / 소유자 / 협업자(직접·폴더상속)만 허용. 공유 가시성 멤버는 읽기 전용 — 제어 불가.
   def authorize_meeting_control!
     return if meeting_admin?
     return if @meeting.owner?(current_user)
+    return if meeting_collaborator?(@meeting)
 
     render json: { error: "회의를 제어할 권한이 없습니다" }, status: :forbidden
+  end
+
+  # idea 44: 직접 지정 협업자 또는 소속 폴더(및 조상)의 협업자인지.
+  def meeting_collaborator?(meeting)
+    MeetingCollaborator.exists?(meeting_id: meeting.id, user_id: current_user.id) ||
+      (meeting.folder&.collaborator?(current_user) || false)
   end
 
   # 현재 사용자가 이 회의의 프로젝트 멤버인지. project_id 없으면 false(과도기 안전).

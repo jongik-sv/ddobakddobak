@@ -81,3 +81,37 @@ export async function moveFolderToProject(
     .post(`folders/${folderId}/move_to_project`, { json: { target_project_id: targetProjectId } })
     .json()
 }
+
+export interface FolderCollaborator {
+  user_id: number
+  name: string
+  email: string
+}
+
+export interface InheritedFolderCollaborator extends FolderCollaborator {
+  folder_id: number
+  folder_name: string
+}
+
+export interface FolderCollaboratorsResponse {
+  direct: FolderCollaborator[]
+  inherited: InheritedFolderCollaborator[]
+}
+
+/** 폴더 협업자 목록(직접 지정분 + 조상 폴더 상속분, 구분되어 응답). */
+export async function getFolderCollaborators(folderId: number): Promise<FolderCollaboratorsResponse> {
+  return apiClient.get(`folders/${folderId}/collaborators`).json<FolderCollaboratorsResponse>()
+}
+
+/** 폴더 협업자 추가(폴더 내 회의 소유자/admin만 호출 가능, 대상은 같은 프로젝트 멤버만). */
+export async function addFolderCollaborator(folderId: number, userId: number): Promise<FolderCollaborator> {
+  const res = await apiClient
+    .post(`folders/${folderId}/collaborators`, { json: { user_id: userId } })
+    .json<{ collaborator: FolderCollaborator }>()
+  return res.collaborator
+}
+
+/** 폴더 협업자 제거. */
+export async function removeFolderCollaborator(folderId: number, userId: number): Promise<void> {
+  await apiClient.delete(`folders/${folderId}/collaborators/${userId}`)
+}

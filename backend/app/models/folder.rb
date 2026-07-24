@@ -5,6 +5,7 @@ class Folder < ApplicationRecord
   belongs_to :parent, class_name: "Folder", optional: true
   has_many :children, class_name: "Folder", foreign_key: :parent_id, dependent: :nullify
   has_many :meetings, dependent: :nullify
+  has_many :folder_collaborators, dependent: :destroy
   has_many :glossary_entries, as: :owner, dependent: :destroy
   has_many :domain_file_links, as: :owner, dependent: :destroy
   has_many :domain_files, through: :domain_file_links
@@ -73,6 +74,13 @@ class Folder < ApplicationRecord
       node = node.parent
     end
     true
+  end
+
+  # idea 44: 이 폴더 밑 회의들에 상속되는 협업자인가(자신 + 모든 조상). 폴더 자체 편집권
+  # (editable_by?)과는 다른 개념 — 협업자 CRUD 자체는 게이팅하지 않는다.
+  def collaborator?(user)
+    return false unless user
+    FolderCollaborator.where(folder_id: [ id ] + ancestor_records.map(&:id), user_id: user.id).exists?
   end
 
   # 타인에게 보이는(자신+모든 조상 공유) 폴더 id 배열. accessible_by/tree 공용.

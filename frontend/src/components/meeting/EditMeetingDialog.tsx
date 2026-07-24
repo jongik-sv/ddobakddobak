@@ -13,6 +13,7 @@ import { ENGINE_LABELS } from '../../config'
 import { ScheduleFields } from './ScheduleFields'
 import { scheduleStateFromMeeting, scheduleToPayload, type ScheduleFormState } from '../../lib/schedulePayload'
 import DomainFilesPanel from './DomainFilesPanel'
+import CollaboratorsPanel from './CollaboratorsPanel'
 
 export interface EditMeetingData {
   title: string
@@ -72,14 +73,19 @@ export default function EditMeetingDialog({
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([])
   const [ownerError, setOwnerError] = useState('')
 
+  // 협업자 관리 노출 조건: idea 44 — 소유자 + 시스템 admin만(협업자 자신은 협업자를 못 늘림).
+  const canManageCollaborators = isMeetingOwner || currentUser?.role === 'admin'
+
   useEffect(() => {
     getTags().then(setAllTags).catch(() => {})
   }, [])
 
   useEffect(() => {
-    if (!canTransferOwner || meeting.project_id == null) return
+    // 소유자 이관·협업자 관리 두 섹션이 같은 프로젝트 멤버 목록을 공유 — 중복 fetch 방지.
+    if (!canTransferOwner && !canManageCollaborators) return
+    if (meeting.project_id == null) return
     getProjectMembers(meeting.project_id).then(setProjectMembers).catch(() => {})
-  }, [canTransferOwner, meeting.project_id])
+  }, [canTransferOwner, canManageCollaborators, meeting.project_id])
 
   // 이전 회의 참고 셀렉터용: 같은 폴더의 회의 최근순 (자기 자신 제외).
   // show_all: 완료된 회의도 후보로 필요하다 — 기본 목록 큐레이션(important OR !completed)이
@@ -225,6 +231,19 @@ export default function EditMeetingDialog({
               collapsible={false}
             />
           </div>
+
+          {/* 협업자 관리 (idea 44: 소유자/admin만 노출, 대상은 같은 프로젝트 멤버) */}
+          {canManageCollaborators && (
+            <div>
+              <label className="block text-sm font-medium mb-1">협업자</label>
+              <CollaboratorsPanel
+                ownerType="meeting"
+                ownerId={meeting.id}
+                projectId={meeting.project_id ?? null}
+                canManage={canManageCollaborators}
+              />
+            </div>
+          )}
 
           {/* 소유자 이관 (현 소유자/프로젝트 관리자/시스템 admin만 노출) */}
           {canTransferOwner && (

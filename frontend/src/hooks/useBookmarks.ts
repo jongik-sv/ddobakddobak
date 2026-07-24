@@ -30,8 +30,11 @@ export function useBookmarks(meetingId: number, { transcripts, currentTimeMs }: 
     try {
       await deleteBookmark(meetingId, bookmarkId)
       setBookmarks((prev) => prev.filter((b) => b.id !== bookmarkId))
-    } catch {
-      // ignore
+    } catch (e: unknown) {
+      // handleEditBookmark/handleSaveBookmark와 동일 패턴 — 조용히 삼키면(403 등) 사용자가
+      // "삭제가 안 됐나?" 하며 원인을 알 수 없다.
+      const msg = e instanceof Error ? e.message : '북마크 삭제에 실패했습니다'
+      alert(`북마크 삭제 실패: ${msg}`)
     }
   }
 

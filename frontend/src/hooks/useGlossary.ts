@@ -31,14 +31,27 @@ export function useGlossary(meetingId: number) {
     await load()
   }, [load])
 
+  // 조용히 삼키면(unhandled rejection) canEdit=false 사용자가 체크박스를 토글하거나
+  // 삭제 버튼을 눌렀을 때 서버 403이 콘솔에만 남고 화면엔 아무 표시가 없다 — reapply/applyEntry와
+  // 동일하게 status에 실패를 반영한다.
   const editEntry = useCallback(async (id: number, data: Partial<GlossaryEntryInput>) => {
-    await updateGlossaryEntry(id, data)
-    await load()
+    try {
+      await updateGlossaryEntry(id, data)
+      await load()
+    } catch {
+      setStatus('수정 실패')
+      setTimeout(() => setStatus(''), 3000)
+    }
   }, [load])
 
   const removeEntry = useCallback(async (id: number) => {
-    await deleteGlossaryEntry(id)
-    await load()
+    try {
+      await deleteGlossaryEntry(id)
+      await load()
+    } catch {
+      setStatus('삭제 실패')
+      setTimeout(() => setStatus(''), 3000)
+    }
   }, [load])
 
   const reapply = useCallback(async () => {

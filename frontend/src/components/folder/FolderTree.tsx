@@ -16,6 +16,7 @@ import {
   FileText,
   Star,
   PackageOpen,
+  Users,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useFolderStore } from '../../stores/folderStore'
@@ -26,6 +27,7 @@ import type { SelectedFolder } from '../../stores/folderStore'
 import CreateFolderDialog from './CreateFolderDialog'
 import GlossaryDialog from './GlossaryDialog'
 import DomainFilesDialog from './DomainFilesDialog'
+import FolderCollaboratorsDialog from './FolderCollaboratorsDialog'
 import ExportFolderDialog from './ExportFolderDialog'
 import MoveToProjectModal from '../project/MoveToProjectModal'
 import { useProjectStore } from '../../stores/projectStore'
@@ -57,6 +59,7 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
   const [showSubfolderDialog, setShowSubfolderDialog] = useState(false)
   const [showGlossaryDialog, setShowGlossaryDialog] = useState(false)
   const [showDomainFilesDialog, setShowDomainFilesDialog] = useState(false)
+  const [showCollaboratorsDialog, setShowCollaboratorsDialog] = useState(false)
   const [showMoveProject, setShowMoveProject] = useState(false)
   const [showExportDialog, setShowExportDialog] = useState(false)
   const currentProjectId = useProjectStore((s) => s.currentProjectId)
@@ -260,6 +263,16 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
                 onClick={(e) => {
                   e.stopPropagation()
                   setShowMenu(false)
+                  setShowCollaboratorsDialog(true)
+                }}
+                className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm hover:bg-muted transition-colors"
+              >
+                <Users className="w-3.5 h-3.5" /> 협업자 관리
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowMenu(false)
                   setShowMoveProject(true)
                 }}
                 className="flex items-center gap-2 w-full px-3 py-2.5 min-h-[44px] text-sm hover:bg-muted transition-colors"
@@ -319,6 +332,14 @@ function FolderTreeItem({ folder, depth, onSelectFolder }: FolderTreeItemProps) 
           folderName={folder.name}
           projectId={currentProjectId}
           onClose={() => setShowDomainFilesDialog(false)}
+        />
+      )}
+      {showCollaboratorsDialog && (
+        <FolderCollaboratorsDialog
+          folderId={folder.id}
+          folderName={folder.name}
+          projectId={currentProjectId}
+          onClose={() => setShowCollaboratorsDialog(false)}
         />
       )}
       {showExportDialog && (

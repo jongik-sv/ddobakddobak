@@ -312,6 +312,7 @@ export default function MeetingLivePage() {
     onRemoveCorrection: removeCorrectionRow,
     onApplyCorrections: handleApplyCorrections,
     summaryOptions: summaryOptionsControl,
+    canEdit,
   })
 
   // 403/404 접근 가드 — 모든 hook 호출 이후에 위치
@@ -376,10 +377,11 @@ export default function MeetingLivePage() {
                 <RecordTabPanel
                   meetingId={meetingId}
                   currentTimeMs={0}
+                  readOnly={!canEdit}
                 />
               </div>
               <div className="border-t shrink-0">
-                <SpeakerPanel meetingId={meetingId} isRecording={isActive} collapsible />
+                <SpeakerPanel meetingId={meetingId} isRecording={isActive} collapsible readOnly={!canEdit} />
               </div>
             </section>
           </Panel>
@@ -395,6 +397,7 @@ export default function MeetingLivePage() {
               <AiSummaryPanel
                 meetingId={meetingId}
                 isRecording={isActive}
+                editable={canEdit}
                 onNotesChange={handleNotesChange}
                 headerExtra={summaryOptionsControl}
               />
@@ -416,21 +419,26 @@ export default function MeetingLivePage() {
                     >
                       <MemoHeader onSave={handleSaveMemo} isSaving={isSavingMemo} />
                       <div className="flex-1 overflow-auto">
-                        <MeetingEditor editorRef={memoEditorRef} />
+                        <MeetingEditor editorRef={memoEditorRef} editable={canEdit} />
                       </div>
                     </section>
                   }
                   corrections={
-                    <div className="h-full flex flex-col overflow-hidden">
-                      <CorrectionsSection
-                        corrections={corrections}
-                        isApplyingCorrections={isApplyingCorrections}
-                        onUpdate={updateCorrection}
-                        onAdd={addCorrectionRow}
-                        onRemove={removeCorrectionRow}
-                        onApply={handleApplyCorrections}
-                      />
-                    </div>
+                    // idea 44: canEdit=false(비소유자·비협업자)면 오타수정 탭 자체를 숨긴다 —
+                    // 서버 authorize_meeting_control!이 최종 방어선이지만, UI도 편집 불가능한
+                    // 사람에게는 열지 않는다(잠금과 무관하게 readOnly 배선).
+                    canEdit ? (
+                      <div className="h-full flex flex-col overflow-hidden">
+                        <CorrectionsSection
+                          corrections={corrections}
+                          isApplyingCorrections={isApplyingCorrections}
+                          onUpdate={updateCorrection}
+                          onAdd={addCorrectionRow}
+                          onRemove={removeCorrectionRow}
+                          onApply={handleApplyCorrections}
+                        />
+                      </div>
+                    ) : undefined
                   }
                 />
               </Panel>

@@ -72,6 +72,9 @@ Rails.application.routes.draw do
           delete :lock, to: "meetings#unlock"
           post :dismiss_schedule
           patch :owner, to: "meetings#update_owner"
+          get    :collaborators
+          post   :collaborators, action: :add_collaborator
+          delete "collaborators/:user_id", action: :remove_collaborator, as: :remove_meeting_collaborator
           get   :domain_files
           put   :domain_files, to: "meetings#update_domain_files"
           post  :extract_terms
@@ -124,6 +127,9 @@ Rails.application.routes.draw do
           post :export, to: "folder_transfers#export"
           get  :domain_files
           put  :domain_files, to: "folders#update_domain_files"
+          get    :collaborators
+          post   :collaborators, action: :add_collaborator
+          delete "collaborators/:user_id", action: :remove_collaborator, as: :remove_folder_collaborator
         end
         resources :glossary_entries, only: %i[index create], controller: "glossary_entries"
         resources :chat_messages, only: %i[index create],

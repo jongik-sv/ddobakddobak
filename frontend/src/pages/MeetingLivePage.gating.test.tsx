@@ -128,6 +128,25 @@ describe('MeetingLivePage 제어 게이팅 (canEditMeeting)', () => {
     expect(screen.getByRole('button', { name: /회의 초기화/i })).toBeInTheDocument()
   })
 
+  // idea 44: 오타수정 탭은 canEdit(=editable)이 false면 아예 노출되지 않아야 한다
+  // (비협업자에게 편집 UI가 열려 있다가 서버 403으로만 막히던 원래 버그 증상 재발 방지).
+  it('editable=false 회의면 데스크톱 오타수정 탭이 노출되지 않는다', async () => {
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue(makeMeeting({ editable: false }) as never)
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('남의 회의')).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: '오타수정' })).not.toBeInTheDocument()
+  })
+
+  it('editable=true 회의면 데스크톱 오타수정 탭이 노출된다', async () => {
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue(makeMeeting({ editable: true }) as never)
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '오타수정' })).toBeInTheDocument()
+    })
+  })
+
   it('editable=false 모바일에서도 회의 시작 버튼과 더보기 시트의 회의 초기화가 숨겨진다', async () => {
     setDesktopMode(false)
     vi.mocked(meetingsApi.getMeeting).mockResolvedValue(makeMeeting({ editable: false }) as never)

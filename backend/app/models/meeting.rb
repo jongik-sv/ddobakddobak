@@ -17,6 +17,7 @@ class Meeting < ApplicationRecord
   has_many :meeting_attachments, dependent: :destroy
   has_many :meeting_contacts, dependent: :destroy
   has_many :meeting_bookmarks, dependent: :destroy
+  has_many :meeting_collaborators, dependent: :destroy
   has_many :chat_messages, dependent: :destroy
   has_many :domain_file_links, as: :owner, dependent: :destroy
   # "선택된" 파일만(제외 마커 행은 별도) — UX 증분 B: 회의별 상속 제외.
@@ -208,10 +209,13 @@ class Meeting < ApplicationRecord
     shared? && (folder_id.nil? || folder&.effectively_shared?)
   end
 
-  # 수정·삭제 권한: admin(god-mode) 또는 본인 소유만.
+  # 수정·삭제 권한: admin(god-mode) / 본인 소유 / 직접 지정 협업자 / 소속 폴더(및 조상)의 협업자.
+  # idea 44: 폴더 단위 협업자는 Folder#collaborator?(실시간 조상체인 평가, 스냅샷 아님)로 판정.
   def editable_by?(user)
     return false unless user
-    (user.respond_to?(:admin?) && user.admin?) || created_by_id == user.id
+    (user.respond_to?(:admin?) && user.admin?) || created_by_id == user.id ||
+      MeetingCollaborator.exists?(meeting_id: id, user_id: user.id) ||
+      (folder&.collaborator?(user) || false)
   end
 
   def transcription_stream

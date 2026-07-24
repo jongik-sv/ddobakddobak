@@ -11,8 +11,10 @@ module Api
 
       before_action :authenticate_user!
       before_action :require_create_project!, only: %i[create upload_audio]
-      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry lock unlock dismiss_schedule domain_files update_domain_files extract_terms update_owner]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry lock unlock dismiss_schedule domain_files update_domain_files extract_terms update_owner collaborators add_collaborator remove_collaborator]
       before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary apply_glossary_entry dismiss_schedule update_domain_files extract_terms]
+      # 협업자 추가/제거 권한: 소유자 + admin만(authorize_meeting_control!보다 좁음 — 협업자 자신은 협업자를 못 늘림).
+      before_action :authorize_meeting_collaborator_admin!, only: %i[add_collaborator remove_collaborator]
       before_action :authorize_lock!, only: %i[lock unlock]
       # 잠긴 회의 변조 차단. lock/unlock 은 제외(아니면 영원히 못 풂). create/upload_audio/index/show/move_to_folder/scheduled 제외.
       before_action :reject_if_locked!, only: %i[update destroy start stop reopen pause resume reset_content summarize regenerate_stt re_diarize regenerate_notes update_notes feedback reapply_glossary apply_glossary_entry dismiss_schedule update_domain_files extract_terms]
@@ -96,6 +98,10 @@ module Api
       end
 
       def create
+        if params[:folder_id].present? && !folder_in_project?(params[:folder_id], @create_project.id)
+          return render json: { error: "다른 프로젝트의 폴더로는 지정할 수 없습니다" }, status: :forbidden
+        end
+
         meeting = Meeting.new(
           title: params[:title],
           created_by_id: current_user.id,
@@ -119,6 +125,10 @@ module Api
       def upload_audio
         audio_file = params[:audio]
         return render json: { error: "오디오 파일이 필요합니다" }, status: :unprocessable_entity unless audio_file.is_a?(ActionDispatch::Http::UploadedFile)
+
+        if params[:folder_id].present? && !folder_in_project?(params[:folder_id], @create_project.id)
+          return render json: { error: "다른 프로젝트의 폴더로는 지정할 수 없습니다" }, status: :forbidden
+        end
 
         # 파일 확장자 추출
         ext = File.extname(audio_file.original_filename).downcase.presence || ".webm"
@@ -187,7 +197,52 @@ module Api
         render json: { meeting: meeting_json(@meeting) }
       end
 
+      # GET /api/v1/meetings/:id/collaborators — 직접 지정 + 폴더 상속분(구분, UI "폴더에서 상속됨" 표시용).
+      def collaborators
+        direct_ids = MeetingCollaborator.where(meeting_id: @meeting.id).pluck(:user_id)
+        direct = ::User.where(id: direct_ids).map { |u| collaborator_json(u) }
+
+        inherited = []
+        if @meeting.folder
+          seen = direct_ids.to_set
+          ([ @meeting.folder ] + @meeting.folder.ancestor_records).each do |fld|
+            FolderCollaborator.where(folder_id: fld.id).includes(:user).each do |fc|
+              next if seen.include?(fc.user_id)
+              seen << fc.user_id
+              inherited << collaborator_json(fc.user).merge(folder_id: fld.id, folder_name: fld.name)
+            end
+          end
+        end
+        render json: { direct: direct, inherited: inherited }
+      end
+
+      # POST /api/v1/meetings/:id/collaborators — 대상은 이 회의 프로젝트 멤버만(update_owner와 동일 제약).
+      def add_collaborator
+        target = ::User.find_by(id: params[:user_id])
+        return render json: { error: "사용자를 찾을 수 없습니다" }, status: :not_found unless target
+        unless @meeting.project_id && ProjectMembership.exists?(project_id: @meeting.project_id, user_id: target.id)
+          return render json: { error: "프로젝트 멤버만 협업자로 지정할 수 있습니다" }, status: :unprocessable_entity
+        end
+        collaborator = MeetingCollaborator.find_or_create_by!(meeting_id: @meeting.id, user_id: target.id)
+        render json: { collaborator: collaborator_json(collaborator.user) }, status: :created
+      end
+
+      # DELETE /api/v1/meetings/:id/collaborators/:user_id
+      def remove_collaborator
+        collaborator = MeetingCollaborator.find_by(meeting_id: @meeting.id, user_id: params[:user_id])
+        return render json: { error: "협업자를 찾을 수 없습니다" }, status: :not_found unless collaborator
+        collaborator.destroy
+        head :no_content
+      end
+
       def update
+        # 교차 프로젝트 folder_id 차단(권한 상승 방지, move_to_folder와 동일 정책) — 이게 없으면
+        # 다른 프로젝트 폴더로 folder_id를 옮겨 그 폴더의 FolderCollaborator 전원에게 이 회의의
+        # 읽기+제어 권한을 넘기는 우회가 가능하다(idea 44로 폴더 협업자 상속이 생기며 실질 위험 격상).
+        if params.key?(:folder_id) && params[:folder_id].present? && !folder_in_project?(params[:folder_id], @meeting.project_id)
+          return render json: { error: "다른 프로젝트의 폴더로는 이동할 수 없습니다" }, status: :forbidden
+        end
+
         attrs = {}
         attrs[:title] = params[:title] if params.key?(:title)
         attrs[:folder_id] = params[:folder_id] if params.key?(:folder_id)
@@ -209,7 +264,7 @@ module Api
           attrs[:summary_restructure] = restructure unless restructure.nil?
         end
         # shared 변경은 소유자/admin 만 가능 (비소유 host 의 toggle 무시)
-        attrs[:shared] = ActiveModel::Type::Boolean.new.cast(params[:shared]) if params.key?(:shared) && @meeting.editable_by?(current_user)
+        attrs[:shared] = ActiveModel::Type::Boolean.new.cast(params[:shared]) if params.key?(:shared) && (meeting_admin? || @meeting.owner?(current_user))
         # 이전 회의 참고: 접근 가능 + 같은 폴더만 허용. 빈 값/비접근/타폴더는 nil(해제)로 정규화.
         # 같은 요청에서 폴더도 옮기면 옮긴 폴더 기준, 아니면 현재 폴더 기준.
         if params.key?(:previous_meeting_id)
@@ -294,8 +349,10 @@ module Api
       end
 
       def destroy
-        # 삭제는 소유자/admin 전용 (라이브 host 라도 남의 회의를 삭제할 수 없다).
-        return render json: { error: "삭제 권한이 없습니다" }, status: :forbidden unless @meeting.editable_by?(current_user)
+        # 삭제는 소유자/admin 전용 (라이브 host 라도, 협업자라도 남의 회의를 삭제할 수 없다).
+        # idea 44: editable_by?는 협업자(직접·폴더상속)까지 포함하도록 넓어졌으므로, 삭제처럼
+        # 되돌리기 어려운(휴지통 경유 영구삭제로 이어지는) 액션에는 재사용하지 않는다.
+        return render json: { error: "삭제 권한이 없습니다" }, status: :forbidden unless meeting_admin? || @meeting.owner?(current_user)
 
         Trash::SoftDeleter.call(@meeting, by: current_user)
         head :no_content
@@ -813,11 +870,34 @@ module Api
         current_user.manager_or_above? && @meeting.project&.admin?(current_user)
       end
 
-      # 잠금/해제 권한: 소유자·admin 만(editable_by?). 라이브 host 라도 잠금은 못 건다.
+      # 잠금/해제 권한: 소유자·admin 만. 라이브 host 라도, 협업자라도 잠금은 못 건다.
+      # idea 44 전엔 editable_by?를 재사용했으나, editable_by?가 협업자까지 포함하도록 넓어지며
+      # "협업자가 소유자의 잠금을 풀 수 있다"는 원치 않는 우회가 생겨 owner/admin 전용으로 되돌린다.
       def authorize_lock!
-        return if @meeting.editable_by?(current_user)
+        return if meeting_admin? || @meeting.owner?(current_user)
 
         render json: { error: "권한이 없습니다" }, status: :forbidden
+      end
+
+      # 협업자 추가/제거 권한: 소유자 + 시스템 admin만(authorize_meeting_control!보다 좁음 — 협업자 자신은 협업자를 못 늘림).
+      def authorize_meeting_collaborator_admin!
+        return if meeting_admin?
+        return if @meeting.owner?(current_user)
+
+        render json: { error: "협업자를 관리할 권한이 없습니다" }, status: :forbidden
+      end
+
+      def collaborator_json(user)
+        { user_id: user.id, name: user.name, email: user.email }
+      end
+
+      # folder_id가 주어진 프로젝트에 속하는지 검증(교차 프로젝트 권한상승 방지, move_to_folder와
+      # 동일 정책). 빈 값은 호출부에서 이미 걸러짐. 존재하지 않는 폴더 id는 여기서 통과시키고
+      # 이후 정상 처리 경로(모델 belongs_to/저장)에 맡긴다 — 여기서 막는 건 "존재하지만 다른
+      # 프로젝트" 케이스만이다.
+      def folder_in_project?(folder_id, project_id)
+        folder = Folder.find_by(id: folder_id)
+        folder.nil? || folder.project_id == project_id
       end
 
       # 회의가 속할 프로젝트를 멤버십 검증과 함께 해석한다 (meetings.project_id 는 NOT NULL).

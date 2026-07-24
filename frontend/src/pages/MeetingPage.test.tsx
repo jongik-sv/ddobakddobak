@@ -127,15 +127,17 @@ vi.mock('../components/meeting/MiniAudioPlayer', () => ({
 }))
 
 vi.mock('../components/meeting/TranscriptPanel', () => ({
-  TranscriptPanel: (props: { seekTick?: number; onSeek?: (ms: number) => void }) => (
-    <div data-testid="transcript-panel" data-seek-tick={props.seekTick}>
+  TranscriptPanel: (props: { seekTick?: number; onSeek?: (ms: number) => void; readOnly?: boolean }) => (
+    <div data-testid="transcript-panel" data-seek-tick={props.seekTick} data-read-only={String(!!props.readOnly)}>
       <button onClick={() => props.onSeek?.(5000)}>transcript-seek-btn</button>
     </div>
   ),
 }))
 
 vi.mock('../components/meeting/SpeakerPanel', () => ({
-  SpeakerPanel: () => <div data-testid="speaker-panel">화자 영역</div>,
+  SpeakerPanel: (props: { readOnly?: boolean }) => (
+    <div data-testid="speaker-panel" data-read-only={String(!!props.readOnly)}>화자 영역</div>
+  ),
 }))
 
 vi.mock('../components/decision/DecisionList', () => ({
@@ -152,7 +154,9 @@ vi.mock('../components/meeting/ExportButton', () => ({
 }))
 
 vi.mock('../components/meeting/AiSummaryPanel', () => ({
-  AiSummaryPanel: () => <div data-testid="ai-summary">AI 요약 영역</div>,
+  AiSummaryPanel: (props: { editable?: boolean }) => (
+    <div data-testid="ai-summary" data-editable={String(!!props.editable)}>AI 요약 영역</div>
+  ),
 }))
 
 vi.mock('../components/meeting/AttachmentSection', () => ({
@@ -333,6 +337,57 @@ describe('MeetingPage', () => {
     renderPage()
     await waitFor(() => {
       expect(screen.getByTestId('speaker-panel')).toBeInTheDocument()
+    })
+  })
+
+  // idea 44: editable=false(비소유자)면 잠금 여부와 무관하게 전사·화자·AI요약이 readOnly여야 한다.
+  // 서버 editable을 무시하고 locked만 보던 버그(수정은 되나 저장은 403) 회귀 방지.
+  // meeting 상태는 useMeeting() 훅이 getMeeting()으로 채운다(getMeetingDetail은 useMeetingAccess 전용).
+  it('editable=false(비소유자)면 SpeakerPanel/TranscriptPanel/AiSummaryPanel이 readOnly로 렌더된다', async () => {
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue({ ...mockMeetingBase, editable: false })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('speaker-panel')).toHaveAttribute('data-read-only', 'true')
+    })
+    expect(screen.getByTestId('transcript-panel')).toHaveAttribute('data-read-only', 'true')
+    expect(screen.getByTestId('ai-summary')).toHaveAttribute('data-editable', 'false')
+  })
+
+  it('editable=true(소유자)면 SpeakerPanel/TranscriptPanel/AiSummaryPanel이 편집 가능하게 렌더된다', async () => {
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue({ ...mockMeetingBase, editable: true })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('speaker-panel')).toHaveAttribute('data-read-only', 'false')
+    })
+    expect(screen.getByTestId('transcript-panel')).toHaveAttribute('data-read-only', 'false')
+    expect(screen.getByTestId('ai-summary')).toHaveAttribute('data-editable', 'true')
+  })
+
+  // idea 44: 오타수정/오타사전은 잠금뿐 아니라 canEdit(=editable)도 반영해야 한다.
+  // canEdit 없이 locked만 보던 버그 회귀 방지(비협업자에게 편집 UI가 그대로 열려 있던 문제).
+  it('editable=false(비소유자)면 오타수정/오타사전 섹션이 렌더되지 않는다', async () => {
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue({ ...mockMeetingBase, editable: false })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-summary')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('오타 수정')).not.toBeInTheDocument()
+    expect(screen.queryByText('오타 사전')).not.toBeInTheDocument()
+  })
+
+  it('editable=true(소유자)면 오타수정 섹션이 렌더된다', async () => {
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue({ ...mockMeetingBase, editable: true })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('오타 수정')).toBeInTheDocument()
     })
   })
 

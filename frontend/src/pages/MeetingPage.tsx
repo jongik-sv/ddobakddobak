@@ -390,8 +390,10 @@ export default function MeetingPage() {
     <SummaryOptionsControl meeting={meeting} onSave={updateMeetingInfo} />
   ) : undefined
 
-  // 오타수정·오타사전 — AI 회의록 아래에 배치(데스크톱 패널 + 모바일 요약 탭 공통). 잠금 시 숨김.
-  const typoSections = !locked ? (
+  // 오타수정·오타사전 — AI 회의록 아래에 배치(데스크톱 패널 + 모바일 요약 탭 공통).
+  // 잠금 또는 편집 권한 없음(비소유자·비협업자) 시 숨김 — 서버 authorize_meeting_control!이
+  // 최종 방어선이지만 UI도 편집 불가능한 사람에게는 열지 않는다(idea 44 readOnly 배선).
+  const typoSections = !locked && canEdit ? (
     <div className="shrink-0 max-h-[45%] overflow-y-auto">
       <TermCorrectionDetails
         corrections={corrections}
@@ -428,6 +430,7 @@ export default function MeetingPage() {
     activeSearch: activeTranscriptSearch,
     suppressAutoScroll: !!search.effectiveQuery,
     locked,
+    canEdit,
     belowSummary: typoSections,
     seekTick,
   })
@@ -555,7 +558,7 @@ export default function MeetingPage() {
           <Panel defaultSize={22} minSize={15}>
             <div className="h-full flex flex-col overflow-hidden">
               {bookmarksVisible && (
-                <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} onAdd={handleOpenBookmark} onEdit={handleEditBookmark} readOnly={locked} collapsible />
+                <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} onAdd={handleOpenBookmark} onEdit={handleEditBookmark} readOnly={locked || !canEdit} collapsible />
               )}
               <div className="flex-1 overflow-y-auto">
                 <TranscriptPanel
@@ -566,13 +569,13 @@ export default function MeetingPage() {
                   searchQuery={search.effectiveQuery}
                   activeSearch={activeTranscriptSearch}
                   suppressAutoScroll={!!search.effectiveQuery}
-                  readOnly={locked}
+                  readOnly={locked || !canEdit}
                   seekTick={seekTick}
                 />
               </div>
               {/* 배치 화자분리 결과 이름 변경/초기화 (MeetingViewerPage 데스크톱과 동일 패턴) */}
               <div className="border-t shrink-0">
-                <SpeakerPanel meetingId={meetingId} isRecording={false} collapsible readOnly={locked} currentTimeMs={currentTimeMs} isPlaying={audio.isPlaying} onSpeakerSeek={handleSeek} />
+                <SpeakerPanel meetingId={meetingId} isRecording={false} collapsible readOnly={locked || !canEdit} currentTimeMs={currentTimeMs} isPlaying={audio.isPlaying} onSpeakerSeek={handleSeek} />
               </div>
             </div>
           </Panel>
@@ -586,7 +589,7 @@ export default function MeetingPage() {
                 <AiSummaryPanel
                   meetingId={meetingId}
                   isRecording={false}
-                  editable={!locked}
+                  editable={!locked && canEdit}
                   onNotesChange={handleNotesChange}
                   headerExtra={summaryOptionsControl}
                   onSeek={handleSeek}
@@ -611,7 +614,7 @@ export default function MeetingPage() {
                       onEditorReady={onMemoEditorReady}
                       onSave={handleSaveMemo}
                       isSaving={isSavingMemo}
-                      readOnly={locked}
+                      readOnly={locked || !canEdit}
                     />
                   }
                   onSeek={handleSeek}

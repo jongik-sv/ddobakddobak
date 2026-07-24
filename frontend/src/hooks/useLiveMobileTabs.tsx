@@ -28,6 +28,8 @@ interface UseLiveMobileTabsArgs {
   onApplyCorrections: () => void
   /** 요약 탭 헤더에 끼울 요약 옵션 컨트롤 (페이지가 생성·게이팅) */
   summaryOptions?: React.ReactNode
+  /** idea 44: 소유자/admin/협업자 여부 — false면 편집 불가(readOnly). */
+  canEdit: boolean
 }
 
 /** MeetingLivePage 모바일 탭(기록/요약/AI챗/메모) 정의를 생성한다. */
@@ -45,6 +47,7 @@ export function useLiveMobileTabs({
   onRemoveCorrection,
   onApplyCorrections,
   summaryOptions,
+  canEdit,
 }: UseLiveMobileTabsArgs): Tab[] {
   return useMemo(() => [
     {
@@ -59,13 +62,14 @@ export function useLiveMobileTabs({
               화자 관리
             </summary>
             <div className="px-2 pb-2">
-              <SpeakerPanel meetingId={meetingId} isRecording={isActive} />
+              <SpeakerPanel meetingId={meetingId} isRecording={isActive} readOnly={!canEdit} />
             </div>
           </details>
           <div className="flex-1 overflow-hidden">
             <RecordTabPanel
               meetingId={meetingId}
               currentTimeMs={0}
+              readOnly={!canEdit}
             />
           </div>
         </div>
@@ -76,7 +80,7 @@ export function useLiveMobileTabs({
       label: '요약',
       icon: Bot,
       content: (
-        <AiSummaryPanel meetingId={meetingId} isRecording={isActive} onNotesChange={onNotesChange} headerExtra={summaryOptions} />
+        <AiSummaryPanel meetingId={meetingId} isRecording={isActive} editable={canEdit} onNotesChange={onNotesChange} headerExtra={summaryOptions} />
       ),
     },
     {
@@ -93,7 +97,7 @@ export function useLiveMobileTabs({
         <div className="h-full flex flex-col overflow-hidden">
           <MemoHeader onSave={onSaveMemo} isSaving={isSavingMemo} />
           <div className="flex-1 overflow-auto">
-            <MeetingEditor editorRef={memoEditorRef} />
+            <MeetingEditor editorRef={memoEditorRef} editable={canEdit} />
           </div>
           {/* 오타 수정 영역 */}
           <div className="flex flex-col border-t shrink-0" style={{ maxHeight: '40%' }}>
@@ -109,5 +113,5 @@ export function useLiveMobileTabs({
         </div>
       ),
     },
-  ], [meetingId, isActive, onNotesChange, onSaveMemo, isSavingMemo, memoEditorRef, corrections, isApplyingCorrections, onUpdateCorrection, onAddCorrection, onRemoveCorrection, onApplyCorrections, summaryOptions])
+  ], [meetingId, isActive, onNotesChange, onSaveMemo, isSavingMemo, memoEditorRef, corrections, isApplyingCorrections, onUpdateCorrection, onAddCorrection, onRemoveCorrection, onApplyCorrections, summaryOptions, canEdit])
 }

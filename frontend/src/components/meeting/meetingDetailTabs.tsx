@@ -40,6 +40,8 @@ interface BuildMeetingDetailTabsArgs {
   suppressAutoScroll?: boolean
   /** 잠긴 회의면 전사·화자·회의록 편집을 막는다 (읽기 전용). 기본 false. */
   locked?: boolean
+  /** idea 44: 소유자/admin/협업자 여부 — false면 잠금 여부와 무관하게 편집 불가(readOnly). */
+  canEdit: boolean
   /** AI 회의록(요약) 아래에 끼울 노드(오타수정·오타사전 등). 페이지가 생성. */
   belowSummary?: React.ReactNode
   /** 명시적 seek(마커 클릭 등) 발생마다 증가하는 tick — TranscriptPanel 강제 스크롤 트리거. */
@@ -68,6 +70,7 @@ export function buildMeetingDetailTabs({
   activeSearch,
   suppressAutoScroll,
   locked = false,
+  canEdit,
   belowSummary,
   seekTick,
 }: BuildMeetingDetailTabsArgs): Tab[] {
@@ -79,7 +82,7 @@ export function buildMeetingDetailTabs({
       content: (
         <div className="h-full flex flex-col overflow-hidden">
           {bookmarksVisible && (
-            <BookmarkList bookmarks={bookmarks} onSeek={onSeek} onDelete={onDeleteBookmark} onAdd={onAddBookmark} onEdit={onEditBookmark} readOnly={locked} collapsible />
+            <BookmarkList bookmarks={bookmarks} onSeek={onSeek} onDelete={onDeleteBookmark} onAdd={onAddBookmark} onEdit={onEditBookmark} readOnly={locked || !canEdit} collapsible />
           )}
           {/* 화자 accordion (기본 닫힘) — MeetingViewerPage 모바일과 동일 패턴 */}
           <details className="border-b">
@@ -87,7 +90,7 @@ export function buildMeetingDetailTabs({
               화자
             </summary>
             <div className="px-2 pb-2">
-              <SpeakerPanel meetingId={meetingId} isRecording={false} readOnly={locked} currentTimeMs={currentTimeMs} isPlaying={isPlaying} onSpeakerSeek={onSeek} />
+              <SpeakerPanel meetingId={meetingId} isRecording={false} readOnly={locked || !canEdit} currentTimeMs={currentTimeMs} isPlaying={isPlaying} onSpeakerSeek={onSeek} />
             </div>
           </details>
           <div className="flex-1 min-h-0 overflow-y-auto">
@@ -99,7 +102,7 @@ export function buildMeetingDetailTabs({
               searchQuery={searchQuery}
               activeSearch={activeSearch}
               suppressAutoScroll={suppressAutoScroll}
-              readOnly={locked}
+              readOnly={locked || !canEdit}
               seekTick={seekTick}
             />
           </div>
@@ -113,7 +116,7 @@ export function buildMeetingDetailTabs({
       content: (
         <div data-search-region="summary" className="h-full bg-muted overflow-hidden flex flex-col min-h-0">
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-            <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={!locked} onNotesChange={onNotesChange} headerExtra={summaryOptions} onSeek={onSeek} />
+            <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={!locked && canEdit} onNotesChange={onNotesChange} headerExtra={summaryOptions} onSeek={onSeek} />
           </div>
           {belowSummary}
         </div>
@@ -136,7 +139,7 @@ export function buildMeetingDetailTabs({
           onEditorReady={onMemoEditorReady}
           onSave={onSaveMemo}
           isSaving={isSavingMemo}
-          readOnly={locked}
+          readOnly={locked || !canEdit}
         />
       ),
     },

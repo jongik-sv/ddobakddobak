@@ -4,8 +4,8 @@ module Api
       include ProjectScoped
 
       before_action :authenticate_user!
-      before_action :set_folder, only: %i[update destroy move_to_project domain_files update_domain_files]
-      before_action :authorize_folder_edit!, only: %i[update destroy move_to_project domain_files update_domain_files]
+      before_action :set_folder, only: %i[update destroy move_to_project domain_files update_domain_files collaborators add_collaborator remove_collaborator]
+      before_action :authorize_folder_edit!, only: %i[update destroy move_to_project domain_files update_domain_files collaborators add_collaborator remove_collaborator]
 
       def index
         project = require_project!(params[:project_id])
@@ -121,6 +121,41 @@ module Api
         render json: { domain_files: folder_domain_files_json(@folder), inherited: inherited_folder_domain_files_json(@folder) }
       end
 
+      # GET /api/v1/folders/:id/collaborators
+      def collaborators
+        direct_ids = FolderCollaborator.where(folder_id: @folder.id).pluck(:user_id)
+        direct = ::User.where(id: direct_ids).map { |u| collaborator_json(u) }
+        inherited = []
+        seen = direct_ids.to_set
+        @folder.ancestor_records.each do |fld|
+          FolderCollaborator.where(folder_id: fld.id).includes(:user).each do |fc|
+            next if seen.include?(fc.user_id)
+            seen << fc.user_id
+            inherited << collaborator_json(fc.user).merge(folder_id: fld.id, folder_name: fld.name)
+          end
+        end
+        render json: { direct: direct, inherited: inherited }
+      end
+
+      # POST /api/v1/folders/:id/collaborators — 대상은 이 폴더 프로젝트 멤버만.
+      def add_collaborator
+        target = ::User.find_by(id: params[:user_id])
+        return render json: { error: "사용자를 찾을 수 없습니다" }, status: :not_found unless target
+        unless @folder.project_id && ProjectMembership.exists?(project_id: @folder.project_id, user_id: target.id)
+          return render json: { error: "프로젝트 멤버만 협업자로 지정할 수 있습니다" }, status: :unprocessable_entity
+        end
+        collaborator = FolderCollaborator.find_or_create_by!(folder_id: @folder.id, user_id: target.id)
+        render json: { collaborator: collaborator_json(collaborator.user) }, status: :created
+      end
+
+      # DELETE /api/v1/folders/:id/collaborators/:user_id
+      def remove_collaborator
+        collaborator = FolderCollaborator.find_by(folder_id: @folder.id, user_id: params[:user_id])
+        return render json: { error: "협업자를 찾을 수 없습니다" }, status: :not_found unless collaborator
+        collaborator.destroy
+        head :no_content
+      end
+
       private
 
       def set_folder
@@ -130,6 +165,10 @@ module Api
       def authorize_folder_edit!
         return if @folder.editable_by?(current_user)
         render json: { error: "폴더를 편집할 권한이 없습니다" }, status: :forbidden
+      end
+
+      def collaborator_json(user)
+        { user_id: user.id, name: user.name, email: user.email }
       end
 
       def next_position(parent_id)
