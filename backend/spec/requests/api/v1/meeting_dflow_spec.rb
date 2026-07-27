@@ -132,26 +132,65 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
       body = response.parsed_body
       expect(body["public_uid"]).to be_nil
       expect(body).not_to have_key("exists_on_dflow")
+      expect(body).not_to have_key("dflow_title")
+      expect(body).not_to have_key("dflow_date")
     end
 
-    it "public_uid 있으면 list_minutes 로 실존재를 확인해 exists_on_dflow=true 를 포함한다" do
+    it "public_uid 있으면 list_minutes 를 include_archived: true 로 호출해 실존재를 확인하고 " \
+       "덮어쓸 대상의 title·date 를 포함한다(W17)" do
       meeting.update!(public_uid: "0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77", dflow_synced_at: 1.day.ago,
                       dflow_url: "https://x/minutes/1")
       allow(dflow_client).to receive(:list_minutes)
-        .with(external_id: "ddobak:0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77")
-        .and_return({ "items" => [ { "id" => "1" } ], "total" => 1 })
+        .with(external_id: "ddobak:0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77", include_archived: true)
+        .and_return({ "items" => [ { "id" => "1", "title" => "물류-물류공정_260716", "date" => "2026-07-16" } ], "total" => 1 })
 
       get "/api/v1/meetings/#{meeting.id}/dflow/status"
       expect(response).to have_http_status(:ok)
-      expect(response.parsed_body["exists_on_dflow"]).to eq(true)
+      body = response.parsed_body
+      expect(body["exists_on_dflow"]).to eq(true)
+      expect(body["dflow_title"]).to eq("물류-물류공정_260716")
+      expect(body["dflow_date"]).to eq("2026-07-16")
+      # archived 키가 응답에 없으면(R1 이전 D'Flow) dflow_archived 자체를 넣지 않는다.
+      expect(body).not_to have_key("dflow_archived")
     end
 
-    it "D'Flow에 레코드가 없으면 exists_on_dflow=false" do
+    it "item에 archived: true 가 있으면 dflow_archived: true 를 포함한다(W14/dflow-W24)" do
+      meeting.update!(public_uid: "0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77", dflow_synced_at: 1.day.ago,
+                      dflow_url: "https://x/minutes/1")
+      allow(dflow_client).to receive(:list_minutes)
+        .with(external_id: "ddobak:0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77", include_archived: true)
+        .and_return({ "items" => [ { "id" => "1", "title" => "물류-물류공정_260716", "date" => "2026-07-16",
+                                      "archived" => true } ], "total" => 1 })
+
+      get "/api/v1/meetings/#{meeting.id}/dflow/status"
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body["exists_on_dflow"]).to eq(true)
+      expect(body["dflow_archived"]).to eq(true)
+    end
+
+    it "item에 archived: false 가 명시돼 있으면 dflow_archived: false 를 그대로 포함한다(R1 이후)" do
+      meeting.update!(public_uid: "0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77", dflow_synced_at: 1.day.ago,
+                      dflow_url: "https://x/minutes/1")
+      allow(dflow_client).to receive(:list_minutes)
+        .with(external_id: "ddobak:0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77", include_archived: true)
+        .and_return({ "items" => [ { "id" => "1", "title" => "물류-물류공정_260716", "date" => "2026-07-16",
+                                      "archived" => false } ], "total" => 1 })
+
+      get "/api/v1/meetings/#{meeting.id}/dflow/status"
+      body = response.parsed_body
+      expect(body["dflow_archived"]).to eq(false)
+    end
+
+    it "D'Flow에 레코드가 없으면 exists_on_dflow=false 이고 dflow_title·dflow_date 키가 없다(W17)" do
       meeting.update!(public_uid: "0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77")
       allow(dflow_client).to receive(:list_minutes).and_return({ "items" => [], "total" => 0 })
 
       get "/api/v1/meetings/#{meeting.id}/dflow/status"
-      expect(response.parsed_body["exists_on_dflow"]).to eq(false)
+      body = response.parsed_body
+      expect(body["exists_on_dflow"]).to eq(false)
+      expect(body).not_to have_key("dflow_title")
+      expect(body).not_to have_key("dflow_date")
     end
 
     it "공유된 회의는 프로젝트 멤버(비소유자)도 조회 가능하다(읽기는 accessible_by)" do

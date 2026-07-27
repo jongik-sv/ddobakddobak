@@ -38,6 +38,12 @@ const TEAM_REQUIRED_MESSAGE = 'team을 자동으로 판정할 수 없습니다. 
 const BODY_TOO_LONG_MESSAGE = '본문이 100,000자를 넘습니다. (전사 원문은 전송에서 제외됨)'
 const REISSUE_CONFIRM_MESSAGE = "다음 전송 시 D'Flow에 새 회의록이 생성되고 기존 것은 남습니다. 계속할까요?"
 const UNLINK_CONFIRM_MESSAGE = "D'Flow 연결을 해제하시겠습니까? 회의록의 전송 상태가 초기화됩니다."
+// exists_on_dflow: false ＋ dflow_synced_at 있음 — 초기화·보관·삭제 중 원인을 단정할 수 없다(W14 §7.6).
+const DFLOW_MISSING_MESSAGE = "D'Flow에서 확인되지 않습니다(초기화·보관·삭제 중 하나)"
+const FORCE_SEND_CONFIRM_MESSAGE = "D'Flow에서 확인되지 않아 새 회의록으로 전송됩니다. 계속할까요?"
+// exists_on_dflow: true ＋ dflow_archived: true — 원인이 보관으로 확정된 경우(dflow-W24).
+const DFLOW_ARCHIVED_MESSAGE =
+  "D'Flow에서 보관됨 — 재전송은 막힙니다. D'Flow에서 보관 해제 후 다시 시도하세요."
 
 /** ky HTTPError → { message, code } 공통 파싱 (DflowSettingsPanel.tsx handleTest 관례). */
 async function parseDflowError(err: unknown, fallback: string): Promise<{ message: string; code?: string }> {
@@ -79,9 +85,11 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
   const [showManualInput, setShowManualInput] = useState(false)
   const [manualUid, setManualUid] = useState('')
   const [manualUidError, setManualUidError] = useState<string | null>(null)
-  const [manualMissingWarning, setManualMissingWarning] = useState(false)
+  // false=경고 없음, 'missing'=D'Flow에 없음, 'archived'=D'Flow에서 보관됨 — 두 원인의 문구가 다르다.
+  const [manualMissingWarning, setManualMissingWarning] = useState<false | 'missing' | 'archived'>(false)
   const [manualSaving, setManualSaving] = useState(false)
 
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
 
   const loadMeta = useCallback(async () => {
@@ -117,6 +125,18 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
   const detectedTeam = meta ? detectDflowTeam(meeting.folder_path, meta.teams) : null
   const needsTeamSelect = forceTeamSelect || detectedTeam === null
 
+  // 전송 이력(dflow_synced_at)은 있는데 D'Flow에서 확인되지 않음 — 원인(초기화·보관·삭제)을
+  // 단정할 수 없다. dflow_synced_at이 없으면(수동 입력 직후 등) 정상 상태이므로 띄우지 않는다.
+  const dflowMissing = !sendResult && status?.exists_on_dflow === false && !!status?.dflow_synced_at
+  // R1 이후 D'Flow가 보관 상태를 명시적으로 알려준 경우 — dflow_archived === true로만 판정한다.
+  // undefined는 "모름"이지 "아님"이 아니다.
+  const dflowArchived = !sendResult && status?.exists_on_dflow === true && status?.dflow_archived === true
+  // [전송] 차단은 원인을 단정할 수 없는 dflowMissing에만 건다(브리프 §W14 요건 2 문구 그대로).
+  // dflowArchived는 "권하지 말 것"이지 차단 대상이 아니다 — 클라이언트가 보는 archived 플래그는
+  // stale할 수 있고(예: 방금 D'Flow에서 보관 해제), 막으면 D'Flow가 실제로 주는 정확한 409
+  // 안내("보관된 회의록입니다. 복원 후 다시 시도하세요.")로 갈 길이 없어진다.
+  const sendBlocked = dflowMissing
+
   async function handleSend() {
     if (needsTeamSelect && !selectedTeam) return
     setSending(true)
@@ -146,6 +166,19 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
     } finally {
       setSending(false)
     }
+  }
+
+  /** W14 차단 안내의 "새로 전송" — 확인 후에만 handleSend를 실제로 호출한다(중복 회의록 생성 인지). */
+  async function handleForceSend() {
+    const ok = await confirmDialog(FORCE_SEND_CONFIRM_MESSAGE)
+    if (!ok) return
+    await handleSend()
+  }
+
+  /** W14 차단 안내의 "[D'Flow에서 찾기]로 재연결" — 연결 관리를 펼치고 검색 패널을 바로 연다. */
+  function handleOpenSearchFromNotice() {
+    setDetailsOpen(true)
+    setShowSearch(true)
   }
 
   async function handleCopyUid() {
@@ -208,8 +241,10 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
     try {
       await setDflowLink(meeting.id, normalized)
       const fresh = await refreshStatus()
-      if (fresh && fresh.exists_on_dflow === false) {
-        setManualMissingWarning(true)
+      if (fresh?.exists_on_dflow === false) {
+        setManualMissingWarning('missing')
+      } else if (fresh?.dflow_archived === true) {
+        setManualMissingWarning('archived')
       }
       setManualUid('')
       onChanged?.()
@@ -295,6 +330,41 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
             </div>
           )}
 
+          {!sendResult && status?.exists_on_dflow && status.dflow_title && status.dflow_archived !== true && (
+            <p className="text-xs text-amber-600">
+              D'Flow의 "{status.dflow_title}"({status.dflow_date})을 덮어씁니다.
+            </p>
+          )}
+
+          {dflowArchived && (
+            <div role="alert" className="rounded-md bg-amber-50 px-4 py-2 text-sm text-amber-700">
+              {DFLOW_ARCHIVED_MESSAGE}
+            </div>
+          )}
+
+          {dflowMissing && (
+            <div role="alert" className="space-y-2 rounded-md bg-amber-50 px-4 py-2 text-sm text-amber-700">
+              <p>{DFLOW_MISSING_MESSAGE}</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenSearchFromNotice}
+                  className="rounded-md border border-amber-600 px-2.5 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                >
+                  D'Flow에서 찾기로 재연결
+                </button>
+                <button
+                  type="button"
+                  onClick={handleForceSend}
+                  disabled={sending || bodyTooLong || (needsTeamSelect && !selectedTeam)}
+                  className="rounded-md border border-amber-600 px-2.5 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                >
+                  새로 전송
+                </button>
+              </div>
+            </div>
+          )}
+
           {sendResult ? (
             <>
               <div className="rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
@@ -331,7 +401,7 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
               <button
                 type="button"
                 onClick={handleSend}
-                disabled={sending || bodyTooLong || (needsTeamSelect && !selectedTeam)}
+                disabled={sending || bodyTooLong || sendBlocked || (needsTeamSelect && !selectedTeam)}
                 className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow transition-colors hover:bg-blue-700 disabled:opacity-50"
               >
                 {sending ? '전송 중…' : '전송'}
@@ -340,7 +410,11 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
           )}
 
           {/* 연결 관리 */}
-          <details className="group border-t border-border pt-3">
+          <details
+            open={detailsOpen}
+            onToggle={(e) => setDetailsOpen(e.currentTarget.open)}
+            className="group border-t border-border pt-3"
+          >
             <summary className="flex cursor-pointer select-none items-center gap-2 text-sm font-semibold text-muted-foreground">
               <span className="transition-transform group-open:rotate-90">&rsaquo;</span>
               연결 관리
@@ -373,7 +447,9 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
                       {status.exists_on_dflow === undefined
                         ? '알 수 없음'
                         : status.exists_on_dflow
-                          ? '존재함'
+                          ? status.dflow_archived === true
+                            ? '존재함(보관됨)'
+                            : '존재함'
                           : '존재하지 않음(다음 전송 시 새로 생성됩니다)'}
                     </p>
                   )}
@@ -430,9 +506,14 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
                           className="w-full rounded-md border px-3 py-1.5 text-xs font-mono outline-none focus:ring-2 focus:ring-ring"
                         />
                         {manualUidError && <p className="mt-1 text-xs text-red-600">{manualUidError}</p>}
-                        {manualMissingWarning && (
+                        {manualMissingWarning === 'missing' && (
                           <p className="mt-1 text-xs text-amber-600">
                             D'Flow에 해당 회의록이 없습니다. 연결은 저장되었습니다.
+                          </p>
+                        )}
+                        {manualMissingWarning === 'archived' && (
+                          <p className="mt-1 text-xs text-amber-600">
+                            D'Flow에서 보관된 회의록입니다. 연결은 저장되었습니다.
                           </p>
                         )}
                       </div>

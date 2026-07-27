@@ -395,6 +395,12 @@ class Meeting < ApplicationRecord
     chain.length >= 2 ? chain[-2].name : nil
   end
 
+  # D'Flow 편철 경로(root-first). dflow_folder_chain 은 leaf-first(자기폴더→조상)라 반드시 뒤집는다.
+  # 폴더 없으면 [] — 뒤집어도 빈 배열 그대로다(§3.4 3값 규약: 키 생략 아님).
+  def dflow_folder_path_names
+    dflow_folder_chain.reverse.map(&:name)
+  end
+
   # D'Flow 전송 제목: "<하위폴더명>-<원제목>" (하위 폴더 없으면 원제목). 200자 초과 시 원제목 쪽을 잘라 맞춘다.
   def dflow_auto_title
     stripped = title.to_s.strip

@@ -47,6 +47,10 @@ class DflowUploadService
       team: team,
       title: title,
       body_markdown: body,
+      # 편철 경로(root-first). 3값 규약(§3.4): 키 부재=구버전(기존 위치 유지) /
+      # []=명시적 폴더 없음(팀 루트로 되돌림) / 배열=그 경로.
+      # 폴더 없는 회의도 키를 생략하지 않고 [] 를 보낸다 — 생략하면 폴더에서 빼는 조작이 전파되지 않는다.
+      folder_path: @meeting.dflow_folder_path_names,
       external_id: "ddobak:#{@meeting.public_uid}",
       on_conflict: "replace"
     }

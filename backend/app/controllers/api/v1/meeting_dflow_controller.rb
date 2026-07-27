@@ -34,12 +34,27 @@ module Api
       end
 
       # GET /api/v1/meetings/:id/dflow/status
-      # → { public_uid, dflow_synced_at, dflow_url, needs_resync } + (연결 시) exists_on_dflow
+      # → { public_uid, dflow_synced_at, dflow_url, needs_resync }
+      #   + (연결 시) exists_on_dflow
+      #   + (존재 시) dflow_title, dflow_date — 재전송 시 덮어쓸 대상 미리보기(W17).
+      #   + (존재 & 보관됨) dflow_archived — 보관분을 "연결 초기화"로 오진하지 않기 위함(W14/dflow-W24).
+      #     `include_archived: true`로 보관분도 조회해야 exists_on_dflow가 보관을 "없음"으로
+      #     뭉개지 않는다. `item["archived"]` 키가 없으면(R1 이전 D'Flow) dflow_archived 자체를
+      #     넣지 않는다 — false로 채우면 "보관 아님"을 단정하게 된다.
+      #     이 필드들은 status 액션에서만 채운다(dflow_status_json 공용 헬퍼에 넣으면
+      #     list_minutes 왕복이 없는 upload/link/claim까지 값 없는 필드가 따라붙거나
+      #     왕복이 3번 늘어난다).
       def status
         json = dflow_status_json(@meeting)
         if @meeting.public_uid.present?
-          resp = DflowClient.new.list_minutes(external_id: "ddobak:#{@meeting.public_uid}")
-          json[:exists_on_dflow] = resp["items"].to_a.any?
+          resp = DflowClient.new.list_minutes(external_id: "ddobak:#{@meeting.public_uid}", include_archived: true)
+          item = resp["items"].to_a.first
+          json[:exists_on_dflow] = !item.nil?
+          if item
+            json[:dflow_title] = item["title"]
+            json[:dflow_date] = item["date"]
+            json[:dflow_archived] = item["archived"] if item.key?("archived")
+          end
         end
         render json: json
       end

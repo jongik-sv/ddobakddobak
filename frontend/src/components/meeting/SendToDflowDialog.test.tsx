@@ -195,6 +195,165 @@ describe('SendToDflowDialog', () => {
     expect(screen.getByText(/존재함/)).toBeInTheDocument()
   })
 
+  it("D'Flow에 이미 존재하면 전송 전(연결 관리를 펼치지 않아도)에 덮어쓸 회의록의 제목·날짜를 안내한다(W17)", async () => {
+    vi.mocked(getDflowStatus).mockResolvedValue({
+      public_uid: 'abc-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+      exists_on_dflow: true, dflow_title: '물류-물류공정_260716', dflow_date: '2026-07-16',
+    })
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+
+    expect(await screen.findByText(/물류-물류공정_260716/)).toBeInTheDocument()
+    expect(screen.getByText(/2026-07-16/)).toBeInTheDocument()
+    expect(screen.getByText(/덮어씁니다/)).toBeInTheDocument()
+  })
+
+  it('존재하지 않으면(exists_on_dflow=false) 덮어쓰기 안내를 보여주지 않는다(W17)', async () => {
+    vi.mocked(getDflowStatus).mockResolvedValue({
+      public_uid: 'abc-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+      exists_on_dflow: false,
+    })
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+
+    expect(screen.queryByText(/덮어씁니다/)).not.toBeInTheDocument()
+  })
+
+  it('exists_on_dflow=false ＋ dflow_synced_at 있음 → 원인 미단정 안내 + [전송] 차단(W14)', async () => {
+    vi.mocked(getDflowStatus).mockResolvedValue({
+      public_uid: 'abc-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+      exists_on_dflow: false,
+    })
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+
+    expect(await screen.findByText("D'Flow에서 확인되지 않습니다(초기화·보관·삭제 중 하나)")).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '전송' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: "D'Flow에서 찾기로 재연결" })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '새로 전송' })).toBeInTheDocument()
+  })
+
+  it('exists_on_dflow=false ＋ dflow_synced_at 없음(수동 입력 직후 등) → 차단 안내를 띄우지 않는다(W14)', async () => {
+    vi.mocked(getDflowStatus).mockResolvedValue({
+      public_uid: 'abc-uid', dflow_synced_at: null, dflow_url: null, needs_resync: false,
+      exists_on_dflow: false,
+    })
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+
+    expect(screen.queryByText(/확인되지 않습니다/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '전송' })).not.toBeDisabled()
+  })
+
+  it('차단 안내의 [D\'Flow에서 찾기로 재연결] 클릭 시 연결 관리를 펼치고 검색 패널을 연다(W14)', async () => {
+    vi.mocked(getDflowStatus).mockResolvedValue({
+      public_uid: 'abc-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+      exists_on_dflow: false,
+    })
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+
+    await userEvent.click(screen.getByRole('button', { name: "D'Flow에서 찾기로 재연결" }))
+
+    expect(await screen.findByRole('button', { name: '검색' })).toBeInTheDocument()
+  })
+
+  it('차단 안내의 [새로 전송] 클릭 시 확인 후에만 전송한다(W14)', async () => {
+    vi.mocked(getDflowStatus).mockResolvedValue({
+      public_uid: 'abc-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+      exists_on_dflow: false,
+    })
+    vi.mocked(uploadToDflow).mockResolvedValue({
+      public_uid: 'abc-uid', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+    })
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+
+    await userEvent.click(screen.getByRole('button', { name: '새로 전송' }))
+
+    expect(confirmDialog).toHaveBeenCalledWith("D'Flow에서 확인되지 않아 새 회의록으로 전송됩니다. 계속할까요?")
+    await waitFor(() => {
+      expect(uploadToDflow).toHaveBeenCalled()
+    })
+  })
+
+  it('차단 안내의 [새로 전송]에서 확인을 거부하면 전송하지 않는다(W14)', async () => {
+    confirmDialog.mockResolvedValue(false)
+    vi.mocked(getDflowStatus).mockResolvedValue({
+      public_uid: 'abc-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+      exists_on_dflow: false,
+    })
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+
+    await userEvent.click(screen.getByRole('button', { name: '새로 전송' }))
+
+    expect(confirmDialog).toHaveBeenCalled()
+    expect(uploadToDflow).not.toHaveBeenCalled()
+    // 거부해도 안내와 두 갈래는 그대로 남아 있어야 한다 — 사용자가 다시 선택할 수 있어야 한다.
+    expect(screen.getByText("D'Flow에서 확인되지 않습니다(초기화·보관·삭제 중 하나)")).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '새로 전송' })).not.toBeDisabled()
+  })
+
+  it('exists_on_dflow=true ＋ dflow_archived=true → 보관 안내를 표시하고 덮어쓰기 안내를 대체한다(W14)', async () => {
+    vi.mocked(getDflowStatus).mockResolvedValue({
+      public_uid: 'abc-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+      exists_on_dflow: true, dflow_title: '물류-물류공정_260716', dflow_date: '2026-07-16', dflow_archived: true,
+    })
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+
+    expect(
+      await screen.findByText("D'Flow에서 보관됨 — 재전송은 막힙니다. D'Flow에서 보관 해제 후 다시 시도하세요.")
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/덮어씁니다/)).not.toBeInTheDocument()
+    // [전송]은 막지 않는다 — archived 플래그는 stale할 수 있고(방금 보관 해제된 경우 등),
+    // 막으면 D'Flow가 실제로 주는 정확한 409 안내로 갈 길이 없어진다.
+    expect(screen.getByRole('button', { name: '전송' })).not.toBeDisabled()
+  })
+
+  it('exists_on_dflow=true ＋ dflow_archived 키 없음(R1 이전) → 종전대로 덮어쓰기 안내를 표시한다(W14)', async () => {
+    vi.mocked(getDflowStatus).mockResolvedValue({
+      public_uid: 'abc-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+      exists_on_dflow: true, dflow_title: '물류-물류공정_260716', dflow_date: '2026-07-16',
+    })
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+
+    expect(await screen.findByText(/덮어씁니다/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '전송' })).not.toBeDisabled()
+  })
+
+  it('연결 관리: dflow_archived=true 이면 존재 확인에 "존재함(보관됨)"을 보여준다(W14)', async () => {
+    vi.mocked(getDflowStatus).mockResolvedValue({
+      public_uid: 'abc-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+      exists_on_dflow: true, dflow_title: '물류-물류공정_260716', dflow_date: '2026-07-16', dflow_archived: true,
+    })
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+
+    await userEvent.click(screen.getByText('연결 관리'))
+    expect(await screen.findByText(/존재함\(보관됨\)/)).toBeInTheDocument()
+  })
+
+  it('전송 성공 후에는 덮어쓰기 안내가 사라진다(W17)', async () => {
+    vi.mocked(getDflowStatus).mockResolvedValue({
+      public_uid: 'abc-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+      exists_on_dflow: true, dflow_title: '물류-물류공정_260716', dflow_date: '2026-07-16',
+    })
+    vi.mocked(uploadToDflow).mockResolvedValue({
+      public_uid: 'abc-uid', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+    })
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+    expect(await screen.findByText(/덮어씁니다/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '전송' }))
+    await screen.findByRole('link', { name: "D'Flow에서 보기" })
+
+    expect(screen.queryByText(/덮어씁니다/)).not.toBeInTheDocument()
+  })
+
   it('수동 입력: UUID 형식이 아니면 API를 호출하지 않고 인라인 에러를 표시한다', async () => {
     render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
     await screen.findByText('MES')
@@ -228,6 +387,30 @@ describe('SendToDflowDialog', () => {
       expect(setDflowLink).toHaveBeenCalledWith(1, '01911f3e-7a3b-7000-8000-abcdefabcdef')
     })
     expect(await screen.findByText(/D'Flow에 해당 회의록이 없습니다/)).toBeInTheDocument()
+  })
+
+  it('수동 입력: 저장 후 exists_on_dflow=true ＋ dflow_archived=true면 보관 경고를 표시한다(W14)', async () => {
+    vi.mocked(setDflowLink).mockResolvedValue({ public_uid: '01911f3e-7a3b-7000-8000-abcdefabcdef', dflow_synced_at: null, dflow_url: null, needs_resync: false })
+    vi.mocked(getDflowStatus)
+      .mockResolvedValueOnce(emptyStatus) // 최초 로드
+      .mockResolvedValueOnce({
+        public_uid: '01911f3e-7a3b-7000-8000-abcdefabcdef', dflow_synced_at: null, dflow_url: null, needs_resync: false,
+        exists_on_dflow: true, dflow_archived: true,
+      }) // 저장 직후 재확인
+
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+
+    await userEvent.click(screen.getByText('연결 관리'))
+    await userEvent.click(screen.getByRole('button', { name: '수동 입력' }))
+    const input = screen.getByLabelText("D'Flow public_uid 수동 입력")
+    await userEvent.type(input, '01911f3e-7a3b-7000-8000-abcdefabcdef')
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      expect(setDflowLink).toHaveBeenCalledWith(1, '01911f3e-7a3b-7000-8000-abcdefabcdef')
+    })
+    expect(await screen.findByText(/D'Flow에서 보관된 회의록입니다/)).toBeInTheDocument()
   })
 
   it('수동 입력: 대문자로 붙여넣어도 소문자로 정규화해 검증·전송한다', async () => {

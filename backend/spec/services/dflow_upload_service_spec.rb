@@ -192,6 +192,41 @@ RSpec.describe DflowUploadService, type: :service do
       expect(dflow_client).to have_received(:upload_minute).with(hash_including(user_email: "sender@example.com"))
     end
 
+    # folder_path 3값 규약(워크리스트 §3.4): 키 부재 / [] / 비어있지 않은 배열.
+    # 신버전은 항상 키를 보낸다 — 폴더 없으면 [] (키 생략 아님).
+    describe "folder_path" do
+      it "다단 폴더 체인을 root-first 순서로 보낸다(dflow_folder_chain 은 leaf-first 라 뒤집어야 한다)" do
+        mid  = create(:folder, project: project, name: "품질", parent: root_folder)
+        leaf = create(:folder, project: project, name: "주간정례", parent: mid)
+        meeting.update!(folder: leaf)
+        allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u" })
+
+        DflowUploadService.call(meeting, user)
+        expect(dflow_client).to have_received(:upload_minute)
+          .with(hash_including(folder_path: %w[MES 품질 주간정례]))
+      end
+
+      it "폴더가 없는 회의는 folder_path 를 [] 로 보낸다(키 생략 아님)" do
+        meeting.update!(folder: nil)
+        allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u" })
+
+        # 폴더가 없으면 team 자동판정이 불가하므로 override 로 전송 경로에 진입한다.
+        DflowUploadService.call(meeting, user, team_override: "MES")
+        expect(dflow_client).to have_received(:upload_minute) do |payload|
+          expect(payload).to have_key(:folder_path)
+          expect(payload[:folder_path]).to eq([])
+        end
+      end
+
+      it "단일 폴더 회의는 원소 1개짜리 folder_path 를 보낸다" do
+        allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u" })
+
+        DflowUploadService.call(meeting, user)
+        expect(dflow_client).to have_received(:upload_minute)
+          .with(hash_including(folder_path: %w[MES]))
+      end
+    end
+
     it "meeting_id 필드를 payload 에 포함하지 않는다(v1 미전송 확정)" do
       allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u" })
       DflowUploadService.call(meeting, user)
