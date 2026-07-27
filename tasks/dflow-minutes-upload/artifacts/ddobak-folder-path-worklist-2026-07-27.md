@@ -19,9 +19,9 @@
 | 현상 | 원인 | 위치 |
 |---|---|---|
 | 3단 이상 폴더 구조가 D'Flow에서 전부 소실 | 페이로드에 폴더 정보가 `team`(=루트 폴더명) 하나뿐. 2단째는 제목 접두로만 흔적 | `dflow_upload_service.rb:44-52` |
-| D'Flow 제목이 `영업-주간회의` (이중 라벨) | `dflow_auto_title`의 접두 규칙은 “D'Flow에 실폴더가 없다”는 전제로 만든 우회책. D'Flow가 0040/0043으로 **실폴더를 도입**해 전제가 소멸 | `meeting.rb:399-409` |
+| D'Flow 제목이 `영업-주간회의` (이중 라벨) | `dflow_auto_title`의 접두 규칙은 “D'Flow에 실폴더가 없다”는 전제로 만든 우회책. D'Flow가 0040/0043으로 **실폴더를 도입**해 전제가 소멸 | `meeting.rb#dflow_auto_title`(`:405-415`) |
 | 회의를 다른 폴더로 옮기고 재전송해도 D'Flow 위치 불변 | D'Flow `replace` 경로가 `folder_id`를 갱신하지 않음 (`dflow-W5`에서 수정) | D'Flow `route.ts:86-95` |
-| 루트 폴더명이 팀코드가 아니면 **team 자동판정이 안 되고**, 그렇게 보낸 건은 **팀 루트에 평평하게 안착** (전송 자체는 오늘도 성공한다) | 자동판정 실패 시 다이얼로그가 team 셀렉트를 노출하고, 사용자가 고른 값이 `team_override`로 실려 `resolve_team!`을 **건너뛴다**(즉시 반환). 폴더 정보는 페이로드에 없으니 팀 루트행 | `SendToDflowDialog.tsx:117-127` · `dflow_upload_service.rb:75-76` |
+| 루트 폴더명이 팀코드가 아니면 **team 자동판정이 안 되고**, 그렇게 보낸 건은 **팀 루트에 평평하게 안착** (전송 자체는 오늘도 성공한다) | 자동판정 실패 시 다이얼로그가 team 셀렉트를 노출하고, 사용자가 고른 값이 `team_override`로 실려 `resolve_team!`을 **건너뛴다**(즉시 반환). 폴더 정보는 페이로드에 없으니 팀 루트행 | `SendToDflowDialog.tsx#needsTeamSelect`(`:125-126`)·`#handleSend`(`teamOverride`, `:147`) · `dflow_upload_service.rb:75-76` |
 
 ---
 
@@ -31,7 +31,7 @@
 
 | 소스 | 순서 | 확인 |
 |---|---|---|
-| `Meeting#dflow_folder_chain` | **leaf-first** (`[folder] + folder.ancestor_records`) | `meeting.rb:601-605`. 그래서 루트는 `.last`, 2단째는 `[-2]` |
+| `Meeting#dflow_folder_chain` | **leaf-first** (`[folder] + folder.ancestor_records`) | `meeting.rb#dflow_folder_chain`(`:609-612`). 그래서 루트는 `.last`, 2단째는 `[-2]` |
 | API 직렬화 `folder_path` | **root-first** (`folder.ancestors + [self]`) | `meeting_serializable.rb:73` |
 | 프런트 `dflowAutoAssign.ts` | **root-first** (`[0]`=루트, `[1]`=2단째) | `dflowAutoAssign.ts:16-23` |
 
@@ -132,27 +132,29 @@ POST <dflow>/api/v1/minutes
 
 ## 4. 구현 작업 목록
 
+> ⚠️ **코드 인용은 심볼 기준.** 행 번호는 보조로만 적는다 — 이 문서 안 행 번호 인용은 별도 표기 없는 한 전부 **커밋 `0852ac4b` 기준**이다. 행은 썩는다(2026-07-27 하루에만 `status` 액션이 두 번 밀렸다 — W14 구현 후 한 번, `fix-guards`에서 또 한 번). `file#symbol`(`:행`) 형태를 쓰고, 심볼이 없는 JSX 블록 등은 가장 가까운 식별자(상태 변수명·문구 상수명)로 가리킨다.
+
 | # | 파일 | 작업 | 필수 |
 |---|---|---|---|
-| **W1** | `backend/app/services/dflow_upload_service.rb:44-52` | 페이로드에 `folder_path: @meeting.dflow_folder_chain.reverse.map(&:name)` 추가. **폴더 없는 회의는 `[]`를 보낸다**(키 생략 아님) — §3.4의 3값 규약 참조 | ✅ |
-| **W2** | `backend/app/models/meeting.rb:399-409` | `dflow_auto_title` — `folder_path` 동반 전송 시 **접두 없이 원제목**. 기존 메서드를 지우지 말고 접두 없는 경로를 기본으로 전환(200자 캡은 유지) | ✅ |
+| **W1** | `backend/app/services/dflow_upload_service.rb:44-56` | 페이로드에 `folder_path: @meeting.dflow_folder_chain.reverse.map(&:name)` 추가. **폴더 없는 회의는 `[]`를 보낸다**(키 생략 아님) — §3.4의 3값 규약 참조<br>**구현 완료(커밋 `3c95e934`)** — `dflow_folder_chain`이 **private**(`meeting.rb#dflow_folder_chain`, `private` 선언 `:592`·정의 `:609-612`)라 위 리터럴 그대로 쓰면 `NoMethodError` → **`Meeting#dflow_folder_path_names`** 공개 접근자 신설(`meeting.rb#dflow_folder_path_names`, `:400-402`, `chain.reverse.map(&:name)`). 기존 `dflow_root_folder_name`(`.last`)·`dflow_sub_folder_name`(`[-2]`) 패턴과 동일 — leaf-first 풋건을 모델에 가둔다. 호출부(`dflow_upload_service.rb:53`): `folder_path: @meeting.dflow_folder_path_names` | ✅ |
+| **W2** | `backend/app/models/meeting.rb#dflow_auto_title`(`:405-415`) | `dflow_auto_title` — `folder_path` 동반 전송 시 **접두 없이 원제목**. 기존 메서드를 지우지 말고 접두 없는 경로를 기본으로 전환(200자 캡은 유지) | ✅ |
 | **W3** | `backend/app/services/dflow_upload_service.rb:75-83` | `resolve_team!` 완화 — 루트명이 `meta["teams"]`에 있으면 그대로, **없으면 `TeamRequiredError` 대신 다이얼로그 선택값(`team_override`)을 요구**. override가 있으면 자유 루트도 전송 성공(§3.2 ②).<br>⚠️ **override 경로는 이미 라이브다**(§5 「`ddobak-W3` 선배포 금지의 근거 정정」) — W3은 그 경로를 정식화하고 자동판정을 완화하는 작업이지 **새 능력을 여는 것이 아니다** | ✅ |
 | **W4** | `backend/app/services/dflow_upload_service.rb` | 전송 전 폴더명 길이 검사 — 체인에 61자 이상이 있으면 전용 에러로 중단하고 **어느 폴더인지 이름을 담아** 안내(D'Flow 400을 그대로 노출하면 원인 파악 불가). **＋ 깊이 사전 경고(차단 아님, 정본 §2-C 확정)** — `folder_path.length + (루트가 팀코드면 0, 아니면 1)` 계산식으로 5 초과 예상 시 경고만(§6). ⚠️ **`teamOverride` 확정 후 재평가** — 루트가 팀코드인지는 team 선택이 끝나야 안다. ⚠️ **팀 목록 하드코딩 금지 — `GET /minutes/meta`의 `teams` 사용**(런타임 마스터라 6번째 팀이 등록되면 어긋난다) | ✅ |
-| **W5** | `backend/app/controllers/api/v1/meeting_dflow_controller.rb:152` | W4 에러를 `handle_upload_precondition_error` 계열로 매핑 | ✅ |
+| **W5** | `backend/app/controllers/api/v1/meeting_dflow_controller.rb#handle_upload_precondition_error`(`:171-180`) | W4 에러를 `handle_upload_precondition_error` 계열로 매핑 | ✅ |
 | **W6** | `frontend/src/lib/dflowAutoAssign.ts` | `buildDflowTitle` 접두 로직 제거 또는 플래그화. `dflowFolderPathNames(folderPath)` 추가(root-first 그대로 `map(name)`). `detectDflowTeam`은 유지하되 **미판정이 실패가 아니라 “team 선택 필요”**임을 반영 | ✅ |
-| **W7** | `frontend/src/components/meeting/SendToDflowDialog.tsx` | 미리보기를 **편철 경로 표시**로 변경 — `MES / 품질 / 주간정례` 형태. 루트가 팀코드가 아니면 `MES / 신규TF / 킥오프`처럼 **선택한 team이 앞에 붙는 모습**을 그대로 보여줄 것. `TEAM_REQUIRED_MESSAGE`(37행) 문구를 “판정 불가 → 선택” 톤으로 수정.<br>⚠️ **미리보기가 보여주는 경로는 ‘절단 전’이다** — 깊이 5 초과분은 D'Flow에서 **무통보로 잘려** 다른 경로에 안착한다(§6 「깊이 절단 정책」, **절단 유지 확정**). 최종 결과는 미리보기가 아니라 **`ddobak-W8` 응답 에코(`folder_path_status`)로 확인**한다 — 미리보기를 최종 결과처럼 쓰면 오해가 굳는다. `W4`의 깊이 사전 경고와 같은 시점(`teamOverride` 확정 후)에 재평가할 것 | ✅ |
+| **W7** | `frontend/src/components/meeting/SendToDflowDialog.tsx` | 미리보기를 **편철 경로 표시**로 변경 — `MES / 품질 / 주간정례` 형태. 루트가 팀코드가 아니면 `MES / 신규TF / 킥오프`처럼 **선택한 team이 앞에 붙는 모습**을 그대로 보여줄 것. `TEAM_REQUIRED_MESSAGE`(`:37`) 문구를 “판정 불가 → 선택” 톤으로 수정.<br>⚠️ **미리보기가 보여주는 경로는 ‘절단 전’이다** — 깊이 5 초과분은 D'Flow에서 **무통보로 잘려** 다른 경로에 안착한다(§6 「깊이 절단 정책」, **절단 유지 확정**). 최종 결과는 미리보기가 아니라 **`ddobak-W8` 응답 에코(`folder_path_status`)로 확인**한다 — 미리보기를 최종 결과처럼 쓰면 오해가 굳는다. `W4`의 깊이 사전 경고와 같은 시점(`teamOverride` 확정 후)에 재평가할 것 | ✅ |
 | **W8** | `frontend/src/components/meeting/SendToDflowDialog.tsx` | 전송 성공 시 응답의 `folder_path`를 표시(절단·한 칸 내림이 있었으면 사용자가 인지) ＋ `folder_id: null`이면 미분류 문구(§3.3). **＋ `folder_path_status` 배지 신설(정본 §2-C 확정, 2차)** — `truncated`·`partial`·`unclassified`일 때 눈에 띄게 표시(§3.3-b).<br>**승격 근거**: D5 결정으로 사전 미리보기(폴더 목록 API)를 포기해 이 에코가 절단·“한 칸 내림”의 **유일한** 사후 피드백 경로다 — 권장으로 두면 사전 미리보기(포기)＋사후 확인(미구현) **둘 다 없는 상태**가 가능하다.<br>(전제: **`dflow-W4` ＋ `W19`** — D'Flow가 응답에 `folder_id`·`folder_path`를 실어도(`dflow-W4`) 또박또박 백엔드가 그걸 프런트로 넘기지 않으면(`W19` 없음) 표시할 값이 **도달하지 않는다**) | ✅ |
-| **W9** | `frontend/src/api/dflow.ts` | 응답 타입에 `folder_id: string \| null`·`folder_path: string[] \| null` 추가 — **둘 다 nullable**(미분류 폴백 §3.3. `string[]`로 고정하면 런타임에서 깨진다) ＋ **`folder_path_status?: "exact" \| "truncated" \| "partial" \| "unclassified"`** 신설(정본 §2-C, §3.3-b). ＋ `folder_id: null`일 때 **“미분류로 들어갔습니다(D'Flow에서 편철 필요)”** 문구를 띄우고 **“팀 루트”라고 쓰지 말 것**을 요구(문구의 구현 위치는 W8, `api/dflow.ts`가 아님).<br>⚠️ **타입만으로는 값이 오지 않는다 — `W19`(백엔드 pass-through)가 있어야 실효**.<br>⚠️ **`dflow-W4` 배포 전에는 두 키가 응답에 없으므로(`undefined`) `?`(optional)까지 허용 — `string \| null \| undefined`. 필수로 고정하면 `ddobak-W8`이 `undefined.join`으로 깨진다.**<br>⚠️ **배치(§7.2) 응답의 `from`도 같은 규약** — `string[] \| null`(`null` = 이동 전 미분류, 정본 §2-D). 배치는 이 파일이 아니라 `DflowFolderMigrationService`(W12) 쪽 타입/파싱이지만 nullable 처리 원칙은 W9와 동일하므로 여기 명시한다 | ✅ |
-| **W10** | 테스트 | `dflow_upload_service_spec.rb`(경로 조립·reverse 순서·길이 검사·team override), `dflowAutoAssign.test.ts`, `SendToDflowDialog.test.tsx`(응답 `folder_path` 에코 표시 · `folder_id: null`이면 미분류 문구이고 “팀 루트”가 아닐 것 — §3.3) | ✅ |
-| **W11** | `tasks/dflow-minutes-upload/artifacts/ddobak-dflow-sender-spec.md` | §1.3(team 판정)·§1.4(제목 조립) 개정. **W18과 별개 작업이다** — 이쪽은 또박또박 전송 구현 스펙, W18은 D'Flow API 계약서 사본. 한쪽만 고치면 다른 쪽에 모순이 그대로 남는다 | ✅ |
+| **W9** | `frontend/src/api/dflow.ts` | 응답 타입에 `folder_id: string \| null`·`folder_path: string[] \| null` 추가 — **둘 다 nullable**(미분류 폴백 §3.3. `string[]`로 고정하면 런타임에서 깨진다) ＋ **`folder_path_status?: "exact" \| "truncated" \| "partial" \| "unclassified"`** 신설(정본 §2-C, §3.3-b). ＋ `folder_id: null`일 때 **“미분류로 들어갔습니다(D'Flow에서 편철 필요)”** 문구를 띄우고 **“팀 루트”라고 쓰지 말 것**을 요구(문구의 구현 위치는 W8, `api/dflow.ts`가 아님).<br>⚠️ **타입만으로는 값이 오지 않는다 — `W19`(백엔드 pass-through)가 있어야 실효**.<br>⚠️ **`dflow-W4` 배포 전에는 두 키가 응답에 없으므로(`undefined`) `?`(optional)까지 허용 — `string \| null \| undefined`. 필수로 고정하면 `ddobak-W8`이 `undefined.join`으로 깨진다.**<br>⚠️ **배치(§7.2) 응답의 `from`도 같은 규약** — `string[] \| null`(`null` = 이동 전 미분류, 정본 §2-D). 배치는 이 파일이 아니라 `DflowFolderMigrationService`(W12) 쪽 타입/파싱이지만 nullable 처리 원칙은 W9와 동일하므로 여기 명시한다<br>**구현 완료(커밋 `3c95e934`)** — 위 optional 요구가 실제 구현과 일치 확인(`dflow.ts#DflowUploadResult`, `:65-68`) | ✅ |
+| **W10** | 테스트 | `dflow_upload_service_spec.rb`(경로 조립·reverse 순서·길이 검사·team override), `dflowAutoAssign.test.ts`, `SendToDflowDialog.test.tsx`(응답 `folder_path` 에코 표시 · `folder_id: null`이면 미분류 문구이고 “팀 루트”가 아닐 것 — §3.3)<br>**부분 완료** — `ddobak-W1` 몫(경로 조립·`.reverse` 순서·`[]` 전송)의 백엔드 spec만 완료(커밋 `3c95e934`). `dflowAutoAssign.test.ts`·`SendToDflowDialog.test.tsx`(길이 검사·에코/미분류 spec)는 2차분 — 지금 내면 아직 없는 코드의 spec이 CI를 붉힌다 | ✅ |
+| **W11** | `tasks/dflow-minutes-upload/artifacts/ddobak-dflow-sender-spec.md` | §1.3(team 판정)·§1.4(제목 조립) 개정. **W18과 별개 작업이다** — 이쪽은 또박또박 전송 구현 스펙, W18은 D'Flow API 계약서 사본. 한쪽만 고치면 다른 쪽에 모순이 그대로 남는다<br>**구현 완료(커밋 `212d5519`)** | ✅ |
 | **W12** | `backend/app/services/dflow_folder_migration_service.rb` **(신규)** | **기존 전송분 일괄 재편철** — 상세 §7 | ✅ |
 | **W13** | `backend/lib/tasks/dflow.rake` **(신규)** | `rake dflow:migrate_folders` — W12 실행 진입점(dry-run 기본) | ✅ |
-| **W14** | `frontend/src/components/meeting/SendToDflowDialog.tsx` | **`exists_on_dflow: false` 대응** — 상세 §7.6 | ✅ |
+| **W14** | `frontend/src/components/meeting/SendToDflowDialog.tsx` | **`exists_on_dflow: false` 대응** — 상세 §7.6<br>**구현 완료(커밋 `3c95e934`)**:<br>· 백엔드 `meeting_dflow_controller.rb#status`(`:47-64`) — `list_minutes(external_id:, include_archived: true)`(`:50`) 호출, 응답에 `dflow_archived`를 **`item.key?("archived")`일 때만**(`:60`) 싣는다(R1 이전 구버전 응답이면 키 자체를 안 넣는다 — `false`로 채우면 "보관 아님"을 단정하게 된다).<br>· 타입 `dflow.ts#DflowMeetingStatusWithExists.dflow_archived?: boolean`(`:45`). `dflow.ts#DflowUploadResult`(`:65-68`)엔 없음.<br>· UI `SendToDflowDialog.tsx` — `dflowMissing`(`:130`, = `exists_on_dflow===false` ＋ `dflow_synced_at` 있음)이면 메인 [전송] 버튼(`:404`)을 `sendBlocked`(`:138`)로 차단 ＋ 안내(`:345-366`)에 갈래 2개: 「D'Flow에서 찾기로 재연결」(`:351`, 연결 관리를 펼치고 검색 패널 오픈) / 「새로 전송」(`:356-363`)은 `sendBlocked`를 받지 않고 `handleForceSend`(`:172-176`)로 `confirmDialog` 확인을 거친 뒤에만 `handleSend`를 호출.<br>`dflowArchived`(`:133`, = `exists_on_dflow===true` ＋ `dflow_archived===true`)는 "보관됨" 안내(`:339-343`)만 띄우고 **전송은 차단하지 않는다**.<br>· 설계 판단(근거): 보관분 [전송] 미차단 — ① D'Flow 409가 "보관된 회의록입니다. 복원 후 다시 시도하세요."를 정확히 실어 오므로 클라이언트가 선차단하면 그 안내 경로가 사라진다 ② 방금 D'Flow에서 보관 해제한 사용자가 stale 플래그로 락아웃된다.<br>· `include_archived`는 조회 프록시(`meeting_dflow_controller.rb#minutes`, `:117-120`)의 `params.permit`(`:118`)에도, 프런트 `dflow.ts#ListDflowMinutesParams`(`:123-129`)에도 넣지 않았다 — 살아 있는 유일한 호출자가 `linked=false` 후보 검색이고 그 조합은 금지(보관분은 claim 불가·409). `linked=true` 순회는 `W15`·`W16` 소관.<br>· 검증: rspec 75 pass · vitest 전체 1816 pass · `tsc -p tsconfig.app.json` 0 · rubocop/eslint clean | ✅ |
 | **W15** | `backend/app/services/dflow_auto_link_service.rb` **(신규)** | **미연결 회의 자동 링크** — 상세 §7.7 | ✅ |
 | **W16** | `backend/lib/tasks/dflow.rake` | `rake dflow:autolink` / `dflow:autolink_rollback` | ✅ |
-| **W17** | `backend/app/controllers/api/v1/meeting_dflow_controller.rb:38-45`(`status` 액션) | `status` 액션이 이미 부르는 `list_minutes(external_id:)` 응답의 `title`·`date`를 `exists_on_dflow`와 같은 자리에 얹는다 — 키는 `dflow_title`·`dflow_date`, **`exists_on_dflow: true`일 때만 포함**(미존재 시 키 자체 생략). 자동 링크된 회의를 처음 전송할 때 "무엇을 덮어쓰는지" 보여주기 위함.<br>⚠️ **`dflow_status_json` 공용 헬퍼에 넣지 말 것** — `upload`·`link`·`claim`이 함께 쓰는데 그 셋에는 `list_minutes` 왕복이 없다. 넣으면 값 없는 필드가 따라붙거나 왕복이 3번 는다(`ddobak-W19`와 같은 함정) | ✅ |
+| **W17** | `backend/app/controllers/api/v1/meeting_dflow_controller.rb#status`(`:47-64`) | `status` 액션이 이미 부르는 `list_minutes(external_id:)` 응답의 `title`·`date`를 `exists_on_dflow`와 같은 자리에 얹는다 — 키는 `dflow_title`·`dflow_date`, **`exists_on_dflow: true`일 때만 포함**(미존재 시 키 자체 생략). 자동 링크된 회의를 처음 전송할 때 "무엇을 덮어쓰는지" 보여주기 위함.<br>⚠️ **`dflow_status_json` 공용 헬퍼에 넣지 말 것** — `upload`·`link`·`claim`이 함께 쓰는데 그 셋에는 `list_minutes` 왕복이 없다. 넣으면 값 없는 필드가 따라붙거나 왕복이 3번 는다(`ddobak-W19`와 같은 함정)<br>**구현 완료(커밋 `3c95e934`)** — `dflow_title`/`dflow_date`는 `:57-58`. 백엔드 위치는 위 지시(⚠️ 문단)대로 `status` 액션에 얹었다 — 이 판단은 처음부터 이 행에 반영돼 있었다.<br>**새로 적는 위치 편차(정당, 이 행엔 없었다)** — 프런트 표시 위치가 연결 관리 `<details>`(`:413`, 기본 **접힘**) 안이 아니라 **[전송] 버튼(`:401-409`) 바로 위**(`:333-337` 덮어쓰기 안내)다. 접힌 곳에 두면 처음 전송하는 사용자가 펼치지 않는 한 경고를 **절대 못 본다** → W17 목적(전송 직전 오매칭 경고) 자체가 무너진다.<br>⚠️ **`W14`가 이 기능을 깨뜨릴 뻔한 지점** — `include_archived`가 붙으면 보관분도 `exists_on_dflow: true`가 되어 `:333`의 "덮어씁니다" 안내가 **거짓**이 된다(재전송은 409). → 덮어쓰기 안내에 **`status.dflow_archived !== true` 게이트**(`:333`)를 걸어 막았다. 함께 손본 곳: 연결 관리 존재 확인 표시를 **4분기**로(`:447-453`, 모름/존재함/존재함(보관됨)/존재하지 않음), 수동 입력 경고를 `missing`/`archived` 2분기로(`:509-518`), spec의 `.with(external_id:, include_archived: true)` 정확 매처 갱신(`backend/spec/requests/api/v1/meeting_dflow_spec.rb:144`) | ✅ |
 | **W18** | `tasks/dflow-minutes-upload/artifacts/dflow-minutes-upload-api-spec.md` | **D'Flow API 계약서 사본 동기화**(또박또박 사본 = **v2.1**). 정본은 `wbs-web/docs/design/dflow-minutes-upload-api-spec.md`이고 동기화 방향은 **wbs-web → 또박또박. 반대 금지**. 두 사본은 **이미 21행 갈라져 있고 둘 다 `folder_path` 언급이 0건**이다.<br>⚠️ **정본은 v2.2가 아니라 v2.4다(확정, 정본 §2-E)** — `dflow-W8`로 v2.3 커밋(`4387576`)까지는 완료됐지만 또박또박에는 **아직 송부되지 않았다.** D'Flow가 조상 규칙(§2-J)·`folder_path_status`(§2-C)·`from` nullable(§2-D)·`include_archived` 규약(§2-B)·플래그 규약(§2-A)·배치 `pmo_admin` 게이트(§2-H)·NFC 정규화·비활성 팀 400 매핑 등 **9건을 한 번에 반영해 v2.4로 송부할 예정**이다. → **동기화 작업은 v2.4 도착 대기 상태로 표기**하고, 도착 전에는 v2.2/v2.3 기준으로 착수하지 말 것(개정 이력이 아니라 한 번에 받는다).<br>**이번 변경과 정면 충돌하는 문장 3개**를 반드시 걷어낼 것(아래 `§`는 **계약서**의 절번호다): ① `§0 D10` “전송 제목 = `<하위폴더명>-<원제목>`” ↔ 접두 제거(W2·W6) ② `§4.2` 필드표에 `folder_path` 없음 ↔ §3.1 ③ `§4b` “해제 API는 제공하지 않음” ↔ D'Flow §9 연결 초기화.<br>**동기화 범위 = 정본 개정 범위와 동일(계약서 §3·§8·§9).** 충돌 문장 제거만으로는 부족하다 — `POST /api/v1/minutes/folder`(요청 필드·status 값 집합·200건 상한·`dry_run`·`overwrite_manual`)는 **W12·W13이 직접 호출**하고, §9 연결 초기화는 **W14 안내·W16 롤백의 전제**다. 사본에 안 실리면 구현자가 코딩할 계약이 없다.<br>**실행 전제 = v2.4 도착 후**(정본이 먼저 나와야 한다) | ✅ |
-| **W19** | `backend/app/controllers/api/v1/meeting_dflow_controller.rb:26-33` | **upload 응답 pass-through** — `upload` 액션이 `DflowUploadService.call(...)`의 **반환값(`resp`)을 버리고** `dflow_status_json(@meeting)`(4필드)만 렌더한다. D'Flow 응답의 `folder_id`·`folder_path`를 upload 응답에 함께 실을 것.<br>⚠️ **`dflow-W4`가 배포돼도 이게 없으면 값이 프런트에 도달하지 않는다 — W8의 진짜 선행조건이다**(`ddobak-W8`의 전제 = `dflow-W4` ＋ W19).<br>⚠️ **병합 지점은 `upload`의 render 자리이지 `dflow_status_json`이 아니다.** 공용 헬퍼에 필드를 밀어 넣으면 편철 정보가 없는 `status`·`link`·`claim` 응답까지 따라붙어 **W9가 `DflowUploadResult`를 `DflowMeetingStatus`와 분리해 둔 이유가 무너진다**(타입이 거짓말이 된다). W17도 같은 헬퍼(`:117`)를 다른 목적으로 고치므로 충돌 지점이다 | ✅ |
+| **W19** | `backend/app/controllers/api/v1/meeting_dflow_controller.rb#upload`(`:26-33`) | **upload 응답 pass-through** — `upload` 액션이 `DflowUploadService.call(...)`의 **반환값(`resp`)을 버리고** `dflow_status_json(@meeting)`(4필드)만 렌더한다. D'Flow 응답의 `folder_id`·`folder_path`를 upload 응답에 함께 실을 것.<br>⚠️ **`dflow-W4`가 배포돼도 이게 없으면 값이 프런트에 도달하지 않는다 — W8의 진짜 선행조건이다**(`ddobak-W8`의 전제 = `dflow-W4` ＋ W19).<br>⚠️ **병합 지점은 `upload`의 render 자리이지 `dflow_status_json`이 아니다.** 공용 헬퍼에 필드를 밀어 넣으면 편철 정보가 없는 `status`·`link`·`claim` 응답까지 따라붙어 **W9가 `DflowUploadResult`를 `DflowMeetingStatus`와 분리해 둔 이유가 무너진다**(타입이 거짓말이 된다). W17도 같은 헬퍼(`#dflow_status_json`, `:136-143`)를 다른 목적으로 고치므로 충돌 지점이다 | ✅ |
 
 ---
 
@@ -184,7 +186,7 @@ D'Flow는 `W1~W6·W24`를 **한 번에** 배포하고(`R1`), 신규 `dflow-W25`(
 
 UI 전송 경로의 title은 **항상 프런트가 만든 값**이 `title_override`로 실려 백엔드 자동 조립을 이긴다:
 
-`SendToDflowDialog.tsx:65`(초기값 = `buildDflowTitle(folder_path, title)`) → `:126`(전송 시 `titleOverride: title` **무조건** 포함) → `api/dflow.ts:47`(`titleOverride` → `body.title`) → `meeting_dflow_controller.rb:31`(`title_override`) → `dflow_upload_service.rb:33`(`title = @title_override || @meeting.dflow_auto_title`). 전송 호출부는 이 다이얼로그 **1곳뿐**이다.
+`SendToDflowDialog.tsx`의 `title` state 초기값(`:71`, `buildDflowTitle(folder_path, title)`) → `#handleSend`(`titleOverride: title`, `:146`) → `dflow.ts#uploadToDflow`(`titleOverride` → `body.title`, `:76`) → `meeting_dflow_controller.rb#upload`(`title_override`, `:31`) → `dflow_upload_service.rb:33`(`title = @title_override || @meeting.dflow_auto_title`). 전송 호출부는 이 다이얼로그 **1곳뿐**이다.
 
 - `ddobak-W6`을 1차에 내면 **그 즉시 접두가 사라진다.** 그런데 그 시점 D'Flow는 아직 `folder_path`를 무시하므로 그 구간 전송분은 **“접두도 없고 폴더도 안 잡힌”** 상태가 된다 — 바로 아래에서 `ddobak-W2`에 대해 금지한 그 상태를 1차가 스스로 만든다. 게다가 그 구간 분은 제목에 단서가 0이라 **나중에 D'Flow 단독으로 복구할 수도 없다**(제목 접두 역파싱 불가)
 - 반대로 `ddobak-W2`만 내면 UI 제목은 하나도 안 바뀌어 “접두 없음” 수용기준이 실패로 보이고 QA가 엉뚱한 곳을 고친다
@@ -207,7 +209,7 @@ UI 전송 경로의 title은 **항상 프런트가 만든 값**이 `title_overri
 
 기존 근거 “`resolve_team!` 완화(`ddobak-W3`)가 지금까지 `TeamRequiredError`로 **막히던 전송을 성공시킨다**”는 **사실이 아니다. 자유 루트 전송은 오늘도 성공한다.**
 
-실증 경로: `SendToDflowDialog.tsx:117-118`(`detectDflowTeam`이 null이면 team 셀렉트 노출) → `:253` → `:334`(선택 시 전송 버튼 활성) → `:127`(`teamOverride` 전송) → `dflow_upload_service.rb:75-76`(`return @team_override if @team_override` — meta 조회 없이 즉시 채택, `resolve_team!` 본체를 건너뛴다).
+실증 경로: `SendToDflowDialog.tsx`의 `needsTeamSelect`(`:125-126`, `detectDflowTeam`이 null이면 team 셀렉트 노출) → `select[aria-label="대상 구분"]`(`:290-301`) → `#handleSend`의 `disabled` 조건(`:404`, 선택 시 전송 버튼 활성) → `#handleSend`(`teamOverride: selectedTeam`, `:147`) → `dflow_upload_service.rb:75-76`(`return @team_override if @team_override` — meta 조회 없이 즉시 채택, `resolve_team!` 본체를 건너뛴다).
 
 따라서 아래 노출은 **`ddobak-W3`와 무관하게 이미 라이브**다(이 프로젝트 착수 이전부터):
 
@@ -230,7 +232,7 @@ UI 전송 경로의 title은 **항상 프런트가 만든 값**이 `title_overri
 | **[D'Flow] R1** | 계약 v2.4 + `dflow-W1·W1-b·W2·W3·W4·W5·W6·W24` + `W25`(플래그) + 조상 규칙(§2-J) + 폴더 삭제 가드 + 배치 400 경계 수정 + NFC 정규화 → `MINUTES_FOLDER_PATH_ENABLED=false`로 배포 | `POST /minutes` 동작은 오늘과 100% 동일. 배치·`archived` 노출만 새로 열린다 |
 | **0차** — 계약서 사본 | `ddobak-W18` | **v2.4 도착 후**(§4 W18) 착수. **3차 착수 전까지는 반드시** 완료 |
 | **1차-a** — 무해 | `ddobak-W1` · `ddobak-W9` · `ddobak-W10`(일부) · `ddobak-W11` | **R1 이후 언제 내도 무해** — `folder_path`는 R1 동안 완전히 무시되고 나머지는 타입·테스트·문서다.<br>⚠️ **`ddobak-W10`은 테스트 대상과 같은 차수로 쪼개 낸다** — 1차엔 `ddobak-W1` 몫(경로 조립·`.reverse` 순서·`[]` 전송)만. 길이·깊이 검사·`dflowAutoAssign`·다이얼로그 에코/미분류 spec은 2차다. 통째로 1차에 내면 **아직 없는 코드의 spec이 CI를 붉힌다**.<br>`ddobak-W11`은 2차 동작을 미리 기술하지만 문서라 무해 |
-| **1차-b** — 선행 완화 (**D'Flow 의존 0**) | `ddobak-W14` · `ddobak-W17` | 없음 — `exists_on_dflow`는 **오늘 응답에 이미 있고**(`meeting_dflow_controller.rb:38-45`), `ddobak-W17`도 D'Flow 변경 0(D'Flow §9.5 “추가 변경 없음” 확인). 늦어도 2차까지, 그리고 **반드시 `dflow-W10`(R3)보다 먼저** → 제약①, 아래 ⚠️ |
+| **1차-b** — 선행 완화 (**D'Flow 의존 0**) | `ddobak-W14` · `ddobak-W17` | 없음 — `exists_on_dflow`는 **오늘 응답에 이미 있고**(`meeting_dflow_controller.rb#status` 주석 `:38-45`), `ddobak-W17`도 D'Flow 변경 0(D'Flow §9.5 “추가 변경 없음” 확인). 늦어도 2차까지, 그리고 **반드시 `dflow-W10`(R3)보다 먼저** → 제약①, 아래 ⚠️ |
 | **3차 dry-run — 재편철 1회차** | `ddobak-W12` · `ddobak-W13`(`dry_run:true`, `overwrite_manual:false`) | 배치 엔드포인트는 R1에 포함되므로 바로 쓸 수 있다 |
 | **[양측]** 19건 대조표 정리 | §4(정본 §4) | 사람이 정리한 17건의 운명 확정 — **사람이 판단하는 유일한 구간** |
 | **재편철 1회차 APPLY** | `ddobak-W12` · `ddobak-W13` | **R2 이전 필수**(제약③) — 위 ⚠️ `dflow-W5` 경고 참조 |
@@ -407,7 +409,7 @@ D'Flow에 **연결 초기화** 기능이 새로 생긴다(D'Flow 문서 §9) —
 - 또박또박: `public_uid`·`dflow_synced_at`·`dflow_url` **그대로 남음** → 화면에는 여전히 “연결됨”
 - 이 상태로 재전송하면 → D'Flow에 **중복 회의록이 새로 생긴다**
 
-**감지는 이미 가능하다.** `GET /api/v1/meetings/:id/dflow/status`가 `list_minutes(external_id:)`로 존재를 확인해 `exists_on_dflow`를 반환한다(`meeting_dflow_controller.rb:37-41`). 지금은 이 값을 UI가 활용하지 않는다.
+**감지는 이미 가능하다.** `GET /api/v1/meetings/:id/dflow/status`가 `list_minutes(external_id:)`로 존재를 확인해 `exists_on_dflow`를 반환한다(`meeting_dflow_controller.rb#status`(`:47-64`), `list_minutes` 호출은 `:50`). 지금은 이 값을 UI가 활용하지 않는다.
 
 > ⚠️ **`exists_on_dflow: false`는 초기화 전용 신호가 아니다.** D'Flow `route.ts:304`가 `archived_at is null`을 `external_id` 필터 포함 **모든** 질의에 적용하므로, D'Flow에서 회의록을 **보관(archive)만 해도** 같은 값이 나온다. 그리고 그때 아래 복구 갈래가 **둘 다 막힌다**:
 > - **[D'Flow에서 찾기]** — 보관분은 `linked=false` 목록에도 안 나온다(같은 `archived_at is null` 필터).
@@ -432,7 +434,7 @@ D'Flow에 **연결 초기화** 기능이 새로 생긴다(D'Flow 문서 §9) —
    - **[D'Flow에서 찾기]로 재연결** — 기존 회의록을 claim (`POST /minutes/link`). 권장. 중복 안 생김
    - **D'Flow에서 보관 해제 확인** — 보관 상태라면 이 경로로만 복구된다(위 ⚠️ 참조)
    - **새로 전송** — 새 회의록 생성임을 명시하고 확인받기
-3. 또박또박 쪽에서 완전히 끊으려면 기존 `PUT /dflow/link {public_uid: null}`(`meeting_dflow_controller.rb:47-54`)로 해제 — 이미 구현돼 있다
+3. 또박또박 쪽에서 완전히 끊으려면 기존 `PUT /dflow/link {public_uid: null}`(`meeting_dflow_controller.rb#link`, `:68-90`)로 해제 — 이미 구현돼 있다
 
 ### 7.7 미연결 회의 자동 링크 (W15·W16)
 
@@ -445,9 +447,9 @@ D'Flow에 **수동 업로드된 회의록**(external_id null)과 또박또박의
 - `GET /api/v1/minutes?linked=false&team=&date_from=&date_to=&page=` — 미연결 회의록 수집. 응답에 `title`·`date`·`team`·`created_by_name` 포함(`route.ts:338-348`). ⚠️ **여기에는 `include_archived`를 절대 켜지 말 것**(정본 §2-B 호출 규약) — 보관분은 claim 대상이 아니다(`POST /minutes/link`가 409로 막는다). 라우트가 이 조합을 막지 않으므로 **호출 측 규약**으로 지킨다
 - `POST /api/v1/minutes/link` — claim. **`external_id is null`인 회의록에만** 부여하고, 이미 다른 값이 있으면 409 `link_conflict`. **본문·`updated_at`·후처리 파이프라인을 건드리지 않는다**(`link/route.ts` 주석 명시)
 
-또박또박엔 이미 프록시(`GET /api/v1/dflow/minutes`)와 claim 액션(`meeting_dflow_controller.rb:75-95`)이 있다. **배치 엔드포인트를 새로 만들지 않고 순차 호출**한다 — 일회성 작업이라 수백 건 × ~200ms면 충분하고, D'Flow 변경이 0이 되는 이득이 크다. 동시성은 1~2로 제한.
+또박또박엔 이미 프록시(`GET /api/v1/dflow/minutes`)와 claim 액션(`meeting_dflow_controller.rb#claim`, `:94-114`)이 있다. **배치 엔드포인트를 새로 만들지 않고 순차 호출**한다 — 일회성 작업이라 수백 건 × ~200ms면 충분하고, D'Flow 변경이 0이 되는 이득이 크다. 동시성은 1~2로 제한.
 
-> ⚠️ **“D'Flow 변경 0”이지 “또박또박 기존 코드 그대로”가 아니다 — claim 액션은 재사용할 수 없다.** `meeting_dflow_controller.rb:75-95`의 claim 액션은 `authenticate_user!`·`editable_by?`에 묶여 있어 **rake에서 호출할 수 없다.** 그렇다고 `DflowClient#link_minute`를 직접 부르면 **컨트롤러에만 있는 부수 로직 2개**가 빠진다 — `ensure_dflow_public_uid!`(`:86`) · `dflow_url` 조립(`:92`). 그러면 **자동 링크된 회의는 `dflow_url`이 nil이 되어 D'Flow 바로가기가 아예 안 생긴다**(연결은 됐는데 사용자가 건너갈 길이 없다).
+> ⚠️ **“D'Flow 변경 0”이지 “또박또박 기존 코드 그대로”가 아니다 — claim 액션은 재사용할 수 없다.** `meeting_dflow_controller.rb#claim`(`:94-114`)의 claim 액션은 `authenticate_user!`·`editable_by?`에 묶여 있어 **rake에서 호출할 수 없다.** 그렇다고 `DflowClient#link_minute`를 직접 부르면 **컨트롤러에만 있는 부수 로직 2개**가 빠진다 — `ensure_dflow_public_uid!`(`:105`) · `dflow_url` 조립(`:111`). 그러면 **자동 링크된 회의는 `dflow_url`이 nil이 되어 D'Flow 바로가기가 아예 안 생긴다**(연결은 됐는데 사용자가 건너갈 길이 없다).
 >
 > → **claim은 컨트롤러 액션이 아니라 공용 서비스 객체로 추출**해 rake와 컨트롤러가 같은 코드를 쓴다(`ensure_dflow_public_uid!` 호출 · `dflow_url` 조립 포함). 추출 시 **`ensure_dflow_public_uid!`의 발급 순서 불변(§6)** 을 그대로 지킬 것. uuid 취급은 아래 「대상」 1의 ⚠️ 그대로다 — **기존 `public_uid`가 있는 건은 그대로 재사용(새 uuid 발급 금지), 없는 건은 claim 시 신규 발급.**
 >
@@ -462,7 +464,7 @@ D'Flow에 **수동 업로드된 회의록**(external_id null)과 또박또박의
 | 케이스 | D'Flow 제목의 출처 | 비교 방법 |
 |---|---|---|
 | **C1. 한 번도 연결 안 됨** (D'Flow에 사람이 직접 업로드) | D'Flow 사용자가 타이핑 | `meetingBodyOf(또박또박 원제목)` vs `meetingBodyOf(D'Flow title)`. **접두 제거 안 함** |
-| **C2. 전송했다가 초기화됨** | **또박또박이 만든 제목** | `@meeting.dflow_auto_title`(`meeting.rb:399-409`)을 재생성해 D'Flow title과 **완전 일치** 비교. 휴리스틱 불필요. ⚠️ **`ddobak-W2`(접두 제거) 이후 `dflow_auto_title`의 기본 동작은 접두 없는 제목**이므로, `ddobak-W2` **이전** 전송분(오늘 시점 C2 모집단 전부)은 접두 **포함** 변형으로 재생성해야 매칭된다 — **두 변형(접두 포함·미포함)을 모두 생성해 시도**한다(둘 다 안 맞아도 fail-safe로 `likely`/`none`으로 강등될 뿐이다) |
+| **C2. 전송했다가 초기화됨** | **또박또박이 만든 제목** | `@meeting.dflow_auto_title`(`meeting.rb#dflow_auto_title`, `:405-415`)을 재생성해 D'Flow title과 **완전 일치** 비교. 휴리스틱 불필요. ⚠️ **`ddobak-W2`(접두 제거) 이후 `dflow_auto_title`의 기본 동작은 접두 없는 제목**이므로, `ddobak-W2` **이전** 전송분(오늘 시점 C2 모집단 전부)은 접두 **포함** 변형으로 재생성해야 매칭된다 — **두 변형(접두 포함·미포함)을 모두 생성해 시도**한다(둘 다 안 맞아도 fail-safe로 `likely`/`none`으로 강등될 뿐이다) |
 
 `meetingBodyOf`는 D'Flow의 `src/lib/domain/minutes.ts:194` 규칙을 그대로 포팅한다 — `_`·공백 토큰화 후 날짜형 5패턴·회차형(`12차`,`제3차`)·요일 괄호를 제거하고 공백 1칸으로 결합.
 
@@ -483,26 +485,26 @@ D'Flow에 **수동 업로드된 회의록**(external_id null)과 또박또박의
 
 **대상을 가르는 축은 `public_uid`가 아니라 `dflow_synced_at`이다.**
 
-> ⚠️ **정정(실측 반영, `prod-survey-2026-07-27.md` §4) — 대상 1 판정은 `dflow_synced_at` 하나만으로 끝나지 않는다.** 실서버에 `dflow_synced_at`이 없으면서 **이미 D'Flow에 연결된**(`exists_on_dflow: true`) 회의가 **4건** 있었다 — 원인은 `claim` 경로(`meeting_dflow_controller.rb:100-104`)가 `dflow_url`만 갱신하고 `dflow_synced_at`은 건드리지 않기 때문(**정상 동작**, claim은 전송이 아니다). 대상 1을 `dflow_synced_at` 없음만으로 넓히면 이 4건이 후보로 잡혀 **다른 미연결 회의록에 재claim**될 수 있고, 그러면 기존 연결이 끊긴 **고아 + 오매칭**이 생긴다. → **대상 1 = `dflow_synced_at` 없음 AND `exists_on_dflow == false`로 확정.** `public_uid` 유무는 판정 기준이 될 수 없다(claim이 채우므로). **아래 「감지 방법」의 `already_linked` 게이트가 이미 이 조건을 구현하는 메커니즘이다** — 이번 정정은 그 메커니즘이 필수임을 대상 1 정의 자체에 명문화하는 것이다.
+> ⚠️ **정정(실측 반영, `prod-survey-2026-07-27.md` §4) — 대상 1 판정은 `dflow_synced_at` 하나만으로 끝나지 않는다.** 실서버에 `dflow_synced_at`이 없으면서 **이미 D'Flow에 연결된**(`exists_on_dflow: true`) 회의가 **4건** 있었다 — 원인은 `claim` 경로(`meeting_dflow_controller.rb#claim`, `dflow_url` 갱신 `:111`)가 `dflow_url`만 갱신하고 `dflow_synced_at`은 건드리지 않기 때문(**정상 동작**, claim은 전송이 아니다). 대상 1을 `dflow_synced_at` 없음만으로 넓히면 이 4건이 후보로 잡혀 **다른 미연결 회의록에 재claim**될 수 있고, 그러면 기존 연결이 끊긴 **고아 + 오매칭**이 생긴다. → **대상 1 = `dflow_synced_at` 없음 AND `exists_on_dflow == false`로 확정.** `public_uid` 유무는 판정 기준이 될 수 없다(claim이 채우므로). **아래 「감지 방법」의 `already_linked` 게이트가 이미 이 조건을 구현하는 메커니즘이다** — 이번 정정은 그 메커니즘이 필수임을 대상 1 정의 자체에 명문화하는 것이다.
 
 1. **`dflow_synced_at`이 없는 회의 — 한 번도 전송되지 않음, 그리고 `exists_on_dflow == false`.** `public_uid` 유무를 묻지 않는다. (i) `public_uid`도 없는 회의(한 번도 연결 안 됨) (ii) `public_uid`는 있으나 **전송에 실패한** 회의 (iii) **수동 연결**로 `public_uid`만 바뀐 회의(이전 전송 상태가 무효화돼 `dflow_synced_at: nil`) — 전부 여기 들어온다. **기본 실행 대상.** `exists_on_dflow == true`인 건(= 위 실측 4건과 같은 조건)은 아래 「감지 방법」의 `already_linked` 게이트로 **등급 판정 전에** 반드시 빠져야 한다.
    - ⚠️ **이미 `public_uid`가 있는 건을 claim할 때는 기존 `public_uid`를 그대로 쓴다 — 새 uuid를 발급하지 않는다.** 새로 발급하면 D'Flow의 `external_id`와 어긋나 이후 전송이 **중복 회의록을 만들고 원본을 고아로** 남긴다(§7.6과 같은 사고). 반대로 (i)(`public_uid` 없음)은 claim 시 uuid를 **새로 발급**한다 — 그 uid가 다음 실행의 `linked=true` 순회에 잡혀야 아래 게이트가 성립한다
    - ⚠️ **`public_uid`가 있으면서 `exists_on_dflow: true`인 건은 이미 D'Flow 회의록에 붙어 있다** — 수동 연결분, 그리고 **이전 rake 실행이 링크한 건**이 여기 해당한다. 등급 판정(exact/likely/…)에 넣지 말고 **그보다 먼저 `already_linked`로 확정**해 별도 집계한다(§7.2 요건 6의 `already_correct`가 `manual_placement`보다 먼저인 것과 같은 이유). 이 게이트가 없으면 **같은 rake를 두 번 돌렸을 때 1회차가 링크한 건이 2회차 후보로 다시 잡혀**, 다른 미연결 회의록을 claim하면서 로컬 `public_uid`를 조용히 덮고 1회차 링크를 고아로 만든다
 2. **`dflow_synced_at`은 있는데 `exists_on_dflow: false`** — 전송 이력이 있는데 D'Flow에서 확인되지 않는 것(초기화·삭제. §7.6-1과 **정확히 같은 조건**). ⚠️ **`include_archived=true`로 순회하는 한 "보관"은 여기 안 걸린다** — 보관분은 `archived: true`로 순회 집합에 잡혀 이미 대상 2 차집합에서 빠졌다(위 「감지 방법」). **기본적으로 대상 제외.** `RELINK_RESET=1`을 줘야만 **기존 public_uid로 재claim**한다(새 uuid 발급 없음)
 
-> ⚠️ **대상 1을 '`public_uid` 없는 회의'로 좁히면 사각지대가 생긴다.** `public_uid`는 있는데 D'Flow에 없는 상태는 초기화 말고도 정상 경로로 도달한다 — (i) **전송 실패**(`meeting.rb:418-425` — 실패해도 커밋된 public_uid는 유지된다) (ii) **수동 연결**(`meeting_dflow_controller.rb:68-69` — 새 uid로 수동 연결 시 `dflow_synced_at: nil`). 이 두 부류는 `public_uid`가 있으니 좁은 대상 1에 안 걸리고, `dflow_synced_at`이 없으니 대상 2에도 안 걸린다 → **링크가 가장 필요한 '한 번도 안 올라간' 회의가 통째로 빠지고 dry-run 집계에도 안 나온다.** 축을 `dflow_synced_at`으로 잡으면 미전송분이 전부 대상 1로 모이고 대상 2에는 '전송 이력이 있는데 D'Flow에 없음'만 남는다 (D'Flow §11.3 ③).
+> ⚠️ **대상 1을 '`public_uid` 없는 회의'로 좁히면 사각지대가 생긴다.** `public_uid`는 있는데 D'Flow에 없는 상태는 초기화 말고도 정상 경로로 도달한다 — (i) **전송 실패**(`meeting.rb#ensure_dflow_public_uid!`, 주석 `:424-428` — 실패해도 커밋된 public_uid는 유지된다) (ii) **수동 연결**(`meeting_dflow_controller.rb#link`, `:87-88` — 새 uid로 수동 연결 시 `dflow_synced_at: nil`). 이 두 부류는 `public_uid`가 있으니 좁은 대상 1에 안 걸리고, `dflow_synced_at`이 없으니 대상 2에도 안 걸린다 → **링크가 가장 필요한 '한 번도 안 올라간' 회의가 통째로 빠지고 dry-run 집계에도 안 나온다.** 축을 `dflow_synced_at`으로 잡으면 미전송분이 전부 대상 1로 모이고 대상 2에는 '전송 이력이 있는데 D'Flow에 없음'만 남는다 (D'Flow §11.3 ③).
 
 > ⚠️ **초기화와 자동 링크는 서로 싸운다.** §7.6 초기화는 D'Flow 사용자가 **의도적으로 연결을 끊은** 조작이다. 그 결과 상태(`external_id is null` + 또박또박에 `public_uid` 잔존)는 위 **대상 2**와 **정확히 같다.** 자동 링크가 이를 기본 대상으로 삼으면 **사람이 방금 끊은 것을 다음 rake 실행이 조용히 다시 붙인다.** `link/route.ts`의 `.is('external_id', null)` 가드는 이걸 못 막는다 — null이 바로 초기화 직후 상태이기 때문.
 >
 > 그래서 대상 2는 **명시적 opt-in(`RELINK_RESET=1`)** 으로만 동작한다. 기본 off.
 
-**감지 방법 — 회의별 `status` 호출 금지.** `status`는 회의 1건당 `list_minutes(external_id:)` 왕복 1회다(`meeting_dflow_controller.rb:41`). 대신 **`GET /minutes?linked=true&per_page=100`을 페이지 순회**해 `ddobak:` external_id를 **한 번만** 모으고, 그 집합 하나로 두 판정을 다 낸다. O(회의수) → O(페이지수).
+**감지 방법 — 회의별 `status` 호출 금지.** `status`는 회의 1건당 `list_minutes(external_id:)` 왕복 1회다(`meeting_dflow_controller.rb#status`, `list_minutes` 호출 `:50`). 대신 **`GET /minutes?linked=true&per_page=100`을 페이지 순회**해 `ddobak:` external_id를 **한 번만** 모으고, 그 집합 하나로 두 판정을 다 낸다. O(회의수) → O(페이지수).
 
 - **⚠️ 확정 — 이 순회에 `include_archived=true`를 추가한다**(정본 §2-B ②, §4 W15·W16). 응답 `items[].archived: true` 행은 **"존재함(보관)"으로 처리해 아래 대상 2(차집합)에서 제외**한다 — `include_archived` 없이 순회하면 보관분이 순회 집합에서 빠져 대상 2로 잘못 떨어지고, `RELINK_RESET=1`을 켰을 때 보관분이 초기화분처럼 재claim 시도된다(§7.6 부수 영향과 동일 사고)
 - **대상 2** = `Meeting.where.not(dflow_synced_at: nil)` **−** 순회 집합(`archived: true`로 찾아진 것도 순회 집합에 포함해 뺀다). 쿼리에 `public_uid` 조건을 덧붙일 필요가 없다 — `dflow_synced_at`이 있으면 `public_uid`는 반드시 있다(`ensure_dflow_public_uid!`가 uuid 생성 → 로컬 커밋 → 전송 순서다. §6)
 - **대상 1의 `already_linked` 게이트** = `Meeting.where(dflow_synced_at: nil).where.not(public_uid: nil)` **∩** 순회 집합. 여기 걸리는 건은 등급 판정 **전에** 빼낸다(위 대상 1 ⚠️ — `include_archived`가 켜져 있어야 이 게이트가 보관 중인 연결 건도 정확히 잡는다)
 
-> 이때 **또박또박 프록시(`GET /api/v1/dflow/minutes`)를 쓰지 말 것** — `meeting_dflow_controller.rb:99`의 permit 목록에 `per_page`가 없다. 서비스에서 `DflowClient#list_minutes`를 직접 호출한다(파라미터 그대로 통과).
+> 이때 **또박또박 프록시(`GET /api/v1/dflow/minutes`)를 쓰지 말 것** — `meeting_dflow_controller.rb#minutes`(`:117-120`)의 `params.permit`(`:118`)에 `per_page`가 없다. 서비스에서 `DflowClient#list_minutes`를 직접 호출한다(파라미터 그대로 통과).
 
 전제: `status == "completed"` **&&** `current_notes_markdown` 있음 (전송 가능 조건과 동일).
 
@@ -512,7 +514,7 @@ D'Flow에 **수동 업로드된 회의록**(external_id null)과 또박또박의
 
 1. **자동은 exact + 유일 매칭만.** 애매하면 사람에게
 2. **dry-run이 기본.** `APPLY=1` 없으면 매칭 결과만 출력
-3. **자동 링크 후 자동 전송하지 않는다.** 링크만 걸고 끝. claim은 `dflow_synced_at`을 건드리지 않으므로(`meeting_dflow_controller.rb:92`) "연결됨·미전송" 상태로 남는다 — **그런데 그 상태가 곧 대상 1 조건(`dflow_synced_at` 없음)이다.** 그래서 재실행 때 다시 잡히지 않게 하는 것이 위 대상 1의 `already_linked` 게이트다. 이 게이트 없이 3번만 지키면 링크 결과가 다음 실행의 후보로 되돌아온다
+3. **자동 링크 후 자동 전송하지 않는다.** 링크만 걸고 끝. claim은 `dflow_synced_at`을 건드리지 않으므로(`meeting_dflow_controller.rb#claim`, `:94-114` — `dflow_url`만 갱신하는 `:111` 참조) "연결됨·미전송" 상태로 남는다 — **그런데 그 상태가 곧 대상 1 조건(`dflow_synced_at` 없음)이다.** 그래서 재실행 때 다시 잡히지 않게 하는 것이 위 대상 1의 `already_linked` 게이트다. 이 게이트 없이 3번만 지키면 링크 결과가 다음 실행의 후보로 되돌아온다
 4. **첫 전송 시 대상 확인** — W17로 `status`에 연결 대상 회의록의 제목·날짜를 실어, 전송 다이얼로그가 "D'Flow의 `<제목>`(`<날짜>`)을 덮어씁니다"를 보여준다
 
 #### 착수 조건 (v1, 정본 §6 — 신규 확정)

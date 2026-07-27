@@ -68,3 +68,51 @@
   §1 미결 토큰 0건 · §2 MINUTES_FOLDER_PATH_ENABLED 있음 · §3 donseok75 있음 · §4 재편철 1회차 10회
   · §5 대상 1 기준 정정(:486) · §6 삭제분 제외 요건 8 신설(:313/:330/:575) · §7 W15·W16 include_archived(:422/:445/:491)
 [2026-07-27 17:02] [STOP] worklist 에이전트 정지 — 최종 보고 전이었으나 산출물은 완료 상태. 인수인계 문서 작성 후 파일이 조용히 바뀌는 것을 막기 위함
+[2026-07-27 17:1x] [COMMIT] 사용자 승인("진행해") — feature/dflow-minutes-folder-path 에 커밋 2개. 푸시 안 함
+  - 3c95e934 feat(dflow): folder_path 전송 + 보관 상태 구분 (W1·W9·W17·W14) — 8파일 +409/-17
+  - 212d5519 docs(dflow): 작업지시·결정 정본·실서버 실측·회신문 — 21파일 +4427/-20
+  ⚠️ 무관한 사전 스테이지 rename(docs/competitor-gap-2026-06-18.md)은 커밋에서 빼고 원래 스테이지 상태로 복구함
+[2026-07-27 17:1x] [DISPATCH] followup 서브에이전트 — 워크리스트 §4의 완료 항목(W1·W9·W17·W14)에 실제 구현 반영.
+  brief: workers/worklist-followup/brief.md. W17 행의 행 번호가 낡음(:38-45), W14 행은 한 줄뿐
+[2026-07-27 17:2x] [VERIFICATION] 커밋 3c95e934 적대적 리뷰(읽기 전용, review 서브에이전트) — 결함 4건
+  [med] status 액션 `resp["items"].to_a.first` — items가 비배열(Hash)이면 .to_a가 pair 배열이 되어
+        exists_on_dflow 오판정 + item["title"]에서 TypeError 500. **이 커밋이 만든 회귀**
+        (이전 `.to_a.any?`는 boolean만 계산해 안전했다) → fix-guards 디스패치
+  [low] `item.key?("archived")`가 `"archived": null`을 못 거른다 → 타입 계약(boolean) 위반 → fix-guards 디스패치
+  [med] `include_archived` 무조건 전송 — 구버전 D'Flow가 400을 내면 status 전건이 깨진다(추정).
+        → **코드 가드 불필요. 결정 정본 §3 제약 ①(`dflow-W24 ≤ ddobak-W14`)이 이미 R1 선행을 강제한다.**
+        워크리스트 W14 행에 "≥ R1" 방향도 명시 필요(현재 "≤ dflow-W10"만 강조돼 있다)
+  [med] DflowUploadResult.folder_id/folder_path가 미배선 죽은 필드 → **기지 사항.** `ddobak-W19`(2차)로 이미 등재됨
+  클린 판정: folder_path root-first 순서·사이클 가드·전송 차단 우회 경로·상태 갱신 타이밍·테스트 매처 엄격성
+[2026-07-27 22:2x] [DONE] followup — 워크리스트 §4의 W1·W9·W14·W17 행에 실제 구현 반영.
+  ⚠️ **실측으로 낡은 행 번호 4곳 발견** — exec-state.md에 적혀 있던 값을 그대로 옮겼으면 전부 틀렸을 것:
+  덮어쓰기 게이트 :298 → **:333** · 존재확인 4분기 :378 → **:447-453** · 수동입력 경고 :211 → **:509-518**
+  · spec 매처 :142 → **:144** · status 액션 :38-45 → **:47-60**
+  → exec-state.md 해당 서술을 실측값으로 정정하고 "행 번호는 옮겨 적기 전 반드시 실측" 주의 추가
+[2026-07-27 22:2x] [FINDING] followup이 범위 밖 불일치 4건 보고 → staleref 디스패치
+  §7.6 감지 인용 :37-41 / §7.6 link 인용 :47-54(하필 지금 status 몸통이라 오독 유발) / §4 W5 :152 / W10 완료 표기(부분 완료인데 구분 없음)
+[2026-07-27 22:2x] [VERIFICATION] fix-guards — rspec **134 passed**(meeting_dflow + upload_service + client + meeting model), rubocop no offenses.
+  red 재현 확인됨: items=Hash → `TypeError: no implicit conversion of String into Integer` / archived:null → dflow_archived:nil 실림
+[2026-07-27 22:2x] [COMMIT] 0852ac4b fix(dflow): status 액션 방어 2건
+  ⚠️ 최초 커밋(0d58df0b)에 **사전 스테이지된 무관한 rename**(docs/competitor-gap-2026-06-18.md)이 딸려 들어감.
+  reset --soft 후 unstage → 재커밋 → 원래 스테이지 상태로 복구. 최종 커밋은 백엔드 2파일만.
+  교훈: 이 리포는 세션 이전부터 스테이지된 변경이 있다. `git add` 후 **반드시 `git diff --cached --name-only`로 확인**하고 커밋할 것
+[2026-07-27 22:3x] [DONE] staleref 1차 — §7.6 감지 인용·§7.6 link 인용·§4 W5 인용 교체 + W10 "부분 완료"·W11 완료 표기
+  ⚠️ **followup의 실측값이 4줄 틀렸다** — link `:64-86`(실제 `:68-90`), handle_upload_precondition_error `:167-176`(실제 `:171-180`).
+  staleref가 다시 열어 세지 않았으면 오독을 그대로 이식할 뻔했다. "앞 패스 값을 믿지 말고 재실측하라"는 지시가 값을 했다
+[2026-07-27 22:3x] [FINDING] staleref가 **범위 밖 낡은 인용 9건 추가 발견**:
+  W17 셀 :54-55→:57-58 · W19 셀 :117→:136 · §7.7 claim :75-95→:94-114 · ensure_dflow_public_uid! :86→:105
+  · dflow_url 조립 :92→:111 · claim이 dflow_url만 갱신 :100-104→:111 · 수동연결 :68-69→:87-88
+  · status list_minutes :41→:50 · minutes permit :99→:118
+  claim 관련 4건은 **전부 정확히 19줄** 밀려 있었다 — 어느 시점에 status 주석 블록에 19줄이 들어가며 아래가 통째로 스테일해진 것
+[2026-07-27 22:3x] [DECISION] 행 번호 땜질을 반복하지 않는다 → **인용 규약을 심볼 기준으로 전환**(staleref에 후속 지시).
+  `controller.rb:47-60` → `controller.rb#status`. 행 번호를 남길 때는 기준 커밋을 함께 적는다.
+  근거: 오늘 하루에만 두 번 밀렸다(W14 구현 · fix-guards). 심볼은 안 썩고 행은 썩는다
+[2026-07-27 22:4x] [DONE] staleref 2차 — 코드 인용 **25건을 심볼 기준으로 전환**. §4 표 위에 규약 명문화(기준 커밋 0852ac4b)
+  ⚠️ 전환 중 **완전히 엉뚱한 곳을 가리키던 인용 3건** 발견 — 열어봐도 그럴듯해서 틀린 줄 모르는 유형:
+    meeting.rb:601-605(dflow_folder_chain 이라며) → 실제 `previous_meeting_not_self`
+    dflow.ts:47(titleOverride 처리라며)          → 실제 인터페이스 닫는 빈 줄
+    SendToDflowDialog.tsx:253(team 셀렉트 체인)   → 실제 handleManualSave 내부
+  오케스트레이터 표본 재검증: meeting.rb #dflow_folder_path_names:400 #dflow_auto_title:405 private:592
+    #dflow_folder_chain:609 / dflow.ts dflow_archived?:45 DflowUploadResult:65
+    / SendToDflowDialog.tsx needsTeamSelect:126 dflowMissing:130 dflowArchived:133 sendBlocked:138 handleForceSend:172 — 전부 일치
