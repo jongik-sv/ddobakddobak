@@ -46,6 +46,7 @@ D'Flow 측 워크리스트(`dflow-folder-path-worklist-2026-07-27.md`)는 적대
 
 ## constraints
 
+- ⛔ 또박또박·D'Flow 어느 쪽에서도 회의(회의록) 삭제 금지 (사용자 결정 2026-07-28, 예외 없음)
 - 커밋·푸시 금지 (명시 요청 없이)
 - `dflow-folder-path-worklist-2026-07-27.md` 수정 금지 (D'Flow 확정본)
 - Phase 2 이후 항목 착수 금지 (D'Flow 미배포)

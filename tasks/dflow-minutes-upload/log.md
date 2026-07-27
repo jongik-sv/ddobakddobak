@@ -116,3 +116,18 @@
   오케스트레이터 표본 재검증: meeting.rb #dflow_folder_path_names:400 #dflow_auto_title:405 private:592
     #dflow_folder_chain:609 / dflow.ts dflow_archived?:45 DflowUploadResult:65
     / SendToDflowDialog.tsx needsTeamSelect:126 dflowMissing:130 dflowArchived:133 sendBlocked:138 handleForceSend:172 — 전부 일치
+
+[2026-07-28 __:__] [DECISION] 사용자 결정 4건
+  ① ⛔ 또박또박·D'Flow 어느 쪽에서도 회의(회의록) 삭제 금지 — 예외 없음. task.md constraints 최상단 등재
+  ② 폴더명 통일(ERP/영업 ↔ ERP/영업팀)은 **또박또박이 처리**. PMO 회신 대기 없이 진행
+  ③ manual_placement 6건은 **또박또박이 수작업 매칭**. PMO 판정 요청 → 결과 통보로 전환
+  ④ 대조 기준은 **또박또박 실서버**. 로컬 dev DB로 판단 금지(로컬은 SQL 문법 검증에만 썼다)
+[2026-07-28 __:__] [DONE] policy 서브에이전트 — 위 4건을 prod-survey·ddobak-reply·워크리스트·task.md에 반영
+  삭제 권고 철회(prod-survey §3 / reply 요청#1) · id 34 복원은 **선택지 등재만**(결론 아님)
+  전수 grep: 다른 "삭제" 언급은 전부 과거형 사실 서술이거나 폴더 삭제(별개 개념) — 충돌 없음
+  발견: folders_controller#update 가 이미 폴더 개명을 지원 → 폴더명 통일에 **새 코드 불필요**(순수 운영 작업)
+[2026-07-28 __:__] [DONE] 수작업 실행 목록 작성 — artifacts/manual-worklist-2026-07-28.md
+  A 폴더명 통일 → B 회의 4건 이동(MES/기타 → 조업및표준화 2·품질 2) → C 판정 2건 → D 고아(삭제 금지) → E 자유 루트 정리
+  **A~D는 D'Flow R1 대기가 아니다 — 지금 실행 가능.** 완료 시 재편철 manual_placement 6 → 0 수렴 예상
+[2026-07-28 __:__] [FIX] 회신문 낡은 사실 2건 정정 — "커밋조차 안 됨" → "브랜치 커밋됨(3c95e934), main 병합·배포 안 함"
+  / 검증 수치 rspec 33 → 134. ＋ 자체 리뷰로 잡은 회귀(0852ac4b)를 "D'Flow 조치 없음"으로 명시
