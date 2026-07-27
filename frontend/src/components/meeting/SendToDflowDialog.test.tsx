@@ -80,6 +80,68 @@ describe('SendToDflowDialog', () => {
     expect(screen.getByText('sender@x.com')).toBeInTheDocument()
   })
 
+  // W7: 다이얼로그 미리보기를 편철 경로 표시로 바꾼다. root === 이번 전송 team → team 접두 없음.
+  it("편철 경로 미리보기를 'MES / 품질 / 주간정례' 형태로 보여준다(W7, 루트==team)", async () => {
+    render(
+      <SendToDflowDialog
+        meeting={{
+          ...baseMeeting,
+          folder_path: [
+            { id: 1, name: 'MES' },
+            { id: 2, name: '품질' },
+            { id: 3, name: '주간정례' },
+          ],
+        }}
+        onClose={vi.fn()}
+      />
+    )
+    await screen.findByText('MES')
+
+    expect(screen.getByText('편철 경로 미리보기')).toBeInTheDocument()
+    expect(screen.getByText('MES / 품질 / 주간정례')).toBeInTheDocument()
+  })
+
+  // W7: 루트가 팀코드가 아니면 선택한 team이 앞에 붙는 모습을 그대로 보여준다(정규화 ② 한 칸 내림).
+  // 판정 기준은 dflowEffectiveFolderDepth와 동일한 함수를 공유한다(dflowAutoAssign.ts).
+  it("루트가 팀코드가 아니면 선택한 team이 앞에 붙는 모습을 보여준다(W7, 정규화 ②)", async () => {
+    render(
+      <SendToDflowDialog
+        meeting={{ ...baseMeeting, folder_path: [{ id: 9, name: '신규TF' }, { id: 10, name: '킥오프' }] }}
+        onClose={vi.fn()}
+      />
+    )
+    const select = await screen.findByLabelText('대상 구분')
+    // team 미확정 상태 — 아직 team을 모르므로 미리보기에 접두를 붙이지 않는다.
+    expect(screen.getByText('신규TF / 킥오프')).toBeInTheDocument()
+
+    await userEvent.selectOptions(select, 'MES')
+
+    expect(await screen.findByText('MES / 신규TF / 킥오프')).toBeInTheDocument()
+  })
+
+  // W7: 깊이 경고가 떠 있을 때는 미리보기가 "절단 전" 경로임을 안내해야 한다(최종 위치 아님).
+  it('깊이 경고가 뜨면 미리보기가 절단 전 경로임을 안내한다(W7)', async () => {
+    render(
+      <SendToDflowDialog
+        meeting={{
+          ...baseMeeting,
+          folder_path: [
+            { id: 1, name: 'MES' },
+            { id: 2, name: 'A' },
+            { id: 3, name: 'B' },
+            { id: 4, name: 'C' },
+            { id: 5, name: 'D' },
+            { id: 6, name: 'E' },
+          ],
+        }}
+        onClose={vi.fn()}
+      />
+    )
+    await screen.findByText('MES')
+
+    expect(await screen.findByText(/실제 저장 위치는 전송 후 확인해 주세요/)).toBeInTheDocument()
+  })
+
   it('실효 깊이(§2-C)가 5를 넘으면 비차단 경고를 보여준다(W4 3-b)', async () => {
     render(
       <SendToDflowDialog

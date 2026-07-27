@@ -9,6 +9,7 @@ import {
   dflowSubFolderName,
   dflowEffectiveFolderDepth,
   dflowFolderDepthExceedsWarningLimit,
+  dflowFolderPreviewPath,
 } from './dflowAutoAssign'
 
 const teams = ['MES', 'MDM', 'PMO', 'ERP', '가공']
@@ -139,6 +140,55 @@ describe('dflowEffectiveFolderDepth / dflowFolderDepthExceedsWarningLimit', () =
     // 그러나 사용자가(혹은 team_required 재시도로) 다른 team(PMO)을 선택해 전송하면 6단 실효 → 경고.
     expect(dflowEffectiveFolderDepth(path, 'PMO')).toBe(6)
     expect(dflowFolderDepthExceedsWarningLimit(path, 'PMO')).toBe(true)
+  })
+})
+
+// W7: 미리보기 경로 조립. 판정 기준(root === 이번 전송 team)은 dflowEffectiveFolderDepth와
+// dflowRootIsResolvedTeamRoot 하나를 공유한다 — 사본이면 경고와 미리보기가 서로 다른 말을 한다.
+describe('dflowFolderPreviewPath', () => {
+  it('루트 == 이번 전송 team → team 접두 없이 경로 그대로', () => {
+    const path = [{ id: 1, name: 'MES' }, { id: 2, name: '품질' }, { id: 3, name: '주간정례' }]
+    expect(dflowFolderPreviewPath(path, 'MES')).toEqual(['MES', '품질', '주간정례'])
+  })
+
+  it('루트 != 이번 전송 team(자유 루트) → team이 맨 앞에 한 칸 끼어든다(정규화 ②)', () => {
+    const path = [{ id: 1, name: '신규TF' }, { id: 2, name: '킥오프' }]
+    expect(dflowFolderPreviewPath(path, 'MES')).toEqual(['MES', '신규TF', '킥오프'])
+  })
+
+  it('team 미확정(null) → team을 붙이지 않는다(아직 판정 불가)', () => {
+    const path = [{ id: 1, name: '신규TF' }, { id: 2, name: '킥오프' }]
+    expect(dflowFolderPreviewPath(path, null)).toEqual(['신규TF', '킥오프'])
+  })
+
+  it('폴더 없음 + team 확정 → team 하나만', () => {
+    expect(dflowFolderPreviewPath(undefined, 'MES')).toEqual(['MES'])
+    expect(dflowFolderPreviewPath([], 'MES')).toEqual(['MES'])
+  })
+
+  it('폴더 없음 + team 미확정 → 빈 배열', () => {
+    expect(dflowFolderPreviewPath(undefined, null)).toEqual([])
+  })
+
+  it('team_required 재시도로 root와 다른 team을 선택하면 그 team이 앞에 붙는다(팀 재선택 시나리오)', () => {
+    const path = [{ id: 1, name: 'MES' }, { id: 2, name: 'A' }]
+    // 자동판정대로면(team=MES) 접두 없음.
+    expect(dflowFolderPreviewPath(path, 'MES')).toEqual(['MES', 'A'])
+    // 사용자가 다른 team(PMO)을 선택해 전송하면 PMO가 한 칸 끼어든다.
+    expect(dflowFolderPreviewPath(path, 'PMO')).toEqual(['PMO', 'MES', 'A'])
+  })
+
+  // 판정 공유 확인: 사본이면 갈릴 수 있는 지점 — 세그먼트 개수가 실효 깊이와 항상 일치해야 한다.
+  it('배열 길이가 dflowEffectiveFolderDepth와 일치한다(판정 공유 확인)', () => {
+    const path = [
+      { id: 1, name: 'MES' },
+      { id: 2, name: 'A' },
+      { id: 3, name: 'B' },
+      { id: 4, name: 'C' },
+      { id: 5, name: 'D' },
+    ]
+    expect(dflowFolderPreviewPath(path, 'MES').length).toBe(dflowEffectiveFolderDepth(path, 'MES'))
+    expect(dflowFolderPreviewPath(path, 'PMO').length).toBe(dflowEffectiveFolderDepth(path, 'PMO'))
   })
 })
 

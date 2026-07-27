@@ -47,6 +47,57 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
           .with(meeting, editor, team_override: "MES", title_override: "커스텀")
       end
 
+      # W19: DflowUploadService#call 의 반환값(D'Flow 응답을 그대로 담은 Hash, 문자열 키)에서
+      # folder_id/folder_path 를 upload 응답에 얹는다 — 3값 규약(키 부재/null/[])을 뭉개지 않는다.
+      it "D'Flow 응답에 folder_id·folder_path 가 있으면 upload 응답에 함께 싣는다(W19)" do
+        allow(DflowUploadService).to receive(:call)
+          .and_return({ "url" => "https://x/minutes/1", "folder_id" => "folder-uuid-1",
+                         "folder_path" => %w[MES 물류] })
+
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: {}, as: :json
+
+        expect(response).to have_http_status(:ok)
+        body = response.parsed_body
+        expect(body["folder_id"]).to eq("folder-uuid-1")
+        expect(body["folder_path"]).to eq(%w[MES 물류])
+      end
+
+      it "D'Flow 응답에 folder_id·folder_path 키가 없으면 우리 응답에도 키를 넣지 않는다" \
+         "(3값 규약: 키 부재 ≠ null, W19)" do
+        allow(DflowUploadService).to receive(:call).and_return({ "url" => "https://x/minutes/1" })
+
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: {}, as: :json
+
+        expect(response).to have_http_status(:ok)
+        body = response.parsed_body
+        expect(body).not_to have_key("folder_id")
+        expect(body).not_to have_key("folder_path")
+      end
+
+      it "folder_id: null(미분류)이면 null 그대로 전달한다(3값 규약, W19)" do
+        allow(DflowUploadService).to receive(:call)
+          .and_return({ "url" => "https://x/minutes/1", "folder_id" => nil, "folder_path" => nil })
+
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: {}, as: :json
+
+        body = response.parsed_body
+        expect(body).to have_key("folder_id")
+        expect(body["folder_id"]).to be_nil
+        expect(body).to have_key("folder_path")
+        expect(body["folder_path"]).to be_nil
+      end
+
+      it "folder_path: [](팀 루트 편철 성공)이면 [] 그대로 전달한다(3값 규약, W19)" do
+        allow(DflowUploadService).to receive(:call)
+          .and_return({ "url" => "https://x/minutes/1", "folder_id" => "root-folder-uuid", "folder_path" => [] })
+
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: {}, as: :json
+
+        body = response.parsed_body
+        expect(body["folder_id"]).to eq("root-folder-uuid")
+        expect(body["folder_path"]).to eq([])
+      end
+
       it "TeamRequiredError → 422 code=team_required" do
         allow(DflowUploadService).to receive(:call).and_raise(DflowUploadService::TeamRequiredError, "판정 불가")
         post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: {}, as: :json
@@ -240,6 +291,15 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
       get "/api/v1/meetings/#{meeting.id}/dflow/status"
       expect(response).to have_http_status(:ok)
     end
+
+    # W19 헬퍼 오염 회귀: folder_id/folder_path 는 upload 응답 전용이다. #dflow_status_json 에
+    # 옮겨 넣으면(status/link/claim 이 공유하는 헬퍼) 이 테스트가 빨개진다.
+    it "folder_id·folder_path 키를 포함하지 않는다(W19 — 공용 헬퍼 오염 회귀 감지)" do
+      get "/api/v1/meetings/#{meeting.id}/dflow/status"
+      body = response.parsed_body
+      expect(body).not_to have_key("folder_id")
+      expect(body).not_to have_key("folder_path")
+    end
   end
 
   # ── PUT /dflow/link ────────────────────────────────────────────────────
@@ -297,6 +357,14 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
       put "/api/v1/meetings/#{meeting.id}/dflow/link",
           params: { public_uid: "0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77" }, as: :json
       expect(response).to have_http_status(:forbidden)
+    end
+
+    it "folder_id·folder_path 키를 포함하지 않는다(W19 — 공용 헬퍼 오염 회귀 감지)" do
+      put "/api/v1/meetings/#{meeting.id}/dflow/link",
+          params: { public_uid: "0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77" }, as: :json
+      body = response.parsed_body
+      expect(body).not_to have_key("folder_id")
+      expect(body).not_to have_key("folder_path")
     end
   end
 
@@ -378,6 +446,16 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
       login_as(member)
       post "/api/v1/meetings/#{meeting.id}/dflow/claim", params: { minute_id: "minute-uuid" }, as: :json
       expect(response).to have_http_status(:forbidden)
+    end
+
+    it "folder_id·folder_path 키를 포함하지 않는다(W19 — 공용 헬퍼 오염 회귀 감지)" do
+      allow(dflow_client).to receive(:base_url).and_return("https://dflow.example.com")
+      allow(dflow_client).to receive(:link_minute).and_return({ "ok" => true, "id" => "minute-uuid" })
+
+      post "/api/v1/meetings/#{meeting.id}/dflow/claim", params: { minute_id: "minute-uuid" }, as: :json
+      body = response.parsed_body
+      expect(body).not_to have_key("folder_id")
+      expect(body).not_to have_key("folder_path")
     end
   end
 

@@ -38,24 +38,56 @@ export function detectDflowTeam(folderPath: FolderPathEntry[] | undefined, teams
 export const DFLOW_MAX_FOLDER_DEPTH = 5
 
 /**
+ * "루트가 이번 전송에 실제로 쓰일 team인가"의 단일 소스(single source of truth).
+ * 단순히 root가 meta.teams 어딘가에 있는지가 아니라 **이번 전송에서 실제로 쓰일 team**과 root
+ * 이름의 일치로 판정한다 — 정본(decisions-final-2026-07-27.md §2-C)이 "경고는 teamOverride
+ * 확정 이후 재평가"라 못박은 이유가 이것이다: root 이름이 meta.teams에 있는 team이어도, 그
+ * team이 이번 전송에서 무효화돼(예: team_required 재시도) 사용자가 **다른** team을 골랐다면
+ * D'Flow는 root를 팀 루트로 보지 않고 team 폴더를 한 단 더 끼워 넣는다.
+ *
+ * dflowEffectiveFolderDepth(깊이 경고, W4)와 dflowFolderPreviewPath(편철 경로 미리보기, W7)가
+ * 반드시 이 함수 하나를 공유해야 한다 — 사본을 두면 경고와 미리보기가 서로 다른 말을 하게 된다.
+ */
+export function dflowRootIsResolvedTeamRoot(
+  folderPath: FolderPathEntry[] | undefined,
+  resolvedTeam: string | null
+): boolean {
+  const root = dflowRootFolderName(folderPath)
+  return !!resolvedTeam && root === resolvedTeam
+}
+
+/**
  * §2-C 계산식(decisions-final-2026-07-27.md §2-C — D'Flow 코드와 일치 확인됨):
  *   folder_path.length + (루트가 팀코드면 0, 아니면 1)
- * "루트가 팀코드"를 **이번 전송에서 실제로 쓰일 team**과 root 이름의 일치로 판정한다(단순히
- * root가 meta.teams 어딘가에 있는지가 아니다) — 정본이 "경고는 teamOverride 확정 이후 재평가"라
- * 못박은 이유가 이것이다: root 이름이 meta.teams에 있는 team이어도, 그 team이 이번 전송에서
- * 무효화돼(예: team_required 재시도) 사용자가 **다른** team을 골랐다면 D'Flow는 root를 팀
- * 루트로 보지 않고 team 폴더를 한 단 더 끼워 넣는다. resolvedTeam은 호출부가 자동 판정
- * (detectDflowTeam) 또는 select 확정값 중 이번에 실제로 보낼 값을 넘긴다 — 미확정이면 null
- * (보수적으로 +1, 즉 아직 정해지지 않은 동안은 경고 쪽으로 기운다).
+ * resolvedTeam은 호출부가 자동 판정(detectDflowTeam) 또는 select 확정값 중 이번에 실제로
+ * 보낼 값을 넘긴다 — 미확정이면 null(보수적으로 +1, 즉 아직 정해지지 않은 동안은 경고 쪽으로
+ * 기운다). "루트가 팀코드인가" 판정은 dflowRootIsResolvedTeamRoot 하나를 공유한다(위 설명).
  */
 export function dflowEffectiveFolderDepth(
   folderPath: FolderPathEntry[] | undefined,
   resolvedTeam: string | null
 ): number {
   const names = folderPath ?? []
-  const root = dflowRootFolderName(names)
-  const rootIsResolvedTeamRoot = !!resolvedTeam && root === resolvedTeam
-  return names.length + (rootIsResolvedTeamRoot ? 0 : 1)
+  return names.length + (dflowRootIsResolvedTeamRoot(folderPath, resolvedTeam) ? 0 : 1)
+}
+
+/**
+ * W7: 다이얼로그 미리보기용 편철 경로 세그먼트("MES / 품질 / 주간정례"로 조인해 표시).
+ * root가 이번 전송에 실제로 쓸 team이 아니면(dflowRootIsResolvedTeamRoot === false) team이
+ * 맨 앞에 한 칸 끼어든 모습을 그대로 보여준다(정규화 ② 한 칸 내림 — "MES / 신규TF / 킥오프").
+ * resolvedTeam이 미확정(null)이면 team을 붙이지 않는다 — 아직 어디로 갈지 판정할 수 없어서다.
+ *
+ * ⚠️ 이것은 "절단 전" 경로다. 깊이 5 초과분은 D'Flow가 무통보로 절단해 다른 경로에 안착한다
+ * (정본 §2-C, 절단 유지 확정) — 최종 저장 위치를 대신하지 않는다. 최종 확인은 W8의 응답 에코
+ * (`folder_path_status`)의 몫이며, 여기서는 흉내내지 않는다.
+ */
+export function dflowFolderPreviewPath(
+  folderPath: FolderPathEntry[] | undefined,
+  resolvedTeam: string | null
+): string[] {
+  const names = (folderPath ?? []).map((entry) => entry.name)
+  if (dflowRootIsResolvedTeamRoot(folderPath, resolvedTeam)) return names
+  return resolvedTeam ? [resolvedTeam, ...names] : names
 }
 
 /**

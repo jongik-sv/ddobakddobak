@@ -9,6 +9,7 @@ import {
   isValidDflowUuid,
   resolveDflowLinkAction,
   dflowFolderDepthExceedsWarningLimit,
+  dflowFolderPreviewPath,
 } from '../../lib/dflowAutoAssign'
 import {
   getDflowStatus,
@@ -35,7 +36,8 @@ interface SendToDflowDialogProps {
 }
 
 const UNKNOWN_USER_MESSAGE = "D'Flow에 동일 이메일 계정이 필요합니다. D'Flow 관리자에게 계정 생성을 요청하세요."
-const TEAM_REQUIRED_MESSAGE = 'team을 자동으로 판정할 수 없습니다. 아래에서 구분을 선택해 주세요.'
+// "판정 불가 → 선택" 톤: 왜 select가 뜨는지(자동 판정 불가)와 무엇을 해야 하는지(직접 선택)를 분리해 전달한다.
+const TEAM_REQUIRED_MESSAGE = 'team을 자동으로 판정할 수 없습니다 — 아래에서 대상 구분을 직접 선택해 주세요.'
 const BODY_TOO_LONG_MESSAGE = '본문이 100,000자를 넘습니다. (전사 원문은 전송에서 제외됨)'
 const REISSUE_CONFIRM_MESSAGE = "다음 전송 시 D'Flow에 새 회의록이 생성되고 기존 것은 남습니다. 계속할까요?"
 const UNLINK_CONFIRM_MESSAGE = "D'Flow 연결을 해제하시겠습니까? 회의록의 전송 상태가 초기화됩니다."
@@ -46,8 +48,10 @@ const FORCE_SEND_CONFIRM_MESSAGE = "D'Flow에서 확인되지 않아 새 회의�
 const DFLOW_ARCHIVED_MESSAGE =
   "D'Flow에서 보관됨 — 재전송은 막힙니다. D'Flow에서 보관 해제 후 다시 시도하세요."
 // W4 3-b: 깊이 5 초과는 D'Flow가 조용히 절단한다(400 아님) — 여기서는 차단하지 않고 사전 경고만 한다.
+// W7: 아래 미리보기는 절단 전 경로다 — 절단 여부·최종 위치는 전송 후에만 확인 가능함을 덧붙인다.
 const DEPTH_WARNING_MESSAGE =
-  "편철 경로가 D'Flow 보존 한도(5단)를 넘습니다. 전송하면 상위 폴더로 조정되어 저장됩니다."
+  "편철 경로가 D'Flow 보존 한도(5단)를 넘습니다. 전송하면 상위 폴더로 조정되어 저장됩니다. " +
+  '실제 저장 위치는 전송 후 확인해 주세요(아래 미리보기는 조정 전 경로입니다).'
 
 /** ky HTTPError → { message, code } 공통 파싱 (DflowSettingsPanel.tsx handleTest 관례). */
 async function parseDflowError(err: unknown, fallback: string): Promise<{ message: string; code?: string }> {
@@ -134,6 +138,9 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
   // 전송은 다른 team으로 나가는 경우). select 미확정(''）이면 null — 보수적으로 +1 쪽으로 평가한다.
   const resolvedTeam = needsTeamSelect ? (selectedTeam.trim() || null) : detectedTeam
   const depthWarning = meta ? dflowFolderDepthExceedsWarningLimit(meeting.folder_path, resolvedTeam) : false
+  // W7: "MES / 품질 / 주간정례" 형태의 편철 경로 미리보기. dflowEffectiveFolderDepth(위 depthWarning)와
+  // 판정 기준(dflowRootIsResolvedTeamRoot)을 공유한다 — 사본을 두지 않는다(브리프 경고).
+  const previewPath = meta ? dflowFolderPreviewPath(meeting.folder_path, resolvedTeam) : []
 
   // 전송 이력(dflow_synced_at)은 있는데 D'Flow에서 확인되지 않음 — 원인(초기화·보관·삭제)을
   // 단정할 수 없다. dflow_synced_at이 없으면(수동 입력 직후 등) 정상 상태이므로 띄우지 않는다.
@@ -317,6 +324,15 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
                 </p>
               )}
             </div>
+
+            {previewPath.length > 0 && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">편철 경로 미리보기</label>
+                <p className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">
+                  {previewPath.join(' / ')}
+                </p>
+              </div>
+            )}
 
             <div>
               <label htmlFor="dflow-title-input" className="mb-1 block text-xs font-medium text-muted-foreground">

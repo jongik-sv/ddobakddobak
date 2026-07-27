@@ -23,15 +23,16 @@ module Api
                   with: :handle_upload_precondition_error
 
       # POST /api/v1/meetings/:id/dflow/upload  body { team?, title? }
+      # 응답 = 4필드 공통 상태 + D'Flow 편철 결과 에코(W19) — folder_id/folder_path.
       def upload
         return head :forbidden unless @meeting.editable_by?(current_user)
 
-        DflowUploadService.call(
+        resp = DflowUploadService.call(
           @meeting, current_user,
           team_override: params[:team].presence,
           title_override: params[:title].presence
         )
-        render json: dflow_status_json(@meeting)
+        render json: dflow_status_json(@meeting).merge(dflow_folder_echo_json(resp))
       end
 
       # GET /api/v1/meetings/:id/dflow/status
@@ -141,6 +142,22 @@ module Api
           dflow_url: meeting.dflow_url,
           needs_resync: meeting.dflow_needs_resync?
         }
+      end
+
+      # W19: D'Flow 업로드 응답(DflowUploadService#call 이 그대로 돌려주는 파싱된 Hash, 문자열 키)에서
+      # folder_id/folder_path 만 꺼내 upload 응답에 얹는다. #dflow_status_json 에 넣지 않는 이유는
+      # 그 헬퍼가 status/link/claim 에도 쓰여서 편철 정보 없는 응답까지 필드가 따라붙기 때문(W9 의
+      # DflowUploadResult/DflowMeetingStatus 타입 분리가 무너짐).
+      #
+      # 3값 규약(frontend/src/api/dflow.ts#DflowUploadResult) — 키 부재/null/[] 를 뭉개지 않는다:
+      #   키 부재(구버전 D'Flow·아직 미에코)  → 우리 응답에도 키를 넣지 않는다(key? 로만 판정)
+      #   null(미분류)                        → null 그대로
+      #   []( 팀 루트 편철 성공)               → [] 그대로
+      def dflow_folder_echo_json(resp)
+        json = {}
+        json[:folder_id] = resp["folder_id"] if resp.key?("folder_id")
+        json[:folder_path] = resp["folder_path"] if resp.key?("folder_path")
+        json
       end
 
       def handle_dflow_unknown_user(_e)
