@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { HTTPError } from 'ky'
-import { Plus, MoreVertical, Pencil, Users, Trash2, Download } from 'lucide-react'
+import { Plus, MoreVertical, Pencil, Users, Trash2, Download, FileDown } from 'lucide-react'
 import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore, canCreateProject } from '../stores/authStore'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
@@ -9,6 +9,7 @@ import { useFolderStore } from '../stores/folderStore'
 import { useMeetingStore } from '../stores/meetingStore'
 import type { Project } from '../api/projects'
 import { projectDisplayName, isHiddenClutterProject } from '../api/projects'
+import { exportProjectSummaries, SUMMARY_EXPORT_EMPTY_STATUS } from '../api/transfers'
 import ProjectIcon from '../components/project/ProjectIcon'
 import ProjectDialog from '../components/project/ProjectDialog'
 import ProjectMembersPanel from '../components/project/ProjectMembersPanel'
@@ -41,6 +42,7 @@ export default function ProjectsPage() {
   const [exportTarget, setExportTarget] = useState<Project | null>(null)
   const [menuId, setMenuId] = useState<number | null>(null)
   const [error, setError] = useState('')
+  const [summaryExportingId, setSummaryExportingId] = useState<number | null>(null)
   // 아이콘을 카드 높이의 약 1/2로(카드 md:250px → 120, 모바일 160px → 80). 좌측 큰 아이콘.
   const isMd = useMediaQuery(BREAKPOINTS.md)
   const iconSize = isMd ? 120 : 80
@@ -90,6 +92,26 @@ export default function ProjectsPage() {
       } else {
         setError('프로젝트 삭제에 실패했습니다.')
       }
+    }
+  }
+
+  // 요약 zip 내보내기 — 멤버 누구나(기존 tgz 내보내기는 isSystemAdmin 전용, 이건 별개).
+  // 실패 시 페이지 상단 기존 error div 재사용.
+  const handleSummaryExport = async (p: Project) => {
+    setMenuId(null)
+    setSummaryExportingId(p.id)
+    setError('')
+    try {
+      await exportProjectSummaries(p.id)
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      setError(
+        status === SUMMARY_EXPORT_EMPTY_STATUS
+          ? '내보낼 요약이 없습니다'
+          : '요약 내보내기에 실패했습니다',
+      )
+    } finally {
+      setSummaryExportingId(null)
     }
   }
 
@@ -149,6 +171,14 @@ export default function ProjectsPage() {
                       className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
                     >
                       <Users className="h-4 w-4" /> 멤버 관리
+                    </button>
+                    <button
+                      onClick={() => handleSummaryExport(p)}
+                      disabled={summaryExportingId === p.id}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent disabled:opacity-50"
+                    >
+                      <FileDown className="h-4 w-4" />
+                      {summaryExportingId === p.id ? '내보내는 중…' : '요약 내보내기(zip)'}
                     </button>
                     {isSystemAdmin && (
                       <button

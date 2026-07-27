@@ -5,8 +5,8 @@ module Api
     # 새 Project 로 복원된다(머지·멱등 없음, 항상 새 프로젝트).
     class ProjectTransfersController < ApplicationController
       before_action :authenticate_user!
-      before_action :require_system_admin!
-      before_action :set_project, only: %i[export]
+      before_action :require_system_admin!, except: %i[export_summaries]
+      before_action :set_project, only: %i[export export_summaries]
       before_action :reject_others_personal_project!, only: %i[export]
 
       # 업로드 상한(설계문서 §보안). 오디오 동봉 시 회의가 많아도 여유 있게 3GB.
@@ -29,6 +29,20 @@ module Api
           type:        "application/gzip",
           disposition: "attachment",
           filename:    export_filename(@project)
+      end
+
+      # POST /api/v1/projects/:id/export_summaries
+      # 프로젝트 전체 회의(루트 회의 포함)의 AI 요약 md 를 폴더 구조 zip 으로.
+      # 권한: 프로젝트 멤버 누구나 — export(tgz)의 system admin 전용과 다른
+      # 의도된 완화(요약 열람 권한이 있으면 내보내기도 가능).
+      # admin 이어도 멤버가 아니면 403 (남의 개인 프로젝트 요약 열람 차단 포함).
+      def export_summaries
+        return render json: { error: "Forbidden" }, status: :forbidden unless @project.member?(current_user)
+
+        exporter = SummaryZipExporter.new(project: @project, current_user: current_user)
+        return render json: { error: "내보낼 요약이 없습니다" }, status: :unprocessable_entity if exporter.empty?
+
+        send_zip(exporter)
       end
 
       # POST /api/v1/projects/import  multipart file=<tar.gz>
@@ -94,6 +108,18 @@ module Api
         slug = project.name.to_s.parameterize
         slug = "project" if slug.blank?
         "#{slug}-export-#{Date.current.strftime('%Y%m%d')}.ddobak.tgz"
+      end
+
+      def send_zip(exporter)
+        tempfile = Tempfile.new([ "summaries-export", ".zip" ])
+        tempfile.binmode
+        exporter.write_to(tempfile)
+        tempfile.flush
+
+        send_file tempfile.path,
+          type:        "application/zip",
+          disposition: "attachment",
+          filename:    exporter.filename
       end
     end
   end

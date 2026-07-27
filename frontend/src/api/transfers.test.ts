@@ -15,6 +15,8 @@ import {
   importMeeting,
   exportFolder,
   importFolder,
+  exportFolderSummaries,
+  exportProjectSummaries,
 } from './transfers'
 
 beforeEach(() => {
@@ -163,5 +165,59 @@ describe('importFolder', () => {
 
     const [, opts] = post.mock.calls[0] as [string, { body: FormData }]
     expect((opts.body as FormData).get('parent_folder_id')).toBe('8')
+  })
+})
+
+// ── 요약 zip 내보내기 ──────────────────────────────────
+
+describe('exportFolderSummaries', () => {
+  it('POST folders/:id/export_summaries 후 zip blob 을 다운로드한다', async () => {
+    const blob = new Blob(['zipbytes'])
+    post.mockReturnValue({
+      blob: () => Promise.resolve(blob),
+      headers: {
+        get: (k: string) =>
+          k.toLowerCase() === 'content-disposition'
+            ? 'attachment; filename="weekly-summaries-20260723.zip"'
+            : null,
+      },
+    })
+
+    await exportFolderSummaries(12)
+
+    expect(post).toHaveBeenCalledWith('folders/12/export_summaries', { timeout: false })
+    expect(downloadBlob).toHaveBeenCalledWith(blob, 'weekly-summaries-20260723.zip')
+  })
+
+  it('Content-Disposition 없으면 폴백 파일명을 쓴다', async () => {
+    const blob = new Blob(['zipbytes'])
+    post.mockReturnValue({
+      blob: () => Promise.resolve(blob),
+      headers: { get: () => null },
+    })
+
+    await exportFolderSummaries(12)
+
+    expect(downloadBlob).toHaveBeenCalledWith(blob, 'folder-12-summaries.zip')
+  })
+})
+
+describe('exportProjectSummaries', () => {
+  it('POST projects/:id/export_summaries 후 zip blob 을 다운로드한다', async () => {
+    const blob = new Blob(['zipbytes'])
+    post.mockReturnValue({
+      blob: () => Promise.resolve(blob),
+      headers: {
+        get: (k: string) =>
+          k.toLowerCase() === 'content-disposition'
+            ? 'attachment; filename="plan-summaries-20260723.zip"'
+            : null,
+      },
+    })
+
+    await exportProjectSummaries(3)
+
+    expect(post).toHaveBeenCalledWith('projects/3/export_summaries', { timeout: false })
+    expect(downloadBlob).toHaveBeenCalledWith(blob, 'plan-summaries-20260723.zip')
   })
 })
