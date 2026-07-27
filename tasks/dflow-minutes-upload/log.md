@@ -161,3 +161,19 @@
   - handoff §5 전면 갱신 — 즉시 시작할 것 / 막힌 것과 정확한 이유 / 사람이 할 일
   - 메모리 갱신: 11/19, 커밋 6개, w19w7 브리프 경로
   - ⛔ d0b893e7(2차분)은 main 병합 금지 — R2 전에 나가면 접두도 폴더도 없는 상태가 된다
+
+[2026-07-28 세션2] [DISPATCH] w19w7 (sonnet) — brief = workers/w19w7/brief.md. 도중 API ENOTFOUND로 1회 중단 후 복구·완주
+[2026-07-28 세션2] [VERIFICATION] 오케스트레이터 직접 재측정 (서브에이전트 보고값 미신뢰 원칙)
+  - rspec 전체 **2041 passed / 0 failed** (674s) — 인수인계의 기준선 659는 전체가 아니었음
+  - vitest 전체 **1840 pass / 0 fail** (기준선 1830 + 신규 10: dflowAutoAssign 7 · SendToDflowDialog 3)
+  - `npx tsc -p tsconfig.app.json` **0** · rubocop · eslint clean
+  - 오염 회귀 테스트 실효성 실증 확인: #dflow_status_json을 일부러 오염시키면 4건(upload 키부재 + status·link·claim)이 빨개짐
+  - DflowUploadService#call 반환형 직접 확인 — client.upload_minute → DflowClient#parse_response의 JSON.parse = 문자열 키 Hash
+[2026-07-28 세션2] [COMMIT] a9743788 feat(dflow): upload 응답 pass-through + 편철 경로 미리보기 (W19·W7). 6파일. ⚠️ **배포 금지 — R2 이후**
+[2026-07-28 세션2] [DISPATCH] teamlead-doc (sonnet) — 팀장 결정 대기 항목 9건 문서화
+  - 검수에서 오류 1건 적발·정정: 커밋 4387576은 계약 **v2.3**이고 v2.4는 그 위에 9건 반영이 남았다(계약만 3건 · 계약+코드 5건 · 코드 결함 수정 1건). "보내기만 하면 되는 상태"는 거짓
+[2026-07-28 세션2] [DISPATCH] docsync (sonnet) — handoff · exec-state · 워크리스트 갱신 (13/19)
+  - 알려진 공백 신설: W19 spec은 DflowUploadService.call을 전 케이스 stub → 서비스·컨트롤러 실경계는 스위트 미실행. rspec 2041 pass가 이 경계를 덮지 않음
+  - 이번 세션 변경 파일을 가리키던 행번호 인용 제거(커밋 앵커 명시분·"틀린 인용 예시" 표는 유지)
+[2026-07-28 세션2] [COMMIT] dce11c7a docs(dflow): W19·W7 완료 반영 + 팀장 결정 대기 항목 신설 (13/19)
+[2026-07-28 세션2] [STATE] 13/19. 남은 6건 전부 차단(계약 v2.4 미수령 · D'Flow 미배포) → 팀장 답이 선행. artifacts/team-lead-open-decisions-2026-07-28.md 참조
