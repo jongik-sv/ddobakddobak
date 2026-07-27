@@ -131,3 +131,33 @@
   **A~D는 D'Flow R1 대기가 아니다 — 지금 실행 가능.** 완료 시 재편철 manual_placement 6 → 0 수렴 예상
 [2026-07-28 __:__] [FIX] 회신문 낡은 사실 2건 정정 — "커밋조차 안 됨" → "브랜치 커밋됨(3c95e934), main 병합·배포 안 함"
   / 검증 수치 rspec 33 → 134. ＋ 자체 리뷰로 잡은 회귀(0852ac4b)를 "D'Flow 조치 없음"으로 명시
+[2026-07-28 __:__] [DONE] w2w6 — ddobak-W2·W6 전송 제목 접두 폐기 (2차, **배포 금지 — R2 이후**)
+  `Meeting#dflow_auto_title` → 접두 없는 원제목(200자 캡). 접두 로직은 **`#dflow_legacy_prefixed_title`로 보존**
+  프런트 `buildDflowTitle(title)` 단순화 + `buildDflowLegacyPrefixedTitle(folderPath, title)` 보존
+  ⚠️ 보존이 핵심 — §7.7 C2 자동 링크가 접두 있는 옛 제목을 재현해야 한다(연동 19건 전부 접두 있음. 정본 §7-10 "가장 시급")
+  기존 접두 기대 spec 6건을 삭제 없이 레거시 메서드 쪽으로 이관 + 백/프런트 **문자 단위 패리티 케이스** 2쌍 신설(advisor 지적 반영)
+  검증(오케스트레이터 직접): `rspec spec/models spec/services spec/requests/.../meeting_dflow_spec.rb` → **659 passed**
+         에이전트 실측: tsc 0 · vitest 57 pass
+[2026-07-28 __:__] [FOLLOW-UP] 사전 존재 파리티 갭(이번 변경 무관, 저우선) — Ruby `.strip`(ASCII 공백)과 JS `.trim()`(유니코드 공백)이 갈리고,
+  200자 절단이 Ruby=코드포인트 / JS=UTF-16 코드유닛이라 이모지 등 surrogate pair 제목에서 결과가 어긋난다.
+  한글(BMP)은 1:1이라 실사용 영향 없음. `meeting.rb#dflow_auto_title` / `dflowAutoAssign.ts#buildDflowTitle`
+[2026-07-28 __:__] [DISPATCH] w3w5w4 — ddobak-W3(team 완화) → W5(에러 매핑) → W4(폴더명 길이 차단 + 깊이 경고 비차단)
+  ⚠️ 순서 엄수: W5가 W4보다 먼저(역순이면 새 에러가 미rescue → 500)
+  ⚠️ 깊이 경고는 **차단 금지**(정본 §2-C). 권고 위치 = 프런트(서비스는 성공/예외뿐이라 비차단 경고를 실을 곳이 없고, upload 응답 조립은 W19 소관)
+[2026-07-28 __:__] [VERIFICATION] w3w5w4 — 보고 없이 유휴 전환(3번째 사례). 결과를 파일로 직접 검증
+  W3: `resolve_team!` **무변경** — 이미 요구 충족(override 우선 → root ∈ meta.teams → TeamRequiredError,
+      프런트 needsTeamSelect가 이미 "선택 필요"로 처리). 회귀 spec만 보강. **억지 변경 안 한 것이 맞다**
+  W5: `FolderNameTooLongError`를 rescue_from 목록(:17-23)과 handle_upload_precondition_error case(:179)에 **둘 다** 등록
+      (case에만 넣으면 500, rescue_from에만 넣으면 code가 nil로 조용히 렌더)
+  W4-a: 길이 검사 차단 — strip 후 61자 초과 시 **위반 폴더명을 메시지에 담아** 중단(D'Flow 400은 원인 불명)
+  W4-b: 깊이 경고 **프런트·비차단** — `dflowEffectiveFolderDepth(folderPath, resolvedTeam)`.
+      판정을 "root ∈ meta.teams"가 아니라 **"root === 이번에 실제 쓸 team"**으로 한 것이 정확하다 —
+      다른 team을 고르면 D'Flow가 team 폴더를 한 단 더 끼운다(정본 "teamOverride 확정 후 재평가"의 의미)
+      팀 목록 하드코딩 없음. resolvedTeam 미확정이면 보수적으로 +1(경고 쪽)
+  검증: rspec **659**(모델·서비스·요청) / **61**(dflow 2종) · rubocop clean · tsc **0** · vitest 전체 **1830 pass**
+[2026-07-28 __:__] [COMMIT] d0b893e7 feat(dflow): 2차 선구현 (W2·W3·W4·W5·W6). ⚠️ **배포 금지 — R2 이후**. main 병합 금지
+[2026-07-28 __:__] [PAUSE] 컨텍스트 클리어 (사용자 지시). 방침: **W19·W7까지 진행하고, 내일 실서버 배포 후 D'Flow와 맞춘다**
+  - 브리프 선작성: workers/w19w7/brief.md (다음 세션이 바로 dispatch)
+  - handoff §5 전면 갱신 — 즉시 시작할 것 / 막힌 것과 정확한 이유 / 사람이 할 일
+  - 메모리 갱신: 11/19, 커밋 6개, w19w7 브리프 경로
+  - ⛔ d0b893e7(2차분)은 main 병합 금지 — R2 전에 나가면 접두도 폴더도 없는 상태가 된다
