@@ -87,7 +87,7 @@
 
 ### Phase 1이 발견한 누락 작업
 
-- [ ] **D0-17 (W19 신설)** ⚠️ `meeting_dflow_controller.rb:26-33` `upload` 액션이 `DflowUploadService.call`의 **반환값을 버리고** `dflow_status_json`(4필드)만 렌더한다. dflow-W4가 배포돼도 **또박또박 백엔드가 `folder_id`·`folder_path`를 프런트로 넘기지 않아 W8이 표시할 값을 못 받는다.** 워크리스트 §4가 W8 전제를 `dflow-W4`만으로 적은 것은 불완전 → 백엔드 pass-through W 신설(2차)
+- [ ] **D0-17 (W19 신설)** ⚠️ `meeting_dflow_controller.rb#upload` 액션이 `DflowUploadService.call`의 **반환값을 버리고** `dflow_status_json`(4필드)만 렌더한다. dflow-W4가 배포돼도 **또박또박 백엔드가 `folder_id`·`folder_path`를 프런트로 넘기지 않아 W8이 표시할 값을 못 받는다.** 워크리스트 §4가 W8 전제를 `dflow-W4`만으로 적은 것은 불완전 → 백엔드 pass-through W 신설(2차)
 
 ---
 
@@ -243,7 +243,7 @@ wbs-web `main`에 `folder_path` 커밋 0건 (2026-07-27 확인).
 ### 실측이 만든 신규 항목 2건
 
 - **N5** [high] ⚠️ **`D0-15`가 실측과 충돌한다.** `dflow_synced_at`이 NULL인데 **이미 D'Flow에 연결된** 회의가 **4건**(＋삭제분 1).
-  원인은 `claim`이 `dflow_url`만 갱신하는 것(`meeting_dflow_controller.rb:100-104`, 정상 동작 — claim은 전송이 아니다).
+  원인은 `claim`이 `dflow_url`만 갱신하는 것(`meeting_dflow_controller.rb#claim`, 정상 동작 — claim은 전송이 아니다).
   D0-15가 넓힌 §7.7 대상 1 정의("`dflow_synced_at` 없음")에 이 4건이 걸려 **다른 회의록에 재claim → 고아 + 오매칭**.
   → 대상 1 기준을 **"`dflow_synced_at` 없음 AND `exists_on_dflow == false`"** 로 정정. `public_uid` 유무는 판정 기준이 될 수 없다
 - **N6** [med] **`claim` 오매칭이 이미 1건 발생했다** — 또박또박 `원료팀 2026.07.08`(07/08 녹음 55분)이
@@ -252,8 +252,24 @@ wbs-web `main`에 `folder_path` 커밋 0건 (2026-07-27 확인).
 
 ---
 
+## Phase 3 — 2026-07-28 세션 2 (`ddobak-W19`·`ddobak-W7`) — **DONE**
+
+진행률 **11/19 → 13/19**. 오케스트레이터가 직접 실측·검증(서브에이전트 산출물을 그대로 신뢰하지 않음). ⚠️ 2차분 — **배포·`main` 병합 금지(R2 이후)**, 커밋 안 함(워킹 트리 6파일).
+
+| 항목 | 구현 |
+|---|---|
+| **`W19`** | `meeting_dflow_controller.rb#upload` — `render json: dflow_status_json(@meeting).merge(dflow_folder_echo_json(resp))`. 신규 private `meeting_dflow_controller.rb#dflow_folder_echo_json` — `resp.key?("folder_id")`/`resp.key?("folder_path")` 조건부 merge로 3값 규약(키 부재/`null`/`[]`) 보존. `#dflow_status_json` 공용 헬퍼는 무수정(status·link·claim 오염 방지). `DflowUploadService`는 무수정 — `#call`이 `client.upload_minute`(= `DflowClient#parse_response`의 `JSON.parse`, 문자열 키 Hash) 결과를 그대로 반환 |
+| **`W7`** | `dflowAutoAssign.ts#dflowRootIsResolvedTeamRoot` 신설(루트=이번 전송 team 단일 판정 소스). `dflowAutoAssign.ts#dflowEffectiveFolderDepth`의 인라인 판정을 이 함수 호출로 교체(출력 불변). `dflowAutoAssign.ts#dflowFolderPreviewPath` 신설(team 한 칸 내림 노출, `resolvedTeam` null이면 접두 없음). `SendToDflowDialog.tsx` "편철 경로 미리보기" 블록 추가 + `DEPTH_WARNING_MESSAGE`·`TEAM_REQUIRED_MESSAGE` 문구 갱신 |
+| **검증** | rspec **2041 passed / 0 failed**(전체, 오케스트레이터 독립 실행 674s) · vitest 전체 **1840 pass / 0 fail**(기준선 1830 + 신규 10 = `dflowAutoAssign` 7 · `SendToDflowDialog` 3) · `tsc -p tsconfig.app.json` **0** · rubocop·eslint clean |
+| ⚠️ 기준선 정정 | 이전 판(rspec **659**)은 전체 스위트가 아니었다. 위 2041이 맞는 전체 실측치 — 다음 세션 재확인 시 이 줄을 기준으로 삼을 것 |
+
+신규 문서: `team-lead-open-decisions-2026-07-28.md`(180행) — 팀장 결정 필요 9건.
+
+---
+
 ## 진행 로그
 
 | 시각 | 항목 | 결과 |
 |---|---|---|
 | 2026-07-27 13:55 | 원장 생성 | task.md · exec-state.md 작성. Phase 0 착수 |
+| 2026-07-28 세션 2 | Phase 3 — `ddobak-W19`·`ddobak-W7` | **DONE** — 진행률 11/19 → 13/19. rspec 2041 pass · vitest 1840 pass. 미커밋(2차분, R2 이후 배포) |
