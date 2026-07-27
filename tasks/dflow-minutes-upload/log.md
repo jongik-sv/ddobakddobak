@@ -7,3 +7,64 @@
 [2026-07-19 14:20] [VERIFICATION] 적대 검증 워크플로 3방향(D'Flow 코드 대조/ddobak 코드 대조/문서 간 일치) — 발견 11건(blocker 2: partial unique index에서 onConflict upsert 42P10 실패, §12-§0 D1 모순 / major 5: rematchMinuteHighlights 비-export, WebMock 부재, routes 경로 생성 오류, regenerate_notes 갱신 공백, meeting_id 계약-구현 불일치 / minor 4) 전부 문서에 수정 반영. 나머지 인용·한도·정규식·시나리오 정합은 검증 통과
 [2026-07-19 15:10] [DECISION] 사용자 확정 4건: ① MDM 팀 추가=방안 B(전 모듈 정식, §9.8 신설 — DB CHECK 2곳·TS 유니온·Record 9곳·CSS 토큰 하드코딩 실측) ② team=최상위 폴더명 자동 판정(meta.teams 기준) ③ 전송 제목=<하위폴더명>-<원제목> (실데이터 27건 트리 시뮬레이션 3회 제시 후 확정, 회의별 2단계 폴더 생성은 의도된 동작) ④ 프로젝트명 양측 동일 전제(v1 미사용, v1.1 이름 매칭). 폴더 수동 매핑(folders 컬럼 2개+설정 UI) 설계 삭제
 [2026-07-19 15:30] [VERIFICATION] 2차 적대 검증 워크플로(3방향, sonnet high) — 발견 12건(blocker 2: §4.2 title 구 관례 잔존·§10 다이어그램 미갱신 / major 4: §14.1 0035 누락·§10 구현목록 매핑 잔재·§14.1-5 매핑 문구·ancestor_records 자기제외 함정(체인=[folder]+ancestor_records로 정정, meeting.rb:403 선례) / minor 6) 전부 수정. 검증 통과 항목: MDM 인용 전수(Record<TeamCode> 9곳 누락·과잉 없음)·계약 요소 문자 단위 일치·dflow_team 잔재 0·1차 수정 반영 확인. 잔재 grep 스윕 클린
+
+[2026-07-27 13:40] [VERIFICATION] 또박또박 워크리스트 ↔ D'Flow 워크리스트 대조 — D'Flow 문서가 §11.3에 명시 요청한 7건 **반영 0건**. 추가로 §11.3에도 없는 계약 신규 미전달 6건(team_mismatch·no_team_root·folder_path: null·already_correct 선후·§8.3 판정기준 미결·archived 오진) + 누락 작업 1건(api-spec 사본 동기화, dflow-W8이 착수 전 선행) 발견. 보고서: artifacts/ddobak-worklist-sync-gap-2026-07-27.md
+[2026-07-27 13:40] [DECISION] 정합 방향 확정 — D'Flow 워크리스트는 확정본(수정 금지), 또박또박 워크리스트만 고쳐 맞춘다. 실행 계획 = Phase 0 문서정합 14건 → Phase 1 1차 코드 4건(W1·W9·W10·W11) → Phase 2+ 는 D'Flow 미착수로 블록(wbs-web main에 folder_path 커밋 0건 실측)
+[2026-07-27 13:55] [ACTION] task.md 신설 + workers_approved 기록(claude-main 서브에이전트, write_scope = artifacts/** · backend/app/services/** · backend/spec/** · frontend/src/api/**). 진행 원장 artifacts/exec-state.md 생성
+[2026-07-27 13:56] [ACTION] Phase 0 묶음 A 디스패치(서브에이전트, sonnet) — §7 6건(D0-1 team 취급·D0-8 대상2 조건·D0-9 C2 시점분기·D0-10 로그 6종+선후·D0-12·D0-13 미결 등재). brief: workers/phase0-sec7/brief.md
+[2026-07-27 14:05] [VERIFICATION] 묶음 A 완료 — 6건 전부 반영, 미결 2건 임의 결론 없음 확인. 하류 파급 2건 신규 등재: D0-15(§7.7 대상1 정의 확장 — dflow_synced_at 조건 추가로 '전송 실패분·수동 연결분'이 대상1·2 어디에도 안 걸리는 사각지대 발생) · D0-16(§8 수용기준이 옛 문구 "연결 해제되었습니다" 잔존)
+[2026-07-27 14:06] [ACTION] Workflow 실행(run wf_858726c2-359) — 문서정합 B(§1·§3·§4)→C(§5·§8)→D(§6·§7.7) 순차(단일 파일이라 병렬 불가) → 검증 E(두 워크리스트 전면 대조, effort high) → 코드 병렬 3(W1+W10 백엔드 TDD 체인 / W9 프런트 타입 / W11 sender-spec). 에이전트 7
+[2026-07-27 14:48] [VERIFICATION] Workflow wf_858726c2-359 완료 (7/7, 에러 0, 711k tok). 문서정합 D0-2~D0-7·D0-11·D0-14~D0-16 반영. 최종 대조(E) 결과 — 축 1(계약)·3(마이그레이션)·4(자동링크)·5(미결 3건 임의결론 0) PASS, 축 2(배포표)·6(내부 일관성) FAIL. D'Flow §11.3 요청 7건 + 갭보고 B-1~B-6·C·D-1~D-5 **전부 반영 확인**
+[2026-07-27 14:48] [VERIFICATION] Phase 1 코드 4건 완료 — rspec 22 passed(구현 전 3 failed red 확인) · 회귀 spec 85 passed · rubocop ok · `tsc -p tsconfig.app.json` 에러 0 · vitest 33 pass. W1은 `dflow_folder_chain`이 private이라 `meeting.rb`에 public 접근자 `dflow_folder_path_names` 신설(기존 `dflow_root_folder_name` 패턴 동일). W10은 backend만 완료 — frontend spec은 W6·W8 검증이라 2차분, 통째 완료 표기 금지
+[2026-07-27 14:48] [VERIFICATION] 잔여 11건 + 신규 갭 4건 등재. B측 F1~F7(§7.3 W3 접두 충돌·W8 승격 대비 수용기준 0건·W14 기준이 dflow-W10 이전 트리거 불가·already_correct/no_team_root 미검증 등) / 신규 N1(claim이 컨트롤러 액션에 묶여 rake 불가 → dflow_url nil)·N2(롤백 범위=연결이지 본문 아님)·N3(깊이 무통보 절단 미결 미등재) / W9 에이전트가 누락 작업 발견 — `meeting_dflow_controller.rb:26-33` upload가 서비스 반환값을 버려 dflow-W4 배포돼도 W8이 값을 못 받음(D0-17 = W19 신설)
+[2026-07-27 14:48] [DECISION] F8~F11은 **D'Flow 확정본이 stale해진 것**(또박또박이 §11.3 요청을 이행한 결과) — A §11.1 표제 `~W17`·§11.2 차수표 미갱신·W14 배지 문구가 A 자신의 §9.7(b)와 모순·W8 "승격 요청" 잔존. 확정본이라 이쪽에서 수정 안 함, 팀장 전달 대상으로 원장에 등재
+[2026-07-27 14:50] [ACTION] Workflow 2라운드 실행(run wf_411b7095-530) — 보정 R1(§4·§7: F1·F5·F6·N1·N2·W19 신설) → R2(§5·§6·§8: F7·W19 차수·F2·F3·F4·N1꼬리·N2꼬리·N3) 순차 → 재검증 R3(effort high). 에이전트 3
+[2026-07-27 15:12] [VERIFICATION] Workflow wf_411b7095-530 완료 (3/3, 에러 0, 281k tok). 재검증 R3 — F1~F7·N1~N3·D0-17(W19 신설) **전건 PASS**, **1라운드 회귀 0**(계약 §3·마이그레이션 §7.2·§7.4·자동링크 §7.7 문구 단위 재대조), 미결 **4/4 유지**. 잔여 6건(F-a 접두 1토큰 / G1 §8에 W19 수용기준 0개 / G2 `A §11.2` 표기 오염 / G3 `1차-b` 라벨 중복 / G4 W19 전제 과대 / G5 괄호 주어 모호)
+[2026-07-27 15:12] [DECISION] R2가 `ddobak-W18`(api-spec 사본 동기화)을 2차 → **0차**(계약서 선행)로 앞당김. 근거: `dflow-W8`이 D'Flow 착수 전 선행이라 2차로 미루면 1차 구현자가 v2.1 사본의 충돌 문장 3개를 읽는 창이 남는다. 부수 효과 — §7.3 (b)안(3차를 2차 앞으로) 채택 시에도 계약 사본이 3차 구현자보다 먼저 도착해 문서 자체 모순이 해소
+[2026-07-27 15:28] [ACTION] 마무리 디스패치(서브에이전트) — F-a·G1~G5 6건 적용 후 `0차` 행을 §5 표 맨 위로 이동. 최종 순서 `0차 → 1차-a → 1차-b → 2차 → 3차 → 4차`
+[2026-07-27 15:30] [VERIFICATION] **Phase 0 종료.** 워크리스트 385 → 518행, W 항목 17 → 19개, 배포 차수 4단 → 6단, 미결 4/4 유지(임의 결론 0). 총 에이전트 12 · ~993k tok · 에러 0. Phase 1 코드 4건도 완료(rspec 22 pass·회귀 85 pass·rubocop ok·tsc 0·vitest 33 pass). 커밋·푸시 없음
+[2026-07-27 15:30] [DECISION] 잔여 지시 대기 2건 — ① D'Flow 확정본 동기화 패스(F8~F11: §11.1 표제가 `~W17`로 W18·W19 누락 · §11.2 차수표가 ①⑦ 적용 전 + W18 차수 어긋남 · §11.1 W14 배지 문구가 자기 §9.7(b)와 모순 · W8 "승격 요청" 잔존) ② 미결 4건 팀장 판단(§3.3 미분류 응답값 · §7.3 manual_placement 판정 · §7.6 archived 오진 · §6 깊이 절단 정책)
+[2026-07-27 16:10] [ACTION] 팀장 전달용 결정안 작성 — artifacts/team-lead-decisions-2026-07-27.md(질문 11건) + artifacts/decisions-proposed-2026-07-27.md(개발 측 권고: 결정 7 + 권고 4 + 회신 양식). 핵심 = **dflow-W6를 dflow-W3~W5보다 먼저** 내면 B-2·B-3·C-2가 한 번에 해소되고 지금은 D'Flow 미착수라 추가 작업이 0
+[2026-07-27 16:45] [ACTION] `ddobak-W17` 구현(서브에이전트, TDD) — status 액션에 dflow_title·dflow_date, 프런트 타입 nullable, 다이얼로그 표시
+[2026-07-27 16:50] [VERIFICATION] W17 검증(오케스트레이터 직접 실행) — rspec spec/requests/api/v1/meeting_dflow_spec.rb **31 passed** · rubocop ok(2파일) · `tsc -p tsconfig.app.json` **에러 0** · vitest 다이얼로그·api **36 pass** · eslint clean
+[2026-07-27 16:50] [DECISION] W17 위치 편차 2건 확정 후 워크리스트 W17 행에 반영 — ① 백엔드는 `dflow_status_json` 공용 헬퍼가 아니라 `status` 액션(upload·link·claim엔 list_minutes 왕복이 없어 값 없는 필드가 따라붙거나 왕복 3회 증가, ddobak-W19와 같은 함정) ② 프런트는 연결관리 `<details>`(기본 접힘) 안이 아니라 전송 버튼 바로 위(접힌 곳에 두면 처음 전송하는 사용자가 경고를 못 봐 W17 목적이 무너짐 — 브리프 힌트를 에이전트가 정당하게 뒤집음)
+[2026-07-27 17:20] [DECISION] **결정 정본 수신** — artifacts/decisions-final-2026-07-27.md (D'Flow/PMO 발신). 권고안 전제 3개가 뒤집힘: ① D'Flow는 착수 전이 아니라 **작업 브랜치에 W1~W6·W24 구현 완료**(c769ee5·afc1943·4387576) → "W6 먼저" 기각, 대신 서버 플래그 MINUTES_FOLDER_PATH_ENABLED(dflow-W25)로 전환 통제 ② 연동 19건 중 **17건이 이미 하위 폴더**(D'Flow 사용자가 직접 정리) → "3차 앞세우면 오분류 0"은 거짓 ③ 41명 중 28명이 pmo_admin → 폴더 소유권 심각도 하향. 또한 권고안 §A-1 순서표의 함정 지적(dflow-W1을 먼저 내면 파싱 시점 400으로 정상 전송이 실패하는 창) 및 "진짜 위험은 W3가 아니라 W5"(재전송마다 위치 덮임, 폴더 미소속은 []로 팀 루트 평평화) — 둘 다 타당
+[2026-07-27 17:20] [DECISION] 확정 사항 — B-2·B-3·C-2 취지 승인(3차를 2차보다 먼저, 수단은 플래그) · **§2-J 조상 규칙 신규**(권고안이 놓친 (c)안, 또박또박 변경 0) · B-4 (a) 승인(include_archived는 **R1 포함** → ddobak-W14를 4차까지 기다릴 필요 없음) · B-5 절단 유지하되 "D'Flow 변경 0"은 기각(folder_path_status enum 신설) · B-1 승인+배치 from도 nullable · A-2 0043 **적용됨**(보류 사유 없음) · C-1 ACTOR_EMAIL=donseok75@gmail.com + pmo_admin 게이트 · D는 D'Flow 측 전량 담당
+[2026-07-27 17:25] [VERIFICATION] 정본 §7 요청 11건 중 **8·9·10은 Phase 0에서 이미 반영 완료**(차수 재배치=D0-3, §11.3③=D0-8＋D0-15, §11.3④=D0-9) — D'Flow 측이 모르는 상태라 회신 필요. §7-1(ddobak-W1 배포 여부) 답 확정: **아니오** — dflow_upload_service.rb는 워킹 트리 수정 상태이고 마지막 커밋이 e402182f(idea.md 32-T3)라 커밋조차 안 됨
+[2026-07-27 17:30] [ACTION] 컨텍스트 클리어 대비 인수인계 문서 작성 — artifacts/handoff-2026-07-27.md. 다음 세션 진입 순서: handoff → exec-state → decisions-final. 잔여 조사 3건(폴더 깊이 분포·[] 전송 예정 건수·중복 의심 1건)은 **실서버 DB 읽기 전용 조회**가 필요해 사용자 승인 대상
+
+[2026-07-27 16:5x] [BRANCH] feature/dflow-minutes-folder-path 생성 (사용자 지시). 커밋 0건이라 미커밋 변경 전부 그대로 이동
+[2026-07-27 16:5x] [DISPATCH] w14 서브에이전트 — ddobak-W14 ＋ include_archived(정본 §2-B/§7-3①). brief: workers/w14/brief.md
+[2026-07-27 16:5x] [DECISION] W14와 include_archived는 한 몸으로 처리. include_archived=true가 붙으면 보관분이 exists_on_dflow:true가 되어 W17의 "덮어씁니다" 안내가 거짓이 된다(재전송은 409 archived) → SendToDflowDialog.tsx:298 게이트 필수. spec:142의 .with(external_id:) 정확 매처도 red가 된다
+[2026-07-27 16:5x] [DECISION] minutes 프록시(:108-110) params.permit에 include_archived 추가하지 않음 — 살아 있는 호출자는 linked=false 후보 검색뿐이고 정본 §2-B가 그 조합을 금지한다(보관분은 claim 불가·409). linked=true 순회는 4차(W15·W16)로 등재
+[2026-07-27 17:0x] [APPROVAL] 사용자 승인 — 또박또박 실서버 production.sqlite3 읽기 전용 SELECT 조회 (AskUserQuestion "실행 (읽기 전용)")
+[2026-07-27 17:0x] [VERIFICATION] 실서버 실측 완료 → artifacts/prod-survey-2026-07-27.md
+  - §7-2 폴더 깊이: 실효 5단 이상 **0건**, 최대 2. 살아있는 폴더 트리 최대 2단
+  - §7-7 [] 전송 예정: 연동 18건 중 **1건**, 그 1건은 D'Flow에서도 이미 팀 루트 → 평평화 피해 0
+  - §7-11 중복: **해명됨** — 또박또박 원본(id 34) 삭제 후 재생성(id 96) 전송. #7은 고아 → D'Flow 보관/삭제 권고 + 재편철 items 제외
+  - §8 부록 19건 to 전량 완성 — 예상 판정 moved 1 / already_correct 11 / manual_placement 6 / 제외 1
+[2026-07-27 17:0x] [FINDING] 신규: dflow_synced_at NULL인 연동분 **4건**(＋삭제분 1). 원인 = claim 경로가 dflow_url만 갱신(controller:100-104, 정상 동작).
+  ⚠️ D0-15가 넓힌 §7.7 대상 1 정의("dflow_synced_at 없음")에 이 4건이 걸린다 → 이미 연결된 회의를 다른 회의록에 재claim할 위험(고아+오매칭).
+  → 대상 1 기준을 "dflow_synced_at 없음 AND exists_on_dflow == false"로 정정 필요. 워크리스트 §7.7 반영 대상
+[2026-07-27 17:1x] [VERIFICATION] W14 ＋ include_archived 완료 — 오케스트레이터 직접 재검증
+  - `bundle exec rspec meeting_dflow_spec + dflow_upload_service_spec + dflow_client_spec` → **75 passed / 0 failed**
+  - `npx tsc -p tsconfig.app.json` → **No errors found**
+  - `npx vitest run SendToDflowDialog.test.tsx dflow.test.ts` → **45 pass / 0 fail** (기존 36 + 신규 9)
+  - rubocop / eslint clean
+  - W17 회귀 4곳 전부 차단: :298 덮어쓰기 배지에 dflow_archived!==true 게이트 · :378 4분기(존재함(보관됨)) · :211 수동입력 경고 분기 분리 · spec:142 매처 갱신
+[2026-07-27 17:1x] [DECISION] 보관분에 [전송] 버튼을 **막지 않는다**(서브에이전트 자체 수정, advisor 리뷰 반영). 근거 2개:
+  ① D'Flow 409가 "보관된 회의록입니다. 복원 후 다시 시도하세요."를 정확히 실어 온다 — 클라이언트가 선차단하면 그 안내 경로가 사라진다
+  ② 방금 D'Flow에서 보관 해제한 사용자가 stale 플래그로 락아웃된다
+  차단은 exists_on_dflow:false(초기화·삭제) 케이스에만 건다
+[2026-07-27 17:1x] [FOLLOW-UP] 연결 관리의 "존재하지 않음(다음 전송 시 새로 생성됩니다)" 문구 정리 — 상단 "원인 미단정" 안내와 결이 다르다. 저우선
+[2026-07-27 17:0x] [VERIFICATION] 프런트 전체 회귀 — `npx vitest run` **1816 passed / 0 failed**
+[2026-07-27 17:0x] [DONE] D'Flow 회신문 작성 — artifacts/ddobak-reply-2026-07-27.md (170행). 정본 §7 11건 전항목 답변 + 신규 발견 2건(N5·N6) + 또박또박 요청 6건
+[2026-07-27 17:0x] [PAUSE] 사용자 퇴근으로 세션 중단. 숙소에서 "재시작해"로 재개 예정
+  - 인수인계: artifacts/handoff-2026-07-27.md 전면 갱신 (브랜치·커밋대상 경로·실측·남은 작업)
+  - 메모리 등록: "재시작해" → 이 작업 재개 트리거 (project_dflow_folder_path_resume.md)
+  - ⏳ 워크리스트 결정 반영은 **부분 완료**(518 → 597행). 재개 시 workers/worklist-final/brief.md로 재디스패치
+  - 커밋 0건 유지 (명시 요청 없음)
+[2026-07-27 17:02] [VERIFICATION] 워크리스트 결정·실측 반영 — 브리프 §1~§7 **전 항목 반영 확인**(518 → 604행, grep 직접 검증)
+  §1 미결 토큰 0건 · §2 MINUTES_FOLDER_PATH_ENABLED 있음 · §3 donseok75 있음 · §4 재편철 1회차 10회
+  · §5 대상 1 기준 정정(:486) · §6 삭제분 제외 요건 8 신설(:313/:330/:575) · §7 W15·W16 include_archived(:422/:445/:491)
+[2026-07-27 17:02] [STOP] worklist 에이전트 정지 — 최종 보고 전이었으나 산출물은 완료 상태. 인수인계 문서 작성 후 파일이 조용히 바뀌는 것을 막기 위함
