@@ -182,6 +182,36 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
       expect(body["dflow_archived"]).to eq(false)
     end
 
+    it "item에 archived: null 이 명시돼 있으면 dflow_archived 키 자체를 넣지 않는다(타입 계약 위반 방지)" do
+      meeting.update!(public_uid: "0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77", dflow_synced_at: 1.day.ago,
+                      dflow_url: "https://x/minutes/1")
+      allow(dflow_client).to receive(:list_minutes)
+        .with(external_id: "ddobak:0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77", include_archived: true)
+        .and_return({ "items" => [ { "id" => "1", "title" => "물류-물류공정_260716", "date" => "2026-07-16",
+                                      "archived" => nil } ], "total" => 1 })
+
+      get "/api/v1/meetings/#{meeting.id}/dflow/status"
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body["exists_on_dflow"]).to eq(true)
+      expect(body).not_to have_key("dflow_archived")
+    end
+
+    it "items 가 배열이 아니라 Hash 로 오면(비정상 응답) 500 대신 exists_on_dflow=false 로 낙착시킨다" do
+      meeting.update!(public_uid: "0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77")
+      allow(dflow_client).to receive(:list_minutes)
+        .with(external_id: "ddobak:0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77", include_archived: true)
+        .and_return({ "items" => { "id" => "1", "title" => "물류-물류공정_260716" }, "total" => 1 })
+
+      get "/api/v1/meetings/#{meeting.id}/dflow/status"
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body["exists_on_dflow"]).to eq(false)
+      expect(body).not_to have_key("dflow_title")
+      expect(body).not_to have_key("dflow_date")
+      expect(body).not_to have_key("dflow_archived")
+    end
+
     it "D'Flow에 레코드가 없으면 exists_on_dflow=false 이고 dflow_title·dflow_date 키가 없다(W17)" do
       meeting.update!(public_uid: "0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77")
       allow(dflow_client).to receive(:list_minutes).and_return({ "items" => [], "total" => 0 })
