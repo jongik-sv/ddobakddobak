@@ -8,6 +8,7 @@ import {
   buildDflowTitle,
   isValidDflowUuid,
   resolveDflowLinkAction,
+  dflowFolderDepthExceedsWarningLimit,
 } from '../../lib/dflowAutoAssign'
 import {
   getDflowStatus,
@@ -44,6 +45,9 @@ const FORCE_SEND_CONFIRM_MESSAGE = "D'Flow에서 확인되지 않아 새 회의�
 // exists_on_dflow: true ＋ dflow_archived: true — 원인이 보관으로 확정된 경우(dflow-W24).
 const DFLOW_ARCHIVED_MESSAGE =
   "D'Flow에서 보관됨 — 재전송은 막힙니다. D'Flow에서 보관 해제 후 다시 시도하세요."
+// W4 3-b: 깊이 5 초과는 D'Flow가 조용히 절단한다(400 아님) — 여기서는 차단하지 않고 사전 경고만 한다.
+const DEPTH_WARNING_MESSAGE =
+  "편철 경로가 D'Flow 보존 한도(5단)를 넘습니다. 전송하면 상위 폴더로 조정되어 저장됩니다."
 
 /** ky HTTPError → { message, code } 공통 파싱 (DflowSettingsPanel.tsx handleTest 관례). */
 async function parseDflowError(err: unknown, fallback: string): Promise<{ message: string; code?: string }> {
@@ -68,7 +72,7 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
   const [metaError, setMetaError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const [title, setTitle] = useState(() => buildDflowTitle(meeting.folder_path, meeting.title))
+  const [title, setTitle] = useState(() => buildDflowTitle(meeting.title))
   const [selectedTeam, setSelectedTeam] = useState('')
   const [forceTeamSelect, setForceTeamSelect] = useState(false)
 
@@ -124,6 +128,12 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
 
   const detectedTeam = meta ? detectDflowTeam(meeting.folder_path, meta.teams) : null
   const needsTeamSelect = forceTeamSelect || detectedTeam === null
+  // §2-C: "경고는 teamOverride 확정 이후 재평가" — 이번 전송에서 실제로 보낼 team(자동 판정값
+  // 또는 select 확정값)을 root와 비교해야 한다. detectedTeam만 쓰면 team_required 재시도로
+  // selectedTeam이 root와 다른 team으로 확정된 경우를 놓친다(root는 meta.teams에 있지만 이번
+  // 전송은 다른 team으로 나가는 경우). select 미확정(''）이면 null — 보수적으로 +1 쪽으로 평가한다.
+  const resolvedTeam = needsTeamSelect ? (selectedTeam.trim() || null) : detectedTeam
+  const depthWarning = meta ? dflowFolderDepthExceedsWarningLimit(meeting.folder_path, resolvedTeam) : false
 
   // 전송 이력(dflow_synced_at)은 있는데 D'Flow에서 확인되지 않음 — 원인(초기화·보관·삭제)을
   // 단정할 수 없다. dflow_synced_at이 없으면(수동 입력 직후 등) 정상 상태이므로 띄우지 않는다.
@@ -322,6 +332,8 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
                 className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
+
+            {depthWarning && <p className="text-xs text-amber-600">{DEPTH_WARNING_MESSAGE}</p>}
           </div>
 
           {sendError && (

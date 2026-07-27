@@ -435,19 +435,19 @@ RSpec.describe Meeting, type: :model do
     end
 
     describe "#dflow_auto_title" do
-      it "물류공정_260716 @ MES/물류 → 물류-물류공정_260716" do
+      it "물류공정_260716 @ MES/물류 → 접두 없이 원제목 그대로(folder_path로 편철되므로 이중 라벨 방지)" do
         root = create(:folder, name: "MES")
         sub = create(:folder, name: "물류", parent: root)
         meeting = create(:meeting, folder: sub, title: "물류공정_260716")
-        expect(meeting.dflow_auto_title).to eq("물류-물류공정_260716")
+        expect(meeting.dflow_auto_title).to eq("물류공정_260716")
       end
 
-      it "기획팀 2026.07.09 @ MES/APS/2026.07 1주차 인터뷰 → APS-기획팀 2026.07.09" do
+      it "기획팀 2026.07.09 @ MES/APS/2026.07 1주차 인터뷰 → 접두 없이 원제목 그대로" do
         root = create(:folder, name: "MES")
         mid = create(:folder, name: "APS", parent: root)
         leaf = create(:folder, name: "2026.07 1주차 인터뷰", parent: mid)
         meeting = create(:meeting, folder: leaf, title: "기획팀 2026.07.09")
-        expect(meeting.dflow_auto_title).to eq("APS-기획팀 2026.07.09")
+        expect(meeting.dflow_auto_title).to eq("기획팀 2026.07.09")
       end
 
       it "MDM 논의 2026.07.15 @ MDM(하위 없음) → 원제목 그대로" do
@@ -456,13 +456,13 @@ RSpec.describe Meeting, type: :model do
         expect(meeting.dflow_auto_title).to eq("MDM 논의 2026.07.15")
       end
 
-      it "4단계 폴더도 최상위 바로 아래(2단계) 이름을 채택한다" do
+      it "폴더 유무·깊이와 무관하게 항상 원제목 그대로" do
         root = create(:folder, name: "루트")
         lvl2 = create(:folder, name: "2단계", parent: root)
         lvl3 = create(:folder, name: "3단계", parent: lvl2)
         lvl4 = create(:folder, name: "4단계", parent: lvl3)
         meeting = create(:meeting, folder: lvl4, title: "제목")
-        expect(meeting.dflow_auto_title).to eq("2단계-제목")
+        expect(meeting.dflow_auto_title).to eq("제목")
       end
 
       it "title 앞뒤 공백을 strip 한다" do
@@ -470,11 +470,72 @@ RSpec.describe Meeting, type: :model do
         expect(meeting.dflow_auto_title).to eq("공백 제목")
       end
 
-      it "200자 초과 시 원제목 쪽을 잘라 200자로 맞춘다" do
+      it "200자 초과 시 접두 없이 원제목만 200자로 자른다" do
         root = create(:folder, name: "R")
         sub = create(:folder, name: "SUB", parent: root)
         meeting = create(:meeting, folder: sub, title: "A" * 250)
         result = meeting.dflow_auto_title
+        expect(result.length).to eq(200)
+        expect(result).to eq("A" * 200)
+      end
+
+      # 패리티: 다이얼로그 미리보기(buildDflowTitle)가 실제 전송값(dflow_auto_title)과
+      # 문자 단위로 같아야 한다. 카운터파트: frontend/src/lib/dflowAutoAssign.test.ts
+      # describe('buildDflowTitle') 의 동명 패리티 케이스 — 리터럴을 양쪽에서 동시에 바꿔야 한다.
+      it "패리티: 물류공정_260716 → 프런트 buildDflowTitle과 동일 문자열" do
+        meeting = create(:meeting, folder: nil, title: "물류공정_260716")
+        expect(meeting.dflow_auto_title).to eq("물류공정_260716")
+      end
+
+      it "패리티: 200자 경계에서도 프런트 buildDflowTitle과 동일 문자열" do
+        meeting = create(:meeting, folder: nil, title: "가" * 250)
+        result = meeting.dflow_auto_title
+        expect(result.length).to eq(200)
+        expect(result).to eq("가" * 200)
+      end
+    end
+
+    describe "#dflow_legacy_prefixed_title" do
+      it "물류공정_260716 @ MES/물류 → 물류-물류공정_260716" do
+        root = create(:folder, name: "MES")
+        sub = create(:folder, name: "물류", parent: root)
+        meeting = create(:meeting, folder: sub, title: "물류공정_260716")
+        expect(meeting.dflow_legacy_prefixed_title).to eq("물류-물류공정_260716")
+      end
+
+      it "기획팀 2026.07.09 @ MES/APS/2026.07 1주차 인터뷰 → APS-기획팀 2026.07.09" do
+        root = create(:folder, name: "MES")
+        mid = create(:folder, name: "APS", parent: root)
+        leaf = create(:folder, name: "2026.07 1주차 인터뷰", parent: mid)
+        meeting = create(:meeting, folder: leaf, title: "기획팀 2026.07.09")
+        expect(meeting.dflow_legacy_prefixed_title).to eq("APS-기획팀 2026.07.09")
+      end
+
+      it "MDM 논의 2026.07.15 @ MDM(하위 없음) → 원제목 그대로" do
+        root = create(:folder, name: "MDM")
+        meeting = create(:meeting, folder: root, title: "MDM 논의 2026.07.15")
+        expect(meeting.dflow_legacy_prefixed_title).to eq("MDM 논의 2026.07.15")
+      end
+
+      it "4단계 폴더도 최상위 바로 아래(2단계) 이름을 채택한다" do
+        root = create(:folder, name: "루트")
+        lvl2 = create(:folder, name: "2단계", parent: root)
+        lvl3 = create(:folder, name: "3단계", parent: lvl2)
+        lvl4 = create(:folder, name: "4단계", parent: lvl3)
+        meeting = create(:meeting, folder: lvl4, title: "제목")
+        expect(meeting.dflow_legacy_prefixed_title).to eq("2단계-제목")
+      end
+
+      it "title 앞뒤 공백을 strip 한다" do
+        meeting = create(:meeting, folder: nil, title: "  공백 제목  ")
+        expect(meeting.dflow_legacy_prefixed_title).to eq("공백 제목")
+      end
+
+      it "200자 초과 시 원제목 쪽을 잘라 200자로 맞춘다" do
+        root = create(:folder, name: "R")
+        sub = create(:folder, name: "SUB", parent: root)
+        meeting = create(:meeting, folder: sub, title: "A" * 250)
+        result = meeting.dflow_legacy_prefixed_title
         expect(result.length).to eq(200)
         expect(result).to eq("SUB-" + ("A" * 196))
       end

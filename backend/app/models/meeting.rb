@@ -401,8 +401,17 @@ class Meeting < ApplicationRecord
     dflow_folder_chain.reverse.map(&:name)
   end
 
-  # D'Flow 전송 제목: "<하위폴더명>-<원제목>" (하위 폴더 없으면 원제목). 200자 초과 시 원제목 쪽을 잘라 맞춘다.
+  # D'Flow 전송 제목: 원제목 그대로(200자 캡). folder_path로 실제 폴더에 편철되므로
+  # 하위폴더명 접두를 붙이면 이중 라벨이 된다(워크리스트 §4 W2) — 접두 버전은
+  # #dflow_legacy_prefixed_title 로 분리 보존.
   def dflow_auto_title
+    title.to_s.strip[0, 200]
+  end
+
+  # (레거시) D'Flow 전송 제목: "<하위폴더명>-<원제목>" (하위 폴더 없으면 원제목). 200자 초과 시 원제목 쪽을 잘라 맞춘다.
+  # #dflow_auto_title 에서 접두를 걷어낸 뒤에도 보존한다 — 자동 링크 매칭(워크리스트 §7.7 C2)이
+  # 기존 19건 연동의 접두 있는 D'Flow 제목을 재현·비교해야 하기 때문(접두 없이 비교하면 전건 0매칭).
+  def dflow_legacy_prefixed_title
     stripped = title.to_s.strip
     sub = dflow_sub_folder_name
     return stripped[0, 200] if sub.nil?

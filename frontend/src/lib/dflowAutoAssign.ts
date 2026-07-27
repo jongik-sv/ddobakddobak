@@ -24,7 +24,9 @@ export function dflowSubFolderName(folderPath: FolderPathEntry[] | undefined): s
 
 /**
  * §1.3: root 폴더명을 D'Flow meta.teams와 대조해 자동 판정된 team을 반환한다.
- * 불일치/폴더 없음이면 null(호출부가 select 노출).
+ * 불일치/폴더 없음이면 null — 이는 **실패가 아니라 team 선택이 필요하다는 신호**다
+ * (자유 루트 전송 자체는 막지 않는다 — 호출부가 select를 노출해 사용자가 고른 값을
+ * team_override로 실어 보내면 그대로 성공한다. ddobak-W3 확정: 워크리스트 §11.3⑤).
  */
 export function detectDflowTeam(folderPath: FolderPathEntry[] | undefined, teams: string[]): string | null {
   const root = dflowRootFolderName(folderPath)
@@ -32,11 +34,57 @@ export function detectDflowTeam(folderPath: FolderPathEntry[] | undefined, teams
   return teams.includes(root) ? root : null
 }
 
+/** §2-C: D'Flow가 깊이 5 초과 편철 경로를 조용히 절단하는 한도(400 아님) — 사전 경고 전용, 차단 금지. */
+export const DFLOW_MAX_FOLDER_DEPTH = 5
+
 /**
- * §1.4: 전송 제목 자동 조립 "<하위폴더명>-<원제목>" (하위 없으면 원제목).
- * 200자 초과 시 원제목 쪽을 잘라 맞춘다(하위폴더명 접두는 보존).
+ * §2-C 계산식(decisions-final-2026-07-27.md §2-C — D'Flow 코드와 일치 확인됨):
+ *   folder_path.length + (루트가 팀코드면 0, 아니면 1)
+ * "루트가 팀코드"를 **이번 전송에서 실제로 쓰일 team**과 root 이름의 일치로 판정한다(단순히
+ * root가 meta.teams 어딘가에 있는지가 아니다) — 정본이 "경고는 teamOverride 확정 이후 재평가"라
+ * 못박은 이유가 이것이다: root 이름이 meta.teams에 있는 team이어도, 그 team이 이번 전송에서
+ * 무효화돼(예: team_required 재시도) 사용자가 **다른** team을 골랐다면 D'Flow는 root를 팀
+ * 루트로 보지 않고 team 폴더를 한 단 더 끼워 넣는다. resolvedTeam은 호출부가 자동 판정
+ * (detectDflowTeam) 또는 select 확정값 중 이번에 실제로 보낼 값을 넘긴다 — 미확정이면 null
+ * (보수적으로 +1, 즉 아직 정해지지 않은 동안은 경고 쪽으로 기운다).
  */
-export function buildDflowTitle(folderPath: FolderPathEntry[] | undefined, title: string): string {
+export function dflowEffectiveFolderDepth(
+  folderPath: FolderPathEntry[] | undefined,
+  resolvedTeam: string | null
+): number {
+  const names = folderPath ?? []
+  const root = dflowRootFolderName(names)
+  const rootIsResolvedTeamRoot = !!resolvedTeam && root === resolvedTeam
+  return names.length + (rootIsResolvedTeamRoot ? 0 : 1)
+}
+
+/**
+ * 위 실효 깊이가 D'Flow 절단 한도(5)를 넘는지 — **차단용이 아니라 사전 경고 노출 여부 판정용**이다.
+ * 절단은 D'Flow 쪽 동작(정본 §2-C 확정)이고 또박또박은 경고만 띄운다.
+ */
+export function dflowFolderDepthExceedsWarningLimit(
+  folderPath: FolderPathEntry[] | undefined,
+  resolvedTeam: string | null
+): boolean {
+  return dflowEffectiveFolderDepth(folderPath, resolvedTeam) > DFLOW_MAX_FOLDER_DEPTH
+}
+
+/**
+ * §1.4: 전송 제목 자동 조립. 원제목 그대로(200자 캡) — folder_path로 실제 폴더에 편철되므로
+ * 하위폴더명 접두를 붙이면 이중 라벨이 된다(워크리스트 §4 W6). 접두 버전은
+ * buildDflowLegacyPrefixedTitle 로 분리 보존.
+ */
+export function buildDflowTitle(title: string): string {
+  return title.trim().slice(0, DFLOW_TITLE_MAX_LENGTH)
+}
+
+/**
+ * (레거시) §1.4 원래 규칙: "<하위폴더명>-<원제목>" (하위 없으면 원제목).
+ * 200자 초과 시 원제목 쪽을 잘라 맞춘다(하위폴더명 접두는 보존).
+ * buildDflowTitle 에서 접두를 걷어낸 뒤에도 보존한다 — 자동 링크 매칭(워크리스트 §7.7 C2)이
+ * 기존 연동의 접두 있는 D'Flow 제목을 재현·비교해야 할 수 있어서다.
+ */
+export function buildDflowLegacyPrefixedTitle(folderPath: FolderPathEntry[] | undefined, title: string): string {
   const stripped = title.trim()
   const sub = dflowSubFolderName(folderPath)
   if (!sub) return stripped.slice(0, DFLOW_TITLE_MAX_LENGTH)

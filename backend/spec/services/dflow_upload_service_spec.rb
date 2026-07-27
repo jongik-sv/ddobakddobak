@@ -119,6 +119,19 @@ RSpec.describe DflowUploadService, type: :service do
       DflowUploadService.call(meeting, user, team_override: "가공")
       expect(dflow_client).to have_received(:upload_minute).with(hash_including(team: "가공"))
     end
+
+    # W3 회귀 감지: resolve_team! 완화 요구("자유 루트도 override 로 전송 성공")는 이미 라이브다
+    # (override 우선 분기가 meta 조회 자체를 건너뛰므로 루트가 팀 목록에 있는지는 애초에 안 본다).
+    # 이 케이스가 깨지면 "루트가 teams 에 없으면 무조건 실패"로 되돌아간 것이다.
+    it "자유 루트(팀 목록에 없는 폴더명) + team_override 가 있으면 전송이 성공한다(W3 회귀 감지)" do
+      free_root = create(:folder, project: project, name: "임원 인터뷰")
+      meeting.update!(folder: free_root)
+      allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u" })
+      expect(dflow_client).not_to receive(:meta)
+
+      DflowUploadService.call(meeting, user, team_override: "PMO")
+      expect(dflow_client).to have_received(:upload_minute).with(hash_including(team: "PMO", folder_path: [ "임원 인터뷰" ]))
+    end
   end
 
   # ── ⑥ title override ──
@@ -130,13 +143,13 @@ RSpec.describe DflowUploadService, type: :service do
       expect(dflow_client).to have_received(:upload_minute).with(hash_including(title: "커스텀 제목"))
     end
 
-    it "override 없으면 meeting.dflow_auto_title(하위폴더-원제목)을 사용한다" do
+    it "override 없으면 meeting.dflow_auto_title(접두 없는 원제목)을 사용한다" do
       sub_folder = create(:folder, project: project, name: "물류", parent: root_folder)
       meeting.update!(folder: sub_folder)
       allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u" })
 
       DflowUploadService.call(meeting, user)
-      expect(dflow_client).to have_received(:upload_minute).with(hash_including(title: "물류-물류공정_260716"))
+      expect(dflow_client).to have_received(:upload_minute).with(hash_including(title: "물류공정_260716"))
     end
   end
 
@@ -174,6 +187,32 @@ RSpec.describe DflowUploadService, type: :service do
     it "current_notes_markdown 이 비어있으면 NotesBlankError" do
       meeting.summaries.destroy_all
       expect { DflowUploadService.call(meeting, user) }.to raise_error(DflowUploadService::NotesBlankError)
+    end
+  end
+
+  # ── 폴더명 길이 검사(W4): D'Flow 는 61자 이상을 400으로 거절한다. 또박또박은 100자까지 허용하므로
+  # 서버가 미리 막아 D'Flow 400 원문이 그대로 노출되지 않게 한다.
+  describe "폴더명 길이 검사" do
+    it "체인 중 폴더명이 61자 이상이면 FolderNameTooLongError 를 내고 메시지에 폴더명을 포함한다" do
+      long_name = "가" * 61
+      offending = create(:folder, project: project, name: long_name, parent: root_folder)
+      meeting.update!(folder: offending)
+      expect(dflow_client).not_to receive(:upload_minute)
+
+      expect { DflowUploadService.call(meeting, user) }
+        .to raise_error(DflowUploadService::FolderNameTooLongError, /#{long_name}/)
+      expect(meeting.reload.public_uid).to be_nil # 전송 전 단계에서 중단 — uuid 발급도 안 됨
+    end
+
+    it "폴더명이 정확히 60자면 통과한다" do
+      ok_name = "나" * 60
+      ok_folder = create(:folder, project: project, name: ok_name, parent: root_folder)
+      meeting.update!(folder: ok_folder)
+      allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u" })
+
+      expect { DflowUploadService.call(meeting, user) }.not_to raise_error
+      expect(dflow_client).to have_received(:upload_minute)
+        .with(hash_including(folder_path: [ "MES", ok_name ]))
     end
   end
 

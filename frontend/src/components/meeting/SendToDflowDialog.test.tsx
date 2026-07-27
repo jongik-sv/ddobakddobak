@@ -76,8 +76,62 @@ describe('SendToDflowDialog', () => {
 
     expect(await screen.findByText('MES')).toBeInTheDocument()
     expect(screen.queryByLabelText('대상 구분')).not.toBeInTheDocument()
-    expect(screen.getByDisplayValue('물류-물류공정_260716')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('물류공정_260716')).toBeInTheDocument()
     expect(screen.getByText('sender@x.com')).toBeInTheDocument()
+  })
+
+  it('실효 깊이(§2-C)가 5를 넘으면 비차단 경고를 보여준다(W4 3-b)', async () => {
+    render(
+      <SendToDflowDialog
+        meeting={{
+          ...baseMeeting,
+          folder_path: [
+            { id: 1, name: 'MES' },
+            { id: 2, name: 'A' },
+            { id: 3, name: 'B' },
+            { id: 4, name: 'C' },
+            { id: 5, name: 'D' },
+            { id: 6, name: 'E' },
+          ],
+        }}
+        onClose={vi.fn()}
+      />
+    )
+    await screen.findByText('MES')
+
+    expect(await screen.findByText(/D'Flow 보존 한도\(5단\)를 넘습니다/)).toBeInTheDocument()
+    // 비차단 — 전송 버튼은 그대로 활성 상태여야 한다(정본 §2-C: 차단 금지).
+    expect(screen.getByRole('button', { name: '전송' })).not.toBeDisabled()
+  })
+
+  it('실효 깊이가 5 이하면 경고를 보여주지 않는다', async () => {
+    render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+    await screen.findByText('MES')
+
+    expect(screen.queryByText(/D'Flow 보존 한도/)).not.toBeInTheDocument()
+  })
+
+  // 정본 §2-C "경고는 teamOverride 확정 이후 재평가": 루트(MES)가 meta.teams에 있어 처음엔
+  // 자동 판정되어 경고가 없지만, team_required 재시도로 사용자가 root와 다른 team(MDM)을
+  // 고르면 D'Flow가 team 폴더를 한 단 더 끼워 넣으므로 그 시점에 경고가 나타나야 한다.
+  it('team_required 재시도로 root와 다른 team을 선택하면 §2-C 재평가로 경고가 나타난다', async () => {
+    vi.mocked(uploadToDflow).mockRejectedValue(makeHttpError(422, { error: '...', code: 'team_required' }))
+    const deepPath = [
+      { id: 1, name: 'MES' },
+      { id: 2, name: 'A' },
+      { id: 3, name: 'B' },
+      { id: 4, name: 'C' },
+      { id: 5, name: 'D' },
+    ]
+    render(<SendToDflowDialog meeting={{ ...baseMeeting, folder_path: deepPath }} onClose={vi.fn()} />)
+    await screen.findByText('MES') // 자동 판정(5단, root===team) → 경고 없음
+    expect(screen.queryByText(/D'Flow 보존 한도/)).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '전송' }))
+    const select = await screen.findByLabelText('대상 구분') // team_required로 select 강제 노출
+    await userEvent.selectOptions(select, 'MDM')
+
+    expect(await screen.findByText(/D'Flow 보존 한도\(5단\)를 넘습니다/)).toBeInTheDocument()
   })
 
   it('최상위 폴더명이 meta.teams와 불일치하면 select를 노출한다', async () => {
@@ -104,7 +158,7 @@ describe('SendToDflowDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: '전송' }))
 
     await waitFor(() => {
-      expect(uploadToDflow).toHaveBeenCalledWith(1, { titleOverride: '물류-물류공정_260716' })
+      expect(uploadToDflow).toHaveBeenCalledWith(1, { titleOverride: '물류공정_260716' })
     })
     expect(await screen.findByRole('link', { name: "D'Flow에서 보기" })).toHaveAttribute(
       'href', 'https://dflow.example.com/m/1'

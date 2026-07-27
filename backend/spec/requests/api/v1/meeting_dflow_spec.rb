@@ -61,6 +61,18 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
         expect(response.parsed_body["code"]).to eq("body_too_long")
       end
 
+      # W5: FolderNameTooLongError(W4가 던지는 새 에러)가 rescue_from 목록·case 매핑 둘 다에
+      # 등록돼 있는지 확인한다. 둘 중 하나라도 빠지면 500이 난다(브리프 경고 그대로).
+      it "FolderNameTooLongError → 422 code=folder_name_too_long (500 이 아님)" do
+        allow(DflowUploadService).to receive(:call)
+          .and_raise(DflowUploadService::FolderNameTooLongError, "폴더명 \"가나다라마바사\"이(가) 60자를 초과합니다")
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: {}, as: :json
+        expect(response).to have_http_status(:unprocessable_entity)
+        body = response.parsed_body
+        expect(body["code"]).to eq("folder_name_too_long")
+        expect(body["error"]).to include("가나다라마바사")
+      end
+
       it "DflowClient::UnknownUserError → 422 code=dflow_unknown_user (호출자 이메일 포함)" do
         allow(DflowUploadService).to receive(:call).and_raise(DflowClient::UnknownUserError, "사용자 없음")
         post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: {}, as: :json

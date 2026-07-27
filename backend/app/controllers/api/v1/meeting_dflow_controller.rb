@@ -19,6 +19,7 @@ module Api
                   DflowUploadService::NotesBlankError,
                   DflowUploadService::TeamRequiredError,
                   DflowUploadService::BodyTooLongError,
+                  DflowUploadService::FolderNameTooLongError,
                   with: :handle_upload_precondition_error
 
       # POST /api/v1/meetings/:id/dflow/upload  body { team?, title? }
@@ -170,11 +171,12 @@ module Api
 
       def handle_upload_precondition_error(e)
         code = case e
-        when DflowUploadService::NotEnabledError    then "dflow_not_enabled"
-        when DflowUploadService::NotCompletedError  then "meeting_not_completed"
-        when DflowUploadService::NotesBlankError    then "notes_blank"
-        when DflowUploadService::TeamRequiredError  then "team_required"
-        when DflowUploadService::BodyTooLongError   then "body_too_long"
+        when DflowUploadService::NotEnabledError        then "dflow_not_enabled"
+        when DflowUploadService::NotCompletedError      then "meeting_not_completed"
+        when DflowUploadService::NotesBlankError        then "notes_blank"
+        when DflowUploadService::TeamRequiredError      then "team_required"
+        when DflowUploadService::BodyTooLongError       then "body_too_long"
+        when DflowUploadService::FolderNameTooLongError then "folder_name_too_long"
         end
         render json: { error: e.message, code: code }, status: :unprocessable_entity
       end
