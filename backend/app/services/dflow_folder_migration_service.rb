@@ -130,16 +130,18 @@ class DflowFolderMigrationService
   end
 
   # 61자 이상 폴더가 체인에 있으면 전송 전에 걸러낸다(§7.2 요건 7, W4와 동일 검사·상수 재사용).
+  # 길이는 DflowFolderName(NFC) 기준 — W1(DflowUploadService#validate_folder_path_names!)과
+  # 동일 판정을 공유한다(사본 금지). 이유는 그쪽 주석 참고.
   def partition_by_folder_name_length(meetings)
     eligible = []
     excluded = []
     meetings.each do |m|
       names = m.dflow_folder_path_names
-      offender = names.find { |n| n.to_s.strip.length > DflowUploadService::FOLDER_NAME_MAX_CHARS }
+      offender = names.find { |n| DflowFolderName.too_long?(n) }
       if offender
         excluded << {
           meeting_id: m.id, external_id: external_id_for(m),
-          folder_name: offender, length: offender.to_s.strip.length, folder_path: names
+          folder_name: offender, length: DflowFolderName.normalize(offender).length, folder_path: names
         }
       else
         eligible << m

@@ -12,6 +12,17 @@ export interface FolderPathEntry {
 
 const DFLOW_TITLE_MAX_LENGTH = 200
 
+/**
+ * D'Flow 폴더명 비교 기준(계약 §0 D20): btrim + NFC 정규화. macOS 등에서 만든 한글 폴더명은
+ * NFD(자모 분리)로 올 수 있어, 원문 그대로 비교하면 team 자동판정·팀 루트 판정이 어긋난다 —
+ * 같은 글자인데 바이트가 달라 동등 비교가 실패한다. 백엔드 정규화 규칙
+ * (backend/app/lib/dflow_folder_name.rb)과 같은 기준을 이 파일 안에서 공유한다(사본 금지 —
+ * detectDflowTeam·dflowRootIsResolvedTeamRoot 둘 다 이 함수 하나만 쓸 것).
+ */
+function normalizeFolderName(name: string): string {
+  return name.trim().normalize('NFC')
+}
+
 /** §1.3: 폴더 체인의 최상위 폴더명 (root). 폴더 없으면 undefined. */
 export function dflowRootFolderName(folderPath: FolderPathEntry[] | undefined): string | undefined {
   return folderPath?.[0]?.name
@@ -31,7 +42,10 @@ export function dflowSubFolderName(folderPath: FolderPathEntry[] | undefined): s
 export function detectDflowTeam(folderPath: FolderPathEntry[] | undefined, teams: string[]): string | null {
   const root = dflowRootFolderName(folderPath)
   if (!root) return null
-  return teams.includes(root) ? root : null
+  const normalizedRoot = normalizeFolderName(root)
+  // 일치하면 teams 쪽 리터럴(정본, 항상 NFC)을 반환한다 — root 원문을 그대로 돌려주면 NFD
+  // 바이트가 이후 상태·미리보기·전송 team override로 새어나갈 수 있어서다.
+  return teams.find((t) => normalizeFolderName(t) === normalizedRoot) ?? null
 }
 
 /** §2-C: D'Flow가 깊이 5 초과 편철 경로를 조용히 절단하는 한도(400 아님) — 사전 경고 전용, 차단 금지. */
@@ -53,7 +67,11 @@ export function dflowRootIsResolvedTeamRoot(
   resolvedTeam: string | null
 ): boolean {
   const root = dflowRootFolderName(folderPath)
-  return !!resolvedTeam && root === resolvedTeam
+  if (!resolvedTeam || !root) return false
+  // NFC 정규화 후 비교(위 normalizeFolderName 참고) — root가 NFD로 저장돼 있으면 원문 비교로는
+  // 같은 이름의 team과도 불일치로 판정돼 dflowEffectiveFolderDepth·dflowFolderPreviewPath가
+  // 함께 틀린다(이 함수의 목적 자체가 그 실패 모드를 막는 것).
+  return normalizeFolderName(root) === normalizeFolderName(resolvedTeam)
 }
 
 /**

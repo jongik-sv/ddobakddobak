@@ -132,6 +132,20 @@ RSpec.describe DflowUploadService, type: :service do
       DflowUploadService.call(meeting, user, team_override: "PMO")
       expect(dflow_client).to have_received(:upload_minute).with(hash_including(team: "PMO", folder_path: [ "임원 인터뷰" ]))
     end
+
+    # NFC 정규화 결함 회귀(dflow-drift-2026-07-28.md 조치 ③): meta.teams 중 유일한 한글 team인
+    # "가공"은 D'Flow 쪽에서 NFC 리터럴로 온다. 우리 DB에 NFD로 저장된 "가공" 루트 폴더는 원문
+    # 비교로는 불일치 판정 → TeamRequiredError 오발동(불필요한 team 셀렉트 노출).
+    it "NFD로 저장된 루트 폴더명도 NFC teams 목록과 매칭된다(맥OS NFD 결함 회귀)" do
+      nfd_root = create(:folder, project: project, name: "가공".unicode_normalize(:nfd))
+      expect(nfd_root.name).not_to eq("가공") # 전제 확인: 실제로 바이트가 다르다(NFD)
+      meeting.update!(folder: nfd_root)
+      allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u" })
+
+      DflowUploadService.call(meeting, user)
+      # 반환값은 teams 쪽 정본(NFC) — DB 원문(NFD)을 그대로 흘려보내지 않는다.
+      expect(dflow_client).to have_received(:upload_minute).with(hash_including(team: "가공"))
+    end
   end
 
   # ── ⑥ title override ──
@@ -213,6 +227,43 @@ RSpec.describe DflowUploadService, type: :service do
       expect { DflowUploadService.call(meeting, user) }.not_to raise_error
       expect(dflow_client).to have_received(:upload_minute)
         .with(hash_including(folder_path: [ "MES", ok_name ]))
+    end
+
+    # NFC 정규화 결함 회귀(dflow-drift-2026-07-28.md 조치 ①): macOS 등에서 만든 한글 폴더명은
+    # NFD(자모 분리)로 저장될 수 있다. NFD는 같은 글자라도 codepoint 수가 늘어 원문 길이가
+    # 부풀어 보인다 — D'Flow는 NFC 정규화 이후 길이로 60자를 판정하므로(계약 §0 D20), 원문
+    # 길이만 재면 D'Flow에선 통과할 이름을 여기서 선제 거절하게 된다.
+    # "나"는 초성+중성뿐(종성 없음)이라 NFD 분해 시 2 codepoint — Folder 모델 자체의 100자
+    # 한도(app/models/folder.rb) 안에서 "NFD 원문 > 60자, NFC 정규화 후 <=60자" 사례를 만들 수
+    # 있는 최대치가 NFC 50자(NFD 100자)다.
+    it "NFD로 저장된 폴더명도 NFC 기준 60자 이내면 통과한다(맥OS NFD 결함 회귀)" do
+      nfc_name = "나" * 50
+      nfd_name = nfc_name.unicode_normalize(:nfd)
+      expect(nfd_name.length).to be > 60 # 전제 확인: NFD 원문 길이가 실제로 더 길다(100자)
+      expect(nfc_name.length).to be <= 60 # 전제 확인: NFC 정규화하면 60자 이내
+
+      nfd_folder = create(:folder, project: project, name: nfd_name, parent: root_folder)
+      meeting.update!(folder: nfd_folder)
+      allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u" })
+
+      expect { DflowUploadService.call(meeting, user) }.not_to raise_error
+    end
+
+    # 순수 NFD 61자는 원문이 122자가 되어 Folder 모델의 100자 한도(app/models/folder.rb) 자체에
+    # 걸리므로, 일부만 NFD(20자→40코드포인트)로 두고 나머지는 정규화에 영향받지 않는 ASCII(41자)로
+    # 채워 "원문 81자(100자 한도 이내) · NFC 정규화 후 61자(60자 초과)"인 경계 사례를 만든다.
+    it "NFD 포함 폴더명이 NFC 정규화 후에도 61자 이상이면 여전히 거절한다" do
+      nfd_part = ("나" * 20).unicode_normalize(:nfd)
+      mixed_name = nfd_part + ("A" * 41)
+      expect(mixed_name.length).to be <= 100 # 전제 확인: Folder 모델 한도 이내
+      expect(mixed_name.unicode_normalize(:nfc).length).to eq(61) # 전제 확인: NFC 기준으론 61자
+
+      nfd_folder = create(:folder, project: project, name: mixed_name, parent: root_folder)
+      meeting.update!(folder: nfd_folder)
+      expect(dflow_client).not_to receive(:upload_minute)
+
+      expect { DflowUploadService.call(meeting, user) }
+        .to raise_error(DflowUploadService::FolderNameTooLongError, /61자/)
     end
   end
 

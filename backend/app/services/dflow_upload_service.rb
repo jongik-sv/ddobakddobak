@@ -11,7 +11,8 @@ class DflowUploadService
   BODY_MAX_CHARS = 100_000
   # D'Flow 폴더명 제약(워크리스트 D3 확정): 1~60자, 초과분은 400 거절(절단 안 함).
   # 또박또박은 폴더명을 100자까지 허용하므로 서버에서 미리 걸러야 D'Flow 400 원문이 노출되지 않는다.
-  FOLDER_NAME_MAX_CHARS = 60
+  # 실제 값·정규화 규칙은 DflowFolderName(app/lib) 이 단일 소스 — 여기선 참조만 유지.
+  FOLDER_NAME_MAX_CHARS = DflowFolderName::MAX_CHARS
 
   class NotEnabledError < StandardError; end
   class NotCompletedError < StandardError; end
@@ -81,25 +82,33 @@ class DflowUploadService
 
   # 폴더명 길이 사전 검사(워크리스트 W4·D3): D'Flow가 61자 이상을 400으로 거절하므로 여기서
   # 전용 에러로 먼저 막는다 — D'Flow 400 원문을 그대로 노출하면 사용자가 어느 폴더가 문제인지 알 수 없다.
-  # btrim 후 길이를 비교한다(D'Flow 쪽 제약이 length(btrim(name))이라 앞뒤 공백은 계산에서 제외).
+  # 길이는 DflowFolderName(btrim + NFC) 기준으로 잰다 — D'Flow 자체가 NFC 정규화 이후 길이로
+  # 60자를 판정하므로(계약 §0 D20), NFD로 저장된 한글 폴더명(자모 분리로 원문 길이가 부풀어
+  # 보임)을 원문 길이로만 재면 D'Flow에선 통과할 이름을 여기서 선제 거절하게 된다.
   # 체인 중 첫 위반 폴더 하나만 보고한다 — root-first 순서라 사용자가 보는 폴더 트리 순서와 일치한다.
   def validate_folder_path_names!
-    offender = @meeting.dflow_folder_path_names.find { |name| name.to_s.strip.length > FOLDER_NAME_MAX_CHARS }
+    offender = @meeting.dflow_folder_path_names.find { |name| DflowFolderName.too_long?(name) }
     return unless offender
 
+    normalized_length = DflowFolderName.normalize(offender).length
     raise FolderNameTooLongError,
-          "폴더명 \"#{offender}\"이(가) #{FOLDER_NAME_MAX_CHARS}자를 초과합니다(#{offender.strip.length}자) — " \
+          "폴더명 \"#{offender}\"이(가) #{FOLDER_NAME_MAX_CHARS}자를 초과합니다(#{normalized_length}자) — " \
           "D'Flow는 폴더명을 #{FOLDER_NAME_MAX_CHARS}자까지만 허용합니다. 폴더명을 줄인 뒤 다시 시도하세요."
   end
 
   # team 판정(§1.3): override 우선, 아니면 최상위 폴더명 ∈ DflowClient#meta 의 teams.
   # override 가 있으면 meta 조회 자체를 하지 않는다(불필요한 네트워크 호출 방지).
+  # 동등 비교는 DflowFolderName(NFC) 기준 — candidate(우리 DB, NFD로 저장됐을 수 있음)와
+  # teams(D'Flow meta, NFC 리터럴)를 원문 그대로 비교하면 같은 이름인데도 매칭이 깨진다
+  # (예: 유일한 한글 team "가공"). 일치하면 teams 쪽 리터럴(정본, 항상 NFC)을 반환한다 —
+  # candidate 원문을 그대로 돌려주면 이후 로그·표시에 NFD 바이트가 새어나갈 수 있어서다.
   def resolve_team!
     return @team_override if @team_override
 
     candidate = @meeting.dflow_root_folder_name
     teams = client.meta["teams"].to_a
-    return candidate if candidate.present? && teams.include?(candidate)
+    matched = candidate.present? ? teams.find { |t| DflowFolderName.matches?(t, candidate) } : nil
+    return matched if matched
 
     raise TeamRequiredError, "team 을 자동으로 판정할 수 없습니다(폴더 미설정 또는 최상위 폴더명이 team 목록에 없음)"
   end

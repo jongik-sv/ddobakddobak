@@ -7,6 +7,7 @@ import {
   resolveDflowLinkAction,
   dflowRootFolderName,
   dflowSubFolderName,
+  dflowRootIsResolvedTeamRoot,
   dflowEffectiveFolderDepth,
   dflowFolderDepthExceedsWarningLimit,
   dflowFolderPreviewPath,
@@ -58,6 +59,18 @@ describe('detectDflowTeam', () => {
   it('폴더 없음 → null', () => {
     expect(detectDflowTeam([], teams)).toBeNull()
     expect(detectDflowTeam(undefined, teams)).toBeNull()
+  })
+
+  // NFC 정규화 결함 회귀(dflow-drift-2026-07-28.md 조치 ④): macOS 등에서 만든 한글 폴더명은
+  // NFD(자모 분리)로 저장될 수 있다. teams 목록의 유일한 한글 team "가공"은 NFC 리터럴이라,
+  // 원문 그대로 비교하면 같은 이름인데도 불일치로 판정된다.
+  it('NFD로 저장된 루트 폴더명도 NFC teams 목록과 매칭된다(맥OS NFD 결함 회귀)', () => {
+    const nfdRoot = '가공'.normalize('NFD')
+    expect(nfdRoot).not.toBe('가공') // 전제 확인: 실제로 바이트가 다르다(NFD)
+
+    const path = [{ id: 1, name: nfdRoot }]
+    // 반환값은 teams 쪽 정본(NFC) — 폴더명 원문(NFD)을 그대로 흘려보내지 않는다.
+    expect(detectDflowTeam(path, teams)).toBe('가공')
   })
 })
 
@@ -143,6 +156,26 @@ describe('dflowEffectiveFolderDepth / dflowFolderDepthExceedsWarningLimit', () =
   })
 })
 
+// NFC 정규화 결함 회귀(dflow-drift-2026-07-28.md 조치 ④): dflowRootIsResolvedTeamRoot는
+// dflowEffectiveFolderDepth(깊이 경고)·dflowFolderPreviewPath(미리보기)가 공유하는 단일
+// 판정 함수라, 여기서 NFC/NFD 비교가 깨지면 둘 다 함께 틀린 값을 보여준다.
+describe('dflowRootIsResolvedTeamRoot', () => {
+  it('NFD로 저장된 루트 폴더명도 NFC team과 동일하면 팀 루트로 판정한다(맥OS NFD 결함 회귀)', () => {
+    const nfdRoot = 'MES'.normalize('NFD') // ASCII는 NFC/NFD 차이가 없으니 한글로 검증
+    const nfdKoreanRoot = '가공'.normalize('NFD')
+    expect(nfdKoreanRoot).not.toBe('가공')
+
+    const path = [{ id: 1, name: nfdKoreanRoot }]
+    expect(dflowRootIsResolvedTeamRoot(path, '가공')).toBe(true)
+    expect(nfdRoot).toBe('MES') // ASCII 대조군: 애초에 NFC/NFD 차이 없음 확인
+  })
+
+  it('root와 resolvedTeam이 실제로 다른 이름이면 여전히 false', () => {
+    const path = [{ id: 1, name: '임원 인터뷰' }]
+    expect(dflowRootIsResolvedTeamRoot(path, 'MES')).toBe(false)
+  })
+})
+
 // W7: 미리보기 경로 조립. 판정 기준(root === 이번 전송 team)은 dflowEffectiveFolderDepth와
 // dflowRootIsResolvedTeamRoot 하나를 공유한다 — 사본이면 경고와 미리보기가 서로 다른 말을 한다.
 describe('dflowFolderPreviewPath', () => {
@@ -176,6 +209,16 @@ describe('dflowFolderPreviewPath', () => {
     expect(dflowFolderPreviewPath(path, 'MES')).toEqual(['MES', 'A'])
     // 사용자가 다른 team(PMO)을 선택해 전송하면 PMO가 한 칸 끼어든다.
     expect(dflowFolderPreviewPath(path, 'PMO')).toEqual(['PMO', 'MES', 'A'])
+  })
+
+  // NFC 정규화 결함 회귀 — dflowRootIsResolvedTeamRoot의 수정이 이 함수와
+  // dflowEffectiveFolderDepth 양쪽에 함께 전파되는지 확인한다(사본이 아니라 공유이므로).
+  it('NFD로 저장된 루트가 이번 전송 team(NFC)과 같으면 team 접두 없이 경로 그대로(맥OS NFD 결함 회귀)', () => {
+    const nfdRoot = '가공'.normalize('NFD')
+    const path = [{ id: 1, name: nfdRoot }, { id: 2, name: '품질' }]
+
+    expect(dflowFolderPreviewPath(path, '가공')).toEqual([nfdRoot, '품질'])
+    expect(dflowEffectiveFolderDepth(path, '가공')).toBe(2) // +1이 붙지 않음(팀 루트로 인정됨)
   })
 
   // 판정 공유 확인: 사본이면 갈릴 수 있는 지점 — 세그먼트 개수가 실효 깊이와 항상 일치해야 한다.

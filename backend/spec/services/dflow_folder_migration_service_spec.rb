@@ -314,5 +314,26 @@ RSpec.describe DflowFolderMigrationService, type: :service do
       result = described_class.call(actor_email: actor_email)
       expect(result[:excluded_folder_name_too_long]).to be_empty
     end
+
+    # NFC 정규화 결함 회귀(dflow-drift-2026-07-28.md 조치 ②) — W1(dflow_upload_service_spec)의
+    # 동명 케이스와 동일 원인·동일 상수(DflowFolderName) 공유를 확인한다.
+    # NFC 50자(→NFD 100자)가 Folder 모델 100자 한도(app/models/folder.rb) 안에서 만들 수 있는
+    # 최대치다 — 근거는 dflow_upload_service_spec.rb의 동명 주석 참고.
+    it "NFD로 저장된 폴더명도 NFC 기준 60자 이내면 통과한다(맥OS NFD 결함 회귀)" do
+      nfc_name = "나" * 50
+      nfd_name = nfc_name.unicode_normalize(:nfd)
+      expect(nfd_name.length).to be > 60 # 전제 확인: NFD 원문 길이가 실제로 더 길다(100자)
+
+      nfd_folder = create(:folder, project: project, name: nfd_name, parent: root_folder)
+      m = synced_meeting(folder: nfd_folder)
+
+      allow(client).to receive(:folder_batch).with(hash_including(items: [])).and_return(probe_response)
+      allow(client).to receive(:folder_batch)
+        .with(hash_including(items: array_including(hash_including(external_id: ext_id(m))))).and_return({ "summary" => empty_summary, "results" => [] })
+
+      result = described_class.call(actor_email: actor_email)
+      expect(result[:excluded_folder_name_too_long]).to be_empty
+      expect(result[:total_targets]).to eq(1)
+    end
   end
 end
