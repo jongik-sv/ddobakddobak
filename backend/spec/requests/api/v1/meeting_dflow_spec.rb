@@ -98,6 +98,30 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
         expect(body["folder_path"]).to eq([])
       end
 
+      # W8: folder_path_status(exact/truncated/partial/unclassified)도 folder_id/folder_path와
+      # 같은 key? 조건부 merge 패턴으로 에코한다.
+      it "D'Flow 응답에 folder_path_status 가 있으면 upload 응답에 함께 싣는다(W8)" do
+        allow(DflowUploadService).to receive(:call)
+          .and_return({ "url" => "https://x/minutes/1", "folder_id" => "folder-uuid-1",
+                         "folder_path" => %w[MES 물류], "folder_path_status" => "truncated" })
+
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: {}, as: :json
+
+        expect(response).to have_http_status(:ok)
+        body = response.parsed_body
+        expect(body["folder_path_status"]).to eq("truncated")
+      end
+
+      it "D'Flow 응답에 folder_path_status 키가 없으면 우리 응답에도 키를 넣지 않는다(W8)" do
+        allow(DflowUploadService).to receive(:call)
+          .and_return({ "url" => "https://x/minutes/1", "folder_id" => "folder-uuid-1", "folder_path" => %w[MES] })
+
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: {}, as: :json
+
+        body = response.parsed_body
+        expect(body).not_to have_key("folder_path_status")
+      end
+
       it "TeamRequiredError → 422 code=team_required" do
         allow(DflowUploadService).to receive(:call).and_raise(DflowUploadService::TeamRequiredError, "판정 불가")
         post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: {}, as: :json
@@ -294,11 +318,12 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
 
     # W19 헬퍼 오염 회귀: folder_id/folder_path 는 upload 응답 전용이다. #dflow_status_json 에
     # 옮겨 넣으면(status/link/claim 이 공유하는 헬퍼) 이 테스트가 빨개진다.
-    it "folder_id·folder_path 키를 포함하지 않는다(W19 — 공용 헬퍼 오염 회귀 감지)" do
+    it "folder_id·folder_path·folder_path_status 키를 포함하지 않는다(W19/W8 — 공용 헬퍼 오염 회귀 감지)" do
       get "/api/v1/meetings/#{meeting.id}/dflow/status"
       body = response.parsed_body
       expect(body).not_to have_key("folder_id")
       expect(body).not_to have_key("folder_path")
+      expect(body).not_to have_key("folder_path_status")
     end
   end
 
@@ -359,12 +384,13 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
-    it "folder_id·folder_path 키를 포함하지 않는다(W19 — 공용 헬퍼 오염 회귀 감지)" do
+    it "folder_id·folder_path·folder_path_status 키를 포함하지 않는다(W19/W8 — 공용 헬퍼 오염 회귀 감지)" do
       put "/api/v1/meetings/#{meeting.id}/dflow/link",
           params: { public_uid: "0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77" }, as: :json
       body = response.parsed_body
       expect(body).not_to have_key("folder_id")
       expect(body).not_to have_key("folder_path")
+      expect(body).not_to have_key("folder_path_status")
     end
   end
 
@@ -448,7 +474,7 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
-    it "folder_id·folder_path 키를 포함하지 않는다(W19 — 공용 헬퍼 오염 회귀 감지)" do
+    it "folder_id·folder_path·folder_path_status 키를 포함하지 않는다(W19/W8 — 공용 헬퍼 오염 회귀 감지)" do
       allow(dflow_client).to receive(:base_url).and_return("https://dflow.example.com")
       allow(dflow_client).to receive(:link_minute).and_return({ "ok" => true, "id" => "minute-uuid" })
 
@@ -456,6 +482,7 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
       body = response.parsed_body
       expect(body).not_to have_key("folder_id")
       expect(body).not_to have_key("folder_path")
+      expect(body).not_to have_key("folder_path_status")
     end
   end
 

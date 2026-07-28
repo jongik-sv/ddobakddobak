@@ -61,10 +61,19 @@ export interface DflowMeetingStatusWithExists extends DflowMeetingStatus {
  * `folder_path`의 미분류 표현값(`null` vs `[]`)은 D'Flow 확정 대기라 판정 기준이 될 수 없다.
  * 미분류 문구는 "미분류로 들어갔습니다(D'Flow에서 편철 필요)" — **"팀 루트"라고 쓰지 말 것**.
  * (문구·표시 구현 위치는 SendToDflowDialog(W8). 여기는 타입만 정의한다.)
+ *
+ * `folder_path_status`는 folder_id/folder_path와 별개 필드다(계약 v2.4 §4.3/§4c.2) — 값은 4종:
+ *   - `exact`        — 정상 편철(요청 경로 그대로)
+ *   - `truncated`     — 깊이 5 초과로 상위 폴더로 절단
+ *   - `partial`       — 중간 폴더 생성 실패로 조상 폴더까지만 편철
+ *   - `unclassified`  — 시드 팀 루트 부재로 미분류
+ * 키 부재(`undefined`)는 위 3필드와 동일한 규약이다 — 백엔드가 아직 에코하지 않는 구간(D'Flow 구버전)이니
+ * **아무 것도 표시하지 않는다**(`exact`로 간주하지 말 것).
  */
 export interface DflowUploadResult extends DflowMeetingStatus {
   folder_id?: string | null
   folder_path?: string[] | null
+  folder_path_status?: 'exact' | 'truncated' | 'partial' | 'unclassified'
 }
 
 export async function uploadToDflow(

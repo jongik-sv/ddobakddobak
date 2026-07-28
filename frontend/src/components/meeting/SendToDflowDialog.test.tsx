@@ -227,6 +227,149 @@ describe('SendToDflowDialog', () => {
     )
   })
 
+  // W8: 전송 후 실제 편철 결과(folder_id/folder_path 에코) + folder_path_status 배지.
+  describe('folder_path_status 배지 + 전송 후 실제 경로(W8)', () => {
+    it('folder_path_status 키가 없으면 배지를 렌더하지 않는다(3값 규약 — 키 부재를 exact로 간주하지 말 것)', async () => {
+      vi.mocked(uploadToDflow).mockResolvedValue({
+        public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://dflow.example.com/m/1', needs_resync: false,
+        folder_id: 'folder-1', folder_path: ['MES', '품질'],
+      })
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByRole('button', { name: '전송' }))
+
+      await screen.findByText(/전송됨/)
+      expect(screen.queryByText('경로 절단됨')).not.toBeInTheDocument()
+      expect(screen.queryByText('상위 폴더까지만')).not.toBeInTheDocument()
+      expect(screen.queryByText('미분류')).not.toBeInTheDocument()
+    })
+
+    it("folder_path_status: 'exact'면 배지를 렌더하지 않는다(성공은 조용히)", async () => {
+      vi.mocked(uploadToDflow).mockResolvedValue({
+        public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://dflow.example.com/m/1', needs_resync: false,
+        folder_id: 'folder-1', folder_path: ['MES', '품질'], folder_path_status: 'exact',
+      })
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByRole('button', { name: '전송' }))
+
+      await screen.findByText(/전송됨/)
+      expect(screen.queryByText('경로 절단됨')).not.toBeInTheDocument()
+      expect(screen.getByText('편철 결과 경로')).toBeInTheDocument()
+      expect(screen.getByText('MES / 품질')).toBeInTheDocument()
+    })
+
+    it("folder_path_status: 'truncated'면 배지와 절단 안내 문구를 보여준다", async () => {
+      vi.mocked(uploadToDflow).mockResolvedValue({
+        public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://dflow.example.com/m/1', needs_resync: false,
+        folder_id: 'folder-1', folder_path: ['MES', 'A', 'B', 'C', 'D'], folder_path_status: 'truncated',
+      })
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByRole('button', { name: '전송' }))
+
+      expect(await screen.findByText('경로 절단됨')).toBeInTheDocument()
+      expect(screen.getByText(/보존 한도\(5단\)를 넘어 상위 폴더로 조정되어 저장되었습니다/)).toBeInTheDocument()
+    })
+
+    it("folder_path_status: 'partial'이면 배지와 부분 편철 안내 문구를 보여준다", async () => {
+      vi.mocked(uploadToDflow).mockResolvedValue({
+        public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://dflow.example.com/m/1', needs_resync: false,
+        folder_id: 'folder-1', folder_path: ['MES'], folder_path_status: 'partial',
+      })
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByRole('button', { name: '전송' }))
+
+      expect(await screen.findByText('상위 폴더까지만')).toBeInTheDocument()
+      expect(screen.getByText(/중간 폴더 생성에 실패해 상위 폴더까지만 편철되었습니다/)).toBeInTheDocument()
+    })
+
+    it("folder_path_status: 'unclassified'면 배지를 보여준다", async () => {
+      vi.mocked(uploadToDflow).mockResolvedValue({
+        public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://dflow.example.com/m/1', needs_resync: false,
+        folder_id: null, folder_path: null, folder_path_status: 'unclassified',
+      })
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByRole('button', { name: '전송' }))
+
+      expect(await screen.findByText('미분류')).toBeInTheDocument()
+      // folder_id: null → 기존 미분류 문구(established text)도 함께 보인다. 중복 렌더 없이 1곳에서만.
+      expect(screen.getAllByText(/미분류로 들어갔습니다\(D'Flow에서 편철 필요\)/)).toHaveLength(1)
+    })
+
+    it("folder_path_status: 'unclassified'인데 folder_id 키가 없으면(구버전 D'Flow 등) 배지 옆에" +
+       ' 설명 문구를 보완한다(빈 배지만 남지 않도록)', async () => {
+      vi.mocked(uploadToDflow).mockResolvedValue({
+        public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://dflow.example.com/m/1', needs_resync: false,
+        folder_path_status: 'unclassified',
+      })
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByRole('button', { name: '전송' }))
+
+      expect(await screen.findByText('미분류')).toBeInTheDocument()
+      expect(screen.getByText(/미분류로 들어갔습니다\(D'Flow에서 편철 필요\)/)).toBeInTheDocument()
+      // folder_id 키 자체가 없으므로 "편철 결과 경로" 줄은 렌더되지 않는다.
+      expect(screen.queryByText('편철 결과 경로')).not.toBeInTheDocument()
+    })
+
+    it('folder_id: null이면 미분류 문구를 보여준다(folder_path_status 키가 없어도)', async () => {
+      vi.mocked(uploadToDflow).mockResolvedValue({
+        public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://dflow.example.com/m/1', needs_resync: false,
+        folder_id: null, folder_path: null,
+      })
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByRole('button', { name: '전송' }))
+
+      expect(await screen.findByText(/미분류로 들어갔습니다\(D'Flow에서 편철 필요\)/)).toBeInTheDocument()
+    })
+
+    it('folder_id·folder_path 키가 없으면 실제 경로 표시 자체를 렌더하지 않는다(구버전 D\'Flow)', async () => {
+      vi.mocked(uploadToDflow).mockResolvedValue({
+        public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://dflow.example.com/m/1', needs_resync: false,
+      })
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByRole('button', { name: '전송' }))
+
+      await screen.findByText(/전송됨/)
+      expect(screen.queryByText('편철 결과 경로')).not.toBeInTheDocument()
+    })
+
+    it('전송 성공 시 실제 편철 경로를 보여주고 W7 미리보기와 라벨을 구분한다', async () => {
+      vi.mocked(uploadToDflow).mockResolvedValue({
+        public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://dflow.example.com/m/1', needs_resync: false,
+        folder_id: 'folder-1', folder_path: ['MES', '실제경로'],
+      })
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+      // 전송 전: W7 미리보기(예측)가 먼저 보인다.
+      expect(screen.getByText('편철 경로 미리보기')).toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: '전송' }))
+
+      // 전송 후: 실제 결과가 별도 라벨로 추가된다 — 미리보기와 공존하며 뭉개지지 않는다.
+      expect(await screen.findByText('편철 결과 경로')).toBeInTheDocument()
+      expect(screen.getByText('MES / 실제경로')).toBeInTheDocument()
+      expect(screen.getByText('편철 경로 미리보기')).toBeInTheDocument()
+    })
+
+    it('folder_id가 있고 folder_path가 빈 배열이면 최상위 폴더로 표시한다', async () => {
+      vi.mocked(uploadToDflow).mockResolvedValue({
+        public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://dflow.example.com/m/1', needs_resync: false,
+        folder_id: 'root-folder-uuid', folder_path: [],
+      })
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+      await userEvent.click(screen.getByRole('button', { name: '전송' }))
+
+      expect(await screen.findByText('(최상위 폴더)')).toBeInTheDocument()
+    })
+  })
+
   it('전송 성공 후 닫기 버튼이 렌더되고 클릭 시 onClose를 호출한다', async () => {
     vi.mocked(uploadToDflow).mockResolvedValue({
       public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://dflow.example.com/m/1', needs_resync: false,

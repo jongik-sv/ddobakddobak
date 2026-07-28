@@ -22,7 +22,7 @@ import {
 import type {
   DflowMeetingStatusWithExists,
   DflowMeta,
-  DflowMeetingStatus,
+  DflowUploadResult,
   DflowMinuteItem,
 } from '../../api/dflow'
 import type { Meeting } from '../../api/meetings'
@@ -52,6 +52,17 @@ const DFLOW_ARCHIVED_MESSAGE =
 const DEPTH_WARNING_MESSAGE =
   "편철 경로가 D'Flow 보존 한도(5단)를 넘습니다. 전송하면 상위 폴더로 조정되어 저장됩니다. " +
   '실제 저장 위치는 전송 후 확인해 주세요(아래 미리보기는 조정 전 경로입니다).'
+// W8: 전송 후 실제 편철 결과 안내. dflow.ts#DflowUploadResult 3값 규약 그대로 — "팀 루트"라고 쓰지 말 것.
+const FOLDER_UNCLASSIFIED_MESSAGE = "미분류로 들어갔습니다(D'Flow에서 편철 필요)"
+const FOLDER_PATH_TRUNCATED_MESSAGE =
+  "편철 경로가 D'Flow 보존 한도(5단)를 넘어 상위 폴더로 조정되어 저장되었습니다."
+const FOLDER_PATH_PARTIAL_MESSAGE = '중간 폴더 생성에 실패해 상위 폴더까지만 편철되었습니다.'
+// folder_path_status 배지: exact(정상)는 조용히 — 배지를 렌더하지 않는다. 키 부재도 마찬가지(렌더 안 함).
+const FOLDER_PATH_STATUS_BADGE: Record<'truncated' | 'partial' | 'unclassified', { label: string; className: string }> = {
+  truncated: { label: '경로 절단됨', className: 'bg-amber-100 text-amber-700' },
+  partial: { label: '상위 폴더까지만', className: 'bg-amber-100 text-amber-700' },
+  unclassified: { label: '미분류', className: 'bg-amber-100 text-amber-700' },
+}
 
 /** ky HTTPError → { message, code } 공통 파싱 (DflowSettingsPanel.tsx handleTest 관례). */
 async function parseDflowError(err: unknown, fallback: string): Promise<{ message: string; code?: string }> {
@@ -83,7 +94,7 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [bodyTooLong, setBodyTooLong] = useState(false)
-  const [sendResult, setSendResult] = useState<DflowMeetingStatus | null>(null)
+  const [sendResult, setSendResult] = useState<DflowUploadResult | null>(null)
 
   const [copied, setCopied] = useState(false)
   const [reissueNotice, setReissueNotice] = useState(false)
@@ -164,7 +175,16 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
         ...(needsTeamSelect ? { teamOverride: selectedTeam } : {}),
       })
       setSendResult(result)
-      setStatus({ ...result, exists_on_dflow: true })
+      // status는 DflowMeetingStatusWithExists 4필드 + exists_on_dflow 만 담는다 — result(DflowUploadResult)의
+      // folder_id/folder_path/folder_path_status 는 status로 새지 않게 필드를 명시적으로 골라 담는다
+      // (W19 의 DflowUploadResult/DflowMeetingStatus 타입 분리를 런타임에서도 지킨다).
+      setStatus({
+        public_uid: result.public_uid,
+        dflow_synced_at: result.dflow_synced_at,
+        dflow_url: result.dflow_url,
+        needs_resync: result.needs_resync,
+        exists_on_dflow: true,
+      })
       onChanged?.()
     } catch (err) {
       const { message, code } = await parseDflowError(err, '전송에 실패했습니다.')
@@ -405,7 +425,39 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
                     </a>
                   </>
                 )}
+                {sendResult.folder_path_status && sendResult.folder_path_status !== 'exact' && (
+                  <span
+                    className={`ml-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${FOLDER_PATH_STATUS_BADGE[sendResult.folder_path_status].className}`}
+                  >
+                    {FOLDER_PATH_STATUS_BADGE[sendResult.folder_path_status].label}
+                  </span>
+                )}
               </div>
+
+              {/* W8: 전송 후 실제 편철 위치 — W7 미리보기(전송 전 예측)와 구분되는 실제 결과. */}
+              {sendResult.folder_id !== undefined && (
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">편철 결과 경로</span>{' '}
+                  {sendResult.folder_id === null
+                    ? FOLDER_UNCLASSIFIED_MESSAGE
+                    : sendResult.folder_path && sendResult.folder_path.length > 0
+                      ? sendResult.folder_path.join(' / ')
+                      : '(최상위 폴더)'}
+                </p>
+              )}
+
+              {sendResult.folder_path_status === 'truncated' && (
+                <p role="alert" className="text-xs text-amber-600">{FOLDER_PATH_TRUNCATED_MESSAGE}</p>
+              )}
+              {sendResult.folder_path_status === 'partial' && (
+                <p role="alert" className="text-xs text-amber-600">{FOLDER_PATH_PARTIAL_MESSAGE}</p>
+              )}
+              {/* folder_id가 없어(구버전 D'Flow 등) 위 "편철 결과 경로"에 미분류 문구가 안 뜨는 경우를
+                  대비한 보강 — folder_id: null이면 이미 그 줄에서 같은 문구가 뜨므로 중복 렌더하지 않는다. */}
+              {sendResult.folder_path_status === 'unclassified' && sendResult.folder_id === undefined && (
+                <p role="alert" className="text-xs text-amber-600">{FOLDER_UNCLASSIFIED_MESSAGE}</p>
+              )}
+
               <div className="flex justify-end">
                 <button
                   type="button"
