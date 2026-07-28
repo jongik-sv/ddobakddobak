@@ -222,6 +222,80 @@ RSpec.describe DflowClient, type: :service do
     end
   end
 
+  # ── #folder_batch — 계약 §4c ──
+
+  describe "#folder_batch" do
+    let(:contract_response) do
+      {
+        "ok" => true, "dry_run" => true,
+        "summary" => { "total" => 1, "moved" => 1, "already_correct" => 0, "skipped" => 0, "not_found" => 0, "failed" => 0 },
+        "results" => [
+          { "external_id" => "ddobak:uid", "status" => "moved", "from" => nil, "to" => %w[MES 품질], "folder_id" => nil, "folder_path_status" => "exact" }
+        ]
+      }
+    end
+
+    it "/minutes/folder 로 POST 하고 dry_run 기본값 true·overwrite_manual 기본값 false 를 보낸다" do
+      captured = nil
+      allow(mock_http).to receive(:request) do |req|
+        captured = req
+        stub_response(contract_response, code: 200)
+      end
+
+      result = client.folder_batch(user_email: "a@b.com", items: [ { external_id: "ddobak:uid", folder_path: %w[MES 품질] } ])
+      expect(captured.path).to end_with("/minutes/folder")
+      body = JSON.parse(captured.body)
+      expect(body["dry_run"]).to eq(true)
+      expect(body["overwrite_manual"]).to eq(false)
+      expect(body["items"]).to eq([ { "external_id" => "ddobak:uid", "folder_path" => %w[MES 품질] } ])
+      expect(result["summary"]["moved"]).to eq(1)
+    end
+
+    it "items[] 에 team 키를 넣지 않고 호출하면 요청 본문에도 team 키가 없다(생략 규약)" do
+      captured = nil
+      allow(mock_http).to receive(:request) do |req|
+        captured = req
+        stub_response(contract_response, code: 200)
+      end
+
+      client.folder_batch(user_email: "a@b.com", items: [ { external_id: "ddobak:uid", folder_path: [] } ])
+      item = JSON.parse(captured.body)["items"].first
+      expect(item).not_to have_key("team")
+    end
+
+    it "dry_run: false 를 명시하면 그대로 전송된다(실제 이동)" do
+      captured = nil
+      allow(mock_http).to receive(:request) do |req|
+        captured = req
+        stub_response(contract_response, code: 200)
+      end
+
+      client.folder_batch(user_email: "a@b.com", items: [], dry_run: false)
+      expect(JSON.parse(captured.body)["dry_run"]).to eq(false)
+    end
+
+    it "403 code=forbidden_role → ApiError(code 보존, §4c pmo_admin 게이트)" do
+      response = stub_response({ "error" => "pmo_admin 전용입니다.", "code" => "forbidden_role" }, code: 403)
+      allow(mock_http).to receive(:request).and_return(response)
+
+      expect { client.folder_batch(user_email: "a@b.com", items: []) }.to raise_error(DflowClient::ApiError) do |e|
+        expect(e.code).to eq("forbidden_role")
+        expect(e.status).to eq(403)
+      end
+    end
+
+    it "빈 items(dry_run 프로브)도 정상 200으로 파싱된다" do
+      empty_response = { "ok" => true, "dry_run" => true,
+                          "summary" => { "total" => 0, "moved" => 0, "already_correct" => 0, "skipped" => 0, "not_found" => 0, "failed" => 0 },
+                          "results" => [] }
+      allow(mock_http).to receive(:request).and_return(stub_response(empty_response, code: 200))
+
+      result = client.folder_batch(user_email: "a@b.com", items: [])
+      expect(result["summary"]["total"]).to eq(0)
+      expect(result["results"]).to eq([])
+    end
+  end
+
   # ── #meta — 계약 §5.2 ──
 
   describe "#meta" do

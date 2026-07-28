@@ -57,6 +57,19 @@ class DflowClient
     post("/minutes/link", { minute_id: minute_id, external_id: external_id, user_email: user_email })
   end
 
+  # POST /api/v1/minutes/folder → Hash(계약 §4c.2) — 일괄 재편철(dry_run 기본 true, §4c.1).
+  # items[] 내용 오류는 건별 failed 로 응답한다(전체 400 아님, §4c.1 봉투 규약 예외).
+  # items[].team 을 생략하고 싶으면 그 키 자체를 넣지 않은 Hash 를 items 에 담아 호출할 것
+  # (nil 을 넣으면 그대로 null 로 전송되어 "생략"과 다른 의미가 된다 — 호출부 책임).
+  def folder_batch(user_email:, items:, dry_run: true, overwrite_manual: false)
+    post("/minutes/folder", {
+      user_email: user_email,
+      dry_run: dry_run,
+      overwrite_manual: overwrite_manual,
+      items: items
+    })
+  end
+
   private
 
   def get(path, params = {})
