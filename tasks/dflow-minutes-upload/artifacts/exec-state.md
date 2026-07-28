@@ -277,13 +277,13 @@ wbs-web `main`에 `folder_path` 커밋 0건 (2026-07-27 확인).
 
 D'Flow 소스(`/Users/jji/project/wbs-web`, GitHub `donseok/wbs-web`)는 **사내망이 아니라 사외에서도 fetch 가능**하다. 로컬 clone이 낡아 `main`=스펙 v2.2였고 문서가 인용하던 커밋이 없었는데, `git fetch` 후 `origin/feat/minutes-folder-path`에서 **계약 v2.4가 이미 존재**함을 확인했다 — 그 브랜치의 `docs/design/dflow-minutes-upload-api-spec.md` 자신이 "⚠️ 또박또박 송부본은 이 v2.4다"라고 선언한다. 즉 차단 사유는 **"계약 미작성"이 아니라 "전달 누락"**이었다. 관련 커밋: `4387576`(v2.3) · `afc1943`(배치 엔드포인트) · 브랜치 HEAD `94e5eca`. 상세: `dflow-source-findings-2026-07-28.md`.
 
-### 완료된 W 항목 (전부 커밋됨, 푸시 안 함 — `W18`만 워킹 트리 미커밋)
+### 완료된 W 항목 (전부 커밋됨, 푸시 안 함)
 
 | W | 커밋 | 내용 |
 |---|---|---|
 | `W8` | `bceae845` | `folder_path_status` 배지(`FOLDER_PATH_STATUS_BADGE`, 키 부재·`exact`는 미렌더) + 전송 후 편철 결과 경로 표시. 백엔드 `meeting_dflow_controller.rb#dflow_folder_echo_json`에 `key?` 조건부 merge 추가, 공용 헬퍼 `#dflow_status_json`은 무수정 |
 | `W12`·`W13` | `5eef05ee` | `DflowFolderMigrationService`(대상=§7.2 정의, §7.7 자동 링크 "대상 1"과 다른 개념) + `rake dflow:migrate_folders`. 삭제분 `.kept` 제외, 200건 `each_slice`, `ACTOR_EMAIL` 기본값 추측 금지, 빈 `items` dry-run 프로브로 권한 확인 |
-| `W18` | 미커밋(워킹 트리) | 계약 사본 `v2.1 → v2.4` 동기화(원문 그대로 교체, 델타 주석 병기 안 함) |
+| `W18` | `3efff4f8`(이후 `7823391` 기준 재동기화 `ae3e5915`) | 계약 사본 `v2.1 → v2.4` 동기화(원문 그대로 교체, 델타 주석 병기 안 함) |
 
 ### 검증 실측 (오케스트레이터 직접 실행)
 
@@ -308,9 +308,43 @@ D'Flow 소스(`/Users/jji/project/wbs-web`, GitHub `donseok/wbs-web`)는 **사�
 
 ### 남은 것 — 차단은 이제 하나뿐
 
-- **`W15`·`W16`**(자동 링크) — D'Flow **R3**(연결 초기화) 의미 확정 선행
+> ⚠️ **이 목록은 세션 3 시점이다.** `W15`·`W16`은 세션 4에서 완료됐다(커밋 `a95c58cd`) — 최신 상태는 **Phase 5** 참조.
+
+- ~~**`W15`·`W16`**(자동 링크) — D'Flow **R3**(연결 초기화) 의미 확정 선행~~ → **세션 4에서 완료**(Phase 5). 남은 건 코드가 아니라 **실행**(`APPLY`)이고, 그건 여전히 R3 확정이 선행돼야 한다
 - **D'Flow R1 실배포** — 유일한 실질 차단. 코드·계약이 준비돼도 서버가 안 떠 있으면 재편철 실행·`include_archived` 실검증 불가
-- **드리프트 리스크** — D'Flow가 정식 송부 전 브랜치를 더 고치면 소스 기준 구현이 어긋난다. 완화책: 기준 커밋 `94e5eca` 고정 + **재편철 1회차 APPLY 전** diff 재대조 의무화. 대조표 작성 후 APPLY 전, 그 구간에 **`team`이 바뀐 재전송**이 있었는지 추가로 확인한다(§4.5-11) — 있으면 그 건은 팀 루트로 되돌아가 있어 대조표가 낡은 상태이므로 재조회 후 다시 떠야 한다(버그 아님, D'Flow 의도된 동작)
+- **드리프트 리스크** — D'Flow가 정식 송부 전 브랜치를 더 고치면 소스 기준 구현이 어긋난다. 완화책: 기준 커밋 `94e5eca` 고정 + **재편철 1회차 APPLY 전** diff 재대조 의무화. 대조표 작성 후 APPLY 전, 그 구간에 **`team`이 바뀐 재전송**이 있었는지 추가로 확인한다(§4.5-11) — 있으면 그 건은 팀 루트로 되돌아가 있어 대조표가 낡은 상태이므로 재조회 후 다시 떠야 한다(버그 아님, D'Flow 의도된 동작). ⚠️ **세션 4에서 1회 대조 완료**(Phase 5, 기준 커밋 `7823391`로 갱신, 코드 영향 0건) — 재대조 의무는 그대로 유지
+
+---
+
+## Phase 5 — 2026-07-28 세션 4 (`W15`·`W16` 자동 링크 + 드리프트 대조 + NFC 결함 수정) — **DONE**
+
+진행률 **17/19 → 19/19**(`+W15 +W16`). **잔여 0건 — 코드 관점에서 전 항목 완료.** 남은 것은 실행·배포·사람 결정뿐(`handoff-2026-07-27.md` §5).
+
+### 착수 조건 확인
+
+연결 초기화(`dflow-W10`)가 `external_id`만 null로 만들고 `folder_id`는 건드리지 않는다는 것을 D'Flow 소스·계약 §4b-1에서 확인했다 — 이게 §7.7 대상 2 판정의 전제였다.
+
+### 완료된 W 항목
+
+| W | 커밋 | 내용 |
+|---|---|---|
+| `W15`·`W16` | `a95c58cd` | `DflowAutoLinkService`(신규) + `rake dflow:autolink`/`autolink_rollback`. `#already_linked_meetings`(등급 판정 전 제외 게이트, 멱등성 보장) · `#target1_meetings`(`dflow_synced_at` 없음 AND D'Flow에 없음, `public_uid` 유무는 기준 아님) · `#target2_meetings`(초기화·삭제, `RELINK_RESET`과 무관하게 항상 계산 — claim 가능 여부만 그 플래그가 가른다) · `#each_page`(`linked=true`엔 `include_archived=true`, `linked=false` 후보 조회엔 미포함, 계약 §5.1 호출 규약) · 자동 claim 없음(dry-run 기본, `exact`만, `apply`＋`sender_names` 명시적 opt-in에서만 — 정본 §6) · `.rollback`(로컬 `public_uid`/`dflow_url` 해제만, D'Flow 쪽 초기화·본문 복구는 안 됨) |
+
+### 검증 실측 (오케스트레이터 직접 실행)
+
+`rspec` 전체 **2111 examples / 0 failures**(기준선 2075 + 신규 36) · `rubocop` clean. 프런트 미변경(vitest **1854** 유지, `c99a5a4b` 이후 변동 없음).
+
+### 같은 세션에 병행된 작업 (W 항목 아님)
+
+- **드리프트 대조**(`ae3e5915`) — D'Flow 소스 `94e5eca`→`7823391`(9커밋) 코드 레벨 전량 대조(`dflow-drift-2026-07-28.md`). API 로직 무변경, 우리 코드 영향 **0건**. 계약 사본 재동기화(`7823391` 원문, 바이트 동일) + 착수 기준 커밋 갱신
+- **NFC 정규화 결함 수정**(`c99a5a4b`) — 드리프트 대조 중 발견한, 드리프트와 무관한 **ddobak 쪽 기존 결함**. 폴더명 60자 검사(`dflow_upload_service.rb#validate_folder_path_names!`)·`dflow_folder_migration_service.rb#partition_by_folder_name_length`·team 매칭(`#resolve_team!`)·프런트 `dflowAutoAssign.ts`(`#detectDflowTeam`·`#dflowRootIsResolvedTeamRoot`)가 전부 NFC 정규화 **전** 원문 기준이었다. 신규 `DflowFolderName`(`normalize`/`too_long?`/`matches?`)로 통일. `#resolve_team!` 반환값도 DB 원문(NFD 가능) 대신 `teams` 쪽 정본으로 변경 — 전송 페이로드 자체는 무변경(계약 §4.9가 D'Flow에서 NFC로 수렴한다고 명시). **프로덕션 폴더명에 NFD 실사례는 0건** — 잠재 결함이었지 실피해는 없었다
+- **팀장 결정 대기 리스트 재작성**(`ae3e5915`) — 6건 → **10건**, 번호 전부 다시 매김(이전 판 번호 인용 금지). 실질 미결은 2건(회신문 전달·R1 일정)뿐, 나머지는 그 2건에 종속되거나 확인만 필요
+
+### 남은 것 — 코드 0건, 전부 실행·배포·사람 결정
+
+- **D'Flow R1 실배포** — 유일한 실질 차단(19개 항목 전체의 실전송 검증도 함께 막는다)
+- **자동 링크 실행(`APPLY`)** — D'Flow **R3**(연결 초기화) 의미 확정 ＋ 팀장 결정 대기 항목 8(`claim` 오매칭 정책·T4 게이트) 해소가 선행돼야 한다. dry-run 자체는 R1 배포 후 코드상 바로 가능
+- 상세 순서·사람 결정 목록: `handoff-2026-07-27.md` §5
 
 ---
 
@@ -320,4 +354,5 @@ D'Flow 소스(`/Users/jji/project/wbs-web`, GitHub `donseok/wbs-web`)는 **사�
 |---|---|---|
 | 2026-07-27 13:55 | 원장 생성 | task.md · exec-state.md 작성. Phase 0 착수 |
 | 2026-07-28 세션 2 | Phase 3 — `ddobak-W19`·`ddobak-W7` | **DONE** — 진행률 11/19 → 13/19. rspec 2041 pass · vitest 1840 pass. 커밋 `a9743788`(2차분, 푸시 안 함, R2 이후 배포) |
-| 2026-07-28 세션 3 | Phase 4 — 소스 기준 차단 해제 + `W8`·`W12`·`W13`·`W18` + 실서버 재감사 | **DONE** — 진행률 13/19 → 17/19(잔여 `W15`·`W16`). rspec 2071 pass · vitest 1850 pass. 커밋 `bceae845`(W8)·`5eef05ee`(W12·W13), `W18`은 워킹 트리 미커밋. D'Flow 미배포 실측 재확정 |
+| 2026-07-28 세션 3 | Phase 4 — 소스 기준 차단 해제 + `W8`·`W12`·`W13`·`W18` + 실서버 재감사 | **DONE** — 진행률 13/19 → 17/19(잔여 `W15`·`W16`). rspec 2071 pass · vitest 1850 pass. 커밋 `bceae845`(W8)·`5eef05ee`(W12·W13)·`3efff4f8`(W18, 문서). D'Flow 미배포 실측 재확정 |
+| 2026-07-28 세션 4 | Phase 5 — `W15`·`W16` 자동 링크 + 드리프트 대조 + NFC 결함 수정 | **DONE** — 진행률 17/19 → **19/19**(잔여 0). rspec 2111 pass · vitest 1854 pass(프런트 무변경). 커밋 `a95c58cd`(W15·W16)·`c99a5a4b`(NFC 수정)·`ae3e5915`(드리프트 대조·팀장 결정 리스트 재작성). 코드 전 항목 완료 — 남은 건 D'Flow R1 배포뿐 |

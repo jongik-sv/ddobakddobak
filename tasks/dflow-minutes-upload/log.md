@@ -211,3 +211,12 @@
 [2026-07-28 세션4] [COMMIT] c99a5a4b fix(dflow): 폴더명 NFC 정규화 누락 4곳 (계약 §0 D20)
 [2026-07-28 세션4] [VERIFICATION] 전체 재측정 — rspec **2075/0**(9분 0초) · vitest **1854/0**(212 files) · tsc 0 · rubocop·eslint clean
 [2026-07-28 세션4] [STATE] 팀장 결정 리스트 재작성(10건: 해소 1 · 사실상해소 1 · 신규 4). 계약 사본을 `7823391` 원문으로 재동기화
+
+[2026-07-28 세션4] [DISPATCH] w15w16 (sonnet) — §7.7 자동 링크. 착수 근거 = 연결 초기화가 external_id만 null로 만들고 folder_id는 안 건드림(소스·계약 §4b-1 확인)
+[2026-07-28 세션4] [COMMIT] a95c58cd feat(dflow): 미연결 회의 자동 링크 + 역연산 rake (W15·W16)
+  - §7.7 함정 전부 코드로 방어: already_linked 게이트 선행 · 대상1 두 조건 동시 · 대상2 기본제외(RELINK_RESET) · 대상2는 플래그 무관 항상 계산(pitfall5 경고) · linked=true엔 include_archived 켜고 linked=false엔 끔 · 페이지 순회 차집합(O(회의수) 금지) · 자동 claim 없음(dry-run 기본·exact만·opt-in)
+  - autolink_rollback은 로컬 public_uid/dflow_url 해제만. D'Flow 초기화는 수동, 본문은 어느 쪽으로도 복구 불가
+[2026-07-28 세션4] [VERIFICATION] rspec 전체 **2111 examples / 0 failures**(기준선 2075 + 신규 36) · rubocop clean. 프런트 미변경
+[2026-07-28 세션4] [STATE] **코드 19/19 완료 — 잔여 0건.** 이후는 코드가 아니라 실행·배포·사람 결정
+  - 배포 있어야 돌아가는 것: 재편철 dry-run·APPLY(지금 404) · W14 include_archived 실검증 · autolink dry-run · 실경계 검증(spec 전부 stub)
+  - 사람 결정 실제 필요분 2건: ① 회신문 전달(⚠️ 요청 2·4·6번 정정 필수 — 2·6은 취소된 수작업 재약속) ② R1 일정(실질=D'Flow 런타임 스모크 환경 확보 여부, 현재 0건)
