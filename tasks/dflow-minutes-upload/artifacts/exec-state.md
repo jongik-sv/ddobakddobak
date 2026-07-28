@@ -158,6 +158,8 @@
 
 ## Phase 2+ — 블록 (D'Flow 미착수)
 
+> ⚠️ **이 절은 2026-07-27 시점 기록이다.** 2026-07-28 세션 3에서 `W18`·`W12`·`W13`·`W8`의 차단 사유(계약 v2.4 결핍)가 해소됐다 — 아래 목록의 "0차"·"3차" 줄은 stale하다. 최신 상태는 **Phase 4** 참조.
+
 wbs-web `main`에 `folder_path` 커밋 0건 (2026-07-27 확인).
 
 - 2차 `W2·W3·W4·W5·W6·W7` ← dflow-W1~W5
@@ -267,9 +269,55 @@ wbs-web `main`에 `folder_path` 커밋 0건 (2026-07-27 확인).
 
 ---
 
+## Phase 4 — 2026-07-28 세션 3 (소스 기준 차단 해제 + `W8`·`W12`·`W13`·`W18` + 실서버 재감사) — **DONE**
+
+진행률 **13/19 → 17/19** (`+W8 +W12 +W13 +W18(미커밋)`). 잔여 = **`W15`·`W16` 2건**뿐(D'Flow R3 선행 필요, 변동 없음).
+
+### 판을 바꾼 발견 — 차단 요인 ①이 사라졌다
+
+D'Flow 소스(`/Users/jji/project/wbs-web`, GitHub `donseok/wbs-web`)는 **사내망이 아니라 사외에서도 fetch 가능**하다. 로컬 clone이 낡아 `main`=스펙 v2.2였고 문서가 인용하던 커밋이 없었는데, `git fetch` 후 `origin/feat/minutes-folder-path`에서 **계약 v2.4가 이미 존재**함을 확인했다 — 그 브랜치의 `docs/design/dflow-minutes-upload-api-spec.md` 자신이 "⚠️ 또박또박 송부본은 이 v2.4다"라고 선언한다. 즉 차단 사유는 **"계약 미작성"이 아니라 "전달 누락"**이었다. 관련 커밋: `4387576`(v2.3) · `afc1943`(배치 엔드포인트) · 브랜치 HEAD `94e5eca`. 상세: `dflow-source-findings-2026-07-28.md`.
+
+### 완료된 W 항목 (전부 커밋됨, 푸시 안 함 — `W18`만 워킹 트리 미커밋)
+
+| W | 커밋 | 내용 |
+|---|---|---|
+| `W8` | `bceae845` | `folder_path_status` 배지(`FOLDER_PATH_STATUS_BADGE`, 키 부재·`exact`는 미렌더) + 전송 후 편철 결과 경로 표시. 백엔드 `meeting_dflow_controller.rb#dflow_folder_echo_json`에 `key?` 조건부 merge 추가, 공용 헬퍼 `#dflow_status_json`은 무수정 |
+| `W12`·`W13` | `5eef05ee` | `DflowFolderMigrationService`(대상=§7.2 정의, §7.7 자동 링크 "대상 1"과 다른 개념) + `rake dflow:migrate_folders`. 삭제분 `.kept` 제외, 200건 `each_slice`, `ACTOR_EMAIL` 기본값 추측 금지, 빈 `items` dry-run 프로브로 권한 확인 |
+| `W18` | 미커밋(워킹 트리) | 계약 사본 `v2.1 → v2.4` 동기화(원문 그대로 교체, 델타 주석 병기 안 함) |
+
+### 검증 실측 (오케스트레이터 직접 실행)
+
+`rspec` 전체 **2071 examples / 0 failures**(9분 16초) · `vitest` 전체 **1850 pass / 0 fail** · `tsc -p tsconfig.app.json` **0** · rubocop·eslint clean. (이전 기준선 rspec 2041 · vitest 1840에서 신규 테스트만큼 증가)
+
+### 실서버 실측 (2026-07-28, 또박또박 SQLite 읽기 전용 SELECT + D'Flow 운영 GET 전용 API)
+
+- **D'Flow 미배포가 실측으로 확정** — 운영 `GET /minutes?include_archived=true`가 41건을 주는데 `items[]`에 `archived` 키(v2.3 신설 필드)가 없음
+
+상세: `team-lead-open-decisions-2026-07-28.md`(갱신, 팀장 결정 대기 6건).
+
+### 계약 대조 결과
+
+`decisions-final-2026-07-27.md` §2-E의 v2.4 반영 9건 **전부 충실 반영, 다르게 반영된 것 0건**(⚠️ §2-E 9행 표 수준의 대조 — §2-A·§2-C·§2-D·§2-H·§2-J 본문 논거까지 문장 단위 대조는 안 함). 배치 응답에는 `folder_path_status` 값 중 **`exact`·`truncated` 둘만** 실제로 나온다(`partial`·`unclassified`는 §4c.3에 따라 `failed`로 전환돼 `moved`에 도달하지 않음). 상세: `dflow-contract-v23-delta-2026-07-28.md`.
+
+### 신규 산출물
+
+- `dflow-source-findings-2026-07-28.md` — D'Flow 소스 실동작 조사
+- `dflow-contract-v23-delta-2026-07-28.md` — v2.1↔v2.3↔v2.4 델타 + 9건 대조(파일명 `v23`은 착수 시점 오판 흔적, 내용은 v2.4 기준)
+- `team-lead-open-decisions-2026-07-28.md`(갱신) — 팀장 결정 대기 6건
+- `workers/{dflow-source-contract,dflow-source-code}/brief.md`
+
+### 남은 것 — 차단은 이제 하나뿐
+
+- **`W15`·`W16`**(자동 링크) — D'Flow **R3**(연결 초기화) 의미 확정 선행
+- **D'Flow R1 실배포** — 유일한 실질 차단. 코드·계약이 준비돼도 서버가 안 떠 있으면 재편철 실행·`include_archived` 실검증 불가
+- **드리프트 리스크** — D'Flow가 정식 송부 전 브랜치를 더 고치면 소스 기준 구현이 어긋난다. 완화책: 기준 커밋 `94e5eca` 고정 + **재편철 1회차 APPLY 전** diff 재대조 의무화
+
+---
+
 ## 진행 로그
 
 | 시각 | 항목 | 결과 |
 |---|---|---|
 | 2026-07-27 13:55 | 원장 생성 | task.md · exec-state.md 작성. Phase 0 착수 |
 | 2026-07-28 세션 2 | Phase 3 — `ddobak-W19`·`ddobak-W7` | **DONE** — 진행률 11/19 → 13/19. rspec 2041 pass · vitest 1840 pass. 커밋 `a9743788`(2차분, 푸시 안 함, R2 이후 배포) |
+| 2026-07-28 세션 3 | Phase 4 — 소스 기준 차단 해제 + `W8`·`W12`·`W13`·`W18` + 실서버 재감사 | **DONE** — 진행률 13/19 → 17/19(잔여 `W15`·`W16`). rspec 2071 pass · vitest 1850 pass. 커밋 `bceae845`(W8)·`5eef05ee`(W12·W13), `W18`은 워킹 트리 미커밋. D'Flow 미배포 실측 재확정 |

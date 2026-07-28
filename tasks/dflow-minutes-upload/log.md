@@ -177,3 +177,20 @@
   - 이번 세션 변경 파일을 가리키던 행번호 인용 제거(커밋 앵커 명시분·"틀린 인용 예시" 표는 유지)
 [2026-07-28 세션2] [COMMIT] dce11c7a docs(dflow): W19·W7 완료 반영 + 팀장 결정 대기 항목 신설 (13/19)
 [2026-07-28 세션2] [STATE] 13/19. 남은 6건 전부 차단(계약 v2.4 미수령 · D'Flow 미배포) → 팀장 답이 선행. artifacts/team-lead-open-decisions-2026-07-28.md 참조
+
+[2026-07-28 세션3] [DISCOVERY] **차단 요인 ① 소멸** — D'Flow 소스가 사외 접근 가능(GitHub `donseok/wbs-web` = `~/project/wbs-web`)
+  - 로컬 clone이 낡아 main=스펙 v2.2였고 인용 커밋 부재 → fetch 후 `origin/feat/minutes-folder-path`에서 확인
+  - **계약 v2.4가 이미 존재**(브랜치 HEAD `94e5eca`). 헤더가 "또박또박 송부본은 이 v2.4다"라고 자기선언 → 차단 사유는 "계약 미작성"이 아니라 **전달 누락**이었다
+  - `folder_path_status` 4값(exact/truncated/partial/unclassified)·배치 `POST /minutes/folder` 스키마·pmo_admin 게이트·조상 규칙 전부 소스·계약에서 확인
+[2026-07-28 세션3] [VERIFICATION] 실서버 실측 (사용자 승인 후 읽기 전용)
+  - 또박또박 실서버 SQLite `?mode=ro` SELECT · D'Flow 운영 GET 전용 API
+  - **D'Flow 미배포 확정** — 운영 `GET /minutes?include_archived=true` 41건 응답에 `archived` 키 부재(v2.3 신설 필드) → 운영은 v2.2 이하
+[2026-07-28 세션3] [DECISION] **수작업(폴더명 통일·회의 이동·고아 처리) 진행하지 않음** (사용자)
+  - `artifacts/manual-worklist-2026-07-28.md` 삭제(이 커밋 이전 이력에 남아 있음). 관련 서술을 handoff·exec-state·팀장 문서에서 제거
+  - 잔여 영향: `MES/기타` 회의 4건을 재전송(replace)하면 D'Flow 분류가 `기타`로 내려간다. 배치 재편철은 조상 규칙상 `skip(manual_placement)`이라 무해
+[2026-07-28 세션3] [COMMIT] bceae845 feat(dflow): folder_path_status 배지 + 전송 후 편철 결과 표시 (W8)
+[2026-07-28 세션3] [COMMIT] 5eef05ee feat(dflow): 일괄 재편철 서비스 + rake 진입점 (W12·W13)
+[2026-07-28 세션3] [VERIFICATION] 전체 재측정 — rspec **2071 examples / 0 failures**(9분 16초) · vitest **1850 pass / 0 fail** · tsc 0 · rubocop·eslint clean
+[2026-07-28 세션3] [STATE] **17/19 완료.** 남은 W15·W16(자동 링크)은 D'Flow R3 의미 확정 선행. **유일한 실질 차단 = D'Flow R1 실배포**
+  - 팀장 결정 대기 6건 → artifacts/team-lead-open-decisions-2026-07-28.md
+  - 소스 선행 진행의 드리프트 리스크: 기준 커밋 `94e5eca` 고정, D'Flow 푸시 시 diff 재대조 후 진행
