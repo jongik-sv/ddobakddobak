@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { LayoutGrid, List, Plus, Eye, EyeOff } from 'lucide-react'
 import { Tooltip } from '../components/ui/Tooltip'
 import { deleteMeeting, stopMeeting, updateMeeting, setMeetingImportant } from '../api/meetings'
+import { getDflowSettings } from '../api/dflow'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
 import { paramToFolder } from '../lib/folderNav'
@@ -30,6 +31,14 @@ import { folderName } from '../lib/meetingFormat'
 import { useUiStore } from '../stores/uiStore'
 import { VIEW_MODE_KEY, getStoredViewMode, type ViewMode, type SortField, type SortDirection } from './meetings/types'
 
+// D'Flow 전송 상태 필터 옵션 — 데스크톱 select와 모바일 BottomSheet select가 공유한다.
+const DFLOW_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: '전체' },
+  { value: 'synced', label: "D'Flow 전송됨" },
+  { value: 'needs_resync', label: '재전송 필요' },
+  { value: 'not_sent', label: '미전송' },
+]
+
 export default function MeetingsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -41,6 +50,7 @@ export default function MeetingsPage() {
     statusFilter,
     dateFrom,
     dateTo,
+    dflowFilter,
     folderId,
     showAll,
     isLoading,
@@ -50,6 +60,7 @@ export default function MeetingsPage() {
     setStatusFilter,
     setDateFrom,
     setDateTo,
+    setDflowFilter,
     toggleShowAll,
     fetchMeetings,
     addMeeting,
@@ -71,6 +82,36 @@ export default function MeetingsPage() {
   const [exportingMeeting, setExportingMeeting] = useState<Meeting | null>(null)
   const currentProjectId = useProjectStore((s) => s.currentProjectId)
   const openFolderChat = useUiStore((s) => s.openFolderChat)
+
+  // D'Flow 연동 활성화 여부 — 마운트 시 1회 조회(ExportButton.tsx와 동일 패턴).
+  // 비활성/조회 실패 시 필터 컨트롤 자체를 숨긴다(fail-closed).
+  const [dflowEnabled, setDflowEnabled] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    // 비활성으로 확정되는 두 경로(연동 꺼짐 / 조회 실패) 모두에서 이미 설정된 dflowFilter도
+    // 같이 비운다 — 안 그러면 select가 사라진 뒤에도 필터는 서버로 계속 전송되는데(store는
+    // 그대로), 화면에는 그걸 해제할 컨트롤이 없어 새로고침 전까지 원인 모를 빈 목록에 갇힌다.
+    const disableDflowFilter = () => {
+      setDflowEnabled(false)
+      if (useMeetingStore.getState().dflowFilter) setDflowFilter('')
+    }
+    getDflowSettings()
+      .then((settings) => {
+        if (cancelled) return
+        if (settings.enabled) {
+          setDflowEnabled(true)
+        } else {
+          disableDflowFilter()
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        disableDflowFilter()
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [setDflowFilter])
 
   // "폴더에게 묻기" 대상 폴더 id — selectedFolderId가 'all'/null이면 폴더 스코프 없음(프로젝트 전체).
   const askFolderId = typeof selectedFolderId === 'number' ? selectedFolderId : null
@@ -136,7 +177,7 @@ export default function MeetingsPage() {
       setCurrentPage(1)
     }, delay)
     return () => clearTimeout(timer)
-  }, [searchQuery, statusFilter, dateFrom, dateTo, folderId, fetchMeetings]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchQuery, statusFilter, dateFrom, dateTo, dflowFilter, folderId, fetchMeetings]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrevPage = () => {
     if (currentPage > 1) {
@@ -267,6 +308,19 @@ export default function MeetingsPage() {
               전체 보기
             </button>
           </Tooltip>
+          {/* D'Flow 전송 상태 필터 — 연동 비활성이면 숨김 */}
+          {dflowEnabled && (
+            <select
+              value={dflowFilter}
+              onChange={(e) => setDflowFilter(e.target.value)}
+              aria-label="D'Flow 전송 상태"
+              className="ml-2 rounded-md border px-3 py-1.5 text-sm bg-card text-foreground border-border outline-none focus:ring-2 focus:ring-ring"
+            >
+              {DFLOW_FILTER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
@@ -393,12 +447,30 @@ export default function MeetingsPage() {
               </div>
             </div>
 
+            {/* D'Flow 전송 상태 필터 — 연동 비활성이면 숨김 */}
+            {dflowEnabled && (
+              <div>
+                <h3 className="text-sm font-medium mb-2">D'Flow 전송 상태</h3>
+                <select
+                  value={dflowFilter}
+                  onChange={(e) => setDflowFilter(e.target.value)}
+                  aria-label="D'Flow 전송 상태"
+                  className="w-full rounded-md border px-3 py-2 text-sm bg-card text-foreground border-border outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {DFLOW_FILTER_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* 초기화 버튼 */}
             <button
               onClick={() => {
                 setStatusFilter('')
                 setDateFrom('')
                 setDateTo('')
+                setDflowFilter('')
                 setSearchParams({}, { replace: true })
               }}
               className="w-full rounded-md border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"

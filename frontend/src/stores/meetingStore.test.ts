@@ -116,6 +116,18 @@ describe('meetingStore', () => {
     )
   })
 
+  // D'Flow 필터가 걸리면 루트('all') 뷰에서도 important 큐레이션을 해제해야 한다 — D'Flow 전송
+  // 대상은 사실상 전부 completed 인데, completed+important=false 회의는 기본 큐레이션에 걸려
+  // show_all 없이는 결과가 항상 비어 보인다(리뷰 지적: meetingStore.ts:95).
+  it('dflowFilter가 걸리면 루트(all) 뷰에서도 showAll off여도 show_all=true를 전달한다', async () => {
+    mockGetMeetings.mockResolvedValue({ meetings: [], meta: { total: 0, page: 1, per: 20 } })
+    useMeetingStore.getState().setDflowFilter('synced')
+    await useMeetingStore.getState().fetchMeetings(1)
+    expect(mockGetMeetings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ dflow_status: 'synced', show_all: true }),
+    )
+  })
+
   it('fetchMeetings 실패 시 error 설정', async () => {
     mockGetMeetings.mockRejectedValue(new Error('API 오류'))
 

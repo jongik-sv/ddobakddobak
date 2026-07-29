@@ -36,6 +36,7 @@ export async function getMeetings(params: GetMeetingsParams): Promise<MeetingLis
   }
   if (params.project_id != null) searchParams.project_id = params.project_id
   if (params.show_all) searchParams.show_all = 1
+  if (params.dflow_status) searchParams.dflow_status = params.dflow_status
   return apiClient.get('meetings', { searchParams }).json()
 }
 

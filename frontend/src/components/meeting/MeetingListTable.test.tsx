@@ -75,4 +75,20 @@ describe('MeetingListTable 중요/잠금 표시', () => {
     expect(screen.getByLabelText('잠긴 회의')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '중요 해제' })).toBeDisabled()
   })
+
+  it('D\'Flow 미전송 회의는 배지가 없다', () => {
+    renderTable([makeMeeting({})])
+    expect(screen.queryByText(/D'Flow/)).not.toBeInTheDocument()
+  })
+
+  it('D\'Flow 전송된 회의는 "D\'Flow ✓" 배지를 표시한다', () => {
+    renderTable([makeMeeting({ dflow_synced_at: '2026-03-25T12:00:00Z', dflow_needs_resync: false })])
+    expect(screen.getByText("D'Flow ✓")).toBeInTheDocument()
+  })
+
+  it('D\'Flow 재전송 필요 회의는 "D\'Flow 재전송 필요" 배지를 표시한다', () => {
+    renderTable([makeMeeting({ dflow_synced_at: '2026-03-25T12:00:00Z', dflow_needs_resync: true })])
+    expect(screen.getByText("D'Flow 재전송 필요")).toBeInTheDocument()
+    expect(screen.queryByText("D'Flow ✓")).not.toBeInTheDocument()
+  })
 })

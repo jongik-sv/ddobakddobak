@@ -16,6 +16,8 @@ interface MeetingState {
   statusFilter: string
   dateFrom: string
   dateTo: string
+  /** D'Flow 전송 상태 필터. '' | 'synced' | 'needs_resync' | 'not_sent'. */
+  dflowFilter: string
   folderId: SelectedFolder
   /** true면 중요 필터를 해제하고 전체 회의를 가져온다(show_all=1). 기본 false. */
   showAll: boolean
@@ -29,6 +31,7 @@ interface MeetingState {
   setStatusFilter: (status: string) => void
   setDateFrom: (date: string) => void
   setDateTo: (date: string) => void
+  setDflowFilter: (status: string) => void
   setFolderId: (id: SelectedFolder) => void
   setShowAll: (v: boolean) => void
   toggleShowAll: () => void
@@ -47,6 +50,7 @@ const initialState = {
   statusFilter: '',
   dateFrom: '',
   dateTo: '',
+  dflowFilter: '',
   folderId: 'all' as SelectedFolder,
   showAll: false,
   hasLoadedOnce: false,
@@ -66,6 +70,7 @@ export const useMeetingStore = create<MeetingState>()((set, get) => ({
   setStatusFilter: (status) => set({ statusFilter: status }),
   setDateFrom: (date) => set({ dateFrom: date }),
   setDateTo: (date) => set({ dateTo: date }),
+  setDflowFilter: (status) => set({ dflowFilter: status }),
   setFolderId: (id) => set({ folderId: id }),
   setShowAll: (v) => set({ showAll: v }),
   toggleShowAll: () => set((state) => ({ showAll: !state.showAll })),
@@ -76,17 +81,21 @@ export const useMeetingStore = create<MeetingState>()((set, get) => ({
     // 최초 로드 이전에만 isLoading(스켈레톤). 이후 재조회는 isRefreshing(지연 dim)만 토글.
     set({ isLoading: !hasLoadedOnce, isRefreshing: hasLoadedOnce, error: null })
     try {
-      const { searchQuery, statusFilter, dateFrom, dateTo, folderId, showAll } = get()
+      const { searchQuery, statusFilter, dateFrom, dateTo, dflowFilter, folderId, showAll } = get()
       const params: GetMeetingsParams = { page, per: 20 }
       if (searchQuery) params.q = searchQuery
       if (statusFilter) params.status = statusFilter
       if (dateFrom) params.date_from = dateFrom
       if (dateTo) params.date_to = dateTo
+      if (dflowFilter) params.dflow_status = dflowFilter
       if (folderId !== 'all') {
         params.folder_id = folderId
       }
-      // 특정 폴더 안에서는 중요하지 않은 회의도 보여준다. 전체(all) 뷰에서만 important 필터 유지(showAll로 해제).
-      if (showAll || folderId !== 'all') params.show_all = true
+      // 특정 폴더 안에서는 중요하지 않은 회의도 보여준다. 전체(all) 뷰에서는 showAll로만 해제하는 게
+      // 기본이지만, D'Flow 필터가 걸린 경우도 예외로 둔다 — D'Flow 전송 대상은 사실상 전부 completed 인데
+      // completed+important=false 회의는 기본 important 큐레이션에 걸려 안 보인다(폴더 상속 기본값도
+      // false). 필터를 걸었는데 큐레이션 때문에 대상이 통째로 숨는 걸 막는다.
+      if (showAll || folderId !== 'all' || dflowFilter) params.show_all = true
       const projectId = useProjectStore.getState().currentProjectId
       if (projectId != null) params.project_id = projectId
       const data = await getMeetings(params)

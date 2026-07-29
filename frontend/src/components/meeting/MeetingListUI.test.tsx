@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { MeetingActionButtons } from './MeetingListUI'
+import { MeetingActionButtons, DflowSyncBadge } from './MeetingListUI'
 import type { Meeting } from '../../api/meetings'
 import { useAuthStore } from '../../stores/authStore'
 
@@ -129,5 +129,43 @@ describe('MeetingActionButtons 소유권 게이팅', () => {
     expect(screen.getByRole('button', { name: '회의 내보내기' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '회의 내보내기' }))
     expect(exported).toBe(1)
+  })
+})
+
+describe('DflowSyncBadge 3상태 + 우선순위', () => {
+  it('미전송(둘 다 미지정) → 렌더 안 함', () => {
+    const { container } = render(<DflowSyncBadge />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('전송됨 + 재전송 불필요 → "D\'Flow ✓"', () => {
+    render(<DflowSyncBadge dflowSyncedAt="2026-03-25T12:00:00Z" dflowNeedsResync={false} />)
+    expect(screen.getByText("D'Flow ✓")).toBeInTheDocument()
+  })
+
+  it('재전송 필요 → "D\'Flow 재전송 필요" (동기화 시각이 있어도 우선)', () => {
+    render(<DflowSyncBadge dflowSyncedAt="2026-03-25T12:00:00Z" dflowNeedsResync />)
+    expect(screen.getByText("D'Flow 재전송 필요")).toBeInTheDocument()
+    expect(screen.queryByText("D'Flow ✓")).not.toBeInTheDocument()
+  })
+
+  it('재전송 필요는 동기화 시각이 없어도(이론상 불가한 조합) 우선순위대로 렌더된다', () => {
+    render(<DflowSyncBadge dflowNeedsResync />)
+    expect(screen.getByText("D'Flow 재전송 필요")).toBeInTheDocument()
+  })
+
+  it('compact=true면 목록용 고정 크기 클래스를 쓴다', () => {
+    render(<DflowSyncBadge dflowSyncedAt="2026-03-25T12:00:00Z" compact />)
+    expect(screen.getByText("D'Flow ✓")).toHaveClass('px-1.5', 'py-0', 'text-[10px]')
+  })
+
+  it('compact=false + isDesktop=true면 데스크톱 크기 클래스를 쓴다', () => {
+    render(<DflowSyncBadge dflowSyncedAt="2026-03-25T12:00:00Z" isDesktop />)
+    expect(screen.getByText("D'Flow ✓")).toHaveClass('px-2', 'py-0.5', 'text-xs')
+  })
+
+  it('compact=false + isDesktop=false면 모바일 크기 클래스를 쓴다', () => {
+    render(<DflowSyncBadge dflowSyncedAt="2026-03-25T12:00:00Z" isDesktop={false} />)
+    expect(screen.getByText("D'Flow ✓")).toHaveClass('px-1.5', 'py-0', 'text-[10px]')
   })
 })

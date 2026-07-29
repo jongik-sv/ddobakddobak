@@ -91,4 +91,20 @@ describe('MeetingCardGrid 중요/잠금 표시', () => {
     expect(screen.getByText('대기중')).toBeInTheDocument()
     expect(screen.queryByText('예약중')).not.toBeInTheDocument()
   })
+
+  it('D\'Flow 미전송 회의는 배지가 없다', () => {
+    renderGrid([makeMeeting({})])
+    expect(screen.queryByText(/D'Flow/)).not.toBeInTheDocument()
+  })
+
+  it('D\'Flow 전송된 회의는 "D\'Flow ✓" 배지를 표시한다', () => {
+    renderGrid([makeMeeting({ dflow_synced_at: '2026-03-25T12:00:00Z', dflow_needs_resync: false })])
+    expect(screen.getByText("D'Flow ✓")).toBeInTheDocument()
+  })
+
+  it('D\'Flow 재전송 필요 회의는 "D\'Flow 재전송 필요" 배지를 표시한다', () => {
+    renderGrid([makeMeeting({ dflow_synced_at: '2026-03-25T12:00:00Z', dflow_needs_resync: true })])
+    expect(screen.getByText("D'Flow 재전송 필요")).toBeInTheDocument()
+    expect(screen.queryByText("D'Flow ✓")).not.toBeInTheDocument()
+  })
 })

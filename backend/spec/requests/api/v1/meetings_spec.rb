@@ -237,6 +237,170 @@ RSpec.describe "Api::V1::Meetings", type: :request do
           expect(ids).to include(completed_unimportant.id)
         end
       end
+
+      # 목록 카드/필터용 D'Flow 필드 노출 범위. dflow_synced_at·dflow_needs_resync 는
+      # meeting_serializable.rb 에서 full 블록 밖(항상 노출)으로 옮겼고, public_uid·dflow_url 은
+      # 카드가 링크를 걸지 않으므로 full 블록에 남아 목록에는 없어야 한다.
+      it "목록 응답에 dflow_synced_at/dflow_needs_resync 를 포함하고 public_uid/dflow_url 은 제외한다" do
+        target = create(:meeting, project: project, creator: user,
+                                  public_uid: SecureRandom.uuid, dflow_synced_at: 1.hour.ago,
+                                  dflow_url: "https://wbs-web.vercel.app/minutes/abc",
+                                  last_user_edit_at: Time.current)
+
+        get "/api/v1/meetings"
+
+        json = response.parsed_body["meetings"].find { |m| m["id"] == target.id }
+        expect(json).to have_key("dflow_synced_at")
+        expect(json).to have_key("dflow_needs_resync")
+        expect(json["dflow_needs_resync"]).to be true
+        expect(json).not_to have_key("public_uid")
+        expect(json).not_to have_key("dflow_url")
+      end
+
+      describe "dflow_status 필터" do
+        it "synced 는 dflow_synced_at 이 있는 회의만 반환한다" do
+          synced = create(:meeting, project: project, creator: user,
+                                     public_uid: SecureRandom.uuid, dflow_synced_at: 1.hour.ago)
+          not_sent = create(:meeting, project: project, creator: user)
+
+          get "/api/v1/meetings", params: { dflow_status: "synced" }
+
+          ids = response.parsed_body["meetings"].map { |m| m["id"] }
+          expect(ids).to include(synced.id)
+          expect(ids).not_to include(not_sent.id)
+        end
+
+        it "not_sent 는 dflow_synced_at 이 없는 회의만 반환한다" do
+          synced = create(:meeting, project: project, creator: user,
+                                     public_uid: SecureRandom.uuid, dflow_synced_at: 1.hour.ago)
+          not_sent = create(:meeting, project: project, creator: user)
+
+          get "/api/v1/meetings", params: { dflow_status: "not_sent" }
+
+          ids = response.parsed_body["meetings"].map { |m| m["id"] }
+          expect(ids).to include(not_sent.id)
+          expect(ids).not_to include(synced.id)
+        end
+
+        it "needs_resync 는 재전송이 필요한 회의만 반환한다" do
+          needs_resync = create(:meeting, project: project, creator: user, public_uid: SecureRandom.uuid,
+                                           dflow_synced_at: 1.hour.ago, last_user_edit_at: 30.minutes.ago)
+          synced_no_edit = create(:meeting, project: project, creator: user, public_uid: SecureRandom.uuid,
+                                             dflow_synced_at: 1.hour.ago, last_user_edit_at: 2.hours.ago)
+
+          get "/api/v1/meetings", params: { dflow_status: "needs_resync" }
+
+          ids = response.parsed_body["meetings"].map { |m| m["id"] }
+          expect(ids).to include(needs_resync.id)
+          expect(ids).not_to include(synced_no_edit.id)
+        end
+
+        # 리뷰 지적: synced 와 needs_resync 는 배타적 분할이어야 한다. dflow_synced_at 만으로
+        # synced 를 정의하면 needs_resync 집합(재전송 필요·amber 배지)을 통째로 포함해 "전송됨"을
+        # 골랐는데 amber 배지 행이 섞여 나온다 — dflow_synced 는 needs_resync 를 제외해야 한다.
+        it "synced 는 재전송 필요(needs_resync) 회의를 제외한다(배타적 분할)" do
+          needs_resync = create(:meeting, project: project, creator: user, public_uid: SecureRandom.uuid,
+                                           dflow_synced_at: 1.hour.ago, last_user_edit_at: 30.minutes.ago)
+          synced_no_edit = create(:meeting, project: project, creator: user, public_uid: SecureRandom.uuid,
+                                             dflow_synced_at: 1.hour.ago, last_user_edit_at: 2.hours.ago)
+
+          get "/api/v1/meetings", params: { dflow_status: "synced" }
+
+          ids = response.parsed_body["meetings"].map { |m| m["id"] }
+          expect(ids).to include(synced_no_edit.id)
+          expect(ids).not_to include(needs_resync.id)
+        end
+
+        it "알 수 없는 값/빈 값은 무시되어 전체를 반환한다(기존 동작 유지)" do
+          create(:meeting, project: project, creator: user)
+          create(:meeting, project: project, creator: user, public_uid: SecureRandom.uuid, dflow_synced_at: 1.hour.ago)
+
+          get "/api/v1/meetings", params: { dflow_status: "bogus" }
+          expect(response.parsed_body["meetings"].length).to eq(2)
+
+          get "/api/v1/meetings", params: { dflow_status: "" }
+          expect(response.parsed_body["meetings"].length).to eq(2)
+        end
+
+        # 적용 위치 회귀: status_counts/total 은 dflow_status 필터 적용 "앞" 스코프가 아니라
+        # 필터가 걸린 scope 에서 계산돼야 한다(컨트롤러 주석 참고) — 아니면 탭 카운트와
+        # 실제 반환 행이 어긋난다.
+        it "필터 적용 시 status_counts/total 이 실제 반환 행과 일치한다" do
+          synced_completed = create(:meeting, project: project, creator: user, status: "completed",
+                                                public_uid: SecureRandom.uuid, dflow_synced_at: 1.hour.ago)
+          synced_pending = create(:meeting, project: project, creator: user, status: "pending",
+                                             public_uid: SecureRandom.uuid, dflow_synced_at: 1.hour.ago)
+          create(:meeting, project: project, creator: user) # not_sent — 필터에서 제외돼야 함
+
+          get "/api/v1/meetings", params: { dflow_status: "synced" }
+
+          json = response.parsed_body
+          ids = json["meetings"].map { |m| m["id"] }
+          expect(ids.sort).to eq([ synced_completed.id, synced_pending.id ].sort)
+          expect(json["meta"]["total"]).to eq(2)
+          expect(json["meta"]["status_counts"].values.sum).to eq(2)
+          expect(json["meta"]["status_counts"]["completed"]).to eq(1)
+          expect(json["meta"]["status_counts"]["pending"]).to eq(1)
+        end
+      end
+
+      # N+1 회귀 방지: index#includes 에 :summaries 를 추가하고 active_summary 를
+      # loaded-aware 로 만든 목적 자체가 "목록 N건에 summaries 쿼리 1회"다.
+      # dflow_synced_at/public_uid 를 채워야 dflow_needs_resync? 가 첫 줄 guard(blank? 면 즉시
+      # false)에서 리턴하지 않고 active_summary 를 실제로 호출한다 — 안 채우면 이 테스트가
+      # includes(:summaries) 프리로드만 재는 거라, active_summary 가 loaded-aware 를 잃고
+      # SQL 분기로 되돌아가도(회귀) 여전히 통과해 버린다(회귀를 못 잡는 거짓 안전망).
+      #
+      # pending/completed 두 케이스를 각각 둔다 — active_summary 의 completed? 분기(loaded 시
+      # finals.min_by(&:id))는 pending 픽스처만으로는 전혀 실행되지 않는다(non-completed 는
+      # else 분기인 summaries.max_by 만 탄다). D'Flow 로 보내는 회의는 사실상 전부 completed 이므로
+      # completed 케이스가 실전에서 타는 경로다(실측: completed? 분기를 SQL 로 되돌리면 pending
+      # 픽스처는 여전히 1회로 통과하지만 completed 픽스처는 6회로 검출된다).
+      it "목록 N건에서 summaries 조회는 1회만 발생한다(N+1 회귀 방지, pending)" do
+        create_list(:meeting, 5, project: project, creator: user, status: "pending",
+                                  public_uid: nil, dflow_synced_at: 1.hour.ago).each do |m|
+          m.update_column(:public_uid, SecureRandom.uuid)
+          create(:summary, meeting: m, summary_type: "final")
+        end
+
+        summary_selects = 0
+        counter = lambda do |*args|
+          sql = args.last[:sql].to_s
+          if sql.start_with?("SELECT") && sql.include?("summaries") && !sql.include?("summaries_fts")
+            summary_selects += 1
+          end
+        end
+
+        ActiveSupport::Notifications.subscribed(counter, "sql.active_record") do
+          get "/api/v1/meetings"
+        end
+
+        expect(response.parsed_body["meetings"].length).to eq(5)
+        expect(summary_selects).to eq(1)
+      end
+
+      it "목록 N건에서 summaries 조회는 1회만 발생한다(N+1 회귀 방지, completed — active_summary 의 completed? 분기)" do
+        create_list(:meeting, 5, project: project, creator: user, status: "completed",
+                                  public_uid: nil, dflow_synced_at: 1.hour.ago).each do |m|
+          m.update_column(:public_uid, SecureRandom.uuid)
+          create(:summary, meeting: m, summary_type: "final")
+        end
+
+        summary_selects = 0
+        counter = lambda do |*args|
+          sql = args.last[:sql].to_s
+          if sql.start_with?("SELECT") && sql.include?("summaries") && !sql.include?("summaries_fts")
+            summary_selects += 1
+          end
+        end
+
+        ActiveSupport::Notifications.subscribed(counter, "sql.active_record") do
+          get "/api/v1/meetings"
+        end
+
+        expect(response.parsed_body["meetings"].length).to eq(5)
+        expect(summary_selects).to eq(1)
+      end
     end
   end
 

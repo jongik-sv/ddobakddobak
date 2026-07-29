@@ -52,9 +52,23 @@ module Api
           scope = scope.where("meetings.important = ? OR meetings.status != ?", true, "completed")
         end
 
+        # D'Flow 전송 상태 필터. folder_id/project_id/important 와 같은 자리 — 반드시 아래
+        # status_counts(= scope.group(:status).count) 계산 앞에서 적용해야 상태 탭 카운트가
+        # 실제 반환 행과 일치한다(뒤에 붙이면 필터 안 걸린 카운트가 그대로 노출돼 어긋난다).
+        # 그 외 값·빈 값은 무시(전체 노출, 기존 동작 유지).
+        case params[:dflow_status]
+        when "synced" then scope = scope.dflow_synced
+        when "needs_resync" then scope = scope.dflow_needs_resync
+        when "not_sent" then scope = scope.dflow_not_sent
+        end
+
         # 사용자가 보는(접근가능·필터적용된) 녹음중 회의 중 비정상 종료된 것을 자가복구.
         # created_by 한정은 타신분 생성 stuck 회의(#213)를 놓쳤음 → 보이는 것 기준으로 청소.
         # recording 회의는 소수라 비용 작음. status_counts/페이지보다 먼저 실행해 카운트·뱃지 일관.
+        # ⚠️ dflow_status 필터가 걸린 요청은 위와 같은 scope 를 쓰므로, 필터에 해당하지 않는(예:
+        # needs_resync 필터인데 미전송 상태로 stuck 인) recording 회의는 이 요청에서 치유되지
+        # 않는다 — 필터 없는 다른 요청이 결국 치유하므로 수용한다(기존 "보이는 것 기준으로 청소"
+        # 주석과 일관).
         scope.where(status: :recording).find_each(&:heal_stale_recording!)
 
         # 상태별 카운트는 status 필터 적용 전 스코프에서 계산 (탭 선택과 무관하게 정확)
@@ -70,7 +84,7 @@ module Api
         total = params[:status].present? ? (status_counts[params[:status]] || 0) : status_counts.values.sum
 
         meetings = scope.by_status(params[:status])
-                        .includes(:creator, :tags, :meeting_attachments)
+                        .includes(:creator, :tags, :meeting_attachments, :summaries)
                         .order(created_at: :desc)
                         .limit(pagination_per)
                         .offset((pagination_page - 1) * pagination_per)
@@ -89,7 +103,7 @@ module Api
         missed_before = Meeting::SCHEDULE_TRIGGER_GRACE.ago
         meetings = Meeting.accessible_by(current_user)
                           .scheduled.pending.where(schedule_dismissed_at: nil)
-                          .includes(:creator, :tags, :meeting_attachments)
+                          .includes(:creator, :tags, :meeting_attachments, :summaries)
                           .order(:scheduled_start_time)
 
         render json: {

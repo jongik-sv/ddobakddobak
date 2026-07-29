@@ -104,11 +104,12 @@ export interface Meeting {
   recorder_active?: boolean
   /** D'Flow 전송 식별자(UUIDv7). 최초 전송 시 발급, 이후 불변(수동 해제/재발급 제외). show=full 응답에만 포함. */
   public_uid?: string | null
-  /** 마지막 D'Flow 전송 성공 시각(ISO 문자열). show=full 응답에만 포함. */
+  /** 마지막 D'Flow 전송 성공 시각(ISO 문자열). 목록(full:false)에도 노출 — 카드/테이블 배지 표시용. */
   dflow_synced_at?: string | null
   /** D'Flow 전송 응답의 상세 페이지 링크. show=full 응답에만 포함. */
   dflow_url?: string | null
-  /** 최초 전송 이후 로컬 편집/요약 갱신이 마지막 전송보다 최신인지(서버 계산). show=full 응답에만 포함. */
+  /** 최초 전송 이후 로컬 편집/요약 갱신이 마지막 전송보다 최신인지(서버 계산). 목록(full:false)에도
+   *  노출 — 카드/테이블 배지 표시용. */
   dflow_needs_resync?: boolean
 }
 
@@ -149,6 +150,8 @@ export interface GetMeetingsParams {
   project_id?: number | null
   /** true면 중요 필터를 해제하고 전체 회의를 가져온다(show_all=1). 미지정/false면 important=true만. */
   show_all?: boolean
+  /** D'Flow 전송 상태 필터. 'synced' | 'needs_resync' | 'not_sent'. 그 외/미지정은 전체. */
+  dflow_status?: string
 }
 
 /** 온디바이스(로컬) STT 결과를 서버에 일괄 영속화한다 (멱등: sequence_number 기준 upsert). */

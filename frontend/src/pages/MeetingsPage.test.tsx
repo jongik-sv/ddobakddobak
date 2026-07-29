@@ -28,6 +28,17 @@ vi.mock('../api/folders', () => ({
   getFolders: vi.fn().mockResolvedValue([]),
 }))
 
+const { mockGetDflowSettings } = vi.hoisted(() => ({
+  mockGetDflowSettings: vi.fn(),
+}))
+vi.mock('../api/dflow', () => ({
+  getDflowSettings: mockGetDflowSettings,
+}))
+// 기본값: D'Flow 비활성(기존 동작과 동일 — 필터 컨트롤 미노출). vi.clearAllMocks()는 구현을
+// 지우지 않으므로(mockReset과 다름) 이 기본값이 파일 전체 테스트에 유지된다.
+// D'Flow 필터 전용 테스트에서만 개별적으로 override한다.
+mockGetDflowSettings.mockResolvedValue({ enabled: false, base_url: null, api_secret_masked: '' })
+
 const mockNavigate = vi.fn()
 const stableSearchParams = new URLSearchParams()
 const mockSetSearchParams = vi.fn()
@@ -795,5 +806,119 @@ describe('MeetingsPage 목록 깜빡임 방지 (idea.md 29)', () => {
     expect(useMeetingStore.getState().isRefreshing).toBe(false)
     const afterNode = screen.getByText('회의가 없습니다.')
     expect(afterNode).toBe(beforeNode)
+  })
+})
+
+/* ================================================================== */
+/*  dflow-link-badge 설계 (2026-07-29): D'Flow 전송 상태 필터              */
+/* ================================================================== */
+describe("MeetingsPage D'Flow 전송 상태 필터", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsDesktop = true
+    useAuthStore.setState({ user: { id: 1, email: 'me@x.com', name: '사용자1', role: 'member' } })
+    useMeetingStore.getState().reset()
+    mockGetMeetings.mockResolvedValue({
+      meetings,
+      meta: { total: 3, page: 1, per: 20 },
+    })
+    useMeetingStore.setState({
+      meetings,
+      meta: { total: 3, page: 1, per: 20 },
+      isLoading: false,
+      hasLoadedOnce: true,
+    })
+  })
+
+  afterEach(() => {
+    // 파일 상단 기본값(비활성)으로 복원 — mockResolvedValue는 clearAllMocks로 지워지지 않으므로
+    // 이 describe에서 켠 활성 상태가 다른 describe로 새어나가지 않게 매 테스트 후 되돌린다.
+    mockGetDflowSettings.mockResolvedValue({ enabled: false, base_url: null, api_secret_masked: '' })
+  })
+
+  it("D'Flow 연동 비활성이면 필터 select가 렌더되지 않는다", async () => {
+    mockGetDflowSettings.mockResolvedValue({ enabled: false, base_url: null, api_secret_masked: '' })
+    renderPage()
+
+    await waitFor(() => {
+      expect(mockGetDflowSettings).toHaveBeenCalled()
+    })
+    expect(screen.queryByLabelText("D'Flow 전송 상태")).not.toBeInTheDocument()
+  })
+
+  it("D'Flow 연동 활성이면 필터 select가 렌더된다", async () => {
+    mockGetDflowSettings.mockResolvedValue({ enabled: true, base_url: 'https://dflow.example.com', api_secret_masked: '****' })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("D'Flow 전송 상태")).toBeInTheDocument()
+    })
+  })
+
+  it("필터 변경 시 getMeetings가 dflow_status를 전달받는다", async () => {
+    mockGetDflowSettings.mockResolvedValue({ enabled: true, base_url: 'https://dflow.example.com', api_secret_masked: '****' })
+    renderPage()
+
+    const select = await screen.findByLabelText("D'Flow 전송 상태")
+    // 마운트 시 발생하는 초기 fetch(300ms 디바운스)를 먼저 흘려보낸 뒤 호출 기록을 비운다.
+    await waitFor(() => expect(mockGetMeetings).toHaveBeenCalled())
+    mockGetMeetings.mockClear()
+
+    await userEvent.selectOptions(select, 'synced')
+
+    await waitFor(() => {
+      expect(mockGetMeetings).toHaveBeenCalledWith(expect.objectContaining({ dflow_status: 'synced' }))
+    })
+  })
+
+  // 리뷰 지적: getDflowSettings() 가 실패(또는 enabled:false 확정)했을 때 select 만 사라지고
+  // dflowFilter 는 store 에 남아 계속 서버로 전송되면, 화면에 그 원인을 나타내는 컨트롤이 없어
+  // 새로고침 전까지 해제할 수단이 없다. 두 경로(성공+enabled:false / 요청 실패) 모두에서
+  // dflowFilter 가 함께 비워져야 한다.
+  it('D\'Flow 설정 조회가 실패하면(catch) 남아있던 dflowFilter도 함께 비운다', async () => {
+    mockGetDflowSettings.mockRejectedValue(new Error('네트워크 오류'))
+    useMeetingStore.setState({ dflowFilter: 'not_sent' })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(useMeetingStore.getState().dflowFilter).toBe('')
+    })
+    expect(screen.queryByLabelText("D'Flow 전송 상태")).not.toBeInTheDocument()
+  })
+
+  it("D'Flow 연동이 비활성으로 확정되면(then, enabled:false) 남아있던 dflowFilter도 함께 비운다", async () => {
+    mockGetDflowSettings.mockResolvedValue({ enabled: false, base_url: null, api_secret_masked: '' })
+    useMeetingStore.setState({ dflowFilter: 'synced' })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(useMeetingStore.getState().dflowFilter).toBe('')
+    })
+    expect(screen.queryByLabelText("D'Flow 전송 상태")).not.toBeInTheDocument()
+  })
+
+  it('모바일 BottomSheet 초기화 클릭 시 dflowFilter가 클리어된다', async () => {
+    // D'Flow 연동 활성 상태로 고정 — 비활성이면 마운트 시점에 dflowFilter가 이미 클리어돼(위
+    // "비활성 확정 시 dflowFilter 클리어" 동작) 이 테스트의 전제(사용자가 고른 필터가 유지되다가
+    // 초기화 버튼으로만 지워진다)를 검증할 수 없다.
+    mockGetDflowSettings.mockResolvedValue({ enabled: true, base_url: 'https://dflow.example.com', api_secret_masked: '****' })
+    mockIsDesktop = false
+    useMeetingStore.setState({ dflowFilter: 'synced' })
+
+    renderPage()
+    await userEvent.click(screen.getByTestId('mobile-filter-toggle'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /초기화/i })).toBeInTheDocument()
+    })
+    // 사전 확인: dflowFilter는 URL 동기화 대상이 아니고, D'Flow 연동도 활성 상태라 마운트만으로는
+    // 바뀌지 않는다(초기화 버튼을 눌러야만 지워진다).
+    expect(useMeetingStore.getState().dflowFilter).toBe('synced')
+
+    await userEvent.click(screen.getByRole('button', { name: /초기화/i }))
+
+    expect(useMeetingStore.getState().dflowFilter).toBe('')
   })
 })

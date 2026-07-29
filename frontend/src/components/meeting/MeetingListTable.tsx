@@ -2,7 +2,7 @@ import { FolderClosed, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Lock, Star
 import type { Meeting } from '../../api/meetings'
 import type { FolderNode } from '../../api/folders'
 import { initDrag } from '../../utils/dragState'
-import { StatusBadge, MeetingTypeBadge, MeetingActionButtons } from './MeetingListUI'
+import { StatusBadge, MeetingTypeBadge, DflowSyncBadge, MeetingActionButtons } from './MeetingListUI'
 import { MeetingIdBadge } from './MeetingIdBadge'
 import { formatDate, folderPath, formatScheduledStart, scheduleSummary } from '../../lib/meetingFormat'
 import { stripCitationMarkers } from '../../lib/citationMarkers'
@@ -191,7 +191,11 @@ export function MeetingListTable({
               <span className="text-xs text-muted-foreground truncate">{meeting.created_by?.name || '-'}</span>
               <span className="text-xs text-muted-foreground">{formatDate(meeting.created_at)}</span>
               <StatusBadge status={meeting.status} scheduled={meeting.status === 'pending' && !!meeting.scheduled_start_time} paused={meeting.status === 'recording' && !!meeting.paused_at} summarizing={meeting.summarizing} />
-              <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
+              {/* 그리드 컬럼 수 고정(6열)이라 유형+D'Flow 배지를 한 셀에 묶어서 렌더 — 별도 열을 늘리지 않는다. */}
+              <div className="flex flex-wrap items-center gap-1">
+                <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
+                <DflowSyncBadge dflowSyncedAt={meeting.dflow_synced_at} dflowNeedsResync={meeting.dflow_needs_resync} compact />
+              </div>
               <div className="flex items-center justify-end gap-1">
                 <MeetingActionButtons
                   meeting={meeting}

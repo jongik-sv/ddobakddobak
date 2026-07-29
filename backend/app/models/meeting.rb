@@ -198,6 +198,42 @@ class Meeting < ApplicationRecord
   # 수정·삭제 가능한 회의 목록 범위: admin은 전체, 그 외는 본인 소유분만.
   scope :editable_by, ->(user) { user.admin? ? all : where(created_by_id: user.id) }
 
+  # ── D'Flow 전송 상태 필터(목록 dflow_status 파라미터용) ──
+  scope :dflow_not_sent, -> { where(dflow_synced_at: nil) }
+  # #dflow_needs_resync? 를 SQL로 미러링한다. 활성 요약(#active_summary) 선택 규칙까지 그대로
+  # 옮겨야 한다 — "아무 요약이나 동기화 이후 갱신됐으면 재전송 필요"로 단순화하면 비활성 요약만
+  # 수정된 행(completed 인데 안 쓰는 realtime 이 갱신된 경우 등)까지 오탐한다. CASE 로 completed
+  # 여부에 따라 분기하고, 각 분기 안에서 다시 (a) final 최소 id 우선 (b) 없으면
+  # [generated_at, id] 최댓값 폴백을 그대로 재현한다(Ruby 쪽과 순서 규칙을 1:1로 맞춤).
+  scope :dflow_needs_resync, -> {
+    where(<<~SQL.squish)
+      meetings.public_uid IS NOT NULL AND meetings.dflow_synced_at IS NOT NULL AND (
+        meetings.last_user_edit_at > meetings.dflow_synced_at
+        OR (
+          CASE WHEN meetings.status = 'completed' THEN
+            COALESCE(
+              (SELECT s.updated_at FROM summaries s
+               WHERE s.meeting_id = meetings.id AND s.summary_type = 'final'
+               ORDER BY s.id ASC LIMIT 1),
+              (SELECT s.updated_at FROM summaries s
+               WHERE s.meeting_id = meetings.id
+               ORDER BY s.generated_at DESC, s.id DESC LIMIT 1)
+            )
+          ELSE
+            (SELECT s.updated_at FROM summaries s
+             WHERE s.meeting_id = meetings.id
+             ORDER BY s.generated_at DESC, s.id DESC LIMIT 1)
+          END
+        ) > meetings.dflow_synced_at
+      )
+    SQL
+  }
+  # dflow_synced 는 dflow_needs_resync 집합을 제외해야 한다 — 프론트 4지선다(전체/전송됨/재전송
+  # 필요/미전송)가 사용자에게 배타적 분할로 보이므로, "전송됨"을 고르면 재전송 필요(amber) 배지
+  # 행이 함께 나오면 안 된다(리뷰 지적: "재전송 필요" 필터가 초록 배지 행을 반환하는 버그의
+  # 거울상 — 위 dflow_needs_resync 정의 다음에 둬야 참조할 수 있다).
+  scope :dflow_synced, -> { where.not(dflow_synced_at: nil).where.not(id: dflow_needs_resync.select(:id)) }
+
   def owner?(user)
     created_by_id == user.id
   end
@@ -371,12 +407,27 @@ class Meeting < ApplicationRecord
 
   # completed 회의만 final 을 하드 우선. reopen(=recording 복귀) 후엔 최신 우선 —
   # stale final 이 reopen 후 쌓이는 realtime 진행분을 가리지 않게 (구현리뷰 useredit-M5).
+  #
+  # loaded-aware: summaries 가 이미 로드돼 있으면(목록 preload) in-memory 로 고른다 — 매번 SQL을
+  # 치던 걸 없애 목록 N건에서 N+1을 막는다(meeting_attachments.loaded? 와 동일 관용구,
+  # meeting_serializable.rb 참고). in-memory 분기는 SQL 분기와 정확히 같은 레코드를 골라야 한다:
+  # - completed? 인 최소 id final(= 바인딩 없는 bare find_by 의 rowid/id 순서를 미러링)
+  # - fallback은 [generated_at, id] 최댓값(= order(generated_at: :desc, id: :desc).first 와 동일)
   def active_summary
-    if completed?
-      summaries.find_by(summary_type: "final") ||
-        summaries.order(generated_at: :desc, id: :desc).first
+    if summaries.loaded?
+      if completed?
+        finals = summaries.select { |s| s.summary_type == "final" }
+        finals.min_by(&:id) || summaries.max_by { |s| [ s.generated_at, s.id ] }
+      else
+        summaries.max_by { |s| [ s.generated_at, s.id ] }
+      end
     else
-      summaries.order(generated_at: :desc, id: :desc).first
+      if completed?
+        summaries.find_by(summary_type: "final") ||
+          summaries.order(generated_at: :desc, id: :desc).first
+      else
+        summaries.order(generated_at: :desc, id: :desc).first
+      end
     end
   end
 

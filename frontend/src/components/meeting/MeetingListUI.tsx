@@ -86,6 +86,41 @@ function renderStatusBadge(status: Meeting['status'], scheduled?: boolean, pause
   )
 }
 
+interface DflowSyncBadgeProps {
+  dflowSyncedAt?: string | null
+  dflowNeedsResync?: boolean
+  /** 목록(카드/테이블)처럼 항상 작은 고정 크기(px-1.5 py-0 text-[10px])로 렌더. */
+  compact?: boolean
+  /** compact=false일 때만 사용 — MeetingActionHeader의 기존 데스크톱/모바일 크기 분기를 그대로 재현. */
+  isDesktop?: boolean
+}
+
+/**
+ * D'Flow 전송 상태 배지. 우선순위: 재전송 필요 > 전송됨 > (미전송이면 렌더 안 함).
+ * MeetingActionHeader에 있던 삼항 로직을 공용화 — 소비처(헤더/카드/테이블)가 각자
+ * 우선순위 판단을 복붙하지 않도록 여기 한 곳에서만 결정한다.
+ */
+export function DflowSyncBadge({ dflowSyncedAt, dflowNeedsResync, compact = false, isDesktop = true }: DflowSyncBadgeProps) {
+  const badge = dflowNeedsResync
+    ? { label: "D'Flow 재전송 필요", title: '회의록이 마지막 전송 이후 수정되었습니다', className: 'bg-amber-100 text-amber-700 border-amber-300' }
+    : dflowSyncedAt
+      ? { label: "D'Flow ✓", title: "D'Flow로 전송된 회의입니다", className: 'bg-emerald-50 text-emerald-700 border-emerald-300' }
+      : null
+
+  if (!badge) return null
+
+  const sizeClass = compact ? 'px-1.5 py-0 text-[10px]' : isDesktop ? 'px-2 py-0.5 text-xs' : 'px-1.5 py-0 text-[10px]'
+
+  return (
+    <span
+      className={`shrink-0 rounded-full border ${badge.className} ${sizeClass}`}
+      title={badge.title}
+    >
+      {badge.label}
+    </span>
+  )
+}
+
 export function MeetingTypeBadge({ type, typeMap }: { type: string; typeMap: Record<string, string> }) {
   return (
     <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200">

@@ -581,5 +581,142 @@ RSpec.describe Meeting, type: :model do
         expect(meeting.public_uid).to eq("0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77")
       end
     end
+
+    # 목록 dflow_status 필터(meetings_controller#index)가 쓰는 named scope 3개.
+    describe "필터 스코프 (dflow_synced / dflow_not_sent / dflow_needs_resync)" do
+      it "dflow_synced 는 dflow_synced_at 이 있는 회의만 반환한다" do
+        synced = create(:meeting, public_uid: SecureRandom.uuid, dflow_synced_at: 1.hour.ago)
+        not_sent = create(:meeting, public_uid: nil, dflow_synced_at: nil)
+
+        result = Meeting.where(id: [ synced.id, not_sent.id ]).dflow_synced
+        expect(result).to contain_exactly(synced)
+      end
+
+      it "dflow_not_sent 는 dflow_synced_at 이 nil 인 회의만 반환한다" do
+        synced = create(:meeting, public_uid: SecureRandom.uuid, dflow_synced_at: 1.hour.ago)
+        not_sent = create(:meeting, public_uid: nil, dflow_synced_at: nil)
+
+        result = Meeting.where(id: [ synced.id, not_sent.id ]).dflow_not_sent
+        expect(result).to contain_exactly(not_sent)
+      end
+
+      # 패리티 매트릭스(설계 스펙 §3): dflow_needs_resync 스코프(SQL)의 결과 집합이
+      # #dflow_needs_resync?(Ruby, active_summary 경유) 의 true 집합과 정확히 일치해야 한다.
+      # 특히 케이스 5(completed 인데 비활성 realtime 만 갱신)에서 "아무 요약이나 동기화 이후
+      # 갱신되면 true"로 단순화하면 오탐(false positive)이 나므로, 이 케이스가 핵심 회귀 방지다.
+      describe "패리티: scope 결과 집합 == #dflow_needs_resync? 참 집합 (6개 케이스)" do
+        it "미전송 / 무변경 / 편집갱신 / final갱신 / 완료+비활성realtime갱신 / reopen+realtime갱신" do
+          # 1. 미전송
+          not_sent = create(:meeting, public_uid: nil, dflow_synced_at: nil)
+
+          # 2. 전송 후 무변경
+          unchanged = create(:meeting, public_uid: SecureRandom.uuid,
+                                       dflow_synced_at: 1.hour.ago, last_user_edit_at: 2.hours.ago)
+
+          # 3. 전송 후 last_user_edit_at 갱신
+          edited = create(:meeting, public_uid: SecureRandom.uuid,
+                                     dflow_synced_at: 1.hour.ago, last_user_edit_at: 30.minutes.ago)
+
+          # 4. 전송 후 final 요약 수정 (completed)
+          final_edited = create(:meeting, status: "completed", public_uid: SecureRandom.uuid,
+                                          dflow_synced_at: 1.hour.ago, last_user_edit_at: 2.hours.ago)
+          final4 = create(:summary, meeting: final_edited, summary_type: "final", generated_at: 50.minutes.ago)
+          final4.update_column(:updated_at, 30.minutes.ago) # 동기화 이후
+
+          # 5. completed + final/realtime 공존, realtime만 전송 후 수정(final 은 미변경) — 오탐 방지 케이스
+          inactive_realtime_edited = create(:meeting, status: "completed", public_uid: SecureRandom.uuid,
+                                                       dflow_synced_at: 1.hour.ago, last_user_edit_at: 2.hours.ago)
+          final5 = create(:summary, meeting: inactive_realtime_edited, summary_type: "final", generated_at: 2.hours.ago)
+          final5.update_column(:updated_at, 2.hours.ago) # 동기화 이전 — 미변경
+          realtime5 = create(:summary, meeting: inactive_realtime_edited, summary_type: "realtime", generated_at: 50.minutes.ago)
+          realtime5.update_column(:updated_at, 10.minutes.ago) # 동기화 이후지만 completed 라 비활성 요약
+
+          # 6. reopen(completed → recording 복귀) 후 realtime 갱신
+          reopened = create(:meeting, status: "recording", public_uid: SecureRandom.uuid,
+                                       dflow_synced_at: 1.hour.ago, last_user_edit_at: 2.hours.ago)
+          stale_final6 = create(:summary, meeting: reopened, summary_type: "final", generated_at: 2.hours.ago)
+          stale_final6.update_column(:updated_at, 2.hours.ago)
+          fresh_realtime6 = create(:summary, meeting: reopened, summary_type: "realtime", generated_at: 10.minutes.ago)
+          fresh_realtime6.update_column(:updated_at, 10.minutes.ago)
+
+          all_meetings = [ not_sent, unchanged, edited, final_edited, inactive_realtime_edited, reopened ]
+
+          expected_true_ids = all_meetings.select(&:dflow_needs_resync?).map(&:id).sort
+          scope_ids = Meeting.where(id: all_meetings.map(&:id)).dflow_needs_resync.pluck(:id).sort
+
+          expect(scope_ids).to eq(expected_true_ids)
+          # 매트릭스가 전부 true/전부 false로 퇴화하지 않았는지(패리티가 의미 있는 비교인지) 확인.
+          expect(expected_true_ids).to eq([ edited.id, final_edited.id, reopened.id ].sort)
+
+          # 목록 경로에서 실제로 맞물리는 건 SQL scope vs loaded(includes(:summaries)) 분기다
+          # (unloaded 분기와의 일치는 위에서 이미 확인) — 이걸 직접 단언해 전이적 추론에 기대지 않는다.
+          loaded_true_ids = Meeting.includes(:summaries).where(id: all_meetings.map(&:id))
+                                   .select(&:dflow_needs_resync?).map(&:id).sort
+          expect(loaded_true_ids).to eq(expected_true_ids)
+        end
+      end
+    end
+  end
+
+  # meeting_serializable.rb: N+1 없이 목록에서 dflow_needs_resync? 를 계산하려면
+  # summaries.loaded? 일 때 in-memory 분기가 기존 SQL(unloaded) 분기와 정확히 같은 레코드를
+  # 골라야 한다. meeting_summary_spec.rb 는 unloaded(bare SQL) 규칙을 검증하므로, 여기서는
+  # loaded(includes(:summaries)) 경로가 그 unloaded 결과와 일치하는지에 집중한다.
+  describe "#active_summary (loaded-aware: summaries.loaded? 분기)" do
+    let(:user) { create(:user) }
+    let(:project) { create(:project, creator: user) }
+
+    it "completed + final 복수: loaded 도 unloaded 와 동일하게 최소 id final 을 고른다" do
+      meeting = create(:meeting, project: project, creator: user, status: "completed")
+      # 생성 순서(id 오름차순)와 generated_at 순서를 일부러 어긋나게 둬서 "최소 id" 규칙만 걸린다.
+      final_first = create(:summary, meeting: meeting, summary_type: "final", generated_at: 1.minute.ago)
+      final_second = create(:summary, meeting: meeting, summary_type: "final", generated_at: 10.minutes.ago)
+      create(:summary, meeting: meeting, summary_type: "realtime", generated_at: Time.current)
+
+      unloaded_result = Meeting.find(meeting.id).active_summary
+
+      loaded = Meeting.includes(:summaries).find(meeting.id)
+      expect(loaded.summaries).to be_loaded
+      loaded_result = loaded.active_summary
+
+      expect(loaded_result).to eq(unloaded_result)
+      expect(loaded_result.id).to eq([ final_first, final_second ].min_by(&:id).id)
+    end
+
+    it "completed + final 없음: loaded 도 unloaded 와 동일하게 [generated_at, id] 최댓값으로 폴백한다" do
+      meeting = create(:meeting, project: project, creator: user, status: "completed")
+      create(:summary, meeting: meeting, summary_type: "realtime", generated_at: 10.minutes.ago)
+      newer = create(:summary, meeting: meeting, summary_type: "realtime", generated_at: 1.minute.ago)
+
+      unloaded_result = Meeting.find(meeting.id).active_summary
+
+      loaded = Meeting.includes(:summaries).find(meeting.id)
+      loaded_result = loaded.active_summary
+
+      expect(loaded_result).to eq(unloaded_result)
+      expect(loaded_result.id).to eq(newer.id)
+    end
+
+    it "non-completed(recording): loaded 도 unloaded 와 동일하게 [generated_at, id] 최댓값을 고른다(stale final 무시)" do
+      meeting = create(:meeting, project: project, creator: user, status: "recording")
+      create(:summary, meeting: meeting, summary_type: "final", generated_at: 30.minutes.ago)
+      fresh_realtime = create(:summary, meeting: meeting, summary_type: "realtime", generated_at: 1.minute.ago)
+
+      unloaded_result = Meeting.find(meeting.id).active_summary
+
+      loaded = Meeting.includes(:summaries).find(meeting.id)
+      loaded_result = loaded.active_summary
+
+      expect(loaded_result).to eq(unloaded_result)
+      expect(loaded_result.id).to eq(fresh_realtime.id)
+    end
+
+    it "summaries 가 없으면 loaded 도 nil 을 반환한다" do
+      meeting = create(:meeting, project: project, creator: user, status: "completed")
+
+      loaded = Meeting.includes(:summaries).find(meeting.id)
+      expect(loaded.summaries).to be_loaded
+      expect(loaded.active_summary).to be_nil
+    end
   end
 end

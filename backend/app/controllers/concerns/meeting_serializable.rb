@@ -61,7 +61,12 @@ module MeetingSerializable
         minutes: attachment_counts["minutes"] || 0
       },
       created_at: meeting.created_at,
-      updated_at: meeting.updated_at
+      updated_at: meeting.updated_at,
+      # D'Flow 전송 상태(목록 카드 배지·필터용) — 상세 재조회 없이 목록에서도 배지를 그릴 수 있어야
+      # 해서 summarizing 과 같은 이유로 목록(full:false)에도 노출한다. public_uid·dflow_url 은
+      # 카드가 링크를 걸지 않으므로 full 블록에만 남긴다(아래).
+      dflow_synced_at: meeting.dflow_synced_at,
+      dflow_needs_resync: meeting.dflow_needs_resync?
     }
 
     if full
@@ -74,11 +79,10 @@ module MeetingSerializable
       # 이전 회의 참고: 배지 표시용 (id + 제목). list 응답엔 미포함(N+1 회피).
       json[:previous_meeting_id] = meeting.previous_meeting_id
       json[:previous_meeting_title] = meeting.previous_meeting&.title
-      # D'Flow 전송 상태(배지·다이얼로그 초기 상태용) — status 액션 재호출 없이 렌더.
+      # D'Flow 전송 상태(다이얼로그 초기 상태용) — status 액션 재호출 없이 렌더.
+      # dflow_synced_at·dflow_needs_resync 는 목록 배지에도 필요해 always-on 블록으로 옮겼다(위 참고).
       json[:public_uid] = meeting.public_uid
-      json[:dflow_synced_at] = meeting.dflow_synced_at
       json[:dflow_url] = meeting.dflow_url
-      json[:dflow_needs_resync] = meeting.dflow_needs_resync?
       # transcripts를 한 번만 로드해 max 집계와 직렬화에 재사용(기존 3쿼리 → 1쿼리).
       # 빈 컬렉션이면 max가 nil → to_i로 0 (기존 .maximum(:col).to_i와 동일).
       ordered_transcripts = meeting.transcripts.order(:started_at_ms).to_a
