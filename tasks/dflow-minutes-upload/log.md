@@ -255,3 +255,23 @@
   - 되돌리기: 코드 롤백 가능. 이미 나간 제목은 재전송으로만 정정되고 재전송하면 **D'Flow에 버전 append(불가역, 정본 §8.1)**
   - 완화 규칙: R2까지 **기존 회의 재전송 회피**. 신규 전송은 허용(접두만 없음)
   - 3차·4차 rake는 실행 안 하면 무해(재편철은 수작업 방침, 자동링크는 T4 게이트 미충족)
+
+[2026-07-29 세션6] [ACTION] 사용자 "디플로우 배포 완료" 신호 → 실측 재개. wbs-web fetch 2회(읽기 전용, 로컬 조작 없음)
+[2026-07-29 세션6] [VERIFICATION] ⛔ **D'Flow R1 미배포 확정** — 사용자 인지와 실측이 어긋남
+  - `origin/main` `f3d1aef`→`7673f90`(2026-07-28 22:36). 신규 2커밋 = 칸반 빠른필터 수정 · WBS 가중치 헤더. **folder_path 아님**
+  - `origin/feat/minutes-folder-path` = `7823391`(2026-07-28 14:12) **무변경**, main에 **미병합**(`merge-base --is-ancestor` false)
+  - `MINUTES_FOLDER_PATH_ENABLED` 문자열이 `origin/main` src에 **0건** — 플래그 자체가 main에 없다
+  - 운영 GET: `/minutes` 20건 `archived`·`folder_id`·`folder_path`·`folder_path_status` **0/20** / `x-vercel-cache: MISS`·`age: 0`(캐시 착시 아님)
+  - 확정 프로브 2방: `GET /minutes?include_archived=x` → **200**(배포면 400 `validation_failed`) · `GET /minutes/folder` → **404 text/html**(배포면 JSON 404)
+  - 코드 근거: `archived`는 `route.ts#GET` items 매핑에 **무조건** 포함(두 env 플래그 미경유). 외부API 주석 "배치(W6)·보관 상태 노출(W24)은 플래그와 무관하게 항상 활성"
+[2026-07-29 세션6] [VERIFICATION] ⚠️ **종전 마커 「/meta에 folders 키 없음 = 미배포」는 무효** — `meta/route.ts`가 main과 브랜치 사이 diff 0줄(바이트 동일). `folders` 키는 이 브랜치에 추가된 적 없다. 판정은 `archived`·프로브 2건으로 유지. 판별기 전문 = `artifacts/dflow-r1-detector-2026-07-29.md`
+[2026-07-29 세션6] [VERIFICATION] D'Flow 페이로드 파서 `externalApi.ts#parseMinutePayload` = **손수 짠 allowlist** — 알려진 필드만 읽고 나머지는 조용히 버린다(zod strict 아님). 우리가 `folder_path`를 보내도 **400 안 나고 무시**되며 `route.ts#resolveTeamRootFolderId`로 **팀 루트**에 편철된다
+[2026-07-29 세션6] [VERIFICATION] ⚠️ **실서버 실측 — 어제 배포 전제 2건이 틀렸다**
+  - 실서버 HEAD = `18938cf`(idea 40·43 시점). `b2819e68`까지 **35커밋** 뒤짐(어제 상정한 13파일이 아님)
+  - **마이그레이션 2건 존재**: `20260723000001_create_meeting_collaborators` · `20260723000002_create_folder_collaborators`(idea 44). 순수 `create_table`이라 SQLite 테이블 재생성 함정은 없음. 안 돌리면 PendingMigrationError로 전 요청 500
+  - `rubyzip ~> 3.4` 신규 → `bundle install` 필요 / frontend 32파일 변경, 현 dist 7/23자 → `npm run build` 필요
+  - 변경 0: sidecar · settings.yaml · seeds.rb · database.yml → `ddobak-stt` 재시작·seed·checkout 불필요
+  - 실서버 리포 clean(untracked `database.yml.bak-lockfix-20260721` 1개), sqlite3 있음, 디스크 902G 여유, DB 216MB
+[2026-07-29 세션6] [DECISION] 사용자 선택 — **전체 배포(`b2819e68`) 유지.** D'Flow가 pre-R1인 상태를 고지받고도 원안 유지
+  - 제시한 대안 = 1차까지만(`0852ac4b`, 제목 접두 유지) / 보류. 사용자가 전체 선택
+  - ⚠️ 귀결: 전송분이 **접두도 폴더도 없이 팀 루트에 평평하게** 쌓인다. R1이 안 나갔으므로 **종료 시점 미정**(종전 "R1~R2 구간"이라는 시한이 사라짐)
