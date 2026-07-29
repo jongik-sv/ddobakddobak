@@ -49,14 +49,12 @@ export function useAuth() {
       return
     }
 
-    // 저장된 토큰이 있으면 즉시 진입시키고(앱 시작 시 '인증 확인 중' 대기 제거),
-    // 토큰 검증은 백그라운드에서 수행한다. 실패 시 refresh, 그래도 실패면 로그아웃.
-    markAuthenticated()
-    setLoading(false)
-
+    // 토큰 검증(및 필요 시 refresh)이 끝난 뒤에만 markAuthenticated — 하위 컴포넌트(cable 등)가
+    // 만료된 accessToken으로 먼저 연결 시도하는 레이스를 막는다(로딩 스피너로 진입 지연).
     validateToken(accessToken)
       .then((res) => {
         if (res.user) setUser(res.user)
+        markAuthenticated()
       })
       .catch(async () => {
         if (refreshToken) {
@@ -65,6 +63,7 @@ export function useAuth() {
             setAccessToken(access_token)
             const res = await validateToken(access_token)
             if (res.user) setUser(res.user)
+            markAuthenticated()
           } catch {
             clearAuth()
           }
@@ -72,6 +71,7 @@ export function useAuth() {
           clearAuth()
         }
       })
+      .finally(() => setLoading(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps -- 앱 시작 시 1회만 실행
 
   // ── 로그인: 브라우저로 서버 로그인 페이지 열기 ──
