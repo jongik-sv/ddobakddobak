@@ -7,6 +7,7 @@ module Api
       before_action :set_template, only: %i[update destroy reset]
 
       def index
+        PromptTemplate.sync_defaults!
         templates = PromptTemplate.ordered
         render json: templates.map { |t| template_json(t) }
       end

@@ -37,4 +37,22 @@ class PromptTemplate < ApplicationRecord
     template = find_by(meeting_type: meeting_type)
     template&.sections_prompt || DEFAULT_TEMPLATES.dig(meeting_type, :sections_prompt)
   end
+
+  # config.yaml의 기본 유형 중 DB에 없는 것만 생성한다.
+  # 기존 행은 절대 건드리지 않는다 (관리자가 수정한 label/sections_prompt 보존).
+  def self.sync_defaults!
+    missing = DEFAULT_TEMPLATES.keys - pluck(:meeting_type)
+    return [] if missing.empty?
+
+    created = []
+    missing.each do |meeting_type|
+      attrs = DEFAULT_TEMPLATES[meeting_type]
+      create!(meeting_type: meeting_type, label: attrs[:label], sections_prompt: attrs[:sections_prompt], is_default: true)
+      created << meeting_type
+    rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
+      next # 경합 — 다른 프로세스가 이미 생성함(unique index 또는 uniqueness validation)
+    end
+
+    created
+  end
 end

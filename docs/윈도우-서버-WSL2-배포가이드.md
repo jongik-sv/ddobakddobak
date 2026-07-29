@@ -275,6 +275,7 @@ claude                   # 서버 안에서 Claude Code로 수정·개발
 
 - SSH가 끊겨도 tmux 세션은 유지된다. 재접속 후 `tmux attach -t dev`.
 - **코드 흐름은 git 경유**: 맥 작업 → `git push` → 서버 `git pull`. 서버 작업 → 반대로. 파일을 손으로 옮기지 않는다.
+- **backend 변경 반영**: `git pull` 후 `cd backend && RAILS_ENV=production bin/rails db:migrate db:seed && sudo systemctl restart ddobak-backend`. `db:seed`는 회의 유형 등 기본 데이터 동기화용(멱등) — 앱이 목록 조회 시 자동 동기화하므로 누락돼도 자가복구되지만, 명시적으로 돌리는 것이 확실함. 자세한 절차는 [`윈도우-서버-운영가이드.md`](./윈도우-서버-운영가이드.md)의 "코드 업데이트 (배포)" 참고.
 - 파일을 많이 편집할 때는 맥 VS Code + Remote-SSH 확장으로 `ddobak-win` 접속 — WSL 내부 파일을 로컬처럼 편집.
 - RDP는 GUI가 꼭 필요한 예외 상황(드라이버 설치 등)에만 사용.
 
