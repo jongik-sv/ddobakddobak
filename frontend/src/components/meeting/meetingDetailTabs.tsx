@@ -46,6 +46,8 @@ interface BuildMeetingDetailTabsArgs {
   belowSummary?: React.ReactNode
   /** 명시적 seek(마커 클릭 등) 발생마다 증가하는 tick — TranscriptPanel 강제 스크롤 트리거. */
   seekTick?: number
+  /** 전사 분할 성공 시 호출 — 페이지가 자신의 transcripts 배열을 갱신하도록 전달. */
+  onSplit?: (updated: Transcript, inserted: Transcript) => void
 }
 
 /** 회의 상세 모바일 탭(기록/요약/AI챗/메모) 정의를 생성한다. (순수 함수 — 훅 아님) */
@@ -73,6 +75,7 @@ export function buildMeetingDetailTabs({
   canEdit,
   belowSummary,
   seekTick,
+  onSplit,
 }: BuildMeetingDetailTabsArgs): Tab[] {
   return [
     {
@@ -104,6 +107,7 @@ export function buildMeetingDetailTabs({
               suppressAutoScroll={suppressAutoScroll}
               readOnly={locked || !canEdit}
               seekTick={seekTick}
+              onSplit={onSplit}
             />
           </div>
         </div>

@@ -3,6 +3,7 @@ import { uint8ArrayToBase64 } from '../lib/audioUtils'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useRecordingSignalsStore } from '../stores/recordingSignalsStore'
 import { useToastStore } from '../stores/toastStore'
+import type { Transcript } from '../api/meetings/types'
 
 /**
  * TranscriptionChannel - ActionCable 실시간 STT 채널
@@ -51,6 +52,9 @@ type BackendMessage = {
   // notes update extras
   source?: string
   client_id?: string
+  // transcript_split: 원행(조각1, 갱신)과 신규행(조각2, 삽입) — transcript_json 그대로.
+  updated?: Transcript
+  inserted?: Transcript
   // summarization progress
   summary_type?: 'realtime' | 'final'
   ok?: boolean
@@ -136,6 +140,25 @@ export function createTranscriptionChannel(
             }
             if (typeof raw.id === 'number' && typeof raw.content === 'string') {
               store.updateFinal(raw.id, raw.content)
+            }
+            break
+          }
+          case 'transcript_split': {
+            // Echo 가드: 내 분할 요청 응답으로 이미 store가 갱신됨 (SplitTranscriptDialog가 직접 반영)
+            if (raw.client_id && raw.client_id === store.clientId) {
+              break
+            }
+            // Reset 가드: 최근 reset 직후의 잔여 broadcast 무시
+            if (Date.now() - store.lastResetAt < 5000) {
+              break
+            }
+            if (raw.updated && raw.inserted) {
+              store.applySplit(raw.updated, raw.inserted)
+              // TranscriptPanel은 prop(transcripts) 구조 기반이라 store.applySplit만으론 삽입된
+              // 행이 화면에 안 나타난다 — MeetingPage가 자신의 배열을 재조회하도록 신호를 올린다.
+              // 로컬 split(SplitTranscriptDialog가 이 채널을 거치지 않고 store.applySplit을 직접
+              // 호출하는 경로)은 여기를 타지 않으므로 카운터가 증가하지 않는다.
+              store.markRemoteSplit()
             }
             break
           }

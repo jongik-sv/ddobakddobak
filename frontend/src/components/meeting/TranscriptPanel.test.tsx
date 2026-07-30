@@ -1,7 +1,26 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { TranscriptPanel } from './TranscriptPanel'
 import { useTranscriptStore } from '../../stores/transcriptStore'
+
+vi.mock('../../api/meetings', async (orig) => {
+  const actual = await (orig() as Promise<Record<string, unknown>>)
+  return { ...actual, splitTranscript: vi.fn() }
+})
+
+vi.mock('../../api/speakers', async (orig) => {
+  const actual = await (orig() as Promise<Record<string, unknown>>)
+  return {
+    ...actual,
+    getSpeakers: vi.fn(async () => [
+      { id: 'SPEAKER_00', name: 'SPEAKER_00' },
+      { id: 'SPEAKER_01', name: 'SPEAKER_01' },
+    ]),
+  }
+})
+
+import { splitTranscript } from '../../api/meetings'
+import { getSpeakers } from '../../api/speakers'
 
 const mockTranscripts = [
   {
@@ -291,5 +310,126 @@ describe('TranscriptPanel speaker_name', () => {
 
     expect(screen.getByText('앨리스')).toBeInTheDocument()
     expect(screen.queryByText('SPEAKER_00')).not.toBeInTheDocument()
+  })
+})
+
+describe('TranscriptPanel 분할(split) 통합', () => {
+  beforeEach(() => {
+    useTranscriptStore.getState().reset()
+    // applySplit이 updated.id를 찾으려면 store에 finals가 로드되어 있어야 한다.
+    useTranscriptStore.getState().loadFinals(
+      mockTranscripts.map((t) => ({
+        id: t.id,
+        content: t.content,
+        speaker_label: t.speaker_label,
+        speaker_name: null,
+        started_at_ms: t.started_at_ms,
+        ended_at_ms: t.ended_at_ms,
+        sequence_number: t.sequence_number,
+        applied: false,
+      }))
+    )
+    vi.clearAllMocks()
+    ;(getSpeakers as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'SPEAKER_00', name: 'SPEAKER_00' },
+      { id: 'SPEAKER_01', name: 'SPEAKER_01' },
+    ])
+  })
+
+  afterEach(() => {
+    useTranscriptStore.getState().reset()
+  })
+
+  it('분할 성공 시 onSplit이 호출되고 store.finals에 inserted가 updated 바로 뒤에 삽입된다', async () => {
+    // mockTranscripts[1] = '두 번째 발화입니다.' (id:2, SPEAKER_01, 3000~6000)
+    const updatedJson = {
+      id: 2, speaker_label: 'SPEAKER_01', speaker_name: null,
+      content: '두', started_at_ms: 3000, ended_at_ms: 4000, sequence_number: 2, applied_to_minutes: false,
+    }
+    const insertedJson = {
+      id: 99, speaker_label: 'SPEAKER_01', speaker_name: null,
+      content: '번째 발화입니다.', started_at_ms: 4000, ended_at_ms: 6000, sequence_number: 3, applied_to_minutes: false,
+    }
+    ;(splitTranscript as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      updated: updatedJson,
+      inserted: insertedJson,
+    })
+
+    const onSplit = vi.fn()
+    render(
+      <TranscriptPanel
+        meetingId={1}
+        transcripts={mockTranscripts}
+        currentTimeMs={0}
+        onSeek={vi.fn()}
+        onSplit={onSplit}
+      />
+    )
+
+    const splitButtons = screen.getAllByLabelText('발언 분할')
+    fireEvent.click(splitButtons[1])
+
+    await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+    fireEvent.click(screen.getByLabelText('분할 지점: "두" 뒤'))
+    fireEvent.change(screen.getByPlaceholderText('mm:ss.mmm'), { target: { value: '00:04.000' } })
+    fireEvent.click(screen.getByRole('button', { name: '분할 저장' }))
+
+    await waitFor(() => expect(onSplit).toHaveBeenCalledWith(updatedJson, insertedJson))
+
+    const ids = useTranscriptStore.getState().finals.map((f) => f.id)
+    expect(ids.indexOf(99)).toBe(ids.indexOf(2) + 1)
+  })
+
+  it('readOnly면 분할 진입 버튼을 렌더하지 않는다', () => {
+    render(
+      <TranscriptPanel
+        meetingId={1}
+        transcripts={mockTranscripts}
+        currentTimeMs={0}
+        onSeek={vi.fn()}
+        readOnly
+      />
+    )
+    expect(screen.queryAllByLabelText('발언 분할')).toHaveLength(0)
+  })
+
+  it('store override(인라인 편집 등)가 stale한 prop content보다 우선 — expected_content로 override 값이 전송된다', async () => {
+    // mockTranscripts[1].content('두 번째 발화입니다.')는 그대로 두고, EditableTranscriptText가
+    // 그러듯 store.updateFinal로만 갱신 — prop은 옛 값 그대로, store만 최신인 상태를 재현한다.
+    act(() => {
+      useTranscriptStore.getState().updateFinal(2, '두 번째 발화입니다 수정됨')
+    })
+
+    ;(splitTranscript as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      updated: {
+        id: 2, speaker_label: 'SPEAKER_01', content: '두',
+        started_at_ms: 3000, ended_at_ms: 3500, sequence_number: 2,
+      },
+      inserted: {
+        id: 98, speaker_label: 'SPEAKER_01', content: '번째 발화입니다 수정됨',
+        started_at_ms: 3500, ended_at_ms: 6000, sequence_number: 3,
+      },
+    })
+
+    render(
+      <TranscriptPanel meetingId={1} transcripts={mockTranscripts} currentTimeMs={0} onSeek={vi.fn()} />
+    )
+
+    fireEvent.click(screen.getAllByLabelText('발언 분할')[1])
+    await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+    // 다이얼로그가 stale prop("두 번째 발화입니다.")이 아니라 store override로 열렸다면
+    // "수정됨"이 단어 토큰으로 보여야 한다.
+    expect(screen.getByText('수정됨')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('분할 지점: "두" 뒤'))
+    fireEvent.change(screen.getByPlaceholderText('mm:ss.mmm'), { target: { value: '00:03.500' } })
+    fireEvent.click(screen.getByRole('button', { name: '분할 저장' }))
+
+    await waitFor(() => expect(splitTranscript).toHaveBeenCalled())
+    expect(splitTranscript).toHaveBeenCalledWith(
+      1,
+      2,
+      expect.objectContaining({ expected_content: '두 번째 발화입니다 수정됨' }),
+    )
   })
 })

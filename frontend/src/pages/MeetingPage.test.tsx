@@ -127,9 +127,31 @@ vi.mock('../components/meeting/MiniAudioPlayer', () => ({
 }))
 
 vi.mock('../components/meeting/TranscriptPanel', () => ({
-  TranscriptPanel: (props: { seekTick?: number; onSeek?: (ms: number) => void; readOnly?: boolean }) => (
-    <div data-testid="transcript-panel" data-seek-tick={props.seekTick} data-read-only={String(!!props.readOnly)}>
+  TranscriptPanel: (props: {
+    seekTick?: number
+    onSeek?: (ms: number) => void
+    readOnly?: boolean
+    transcripts?: { id: number; sequence_number: number }[]
+    onSplit?: (updated: unknown, inserted: unknown) => void
+  }) => (
+    <div
+      data-testid="transcript-panel"
+      data-seek-tick={props.seekTick}
+      data-read-only={String(!!props.readOnly)}
+      data-transcripts-count={props.transcripts?.length ?? 0}
+      data-seq-json={JSON.stringify(props.transcripts?.map((t) => [t.id, t.sequence_number]) ?? [])}
+    >
       <button onClick={() => props.onSeek?.(5000)}>transcript-seek-btn</button>
+      <button
+        onClick={() =>
+          props.onSplit?.(
+            { id: 1, speaker_label: 'A', content: '조각1', started_at_ms: 0, ended_at_ms: 500, sequence_number: 1 },
+            { id: 2, speaker_label: 'B', content: '조각2', started_at_ms: 500, ended_at_ms: 1000, sequence_number: 2 },
+          )
+        }
+      >
+        transcript-split-btn
+      </button>
     </div>
   ),
 }))
@@ -573,6 +595,87 @@ describe('MeetingPage', () => {
         const afterTick = screen.getByTestId('transcript-panel').getAttribute('data-seek-tick')
         expect(afterTick).not.toBe(beforeTick)
       })
+    })
+  })
+
+  // 전사 분할(split): 원격(다른 클라이언트) split은 store.applySplit만으론 이 페이지의
+  // transcripts(prop 구조)에 반영되지 않아 조각2가 화면에서 소실된 것처럼 보이던 버그의 회귀 방지.
+  // remoteSplitRevision 변화를 감지해 재조회하되, 로컬 split(onSplit 직접 호출)에서는
+  // 중복 재조회가 없어야 한다.
+  describe('전사 분할(split) 재조회 배선', () => {
+    it('원격 split 신호(remoteSplitRevision 증가) 수신 후 getTranscripts가 재호출되고 화면에 반영된다', async () => {
+      mockMeetingWithId(340)
+      vi.mocked(meetingsApi.getTranscripts).mockResolvedValueOnce([])
+      renderPage('340')
+      await waitFor(() => {
+        expect(screen.getByTestId('transcript-panel')).toHaveAttribute('data-transcripts-count', '0')
+      })
+      const callsBefore = vi.mocked(meetingsApi.getTranscripts).mock.calls.length
+
+      vi.mocked(meetingsApi.getTranscripts).mockResolvedValueOnce([
+        { id: 1, speaker_label: 'A', content: '조각1', started_at_ms: 0, ended_at_ms: 500, sequence_number: 1 },
+        { id: 2, speaker_label: 'B', content: '조각2', started_at_ms: 500, ended_at_ms: 1000, sequence_number: 2 },
+      ])
+
+      act(() => {
+        useTranscriptStore.getState().markRemoteSplit()
+      })
+
+      await waitFor(() => {
+        expect(screen.getByTestId('transcript-panel')).toHaveAttribute('data-transcripts-count', '2')
+      })
+      expect(vi.mocked(meetingsApi.getTranscripts).mock.calls.length).toBeGreaterThan(callsBefore)
+    })
+
+    it('로컬 split(TranscriptPanel onSplit 콜백)은 화면에 즉시 반영되지만 getTranscripts를 재호출하지 않는다', async () => {
+      mockMeetingWithId(341)
+      vi.mocked(meetingsApi.getTranscripts).mockResolvedValue([
+        { id: 1, speaker_label: 'A', content: '원본', started_at_ms: 0, ended_at_ms: 1000, sequence_number: 1 },
+      ])
+      renderPage('341')
+      await waitFor(() => {
+        expect(screen.getByTestId('transcript-panel')).toHaveAttribute('data-transcripts-count', '1')
+      })
+      const callsBefore = vi.mocked(meetingsApi.getTranscripts).mock.calls.length
+
+      fireEvent.click(screen.getByText('transcript-split-btn'))
+
+      await waitFor(() => {
+        expect(screen.getByTestId('transcript-panel')).toHaveAttribute('data-transcripts-count', '2')
+      })
+      expect(vi.mocked(meetingsApi.getTranscripts).mock.calls.length).toBe(callsBefore)
+    })
+
+    // 백엔드 split은 분할 대상 뒤의 모든 행을 sequence_number+1로 재번호하는데, 로컬 split은
+    // 재조회를 하지 않으므로(위 테스트) handleTranscriptSplit이 같은 재번호를 직접 미러링해야
+    // 트레일링 행의 클라 상태가 서버 실제값과 어긋나지 않는다.
+    it('로컬 split 후 트레일링 행의 sequence_number가 서버 재번호 규칙대로 +1 된다', async () => {
+      mockMeetingWithId(342)
+      vi.mocked(meetingsApi.getTranscripts).mockResolvedValue([
+        { id: 1, speaker_label: 'A', content: '원본1', started_at_ms: 0, ended_at_ms: 500, sequence_number: 1 },
+        { id: 3, speaker_label: 'B', content: '트레일링', started_at_ms: 500, ended_at_ms: 1000, sequence_number: 2 },
+      ])
+      renderPage('342')
+      await waitFor(() => {
+        expect(screen.getByTestId('transcript-panel')).toHaveAttribute('data-transcripts-count', '2')
+      })
+
+      // 목(mock) TranscriptPanel의 분할 버튼은 항상 { id:1, sequence_number:1 } → { id:2, sequence_number:2 }로
+      // onSplit을 호출한다 — 백엔드가 원행(seq 1)은 그대로 두고 조각2를 seq 2로 삽입하는 것과 동일한 형태.
+      fireEvent.click(screen.getByText('transcript-split-btn'))
+
+      await waitFor(() => {
+        expect(screen.getByTestId('transcript-panel')).toHaveAttribute('data-transcripts-count', '3')
+      })
+      const seq = JSON.parse(
+        screen.getByTestId('transcript-panel').getAttribute('data-seq-json') ?? '[]'
+      ) as [number, number][]
+      // [id, sequence_number] — id:1(원행) 그대로 1, id:2(삽입) 2, id:3(트레일링)은 2→3으로 밀려야 한다.
+      expect(seq).toEqual([
+        [1, 1],
+        [2, 2],
+        [3, 3],
+      ])
     })
   })
 })

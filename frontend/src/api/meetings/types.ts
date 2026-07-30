@@ -217,6 +217,29 @@ export interface Transcript {
   applied_to_minutes?: boolean
 }
 
+/** split 요청의 조각별 화자 지정. 키 생략(undefined) = 원행 화자 승계, speaker_name: null 명시 = 이름 비움. */
+export interface SplitTranscriptSide {
+  speaker_label: string
+  speaker_name?: string | null
+}
+
+/** POST transcripts/:id/split 요청 바디. split_index는 문자(코드포인트) 인덱스, split_ms는 오디오 ms. */
+export interface SplitTranscriptParams {
+  split_ms: number
+  split_index: number
+  /** 다이얼로그가 들고 있던 원문 전체. 서버 content와 불일치하면 409 (동시편집 가드). */
+  expected_content: string
+  first?: SplitTranscriptSide
+  second?: SplitTranscriptSide
+  client_id?: string
+}
+
+/** POST transcripts/:id/split 응답: 원행(조각1, update!)과 신규행(조각2, create!). */
+export interface SplitTranscriptResponse {
+  updated: Transcript
+  inserted: Transcript
+}
+
 export interface ExportOptions {
   include_summary: boolean
   include_memo: boolean

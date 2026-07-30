@@ -94,6 +94,7 @@ Rails.application.routes.draw do
         resources :transcripts, only: [] do
           member do
             patch :update_content
+            post :split
           end
           collection do
             delete :destroy_batch

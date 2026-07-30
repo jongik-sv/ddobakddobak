@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Scissors } from 'lucide-react'
 import type { Transcript } from '../../api/meetings'
 import { renameSpeaker } from '../../api/speakers'
 import { EditableTranscriptText } from './EditableTranscriptText'
 import { HighlightedText } from './HighlightedText'
 import { SpeakerLabel, speakerBorderColor } from './SpeakerLabel'
+import { SplitTranscriptDialog } from './SplitTranscriptDialog'
 import { resolveHighlightIndex } from './transcriptHighlight'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 
@@ -23,6 +25,9 @@ interface TranscriptPanelProps {
   /** 명시적 seek(마커 클릭 등)가 발생할 때마다 증가하는 tick. 증가 시 suppressAutoScroll을
    *  무시하고 강제로 스크롤한다 — 검색 중이거나 동일 세그먼트로 재-seek해도 따라가야 하므로. */
   seekTick?: number
+  /** 분할 성공 시 호출 — 부모(MeetingPage)가 자신이 들고 있는 transcripts 배열에 inserted를
+   *  끼워 넣는 등 구조적 갱신을 하도록 알린다. store 반영은 이 컴포넌트가 이미 수행한다. */
+  onSplit?: (updated: Transcript, inserted: Transcript) => void
 }
 
 function formatTimestamp(ms: number): string {
@@ -42,14 +47,18 @@ export function TranscriptPanel({
   suppressAutoScroll = false,
   readOnly = false,
   seekTick,
+  onSplit,
 }: TranscriptPanelProps) {
   const highlightedRef = useRef<HTMLDivElement | null>(null)
+  const [splittingTranscript, setSplittingTranscript] = useState<Transcript | null>(null)
 
   // EditableTranscriptText의 낙관적 갱신은 transcriptStore.finals에 들어간다.
   // MeetingPage는 transcripts를 자체 useState로 관리하므로, 갱신된 content를
   // 화면에 반영하려면 store에서 우선 조회한다.
   const storeFinals = useTranscriptStore((s) => s.finals)
   const setSpeakerName = useTranscriptStore((s) => s.setSpeakerName)
+  const applySplitInStore = useTranscriptStore((s) => s.applySplit)
+  const clientId = useTranscriptStore((s) => s.clientId)
   const contentOverrides = useMemo(() => {
     const map = new Map<number, string>()
     for (const f of storeFinals) map.set(f.id, f.content)
@@ -106,6 +115,24 @@ export function TranscriptPanel({
     }
   }
 
+  function openSplitDialog(transcript: Transcript) {
+    // store override(인라인 편집·rename)가 있으면 그 값을 다이얼로그의 기준(expected_content)으로 삼는다 —
+    // prop의 transcript는 EditableTranscriptText가 store만 갱신하므로 stale할 수 있다.
+    setSplittingTranscript({
+      ...transcript,
+      content: contentOverrides.get(transcript.id) ?? transcript.content,
+      speaker_name: speakerNameOverrides.has(transcript.id)
+        ? speakerNameOverrides.get(transcript.id) ?? null
+        : transcript.speaker_name,
+    })
+  }
+
+  function handleSplitSuccess(updated: Transcript, inserted: Transcript) {
+    applySplitInStore(updated, inserted)
+    setSplittingTranscript(null)
+    onSplit?.(updated, inserted)
+  }
+
   // suppressAutoScroll은 ref로 읽는다 — deps에 넣으면 검색 종료(해제) 시점에
   // 오디오 위치로 뷰포트가 튀는 스크롤이 발화한다. 인덱스가 실제로 바뀔 때만 스크롤.
   const suppressRef = useRef(suppressAutoScroll)
@@ -157,37 +184,66 @@ export function TranscriptPanel({
                 key={transcript.id}
                 ref={isHighlighted ? highlightedRef : null}
                 data-highlighted={isHighlighted ? 'true' : 'false'}
-                className={`p-3 min-h-[44px] rounded cursor-pointer transition-colors ${
+                className={`flex items-start gap-1 p-3 min-h-[44px] rounded cursor-pointer transition-colors ${
                   isHighlighted
                     ? 'bg-accent border-l-4 border-indigo-500'
                     : 'hover:bg-muted active:bg-muted'
                 }`}
                 onClick={() => onSeek(transcript.started_at_ms)}
               >
-                {searchQuery ? (
-                  // 검색 중엔 읽기전용 하이라이트 렌더 — contentEditable DOM에 <mark> 주입 불가
-                  <HighlightedText
-                    text={contentOverrides.get(transcript.id) ?? transcript.content}
-                    query={searchQuery}
-                    activeOccurrence={
-                      activeSearch?.transcriptId === transcript.id ? activeSearch.occurrence : -1
-                    }
-                    className="text-sm text-foreground select-text"
-                  />
-                ) : (
-                  <EditableTranscriptText
-                    transcriptId={transcript.id}
-                    meetingId={meetingId}
-                    content={contentOverrides.get(transcript.id) ?? transcript.content}
-                    editable={!readOnly}
-                    className="text-sm text-foreground select-text"
-                  />
+                <div className="flex-1 min-w-0">
+                  {searchQuery ? (
+                    // 검색 중엔 읽기전용 하이라이트 렌더 — contentEditable DOM에 <mark> 주입 불가
+                    <HighlightedText
+                      text={contentOverrides.get(transcript.id) ?? transcript.content}
+                      query={searchQuery}
+                      activeOccurrence={
+                        activeSearch?.transcriptId === transcript.id ? activeSearch.occurrence : -1
+                      }
+                      className="text-sm text-foreground select-text"
+                    />
+                  ) : (
+                    <EditableTranscriptText
+                      transcriptId={transcript.id}
+                      meetingId={meetingId}
+                      content={contentOverrides.get(transcript.id) ?? transcript.content}
+                      editable={!readOnly}
+                      className="text-sm text-foreground select-text"
+                    />
+                  )}
+                </div>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openSplitDialog(transcript)
+                    }}
+                    aria-label="발언 분할"
+                    title="분할"
+                    // 터치 기기는 hover가 없어 opacity-0 그룹호버로 숨기면 진입점이 아예 안 보인다 —
+                    // 항상 은은하게 보이고 호버/포커스 시에만 강조한다.
+                    className="shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground hover:bg-muted-foreground/10 focus:text-foreground focus:opacity-100 transition-colors"
+                  >
+                    <Scissors size={14} />
+                  </button>
                 )}
               </div>
             )
           })}
         </div>
       ))}
+
+      {splittingTranscript && (
+        <SplitTranscriptDialog
+          meetingId={meetingId}
+          transcript={splittingTranscript}
+          currentTimeMs={currentTimeMs}
+          clientId={clientId}
+          onClose={() => setSplittingTranscript(null)}
+          onSplit={handleSplitSuccess}
+        />
+      )}
     </div>
   )
 }

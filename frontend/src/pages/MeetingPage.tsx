@@ -128,8 +128,18 @@ export default function MeetingPage() {
   const clientId = useTranscriptStore((s) => s.clientId)
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
   const setSummaryError = useTranscriptStore((s) => s.setSummaryError)
+  // 원격(다른 클라이언트) transcript_split 신호. 채널 경로에서만 증가 — 로컬 split
+  // (handleTranscriptSplit)은 이 값을 건드리지 않는다.
+  const remoteSplitRevision = useTranscriptStore((s) => s.remoteSplitRevision)
+  // null = "아래 reset 이펙트가 아직 기준선을 안 잡음"이라는 방어적 표식이다. 실제로는 이 값이
+  // null인 채로 재조회 이펙트(아래, 319행 부근)가 실행되는 경우가 없다 — React는 같은 컴포넌트의
+  // 이펙트를 선언 순서대로 실행하고, 마운트/회의전환 시 항상 이 reset 이펙트(선언이 더 앞)가
+  // 먼저 실행되어 같은 커밋에서 0을 채워 넣기 때문이다. 그래도 두 이펙트의 선언 순서가 나중에
+  // 바뀌거나 이 로직이 커스텀 훅으로 추출되는 리팩토링에도 안전하도록 가드는 남겨둔다.
+  const remoteSplitRevisionSeenRef = useRef<number | null>(null)
   useEffect(() => {
     resetTranscriptStore()
+    remoteSplitRevisionSeenRef.current = 0
   }, [meetingId, resetTranscriptStore])
   useEffect(() => {
     if (summary?.notes_markdown) {
@@ -298,12 +308,61 @@ export default function MeetingPage() {
     })
   }, [meetingId, meeting?.status, loadFinals])
 
+  // 원격 split 재조회: TranscriptPanel은 transcripts prop(구조) 기반이라 store.applySplit만으론
+  // 다른 클라이언트가 만든 삽입 행이 화면에 안 나타난다(조각2가 소실된 것처럼 보임). remoteSplitRevision이
+  // 실제로 증가할 때만 전체 재조회로 채운다. 로컬 split은 handleTranscriptSplit이 이미 배열을 직접
+  // 갱신하고 이 카운터를 건드리지 않으므로 여기서 중복 재조회가 발생하지 않는다.
+  //
+  // 비교는 반드시 store의 "지금 값"(getState())으로 한다 — 위 reset 이펙트가 같은 커밋의 effect
+  // flush에서 먼저 실행되어(선언 순서상 앞) remoteSplitRevision을 이미 0으로 되돌렸을 수 있는데,
+  // 이 이펙트의 클로저가 들고 있는 reactive 값(파라미터 remoteSplitRevision)은 여전히 "이번 렌더가
+  // 시작될 때의" 값(리셋 전 잔여치)이라 getState()와 어긋난다. getState()로 항상 최신값을 읽어야
+  // reset 직후 커밋에서 잔여치 vs 0을 오비교해 스퓨리어스 재조회가 나가는 걸 막을 수 있다.
+  useEffect(() => {
+    // 방어적 가드일 뿐 실제로는 여기서 걸리지 않는다 — 위 reset 이펙트(선언이 이 이펙트보다
+    // 앞)가 마운트/회의전환 시 항상 먼저 실행되어 같은 커밋에서 ref를 0으로 채우므로, 이 이펙트가
+    // 실행되는 시점엔 ref.current가 이미 null이 아니다.
+    if (remoteSplitRevisionSeenRef.current === null) return
+    const current = useTranscriptStore.getState().remoteSplitRevision
+    if (current === remoteSplitRevisionSeenRef.current) return
+    remoteSplitRevisionSeenRef.current = current
+    getTranscripts(meetingId).then((data) => {
+      setTranscripts(data)
+      loadFinals(mapTranscriptsToFinals(data, true))
+    })
+  }, [remoteSplitRevision, meetingId, loadFinals])
+
   function handleSeek(ms: number) {
     setSeekMs(ms)
     setSeekTick((t) => t + 1)
     // 낙관적 갱신: AudioPlayer의 onTimeUpdate(실제 오디오 timeupdate 경유)를 기다리면
     // highlightedIndex/스크롤 갱신이 한 박자 늦는다 — seek 즉시 반영해 전사 하이라이트가 따라가게 한다.
     setCurrentTimeMs(ms)
+  }
+
+  // 전사 분할: TranscriptPanel/store는 content override만 아는 것과 달리, 이 페이지가 들고 있는
+  // transcripts 배열은 구조(행 수)까지 바꿔야 한다 — updated로 기존 행을 교체하고 그 바로 뒤에
+  // inserted를 끼운다. store 쪽 반영(store.applySplit)은 TranscriptPanel이 이미 수행했다.
+  //
+  // 트레일링 sequence_number 미러링: 백엔드는 분할 대상 뒤의 모든 행을 sequence_number+1로
+  // 재번호한다(transcripts_controller.rb split — Transcript.where(...).update_all("sequence_number
+  // = sequence_number + 1")). 응답 {updated, inserted}엔 그 정보가 없고, 로컬 split은(원격 split과
+  // 달리) 재조회를 하지 않으므로 여기서 재번호를 흉내내지 않으면 트레일링 행들의 클라 상태
+  // sequence_number가 서버 실제값보다 1 작게 남는다. 재조회를 추가하는 대신 서버가 한 연산을
+  // 그대로 미러링한다: updated.sequence_number보다 큰 행 전부 +1.
+  function handleTranscriptSplit(updated: Transcript, inserted: Transcript) {
+    setTranscripts((prev) => {
+      const idx = prev.findIndex((t) => t.id === updated.id)
+      if (idx === -1) return prev
+      const next = prev.map((t) =>
+        t.sequence_number > updated.sequence_number
+          ? { ...t, sequence_number: t.sequence_number + 1 }
+          : t
+      )
+      next[idx] = updated
+      next.splice(idx + 1, 0, inserted)
+      return next
+    })
   }
 
   // 뒤로가기: 원래 폴더 목록으로 복귀. 크로스 프로젝트 진입(딥링크·전역검색)이면
@@ -433,6 +492,7 @@ export default function MeetingPage() {
     canEdit,
     belowSummary: typoSections,
     seekTick,
+    onSplit: handleTranscriptSplit,
   })
 
   return (
@@ -571,6 +631,7 @@ export default function MeetingPage() {
                   suppressAutoScroll={!!search.effectiveQuery}
                   readOnly={locked || !canEdit}
                   seekTick={seekTick}
+                  onSplit={handleTranscriptSplit}
                 />
               </div>
               {/* 배치 화자분리 결과 이름 변경/초기화 (MeetingViewerPage 데스크톱과 동일 패턴) */}

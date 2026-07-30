@@ -220,3 +220,79 @@ describe('transcript_updated 처리 로직', () => {
     expect(useTranscriptStore.getState().finals[0].content).toBe('원본')
   })
 })
+
+describe('transcript_split 처리 로직', () => {
+  beforeEach(() => {
+    useTranscriptStore.setState({
+      partial: null,
+      finals: [
+        { id: 7, content: '섞인 발화 전체', speaker_label: 'A', started_at_ms: 0, ended_at_ms: 3000, sequence_number: 1, applied: false },
+      ],
+      appliedIds: new Set(),
+      meetingNotes: null,
+      currentSpeaker: null,
+      isSummarizing: false,
+      summarizationKind: null,
+      lastUserEditAt: 0,
+      lastResetAt: 0,
+      remoteSplitRevision: 0,
+    })
+  })
+
+  const updatedJson = {
+    id: 7, content: '섞인 발화', speaker_label: 'A', speaker_name: null,
+    started_at_ms: 0, ended_at_ms: 1500, sequence_number: 1, applied_to_minutes: false,
+  }
+  const insertedJson = {
+    id: 8, content: '전체', speaker_label: 'B', speaker_name: null,
+    started_at_ms: 1500, ended_at_ms: 3000, sequence_number: 2, applied_to_minutes: false,
+  }
+
+  it('타 client의 transcript_split이 store에 반영되고 remoteSplitRevision이 증가한다', () => {
+    const received = captureReceived()
+    received({ type: 'transcript_split', updated: updatedJson, inserted: insertedJson, client_id: 'other-client' })
+
+    const finals = useTranscriptStore.getState().finals
+    expect(finals.map((f) => f.id)).toEqual([7, 8])
+    expect(finals[0].content).toBe('섞인 발화')
+    expect(finals[0].ended_at_ms).toBe(1500)
+    expect(finals[1].content).toBe('전체')
+    expect(finals[1].speaker_label).toBe('B')
+    // MeetingPage가 이 카운터 변화를 감지해 transcripts를 재조회한다(TranscriptPanel은
+    // prop 구조 기반이라 store 반영만으론 삽입된 행이 화면에 안 나타나서).
+    expect(useTranscriptStore.getState().remoteSplitRevision).toBe(1)
+  })
+
+  it('내 client_id면 drop (echo — 다이얼로그가 이미 store를 갱신함), remoteSplitRevision도 증가하지 않는다', () => {
+    const myClientId = useTranscriptStore.getState().clientId
+    const received = captureReceived()
+    received({ type: 'transcript_split', updated: updatedJson, inserted: insertedJson, client_id: myClientId })
+
+    const finals = useTranscriptStore.getState().finals
+    expect(finals).toHaveLength(1)
+    expect(finals[0].content).toBe('섞인 발화 전체')
+    // 로컬 split(SplitTranscriptDialog가 channel을 거치지 않고 applySplit을 직접 호출)의
+    // echo이므로 MeetingPage가 중복 재조회를 하면 안 된다.
+    expect(useTranscriptStore.getState().remoteSplitRevision).toBe(0)
+  })
+
+  it('reset 가드: lastResetAt 직후는 drop, remoteSplitRevision도 증가하지 않는다', () => {
+    useTranscriptStore.setState({ lastResetAt: Date.now() })
+    const received = captureReceived()
+    received({ type: 'transcript_split', updated: updatedJson, inserted: insertedJson, client_id: 'other' })
+
+    const finals = useTranscriptStore.getState().finals
+    expect(finals).toHaveLength(1)
+    expect(finals[0].content).toBe('섞인 발화 전체')
+    expect(useTranscriptStore.getState().remoteSplitRevision).toBe(0)
+  })
+
+  it('updated.id가 store에 없어도(방어적 no-op) remoteSplitRevision은 증가한다 — 재조회는 store 적재 상태와 무관하게 필요', () => {
+    useTranscriptStore.setState({ finals: [] })
+    const received = captureReceived()
+    received({ type: 'transcript_split', updated: updatedJson, inserted: insertedJson, client_id: 'other' })
+
+    expect(useTranscriptStore.getState().finals).toEqual([])
+    expect(useTranscriptStore.getState().remoteSplitRevision).toBe(1)
+  })
+})

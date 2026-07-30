@@ -4,6 +4,7 @@ import type {
   TranscriptFinalData,
   SpeakerChangeData,
 } from '../channels/transcription'
+import type { Transcript } from '../api/meetings/types'
 
 interface TranscriptState {
   partial: TranscriptPartialData | null
@@ -18,6 +19,11 @@ interface TranscriptState {
   lastUserEditAt: number
   lastResetAt: number
   clientId: string
+  /** 원격(다른 클라이언트) transcript_split 수신 횟수. 채널 경로(channels/transcription.ts)에서만
+   *  증가한다 — 로컬 split(SplitTranscriptDialog → applySplit 직접 호출)은 증가시키지 않는다.
+   *  MeetingPage가 이 값의 변화를 감지해 자신이 들고 있는 transcripts 배열을 재조회하는 트리거로 쓴다
+   *  (TranscriptPanel은 prop 구조 기반이라 store.applySplit만으론 삽입된 행이 화면에 안 나타나서). */
+  remoteSplitRevision: number
 
   setPartial: (data: TranscriptPartialData) => void
   addFinal: (data: TranscriptFinalData) => void
@@ -27,6 +33,11 @@ interface TranscriptState {
   markApplied: (ids: number[]) => void
   removeFinals: (ids: number[]) => void
   updateFinal: (id: number, content: string) => void
+  /** split 반영: updated.id인 기존 항목을 응답값으로 갱신하고 그 바로 뒤에 inserted를 끼운다.
+   *  updated.id를 못 찾으면(아직 로드 전 등) no-op. */
+  applySplit: (updated: Transcript, inserted: Transcript) => void
+  /** 원격 transcript_split 수신을 표시(카운터 증가). 채널 코드에서만 호출할 것. */
+  markRemoteSplit: () => void
   setSpeakerName: (speakerLabel: string, name: string | null) => void
   clearSpeakerNames: () => void
   setSummarizing: (kind: 'realtime' | 'final' | null) => void
@@ -56,6 +67,7 @@ const initialState = {
   summaryError: null as { kind: string; message: string } | null,
   lastUserEditAt: 0,
   lastResetAt: 0,
+  remoteSplitRevision: 0,
 }
 
 export const useTranscriptStore = create<TranscriptState>()((set) => ({
@@ -126,6 +138,55 @@ export const useTranscriptStore = create<TranscriptState>()((set) => ({
       updated[idx] = { ...updated[idx], content }
       return { finals: updated }
     }),
+
+  applySplit: (updated, inserted) =>
+    set((state) => {
+      const idx = state.finals.findIndex((f) => f.id === updated.id)
+      if (idx === -1) return state
+      const existing = state.finals[idx]
+      // transcript_json은 audio_source를 내려주지 않는다(백엔드 직렬화 범위 밖) — 기존 값을 승계.
+      // applied_to_minutes가 없으면(방어적) 기존 항목의 applied를 그대로 유지한다("대기" 배지 오표시 방지).
+      const updatedFinal: TranscriptFinalData = {
+        ...existing,
+        content: updated.content,
+        speaker_label: updated.speaker_label,
+        speaker_name: updated.speaker_name ?? null,
+        started_at_ms: updated.started_at_ms,
+        ended_at_ms: updated.ended_at_ms,
+        sequence_number: updated.sequence_number,
+        applied: updated.applied_to_minutes ?? existing.applied,
+      }
+      const insertedFinal: TranscriptFinalData = {
+        id: inserted.id,
+        content: inserted.content,
+        speaker_label: inserted.speaker_label,
+        speaker_name: inserted.speaker_name ?? null,
+        started_at_ms: inserted.started_at_ms,
+        ended_at_ms: inserted.ended_at_ms,
+        sequence_number: inserted.sequence_number,
+        applied: inserted.applied_to_minutes ?? existing.applied,
+        audio_source: existing.audio_source,
+      }
+      // 트레일링 sequence_number 미러링: 백엔드가 분할 대상 뒤의 모든 행을 sequence_number+1로
+      // 재번호하지만(transcripts_controller.rb split) 응답 {updated, inserted}엔 그 정보가 없다.
+      // 로컬 split(재조회 없음)이면 이걸 흉내내지 않는 한 트레일링 행들의 sequence_number가
+      // 서버 실제값보다 1 작게 남는다. 원격 split이면 뒤이어 MeetingPage가 전체 재조회
+      // (loadFinals)해 authoritative 값으로 덮어쓰므로 여기서 bump해도 안전하다.
+      const bumpTrailingSeq = (f: TranscriptFinalData): TranscriptFinalData =>
+        f.sequence_number > updated.sequence_number ? { ...f, sequence_number: f.sequence_number + 1 } : f
+      const finals = [
+        ...state.finals.slice(0, idx).map(bumpTrailingSeq),
+        updatedFinal,
+        insertedFinal,
+        ...state.finals.slice(idx + 1).map(bumpTrailingSeq),
+      ]
+      const appliedIds = new Set(state.appliedIds)
+      if (updatedFinal.applied) appliedIds.add(updatedFinal.id)
+      if (insertedFinal.applied) appliedIds.add(insertedFinal.id)
+      return { finals, appliedIds }
+    }),
+
+  markRemoteSplit: () => set((state) => ({ remoteSplitRevision: state.remoteSplitRevision + 1 })),
 
   setSpeakerName: (speakerLabel, name) =>
     set((state) => {
