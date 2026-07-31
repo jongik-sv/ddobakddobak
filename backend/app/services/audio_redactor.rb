@@ -162,6 +162,8 @@ class AudioRedactor
   #      흔한 경우는 아직 백업이 없어 아무 일도 일어나지 않는다.
   #  (b) 동시 절단의 **내용** 위험은 이미 닫혀 있다. 소스 identity 검증(source_unchanged?)이
   #      진 쪽을 409 로 되돌리므로 두 절단이 서로의 오디오를 덮어쓰는 일은 없다.
+  #      (stamp_backup! 의 touch 는 **백업 경로에만** 걸리므로 이 지문 비교와 무관하다 —
+  #       소스 경로의 identity 는 swap_in! 의 mv 시점에 이미 달라진다.)
   #  (c) 제대로 된 해법은 회의 단위 클레임(예: meetings 에 redacting_at 컬럼 + 원자적 UPDATE)인데
   #      SQLite 에는 advisory lock 이 없고 컬럼 추가는 마이그레이션 = 이 작업 범위 밖이다.
   #  (d) mtime 유예(갓 만든 백업은 건너뛰기)는 검토 후 기각했다. A2 의 touch 로 mtime 이 이제

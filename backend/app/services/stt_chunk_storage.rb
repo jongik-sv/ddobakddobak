@@ -76,6 +76,7 @@ class SttChunkStorage
 
       removed
     end
+    private :sweep_chunks! # sweep! 의 내부 분해일 뿐 — 새 공개 API 가 아니다
 
     # 기밀 구간 절단(transcripts#redact)이 남긴 <id>.*.redact-backup 회수. 삭제 건수 반환.
     #
