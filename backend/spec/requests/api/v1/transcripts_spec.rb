@@ -980,6 +980,193 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
           .to eq("A ⟦m:#{meeting.id}/t:6000/s:화자 1⟧ B ⟦m:#{meeting.id + 9999}/t:8000/s:화자 3⟧")
       end
     end
+
+    context "오디오 절단" do
+      def probe_ms(path)
+        out = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 #{Shellwords.escape(path)}`.strip
+        (out.to_f * 1000).to_i
+      end
+
+      it "오디오가 총 절단 길이만큼 짧아지고 audio_duration_ms 가 실측으로 갱신된다" do
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:ok)
+        expect(probe_ms(meeting.reload.audio_file_path)).to be_within(1_000).of(8_000)
+        expect(response.parsed_body["audio_duration_ms"]).to be_within(1_000).of(8_000)
+      end
+
+      it "peaks 캐시가 무효화된다 (안 지우면 절단 전 파형이 영구히 서빙된다)" do
+        peaks = "#{meeting.audio_file_path}.peaks.json"
+        File.write(peaks, "{}")
+
+        do_redact([ t2.id ])
+
+        expect(File.exist?(peaks)).to be false
+      end
+
+      it "길이가 다른 고아 오디오(<id>.webm)는 절단이 아니라 삭제된다" do
+        # ⚠️ 픽스처는 반드시 **길이가 다른** 파일이어야 한다. 같은 소스에서 트랜스코딩하면
+        # 길이가 같아, 하나의 kept_segments 를 전 파일에 적용하는 잘못된 구현도 통과해버린다.
+        # 실제 V3 시나리오(재녹음 병합)에서 <id>.webm 과 <id>.mp3 는 길이가 다르다.
+        short = File.join(audio_dir, "#{meeting.id}_short.wav")
+        write_wav(short, seconds: 4.0)
+        webm = File.join(audio_dir, "#{meeting.id}.webm")
+        system("ffmpeg", "-y", "-loglevel", "error", "-i", short,
+               "-c:a", "libopus", webm, out: File::NULL, err: File::NULL)
+        FileUtils.rm_f(short)
+        expect(probe_ms(webm)).to be_within(1_000).of(4_000) # primary(10초)보다 짧다
+        File.binwrite("#{webm}.peaks.json", "{}")
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:ok)
+        # 고아는 audio_file_path 가 가리키지 않는 절단 전 기밀 오디오다 — 자르지 않고 지운다.
+        # (자르려 하면 짧은 쪽에서 뒤쪽 세그먼트가 통째로 잘려 길이 검증 실패 → 영구 절단 불가)
+        expect(File.exist?(webm)).to be false
+        expect(File.exist?("#{webm}.peaks.json")).to be false
+        # primary 는 정상 절단된다.
+        expect(probe_ms(File.join(audio_dir, "#{meeting.id}.wav"))).to be_within(1_000).of(8_000)
+      end
+
+      it "_parts/ 와 stt_chunks/ 가 파기되고, 그 상태에서 finalize 는 오디오를 재구성하지 못한다" do
+        parts = File.join(audio_dir, "#{meeting.id}_parts")
+        FileUtils.mkdir_p(parts)
+        File.binwrite(File.join(parts, "0.part"), "\x1A\x45\xDF\xA3" + ("x" * 100))
+        chunks = SttChunkStorage::ROOT.join(meeting.id.to_s)
+        FileUtils.mkdir_p(chunks)
+        File.binwrite(chunks.join("0-abc.pcm"), "x" * 100)
+        merged = File.join(audio_dir, "#{meeting.id}.webm.merged.webm")
+        File.binwrite(merged, "x")
+
+        do_redact([ t2.id ])
+
+        expect(Dir.exist?(parts)).to be false
+        expect(Dir.exist?(chunks)).to be false
+        expect(File.exist?(merged)).to be false
+
+        # 선삭제를 커밋 후로 미루면 이 사이에 finalize 가 잘리지 않은 청크로 오디오를 재구성한다.
+        post "/api/v1/meetings/#{meeting.id}/audio_finalize"
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body["error"]).to eq("No audio chunks")
+      end
+
+      it "이전 절단이 남긴 .redact-backup 을 파기한다 (절단 전 원음이 영구 잔존하지 않도록)" do
+        # 커밋 후 drop_backups! 가 실패하면 남는 파일. 절단 전 오디오 **전체**라 기밀 원음이고,
+        # audio_paths 글롭에서 제외되므로 이후 절단에서도 잘리지 않는다 — 지우는 코드가
+        # purge_stale_backups! 말고는 없다.
+        #
+        # ⚠️ 스테일 백업의 basename 은 현재 primary(<id>.wav)와 **달라야** 한다. 계획 초안대로
+        # <id>.wav.redact-backup 을 쓰면 이번 실행의 swap_in! 이 만드는 백업 경로와 완전히 같아져
+        # FileUtils.mv 가 덮어쓰고 커밋 후 drop_backups! 가 지운다 → purge_stale_backups! 를
+        # 통째로 지워도 통과하는 무의미한 테스트가 된다(반증 실증으로 확인함).
+        # 실제 위험 케이스도 이쪽이다: 이전 절단 당시 audio_file_path 가 <id>.mp3 였다면 그
+        # 백업은 확장자가 달라 swap 사이클에 걸리지 않고 영원히 남는다.
+        stale = File.join(audio_dir, "#{meeting.id}.mp3.redact-backup")
+        File.binwrite(stale, "절단 전 원음 전체")
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:ok)
+        expect(File.exist?(stale)).to be false
+        # 이번 실행의 백업은 커밋 후 정상 파기되므로 어느 쪽도 남지 않는다.
+        expect(Dir.glob(File.join(audio_dir, "*.redact-backup"))).to be_empty
+      end
+
+      it "ffmpeg 이 실패하면 DB 무변경 + 422 이고 오디오도 원본 그대로다" do
+        File.binwrite(meeting.audio_file_path, "not audio at all")
+        original = File.binread(meeting.audio_file_path)
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(Transcript.where(meeting: meeting).count).to eq(4)
+        expect(t2.reload.content).to eq("기밀토큰AAA")
+        expect(File.binread(meeting.reload.audio_file_path)).to eq(original)
+      end
+
+      it "지원하지 않는 오디오 형식이면 422 이고 DB 무변경이다" do
+        # ⚠️ 미지원 확장자는 **primary(audio_file_path)** 여야 한다. cut_to_temp 는
+        # Array(primary_audio_path) 하나만 자르므로(M2), 형제로 둔 <id>.flac 은 고아가 되어
+        # purge_duplicate_sources! 가 먼저 지워버리고 UnsupportedFormat 에 도달하지 못한다.
+        # 내용은 wav 지만 ffprobe 는 내용으로 재므로 길이 측정은 정상(10초)이고,
+        # CODECS[".flac"] 이 nil 이라 절단 루프 첫머리에서 422 로 거부된다.
+        flac = File.join(audio_dir, "#{meeting.id}.flac")
+        write_wav(flac)
+        meeting.update!(audio_file_path: flac)
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(Transcript.where(meeting: meeting).count).to eq(4)
+      end
+
+      it "파일 교체 도중 실패하면 DB 가 롤백되고 오디오가 원본 그대로 복구된다 (롤백 원자성)" do
+        wav_original = File.binread(meeting.audio_file_path)
+
+        # ⚠️ 실패 지점은 반드시 **트랜잭션 안**, swap_in! 이 백업을 만든 **뒤**여야 한다.
+        # drop_backups! 는 커밋 뒤라 거기서 깨면 "전사는 지워졌는데 오디오는 복구됨" — 설계가
+        # 금지한 방향이 되어 이 단언이 성립하지 않는다.
+        allow_any_instance_of(AudioRedactor).to receive(:swap_in!).and_wrap_original do |orig, mapping|
+          orig.call(mapping) # 백업 생성 + 교체까지 실제로 수행한 뒤
+          raise StandardError, "boom" # 그 상태에서 터뜨려 restore 경로를 태운다
+        end
+
+        expect { do_redact([ t2.id ]) }.to raise_error(StandardError, "boom")
+
+        expect(Transcript.where(id: t2.id)).to exist
+        expect(Transcript.where(meeting: meeting).count).to eq(4)
+        expect(File.binread(File.join(audio_dir, "#{meeting.id}.wav"))).to eq(wav_original)
+        expect(Dir.glob(File.join(audio_dir, "*.redact-backup"))).to be_empty
+        expect(Dir.glob(File.join(audio_dir, "*.redact-tmp*"))).to be_empty
+      end
+
+      it "purge 를 swap 뒤로 옮기면 요청이 실패한다 (순서 계약 회귀 가드)" do
+        # M3: 유닛 테스트만으로는 컨트롤러 호출 순서를 뒤집어도 잡히지 않았다. AudioRedactor 가
+        # @swapped 로 순서를 강제하므로, 순서가 뒤집히면 여기서 PurgeFailed 로 드러난다.
+        allow_any_instance_of(AudioRedactor).to receive(:purge_duplicate_sources!).and_wrap_original do |orig, *args|
+          orig.receiver.send(:instance_variable_set, :@swapped, true) # swap 이 먼저 돈 상태 재현
+          orig.call(*args)
+        end
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(Transcript.where(id: t2.id)).to exist
+      end
+
+      it "전사를 전부 고르면 오디오 파일이 사라지고 audio_file_path 가 비워진다" do
+        path = meeting.audio_file_path
+
+        do_redact([ t1.id, t2.id, t3.id, t4.id ])
+
+        expect(response).to have_http_status(:ok)
+        expect(Transcript.where(meeting: meeting).count).to eq(0)
+        expect(File.exist?(path)).to be false
+        expect(meeting.reload.audio_file_path).to be_nil
+        # 백업 경유로 치웠지만 커밋 후 파기되므로 아무것도 남지 않는다.
+        expect(Dir.glob(File.join(audio_dir, "*.redact-backup"))).to be_empty
+      end
+
+      it "전체 선택 경로에서 커밋이 실패하면 오디오가 되살아난다 (rm 이 아니라 백업 규율)" do
+        path = meeting.audio_file_path
+        original = File.binread(path)
+        # ⚠️ 무조건 raise 하면 트랜잭션 **밖**의 refresh_audio_duration!
+        # (update_column → update_columns, 컨트롤러 :308)에서 먼저 터져 백업·복구 경로가
+        # 한 줄도 실행되지 않는다 — 단언은 전부 통과하지만 아무것도 검증하지 못한다.
+        # audio_file_path 를 비우는 그 호출(move_all_audio_to_backup! **직후**)만 골라 터뜨린다.
+        allow_any_instance_of(Meeting).to receive(:update_columns).and_wrap_original do |orig, *args|
+          attrs = args.first
+          raise StandardError, "boom" if attrs.respond_to?(:key?) && attrs.key?(:audio_file_path)
+
+          orig.call(*args)
+        end
+
+        expect { do_redact([ t1.id, t2.id, t3.id, t4.id ]) }.to raise_error(StandardError, "boom")
+
+        expect(File.binread(path)).to eq(original)
+        expect(Transcript.where(meeting: meeting).count).to eq(4)
+      end
+    end
   end
 
   # ─────────────────────────────────────────────────────────
