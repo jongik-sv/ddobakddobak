@@ -11,6 +11,11 @@ module Api
       # 절단은 복구 불가한 기밀 파기 + 오디오 재인코딩을 동반하므로 협업자를 제외한다
       # (idea 44: 관리 액션 = owner/admin). split 은 "편집"이라 control 티어를 유지한다.
       before_action :authorize_meeting_admin!, only: %i[redact]
+      # 절단된 회의에는 전사를 **되돌릴 수 있는** bulk_create 만 막는다. redact(재절단)·
+      # destroy_batch·update_content·split 은 콘텐츠를 복원하지 않으므로 통과시킨다 —
+      # 특히 redact 를 막으면 잔존 기밀 행을 마저 지울 경로가 사라진다.
+      # 인가 뒤 / reject_if_locked! 앞 배치 이유는 meeting_write_guard.rb 주석 참조.
+      before_action :reject_if_redacted!, only: %i[bulk_create]
       before_action :reject_if_locked!, only: %i[bulk_create update_content destroy_batch split redact]
 
       def index
@@ -407,7 +412,13 @@ module Api
             # brief_summary 는 명시적 nil. refresh_brief_summary! 가 `if text.present?`(meeting.rb:615)라
             # 재생성 결과가 빈 값이면 옛 발췌가 남고, 이 컬럼은 LIKE 검색 대상이다(meeting.rb:151).
             @meeting.update_column(:brief_summary, nil)
-            @meeting.update!(last_user_edit_at: Time.current) # D'Flow 재전송 신호
+            # ⭐ 절단 표식을 **트랜잭션 안에서** 세운다(커밋과 원자적). 밖에서 세우면 롤백된
+            # 시도(409/422)가 회의를 영구히 잠그고, 커밋 뒤에 세우면 그 사이 도착한
+            # bulk_create·오디오 업로드가 파기한 기밀을 그대로 되돌린다.
+            # 이 컬럼이 세 writer(transcripts#bulk_create, meetings_audio#create/#chunk/#finalize)
+            # 와 AudioUploadJob 의 차단 근거이자 UI 상태 표시(meeting_json)의 출처다.
+            @meeting.update!(last_user_edit_at: Time.current, # D'Flow 재전송 신호
+                             transcripts_redacted_at: Time.current)
 
             # 파일 교체는 트랜잭션 마지막. 교체 실패 → 롤백 → 원본 오디오 온전.
             # 반대 순서(DB 커밋 후 교체)는 교체 실패 시 전사만 사라지고 기밀 오디오가 남는다.
@@ -470,7 +481,10 @@ module Api
           summaries_destroyed: summaries_destroyed,
           chat_markers_updated: chat_markers_updated,
           bookmarks_removed: bookmarks_removed,
-          backup_retained: backup_retained
+          backup_retained: backup_retained,
+          # 절단 표식. payload 는 그대로 ActionCable 로도 나가므로(아래) 이 한 줄이
+          # 응답과 실시간 갱신을 동시에 덮는다 — 다른 탭·기기가 즉시 차단 상태를 안다.
+          transcripts_redacted_at: @meeting.transcripts_redacted_at&.iso8601
         }
 
         ActionCable.server.broadcast(

@@ -140,6 +140,58 @@ RSpec.describe SttChunkStorage do
 
       expect(File.exist?(backup)).to be false
     end
+
+    it "잔존 .upload-tmp 도 함께 회수한다 (AudioUploadJob 이 SIGKILL 당한 경로)" do
+      # ensure 는 프로세스가 죽으면 돌지 않는다(배포·OOM·워커 재시작). 그때 남는
+      # <id>.mp3.upload-tmp 는 절단 전 오디오 **전체**의 mp3 사본이다.
+      tmp = File.join(ENV.fetch("AUDIO_DIR"), "7.mp3.upload-tmp")
+      File.binwrite(tmp, "절단 전 오디오의 mp3 사본")
+      FileUtils.touch(tmp, mtime: 3.hours.ago.to_time)
+
+      described_class.sweep!
+
+      expect(File.exist?(tmp)).to be false
+    end
+  end
+
+  describe ".sweep_upload_tmps!" do
+    let(:audio_dir) { ENV.fetch("AUDIO_DIR") }
+
+    it "임계보다 오래된 .upload-tmp 를 지운다" do
+      old = File.join(audio_dir, "7.mp3.upload-tmp")
+      File.binwrite(old, "절단 전 오디오의 mp3 사본")
+      FileUtils.touch(old, mtime: 3.hours.ago.to_time)
+
+      expect(described_class.sweep_upload_tmps!).to eq(1)
+      expect(File.exist?(old)).to be false
+    end
+
+    it "임계보다 최근 파일은 남긴다 (진행 중인 트랜스코딩을 뺏지 않는다)" do
+      # ffmpeg 이 쓰는 동안 mtime 이 계속 갱신되므로 "오래됨 = 죽음"이 성립한다.
+      fresh = File.join(audio_dir, "8.mp3.upload-tmp")
+      File.binwrite(fresh, "지금 인코딩 중")
+
+      expect(described_class.sweep_upload_tmps!).to eq(0)
+      expect(File.exist?(fresh)).to be true
+    end
+
+    it "오디오 파일 자체는 건드리지 않는다" do
+      audio = File.join(audio_dir, "9.mp3")
+      File.binwrite(audio, "x")
+      FileUtils.touch(audio, mtime: 3.hours.ago.to_time)
+
+      described_class.sweep_upload_tmps!
+
+      expect(File.exist?(audio)).to be true
+    end
+
+    it "test 환경에서 AUDIO_DIR 이 없으면 아무것도 하지 않는다 (프로덕션 storage/audio 오염 방지)" do
+      prev = ENV.delete("AUDIO_DIR")
+      expect(Dir).not_to receive(:glob)
+      expect(described_class.sweep_upload_tmps!).to eq(0)
+    ensure
+      ENV["AUDIO_DIR"] = prev
+    end
   end
 
   describe ".sweep_redact_backups!" do

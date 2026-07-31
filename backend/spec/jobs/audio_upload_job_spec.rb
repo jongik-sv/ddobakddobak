@@ -113,6 +113,40 @@ RSpec.describe AudioUploadJob, type: :job do
     expect(Dir.glob(File.join(audio_dir, "*.upload-tmp"))).to be_empty
   end
 
+  it "절단 표식이 선 회의는 변환 자체를 하지 않는다 (identity 검사보다 이른 차단)" do
+    # identity 검사는 **전체 트랜스코딩이 끝난 뒤**에야 작동한다 — 그때까지 절단 전(기밀)
+    # 오디오의 mp3 사본이 이미 tmp 로 디스크에 쓰여 있다. 표식은 그 전에 막는다.
+    wav = File.join(audio_dir, "#{meeting.id}.wav")
+    write_wav(wav)
+    meeting.update!(audio_file_path: wav, transcripts_redacted_at: Time.current)
+
+    job = described_class.new
+    expect(job).not_to receive(:transcode_to_mp3)
+
+    job.perform(meeting_id: meeting.id)
+
+    meeting.reload
+    expect(meeting.audio_file_path).to eq(wav)
+    expect(Dir.glob(File.join(audio_dir, "*.upload-tmp"))).to be_empty
+    expect(File.exist?(File.join(audio_dir, "#{meeting.id}.mp3"))).to be false
+  end
+
+  it "mv 가 실패해도 .upload-tmp 를 남기지 않는다 (tmp = 절단 전 오디오 전체의 mp3 사본)" do
+    # 이 파일을 지우는 코드가 어디에도 없었다: AudioRedactor#audio_paths 가 .upload-tmp 를
+    # 제외해 고아 파기 대상도 아니고, sweep_redact_backups! 는 *.redact-backup 만 훑는다.
+    # 소유자인 이 잡이 성공·실패 **모든** 경로에서 지워야 한다.
+    wav = File.join(audio_dir, "#{meeting.id}.wav")
+    write_wav(wav)
+    meeting.update!(audio_file_path: wav)
+
+    allow(FileUtils).to receive(:mv).and_raise(Errno::EXDEV)
+
+    expect { described_class.new.perform(meeting_id: meeting.id) }.to raise_error(Errno::EXDEV)
+
+    expect(Dir.glob(File.join(audio_dir, "*.upload-tmp"))).to be_empty
+    expect(meeting.reload.audio_file_path).to eq(wav)
+  end
+
   describe ".job_meeting_id" do
     # 순수 파싱. ActiveJob 이 perform(meeting_id:) 를 어떻게 직렬화하는지에 대한 계약을 고정한다.
     # SolidQueue::Job 으로 instance_double 을 만들 수 없어(test DB 에 solid_queue_jobs 테이블이

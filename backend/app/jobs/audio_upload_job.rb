@@ -30,7 +30,19 @@ class AudioUploadJob < ApplicationJob
   end
 
   def perform(meeting_id:)
+    tmp_path = nil
     meeting = Meeting.find(meeting_id)
+
+    # ⭐ 기밀 구간 절단 표식이 서 있으면 변환 자체를 하지 않는다. 아래 identity 검증과
+    # **중복이 아니다** — identity 는 전체 트랜스코딩이 끝난 뒤에야 판정하므로, 그 시점엔
+    # 이미 절단 전(기밀) 오디오의 mp3 사본이 tmp 로 디스크에 쓰여 있다. 표식은 그보다 이르다.
+    # 반대로 표식만으로는 부족하다 — 여기서 한 번 읽는 값이라 트랜스코딩 **중에** 커밋된
+    # 절단은 못 본다. 그건 identity 가 잡는다. 둘 다 필요하다(어느 쪽도 지우지 말 것).
+    if meeting.transcripts_redacted_at.present?
+      Rails.logger.info "[AudioUploadJob] meeting=#{meeting_id} 기밀 절단된 회의 — 변환 생략"
+      return
+    end
+
     src = meeting.audio_file_path
     return unless src.present? && File.exist?(src) && File.size(src) > 0
 
@@ -68,6 +80,14 @@ class AudioUploadJob < ApplicationJob
     Rails.logger.info "[AudioUploadJob] meeting=#{meeting_id} mp3 변환 완료 #{mp3_path}"
   rescue ActiveRecord::RecordNotFound
     Rails.logger.error "[AudioUploadJob] Meeting not found: #{meeting_id}"
+  ensure
+    # ⭐ tmp 는 **소스 오디오 전체의 mp3 사본** = 절단 전 기밀 오디오다. 남기면 안 된다.
+    # AudioRedactor#audio_paths 가 ".upload-tmp" 를 제외하므로 이후 절단에서도 잘리지 않고
+    # 고아 파기 대상도 아니다 — 이 잡이 성공·실패 **모든** 경로에서 지운다.
+    # 성공 경로는 이미 mv 로 옮겼으니 rm_f(force)가 무해한 no-op 이다.
+    # ensure 로도 못 막는 경로(SIGKILL·OOM·배포로 프로세스가 통째로 죽는 경우)가 남으므로
+    # 시간 기반 회수(SttChunkStorage.sweep_upload_tmps!)를 두 번째 방어선으로 둔다.
+    FileUtils.rm_f(tmp_path) if tmp_path
   end
 
   private

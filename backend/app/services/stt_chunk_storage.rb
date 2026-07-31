@@ -63,6 +63,7 @@ class SttChunkStorage
       # **커맨드 문자열로 직접** 부르므로 스케줄 설정 변경·신규 잡·스키마 변경이 필요 없다.
       # 반환값(removed)에는 더하지 않는다 — 이 메서드의 계약은 "삭제한 PCM 청크 수"다.
       sweep_redact_backups!
+      sweep_upload_tmps!
 
       removed
     end
@@ -81,6 +82,27 @@ class SttChunkStorage
     # older_than 을 1시간으로 둔 이유: 진행 중인 절단의 백업을 뺏으면 안 된다. 절단 한 건은
     # 길어야 수십 초(ffmpeg 재인코딩)라 1시간이면 충분히 안전하다.
     def sweep_redact_backups!(older_than: 1.hour)
+      sweep_audio_dir_glob!("*.redact-backup", older_than: older_than, label: "절단 백업")
+    end
+
+    # AudioUploadJob 이 남긴 <id>.mp3.upload-tmp 회수. 삭제 건수 반환.
+    #
+    # 이 파일은 소스 오디오 **전체**의 mp3 사본이다 — 절단 전 회의라면 기밀 오디오 그 자체.
+    # 정상 경로에서는 잡의 ensure 가 지우지만, ensure 는 프로세스가 통째로 죽으면(SIGKILL·
+    # OOM·배포 중 워커 재시작) 돌지 않는다. AudioRedactor#audio_paths 가 ".upload-tmp" 를
+    # 제외하므로 이후 절단에도 잘리지 않고 고아 파기 대상도 아니다 — 회수 경로가 여기뿐이다.
+    #
+    # older_than 1시간: 진행 중인 트랜스코딩의 tmp 를 뺏으면 안 된다. ffmpeg 이 쓰는 동안
+    # mtime 이 계속 갱신되므로 "1시간 넘게 안 자란 tmp = 죽은 잡의 잔해"가 성립한다.
+    def sweep_upload_tmps!(older_than: 1.hour)
+      sweep_audio_dir_glob!("*.upload-tmp", older_than: older_than, label: "변환 임시파일")
+    end
+
+    private
+
+    # 오디오 디렉터리에서 pattern 에 맞고 older_than 보다 오래된 파일을 지운다. 삭제 건수 반환.
+    # 개별 실패는 삼키고 계속 진행한다(한 파일 때문에 전체 스윕이 멈추지 않도록).
+    def sweep_audio_dir_glob!(pattern, older_than:, label:)
       dir = ENV["AUDIO_DIR"].presence
       # ⚠️ test 에서 AUDIO_DIR 이 없으면 기본값이 **프로덕션** storage/audio 다. 이 저장소는
       # 프로덕션 체크아웃에서 rspec 을 직접 돌리므로(ROOT 가 test 에서 tmp 로 갈라지는 것과 같은
@@ -94,17 +116,17 @@ class SttChunkStorage
       cutoff = older_than.ago
       removed = 0
 
-      Dir.glob(File.join(dir, "*.redact-backup")).each do |path|
+      Dir.glob(File.join(dir, pattern)).each do |path|
         begin
           next unless File.mtime(path) < cutoff
 
           File.delete(path)
           removed += 1
-          Rails.logger.info("[SttChunkStorage] 잔존 절단 백업 회수: #{File.basename(path)}")
+          Rails.logger.info("[SttChunkStorage] 잔존 #{label} 회수: #{File.basename(path)}")
         rescue Errno::ENOENT
-          # 다른 프로세스(다음 절단의 purge_stale_backups! 등)가 먼저 지움 — 무해.
+          # 다른 프로세스(다음 절단의 purge_stale_backups!·잡의 ensure 등)가 먼저 지움 — 무해.
         rescue StandardError => e
-          Rails.logger.warn("[SttChunkStorage] 절단 백업 삭제 실패 #{path}: #{e.message}")
+          Rails.logger.warn("[SttChunkStorage] #{label} 삭제 실패 #{path}: #{e.message}")
         end
       end
 

@@ -1201,9 +1201,13 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         expect(File.exist?(merged)).to be false
 
         # 선삭제를 커밋 후로 미루면 이 사이에 finalize 가 잘리지 않은 청크로 오디오를 재구성한다.
+        # 이제 방어가 두 겹이다: (1) 파트 선삭제(바로 위 단언) (2) 절단 표식 가드(409).
+        # 표식 가드가 먼저 걸려 응답이 422 "No audio chunks" → 409 로 바뀌었다. 상태 코드만
+        # 보면 (2)가 (1)을 가려 선삭제가 반증되지 않으므로, **파일로** 재구성 부재를 확인한다.
         post "/api/v1/meetings/#{meeting.id}/audio_finalize"
-        expect(response).to have_http_status(:unprocessable_entity)
-        expect(response.parsed_body["error"]).to eq("No audio chunks")
+        expect(response).to have_http_status(:conflict)
+        expect(response.parsed_body["code"]).to eq("meeting_redacted")
+        expect(File.exist?(File.join(audio_dir, "#{meeting.id}.webm"))).to be false
       end
 
       it "이전 절단이 남긴 .redact-backup 을 파기한다 (절단 전 원음이 영구 잔존하지 않도록)" do
@@ -1385,6 +1389,85 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
 
         expect(File.binread(path)).to eq(original)
         expect(Transcript.where(meeting: meeting).count).to eq(4)
+      end
+    end
+
+    context "절단 표식 (transcripts_redacted_at)" do
+      # 절단이 회의에 아무 표식도 남기지 않으면 파기한 기밀이 **되돌아온다**:
+      # 온디바이스 STT 동기 큐(frontend/src/stt/syncQueue.ts)는 pendingSync 를 IndexedDB 에
+      # 영속하고 flush 마다 보유 세그먼트 **전체**를 재전송하며, 오디오 writer 3개는 절단
+      # 여부를 보지 않는다. 표식이 그 세 writer 의 차단 근거다.
+      it "절단 커밋과 함께 표식이 세워지고 응답 payload 에 실린다" do
+        expect(meeting.reload.transcripts_redacted_at).to be_nil
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:ok)
+        expect(meeting.reload.transcripts_redacted_at).to be_present
+        expect(response.parsed_body["transcripts_redacted_at"]).to be_present
+      end
+
+      it "롤백된 절단은 표식을 남기지 않는다 (커밋과 원자적)" do
+        # 트랜잭션 **밖**에서 세우면 409 로 되돌린 시도가 회의를 영구히 잠근다.
+        allow_any_instance_of(AudioRedactor).to receive(:source_unchanged?).and_return(false)
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:conflict)
+        expect(Transcript.where(meeting: meeting).count).to eq(4)
+        expect(meeting.reload.transcripts_redacted_at).to be_nil
+      end
+
+      it "표식이 선 회의의 bulk_create 는 409 + code=meeting_redacted 이고 행이 생기지 않는다" do
+        do_redact([ t2.id ])
+        expect(response).to have_http_status(:ok)
+
+        expect {
+          post "/api/v1/meetings/#{meeting.id}/transcripts/bulk",
+               params: { transcripts: [ { content: "기밀토큰AAA", speaker_label: "화자1",
+                                          started_at_ms: 3_000, ended_at_ms: 4_000,
+                                          sequence_number: 2, audio_source: "mic" } ] },
+               as: :json
+        }.not_to change { Transcript.where(meeting: meeting).count }
+
+        expect(response).to have_http_status(:conflict)
+        # ⭐ status 만으로는 부족하다 — 이 API 의 409 는 전부 재시도 가능(녹음중·요약중·
+        # recorder 충돌·stale bounds·in_flight). 온디바이스 큐가 "영구 거부"를 구분하려면
+        # 안정된 머신 리더블 코드가 필요하다.
+        expect(response.parsed_body["code"]).to eq("meeting_redacted")
+        expect(response.parsed_body["transcripts_redacted_at"]).to be_present
+        expect(Transcript.where(meeting: meeting).where("content LIKE ?", "%기밀토큰AAA%")).not_to exist
+      end
+
+      it "표식이 없는 회의의 bulk_create 는 그대로 통과한다 (가드가 전체를 막지 않는다)" do
+        post "/api/v1/meetings/#{meeting.id}/transcripts/bulk",
+             params: { transcripts: [ { content: "평범한 발언", speaker_label: "",
+                                        started_at_ms: 10_000, ended_at_ms: 11_000,
+                                        sequence_number: 9, audio_source: "mic" } ] },
+             as: :json
+
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "표식이 선 뒤에도 재절단은 가능하다 (잔존 기밀 행 제거 경로를 막으면 안 된다)" do
+        do_redact([ t2.id ])
+        expect(response).to have_http_status(:ok)
+
+        do_redact([ t4.id ])
+
+        expect(response).to have_http_status(:ok)
+        expect(Transcript.where(id: t4.id)).not_to exist
+      end
+
+      it "회의 상세 응답이 표식을 노출한다 (UI 가 '추가 녹음·전사 동기화 차단' 상태를 알 수 있게)" do
+        do_redact([ t2.id ])
+
+        get "/api/v1/meetings/#{meeting.id}"
+
+        expect(response).to have_http_status(:ok)
+        json = response.parsed_body["meeting"]
+        expect(json["transcripts_redacted_at"]).to be_present
+        expect(json["transcripts_redacted"]).to be true
       end
     end
   end
