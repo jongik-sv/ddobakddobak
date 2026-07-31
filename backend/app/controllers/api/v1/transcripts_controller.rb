@@ -346,7 +346,15 @@ module Api
           # 여기서 이전 절단이 남긴 .redact-backup(= 절단 전 원음)도 함께 쓸어낸다. 이 호출이
           # swap_in! 보다 먼저여야 이번 실행의 백업이 살아남아 롤백 복구가 가능하다 — 순서 고정.
           redactor.purge_duplicate_sources!
-          tmp_map = redactor.cut_to_temp(kept, plan.total_cut_ms) if kept.any?
+          if kept.any?
+            tmp_map = redactor.cut_to_temp(kept, plan.total_cut_ms)
+          else
+            # 전사 전체 선택 = move_all_audio_to_backup! 로 <id>.* 를 **전부** 파기하는 경로.
+            # cut_to_temp 를 타지 않아 지문이 하나도 없으므로 여기서 따로 스냅샷을 잡는다
+            # (안 잡으면 source_unchanged? 가 경로 문자열 비교만 하게 된다). 고아 삭제가 끝난
+            # 뒤여야 정상 삭제분이 "변경됨"으로 오탐되지 않는다.
+            redactor.capture_audio_identities!
+          end
         rescue AudioRedactor::Error => e
           # 여기서 중단하면 DB 는 무변경이다.
           return render json: { error: e.message }, status: :unprocessable_entity

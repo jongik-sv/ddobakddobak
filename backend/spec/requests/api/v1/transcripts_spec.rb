@@ -1347,6 +1347,26 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         expect(Dir.glob(File.join(audio_dir, "*.redact-backup"))).to be_empty
       end
 
+      it "전체 선택 경로에서도 소스가 갈리면 409 이고 새 오디오가 살아남는다" do
+        # 이 경로는 cut_to_temp 를 타지 않아 identity 스냅샷이 비는데, move_all_audio_to_backup! 은
+        # <id>.* 를 **전부** 파기한다 — 절단 경로보다 파괴 범위가 넓다. 경로 문자열만 비교하면
+        # "같은 경로에 새 파일이 mv 로 확정된" 이어녹음 케이스를 그대로 통과시킨다.
+        allow_any_instance_of(AudioRedactor).to receive(:capture_audio_identities!).and_wrap_original do |orig|
+          result = orig.call
+          replacement = "#{meeting.audio_file_path}.newer"
+          write_wav(replacement, seconds: 6.0)
+          FileUtils.mv(replacement, meeting.audio_file_path) # 같은 경로, 새 inode
+          result
+        end
+
+        do_redact([ t1.id, t2.id, t3.id, t4.id ])
+
+        expect(response).to have_http_status(:conflict)
+        expect(Transcript.where(meeting: meeting).count).to eq(4)
+        expect(probe_ms(meeting.reload.audio_file_path)).to be_within(1_000).of(6_000)
+        expect(Dir.glob(File.join(audio_dir, "*.redact-backup"))).to be_empty
+      end
+
       it "전체 선택 경로에서 커밋이 실패하면 오디오가 되살아난다 (rm 이 아니라 백업 규율)" do
         path = meeting.audio_file_path
         original = File.binread(path)

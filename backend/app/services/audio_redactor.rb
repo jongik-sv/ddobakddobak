@@ -36,6 +36,21 @@ class AudioRedactor
     # move_all_audio_to_backup! 로 오디오를 통째로 치우므로 그쪽도 보호받아야 한다.
     @source_path = meeting.audio_file_path
     @source_identities = {}
+    @audio_set_snapshot = nil
+  end
+
+  # 전사 전체 선택 경로(cut_to_temp 를 타지 않는다)의 소스 스냅샷.
+  # move_all_audio_to_backup! 은 <id>.* 를 **전부** 파기하므로 절단 경로보다 파괴 범위가 넓은데,
+  # cut_to_temp 를 안 타면 지문이 하나도 없어 경로 문자열 비교만 남는다 — 같은 경로에 새 파일이
+  # mv 로 확정되는 이어녹음 케이스(정확히 R1 이 막으려는 그 케이스)를 그대로 통과시킨다.
+  # 파일 목록 자체도 함께 잡는다: 새 오디오가 **추가**된 경우는 지문 비교로는 보이지 않는데
+  # 파기 대상에는 들어간다.
+  #
+  # ⚠️ purge_duplicate_sources! **뒤에** 부른다. 앞에서 부르면 고아 삭제로 정상적으로 사라진
+  # 파일이 "변경됨"으로 잡혀 멀쩡한 요청이 409 가 된다.
+  def capture_audio_identities!
+    @audio_set_snapshot = audio_paths
+    @source_identities = @audio_set_snapshot.to_h { |p| [ p, file_identity(p) ] }
   end
 
   # 절단을 시작할 때 읽은 그 오디오가 지금도 그대로인가. 다르면 호출부가 409 로 거부한다.
@@ -50,6 +65,9 @@ class AudioRedactor
   # 비교하면 항상 참인 자기충족 검사가 된다(이 클래스가 이미 한 번 겪은 실패 모드).
   def source_unchanged?
     return false unless Meeting.where(id: @meeting.id).pick(:audio_file_path) == @source_path
+    # 파일 목록 스냅샷은 capture_audio_identities! 를 부른 경로(전사 전체 선택)에만 있다.
+    # 절단 경로는 primary 하나만 되쓰므로 새 파일이 늘어도 파괴 대상이 아니다.
+    return false if @audio_set_snapshot && audio_paths != @audio_set_snapshot
 
     @source_identities.all? { |path, captured| captured.present? && file_identity(path) == captured }
   end
