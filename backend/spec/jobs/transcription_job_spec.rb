@@ -230,6 +230,63 @@ RSpec.describe TranscriptionJob, type: :job do
       end
     end
 
+    # ⭐ A7. 기밀 구간 절단(transcripts#redact)이 적용된 회의는 표식(transcripts_redacted_at)으로
+    # 잠긴다. 그런데 그 표식을 보는 곳은 컨트롤러 4곳(transcripts#bulk_create,
+    # meetings_audio#create/#chunk/#finalize)과 AudioUploadJob 뿐이라, ActionCable 실시간 경로
+    # (TranscriptionChannel#audio_chunk → 이 잡)는 그 가드를 **전부 우회해** 전사를 직접 쓴다.
+    # 파기한 기밀이 그대로 되살아나는 경로이므로 이 잡 자체가 표식을 봐야 한다.
+    context "when the meeting has been redacted (절단 표식)" do
+      let(:audio_dir) { Dir.mktmpdir("transcription_job_redacted_spec") }
+      let(:audio_path) { File.join(audio_dir, "9-abc.pcm") }
+
+      before do
+        File.binwrite(audio_path, "raw-pcm-bytes")
+        meeting.update!(transcripts_redacted_at: Time.current)
+      end
+
+      after { FileUtils.rm_rf(audio_dir) }
+
+      it "전사 행을 만들지 않는다 (파기한 기밀이 되살아나는 경로)" do
+        expect {
+          described_class.perform_now(meeting_id: meeting.id, audio_path: audio_path, sequence: 1)
+        }.not_to change(Transcript, :count)
+      end
+
+      it "sidecar 를 아예 호출하지 않고 청크 파일도 남기지 않는다" do
+        # 청크 = 절단된 회의의 원시 PCM. 조기 종료하면서 파일을 남기면 6시간 스위퍼까지
+        # 기밀 오디오가 디스크에 그대로 있다.
+        expect(sidecar_client).not_to receive(:transcribe)
+
+        described_class.perform_now(meeting_id: meeting.id, audio_path: audio_path, sequence: 1)
+
+        expect(File).not_to exist(audio_path)
+      end
+
+      it "채널로 사유를 알린다 (클라이언트가 계속 밀어올리지 않도록)" do
+        expect(ActionCable.server).to receive(:broadcast).with(
+          meeting.transcription_stream,
+          hash_including(type: "transcription_rejected", code: MeetingWriteGuard::REDACTED_ERROR_CODE)
+        )
+
+        described_class.perform_now(meeting_id: meeting.id, audio_path: audio_path, sequence: 1)
+      end
+
+      it "잡이 도는 **도중에** 절단이 커밋돼도 전사를 쓰지 않는다" do
+        # 표식을 잡 시작 시 한 번만 읽으면 sidecar 왕복(수 초) 동안 커밋된 절단을 못 본다.
+        # 그 창으로 들어온 세그먼트는 절단 직후의 회의에 기밀 텍스트를 그대로 쓴다.
+        meeting.update!(transcripts_redacted_at: nil)
+        allow(sidecar_client).to receive(:transcribe) do
+          Meeting.where(id: meeting.id).update_all(transcripts_redacted_at: Time.current)
+          { "segments" => segments }
+        end
+
+        expect {
+          described_class.perform_now(meeting_id: meeting.id, audio_path: audio_path, sequence: 1)
+        }.not_to change(Transcript, :count)
+        expect(File).not_to exist(audio_path)
+      end
+    end
+
     context "when the meeting no longer exists (deleted before the job runs)" do
       it "discards the job instead of raising or retrying" do
         deleted_id = meeting.id

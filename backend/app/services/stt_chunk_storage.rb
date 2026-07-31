@@ -25,9 +25,24 @@ class SttChunkStorage
     # older_than 보다 오래된 청크 파일을 삭제하고, 비어 있으면서 24시간 넘게
     # 방치된 회의별 디렉터리도 함께 정리한다. 개별 파일/디렉터리 실패는 무시하고
     # 계속 진행한다(전체 스윕이 한 항목 때문에 중단되지 않도록). 삭제 건수 반환.
+    # ⚠️ 세 스윕은 **서로 독립**이다. 이 메서드가 `return 0 unless Dir.exist?(ROOT)` 로 시작하면
+    # 오디오 디렉터리 회수(.redact-backup = 절단 전 기밀 원음, .upload-tmp = 그 mp3 사본)가
+    # 무관한 디렉터리(storage/stt_chunks)의 존재 여부에 걸린다. backend/storage/ 는 .gitignore 로
+    # 통째 제외돼 있어 그 디렉터리가 **없는 환경이 정상**이고, 그런 환경에서는 회수가 아예 돌지
+    # 않았다. 반환값 계약("삭제한 PCM 청크 수")은 그대로 유지한다.
     def sweep!(older_than: 6.hours)
-      return 0 unless Dir.exist?(ROOT)
+      removed = Dir.exist?(ROOT) ? sweep_chunks!(older_than: older_than) : 0
 
+      # 이미 매시간 도는 유일한 훅이라 여기에 붙인다. config/recurring.yml:22,42 는 이 메서드를
+      # **커맨드 문자열로 직접** 부르므로 스케줄 설정 변경·신규 잡·스키마 변경이 필요 없다.
+      sweep_redact_backups!
+      sweep_upload_tmps!
+
+      removed
+    end
+
+    # PCM 청크 스윕 본체. ROOT 가 있을 때만 호출된다.
+    def sweep_chunks!(older_than:)
       removed = 0
       file_cutoff = older_than.ago
 
@@ -59,12 +74,6 @@ class SttChunkStorage
         end
       end
 
-      # 이미 매시간 도는 유일한 훅이라 여기에 붙인다. config/recurring.yml:22,42 는 이 메서드를
-      # **커맨드 문자열로 직접** 부르므로 스케줄 설정 변경·신규 잡·스키마 변경이 필요 없다.
-      # 반환값(removed)에는 더하지 않는다 — 이 메서드의 계약은 "삭제한 PCM 청크 수"다.
-      sweep_redact_backups!
-      sweep_upload_tmps!
-
       removed
     end
 
@@ -81,6 +90,13 @@ class SttChunkStorage
     #
     # older_than 을 1시간으로 둔 이유: 진행 중인 절단의 백업을 뺏으면 안 된다. 절단 한 건은
     # 길어야 수십 초(ffmpeg 재인코딩)라 1시간이면 충분히 안전하다.
+    #
+    # ⭐ 이 판정은 **AudioRedactor#stamp_backup! 이 백업의 mtime 을 생성 시각으로 만들어 준다는
+    # 전제 위에서만** 성립한다. 백업은 같은 디렉토리 mv = rename 으로 만들어지는데 rename 은
+    # mtime 을 보존하므로, touch 가 없으면 갓 만든 백업의 mtime 이 **원본 녹음 파일의 mtime**
+    # (보통 수 시간~수일 전)이 되어 생성되는 그 순간부터 cutoff 를 넘어 있다 — 유예가 통째로
+    # 사라져 진행 중인 절단의 롤백 복구 대상을 뺏는다. 그 결합은 스펙으로 고정돼 있다
+    # (spec/services/stt_chunk_storage_spec.rb "AudioRedactor 가 방금 만든 백업은 스윕하지 않는다").
     def sweep_redact_backups!(older_than: 1.hour)
       sweep_audio_dir_glob!("*.redact-backup", older_than: older_than, label: "절단 백업")
     end

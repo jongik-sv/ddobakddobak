@@ -35,7 +35,11 @@ class TranscriptRedactionPlan
     end
   end
 
-  attr_reader :ranges
+  # 전사 타임라인이 실측 오디오보다 이만큼 넘치는 것까지는 정상으로 본다. 전사 ms 는 클라이언트
+  # 오프셋 파생이고 ffprobe 길이는 컨테이너 실측이라 끝단이 수백 ms 어긋나는 것은 흔하다.
+  AUDIO_SHORTFALL_TOLERANCE_MS = 1_000
+
+  attr_reader :ranges, :timeline_end_ms
 
   # rows: 이 회의의 전사 행 전부(부분집합이면 이웃 클램프가 틀어진다)
   def initialize(rows:, selected_ids:, audio_duration_ms:)
@@ -120,6 +124,42 @@ class TranscriptRedactionPlan
     selected_rows.reject { |row|
       @ranges.any? { |r| r.start_ms <= row.started_at_ms && r.end_ms >= row.ended_at_ms }
     }.map(&:id)
+  end
+
+  # ⭐ 미선택 겹침 중 구간 **안에 완전히 들어간** 행. unselected_overlapping_ids 의 부분집합이다.
+  # 원인이 다르다: 가장자리 겹침은 경계 계산·동시 split 처럼 재조회로 상황이 달라질 수 있지만,
+  # 완전 포함은 **정적인 데이터 배치**라 새로고침을 백 번 해도 같은 결과가 나온다. 해법은 하나뿐
+  # ("그 행도 함께 선택한다") 이므로 호출부가 문구를 갈라 그 행 id 를 알려줘야 한다.
+  def unselected_contained_ids
+    remaining_rows.select { |row|
+      @ranges.any? { |r|
+        overlap?(row, r) && !exempt_here?(row, r) &&
+          row.started_at_ms >= r.start_ms && row.ended_at_ms <= r.end_ms
+      }
+    }.map(&:id)
+  end
+
+  # ⭐ fail-closed 불변식 (A1). 실측 오디오가 전사 타임라인보다 **짧은** 상태.
+  # 이 클래스는 "타임라인 ms == 오디오 ms" 선형 매핑을 전제로 경계를 계산하는데, 그 전제가
+  # 깨지는 실제 경로가 있다: merge_audio_files 실패 분기(최신 세그먼트만 저장)·온디바이스 STT·
+  # 잘린 업로드. 그때 오디오 파일의 0ms 는 회의 시작이 아니라 **어딘가 중간**이다.
+  #
+  # audio_duration_ms == 0 은 여기서 제외한다. 그건 "짧은 오디오"가 아니라 "서버 오디오 없음"
+  # (온디바이스 STT 회의의 정상 상태)이고, 전사만 파기하는 기존 경로가 그대로 처리한다 —
+  # 이전 라운드가 이 케이스에 422 를 쓰지 않기로 한 결정과 충돌하지 않게 0 은 부족분 0 으로 둔다.
+  # (오디오 파일이 디스크에 있는데 길이만 0 인 위험 케이스는 컨트롤러가 audio_paths 로 따로 막는다.)
+  def audio_shortfall_ms
+    return 0 if @audio_duration_ms.zero?
+
+    [ @timeline_end_ms - @audio_duration_ms, 0 ].max
+  end
+
+  # 매핑을 신뢰할 수 없는데 **오디오가 일부 남는** 절단인가. 남는 게 있으면 그 안에 기밀 발화가
+  # 살아 있을 수 있다(kept_segments 가 경계를 오디오 길이로 클립하므로 조용히 통과한다).
+  # 반대로 남는 세그먼트가 하나도 없으면(전사 전체 선택 → 오디오 통째 파기) 매핑을 몰라도
+  # 기밀이 남지 않는다 — 그래서 그 경로는 막지 않는다. 사용자에게 안내하는 탈출구가 이것이다.
+  def unsafe_partial_cut?
+    audio_shortfall_ms > AUDIO_SHORTFALL_TOLERANCE_MS && kept_segments.any?
   end
 
   # 컨트롤러는 이것만 보면 된다 — 두 불변식 중 하나라도 깨지면 절단을 진행하지 않는다.

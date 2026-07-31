@@ -141,6 +141,24 @@ RSpec.describe SttChunkStorage do
       expect(File.exist?(backup)).to be false
     end
 
+    it "stt_chunks 루트가 없어도 오디오 디렉터리 회수는 돈다 (A3: 무관한 디렉터리에 걸리면 안 된다)" do
+      # backend/storage/ 는 .gitignore 로 통째 제외돼 있어 stt_chunks 디렉터리가 **없는 환경이
+      # 정상**이다. `return 0 unless Dir.exist?(ROOT)` 뒤에 백업 회수를 두면 그런 환경에서
+      # 절단 전 원음(.redact-backup)과 .upload-tmp 회수가 통째로 돌지 않는다.
+      FileUtils.rm_rf(@tmp_root)
+      backup = File.join(ENV.fetch("AUDIO_DIR"), "7.mp3.redact-backup")
+      File.binwrite(backup, "절단 전 원음")
+      FileUtils.touch(backup, mtime: 3.hours.ago.to_time)
+      tmp = File.join(ENV.fetch("AUDIO_DIR"), "7.mp3.upload-tmp")
+      File.binwrite(tmp, "절단 전 오디오의 mp3 사본")
+      FileUtils.touch(tmp, mtime: 3.hours.ago.to_time)
+
+      expect(described_class.sweep!).to eq(0) # 청크는 0건이지만
+
+      expect(File.exist?(backup)).to be false
+      expect(File.exist?(tmp)).to be false
+    end
+
     it "잔존 .upload-tmp 도 함께 회수한다 (AudioUploadJob 이 SIGKILL 당한 경로)" do
       # ensure 는 프로세스가 죽으면 돌지 않는다(배포·OOM·워커 재시작). 그때 남는
       # <id>.mp3.upload-tmp 는 절단 전 오디오 **전체**의 mp3 사본이다.
@@ -222,6 +240,40 @@ RSpec.describe SttChunkStorage do
       described_class.sweep_redact_backups!
 
       expect(File.exist?(audio)).to be true
+    end
+
+    it "AudioRedactor 가 방금 만든 백업은 스윕하지 않는다 (A2: rename 은 mtime 을 보존한다)" do
+      # ⭐ 반증의 핵심. 백업은 swap_in! 의 FileUtils.mv = **같은 디렉토리 rename** 으로 만들어지고
+      # rename 은 mtime 을 바꾸지 않는다. 원본 녹음은 보통 수 시간~수일 전 파일이므로, 갓 만든
+      # 백업이 **생성되는 그 순간부터** 1시간 cutoff 를 넘어 있다 → 진행 중인 절단의 롤백 복구
+      # 대상을 스위퍼가 뺏어간다(커밋 실패 시 원본이 영구 소실).
+      meeting = create(:meeting)
+      src = File.join(audio_dir, "#{meeting.id}.wav")
+      File.binwrite(src, "원본 녹음")
+      FileUtils.touch(src, mtime: 3.hours.ago.to_time) # 어제 녹음한 회의
+      tmp = "#{src}.redact-tmp.wav"
+      File.binwrite(tmp, "절단본")
+      meeting.update!(audio_file_path: src)
+
+      AudioRedactor.new(meeting).swap_in!(src => tmp)
+      backup = "#{src}.redact-backup"
+      expect(File.exist?(backup)).to be true
+
+      expect(described_class.sweep_redact_backups!).to eq(0)
+      expect(File.exist?(backup)).to be true
+    end
+
+    it "move_all_audio_to_backup! 이 만든 백업도 마찬가지다 (전사 전체 선택 경로)" do
+      meeting = create(:meeting)
+      src = File.join(audio_dir, "#{meeting.id}.wav")
+      File.binwrite(src, "원본 녹음")
+      FileUtils.touch(src, mtime: 3.hours.ago.to_time)
+      meeting.update!(audio_file_path: src)
+
+      AudioRedactor.new(meeting).move_all_audio_to_backup!
+
+      expect(described_class.sweep_redact_backups!).to eq(0)
+      expect(File.exist?("#{src}.redact-backup")).to be true
     end
 
     it "회의 레코드가 없어도 파기한다 (전사 0건·회의 삭제 경로에서도 원음이 남으면 안 된다)" do

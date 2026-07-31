@@ -309,6 +309,77 @@ RSpec.describe TranscriptRedactionPlan do
     end
   end
 
+  describe "#audio_shortfall_ms / #unsafe_partial_cut?" do
+    # ⭐ A1. 오디오가 전사 타임라인보다 짧으면 "타임라인 ms = 오디오 ms" 선형 매핑이 깨진다.
+    # kept_segments 가 경계를 [0, audio_duration_ms] 로 **클립**하므로 구간이 오디오 밖으로
+    # 나가면 오디오에서는 아무것도 잘리지 않는데, 그 오디오에 기밀 발화가 들어 있을 수 있다
+    # (merge_audio_files 실패로 최신 세그먼트만 저장 / 온디바이스 STT / 잘린 업로드).
+    let(:short_audio_plan) do
+      described_class.new(rows: rows, selected_ids: [ 5 ], audio_duration_ms: 3_000)
+    end
+
+    it "오디오가 타임라인보다 짧으면 부족분을 보고한다" do
+      expect(short_audio_plan.audio_shortfall_ms).to eq(160_000 - 3_000)
+    end
+
+    it "40분 타임라인 / 3초 오디오에서 뒤쪽 행을 고르면 오디오가 한 조각도 안 잘린다" do
+      # 반증의 핵심: 이 상태를 정상이라고 선언하면 기밀 오디오가 그대로 남는다.
+      expect(short_audio_plan.total_cut_ms).to eq(0)
+      expect(short_audio_plan.kept_segments).to eq([ [ 0, 3_000 ] ])
+      expect(short_audio_plan.unsafe_partial_cut?).to be(true)
+    end
+
+    it "오디오가 타임라인을 덮으면 안전하다" do
+      expect(plan_for([ 2 ]).audio_shortfall_ms).to eq(0)
+      expect(plan_for([ 2 ]).unsafe_partial_cut?).to be(false)
+    end
+
+    it "1초 이내 드리프트는 정상으로 본다 (전사 ms 는 클라이언트 오프셋 파생이라 조금 넘칠 수 있다)" do
+      plan = described_class.new(rows: rows, selected_ids: [ 2 ], audio_duration_ms: 159_500)
+      expect(plan.audio_shortfall_ms).to eq(500)
+      expect(plan.unsafe_partial_cut?).to be(false)
+    end
+
+    it "전사 전체 선택은 오디오를 통째로 파기하므로 짧은 오디오에서도 안전하다" do
+      # 남는 오디오가 없으면 매핑을 몰라도 기밀이 남지 않는다 — 이게 사용자에게 안내하는 탈출구다.
+      plan = described_class.new(rows: rows, selected_ids: [ 1, 2, 3, 4, 5 ], audio_duration_ms: 3_000)
+      expect(plan.kept_segments).to eq([])
+      expect(plan.unsafe_partial_cut?).to be(false)
+    end
+
+    it "서버 오디오가 아예 없으면(0) 부족분을 따지지 않는다 (온디바이스 STT 정상 케이스)" do
+      # audio_duration_ms == 0 은 '오디오 없음'이고 전사만 파기하는 정상 경로다. 여기에 422 를
+      # 쓰지 않기로 한 이전 라운드의 결정과 충돌하지 않게, 0 은 부족분 판정에서 제외한다.
+      plan = described_class.new(rows: rows, selected_ids: [ 2 ], audio_duration_ms: 0)
+      expect(plan.audio_shortfall_ms).to eq(0)
+      expect(plan.unsafe_partial_cut?).to be(false)
+    end
+  end
+
+  describe "#unselected_contained_ids" do
+    # ⭐ A6. 절단 구간 **안에 완전히 들어간** 미선택 행은 동시 변경이 아니라 정적인 데이터 배치라
+    # 새로고침으로 해소되지 않는다. 가장자리만 걸친 행과 구분해 안내 문구를 나눈다.
+    it "구간 안에 통째로 들어간 미선택 행만 고른다" do
+      contained = row_class.new(6, 6, 41_500, 42_000) # run [41250,68900] 안
+      plan = described_class.new(
+        rows: rows + [ contained ], selected_ids: [ 2 ], audio_duration_ms: duration_ms
+      )
+      expect(plan.unselected_overlapping_ids).to include(6)
+      expect(plan.unselected_contained_ids).to eq([ 6 ])
+    end
+
+    it "가장자리만 걸친 행은 contained 가 아니다" do
+      # 이웃과 오디오 overlap 이 있으면 클램프를 포기하므로(면제) 그 이웃은 애초에 잡히지 않는다.
+      # 면제 대상이 아니면서 경계를 가로지르는 행만 여기 해당한다.
+      crosser = row_class.new(6, 6, 39_000, 42_000) # 구간 시작(40625)을 가로지른다
+      plan = described_class.new(
+        rows: rows + [ crosser ], selected_ids: [ 2 ], audio_duration_ms: duration_ms
+      )
+      expect(plan.unselected_overlapping_ids).to include(6)
+      expect(plan.unselected_contained_ids).to eq([])
+    end
+  end
+
   describe "#kept_segments" do
     it "구간의 여집합을 [start, end] 배열로 준다" do
       expect(plan_for([ 2 ]).kept_segments).to eq([ [ 0, 40_625 ], [ 69_450, 180_000 ] ])

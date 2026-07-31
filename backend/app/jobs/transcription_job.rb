@@ -29,6 +29,18 @@ class TranscriptionJob < ApplicationJob
   def perform(meeting_id:, audio_data: nil, audio_path: nil, sequence: 0, offset_ms: 0, diarization_config: nil, languages: nil, mode: "single", audio_source: "mic")
     meeting = Meeting.find(meeting_id)
 
+    # ⭐ 절단 표식 가드. 기밀 구간 절단(transcripts#redact)이 적용된 회의에는 전사를 쓰지 않는다.
+    # 표식을 보는 다른 writer(transcripts#bulk_create, meetings_audio#create/#chunk/#finalize,
+    # AudioUploadJob)와 달리 이 잡은 ActionCable 실시간 경로(TranscriptionChannel#audio_chunk)로
+    # 들어오므로 그 가드를 **전부 우회한다** — 막지 않으면 절단된 회의에 meetings#start_recording
+    # 후 파기한 기밀 전사가 그대로 되살아난다.
+    # 청크 파일은 반드시 지운다: 절단된 회의의 원시 PCM = 기밀 오디오이고, 여기서 그냥 return 하면
+    # 6시간 스위퍼까지 디스크에 남는다.
+    if redacted?(meeting_id)
+      reject_redacted!(meeting, audio_path)
+      return
+    end
+
     audio_base64 =
       if audio_path.present?
         Base64.strict_encode64(File.binread(audio_path))
@@ -49,6 +61,15 @@ class TranscriptionJob < ApplicationJob
 
     result = client.transcribe(audio_base64, meeting_id: meeting_id, diarization_config: diarization_config, languages: languages, mode: mode, offset_ms: offset_ms)
     segments = result["segments"] || []
+
+    # ⭐ 표식을 **다시** 읽는다. 위 진입 가드는 잡 시작 시 1회 읽기라, sidecar 왕복(수 초~수십 초)
+    # 동안 커밋된 절단을 보지 못한다 — 그 창으로 들어온 세그먼트가 방금 파기한 기밀을 되돌린다.
+    # 세그먼트마다 읽지 않고 루프 **직전에** 한 번만 읽는다: 루프는 메모리 연산이라 순식간이고,
+    # 세그먼트당 쿼리는 실시간 경로에 SQLite 읽기 부하를 곱한다(이 저장소에 lock storm 이력 있음).
+    if redacted?(meeting_id)
+      reject_redacted!(meeting, audio_path)
+      return
+    end
 
     segments.each do |segment|
       text = segment["text"].to_s.strip
@@ -101,6 +122,28 @@ class TranscriptionJob < ApplicationJob
   end
 
   private
+
+  # ⚠️ 메모리의 meeting 객체가 아니라 **DB 에서 다시 읽는다**. 절단은 다른 프로세스·다른 Meeting
+  # 인스턴스가 커밋하므로 이 잡이 들고 있는 객체는 그 변경을 영원히 못 본다.
+  def redacted?(meeting_id)
+    Meeting.where(id: meeting_id).pick(:transcripts_redacted_at).present?
+  end
+
+  # 실시간 경로는 응답 코드가 없으므로 채널로 사유를 알린다. 온디바이스 STT 동기 큐처럼 재전송을
+  # 반복하는 클라이언트가 "영구 거부"를 구분할 수 있도록 컨트롤러와 **같은 code** 를 쓴다
+  # (MeetingWriteGuard::REDACTED_ERROR_CODE).
+  def reject_redacted!(meeting, audio_path)
+    Rails.logger.warn "[TranscriptionJob] 절단된 회의 — 전사 폐기 (meeting=#{meeting.id})"
+    delete_chunk_file(audio_path)
+    ActionCable.server.broadcast(
+      meeting.transcription_stream,
+      {
+        type: "transcription_rejected",
+        code: MeetingWriteGuard::REDACTED_ERROR_CODE,
+        message: "기밀 절단이 적용된 회의입니다. 추가 전사를 받지 않습니다."
+      }
+    )
+  end
 
   # 성공 완료 시 + 비재시도 SidecarError로 드랍 확정 시에만 호출된다.
   # ensure 에서 호출하지 않는다 — 재시도 시 파일이 살아있어야 하므로.

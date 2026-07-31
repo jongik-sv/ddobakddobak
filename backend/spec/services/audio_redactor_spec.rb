@@ -174,6 +174,33 @@ RSpec.describe AudioRedactor do
       expect { redactor.cut_to_temp([ [ 0, 1_000 ] ], 0) }.to raise_error(described_class::UnsupportedFormat)
     end
 
+    it "1초 미만 절단에서 아무것도 안 자른 ffmpeg 결과를 거부한다 (A4: 톨러런스는 절단 길이 비례)" do
+      # ⭐ 반증의 핵심. cut_to_temp 가 "실제로 뭔가 잘랐는가"를 확인하는 유일한 검증이 길이 비교인데
+      # 고정 1초 톨러런스면 1초 미만 절단은 **no-op 결과도 통과**한다. 짧은 발언 한 마디를 자르는
+      # 것이 가장 흔한 케이스이므로, 그 구멍은 곧 "기밀 오디오가 그대로 남았는데 200" 이다.
+      src = File.join(audio_dir, "#{meeting.id}.wav")
+      write_wav(src)
+      meeting.update!(audio_file_path: src)
+      tmp = "#{src}.redact-tmp.wav"
+      # ffmpeg 이 입력을 그대로 복사한 것과 같은 결과(= 아무것도 안 자름). system 은 성공을 반환한다.
+      allow(redactor).to receive(:system) { FileUtils.cp(src, tmp); true }
+
+      # [4700, 5000] = 300ms 절단
+      expect { redactor.cut_to_temp([ [ 0, 4_700 ], [ 5_000, 10_000 ] ], 300) }
+        .to raise_error(described_class::TranscodeFailed, /길이/)
+      expect(File.exist?(tmp)).to be false
+    end
+
+    it "정상적인 짧은 절단은 통과한다 (톨러런스가 인코더 오차까지 잡으면 안 된다)" do
+      src = File.join(audio_dir, "#{meeting.id}.wav")
+      write_wav(src)
+      meeting.update!(audio_file_path: src)
+
+      map = redactor.cut_to_temp([ [ 0, 4_700 ], [ 5_000, 10_000 ] ], 300)
+
+      expect(probe_ms(map[src])).to be_within(100).of(9_700)
+    end
+
     it "ffmpeg 이 실패하면 TranscodeFailed 이고 임시본이 남지 않는다" do
       src = File.join(audio_dir, "#{meeting.id}.wav")
       File.binwrite(src, "not audio at all")
@@ -234,6 +261,21 @@ RSpec.describe AudioRedactor do
       redactor.restore_backups!
 
       expect(File.binread(src)).to eq(cut) # 절단본 그대로 — 원음이 되살아나지 않는다
+    end
+
+    it "백업의 mtime 은 원본 녹음 시각이 아니라 생성 시각이다 (A2: rename 은 mtime 을 보존한다)" do
+      # 같은 디렉토리 mv = rename 이고 rename 은 mtime 을 바꾸지 않는다. 원본 녹음이 어제 파일이면
+      # 갓 만든 백업도 어제 파일이 되어, 시간 기반 회수(SttChunkStorage.sweep_redact_backups!)가
+      # **생성되는 그 순간부터** 회수 대상으로 본다 — 진행 중인 절단의 롤백 복구 대상을 뺏는다.
+      src = File.join(audio_dir, "#{meeting.id}.wav")
+      write_wav(src)
+      FileUtils.touch(src, mtime: 3.hours.ago.to_time)
+      tmp = "#{src}.redact-tmp.wav"
+      write_wav(tmp, seconds: 5.0)
+
+      redactor.swap_in!(src => tmp)
+
+      expect(File.mtime("#{src}.redact-backup")).to be > 1.minute.ago
     end
 
     it "drop_backups! 후에는 백업이 남지 않는다" do

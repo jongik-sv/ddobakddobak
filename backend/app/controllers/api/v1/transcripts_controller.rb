@@ -330,7 +330,23 @@ module Api
         plan = TranscriptRedactionPlan.new(
           rows: rows, selected_ids: ids, audio_duration_ms: audio_duration_ms
         )
-        # ⭐ 두 불변식은 원인도 회복 가능성도 다르므로 상태 코드를 나눈다(plan 주석 §complete?).
+        # ⭐ fail-closed: 실측 오디오가 전사 타임라인보다 **짧다**. 이 API 는 "타임라인 ms ==
+        # 오디오 ms" 선형 매핑을 전제로 경계를 계산하는데 그 전제가 깨지는 실제 경로가 있다
+        # (merge_audio_files 실패 분기 = 최신 세그먼트만 저장 / 온디바이스 STT / 잘린 업로드).
+        # 그때 kept_segments 는 경계를 [0, audio_duration_ms] 로 **클립**하므로 기밀 구간이 오디오
+        # 길이 밖으로 계산되면 오디오에서는 아무것도 잘리지 않는다 — 전사만 사라지고 기밀 오디오는
+        # 그대로 남은 채 200 이 나간다(ffmpeg 길이 검증도 total_cut_ms 가 0 이라 통과한다).
+        # audio_duration_ms.zero?(서버 오디오 없음)는 여기 걸리지 않는다 — plan 이 부족분을 0 으로
+        # 두므로 전사만 파기하는 기존 경로가 유지되고, 위의 audio_paths 가드가 위험한 0 을 따로 막는다.
+        if plan.unsafe_partial_cut?
+          return render json: {
+            error: "오디오가 전사 타임라인보다 짧아 선택 구간을 오디오에서 특정할 수 없습니다. " \
+                   "전사 전체를 선택하면 오디오와 함께 파기할 수 있습니다.",
+            audio_duration_ms: audio_duration_ms,
+            timeline_end_ms: plan.timeline_end_ms
+          }, status: :unprocessable_entity
+        end
+        # ⭐ 세 불변식은 원인도 회복 가능성도 다르므로 상태 코드를 나눈다(plan 주석 §complete?).
         # uncovered_selected_ids = 선택 행이 계산된 절단 구간 밖 = 경계 계산이 깨졌다. 새로고침해도
         # 낫지 않으므로 409("다른 곳에서 바뀜")로 내보내면 데이터 손상에 대해 거짓말을 하는 셈이고
         # 사용자는 새로고침만 반복한다. 오디오는 엉뚱한 데를 자르고 기밀 전사가 살아남는 경로다.
@@ -338,9 +354,15 @@ module Api
           return render json: { error: "절단 구간 계산이 올바르지 않아 중단했습니다. 관리자에게 문의하세요." },
                         status: :unprocessable_entity
         end
-        if plan.unselected_overlapping_ids.any?
-          return render json: { error: "다른 곳에서 전사가 변경되었습니다. 새로고침 후 다시 시도하세요." },
-                        status: :conflict
+        # 미선택 겹침은 409 다 — 다만 원인(완전 포함 vs 가장자리)에 따라 문구를 나눈다(A6).
+        blocking_ids = plan.unselected_overlapping_ids
+        if blocking_ids.any?
+          contained_ids = plan.unselected_contained_ids
+          return render json: {
+            error: overlap_conflict_message(blocking_ids, contained_ids),
+            unselected_ids: blocking_ids,
+            contained_ids: contained_ids
+          }, status: :conflict
         end
 
         kept = plan.kept_segments
@@ -559,6 +581,21 @@ module Api
       # 새로고침으로 낫지 않는다 → 422. 409 로 뭉치면 사용자는 새로고침만 반복한다.
       RedactInvariantViolation = Class.new(StandardError)
 
+      # ⭐ 미선택 겹침의 안내 문구. 원인이 둘이라 하나로 뭉치면 한쪽은 반드시 거짓말이 된다.
+      #  - 구간 안에 **통째로 들어간** 행: 정적인 데이터 배치라 새로고침으로 절대 해소되지 않는다.
+      #    해법은 "그 행도 함께 선택한다" 하나뿐이므로 그렇게 안내한다.
+      #  - 경계를 **가로지르는** 행: split·이어녹음 같은 실제 동시 변경일 수 있어 재조회가 의미 있다.
+      # 어느 쪽이든 걸린 행 id 를 문구와 응답 필드(unselected_ids/contained_ids)에 함께 싣는다 —
+      # 알려주지 않으면 사용자는 어느 행을 손봐야 하는지 알 수 없다.
+      def overlap_conflict_message(blocking_ids, contained_ids)
+        ids = blocking_ids.join(", ")
+        if contained_ids.sort == blocking_ids.sort
+          "절단 구간 안에 선택하지 않은 전사 행이 있습니다(id: #{ids}). 그 행도 함께 선택하거나 선택 범위를 조정하세요."
+        else
+          "다른 곳에서 전사가 변경되었습니다. 새로고침 후 해당 행(id: #{ids})도 함께 선택하세요."
+        end
+      end
+
       # expected_bounds 항목 하나 꺼내기. nil 이면 "누락"(422), 있으면 값 비교 대상(409).
       def bounds_entry(expected, row_id)
         e = expected[row_id.to_s]
@@ -603,8 +640,11 @@ module Api
         if plan.uncovered_selected_ids.any?
           raise RedactInvariantViolation, "절단 구간 계산이 올바르지 않아 중단했습니다. 관리자에게 문의하세요."
         end
-        if plan.unselected_overlapping_ids.any?
-          raise RedactConflict, "다른 곳에서 전사가 변경되었습니다. 새로고침 후 다시 시도하세요."
+        # 진입 가드와 같은 원인 구분을 여기서도 한다 — 이쪽만 뭉뚱그리면 ffmpeg 창(수십 초)에
+        # 걸린 사용자만 해소 불가능한 안내를 받는다(A6).
+        blocking_ids = plan.unselected_overlapping_ids
+        if blocking_ids.any?
+          raise RedactConflict, overlap_conflict_message(blocking_ids, plan.unselected_contained_ids)
         end
         unless plan.range_bounds == original_plan.range_bounds
           raise RedactConflict, "다른 곳에서 전사가 변경되었습니다. 새로고침 후 다시 시도하세요."

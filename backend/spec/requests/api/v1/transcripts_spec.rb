@@ -1037,10 +1037,40 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         do_redact([ t2.id ])
 
         expect(response).to have_http_status(:conflict)
-        expect(response.parsed_body["error"]).to include("새로고침")
         expect(Transcript.where(meeting: meeting).count).to eq(5)
         expect(t2.reload.content).to eq("기밀토큰AAA")
         expect(intruder.reload.started_at_ms).to eq(3_500)
+      end
+
+      it "구간 안에 통째로 들어간 행이면 새로고침을 안내하지 않고 그 행 id 를 알려준다 (A6)" do
+        # ⭐ 반증. 이 상황은 동시 변경이 아니라 **정적인 데이터 배치**에서도 나온다(구간 안에
+        # 원래부터 있던 미선택 행). "새로고침 후 다시 시도"는 백 번 해도 같은 결과가 나오는
+        # 해소 불가능한 안내이고, 어느 행이 걸렸는지 알려주지 않아 사용자는 해법(그 행도 함께
+        # 선택한다)에 도달할 수 없다.
+        intruder = create(:transcript, meeting: meeting, sequence_number: 5,
+                          content: "구간 안에 원래부터 있던 행", started_at_ms: 3_500, ended_at_ms: 3_900)
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:conflict)
+        expect(response.parsed_body["error"]).not_to include("새로고침")
+        expect(response.parsed_body["error"]).to include("함께 선택")
+        expect(response.parsed_body["unselected_ids"]).to eq([ intruder.id ])
+        expect(response.parsed_body["contained_ids"]).to eq([ intruder.id ])
+      end
+
+      it "가장자리만 걸친 행은 동시 변경 안내를 유지하되 행 id 를 싣는다 (A6)" do
+        # 경계를 가로지르는 행은 split·이어녹음처럼 실제 동시 변경일 수 있어 재조회가 의미 있다.
+        # 원인이 다르므로 문구도 다르다 — 다만 어느 행인지는 두 경우 모두 알려준다.
+        crosser = create(:transcript, meeting: meeting, sequence_number: 5,
+                         content: "경계를 가로지르는 행", started_at_ms: 2_000, ended_at_ms: 3_800)
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:conflict)
+        expect(response.parsed_body["error"]).to include("새로고침")
+        expect(response.parsed_body["unselected_ids"]).to eq([ crosser.id ])
+        expect(response.parsed_body["contained_ids"]).to eq([])
       end
 
       it "409 로 끝나면 audio_duration_ms 컬럼도 그대로다 (가드보다 먼저 영속 금지)" do
@@ -1054,6 +1084,62 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
 
         expect(response).to have_http_status(:conflict)
         expect(meeting.reload.audio_duration_ms).to eq(123_456)
+      end
+    end
+
+    context "오디오가 전사 타임라인보다 짧은 회의 (A1)" do
+      # 도달 경로: merge_audio_files 실패 분기(최신 세그먼트만 저장)·온디바이스 STT·잘린 업로드.
+      # 그때 오디오 파일의 0ms 는 회의 시작이 아니라 어딘가 중간이라, 타임라인 ms 를 그대로
+      # 오디오 ms 로 쓰면 엉뚱한 데를 자르거나(아래) 아무 데도 안 자른다.
+      before do
+        # 오디오는 그대로 10초, 전사만 40초 지점까지 존재하는 상태로 만든다.
+        t4.update!(started_at_ms: 30_000, ended_at_ms: 40_000)
+      end
+
+      it "오디오 밖의 기밀 구간을 고르면 422 로 거부한다 (오디오 무변경 + 전사 잔존)" do
+        # ⭐ 반증. 가드가 없으면 kept_segments 가 경계를 [0, 10000] 으로 클립해 total_cut_ms 가 0 이
+        # 되고, ffmpeg 은 원본과 같은 길이를 내놓아 길이 검증도 통과한다 → 전사만 사라지고
+        # 기밀 오디오는 **한 조각도 잘리지 않은 채** 200 이 나간다.
+        original = File.binread(meeting.audio_file_path)
+
+        do_redact([ t4.id ])
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body["error"]).to include("오디오")
+        expect(response.parsed_body["audio_duration_ms"]).to be_within(1_000).of(10_000)
+        expect(response.parsed_body["timeline_end_ms"]).to eq(40_000)
+        expect(Transcript.where(id: t4.id)).to exist
+        expect(t4.reload.content).to eq("기밀토큰BBB")
+        expect(File.binread(meeting.reload.audio_file_path)).to eq(original)
+        expect(Dir.glob(File.join(audio_dir, "*.redact-backup"))).to be_empty
+      end
+
+      it "오디오 안쪽 구간을 골라도 거부한다 (매핑 자체를 신뢰할 수 없다)" do
+        # 오디오가 회의의 어느 구간인지 모르는 상태에서 부분 절단은 전부 추측이다.
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(Transcript.where(id: t2.id)).to exist
+      end
+
+      it "전사 전체를 선택하면 오디오 전체와 함께 파기된다 (안내한 탈출구가 실제로 동작한다)" do
+        # 남는 오디오가 없으면 매핑을 몰라도 기밀이 남지 않는다 — 에러 문구가 안내하는 경로다.
+        # 이 테스트가 없으면 가드를 더 조이는 미래의 변경이 그 안내를 조용히 거짓말로 만든다.
+        do_redact([ t1.id, t2.id, t3.id, t4.id ])
+
+        expect(response).to have_http_status(:ok)
+        expect(Transcript.where(meeting: meeting).count).to eq(0)
+        expect(meeting.reload.audio_file_path).to be_nil
+        expect(Dir.glob(File.join(audio_dir, "#{meeting.id}.*"))).to be_empty
+      end
+
+      it "1초 이내 드리프트는 정상 절단된다 (전사 ms 는 클라이언트 오프셋 파생이다)" do
+        # 가드가 부족분 전체를 막으면 끝단이 수백 ms 넘치는 흔한 회의가 전부 절단 불가가 된다.
+        t4.update!(started_at_ms: 9_000, ended_at_ms: 10_800)
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:ok)
       end
     end
 

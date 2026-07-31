@@ -26,6 +26,9 @@ class AudioRedactor
   }.freeze
 
   DURATION_TOLERANCE_MS = 1000
+  # 인코더 지연·패딩(LAME 의 1152 샘플 프라이밍, opus 프리스킵)과 컨테이너 duration 반올림의 하한.
+  # 이 아래로는 "안 잘렸다"와 "인코더 오차"를 길이만으로 구분할 수 없다.
+  MIN_DURATION_TOLERANCE_MS = 50
 
   def initialize(meeting)
     @meeting = meeting
@@ -148,6 +151,24 @@ class AudioRedactor
   # 영원히 잘리지 않는다. 지우는 코드가 여기 말고는 없다 → 다음 절단이 파기 책임을 진다.
   # 순서 계약을 **코드로** 강제한다. 주석만으로는 리팩토링하다 깨지고, "본문이 스스로 올바른
   # 순서로 부르는" 유닛 테스트는 순서를 규정할 뿐 검증하지 못한다. swap 이후 호출은 즉시 raise.
+  #
+  # ⚠️ 알려진 잔여 위험 (A5, 미해결 — 의도적으로 남긴다).
+  # 이 글롭은 <id>.*.redact-backup 을 **전부** 지우므로, 같은 회의에 절단 두 건이 겹치면 B 의 이
+  # 호출이 A 의 백업을 지울 수 있다. @swapped 가드는 같은 인스턴스 안에서만 유효하다.
+  # 그럼에도 지금 고치지 않는 근거:
+  #  (a) 창이 매우 좁다. B 의 purge 는 cut_to_temp **앞에서 한 번만** 돌고, A 의 백업은 swap_in!
+  #      (트랜잭션 마지막) ~ drop_backups!(커밋 직후) 사이에만 존재한다. 겹치려면 B 의 진입이
+  #      A 의 커밋 구간(수십 ms)에 정확히 떨어져야 한다. A 의 ffmpeg 구간(수십 초)과 겹치는
+  #      흔한 경우는 아직 백업이 없어 아무 일도 일어나지 않는다.
+  #  (b) 동시 절단의 **내용** 위험은 이미 닫혀 있다. 소스 identity 검증(source_unchanged?)이
+  #      진 쪽을 409 로 되돌리므로 두 절단이 서로의 오디오를 덮어쓰는 일은 없다.
+  #  (c) 제대로 된 해법은 회의 단위 클레임(예: meetings 에 redacting_at 컬럼 + 원자적 UPDATE)인데
+  #      SQLite 에는 advisory lock 이 없고 컬럼 추가는 마이그레이션 = 이 작업 범위 밖이다.
+  #  (d) mtime 유예(갓 만든 백업은 건너뛰기)는 검토 후 기각했다. A2 의 touch 로 mtime 이 이제
+  #      신뢰할 수 있게 됐지만, 그러면 "다음 절단이 이전 잔존 백업을 즉시 파기한다"는 계약이
+  #      시간 의존이 되고(잔존 기밀 원음이 최대 유예 시간만큼 더 살아남는다) 그 계약을 고정한
+  #      기존 테스트 두 건과 정면으로 충돌한다.
+  # 후속: 회의 단위 클레임 컬럼 도입 시 이 글롭을 "내 것이 아닌 백업만" 으로 좁힐 것.
   def purge_stale_backups!
     if @swapped
       raise PurgeFailed, "purge_stale_backups! 는 swap_in! 보다 먼저 호출해야 합니다 (이번 실행의 백업까지 지워 롤백 복구가 끊긴다)"
@@ -191,9 +212,10 @@ class AudioRedactor
 
         expected = src_duration_ms - total_cut_ms
         actual = probe_duration_ms(tmp)
-        if (actual - expected).abs > DURATION_TOLERANCE_MS
+        tolerance = duration_tolerance_ms(total_cut_ms)
+        if (actual - expected).abs > tolerance
           raise TranscodeFailed,
-                "절단 결과 길이가 기대와 다릅니다(#{File.basename(path)}): 기대 #{expected}ms, 실측 #{actual}ms"
+                "절단 결과 길이가 기대와 다릅니다(#{File.basename(path)}): 기대 #{expected}ms, 실측 #{actual}ms (허용 ±#{tolerance}ms)"
         end
 
         produced[path] = tmp
@@ -211,6 +233,7 @@ class AudioRedactor
     mapping.each do |path, tmp|
       backup = "#{path}.redact-backup"
       FileUtils.mv(path, backup)
+      stamp_backup!(backup)
       @backups[path] = backup
       FileUtils.mv(tmp, path)
     end
@@ -268,11 +291,38 @@ class AudioRedactor
       FileUtils.rm_f("#{p}.peaks.json")
       backup = "#{p}.redact-backup"
       FileUtils.mv(p, backup)
+      stamp_backup!(backup)
       @backups[p] = backup
     end
   end
 
   private
+
+  # ⭐ 길이 검증 톨러런스를 **절단 길이에 비례**시킨다(A4).
+  # 이 비교는 cut_to_temp 가 "ffmpeg 이 실제로 뭔가 잘랐는가"를 확인하는 **유일한** 검증이다.
+  # 고정 1초로 두면 1초 미만 절단에서 **아무것도 안 자른 결과가 그대로 통과한다** — 그리고 짧은
+  # 발언 한 마디를 자르는 것이 이 기능의 가장 흔한 사용법이다. 통과하면 전사만 사라지고 기밀
+  # 오디오는 그대로 남은 채 200 이 나간다.
+  # 절반(total_cut_ms / 2)을 쓰는 이유: no-op 결과의 오차는 정확히 total_cut_ms 이므로 그 절반을
+  # 임계로 두면 반드시 걸리고, 인코더 오차(수~수십 ms)는 통과한다. 상한은 기존 1초, 하한은
+  # 인코더 패딩 바닥(MIN_DURATION_TOLERANCE_MS).
+  def duration_tolerance_ms(total_cut_ms)
+    [ DURATION_TOLERANCE_MS, [ total_cut_ms / 2, MIN_DURATION_TOLERANCE_MS ].max ].min
+  end
+
+  # ⭐ 백업의 mtime 을 **생성 시각**으로 만든다. 이게 없으면 시간 기반 회수가 통째로 성립하지 않는다.
+  # 백업은 같은 디렉토리 안 FileUtils.mv = rename 으로 만들어지는데 rename 은 mtime 을 **보존한다**
+  # (바뀌는 건 ctime 과 디렉토리 mtime 이다). 원본 녹음 파일의 mtime 은 보통 수 시간~수일 전이므로,
+  # 갓 만든 백업이 생성되는 그 순간부터 SttChunkStorage.sweep_redact_backups! 의 1시간 cutoff 를
+  # 넘어 있다 → 스위퍼가 **진행 중인 절단의 롤백 복구 대상**을 뺏어간다(커밋 실패 시 원본 영구 소실).
+  # 반대 방향으로도 깨진다: "오래된 백업만 회수"라는 판정이 원본 녹음 시각에 좌우돼 의도와 무관해진다.
+  # touch 실패는 삼킨다 — 백업 자체는 이미 만들어졌고, 여기서 raise 하면 절단이 통째로 롤백된다.
+  # (최악의 경우 판정이 예전 동작으로 되돌아갈 뿐이다.)
+  def stamp_backup!(backup)
+    FileUtils.touch(backup)
+  rescue SystemCallError => e
+    Rails.logger.warn("[AudioRedactor] 백업 타임스탬프 갱신 실패 #{backup}: #{e.message}")
+  end
 
   # 파일 동일성 지문. 같은 경로에 mv 로 새 파일이 확정되면 inode 가 바뀌고(같은 디렉토리 rename),
   # 같은 inode 에 덧쓰기면 size·mtime 이 바뀐다. 파일이 사라졌으면 nil → 비교에서 반드시 어긋난다
