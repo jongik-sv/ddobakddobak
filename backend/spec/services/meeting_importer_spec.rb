@@ -9,6 +9,15 @@ require "tmpdir"
 RSpec.describe MeetingImporter do
   before(:all) { Transcript.ensure_fts_tables! }
 
+  # sidecar 는 개발 환경에서 실행 중일 수 있으므로 테스트가 실제 네트워크를 타지 않도록
+  # 기본 stub 을 전역 적용한다(화자 DB 전용 describe 블록은 자체 stub 으로 override).
+  let(:default_speaker_db) { { "next_num" => 1, "speakers" => {}, "names" => {} } }
+  let(:sidecar_stub) do
+    instance_double(SidecarClient, get_speaker_db: default_speaker_db, put_speaker_db: { "ok" => true })
+  end
+
+  before { allow(SidecarClient).to receive(:new).and_return(sidecar_stub) }
+
   # ── 시드 데이터 ──
   let!(:owner)         { create(:user, name: "원작성자") }
   let!(:importer_user) { create(:user, name: "가져온사람") }
@@ -600,6 +609,209 @@ RSpec.describe MeetingImporter do
       expect(new_meeting.transcripts.pluck(:sequence_number)).to eq((1..3100).to_a)
       # 건당 insert(3100회) 가 아니라 배치(수십 회 이하) 여야 한다.
       expect(transcript_inserts).to be < 100
+    end
+  end
+
+  # ── 화자 DB(SpeakerDB) 복원 ──
+
+  describe "화자 DB(SpeakerDB) 복원" do
+    let(:speaker_db_payload) do
+      {
+        "next_num" => 3,
+        "speakers" => { "SPEAKER_00" => [ "AACAPwAAAEA=" ] }, # base64(float32 1.0, 2.0)
+        "names"    => { "SPEAKER_00" => "앨리스" }
+      }
+    end
+
+    # 자식 컬렉션이 빈 최소 회의 manifest(수작업 아카이브용).
+    let(:bare_manifest) do
+      {
+        "format_version" => 1,
+        "scope"          => "meeting",
+        "meeting"        => meeting.attributes.merge(
+          "transcripts" => [], "summaries" => [], "action_items" => [],
+          "decisions"   => [], "blocks"    => [], "attachments"  => [],
+          "contacts"    => [], "bookmarks" => [],
+          "chat_messages" => [], "tag_ids" => [], "glossary_entries" => []
+        ),
+        "tags" => []
+      }
+    end
+
+    # manifest.json 만 든 tar.gz StringIO.
+    def manifest_only_archive(manifest_hash)
+      io  = StringIO.new
+      gz  = Zlib::GzipWriter.new(io)
+      tar = Gem::Package::TarWriter.new(gz)
+      json = JSON.generate(manifest_hash).b
+      tar.add_file_simple("manifest.json", 0o644, json.bytesize) { |e| e.write(json) }
+      tar.close
+      gz.finish
+      io.rewind
+      io
+    end
+
+    it "sidecar 에 새 meeting_id 로 PUT 한다 (원본 id 와 다르다)" do
+      allow(sidecar_stub).to receive(:get_speaker_db).with(meeting.id).and_return(speaker_db_payload)
+
+      result = run_import(export_io)
+
+      expect(result[:meeting_id]).not_to eq(meeting.id)
+      expect(sidecar_stub).to have_received(:put_speaker_db).with(result[:meeting_id], speaker_db_payload)
+    end
+
+    it "sidecar 가 다운되어 있으면(import PUT 실패) import 자체는 성공하고 나머지 데이터는 보존된다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(speaker_db_payload)
+      allow(sidecar_stub).to receive(:put_speaker_db).and_raise(SidecarClient::ConnectionError, "down")
+
+      result = nil
+      expect { result = run_import }.not_to raise_error
+
+      new_meeting = Meeting.find(result[:meeting_id])
+      expect(new_meeting.transcripts.count).to eq(1)
+    end
+
+    # 적대 검토 #3: "나머지는 가져오되 **보고**" — Rails.logger.warn 은 사용자가 못 본다.
+    # public_uid 충돌 경고와 같은 채널(result[:warnings])로 흘려보내야 한다.
+    it "복원 실패는 result[:warnings] 로 사용자에게 보고된다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(speaker_db_payload)
+      allow(sidecar_stub).to receive(:put_speaker_db).and_raise(SidecarClient::ConnectionError, "down")
+
+      result = run_import
+
+      expect(result[:warnings]).to include(Transfer::SpeakerDbTransfer::RESTORE_FAILED_WARNING)
+    end
+
+    it "복원에 성공하면 경고가 없다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(speaker_db_payload)
+
+      expect(run_import[:warnings]).to be_empty
+    end
+
+    # 적대 검토 #4: 거대한 speakers/<id>.json 을 선언한 적대적 아카이브가
+    # 상한 검사 전에 통째로 메모리에 올라가면 안 된다. 상한 초과분은 버리고 보고한다.
+    it "상한을 넘는 화자 엔트리는 통째로 읽지 않고 버린 뒤 경고로 보고한다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(speaker_db_payload)
+      io = export_io # 화자 엔트리가 든 정상 아카이브
+      stub_const("Transfer::SpeakerDbTransfer::MAX_ROSTER_BYTES", 8)
+
+      result = nil
+      expect { result = described_class.new(io, user: importer_user, project: dst_project, folder: dst_folder).run! }
+        .not_to raise_error
+
+      expect(sidecar_stub).not_to have_received(:put_speaker_db)
+      expect(result[:warnings]).to include(Transfer::SpeakerDbTransfer::RESTORE_FAILED_WARNING)
+      expect(Meeting.find(result[:meeting_id]).transcripts.count).to eq(1) # 나머지는 정상 복원
+    end
+
+    # R1: 상한 초과로 건너뛰더라도 엔트리는 **계량하며** 드레인해야 한다.
+    # 소비하지 않고 넘기면 TarReader::Entry#close 가 계량 없이 끝까지 읽는데
+    # (Zlib::GzipReader 는 :seek 에 응답하지 않아 read 드레인 루프로 떨어진다)
+    # 그 경로는 Transfer::Archive.account_bytes! 를 타지 않아 누적 상한 가드가 죽는다.
+    it "상한을 넘어 건너뛴 화자 엔트리도 계량되어 zip-bomb 가드가 발화한다" do
+      io  = StringIO.new
+      gz  = Zlib::GzipWriter.new(io)
+      tar = Gem::Package::TarWriter.new(gz)
+      json = JSON.generate(bare_manifest).b
+      tar.add_file_simple("manifest.json", 0o644, json.bytesize) { |e| e.write(json) }
+      bomb = "\0" * (300 * 1024)
+      tar.add_file_simple("speakers/#{meeting.id}.json", 0o644, bomb.bytesize) { |e| e.write(bomb) }
+      tar.close
+      gz.finish
+      io.rewind
+
+      stub_const("Transfer::SpeakerDbTransfer::MAX_ROSTER_BYTES", 8)
+      stub_const("Transfer::Archive::MAX_DECOMPRESSED_BYTES", json.bytesize + 100_000)
+
+      expect { run_import(io) }
+        .to raise_error(Transfer::Archive::InvalidArchiveError, /압축 해제 크기/)
+    end
+
+    # R8: @speaker_db_bytes 는 슬롯이 하나뿐이라 speakers/ 엔트리가 여러 개면 마지막이
+    # 앞의 것을 덮는데, 경고는 **읽기 시점**에 붙었다. 과대 엔트리 뒤에 정상 엔트리가
+    # 오면 로스터는 복원되는데 경고도 같이 남아 사용자를 오도한다.
+    it "과대 엔트리 뒤에 정상 엔트리가 오면 복원에 성공하고 경고를 남기지 않는다" do
+      roster = JSON.generate(speaker_db_payload).b
+      io  = StringIO.new
+      gz  = Zlib::GzipWriter.new(io)
+      tar = Gem::Package::TarWriter.new(gz)
+      json = JSON.generate(bare_manifest).b
+      tar.add_file_simple("manifest.json", 0o644, json.bytesize) { |e| e.write(json) }
+      oversized = "x" * 8192
+      tar.add_file_simple("speakers/999.json", 0o644, oversized.bytesize) { |e| e.write(oversized) }
+      tar.add_file_simple("speakers/#{meeting.id}.json", 0o644, roster.bytesize) { |e| e.write(roster) }
+      tar.close
+      gz.finish
+      io.rewind
+
+      stub_const("Transfer::SpeakerDbTransfer::MAX_ROSTER_BYTES", 4096)
+
+      result = run_import(io)
+
+      expect(sidecar_stub).to have_received(:put_speaker_db).with(result[:meeting_id], speaker_db_payload)
+      expect(result[:warnings]).to be_empty
+    end
+
+    # R3: 사이드카 문제로 로스터가 통째로 빠진 아카이브가 정상처럼 보이면 안 된다.
+    # (표식을 **쓰는** 쪽은 MeetingExporter — §H1 에서 구현됨. 아래는 읽는 쪽 계약.)
+    it "manifest 에 열화 표식이 있으면 경고로 알린다" do
+      io = manifest_only_archive(bare_manifest.merge(
+        Transfer::SpeakerDbTransfer::DEGRADED_MANIFEST_KEY => true
+      ))
+
+      expect(run_import(io)[:warnings])
+        .to include(Transfer::SpeakerDbTransfer::EXPORT_DEGRADED_WARNING)
+    end
+
+    # H1 라운드트립: 수작업 manifest 가 아니라 **실제** MeetingExporter.write_to 가
+    # 사이드카 다운 상태에서 표식을 쓰는지까지 검증한다(읽는 쪽만으로는 표식을 쓰는 쪽의
+    # 회귀를 못 잡는다).
+    it "사이드카가 다운된 상태로 만든 실제 아카이브를 import 하면 열화 경고가 붙는다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_raise(SidecarClient::ConnectionError, "down")
+      io = export_io # 실제 MeetingExporter.write_to — 열화 표식이 박힌 아카이브
+
+      result = run_import(io)
+
+      expect(result[:warnings]).to include(Transfer::SpeakerDbTransfer::EXPORT_DEGRADED_WARNING)
+    end
+
+    it "표식이 없는 구버전 아카이브는 export 열화 경고를 올리지 않는다(하위호환)" do
+      expect(run_import(manifest_only_archive(bare_manifest))[:warnings]).to be_empty
+    end
+
+    it "표식이 false 면 경고를 올리지 않는다" do
+      io = manifest_only_archive(bare_manifest.merge(
+        Transfer::SpeakerDbTransfer::DEGRADED_MANIFEST_KEY => false
+      ))
+
+      expect(run_import(io)[:warnings]).to be_empty
+    end
+
+    it "구버전 아카이브(화자 엔트리 없음)도 정상 import 된다 (하위호환)" do
+      io  = StringIO.new
+      gz  = Zlib::GzipWriter.new(io)
+      tar = Gem::Package::TarWriter.new(gz)
+      manifest = {
+        "format_version" => 1,
+        "scope"          => "meeting",
+        "meeting"        => meeting.attributes.merge(
+          "transcripts" => [], "summaries" => [], "action_items" => [],
+          "decisions"   => [], "blocks"    => [], "attachments"  => [],
+          "contacts"    => [], "bookmarks" => [],
+          "chat_messages" => [], "tag_ids" => [], "glossary_entries" => []
+        ),
+        "tags" => []
+      }
+      json = JSON.generate(manifest).b
+      tar.add_file_simple("manifest.json", 0o644, json.bytesize) { |e| e.write(json) }
+      tar.close
+      gz.finish
+      io.rewind
+
+      expect(sidecar_stub).not_to receive(:put_speaker_db)
+
+      result = described_class.new(io, user: importer_user, project: dst_project, folder: dst_folder).run!
+      expect(Meeting.find(result[:meeting_id])).to be_present
     end
   end
 end

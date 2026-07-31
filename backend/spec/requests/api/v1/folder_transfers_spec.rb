@@ -9,6 +9,16 @@ require "stringio"
 RSpec.describe "Api::V1::FolderTransfers", type: :request do
   before(:all) { Transcript.ensure_fts_tables! }
 
+  # export 경로가 sidecar 의 SpeakerDB 를 조회하므로, 러닝 dev sidecar 로 실요청이 나가지
+  # 않도록 전역 stub 을 둔다(테스트는 하네스 안에서만 검증한다).
+  let(:sidecar_stub) do
+    instance_double(SidecarClient,
+                    get_speaker_db: { "next_num" => 1, "speakers" => {}, "names" => {} },
+                    put_speaker_db: { "ok" => true })
+  end
+
+  before { allow(SidecarClient).to receive(:new).and_return(sidecar_stub) }
+
   let!(:editor)   { create(:user) }        # 폴더에 회의를 가진 사용자 = editable_by? 통과
   let!(:member)   { create(:user) }        # 프로젝트 멤버, 폴더에 회의 없음 = editable_by? 실패
   let!(:outsider) { create(:user) }        # 비멤버 = project membership 밖
@@ -264,6 +274,51 @@ RSpec.describe "Api::V1::FolderTransfers", type: :request do
 
         expect(response).to have_http_status(:created)
         expect(response.parsed_body["warnings"]).to eq([])
+      end
+    end
+
+    # ── 화자 DB(SpeakerDB) HTTP 왕복 ────────────────────────────────────────
+
+    context "화자 DB(SpeakerDB)" do
+      before { login_as(editor) }
+
+      let(:roster) do
+        { "next_num" => 2, "speakers" => { "SPEAKER_00" => [ "AACAPwAAAEA=" ] },
+          "names" => { "SPEAKER_00" => "앨리스" } }
+      end
+
+      it "export 응답에 speakers/<meeting_id>.json 이 들어가고 import 가 새 id 로 복원한다" do
+        allow(sidecar_stub).to receive(:get_speaker_db).and_return(roster)
+
+        post "/api/v1/folders/#{folder.id}/export", params: { include_audio: false }, as: :json
+        expect(response).to have_http_status(:ok)
+
+        entries = {}
+        Zlib::GzipReader.wrap(StringIO.new(response.body)) do |gz|
+          Gem::Package::TarReader.new(gz) { |tar| tar.each { |e| entries[e.full_name] = e.read } }
+        end
+        expect(JSON.parse(entries["speakers/#{meeting_in_folder.id}.json"])).to eq(roster)
+
+        archive = response.body
+        post "/api/v1/projects/#{project.id}/folders/import", params: { file: upload_file(archive) }
+
+        expect(response).to have_http_status(:created)
+        new_meeting_id = response.parsed_body["meeting_ids"].first
+        expect(new_meeting_id).not_to eq(meeting_in_folder.id)
+        expect(sidecar_stub).to have_received(:put_speaker_db).with(new_meeting_id, roster)
+        expect(response.parsed_body["warnings"]).to eq([])
+      end
+
+      it "복원 실패 시 201 + warnings 를 응답 본문으로 노출한다" do
+        allow(sidecar_stub).to receive(:get_speaker_db).and_return(roster)
+        archive = folder_archive
+        allow(sidecar_stub).to receive(:put_speaker_db).and_raise(SidecarClient::ConnectionError, "down")
+
+        post "/api/v1/projects/#{project.id}/folders/import", params: { file: upload_file(archive) }
+
+        expect(response).to have_http_status(:created)
+        expect(response.parsed_body["warnings"])
+          .to include(Transfer::SpeakerDbTransfer::RESTORE_FAILED_WARNING)
       end
     end
   end

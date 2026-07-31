@@ -4,7 +4,7 @@ import { downloadBlob } from '../lib/download'
 /**
  * 프로젝트 export/import (시스템 admin 전용).
  * - export: POST projects/:id/export { include_audio } → application/gzip 바이너리 → 다운로드 트리거
- * - import: POST projects/import (multipart file) → { project_id }
+ * - import: POST projects/import (multipart file) → { project_id, warnings }
  *
  * 백엔드: Api::V1::ProjectTransfersController. .ddobak.tgz(tar.gz) 포맷.
  */
@@ -39,17 +39,27 @@ export async function exportProject(projectId: number, opts: ExportOptions): Pro
   await downloadBlob(blob, filename)
 }
 
+export interface ImportProjectResult {
+  project_id: number
+  /**
+   * 부분 실패 경고(화자 로스터 복원 실패, public_uid 충돌 등). 백엔드
+   * ProjectTransfersController#import 가 `importer.warnings` 를 항상 함께 내려준다 —
+   * import 자체는 성공했으므로 에러가 아니라 경고로 사용자에게 노출해야 한다.
+   */
+  warnings?: string[]
+}
+
 /**
- * 아카이브 파일을 업로드해 새 프로젝트로 복원하고, 생성된 project_id 를 반환한다.
+ * 아카이브 파일을 업로드해 새 프로젝트로 복원하고, 생성된 project_id 와 경고를 반환한다.
  * FormData 전송이지만 apiClient(ky)로 보내 401 자동 refresh 를 태운다
  * (ky 는 FormData 면 Content-Type 을 건드리지 않아 multipart boundary 보존).
  */
-export async function importProject(file: File): Promise<{ project_id: number }> {
+export async function importProject(file: File): Promise<ImportProjectResult> {
   const formData = new FormData()
   formData.append('file', file)
   // 큰 프로젝트 import 는 14.5s+ 걸려 ky 기본 타임아웃(10s)에 abort → 백엔드는 끝까지
   // 진행해 프로젝트가 생성되는데 프론트는 "실패"로 오인. 타임아웃 해제로 방지.
   return apiClient
     .post('projects/import', { body: formData, timeout: false })
-    .json<{ project_id: number }>()
+    .json<ImportProjectResult>()
 }
