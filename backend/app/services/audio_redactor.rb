@@ -31,6 +31,27 @@ class AudioRedactor
     @meeting = meeting
     @backups = {}
     @swapped = false # swap_in! 이 한 번이라도 돌았는지 — purge_stale_backups! 순서 강제용
+    # 소스 identity 스냅샷(R1). 경로는 생성 시점, 파일 지문은 cut_to_temp 진입 시점에 잡는다.
+    # 경로를 여기서 잡는 이유: 전사 전체 선택 경로는 cut_to_temp 를 타지 않지만
+    # move_all_audio_to_backup! 로 오디오를 통째로 치우므로 그쪽도 보호받아야 한다.
+    @source_path = meeting.audio_file_path
+    @source_identities = {}
+  end
+
+  # 절단을 시작할 때 읽은 그 오디오가 지금도 그대로인가. 다르면 호출부가 409 로 거부한다.
+  #
+  # 왜 필요한가: cut_to_temp 는 -c copy 가 불가해 1시간 mp3 면 수십 초가 걸리는데, swap_in! 은
+  # **절단 전에 캡처한 경로**에 되쓴다. 그 창으로 이어녹음 병합(meetings_audio_controller.rb:155
+  # 의 mv)·AudioUploadJob 의 set_audio_file! 이 그대로 들어와 소스를 갈아치울 수 있고, 그러면
+  # 절단 결과가 **새 오디오를 덮어쓴다**. 트랜잭션 안 전사 재검증은 이 실패를 원리적으로 못 본다.
+  #
+  # ⚠️ audio_file_path 는 반드시 **DB 에서 다시 읽는다**. AudioUploadJob 은 다른 Meeting 인스턴스로
+  # set_audio_file! 을 부르므로 호출부의 @meeting 은 그 변경을 영원히 못 본다 — 메모리 값끼리
+  # 비교하면 항상 참인 자기충족 검사가 된다(이 클래스가 이미 한 번 겪은 실패 모드).
+  def source_unchanged?
+    return false unless Meeting.where(id: @meeting.id).pick(:audio_file_path) == @source_path
+
+    @source_identities.all? { |path, captured| captured.present? && file_identity(path) == captured }
   end
 
   # <id>.* 중 파생물을 제외한 오디오 파일 전부. 절단 대상(primary)과 삭제 대상(orphan)을 가르는
@@ -54,6 +75,12 @@ class AudioRedactor
 
   # 나머지 <id>.* 오디오 = **고아 파일**. 절단하지 않고 삭제한다.
   #
+  # ⚠️ primary 가 nil 이면(audio_file_path 가 nil 이거나 그 파일이 없음) **빈 목록**이다.
+  # `reject { |p| p == nil }` 로 두면 <id>.* 오디오 전부가 고아가 되는데, purge_duplicate_sources!
+  # 는 트랜잭션·ffmpeg·재검증보다 먼저 돌므로 그 뒤 409/422 로 끝나는 요청에서도 이미 전부
+  # 삭제된 뒤가 된다. "가리키는 곳이 없다"는 "전부 버려도 된다"가 아니다 — 경로 컬럼이 비어 있고
+  # 파일만 남은 상태는 복구 가능한 상태이지 파기 대상이 아니다.
+  #
   # 왜 자르지 않고 지우는가: kept_segments 는 primary 의 타임라인 기준인데, V3 가 지적한
   # webm+mp3 공존은 정확히 **길이가 다른 두 파일**이다(재녹음 병합 시 dest 확장자가 새 업로드
   # 기준으로 바뀌어 옛 <id>.mp3 가 그대로 남는다). 짧은 쪽에 같은 세그먼트를 적용하면 뒤쪽
@@ -63,6 +90,8 @@ class AudioRedactor
   # 함께 사라진다(그 경합은 별도로 인플라이트 409 + 소스 identity 검증이 막는다).
   def orphan_audio_paths
     primary = primary_audio_path
+    return [] if primary.nil?
+
     audio_paths.reject { |p| p == primary }
   end
 
@@ -77,7 +106,11 @@ class AudioRedactor
   def purge_duplicate_sources!
     purge_tree!(File.join(audio_dir, "#{@meeting.id}_parts"))
     purge_tree!(SttChunkStorage::ROOT.join(@meeting.id.to_s).to_s)
-    Dir.glob(File.join(audio_dir, "#{@meeting.id}*.merged.*")).each do |p|
+    # ⚠️ id 뒤의 점을 반드시 앵커한다. `#{id}*.merged.*` 로 두면 회의 1 을 절단할 때
+    # 회의 12·13·100… 의 병합 임시본까지 잡는다 — merge_audio_files 는
+    # `<audio_dir>/<id><ext>.merged.webm`(meetings_audio_controller.rb:137)에 쓰고 :155 에서 mv 로
+    # 확정하므로, 진행 중인 남의 이어녹음 병합 산출물을 지워 그 회의의 추가 녹음분이 유실된다.
+    Dir.glob(File.join(audio_dir, "#{@meeting.id}.*.merged.*")).each do |p|
       FileUtils.rm_f(p)
       raise PurgeFailed, "임시 병합 파일을 지우지 못했습니다: #{p}" if File.exist?(p)
     end
@@ -118,6 +151,10 @@ class AudioRedactor
         ext = File.extname(path).downcase
         codec = CODECS[ext]
         raise UnsupportedFormat, "지원하지 않는 오디오 형식입니다: #{ext}" if codec.nil?
+
+        # ffmpeg 을 돌리기 **전에** 소스 지문을 잡는다 — source_unchanged? 가 트랜잭션 안에서
+        # 이 값과 대조해 "우리가 읽은 그 파일이 맞는지" 확인한다(위 source_unchanged? 주석).
+        @source_identities[path] = file_identity(path)
 
         src_duration_ms = probe_duration_ms(path)
         tmp = "#{path}.redact-tmp#{ext}"
@@ -161,10 +198,23 @@ class AudioRedactor
     end
   end
 
-  # 커밋 후에만 호출한다.
+  # 커밋 후에만 호출한다. **지우지 못한 백업 경로 배열**을 반환한다(빈 배열 = 전부 파기).
+  #
+  # raise 하지 않는 이유: 이미 커밋된 뒤라 되돌릴 수 없다. 그런데 `FileUtils.rm_f` 는 force:true 라
+  # 실패해도 **절대 예외를 던지지 않는다**(쓰기 금지 디렉토리에서 조용히 반환, 파일은 그대로).
+  # 그래서 호출부의 `begin/rescue → backup_retained = true` 는 도달 불가였고 응답 필드는 영구히
+  # false 였다 — 남은 기밀 원음을 아무도 모르는 상태. 이 클래스의 다른 파기 경로(purge_tree!·
+  # purge_stale_backups!·고아 루프)와 똑같이 `rm_f` 뒤 `File.exist?` 로 확인하되, 커밋 뒤라는
+  # 위치만 다르므로 raise 대신 실패 목록을 반환해 호출부가 노출·로깅하게 한다.
+  # 실패해도 @backups 는 반드시 비운다 — 커밋 뒤 restore_backups! 가 돌면 "전사는 지워졌는데
+  # 기밀 오디오는 부활"이라는 설계가 금지한 방향이 된다.
   def drop_backups!
-    @backups.each_value { |b| FileUtils.rm_f(b) }
+    retained = @backups.each_value.filter_map do |b|
+      FileUtils.rm_f(b)
+      b if File.exist?(b)
+    end
     @backups = {}
+    retained
   end
 
   def restore_backups!
@@ -205,6 +255,16 @@ class AudioRedactor
   end
 
   private
+
+  # 파일 동일성 지문. 같은 경로에 mv 로 새 파일이 확정되면 inode 가 바뀌고(같은 디렉토리 rename),
+  # 같은 inode 에 덧쓰기면 size·mtime 이 바뀐다. 파일이 사라졌으면 nil → 비교에서 반드시 어긋난다
+  # (캡처 시점에는 ffmpeg 이 읽는 파일이라 nil 이 될 수 없으므로 "사라짐 = 변경"으로 판정된다).
+  def file_identity(path)
+    stat = File.stat(path)
+    [ stat.ino, stat.size, stat.mtime.to_f ]
+  rescue SystemCallError
+    nil
+  end
 
   def purge_tree!(path)
     return unless File.exist?(path)

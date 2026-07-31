@@ -82,6 +82,34 @@ RSpec.describe AudioRedactor do
       expect(File.exist?(other)).to be true
     end
 
+    it "다른 회의의 *.merged.* 는 건드리지 않는다 (id 접두 충돌)" do
+      # merge_audio_files(meetings_audio_controller.rb:137)는 <audio_dir>/<id><ext>.merged.webm 을
+      # 쓰고 :155 에서 mv 로 확정한다 — 진행 중인 이어녹음 병합의 산출물이다. 글롭이 id 뒤에 * 를
+      # 두면 회의 1 을 절단할 때 회의 12·13·100… 의 병합본이 함께 사라져 남의 이어녹음분이 유실된다.
+      other = File.join(audio_dir, "#{meeting.id}0.webm.merged.webm")
+      File.binwrite(other, "남의 회의 이어녹음 병합 중")
+      mine = File.join(audio_dir, "#{meeting.id}.webm.merged.webm")
+      File.binwrite(mine, "내 회의")
+
+      redactor.purge_duplicate_sources!
+
+      expect(File.exist?(other)).to be true
+      expect(File.exist?(mine)).to be false # 내 것은 여전히 지운다
+    end
+
+    it "audio_file_path 가 없으면 고아 삭제를 건너뛴다 (전 오디오 고아 오분류 금지)" do
+      # primary 가 nil 이면 <id>.* 전부가 고아로 분류된다. 이 메서드는 트랜잭션·ffmpeg·재검증보다
+      # 먼저 돌므로, 그 뒤 409/422 로 끝나는 요청에서도 이미 전부 지워진 뒤가 된다.
+      meeting.update!(audio_file_path: nil)
+      orphan_candidate = File.join(audio_dir, "#{meeting.id}.mp3")
+      File.binwrite(orphan_candidate, "유일하게 남은 오디오")
+
+      redactor.purge_duplicate_sources!
+
+      expect(File.exist?(orphan_candidate)).to be true
+      expect(redactor.orphan_audio_paths).to be_empty
+    end
+
     it "swap_in! 뒤에 호출하면 raise 한다 (순서 계약을 코드로 강제)" do
       # ⭐ 주석·호출순서만으로는 리팩토링하다 깨진다. 잘못된 순서가 조용히 통과하면 이번 실행의
       # 백업이 지워져 롤백 복구 경로가 끊긴다 — 그 상태에서 커밋이 실패하면 오디오가 사라진다.
@@ -169,6 +197,43 @@ RSpec.describe AudioRedactor do
       redactor.restore_backups!
       expect(File.binread(src)).to eq(original)
       expect(Dir.glob(File.join(audio_dir, "*.redact-backup"))).to be_empty
+    end
+
+    it "drop_backups! 가 지우지 못한 백업 경로를 돌려준다 (rm_f 는 force 라 raise 하지 않는다)" do
+      # 이 클래스의 다른 파기 경로는 전부 `rm_f` 뒤 `raise PurgeFailed if File.exist?` 인데
+      # 여기만 확인이 없었다. rm_f 는 force:true 라 쓰기 금지 디렉토리에서도 예외 없이 반환하므로
+      # 컨트롤러의 `rescue → backup_retained = true` 가 **도달 불가**였다 — 응답 필드가 영구히
+      # false 인 죽은 방어 레이어. 커밋 뒤 호출이라 raise 하면 안 되므로 실패 경로를 반환한다.
+      src = File.join(audio_dir, "#{meeting.id}.wav")
+      write_wav(src)
+      tmp = "#{src}.redact-tmp.wav"
+      write_wav(tmp, seconds: 5.0)
+      redactor.swap_in!(src => tmp)
+      backup = "#{src}.redact-backup"
+
+      allow(FileUtils).to receive(:rm_f).and_call_original
+      allow(FileUtils).to receive(:rm_f).with(backup) # no-op = 삭제 실패 재현
+
+      expect(redactor.drop_backups!).to eq([ backup ])
+      expect(File.exist?(backup)).to be true
+    end
+
+    it "파기에 실패해도 백업 목록을 비운다 (커밋 후 restore 로 기밀 원음이 부활하면 안 된다)" do
+      src = File.join(audio_dir, "#{meeting.id}.wav")
+      write_wav(src)
+      tmp = "#{src}.redact-tmp.wav"
+      write_wav(tmp, seconds: 5.0)
+      redactor.swap_in!(src => tmp)
+      cut = File.binread(src)
+      backup = "#{src}.redact-backup"
+
+      allow(FileUtils).to receive(:rm_f).and_call_original
+      allow(FileUtils).to receive(:rm_f).with(backup)
+
+      redactor.drop_backups!
+      redactor.restore_backups!
+
+      expect(File.binread(src)).to eq(cut) # 절단본 그대로 — 원음이 되살아나지 않는다
     end
 
     it "drop_backups! 후에는 백업이 남지 않는다" do

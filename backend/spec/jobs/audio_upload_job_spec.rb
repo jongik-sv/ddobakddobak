@@ -138,12 +138,20 @@ RSpec.describe AudioUploadJob, type: :job do
     # 를 부르는 순간 없는 solid_queue_jobs 테이블을 읽으려다 StatementInvalid 가 난다. 그래서
     # stub_const 로 클래스 상수를 통째로 갈아끼운다. relation 은 그대로 instance_double 이라
     # left_joins/where/to_a 가 ActiveRecord::Relation 에 실제로 있는지는 계속 검증된다.
+    # ⚠️ 인자별로 분기시킨다. `allow(relation).to receive(:where).and_return(relation)` 처럼
+    # 인자와 무관하게 자기를 돌려주면 `finished_at: nil`(미완료)·failed_execution 배제 조건이
+    # 전혀 반증되지 않는다 — 구현에서 그 조건들을 통째로 지워도 스펙이 green 이라, 예제 이름의
+    # "미완료"는 검증되지 않은 주장이 된다. 인자를 고정하면 조건이 빠질 때 스텁이 안 맞아 터진다.
     def stub_queue(jobs)
       relation = instance_double(ActiveRecord::Relation)
-      allow(relation).to receive(:left_joins).and_return(relation)
-      allow(relation).to receive(:where).and_return(relation)
+      allow(relation).to receive(:left_joins).with(:failed_execution).and_return(relation)
+      allow(relation).to receive(:where)
+        .with(solid_queue_failed_executions: { id: nil }).and_return(relation)
       allow(relation).to receive(:to_a).and_return(jobs)
-      stub_const("SolidQueue::Job", double("SolidQueue::Job", where: relation))
+      queue = double("SolidQueue::Job")
+      allow(queue).to receive(:where)
+        .with(class_name: "AudioUploadJob", finished_at: nil).and_return(relation)
+      stub_const("SolidQueue::Job", queue)
     end
 
     def queued_job(meeting_id)

@@ -305,17 +305,40 @@ module Api
 
         # 절단 경계는 실측 오디오 길이 기준이어야 한다. audio_duration_ms 는 전사 ms 파생이 아니고
         # (meeting.rb:117-132) stale 이면 마지막 구간의 cut_end 와 ffprobe 길이 검증이 함께 어긋난다.
-        @meeting.refresh_audio_duration!
+        # ⚠️ 여기서 컬럼에 **쓰지 않는다**. refresh_audio_duration! 은 update_column 이라, 아래
+        # 완전성 검사(409)·cut_to_temp(422)·트랜잭션 롤백처럼 "아무것도 바뀌지 않았다"고 응답하는
+        # 경로에서도 컬럼만 이미 바뀐 상태가 된다. 로컬로 재서 플랜에 넘기고 성공 경로에서만 영속한다.
+        audio_duration_ms = @meeting.measure_audio_duration_ms
+        redactor = AudioRedactor.new(@meeting)
+
+        # ⭐ fail-closed: 오디오 파일은 디스크에 있는데 길이를 재지 못했다(손상·ffprobe 실패·ffmpeg
+        # 부재). 이때 kept_segments 는 정의상 빈 배열이 되는데, 아래 `kept.empty?` 분기의 뜻은
+        # "전사 전체 선택 = 오디오를 통째로 파기"다 — 즉 **한 행만 고른 요청이 오디오 전체를
+        # 파기한다**. 길이를 모르면 어디를 잘라야 하는지도 모른다. 파괴적·복구 불가 연산이므로
+        # 진행하지 않는다. 서버 오디오가 애초에 없는 회의(온디바이스 STT)는 audio_paths 가 비어
+        # 여기에 걸리지 않고 전사만 정상 파기된다.
+        if audio_duration_ms.zero? && redactor.audio_paths.any?
+          return render json: { error: "오디오 길이를 측정할 수 없어 절단할 수 없습니다." },
+                        status: :unprocessable_entity
+        end
+
         plan = TranscriptRedactionPlan.new(
-          rows: rows, selected_ids: ids, audio_duration_ms: @meeting.audio_duration_ms.to_i
+          rows: rows, selected_ids: ids, audio_duration_ms: audio_duration_ms
         )
-        unless plan.complete?
+        # ⭐ 두 불변식은 원인도 회복 가능성도 다르므로 상태 코드를 나눈다(plan 주석 §complete?).
+        # uncovered_selected_ids = 선택 행이 계산된 절단 구간 밖 = 경계 계산이 깨졌다. 새로고침해도
+        # 낫지 않으므로 409("다른 곳에서 바뀜")로 내보내면 데이터 손상에 대해 거짓말을 하는 셈이고
+        # 사용자는 새로고침만 반복한다. 오디오는 엉뚱한 데를 자르고 기밀 전사가 살아남는 경로다.
+        if plan.uncovered_selected_ids.any?
+          return render json: { error: "절단 구간 계산이 올바르지 않아 중단했습니다. 관리자에게 문의하세요." },
+                        status: :unprocessable_entity
+        end
+        if plan.unselected_overlapping_ids.any?
           return render json: { error: "다른 곳에서 전사가 변경되었습니다. 새로고침 후 다시 시도하세요." },
                         status: :conflict
         end
 
         kept = plan.kept_segments
-        redactor = AudioRedactor.new(@meeting)
         tmp_map = {}
         begin
           # 중복 기밀 사본 선삭제 — 트랜잭션·ffmpeg 보다 먼저(V6-b). 남겨두면 finalize 가 잘리지 않은
@@ -340,7 +363,15 @@ module Api
             # destroy_batch 가 그대로 들어온다. 재검증이 없으면 destroy_all 이 **스냅샷 ids 만**
             # 지워 새 조각이 기밀 텍스트를 안고 살아남고, shift_remaining_transcripts! 도 옛
             # 스냅샷을 써서 그 조각은 ms 시프트도 못 받아 오디오와 어긋난다.
-            plan = revalidate_redaction!(ids, expected, plan)
+            plan = revalidate_redaction!(ids, expected, plan, audio_duration_ms)
+
+            # ⭐ 전사만 재검증하면 절반이다. swap_in! 은 **절단 전에 캡처한 경로**에 되쓰는데,
+            # ffmpeg 이 도는 수십 초 동안 이어녹음 병합(meetings_audio_controller.rb:155 의 mv)이나
+            # AudioUploadJob 이 그 경로를 새 파일로 갈아치울 수 있다. 그러면 절단 결과가 **새
+            # 오디오를 덮어쓴다**. 소스 identity(경로 + ino/size/mtime)를 여기서 다시 본다.
+            unless redactor.source_unchanged?
+              raise RedactConflict, "오디오가 변경되었습니다. 새로고침 후 다시 시도하세요."
+            end
 
             # FTS 때문에 destroy_all 필수 — delete_all 은 after_destroy :fts_delete 를 건너뛰어
             # 잘라낸 전사 전문이 transcripts_fts 에 영구히 남는다(이 기능이 막으려는 실패 그 자체).
@@ -387,6 +418,11 @@ module Api
           redactor.restore_backups!
           tmp_map.each_value { |t| FileUtils.rm_f(t) }
           return render json: { error: e.message }, status: :conflict
+        rescue RedactInvariantViolation => e
+          # 불변식 위반은 동시 변경이 아니다 — 새로고침으로 낫지 않으므로 409 가 아니라 422.
+          redactor.restore_backups!
+          tmp_map.each_value { |t| FileUtils.rm_f(t) }
+          return render json: { error: e.message }, status: :unprocessable_entity
         rescue StandardError
           # 여기 도달 = 커밋 전 실패. swap_in! 이 일부만 됐어도 전부 원본으로 되돌린다.
           redactor.restore_backups!
@@ -397,10 +433,18 @@ module Api
         # 커밋 후에만 백업 파기. 이 호출은 rescue 밖이어야 한다 — 커밋된 뒤에 restore_backups! 가
         # 돌면 "전사는 지워졌는데 기밀 오디오는 되살아나는" 금지된 방향이 된다.
         # 실패해도 되살리지 않는다. 대신 남은 백업(= 절단 전 원음)은 (a) 다음 절단의
-        # purge_stale_backups! (b) 매시간 SttChunkStorage.sweep! 가 회수한다. 사용자에게도 알린다.
+        # purge_stale_backups! (b) 매시간 SttChunkStorage.sweep! → sweep_redact_backups! 가
+        # 회수한다. 사용자에게도 알린다.
+        # ⚠️ drop_backups! 는 raise 하지 않는다 — FileUtils.rm_f 가 force:true 라 실패해도 조용히
+        # 반환하기 때문이다. 반환값(지우지 못한 경로 목록)으로 판정한다. rescue 는 rm_f 밖의
+        # 예기치 못한 예외(권한 조회 실패 등)용으로만 남긴다.
         backup_retained = false
         begin
-          redactor.drop_backups!
+          retained = redactor.drop_backups!
+          if retained.any?
+            backup_retained = true
+            Rails.logger.error "[redact] meeting=#{@meeting.id} 백업 파기 실패 — 스위퍼가 회수한다: #{retained.join(', ')}"
+          end
         rescue StandardError => e
           backup_retained = true
           Rails.logger.error "[redact] meeting=#{@meeting.id} 백업 파기 실패 — 스위퍼가 회수한다: #{e.message}"
@@ -489,6 +533,9 @@ module Api
 
       # 트랜잭션 안 재검증 실패. rescue 에서 409 로 변환한다(500 아님).
       RedactConflict = Class.new(StandardError)
+      # 트랜잭션 안 **불변식** 위반(선택 행이 절단 구간 밖). 동시 변경이 아니라 계산이 깨진 것이라
+      # 새로고침으로 낫지 않는다 → 422. 409 로 뭉치면 사용자는 새로고침만 반복한다.
+      RedactInvariantViolation = Class.new(StandardError)
 
       # expected_bounds 항목 하나 꺼내기. nil 이면 "누락"(422), 있으면 값 비교 대상(409).
       def bounds_entry(expected, row_id)
@@ -514,7 +561,7 @@ module Api
       #   (c) 경계 동일성     — 위 둘을 통과해도 경계가 달라졌다면 이미 만든 ffmpeg 산출물이
       #                          무효다. 같다면 그대로 써도 안전하다(이 검사가 재사용을 licence 한다).
       # 반환값은 **재계산된 plan** — 이후 ms 시프트·재번호가 반드시 최신 스냅샷을 쓰게 한다.
-      def revalidate_redaction!(ids, expected, original_plan)
+      def revalidate_redaction!(ids, expected, original_plan, audio_duration_ms)
         rows = Transcript.where(meeting_id: @meeting.id).order(:sequence_number).to_a
         if (ids - rows.map(&:id)).any?
           raise RedactConflict, "다른 곳에서 전사가 변경되었습니다. 새로고침 후 다시 시도하세요."
@@ -525,10 +572,16 @@ module Api
           raise RedactConflict, "다른 곳에서 전사가 변경되었습니다. 새로고침 후 다시 시도하세요."
         end
 
+        # ⚠️ 컬럼이 아니라 **요청 시작 시 실측한 로컬 값**을 쓴다. 컬럼을 읽으면 이 요청이 아직
+        # 영속하지 않은 값(성공 경로에서만 쓴다)이라 original_plan 과 경계가 어긋나 아래
+        # range_bounds 비교가 스스로 409 를 만든다.
         plan = TranscriptRedactionPlan.new(
-          rows: rows, selected_ids: ids, audio_duration_ms: @meeting.audio_duration_ms.to_i
+          rows: rows, selected_ids: ids, audio_duration_ms: audio_duration_ms
         )
-        unless plan.complete?
+        if plan.uncovered_selected_ids.any?
+          raise RedactInvariantViolation, "절단 구간 계산이 올바르지 않아 중단했습니다. 관리자에게 문의하세요."
+        end
+        if plan.unselected_overlapping_ids.any?
           raise RedactConflict, "다른 곳에서 전사가 변경되었습니다. 새로고침 후 다시 시도하세요."
         end
         unless plan.range_bounds == original_plan.range_bounds
@@ -562,12 +615,20 @@ module Api
       # reorder(nil) 필수 — default_scope { order(:sequence_number) } 가 UPDATE 에 ORDER BY 를
       # 붙이면 SQLite 가 컴파일 플래그 없이 거부한다(split 과 동일 이유).
       def shift_remaining_transcripts!(plan)
-        plan.remaining_rows.group_by { |row| plan.delta_for(row.started_at_ms) }.each do |delta, group|
-          next if delta.zero?
+        # ⚠️ delta_for(row.started_at_ms) 를 행에 그대로 쓰면 안 된다(plan 주석 §delta_for).
+        # 그건 **시점 하나**의 시프트량이고, 클램프를 포기한 면제 이웃은 경계를 실제로 가로지르므로
+        # started 쪽 delta 가 0 이 나온다 — 그 뒤 행들만 구간 길이만큼 당겨져 이웃이 뒤 행보다
+        # 뒤에 놓이는 타임라인 붕괴가 난다. 행 단위는 shift_deltas_for(row) 가 쌍으로 준다.
+        # 쌍으로 group_by 해도 벌크 UPDATE 유지 — 행마다 UPDATE 를 날리면 SQLite write lock 을
+        # 오래 쥔다(이 저장소에 lock storm 실측 이력 있음).
+        plan.remaining_rows.group_by { |row| plan.shift_deltas_for(row) }
+            .each do |(started_delta, ended_delta), group|
+          next if started_delta.zero? && ended_delta.zero?
 
           Transcript.where(id: group.map(&:id)).reorder(nil).update_all(
             ActiveRecord::Base.sanitize_sql_array(
-              [ "started_at_ms = started_at_ms - ?, ended_at_ms = ended_at_ms - ?", delta, delta ]
+              [ "started_at_ms = started_at_ms - ?, ended_at_ms = ended_at_ms - ?",
+                started_delta, ended_delta ]
             )
           )
         end

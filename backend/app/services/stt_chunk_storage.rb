@@ -59,6 +59,55 @@ class SttChunkStorage
         end
       end
 
+      # 이미 매시간 도는 유일한 훅이라 여기에 붙인다. config/recurring.yml:22,42 는 이 메서드를
+      # **커맨드 문자열로 직접** 부르므로 스케줄 설정 변경·신규 잡·스키마 변경이 필요 없다.
+      # 반환값(removed)에는 더하지 않는다 — 이 메서드의 계약은 "삭제한 PCM 청크 수"다.
+      sweep_redact_backups!
+
+      removed
+    end
+
+    # 기밀 구간 절단(transcripts#redact)이 남긴 <id>.*.redact-backup 회수. 삭제 건수 반환.
+    #
+    # 이 파일은 절단 **전** 오디오 전체 = 기밀 원음이다. 정상 경로에서는 커밋 직후 drop_backups!
+    # 가 지우지만, 그 호출이 실패하면(디스크 오류·권한·프로세스 사망) 남는다.
+    # AudioRedactor#audio_paths 가 .redact-backup 을 제외하므로 이후 절단에서도 잘리지 않고,
+    # "다음 절단이 스윕한다"(purge_stale_backups!)는 대부분의 회의가 두 번 절단되지 않아
+    # 실질적으로 회수가 아니다. 시간 기반 회수가 두 번째 경로다.
+    #
+    # 회의 레코드를 조회하지 않는다 — 파일명의 id 접두는 힌트일 뿐이고, 전사를 전부 선택해
+    # 전사가 0 건이 된 회의·삭제된 회의의 백업도 똑같이 회수돼야 한다.
+    #
+    # older_than 을 1시간으로 둔 이유: 진행 중인 절단의 백업을 뺏으면 안 된다. 절단 한 건은
+    # 길어야 수십 초(ffmpeg 재인코딩)라 1시간이면 충분히 안전하다.
+    def sweep_redact_backups!(older_than: 1.hour)
+      dir = ENV["AUDIO_DIR"].presence
+      # ⚠️ test 에서 AUDIO_DIR 이 없으면 기본값이 **프로덕션** storage/audio 다. 이 저장소는
+      # 프로덕션 체크아웃에서 rspec 을 직접 돌리므로(ROOT 가 test 에서 tmp 로 갈라지는 것과 같은
+      # 이유) 명시적으로 지정되지 않은 test 실행에서는 아무것도 하지 않는다 — 스펙의 around
+      # 격리를 빠뜨린 **미래의 스펙까지** 막는 구조적 방어선.
+      return 0 if dir.nil? && Rails.env.test?
+
+      dir ||= Rails.root.join("storage", "audio").to_s
+      return 0 unless Dir.exist?(dir)
+
+      cutoff = older_than.ago
+      removed = 0
+
+      Dir.glob(File.join(dir, "*.redact-backup")).each do |path|
+        begin
+          next unless File.mtime(path) < cutoff
+
+          File.delete(path)
+          removed += 1
+          Rails.logger.info("[SttChunkStorage] 잔존 절단 백업 회수: #{File.basename(path)}")
+        rescue Errno::ENOENT
+          # 다른 프로세스(다음 절단의 purge_stale_backups! 등)가 먼저 지움 — 무해.
+        rescue StandardError => e
+          Rails.logger.warn("[SttChunkStorage] 절단 백업 삭제 실패 #{path}: #{e.message}")
+        end
+      end
+
       removed
     end
   end

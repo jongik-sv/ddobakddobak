@@ -562,6 +562,11 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
       end
     end
 
+    def probe_ms(path)
+      out = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 #{Shellwords.escape(path)}`.strip
+      (out.to_f * 1000).to_i
+    end
+
     # 1: [0,2000]  2: [3000,4000]  3: [5000,6000]  4: [7000,9000]
     let!(:t1) { create(:transcript, meeting: meeting, sequence_number: 1, content: "앞부분 발언", started_at_ms: 0, ended_at_ms: 2_000) }
     let!(:t2) { create(:transcript, meeting: meeting, sequence_number: 2, content: "기밀토큰AAA", started_at_ms: 3_000, ended_at_ms: 4_000) }
@@ -708,6 +713,23 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
       it "경계는 행 ms 가 아니라 이웃과의 gap 중간점이다" do
         do_redact([ t2.id ])
         expect(response.parsed_body["ranges"].first["start_ms"]).to eq(2_500) # 3000(행 ms)이 아니다
+      end
+
+      it "경계와 겹쳐 면제된 이웃은 경계로 클램프해 시프트한다 (delta_for 를 행에 쓰면 타임라인 붕괴)" do
+        # t3 를 t2 와 겹치게 만든다 → 클램프를 포기하고 t3 를 그 경계에 한해 면제한다.
+        # 구간은 [2500(=t1·t2 gap 중간점), 4000(=t2 끝, 클램프 포기)] — 길이 1500.
+        # 행에 delta_for(row.started_at_ms) 를 그대로 쓰면 t3 는 자기 시작(3500)이 구간 끝(4000)
+        # 앞이라 delta 0 을 받아 [3500,6000] 에 머무는 반면 t4 는 1500 당겨져 5500 에서 시작한다
+        # → t3 가 t4 를 지나 끝나는 타임라인 붕괴. 올바른 값은 구간으로 클램프한 [2500,4500] 이다.
+        t3.update!(started_at_ms: 3_500)
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:ok)
+        expect(t3.reload.started_at_ms).to eq(2_500)
+        expect(t3.ended_at_ms).to eq(4_500)
+        expect(t4.reload.started_at_ms).to eq(5_500)
+        expect(t3.ended_at_ms).to be <= t4.started_at_ms
       end
 
       it "sequence_number 가 1..N 으로 재번호된다" do
@@ -863,14 +885,97 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
           result
         end
 
+        original = File.binread(meeting.audio_file_path)
+
         do_redact([ t2.id ])
 
         expect(response).to have_http_status(:conflict)
         expect(Transcript.where(id: t2.id)).to exist
+        # ⭐ 파일시스템 단언. 기존 409/422 스펙들은 DB 만 봤는데, purge_duplicate_sources! 는
+        # 트랜잭션·ffmpeg·재검증보다 **먼저** 돌므로 요청이 409 로 끝나도 이미 지워진 뒤일 수 있다
+        # (특히 primary 가 nil 이면 <id>.* 전부가 고아로 분류됐다).
+        expect(File.binread(meeting.reload.audio_file_path)).to eq(original)
+        expect(Dir.glob(File.join(audio_dir, "#{meeting.id}.*")).map { |p| File.basename(p) })
+          .to contain_exactly("#{meeting.id}.wav")
+      end
+
+      it "ffmpeg 도중 원본 오디오가 새 파일로 교체되면 409 이고 절단본이 새 오디오를 덮지 않는다 ⭐" do
+        # swap_in! 은 **절단 전에 캡처한 경로**에 되쓴다. 트랜잭션 내 재검증은 전사만 보므로
+        # 이어녹음 병합(meetings_audio_controller.rb:155 의 mv)·AudioUploadJob 이 그 경로를
+        # 새 파일로 확정해도 아무도 다시 보지 않는다 → 절단 결과가 새 오디오를 덮어쓴다.
+        allow_any_instance_of(AudioRedactor).to receive(:cut_to_temp).and_wrap_original do |orig, *args|
+          result = orig.call(*args)
+          # 같은 디렉토리 mv = rename = 새 inode. 6초짜리 새 오디오가 같은 경로로 확정된 상황.
+          replacement = "#{meeting.audio_file_path}.newer"
+          write_wav(replacement, seconds: 6.0)
+          FileUtils.mv(replacement, meeting.audio_file_path)
+          result
+        end
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:conflict)
+        expect(Transcript.where(id: t2.id)).to exist
+        # 절단본(8초)이 아니라 새로 들어온 6초 오디오가 그대로 남아 있어야 한다.
+        expect(probe_ms(meeting.reload.audio_file_path)).to be_within(1_000).of(6_000)
+        expect(Dir.glob(File.join(audio_dir, "*.redact-tmp*"))).to be_empty
+        expect(Dir.glob(File.join(audio_dir, "*.redact-backup"))).to be_empty
+      end
+
+      it "ffmpeg 도중 audio_file_path 컬럼이 갈리면 409 다 (메모리 값끼리 비교하면 자기충족)" do
+        # ⚠️ AudioUploadJob 은 **다른 Meeting 인스턴스**로 set_audio_file! 을 부르므로 컨트롤러의
+        # @meeting 은 그 변경을 영원히 못 본다. identity 검사가 @meeting.audio_file_path 를 읽으면
+        # 양쪽이 같은 stale 객체라 항상 통과하는 자기충족 검사가 된다 — DB 로 직접 바꿔 고정한다.
+        allow_any_instance_of(AudioRedactor).to receive(:cut_to_temp).and_wrap_original do |orig, *args|
+          result = orig.call(*args)
+          mp3 = File.join(audio_dir, "#{meeting.id}.mp3")
+          File.binwrite(mp3, "새 업로드 결과")
+          Meeting.where(id: meeting.id).update_all(audio_file_path: mp3)
+          result
+        end
+        original = File.binread(File.join(audio_dir, "#{meeting.id}.wav"))
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:conflict)
+        expect(Transcript.where(id: t2.id)).to exist
+        expect(File.binread(File.join(audio_dir, "#{meeting.id}.wav"))).to eq(original)
+        expect(Dir.glob(File.join(audio_dir, "*.redact-tmp*"))).to be_empty
       end
     end
 
     context "FTS 삭제 실패 시 롤백 (fts_delete 가 예외를 삼키는 것에 대한 방어)" do
+      def fts_row_count(table, source_id)
+        conn = ActiveRecord::Base.connection
+        rows = conn.execute(ActiveRecord::Base.sanitize_sql_array(
+          [ "SELECT COUNT(*) AS c FROM #{table} WHERE source_id = ?", source_id ]
+        ))
+        row = rows.to_a.first
+        (row.is_a?(Hash) ? row["c"] : row&.first).to_i
+      end
+
+      it "summaries_fts 에 행이 남으면 롤백한다 (회의록 본문 = 기밀 전사 내용)" do
+        # verify_fts_purged!("summaries_fts", ...) 에는 반증 테스트가 없어 그 줄을 통째로 지워도
+        # 스위트가 green 이었다. summaries.notes_markdown 은 전사 내용을 그대로 담으므로
+        # (meeting_summarization_job 의 append 형 realtime 요약) 이 인덱스에 남으면 절단이
+        # 막으려는 실패 그 자체다.
+        summary = meeting.summaries.create!(summary_type: "final",
+                                            notes_markdown: "## 회의록\n- 기밀토큰AAA",
+                                            generated_at: Time.current)
+        # ⚠️ 사전 확인: 색인이 실제로 들어갔는지. 안 들어갔다면 stub 없이도 remaining 이 0 이라
+        # 이 테스트가 엉뚱한 이유로 통과한다(fts_upsert 도 예외를 삼킨다).
+        expect(fts_row_count("summaries_fts", summary.id)).to eq(1)
+
+        allow_any_instance_of(Summary).to receive(:fts_delete) # no-op = 삭제 실패 재현
+        original = File.binread(meeting.audio_file_path)
+
+        expect { do_redact([ t2.id ]) }.to raise_error(/FTS 인덱스/)
+
+        expect(Transcript.where(id: t2.id)).to exist
+        expect(meeting.reload.summaries.count).to eq(1)
+        expect(File.binread(meeting.reload.audio_file_path)).to eq(original)
+      end
+
       it "transcripts_fts 에 행이 남으면 롤백하고 오디오도 원본 그대로다" do
         # fts_indexable.rb:46-49 가 rescue + logger.warn 이라 SQLITE_BUSY 로 실패해도 커밋된다.
         # 그러면 전사 행은 사라진 채 기밀 평문이 FTS 에 영구히 남고 200 이 나간다.
@@ -882,6 +987,44 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         expect(Transcript.where(id: t2.id)).to exist
         expect(t2.reload.content).to eq("기밀토큰AAA")
         expect(File.binread(meeting.reload.audio_file_path)).to eq(original)
+      end
+    end
+
+    context "fail-closed 불변식 (선택 행이 계산된 절단 구간 밖)" do
+      # TranscriptRedactionPlan#uncovered_selected_ids. 런 경계는 sequence_number 로 묶은 런에서
+      # 나오는데 그 값은 시간 순도 아니고 유일하지도 않다 — 계산이 어긋나면 선택 행이 구간 밖에
+      # 놓여 오디오는 엉뚱한 데를 자르고 기밀 전사가 살아남는다. unselected_overlapping_ids 는
+      # remaining_rows 만 보므로 이 실패를 원리적으로 못 잡는다. 구성상 도달 불가에 가까우므로
+      # 술어를 스텁해 **배선 자체**를 검증한다(배선이 없으면 409 가 나온다 — 상태 코드가 판별한다).
+      it "불변식이 깨지면 409 가 아니라 422 이고 아무 행도 지워지지 않는다" do
+        allow_any_instance_of(TranscriptRedactionPlan)
+          .to receive(:uncovered_selected_ids).and_return([ t2.id ])
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(Transcript.where(meeting: meeting).count).to eq(4)
+        expect(t2.reload.content).to eq("기밀토큰AAA")
+      end
+
+      it "ffmpeg 도중 불변식이 깨져도 409 가 아니라 422 이고 오디오가 원본 그대로다" do
+        # 트랜잭션 안 재검증(revalidate_redaction!)에서도 같은 구분이 필요하다. 여기서 409 로
+        # 뭉치면 사용자는 새로고침만 반복한다 — 계산이 깨진 것이라 새로고침으로 낫지 않는다.
+        calls = 0
+        allow_any_instance_of(TranscriptRedactionPlan)
+          .to receive(:uncovered_selected_ids).and_wrap_original do |orig|
+            calls += 1
+            calls >= 2 ? [ t2.id ] : orig.call # 1회차=요청 진입 가드, 2회차=트랜잭션 내 재검증
+          end
+        original = File.binread(meeting.audio_file_path)
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(Transcript.where(meeting: meeting).count).to eq(4)
+        expect(File.binread(meeting.reload.audio_file_path)).to eq(original)
+        expect(Dir.glob(File.join(audio_dir, "*.redact-tmp*"))).to be_empty
+        expect(Dir.glob(File.join(audio_dir, "*.redact-backup"))).to be_empty
       end
     end
 
@@ -898,6 +1041,19 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         expect(Transcript.where(meeting: meeting).count).to eq(5)
         expect(t2.reload.content).to eq("기밀토큰AAA")
         expect(intruder.reload.started_at_ms).to eq(3_500)
+      end
+
+      it "409 로 끝나면 audio_duration_ms 컬럼도 그대로다 (가드보다 먼저 영속 금지)" do
+        # refresh_audio_duration! 은 update_column 이라 완전성 검사(409)·cut_to_temp(422)·
+        # 트랜잭션 롤백보다 **먼저** 컬럼을 바꿨다. "아무것도 바뀌지 않았다"는 응답이 거짓이 된다.
+        meeting.update_column(:audio_duration_ms, 123_456)
+        create(:transcript, meeting: meeting, sequence_number: 5,
+               content: "나중에 들어온 행", started_at_ms: 3_500, ended_at_ms: 3_900)
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:conflict)
+        expect(meeting.reload.audio_duration_ms).to eq(123_456)
       end
     end
 
@@ -1073,15 +1229,22 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
       end
 
       it "ffmpeg 이 실패하면 DB 무변경 + 422 이고 오디오도 원본 그대로다" do
+        # ⚠️ 길이를 못 재면(ffprobe 실패) audio_duration_ms 가 0 → kept_segments 가 빈 배열이
+        # 되는데, `kept.empty?` 분기는 "전사 전체 선택 = 오디오 통째로 파기"를 뜻한다.
+        # 즉 한 행만 고른 요청이 오디오 전체를 파기하고 audio_file_path 까지 비운다.
+        # 길이를 모르면 자를 위치도 모르므로 fail-closed 로 거부해야 한다.
         File.binwrite(meeting.audio_file_path, "not audio at all")
-        original = File.binread(meeting.audio_file_path)
+        path = meeting.audio_file_path
+        original = File.binread(path)
 
         do_redact([ t2.id ])
 
         expect(response).to have_http_status(:unprocessable_entity)
         expect(Transcript.where(meeting: meeting).count).to eq(4)
         expect(t2.reload.content).to eq("기밀토큰AAA")
-        expect(File.binread(meeting.reload.audio_file_path)).to eq(original)
+        expect(meeting.reload.audio_file_path).to eq(path) # 비워지지 않았다
+        expect(File.binread(path)).to eq(original)
+        expect(Dir.glob(File.join(audio_dir, "*.redact-backup"))).to be_empty
       end
 
       it "지원하지 않는 오디오 형식이면 422 이고 DB 무변경이다" do
@@ -1120,9 +1283,32 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         expect(Dir.glob(File.join(audio_dir, "*.redact-tmp*"))).to be_empty
       end
 
-      it "purge 를 swap 뒤로 옮기면 요청이 실패한다 (순서 계약 회귀 가드)" do
-        # M3: 유닛 테스트만으로는 컨트롤러 호출 순서를 뒤집어도 잡히지 않았다. AudioRedactor 가
-        # @swapped 로 순서를 강제하므로, 순서가 뒤집히면 여기서 PurgeFailed 로 드러난다.
+      it "컨트롤러가 purge_duplicate_sources! 를 swap_in! 보다 먼저 부른다 (실제 호출 순서)" do
+        # ⭐ 진짜 순서 계약. 아래 @swapped 스펙은 스텁이 **스스로** @swapped 를 세우고 원본을
+        # 부르므로 컨트롤러 호출 순서와 무관하게 같은 결과가 나온다 — 자기가 만든 순서를 검증한다.
+        # 실제 순서는 호출 기록으로만 볼 수 있다. 뒤집히면 이번 실행의 백업이 지워져 롤백 복구
+        # 경로가 끊기고, 그 상태에서 커밋이 실패하면 오디오가 사라진다.
+        calls = []
+        allow_any_instance_of(AudioRedactor).to receive(:purge_duplicate_sources!).and_wrap_original do |orig, *args|
+          calls << :purge
+          orig.call(*args)
+        end
+        allow_any_instance_of(AudioRedactor).to receive(:swap_in!).and_wrap_original do |orig, *args|
+          calls << :swap
+          orig.call(*args)
+        end
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:ok)
+        expect(calls).to eq([ :purge, :swap ])
+      end
+
+      it "@swapped 가드가 요청 경로까지 전파된다 (스텁이 세운 상태에서 422 로 드러난다)" do
+        # ⚠️ 이 예제는 **컨트롤러의 호출 순서를 검증하지 않는다**. 스텁이 purge_duplicate_sources!
+        # 안에서 스스로 @swapped 를 세우고 원본을 부르므로 컨트롤러가 어떤 순서로 부르든 결과가
+        # 같다. 검증하는 것은 "AudioRedactor 의 @swapped 가드가 요청 경로에서 422 로 표면화된다"
+        # 뿐이다. 실제 순서는 위 호출 기록 예제가 본다.
         allow_any_instance_of(AudioRedactor).to receive(:purge_duplicate_sources!).and_wrap_original do |orig, *args|
           orig.receiver.send(:instance_variable_set, :@swapped, true) # swap 이 먼저 돈 상태 재현
           orig.call(*args)
@@ -1132,6 +1318,20 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
 
         expect(response).to have_http_status(:unprocessable_entity)
         expect(Transcript.where(id: t2.id)).to exist
+      end
+
+      it "커밋 후 백업 파기가 실패하면 응답 backup_retained 가 true 다 (죽어 있던 방어 레이어)" do
+        # drop_backups! 가 `rm_f` 만 하고 성공을 확인하지 않으면 — rm_f 는 force:true 라 절대
+        # raise 하지 않으므로 — 컨트롤러의 `rescue → backup_retained = true` 가 도달 불가가 되고
+        # 응답은 영구히 false 다. 백업(= 절단 전 원음)이 디스크에 남았는데 아무도 모르는 상태.
+        allow(FileUtils).to receive(:rm_f).and_call_original
+        allow(FileUtils).to receive(:rm_f).with(/\.redact-backup\z/) # no-op = 파기 실패 재현
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body["backup_retained"]).to be true
+        expect(Dir.glob(File.join(audio_dir, "*.redact-backup"))).not_to be_empty
       end
 
       it "전사를 전부 고르면 오디오 파일이 사라지고 audio_file_path 가 비워진다" do
