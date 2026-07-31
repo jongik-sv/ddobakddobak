@@ -532,6 +532,141 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
   end
 
   # ─────────────────────────────────────────────────────────
+  # POST /api/v1/meetings/:meeting_id/transcripts/redact
+  # 기밀 구간 절단 — 전사 행 + 오디오를 실제로 파기(비가역)
+  # ─────────────────────────────────────────────────────────
+  describe "POST /api/v1/meetings/:meeting_id/transcripts/redact" do
+    include ActiveJob::TestHelper
+
+    let(:audio_dir) { Rails.root.join("tmp", "test_audio_#{SecureRandom.hex(4)}").to_s }
+
+    around do |example|
+      prev = ENV["AUDIO_DIR"]
+      ENV["AUDIO_DIR"] = audio_dir
+      FileUtils.mkdir_p(audio_dir)
+      example.run
+    ensure
+      prev.nil? ? ENV.delete("AUDIO_DIR") : ENV["AUDIO_DIR"] = prev
+      FileUtils.rm_rf(audio_dir)
+    end
+
+    def write_wav(path, seconds: 10.0, rate: 16_000)
+      samples = (rate * seconds).to_i
+      data = ("\x00\x00".b * samples)
+      File.open(path, "wb") do |f|
+        f.write("RIFF"); f.write([ 36 + data.bytesize ].pack("V")); f.write("WAVE")
+        f.write("fmt "); f.write([ 16 ].pack("V")); f.write([ 1 ].pack("v")); f.write([ 1 ].pack("v"))
+        f.write([ rate ].pack("V")); f.write([ rate * 2 ].pack("V"))
+        f.write([ 2 ].pack("v")); f.write([ 16 ].pack("v"))
+        f.write("data"); f.write([ data.bytesize ].pack("V")); f.write(data)
+      end
+    end
+
+    # 1: [0,2000]  2: [3000,4000]  3: [5000,6000]  4: [7000,9000]
+    let!(:t1) { create(:transcript, meeting: meeting, sequence_number: 1, content: "앞부분 발언", started_at_ms: 0, ended_at_ms: 2_000) }
+    let!(:t2) { create(:transcript, meeting: meeting, sequence_number: 2, content: "기밀토큰AAA", started_at_ms: 3_000, ended_at_ms: 4_000) }
+    let!(:t3) { create(:transcript, meeting: meeting, sequence_number: 3, content: "중간 발언", started_at_ms: 5_000, ended_at_ms: 6_000) }
+    let!(:t4) { create(:transcript, meeting: meeting, sequence_number: 4, content: "기밀토큰BBB", started_at_ms: 7_000, ended_at_ms: 9_000) }
+
+    before do
+      wav = File.join(audio_dir, "#{meeting.id}.wav")
+      write_wav(wav)
+      meeting.update!(audio_file_path: wav)
+    end
+
+    # expected_bounds 는 required 다. 기본은 "화면과 서버가 일치하는 정상 상태" — DB 현재값을
+    # 그대로 실어 보낸다. 불일치·누락 케이스는 각 테스트가 명시적으로 다르게 보낸다.
+    def bounds_for(ids)
+      Transcript.where(id: ids).each_with_object({}) do |t, h|
+        h[t.id.to_s] = { started_at_ms: t.started_at_ms, ended_at_ms: t.ended_at_ms }
+      end
+    end
+
+    def do_redact(ids, client_id: "c1", expected_bounds: nil)
+      post "/api/v1/meetings/#{meeting.id}/transcripts/redact",
+           params: { transcript_ids: ids, client_id: client_id,
+                     expected_bounds: expected_bounds || bounds_for(ids) },
+           as: :json
+    end
+
+    context "가드" do
+      it "transcript_ids 가 비면 422" do
+        do_redact([])
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+
+      it "이 회의에 없는 id 가 섞이면 422 이고 아무 행도 지워지지 않는다" do
+        do_redact([ t2.id, 999_999 ])
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(Transcript.where(meeting: meeting).count).to eq(4)
+      end
+
+      it "recording 중이면 409" do
+        meeting.update!(status: "recording")
+        do_redact([ t2.id ])
+        expect(response).to have_http_status(:conflict)
+        expect(Transcript.where(meeting: meeting).count).to eq(4)
+      end
+
+      it "transcribing 중이면 409" do
+        meeting.update!(status: "transcribing")
+        do_redact([ t2.id ])
+        expect(response).to have_http_status(:conflict)
+      end
+
+      it "summarizing 중이면 409" do
+        meeting.update!(summarizing: true)
+        do_redact([ t2.id ])
+        expect(response).to have_http_status(:conflict)
+      end
+
+      it "AudioUploadJob 이 인플라이트면 409 이고 아무것도 변하지 않는다 (조기 UX 가드)" do
+        allow(AudioUploadJob).to receive(:in_flight_for?).with(meeting.id).and_return(true)
+        do_redact([ t2.id ])
+        expect(response).to have_http_status(:conflict)
+        expect(Transcript.where(meeting: meeting).count).to eq(4)
+        expect(t2.reload.content).to eq("기밀토큰AAA")
+      end
+
+      it "잠긴 회의는 403" do
+        meeting.update!(locked_at: Time.current)
+        do_redact([ t2.id ])
+        expect(response).to have_http_status(:forbidden)
+        expect(Transcript.where(meeting: meeting).count).to eq(4)
+      end
+    end
+
+    context "권한" do
+      it "협업자는 403 이다 (split 과 다른 티어)" do
+        # :meeting_collaborator 팩토리는 이 저장소에 없다 — 기존 스펙과 같이 모델을 직접 만든다
+        # (spec/requests/api/v1/meeting_collaborators_spec.rb:32).
+        MeetingCollaborator.create!(meeting: meeting, user: other_user)
+        create(:project_membership, project: project, user: other_user)
+        login_as(other_user)
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:forbidden)
+        expect(t2.reload.content).to eq("기밀토큰AAA")
+      end
+
+      it "소유자는 통과한다" do
+        do_redact([ t2.id ])
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "admin 은 통과한다" do
+        admin = create(:user, role: "admin")
+        login_as(admin)
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:ok)
+      end
+    end
+  end
+
+  # ─────────────────────────────────────────────────────────
   # DELETE /api/v1/meetings/:meeting_id/transcripts/destroy_batch
   # 동봉 수정 회귀: delete_all → destroy_all, last_user_edit_at 갱신 추가
   # ─────────────────────────────────────────────────────────
