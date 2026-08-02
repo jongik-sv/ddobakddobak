@@ -131,6 +131,8 @@ export default function MeetingPage() {
   // 원격(다른 클라이언트) 전사 구조 변경 신호(split·redact). 채널 경로에서만 증가 — 로컬 조작
   // (handleTranscriptSplit 등)은 이 값을 건드리지 않는다.
   const remoteStructureRevision = useTranscriptStore((s) => s.remoteStructureRevision)
+  // 오디오 파일 교체 신호(절단). useAudioPlayer 의 URL·deps 에 넣어야 캐시된 옛 오디오를 버린다.
+  const audioRevision = useTranscriptStore((s) => s.audioRevision)
   // null = "아래 reset 이펙트가 아직 기준선을 안 잡음"이라는 방어적 표식이다. 실제로는 이 값이
   // null인 채로 재조회 이펙트(아래, 319행 부근)가 실행되는 경우가 없다 — React는 같은 컴포넌트의
   // 이펙트를 선언 순서대로 실행하고, 마운트/회의전환 시 항상 이 reset 이펙트(선언이 더 앞)가
@@ -192,7 +194,7 @@ export default function MeetingPage() {
   )
 
   // 오디오 상태 (AudioPlayer ↔ MiniAudioPlayer ↔ TranscriptPanel 공유)
-  const audio = useAudioPlayer(meetingId)
+  const audio = useAudioPlayer(meetingId, audioRevision)
   const [seekMs, setSeekMs] = useState<number | null>(null)
   // 동일 ms로 재-seek(마커 재클릭 등)해도 React state는 동일 값 setState를 bail-out하므로,
   // 값과 무관하게 "seek이 발생했다"는 사실만 전달하는 별도 트리거가 필요하다.

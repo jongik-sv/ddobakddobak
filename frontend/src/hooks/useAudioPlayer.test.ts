@@ -90,4 +90,31 @@ describe('useAudioPlayer', () => {
     const { result } = renderHook(() => useAudioPlayer(1))
     expect(result.current.playbackRate).toBe(1)
   })
+
+  it('audioVersion이 바뀌면 새 URL로 오디오를 다시 받는다 (절단 후 옛 오디오 재생 방지)', async () => {
+    const { rerender } = renderHook(({ v }: { v: number }) => useAudioPlayer(1, v), {
+      initialProps: { v: 0 },
+    })
+
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    const firstUrls = fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(firstUrls.some((u) => u.includes('?v='))).toBe(false)
+
+    rerender({ v: 1 })
+
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(urls.some((u) => u.includes('/meetings/1/audio?v=1'))).toBe(true)
+  })
+
+  it('audioVersion이 그대로면 재요청하지 않는다', () => {
+    const { rerender } = renderHook(({ v }: { v: number }) => useAudioPlayer(1, v), {
+      initialProps: { v: 2 },
+    })
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    const before = fetchMock.mock.calls.length
+
+    rerender({ v: 2 })
+
+    expect(fetchMock.mock.calls.length).toBe(before)
+  })
 })

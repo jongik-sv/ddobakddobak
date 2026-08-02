@@ -20,7 +20,13 @@ export interface AudioPlayerResult {
   download: (filename?: string) => Promise<void>
 }
 
-export function useAudioPlayer(meetingId: number): AudioPlayerResult {
+/**
+ * @param audioVersion 서버 오디오 파일이 교체될 때마다 증가하는 토큰(transcriptStore.audioRevision).
+ *   절단(transcripts#redact)은 같은 경로의 파일 내용을 바꾸므로, 이 값이 URL과 effect deps에
+ *   들어가지 않으면 캐시된 blob(=절단 전 기밀 오디오)이 계속 재생된다. 길이는 우연히 같을 수
+ *   있으므로 durationMs 가 아니라 별도 카운터를 쓴다.
+ */
+export function useAudioPlayer(meetingId: number, audioVersion = 0): AudioPlayerResult {
   const [isReady, setIsReady] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasAudio, setHasAudio] = useState(false)
@@ -35,7 +41,9 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
   useEffect(() => {
     let cancelled = false
     let blobUrl: string | null = null
-    const audioUrl = `${getApiBaseUrl()}/meetings/${meetingId}/audio`
+    const audioUrl = audioVersion > 0
+      ? `${getApiBaseUrl()}/meetings/${meetingId}/audio?v=${audioVersion}`
+      : `${getApiBaseUrl()}/meetings/${meetingId}/audio`
 
     // Audio 엘리먼트를 동기적으로 생성 (cleanup에서 확실히 접근 가능)
     const audio = new Audio()
@@ -132,7 +140,7 @@ export function useAudioPlayer(meetingId: number): AudioPlayerResult {
       setCurrentTimeMs(0)
       setDurationMs(0)
     }
-  }, [meetingId])
+  }, [meetingId, audioVersion])
 
   const play = useCallback(() => {
     audioRef.current?.play()
