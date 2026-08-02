@@ -1,5 +1,12 @@
 import apiClient from '../client'
-import type { Transcript, BulkTranscriptItem, SplitTranscriptParams, SplitTranscriptResponse } from './types'
+import type {
+  Transcript,
+  BulkTranscriptItem,
+  SplitTranscriptParams,
+  SplitTranscriptResponse,
+  RedactTranscriptsParams,
+  RedactTranscriptsResponse,
+} from './types'
 
 export async function deleteTranscripts(meetingId: number, ids: number[]): Promise<{ deleted: number }> {
   return apiClient.delete(`meetings/${meetingId}/transcripts/destroy_batch`, { json: { ids } }).json()
@@ -15,6 +22,18 @@ export async function splitTranscript(
   return apiClient
     .post(`meetings/${meetingId}/transcripts/${transcriptId}/split`, { json: params })
     .json<SplitTranscriptResponse>()
+}
+
+/** 선택한 전사 행과 그 구간의 오디오를 실제로 파기한다. 마스킹이 아니라 절단이며 되돌릴 수 없다.
+ *  403(비 owner/admin·잠금)·409(녹음·전사·요약 중, 오디오 변환 중, 겹침 완전성 실패)·
+ *  422(검증·오디오 절단 실패)는 호출부가 HTTPError 로 받는다. */
+export async function redactTranscripts(
+  meetingId: number,
+  params: RedactTranscriptsParams,
+): Promise<RedactTranscriptsResponse> {
+  return apiClient
+    .post(`meetings/${meetingId}/transcripts/redact`, { json: params })
+    .json<RedactTranscriptsResponse>()
 }
 
 export async function updateTranscript(
