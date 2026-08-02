@@ -4,17 +4,26 @@ import type { RedactTranscriptsResponse } from '../api/meetings'
 export interface LocalRedactionDeps {
   /** 페이지의 transcripts 배열과 store를 서버 최신값으로 다시 채운다. */
   reloadTranscripts: () => Promise<void>
+  /** useMeeting().refetch — meeting/summary 상태 재조회를 트리거한다(동기, fetchKey만 bump).
+   *  meeting.transcripts_redacted 배지·brief_summary 등 meeting 파생 필드가 최신화된다. */
+  refetchMeeting: () => void
   /** 오디오 버전 토큰을 올려 useAudioPlayer가 새 파일을 받게 한다. */
   markAudioChanged: () => void
+  /** 화면이 렌더 중인 회의록(useTranscriptStore.meetingNotes, AiSummaryPanel이 읽는 유일한
+   *  소스)을 즉시 지운다. summaries_destroyed일 때 refetchMeeting/reloadTranscripts **앞**에서
+   *  호출해야 한다 — 그 둘은 refetchMeeting은 비동기 완료를 보장하지 않고 reloadTranscripts는
+   *  실패할 수 있는데, 어느 쪽이든 파기된 회의록 텍스트가 화면에 남아있으면 안 된다(그게 이
+   *  기능이 막으려는 실패 그 자체). */
+  clearMeetingNotes: () => void
   /** 사용자 안내(토스트). */
   notify: (message: string, durationMs?: number) => void
 }
 
 /**
  * 절단 성공 후 로컬 화면 반영. MeetingPage 밖의 순수 함수로 둔다 — 내부 클로저로 두면
- * markAudioChanged 호출을 자동 검증할 방법이 없는데, 그건 절단한 본인 화면이 옛 오디오
- * (= 기밀)를 계속 재생하지 않게 하는 유일한 장치다(MeetingPage는 전사 채널 미구독이라
- * 원격 경로가 대신해 주지 않는다).
+ * markAudioChanged/clearMeetingNotes 호출을 자동 검증할 방법이 없는데, 그건 절단한 본인
+ * 화면이 옛 오디오(= 기밀)를 계속 재생하거나 파기된 회의록을 계속 보여주지 않게 하는
+ * 유일한 장치다(MeetingPage는 전사 채널 미구독이라 원격 경로가 대신해 주지 않는다).
  *
  * 재조회를 쓰는 이유: 절단은 남은 행 전부의 ms를 "클램프된 오디오 경계" 기준 누적 delta로
  * 당긴다(TranscriptRedactionPlan). 그 규칙을 TS로 옮겨 적으면 두 구현이 갈라지는 순간
@@ -29,6 +38,10 @@ export async function applyLocalRedaction(
   deps.markAudioChanged()
 
   if (result.summaries_destroyed) {
+    // ⚠️ 낙관적 클리어 — refetchMeeting/reloadTranscripts 보다 먼저다. AiSummaryPanel은
+    // useTranscriptStore.meetingNotes만 읽으므로, 이 호출 없이 refetch만 걸면(구 구현의
+    // 결함) 파기됐어야 할 회의록 텍스트가 새로고침 전까지 화면에 그대로 남는다.
+    deps.clearMeetingNotes()
     // 자동 재요약은 걸지 않는다(설계 §절단 후) — LLM 비용이 들고 사용자가 원하지 않을 수 있다.
     deps.notify('회의록이 삭제되었습니다. 다시 생성하세요.', 6000)
   }
@@ -36,5 +49,6 @@ export async function applyLocalRedaction(
     deps.notify('절단 전 오디오 백업이 서버에 남았습니다. 최대 1시간 내 자동 정리됩니다.', 8000)
   }
 
+  deps.refetchMeeting()
   await deps.reloadTranscripts()
 }

@@ -19,7 +19,9 @@ function makeResult(over: Partial<RedactTranscriptsResponse> = {}): RedactTransc
 function makeDeps() {
   return {
     reloadTranscripts: vi.fn(async () => {}),
+    refetchMeeting: vi.fn(),
     markAudioChanged: vi.fn(),
+    clearMeetingNotes: vi.fn(),
     notify: vi.fn(),
   }
 }
@@ -69,5 +71,44 @@ describe('applyLocalRedaction', () => {
     await applyLocalRedaction(deps, makeResult({ backup_retained: true }))
 
     expect(deps.notify).toHaveBeenCalledWith(expect.stringContaining('백업'), expect.any(Number))
+  })
+
+  // ── CRITICAL 회귀: 절단 후 화면의 회의록(BlockNote)이 지워지지 않던 결함 ──
+  // AiSummaryPanel은 오직 useTranscriptStore.meetingNotes만 읽고, 그 값은 useMeeting()의
+  // summary?.notes_markdown 변화로만 갱신된다. refetch 없이는 summary가 안 바뀌어
+  // summaries.destroy_all 이후에도 파기됐어야 할 회의록 텍스트가 화면에 그대로 남는다.
+  it('summaries_destroyed면 clearMeetingNotes를 호출한다 — 화면에 파기된 회의록이 남으면 안 된다 ⭐', async () => {
+    const deps = makeDeps()
+
+    await applyLocalRedaction(deps, makeResult({ summaries_destroyed: true }))
+
+    expect(deps.clearMeetingNotes).toHaveBeenCalledTimes(1)
+  })
+
+  it('summaries_destroyed가 아니면 clearMeetingNotes를 호출하지 않는다(멀쩡한 회의록을 지우면 안 된다)', async () => {
+    const deps = makeDeps()
+
+    await applyLocalRedaction(deps, makeResult({ summaries_destroyed: false }))
+
+    expect(deps.clearMeetingNotes).not.toHaveBeenCalled()
+  })
+
+  it('refetchMeeting을 호출해 meeting/summary 상태를 갱신한다(transcripts_redacted 배지 등)', async () => {
+    const deps = makeDeps()
+
+    await applyLocalRedaction(deps, makeResult())
+
+    expect(deps.refetchMeeting).toHaveBeenCalledTimes(1)
+  })
+
+  it('reloadTranscripts가 실패해도 clearMeetingNotes는 이미 호출된 상태다(summaries_destroyed일 때) — 낙관적 클리어가 재조회보다 먼저여야 한다', async () => {
+    const deps = makeDeps()
+    deps.reloadTranscripts = vi.fn(async () => { throw new Error('network') })
+
+    await expect(
+      applyLocalRedaction(deps, makeResult({ summaries_destroyed: true })),
+    ).rejects.toThrow('network')
+
+    expect(deps.clearMeetingNotes).toHaveBeenCalledTimes(1)
   })
 })

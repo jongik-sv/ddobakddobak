@@ -376,9 +376,10 @@ export default function MeetingPage() {
   }
 
   // 전사 절단 로컬 반영 — 본체는 applyLocalRedaction(lib/applyLocalRedaction.ts)에 있고
-  // 여기서는 클로저 값만 주입하는 얇은 래퍼다. 본체를 이 안에 두면 markAudioChanged 호출을
-  // 자동 검증할 방법이 없는데, 그건 절단한 본인 화면이 옛 오디오(= 기밀)를 계속 재생하지
-  // 않게 하는 유일한 장치다(이 페이지는 전사 채널을 구독하지 않는다).
+  // 여기서는 클로저 값만 주입하는 얇은 래퍼다. 본체를 이 안에 두면 markAudioChanged·
+  // clearMeetingNotes 호출을 자동 검증할 방법이 없는데, 그건 절단한 본인 화면이 옛 오디오
+  // (= 기밀)를 계속 재생하거나 파기된 회의록을 계속 보여주지 않게 하는 유일한 장치다
+  // (이 페이지는 전사 채널을 구독하지 않는다).
   // 원격 브로드캐스트는 client_id 에코 가드에 걸리므로 중복 재조회가 나가지 않는다.
   function handleTranscriptRedact(result: RedactTranscriptsResponse) {
     void applyLocalRedaction(
@@ -388,7 +389,14 @@ export default function MeetingPage() {
           setTranscripts(data)
           loadFinals(mapTranscriptsToFinals(data, true))
         },
+        // useMeeting().refetch — meeting.transcripts_redacted 배지·brief_summary 등
+        // meeting 파생 필드를 최신화한다.
+        refetchMeeting: refetch,
         markAudioChanged,
+        // AiSummaryPanel이 회의록을 읽는 유일한 소스(useTranscriptStore.meetingNotes)를
+        // 즉시 지운다 — summaries.destroy_all 후에도 이걸 안 하면 새로고침 전까지
+        // 파기됐어야 할 회의록 텍스트가 화면에 그대로 남는다.
+        clearMeetingNotes: () => setMeetingNotes(null),
         notify: (message, durationMs) => useToastStore.getState().showStatus(message, durationMs),
       },
       result,
