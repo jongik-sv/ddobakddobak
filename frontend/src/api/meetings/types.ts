@@ -111,6 +111,12 @@ export interface Meeting {
   /** 최초 전송 이후 로컬 편집/요약 갱신이 마지막 전송보다 최신인지(서버 계산). 목록(full:false)에도
    *  노출 — 카드/테이블 배지 표시용. */
   dflow_needs_resync?: boolean
+  /** 기밀 구간 절단(transcripts#redact) 적용 시각(ISO 문자열). null=미적용. 이 회의는 적용 후
+   *  추가 녹음·전사 동기화를 받지 않는다(bulk_create·오디오 create/chunk/finalize가 409 +
+   *  code=meeting_redacted). 목록(full:false)에도 노출 — 카드/테이블 배지·녹음 버튼 게이팅용. */
+  transcripts_redacted_at?: string | null
+  /** transcripts_redacted_at.present? 의 불리언 버전 — nil 비교 대신 그대로 쓰라고 서버가 함께 준다. */
+  transcripts_redacted?: boolean
 }
 
 /** 반복 예약 규칙. days: 0=일~6=토 (weekly에서만 사용). time: "HH:MM". tz: IANA 타임존. */

@@ -2,7 +2,7 @@ import { FolderClosed, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Lock, Star
 import type { Meeting } from '../../api/meetings'
 import type { FolderNode } from '../../api/folders'
 import { initDrag } from '../../utils/dragState'
-import { StatusBadge, MeetingTypeBadge, DflowSyncBadge, MeetingActionButtons } from './MeetingListUI'
+import { StatusBadge, MeetingTypeBadge, DflowSyncBadge, RedactedBadge, MeetingActionButtons } from './MeetingListUI'
 import { MeetingIdBadge } from './MeetingIdBadge'
 import { formatDate, folderPath, formatScheduledStart, scheduleSummary } from '../../lib/meetingFormat'
 import { stripCitationMarkers } from '../../lib/citationMarkers'
@@ -195,6 +195,7 @@ export function MeetingListTable({
               <div className="flex flex-wrap items-center gap-1">
                 <MeetingTypeBadge type={meeting.meeting_type} typeMap={meetingTypeMap} />
                 <DflowSyncBadge dflowSyncedAt={meeting.dflow_synced_at} dflowNeedsResync={meeting.dflow_needs_resync} compact />
+                <RedactedBadge redacted={meeting.transcripts_redacted} compact />
               </div>
               <div className="flex items-center justify-end gap-1">
                 <MeetingActionButtons
