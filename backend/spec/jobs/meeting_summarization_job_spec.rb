@@ -439,6 +439,58 @@ RSpec.describe MeetingSummarizationJob do
     end
   end
 
+  # 감사 지적(CRITICAL): 기밀 구간 절단(transcripts#redact)이 ffmpeg 도는 수 초 창에 커밋되면,
+  # 절단 전 전사를 읽어 LLM 호출 중이던 이 잡이 절단 커밋 뒤에 summaries.notes_markdown 을 써서
+  # 기밀 파생 텍스트가 부활한다. 컨트롤러의 summarizing? 진입 가드는 summarizing 플래그를
+  # 잡 자신(record_summary_start!)이 세우므로 순수 TOCTOU — 여기서 워터마크로 직접 막는다.
+  describe "redact race guard (기밀 절단 표식)" do
+    it "does not save the realtime summary when transcripts_redacted_at is set during the LLM call" do
+      allow_any_instance_of(LlmService).to receive(:refine_notes) do
+        # LLM 호출 중 다른 요청이 기밀 절단을 커밋 — nil → 시각 전이를 시뮬레이션한다.
+        meeting.update_columns(transcripts_redacted_at: Time.current)
+        { "notes_markdown" => "## 절단 전 전사로 만든 회의록", "ok" => true }
+      end
+
+      described_class.perform_now(meeting.id, type: "realtime")
+
+      expect(meeting.summaries.find_by(summary_type: "realtime")).to be_nil
+      expect(meeting.transcripts.where(applied_to_minutes: false).count).to eq(2)
+    end
+
+    context "final" do
+      let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
+
+      # enqueued_at 을 과거로 박아 stale_relative_to_user_action? 이 실제로 last_user_edit_at 을
+      # 평가하게 만든다(기본 perform_now 는 enqueued_at 이 nil 이라 그 검사가 무력화된다 — 위
+      # "final stale re-enqueue" describe 의 헬퍼와 동일 패턴). redact 는 last_user_edit_at 도
+      # 함께 갱신하므로(D'Flow 재전송 신호), 워터마크 검사가 stale 검사보다 먼저 돌지 않으면
+      # reenqueue_final_if_minutes_missing 경로로 새어 나가 금지된 재큐잉이 발생한다.
+      def run_final_with_redaction_during_llm(attempt: 0, enqueued_at: 10.minutes.ago)
+        job = described_class.new(meeting.id, type: "final", attempt: attempt)
+        job.enqueued_at = enqueued_at.iso8601
+
+        allow_any_instance_of(LlmService).to receive(:refine_notes) do
+          meeting.update_columns(transcripts_redacted_at: Time.current, last_user_edit_at: Time.current)
+          { "notes_markdown" => "## 절단 전 전사로 만든 회의록", "ok" => true }
+        end
+
+        job.perform(meeting.id, type: "final", attempt: attempt)
+      end
+
+      it "does not save the final summary when transcripts_redacted_at is set during the LLM call" do
+        run_final_with_redaction_during_llm
+
+        expect(meeting.summaries.find_by(summary_type: "final")).to be_nil
+      end
+
+      it "does not re-enqueue when the summary was dropped due to a redaction (재큐잉 금지)" do
+        expect {
+          run_final_with_redaction_during_llm
+        }.not_to have_enqueued_job(described_class)
+      end
+    end
+  end
+
   # idea.md 37: 서버 LLM "선택 안함"(LLM_PROVIDER=none) — 개인 LLM 미설정 creator 는 요약이
   # 차단되고 명확한 안내가 broadcast/영속 기록된다. 개인 설정이 있으면 카스케이드로 정상 동작(요구사항 유지).
   describe "server LLM 선택 안함 (idea.md 37: LLM_PROVIDER=none)" do

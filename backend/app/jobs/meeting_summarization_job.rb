@@ -103,6 +103,17 @@ class MeetingSummarizationJob < ApplicationJob
     Time.current < last_at + interval.seconds
   end
 
+  # ⭐ 절단 표식 워터마크 재확인 (감사 CRITICAL). watermark 는 이 잡이 전사를 읽은 시점의
+  # meeting.transcripts_redacted_at 값(nil 일 수 있다) — LLM 호출 뒤 **쓰기 직전** DB 를 다시
+  # 읽어 그 값과 비교한다. 존재 여부(.present?)가 아니라 **값 자체**를 비교하는 이유: 재절단으로
+  # 시각이 다른 시각으로 바뀌는 경우도 잡아야 하고, nil → 시각 전이는 값 비교만으로 자동으로 걸린다.
+  # 이미 절단된 회의를 이 잡이 시작부터 알고 있었고(watermark 가 non-nil) 그 사이 변화가
+  # 없으면 통과시킨다 — 그건 "절단 후 사용자가 회의록을 수동 재생성"하는 정상 경로다(설계 문서
+  # "절단 후" 절 — 자동 재요약은 안 걸지만 수동 재생성은 허용).
+  def redacted_since?(meeting, watermark)
+    meeting.transcripts_redacted_at != watermark
+  end
+
   def enqueued_at_time
     value = enqueued_at
     case value
@@ -151,6 +162,13 @@ class MeetingSummarizationJob < ApplicationJob
                              .where(applied_to_minutes: false)
                              .order(:sequence_number)
     return if new_transcripts.empty?
+
+    # ⭐ 절단 표식 워터마크 — 전사를 읽는 이 시점 값을 잡아둔다. LLM 호출(수 초~수십 초) 중
+    # 기밀 구간 절단이 커밋되면 이 값이 바뀌므로, 쓰기 직전 재확인으로 절단 전 전사 기반
+    # 결과를 버린다. 컨트롤러의 summarizing? 진입 가드는 summarizing 플래그를 이 잡 자신
+    # (broadcast_started → record_summary_start!)이 세우므로 ffmpeg 도는 창에는 무력한
+    # 순수 TOCTOU — 여기서 값 비교로 직접 막는다(감사 CRITICAL).
+    redacted_watermark = meeting.transcripts_redacted_at
 
     # 이전 회의 참고: 첫 요약 직전, 이전 회의록을 시드로 깐다(요약 0건일 때만, 멱등).
     meeting.seed_summary_from_previous!(summary_type: "realtime")
@@ -207,6 +225,13 @@ class MeetingSummarizationJob < ApplicationJob
     if meeting.completed?
       ok = true # 의도된 스킵 — ok:false 는 프론트에 오류로 레포트되므로 실패로 취급하지 않는다
       Rails.logger.info "[MeetingSummarizationJob] realtime skipped (meeting completed during LLM) meeting=#{meeting.id}"
+      return
+    end
+    # ⭐ 절단 표식 재확인이 stale 검사보다 먼저다 — 순서 자체에 의미는 없지만(redact 는 재시도
+    # 대상이 아니므로 realtime 은 어느 쪽이든 드랍뿐이다), final 경로와 판단 위치를 맞춰둔다.
+    if redacted_since?(meeting, redacted_watermark)
+      ok = true # 의도된 스킵 — 절단은 재시도 대상이 아니다(사용자가 필요하면 다시 요약을 누른다)
+      Rails.logger.info "[MeetingSummarizationJob] realtime skipped (redacted during LLM) meeting=#{meeting.id}"
       return
     end
     if meeting.pending? || stale_relative_to_user_action?(meeting)
@@ -285,10 +310,20 @@ class MeetingSummarizationJob < ApplicationJob
   # 편집(stale)이 있었으면 이번 결과(성공·실패 모두)를 버린다. 초기화된 회의에 실패 배지가
   # 남지 않게 실패 영속 기록보다 반드시 먼저 수행한다. 반환:
   #   :proceed — 그대로 진행 / :skipped — 의도된 스킵(ok:true 마감) / :gave_up — 재시도 포기(ok:false)
-  def final_post_llm_disposition(meeting, attempt)
+  #
+  # ⭐ 절단 표식 재확인은 stale 검사보다 **먼저** 와야 한다(감사 CRITICAL). redact 트랜잭션은
+  # transcripts_redacted_at 와 last_user_edit_at 을 함께 갱신하므로(D'Flow 재전송 신호), 순서를
+  # 바꾸면 stale_relative_to_user_action? 이 먼저 걸려 reenqueue_final_if_minutes_missing 으로
+  # 새어 나간다 — 절단은 재큐잉 대상이 아니다(사용자가 다시 누르면 된다. 재큐잉하면 절단 직후
+  # LLM 이 또 도는 낭비고, 재시도 한도 소진 시 사용자가 원치도 않은 실패 배지까지 남는다).
+  def final_post_llm_disposition(meeting, attempt, redacted_watermark)
     meeting.reload
     if meeting.pending?
       Rails.logger.info "[MeetingSummarizationJob] final skipped (reset during LLM) meeting=#{meeting.id}"
+      return :skipped
+    end
+    if redacted_since?(meeting, redacted_watermark)
+      Rails.logger.info "[MeetingSummarizationJob] final skipped (redacted during LLM) meeting=#{meeting.id}"
       return :skipped
     end
     if stale_relative_to_user_action?(meeting)
@@ -310,6 +345,10 @@ class MeetingSummarizationJob < ApplicationJob
 
     transcripts = meeting.transcripts.order(:sequence_number)
     return if transcripts.empty?
+
+    # ⭐ 절단 표식 워터마크 — realtime 과 동일 근거(위 redacted_since? 주석). 이 잡이 전사를
+    # 읽는 시점 값을 잡아, LLM 호출 뒤 쓰기 직전 재확인으로 절단 전 전사 기반 결과를 버린다.
+    redacted_watermark = meeting.transcripts_redacted_at
 
     # 이전 회의 참고: 요약 0건(예: 회의록 재생성 직후)이고 previous_meeting 지정 시 이전 회의록을 시드로 깐다.
     meeting.seed_summary_from_previous!(summary_type: "final")
@@ -364,7 +403,7 @@ class MeetingSummarizationJob < ApplicationJob
     end
     # LLM 도중 reset/사용자 편집 재확인을 실패 기록·저장 판단보다 먼저 수행한다 —
     # 의도된 스킵이면 성공·실패 결과 모두 버려, 초기화된 회의에 실패 배지가 남지 않는다.
-    case final_post_llm_disposition(meeting, attempt)
+    case final_post_llm_disposition(meeting, attempt, redacted_watermark)
     when :skipped
       ok = true # 의도된 스킵 — ok:false 는 프론트에 오류로 레포트되므로 실패로 취급하지 않는다
       return
