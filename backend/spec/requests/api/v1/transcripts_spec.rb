@@ -1296,6 +1296,29 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         expect(File.exist?(File.join(audio_dir, "#{meeting.id}.webm"))).to be false
       end
 
+      it "ffmpeg 구간(cut_to_temp) 중 새로 도착한 파트도 절단 표식이 서기 전에 다시 파기된다 (감사 MAJOR)" do
+        # _parts/ 는 절단 시작 시점에 딱 한 번 지워지는데(purge_duplicate_sources!) 절단 표식은
+        # 트랜잭션 끝에서야 선다. 그 사이(ffmpeg cut_to_temp, 길면 수십 초)에 지연 전송된 청크가
+        # meetings_audio#chunk 로 도착하면 _parts/ 가 되살아난다 — 표식이 서기 **직전**에 한 번 더
+        # 파기하지 않으면 그 창으로 들어온 파트가 finalize 때 오디오를 재구성할 길이 열린다.
+        allow_any_instance_of(AudioRedactor).to receive(:cut_to_temp).and_wrap_original do |orig, *args|
+          dir = File.join(audio_dir, "#{meeting.id}_parts")
+          FileUtils.mkdir_p(dir)
+          File.binwrite(File.join(dir, "0.part"), "\x1A\x45\xDF\xA3" + ("늦게 도착한 기밀 청크" * 5))
+          orig.call(*args)
+        end
+
+        do_redact([ t2.id ])
+
+        expect(response).to have_http_status(:ok)
+        expect(Dir.exist?(File.join(audio_dir, "#{meeting.id}_parts"))).to be false
+
+        post "/api/v1/meetings/#{meeting.id}/audio_finalize"
+        expect(response).to have_http_status(:conflict) # 절단 표식이 이미 서 있어 재구성 자체가 막힌다
+        expect(response.parsed_body["code"]).to eq("meeting_redacted")
+        expect(File.exist?(File.join(audio_dir, "#{meeting.id}.webm"))).to be false
+      end
+
       it "이전 절단이 남긴 .redact-backup 을 파기한다 (절단 전 원음이 영구 잔존하지 않도록)" do
         # 커밋 후 drop_backups! 가 실패하면 남는 파일. 절단 전 오디오 **전체**라 기밀 원음이고,
         # audio_paths 글롭에서 제외되므로 이후 절단에서도 잘리지 않는다 — 지우는 코드가
@@ -1378,6 +1401,11 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         # 부르므로 컨트롤러 호출 순서와 무관하게 같은 결과가 나온다 — 자기가 만든 순서를 검증한다.
         # 실제 순서는 호출 기록으로만 볼 수 있다. 뒤집히면 이번 실행의 백업이 지워져 롤백 복구
         # 경로가 끊기고, 그 상태에서 커밋이 실패하면 오디오가 사라진다.
+        #
+        # ⚠️ purge 는 이제 **두 번** 불린다 — cut_to_temp(ffmpeg) 전 1회 + 트랜잭션 안 표식 커밋
+        # 직전 1회(감사 MAJOR: ffmpeg 도는 수 초 동안 _parts/ 가 되살아나는 창을 닫는다). 정확한
+        # 횟수가 아니라 **swap 이 항상 마지막**이라는 순서 불변식만 고정한다 — 그게 이 테스트가
+        # 실제로 지키려는 것이다.
         calls = []
         allow_any_instance_of(AudioRedactor).to receive(:purge_duplicate_sources!).and_wrap_original do |orig, *args|
           calls << :purge
@@ -1391,7 +1419,9 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         do_redact([ t2.id ])
 
         expect(response).to have_http_status(:ok)
-        expect(calls).to eq([ :purge, :swap ])
+        expect(calls.count(:purge)).to be >= 1
+        expect(calls.last).to eq(:swap)
+        expect(calls[0...-1]).to all(eq(:purge))
       end
 
       it "@swapped 가드가 요청 경로까지 전파된다 (스텁이 세운 상태에서 422 로 드러난다)" do

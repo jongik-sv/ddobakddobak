@@ -434,6 +434,17 @@ module Api
             # brief_summary 는 명시적 nil. refresh_brief_summary! 가 `if text.present?`(meeting.rb:615)라
             # 재생성 결과가 빈 값이면 옛 발췌가 남고, 이 컬럼은 LIKE 검색 대상이다(meeting.rb:151).
             @meeting.update_column(:brief_summary, nil)
+
+            # ⭐ _parts/·stt_chunks/ 재파기(감사 MAJOR). 최초 purge_duplicate_sources! 호출은
+            # cut_to_temp(ffmpeg, 길면 수십 초) **이전**인데 절단 표식은 여기 아래에서야 선다.
+            # 그 사이 지연 전송된 청크가 meetings_audio#chunk 로 도착하면 _parts/ 가 되살아나고,
+            # 표식이 서기 전이라 그 요청은 reject_if_redacted! 에도 걸리지 않는다 — 방치하면
+            # finalize 가 그 파트로 오디오를 재구성할 창이 열린다. 표식이 서기 **직전**(재구성이
+            # 가능한 마지막 순간)에 한 번 더 파기해 창을 닫는다. 멱등이라 정상 경로엔 비용이 없다
+            # (없으면 no-op) — swap_in!/move_all_audio_to_backup! 보다 먼저이므로 @swapped 가드에도
+            # 걸리지 않는다.
+            redactor.purge_duplicate_sources!
+
             # ⭐ 절단 표식을 **트랜잭션 안에서** 세운다(커밋과 원자적). 밖에서 세우면 롤백된
             # 시도(409/422)가 회의를 영구히 잠그고, 커밋 뒤에 세우면 그 사이 도착한
             # bulk_create·오디오 업로드가 파기한 기밀을 그대로 되돌린다.
