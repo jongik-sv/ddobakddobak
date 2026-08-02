@@ -126,6 +126,41 @@ RSpec.describe AudioRedactor do
       expect(File.exist?("#{src}.redact-backup")).to be true # 백업은 그대로 살아 있다
     end
 
+    it "죽은 AudioUploadJob 이 남긴 <id>.mp3.upload-tmp 를 지운다 (감사 MAJOR)" do
+      # audio_paths 글롭이 .upload-tmp 를 제외만 하고 지우는 코드가 없었다 — AudioUploadJob 이
+      # 강제 종료되면(SIGKILL·OOM) 절단 전 전체 오디오의 mp3 사본이 그대로 남는다.
+      allow(AudioUploadJob).to receive(:in_flight_for?).and_return(false)
+      stale = File.join(audio_dir, "#{meeting.id}.mp3.upload-tmp")
+      File.binwrite(stale, "절단 전 오디오 전체의 mp3 사본")
+
+      redactor.purge_duplicate_sources!
+
+      expect(File.exist?(stale)).to be false
+    end
+
+    it "진행 중인 AudioUploadJob 의 upload-tmp 는 건드리지 않는다 (그 잡이 자기 tmp 를 소유한다)" do
+      # 지워도 fd 는 안전하지만, 그 잡의 transcode_to_mp3 는 File.exist?(dest) 로 성공을 판정하므로
+      # 여기서 지우면 진행 중이던 정상 업로드가 조용히 "실패" 처리된다. AudioUploadJob 은 성공·실패
+      # 모든 경로에서 ensure 로 자기 tmp 를 지우므로 남겨둬도 기밀 잔존 위험이 없다.
+      allow(AudioUploadJob).to receive(:in_flight_for?).with(meeting.id).and_return(true)
+      in_flight = File.join(audio_dir, "#{meeting.id}.mp3.upload-tmp")
+      File.binwrite(in_flight, "변환 진행 중")
+
+      redactor.purge_duplicate_sources!
+
+      expect(File.exist?(in_flight)).to be true
+    end
+
+    it "다른 회의의 upload-tmp 는 건드리지 않는다 (id 접두 충돌)" do
+      allow(AudioUploadJob).to receive(:in_flight_for?).and_return(false)
+      other = File.join(audio_dir, "#{meeting.id}0.mp3.upload-tmp")
+      File.binwrite(other, "남의 회의")
+
+      redactor.purge_duplicate_sources!
+
+      expect(File.exist?(other)).to be true
+    end
+
     it "고아 오디오(audio_file_path 가 아닌 <id>.*)를 peaks 와 함께 삭제한다" do
       primary = File.join(audio_dir, "#{meeting.id}.mp3")
       File.binwrite(primary, "x")
