@@ -81,8 +81,13 @@ export function useAudioPlayer(meetingId: number, audioVersion = 0): AudioPlayer
       if (!cancelled) setIsReady(true)
     })
 
-    // peaks API에서 duration을 먼저 확보 (moov atom이 파일 끝에 있어 메타데이터 로드 실패하는 경우 대비)
-    apiClient.get(`meetings/${meetingId}/peaks`)
+    // peaks API에서 duration을 먼저 확보 (moov atom이 파일 끝에 있어 메타데이터 로드 실패하는 경우 대비).
+    // audioVersion을 URL에 붙인다 — 안 붙이면 URL만 보고 캐싱하는 계층(Tauri/Android WebView,
+    // Caddy 리버스 프록시)이 절단 전 파형(peaks)을 계속 서빙할 수 있다.
+    const peaksUrl = audioVersion > 0
+      ? `meetings/${meetingId}/peaks?v=${audioVersion}`
+      : `meetings/${meetingId}/peaks`
+    apiClient.get(peaksUrl)
       .json<{ duration: number }>()
       .then((res) => {
         if (cancelled || !res.duration) return
@@ -166,12 +171,18 @@ export function useAudioPlayer(meetingId: number, audioVersion = 0): AudioPlayer
   }, [])
 
   const download = useCallback(async (filename?: string) => {
-    const response = await apiClient.get(`meetings/${meetingId}/audio`)
+    // audioVersion을 URL에 붙인다 — <audio src>만 버전 토큰을 받고 이 경로가 무버전이면,
+    // URL만 보고 캐싱하는 계층(Tauri/Android WebView, Caddy 리버스 프록시)이 다운로드
+    // 버튼에 절단 전(=기밀) 오디오를 계속 내려줄 수 있다.
+    const downloadUrl = audioVersion > 0
+      ? `meetings/${meetingId}/audio?v=${audioVersion}`
+      : `meetings/${meetingId}/audio`
+    const response = await apiClient.get(downloadUrl)
     const disposition = response.headers.get('content-disposition')
     const serverFilename = filenameFromDisposition(disposition) ?? `meeting-${meetingId}.webm`
     const blob = await response.blob()
     await downloadBlob(blob, filename ?? serverFilename)
-  }, [meetingId])
+  }, [meetingId, audioVersion])
 
   return { isReady, isPlaying, hasAudio, audioLoaded, srcReady, currentTimeMs, durationMs, playbackRate, play, pause, seekTo, setPlaybackRate, download }
 }
