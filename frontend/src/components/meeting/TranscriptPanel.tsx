@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Scissors } from 'lucide-react'
-import type { Transcript } from '../../api/meetings'
+import type { Transcript, RedactTranscriptsResponse, TranscriptBounds } from '../../api/meetings'
+import { redactTranscripts } from '../../api/meetings'
 import { renameSpeaker } from '../../api/speakers'
 import { EditableTranscriptText } from './EditableTranscriptText'
 import { HighlightedText } from './HighlightedText'
@@ -8,6 +9,8 @@ import { SpeakerLabel, speakerBorderColor } from './SpeakerLabel'
 import { SplitTranscriptDialog } from './SplitTranscriptDialog'
 import { resolveHighlightIndex } from './transcriptHighlight'
 import { useTranscriptStore } from '../../stores/transcriptStore'
+import { useToastStore } from '../../stores/toastStore'
+import { confirmDialog } from '../../lib/confirmDialog'
 
 interface TranscriptPanelProps {
   meetingId: number
@@ -28,6 +31,14 @@ interface TranscriptPanelProps {
   /** 분할 성공 시 호출 — 부모(MeetingPage)가 자신이 들고 있는 transcripts 배열에 inserted를
    *  끼워 넣는 등 구조적 갱신을 하도록 알린다. store 반영은 이 컴포넌트가 이미 수행한다. */
   onSplit?: (updated: Transcript, inserted: Transcript) => void
+  /** owner/admin 이고 잠기지 않았을 때만 다중 선택 + 기밀 구간 절단 UI 를 노출한다. 기본 false.
+   *  서버(authorize_meeting_admin!)의 403 과 이중 방어 — 여기서 숨기는 건 어포던스일 뿐이다. */
+  canRedact?: boolean
+  /** D'Flow 전송 이력 여부. undefined = 알 수 없음 → 경고를 표시한다(빠뜨리는 쪽이 더 위험). */
+  dflowSynced?: boolean
+  /** 절단 성공 시 호출 — 부모(MeetingPage)가 transcripts 배열 재조회·오디오 토큰 갱신을 하도록
+   *  알린다. store 반영(removeFinals)은 이 컴포넌트가 이미 수행한다. */
+  onRedacted?: (result: RedactTranscriptsResponse) => void
 }
 
 function formatTimestamp(ms: number): string {
@@ -48,9 +59,16 @@ export function TranscriptPanel({
   readOnly = false,
   seekTick,
   onSplit,
+  canRedact = false,
+  dflowSynced,
+  onRedacted,
 }: TranscriptPanelProps) {
   const highlightedRef = useRef<HTMLDivElement | null>(null)
   const [splittingTranscript, setSplittingTranscript] = useState<Transcript | null>(null)
+  // 선택 상태는 FullRecord.tsx:21,70-100 패턴을 그대로 미러링한다(Set + toggleSelect + toggleAll).
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [redacting, setRedacting] = useState(false)
+  const removeFinalsInStore = useTranscriptStore((s) => s.removeFinals)
 
   // EditableTranscriptText의 낙관적 갱신은 transcriptStore.finals에 들어간다.
   // MeetingPage는 transcripts를 자체 useState로 관리하므로, 갱신된 content를
@@ -115,6 +133,116 @@ export function TranscriptPanel({
     }
   }
 
+  const toggleSelect = useCallback((id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const toggleAll = useCallback(() => {
+    if (selected.size === transcripts.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(transcripts.map((t) => t.id)))
+    }
+  }, [transcripts, selected.size])
+
+  // 이 파일의 formatTimestamp(:33-38)는 MM:SS 고정이라 90분이 "90:00"으로 보인다.
+  // 확인 다이얼로그는 회의 전체 길이를 다루므로 시 단위가 필요하다(기존 함수는 세그먼트
+  // 헤더용이라 그대로 둔다 — 표시 폭이 바뀌면 레이아웃이 흔들린다).
+  function formatDuration(ms: number): string {
+    const total = Math.floor(ms / 1000)
+    const h = Math.floor(total / 3600)
+    const m = Math.floor((total % 3600) / 60)
+    const s = total % 60
+    const mm = String(m).padStart(2, '0')
+    const ss = String(s).padStart(2, '0')
+    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+  }
+
+  // 선택 정리: transcripts 가 갈리면(절단 후 재조회·원격 구조 변경·회의 전환) 사라진 행의 id 를
+  // 버린다. FullRecord 에는 이 처리가 없지만 여기서는 필요하다 — TranscriptPanel 은 prop 배열
+  // 기반이라 부모가 배열을 통째로 갈아끼우고, 남은 stale id 가 다음 요청의 transcript_ids 에
+  // 실리면 서버가 422("transcript not found")로 거절한다.
+  useEffect(() => {
+    setSelected((prev) => {
+      if (prev.size === 0) return prev
+      const alive = new Set(transcripts.map((t) => t.id))
+      const next = new Set([...prev].filter((id) => alive.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [transcripts])
+
+  const handleRedact = useCallback(async () => {
+    if (selected.size === 0) return
+    const rows = transcripts.filter((t) => selected.has(t.id))
+    if (rows.length === 0) return
+
+    const spans = rows
+      .map((r) => `  · ${formatDuration(r.started_at_ms)} – ${formatDuration(r.ended_at_ms)}`)
+      .join('\n')
+    const totalMs = rows.reduce((acc, r) => acc + (r.ended_at_ms - r.started_at_ms), 0)
+
+    const lines = [
+      `선택한 ${rows.length}개 구간을 전사와 오디오에서 모두 파기합니다.`,
+      spans,
+      `총 길이 약 ${formatDuration(totalMs)}`,
+      '',
+      '⚠️ 되돌릴 수 없습니다.',
+      '· 오디오도 함께 잘리며 재인코딩 손실이 있습니다.',
+      // update_notes(meetings_controller.rb:758-767)가 summaries.notes_markdown 에 쓰므로,
+      // summaries.destroy_all 은 사용자가 손으로 편집한 회의록까지 지운다 — 재생성으로 돌아오지
+      // 않는 유일한 손실이라 별도 문장으로 명시한다.
+      '· 회의록과 AI가 생성한 액션아이템·결정사항이 삭제됩니다(다시 생성해야 합니다).',
+      '· 직접 편집한 회의록도 함께 삭제되며 복구되지 않습니다.',
+      '· 내 챗 기록에 인용된 내용은 남습니다.',
+      '· 데스크톱에 업로드되지 않은 원음이 남아 있을 수 있습니다.',
+    ]
+    // dflowSynced 를 모르는 호출부(undefined)에서는 경고를 빼지 않는다 — 빠뜨리는 쪽이 더 위험하다.
+    if (dflowSynced !== false) {
+      lines.push("· D'Flow에 이미 전송된 회의록은 남습니다. D'Flow에서 직접 처리하세요.")
+    }
+    lines.push('', '계속할까요?')
+
+    const ok = await confirmDialog(lines.join('\n'), { title: '기밀 구간 절단', kind: 'warning' })
+    if (!ok) return
+
+    // expected_bounds 는 "화면에서 본" 경계다(필수 파라미터). 다이얼로그가 열려 있는 동안 다른
+    // 클라이언트가 split 하면 서버 현재값과 어긋나 409 가 나고 아무것도 잘리지 않는다 —
+    // 겹침 완전성 검사만으로는 그 케이스가 통과해 기밀 절반이 살아남는다.
+    const expectedBounds: Record<string, TranscriptBounds> = {}
+    for (const r of rows) {
+      expectedBounds[String(r.id)] = { started_at_ms: r.started_at_ms, ended_at_ms: r.ended_at_ms }
+    }
+
+    setRedacting(true)
+    try {
+      const result = await redactTranscripts(meetingId, {
+        transcript_ids: rows.map((r) => r.id),
+        expected_bounds: expectedBounds,
+        client_id: clientId,
+      })
+      removeFinalsInStore(result.deleted_ids)
+      setSelected(new Set())
+      onRedacted?.(result)
+    } catch (err) {
+      // 403(비 owner·잠금) / 409(진행 중·동시 변경) / 422(검증) 모두 서버가 한글 메시지를 준다.
+      // ky 의 HTTPError 는 body 를 읽어주지 않으므로 직접 파싱한다.
+      let message = '기밀 구간 절단에 실패했습니다.'
+      const res = (err as { response?: Response }).response
+      if (res) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null
+        if (body?.error) message = body.error
+      }
+      useToastStore.getState().showStatus(message, 5000)
+    } finally {
+      setRedacting(false)
+    }
+  }, [meetingId, transcripts, selected, clientId, dflowSynced, onRedacted, removeFinalsInStore])
+
   function openSplitDialog(transcript: Transcript) {
     // store override(인라인 편집·rename)가 있으면 그 값을 다이얼로그의 기준(expected_content)으로 삼는다 —
     // prop의 transcript는 EditableTranscriptText가 store만 갱신하므로 stale할 수 있다.
@@ -160,6 +288,34 @@ export function TranscriptPanel({
 
   return (
     <div className="flex flex-col gap-1 p-4 overflow-y-auto">
+      {canRedact && !readOnly && (
+        // 상단 sticky — 루트가 곧 스크롤 컨테이너라(하단 고정 바를 쓰려면 이 구조를 바꿔야 한다)
+        // -mx-4 -mt-4 로 루트의 p-4 를 상쇄해 폭 전체를 차지하고 위쪽에 붙게 한다.
+        <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-2 px-4 py-2 bg-card border-b flex items-center justify-between">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={selected.size === transcripts.length && transcripts.length > 0}
+              onChange={toggleAll}
+              aria-label="전체 선택"
+            />
+            전체 선택
+          </label>
+          <div className="flex items-center gap-2">
+            {selected.size > 0 && (
+              <span className="text-xs text-muted-foreground">{selected.size}개 선택</span>
+            )}
+            <button
+              type="button"
+              onClick={handleRedact}
+              disabled={selected.size === 0 || redacting}
+              className="px-3 py-1.5 text-xs font-medium rounded border border-red-600 text-red-700 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {redacting ? '절단 중...' : '기밀 구간 절단'}
+            </button>
+          </div>
+        </div>
+      )}
       {groups.map((group) => (
         <div
           key={group.key}
@@ -187,10 +343,23 @@ export function TranscriptPanel({
                 className={`flex items-start gap-1 p-3 min-h-[44px] rounded cursor-pointer transition-colors ${
                   isHighlighted
                     ? 'bg-accent border-l-4 border-indigo-500'
-                    : 'hover:bg-muted active:bg-muted'
+                    : selected.has(transcript.id)
+                      ? 'bg-red-50'
+                      : 'hover:bg-muted active:bg-muted'
                 }`}
                 onClick={() => onSeek(transcript.started_at_ms)}
               >
+                {canRedact && !readOnly && (
+                  <input
+                    type="checkbox"
+                    checked={selected.has(transcript.id)}
+                    onChange={() => toggleSelect(transcript.id)}
+                    // 행 onClick 이 onSeek 이므로 stopPropagation 이 필수다(FullRecord.tsx:142 동일).
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label="절단 대상 선택"
+                    className="mt-1 shrink-0"
+                  />
+                )}
                 <div className="flex-1 min-w-0">
                   {searchQuery ? (
                     // 검색 중엔 읽기전용 하이라이트 렌더 — contentEditable DOM에 <mark> 주입 불가
