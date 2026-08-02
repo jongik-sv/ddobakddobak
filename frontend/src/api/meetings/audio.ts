@@ -35,29 +35,51 @@ export async function promoteAudio(id: number, blob: Blob): Promise<void> {
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || `오디오 업로드 실패 (${res.status})`)
+    // code 를 부착해 던진다 — Response body 는 1회만 읽을 수 있어 Response 자체를 들고 있을
+    // 수 없다. 호출부(syncQueue.flush)가 isMeetingRedactedError(lib/errors.ts)로 판정한다.
+    throw Object.assign(new Error(body.error || `오디오 업로드 실패 (${res.status})`), {
+      code: body.code,
+      status: res.status,
+    })
   }
 }
 
-/** 녹음 중 압축 오디오 청크를 seq 순서대로 연속 업로드 (모바일) */
+/** 녹음 중 압축 오디오 청크를 seq 순서대로 연속 업로드 (모바일).
+ *  409(code=meeting_redacted, MeetingWriteGuard#reject_if_redacted!)를 호출부가 감지해
+ *  녹음을 폐기하도록 res.ok 를 검사해 throw 한다(기존엔 실패해도 조용히 resolve됐다). */
 export async function uploadAudioChunk(id: number, blob: Blob, sequence: number): Promise<void> {
   const formData = new FormData()
   formData.append('chunk', blob, `chunk-${sequence}.webm`)
   formData.append('sequence', String(sequence))
 
-  await fetch(`${getApiBaseUrl()}/meetings/${id}/audio_chunk`, {
+  const res = await fetch(`${getApiBaseUrl()}/meetings/${id}/audio_chunk`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: formData,
   })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw Object.assign(new Error(body.error || `오디오 청크 업로드 실패 (${res.status})`), {
+      code: body.code,
+      status: res.status,
+    })
+  }
 }
 
-/** 녹음 종료: 업로드된 청크들을 서버에서 이어붙여 mp3로 변환 */
+/** 녹음 종료: 업로드된 청크들을 서버에서 이어붙여 mp3로 변환.
+ *  409(code=meeting_redacted)를 호출부가 감지할 수 있도록 res.ok 를 검사해 throw 한다. */
 export async function finalizeAudio(id: number): Promise<void> {
-  await fetch(`${getApiBaseUrl()}/meetings/${id}/audio_finalize`, {
+  const res = await fetch(`${getApiBaseUrl()}/meetings/${id}/audio_finalize`, {
     method: 'POST',
     headers: getAuthHeaders(),
   })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw Object.assign(new Error(body.error || `오디오 합치기 실패 (${res.status})`), {
+      code: body.code,
+      status: res.status,
+    })
+  }
 }
 
 export async function uploadAudioFile(data: {

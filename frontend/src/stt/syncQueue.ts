@@ -37,27 +37,11 @@ import {
   type BulkTranscriptItem,
 } from '../api/meetings'
 import { useProjectStore } from '../stores/projectStore'
+import { isMeetingRedactedError } from '../lib/errors'
 
 export interface FlushResult {
   ok: boolean
   serverId?: number
-}
-
-/**
- * ky HTTPError 가 MeetingWriteGuard#reject_if_redacted! 의 409(`code: "meeting_redacted"`)인지
- * 판정한다. 이 큐가 부딪히는 유일한 "영구 거부" — 그 회의는 기밀 구간 절단이 적용되어
- * bulk_create·오디오 create/chunk/finalize 를 다시는 받지 않는다. status(409)만으론 재시도
- * 가능한 다른 409(잠금 경합 등)와 구분할 수 없어 code 로만 판정한다.
- */
-async function isMeetingRedactedError(err: unknown): Promise<boolean> {
-  const response = (err as { response?: Response } | null | undefined)?.response
-  if (!response) return false
-  try {
-    const body = (await response.json()) as { code?: string } | null
-    return body?.code === 'meeting_redacted'
-  } catch {
-    return false
-  }
 }
 
 /**

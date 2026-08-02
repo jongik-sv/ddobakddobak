@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { HTTPError } from 'ky'
 import type { TranscriptFinalData } from '../channels/transcription'
 import { enqueue, flush, flushAll } from './syncQueue'
 import {
@@ -106,18 +107,27 @@ beforeEach(() => {
   mDeleteLocal.mockResolvedValue(undefined as never)
 })
 
-/** ky HTTPError 모사 — MeetingWriteGuard#reject_if_redacted! 의 409 응답 형태
- *  ({ error, code: "meeting_redacted", transcripts_redacted_at }). */
-function makeRedactedError() {
-  return {
-    response: {
-      json: async () => ({
-        error: '기밀 절단이 적용된 회의입니다. 추가 녹음·전사 동기화를 받지 않습니다.',
-        code: 'meeting_redacted',
-        transcripts_redacted_at: '2026-08-01T00:00:00.000Z',
-      }),
-    },
-  }
+/** bulkCreateTranscripts(apiClient=ky 경유) 가 던지는 실제 에러 모양 —
+ *  MeetingWriteGuard#reject_if_redacted! 의 409 응답 본문을 실은 ky HTTPError. */
+function makeRedactedHttpError(): HTTPError {
+  const response = new Response(
+    JSON.stringify({
+      error: '기밀 절단이 적용된 회의입니다. 추가 녹음·전사 동기화를 받지 않습니다.',
+      code: 'meeting_redacted',
+      transcripts_redacted_at: '2026-08-01T00:00:00.000Z',
+    }),
+    { status: 409, headers: { 'Content-Type': 'application/json' } },
+  )
+  return new HTTPError(response, new Request('http://localhost/test'), {} as never)
+}
+
+/** promoteAudio(raw fetch 헬퍼) 가 던지는 실제 에러 모양 — res.ok 체크 후 code 를 부착한 Error
+ *  (audio.ts). Response body 는 1회만 읽을 수 있어 Response 자체를 들고 있을 수 없다. */
+function makeRedactedFetchError(): Error {
+  return Object.assign(new Error('기밀 절단이 적용된 회의입니다. 추가 녹음·전사 동기화를 받지 않습니다.'), {
+    code: 'meeting_redacted',
+    status: 409,
+  })
 }
 
 // getLocal/listLocal는 실제 반환 타입이 이 테스트의 LocalRecord/LocalMeta와 정확히
@@ -296,7 +306,7 @@ describe('flush — meeting_redacted(영구 거부)', () => {
   // 재전송 시도한다 — 재시도가 아니라 로컬 사본 자체를 파기해야 한다(그게 기밀이므로).
   it('bulkCreateTranscripts가 meeting_redacted면 로컬 사본을 삭제한다(재시도 아님)', async () => {
     resolveGetLocal(makeRecord({ serverId: 7 }))
-    mBulkCreate.mockRejectedValue(makeRedactedError())
+    mBulkCreate.mockRejectedValue(makeRedactedHttpError())
 
     const res = await flush('local-abc')
 
@@ -307,7 +317,7 @@ describe('flush — meeting_redacted(영구 거부)', () => {
   it('promoteAudio가 meeting_redacted면(전사는 통과, 오디오만 거절) 로컬 사본을 삭제한다', async () => {
     resolveGetLocal(makeRecord({ serverId: 7 }))
     mMergeAudio.mockResolvedValue({ bytes: new Uint8Array([1]), segmentOffsetsMs: [0], durationMs: 1000 } as never)
-    mPromoteAudio.mockRejectedValue(makeRedactedError())
+    mPromoteAudio.mockRejectedValue(makeRedactedFetchError())
 
     const res = await flush('local-abc')
 
@@ -317,9 +327,11 @@ describe('flush — meeting_redacted(영구 거부)', () => {
 
   it('일반 409(잠금 등 재시도 가능한 실패)는 사본을 지우지 않는다 — code가 달라야 지운다', async () => {
     resolveGetLocal(makeRecord({ serverId: 7 }))
-    mBulkCreate.mockRejectedValue({
-      response: { json: async () => ({ error: '잠긴 회의입니다.' }) }, // code 없음
-    })
+    const response = new Response(JSON.stringify({ error: '잠긴 회의입니다.' }), {
+      status: 409,
+      headers: { 'Content-Type': 'application/json' },
+    }) // code 없음
+    mBulkCreate.mockRejectedValue(new HTTPError(response, new Request('http://localhost/test'), {} as never))
 
     const res = await flush('local-abc')
 

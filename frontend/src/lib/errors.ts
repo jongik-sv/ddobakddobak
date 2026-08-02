@@ -35,3 +35,24 @@ export async function httpErrorInfo(
   const body = (await err.response.json().catch(() => ({}))) as ApiErrorBody
   return { status: err.response.status, code: body.code ?? null, message: body.error ?? null }
 }
+
+/**
+ * 서버가 MeetingWriteGuard#reject_if_redacted! 로 내려주는 영구 거부(409, code="meeting_redacted")
+ * 인지 판정한다. 이 회의는 기밀 구간 절단이 적용되어 bulk_create·오디오 create/chunk/finalize 를
+ * 다시는 받지 않는다 — status(409)만으론 재시도 가능한 다른 409(잠금·레코더 충돌 등)와 구분할
+ * 수 없어 code 로만 판정한다.
+ *
+ * 두 가지 에러 모양을 모두 처리한다:
+ * - ky HTTPError(apiClient 경유, 예: bulkCreateTranscripts) — httpErrorInfo 로 본문을 읽는다.
+ * - raw fetch 헬퍼(uploadAudioChunk 등)가 res.ok 체크 후 부착해 던지는 에러 — response body 는
+ *   1회만 읽을 수 있어 Response 자체를 들고 있을 수 없으므로, 파싱한 code 를 `.code` 로 부착해
+ *   던진다는 계약이다.
+ */
+export async function isMeetingRedactedError(err: unknown): Promise<boolean> {
+  if (err instanceof HTTPError) {
+    const info = await httpErrorInfo(err)
+    return info?.code === 'meeting_redacted'
+  }
+  const code = (err as { code?: unknown } | null | undefined)?.code
+  return code === 'meeting_redacted'
+}
