@@ -89,8 +89,16 @@ class AudioRedactor
   end
 
   # 실제로 절단할 파일 — meeting.audio_file_path 하나뿐이다.
+  #
+  # ⭐ @meeting.audio_file_path(인메모리, 가변)가 아니라 **생성 시점에 캡처한 @source_path**를
+  # 쓴다(감사 MAJOR: 메모리/DB 비대칭). source_unchanged? 는 DB 를 재조회해 이 값과 비교하는데
+  # (자기충족적 비교를 피하려고 — 이 클래스가 이미 겪은 실패 모드), primary_audio_path 가
+  # @meeting 의 인메모리 속성을 따라가면 두 메서드가 서로 다른 기준점을 갖는 창이 생긴다.
+  # @meeting 객체가 (다른 코드에 의해) 생성 뒤 in-place 로 드리프트해도 — 예: 어딘가 이
+  # 인스턴스에 attribute 를 다시 대입하거나 reload 하는 미래의 호출부 — orphan_audio_paths 가
+  # 실제 절단 대상을 "고아"로 오분류해 purge_duplicate_sources! 가 지워버리는 사고를 막는다.
   def primary_audio_path
-    path = @meeting.audio_file_path
+    path = @source_path
     path.presence && File.exist?(path) ? path : nil
   end
 

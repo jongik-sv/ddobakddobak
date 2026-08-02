@@ -187,6 +187,26 @@ RSpec.describe AudioRedactor do
       expect(redactor.primary_audio_path).to eq(primary)
       expect(redactor.orphan_audio_paths).to eq([ orphan ])
     end
+
+    it "primary_audio_path 는 생성 시점 스냅샷(@source_path)을 따르지 인메모리 @meeting 을 따르지 않는다 (감사 MAJOR)" do
+      # source_unchanged? 는 DB 를 재조회해 @source_path 와 비교한다(자기충족적 비교를 피하려고
+      # — 클래스 코멘트에 기록된 과거 실패 모드). primary_audio_path 가 여전히 인메모리
+      # @meeting.audio_file_path(가변)를 읽으면 두 메서드가 서로 다른 기준을 갖는 창이 생긴다.
+      # 재현: 생성 뒤 @meeting 객체가 in-place 로 드리프트하면(다른 코드가 같은 인스턴스를
+      # 갱신), orphan_audio_paths 가 실제 절단 대상(@source_path)을 "고아"로 오분류해
+      # purge_duplicate_sources! 가 지워버릴 수 있다.
+      primary = File.join(audio_dir, "#{meeting.id}.mp3")
+      File.binwrite(primary, "x")
+      meeting.update!(audio_file_path: primary)
+      r = described_class.new(meeting) # @source_path 캡처 시점 = primary
+
+      drifted = File.join(audio_dir, "#{meeting.id}.webm")
+      File.binwrite(drifted, "y")
+      meeting.audio_file_path = drifted # 인메모리만 변경(save 안 함) — 순수 드리프트 재현
+
+      expect(r.primary_audio_path).to eq(primary)
+      expect(r.orphan_audio_paths).to eq([ drifted ])
+    end
   end
 
   describe "#cut_to_temp" do
