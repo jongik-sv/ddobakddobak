@@ -113,6 +113,31 @@ RSpec.describe AudioUploadJob, type: :job do
     expect(Dir.glob(File.join(audio_dir, "*.upload-tmp"))).to be_empty
   end
 
+  it "변환 중 절단 표식만 세워져도 결과를 버린다 (표식 재확인이 identity 에만 의존하지 않는다)" do
+    # 감사 지적(MAJOR): 표식 읽기(잡 시작 시 1회)·소스 identity·실제 쓰기가 떨어져 있으면,
+    # "파일이 바뀌면 반드시 identity 도 바뀐다"는 불변식에만 기대게 된다. 표식은 쓰기
+    # 직전에 **독립적으로** 다시 봐야 한다 — 여기서는 파일 내용은 그대로 두고 표식만
+    # 세워, identity 재확인만으로는 못 잡는 경로를 반증한다.
+    wav = File.join(audio_dir, "#{meeting.id}.wav")
+    write_wav(wav)
+    meeting.update!(audio_file_path: wav)
+
+    job = described_class.new
+    allow(job).to receive(:transcode_to_mp3).and_wrap_original do |orig, src, dest|
+      result = orig.call(src, dest)
+      # 트랜스코딩 중 다른 요청이 기밀 절단을 커밋 — 파일 자체는 바뀌지 않은 채 표식만 선다.
+      meeting.update_columns(transcripts_redacted_at: Time.current)
+      result
+    end
+
+    job.perform(meeting_id: meeting.id)
+
+    meeting.reload
+    expect(meeting.audio_file_path).to eq(wav)
+    expect(File.exist?(File.join(audio_dir, "#{meeting.id}.mp3"))).to be false
+    expect(Dir.glob(File.join(audio_dir, "*.upload-tmp"))).to be_empty
+  end
+
   it "절단 표식이 선 회의는 변환 자체를 하지 않는다 (identity 검사보다 이른 차단)" do
     # identity 검사는 **전체 트랜스코딩이 끝난 뒤**에야 작동한다 — 그때까지 절단 전(기밀)
     # 오디오의 mp3 사본이 이미 tmp 로 디스크에 쓰여 있다. 표식은 그 전에 막는다.

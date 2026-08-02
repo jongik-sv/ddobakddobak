@@ -63,14 +63,21 @@ class AudioUploadJob < ApplicationJob
       return
     end
 
-    # 기밀 구간 절단(transcripts#redact)이 변환 중에 소스를 통째로 교체했을 수 있다. ffmpeg 은
-    # 열린 fd(옛 inode)를 계속 읽으므로 방금 만든 mp3 는 "절단 전" 오디오다 — 그대로
-    # set_audio_file! + cleanup_original 하면 절단한 파일을 지우고 기밀을 복원한다.
+    # ⭐ 쓰기 직전 재검증 — 표식과 소스 identity 를 **여기서 함께** 다시 본다(감사 MAJOR:
+    # 가드를 실제 쓰기(mv/set_audio_file!/cleanup_original)와 인접시킨다). 두 검사는 서로를
+    # 대신하지 않는다:
+    #  - identity 만으로는 부족하다 — "파일이 바뀌면 반드시 inode 도 바뀐다"는 불변식에만
+    #    기대는 것이라, 표식은 섰지만 (아직) 파일 자체는 안 바뀐 순간의 창을 못 잡는다.
+    #  - 표식(진입 시 1 회 읽기)만으로도 부족하다 — 트랜스코딩(수십 초) 중 커밋된 절단을
+    #    입구에서는 볼 수 없고, 기밀 구간 절단(transcripts#redact)이 변환 중 소스를 통째로
+    #    교체했을 수도 있다(ffmpeg 은 열린 fd·옛 inode 를 계속 읽으므로 방금 만든 mp3 는
+    #    "절단 전" 오디오다 — 그대로 set_audio_file! + cleanup_original 하면 절단한 파일을
+    #    지우고 기밀을 복원한다).
     # 진입 가드(큐 조회)로는 못 막는다(검사와 mv 사이 창 + dev/test 는 큐 테이블 없음).
     # 쓰기를 소유한 여기서 경합을 닫는다.
-    if file_identity(src) != src_identity
+    if Meeting.where(id: meeting_id).pick(:transcripts_redacted_at).present? || file_identity(src) != src_identity
       FileUtils.rm_f(tmp_path)
-      Rails.logger.warn "[AudioUploadJob] meeting=#{meeting_id} 소스 오디오가 변환 중 교체됨 — 결과 폐기 #{src}"
+      Rails.logger.warn "[AudioUploadJob] meeting=#{meeting_id} 소스 오디오가 변환 중 교체(또는 절단)됨 — 결과 폐기 #{src}"
       return
     end
 
