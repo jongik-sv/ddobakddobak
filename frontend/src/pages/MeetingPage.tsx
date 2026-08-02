@@ -8,7 +8,10 @@ import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
 import { useMemoEditor } from '../hooks/useMemoEditor'
 import type { Transcript } from '../api/meetings'
-import { getTranscripts, reopenMeeting, updateNotes, canEditMeeting } from '../api/meetings'
+import { getTranscripts, reopenMeeting, updateNotes, canEditMeeting, canRedactMeeting } from '../api/meetings'
+import type { RedactTranscriptsResponse } from '../api/meetings'
+import { useToastStore } from '../stores/toastStore'
+import { applyLocalRedaction } from '../lib/applyLocalRedaction'
 import { useAuthStore } from '../stores/authStore'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { MeetingPageSkeleton } from '../components/ui/Skeleton'
@@ -127,6 +130,10 @@ export default function MeetingPage() {
   const markUserEdit = useTranscriptStore((s) => s.markUserEdit)
   const clientId = useTranscriptStore((s) => s.clientId)
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
+  // 로컬 절단이 오디오 토큰을 직접 올린다 — MeetingPage 는 전사 채널을 구독하지 않아
+  // 브로드캐스트 경로가 발화하지 않는다(설계 §V4-b). 올리지 않으면 절단 후에도 캐시된
+  // 옛 blob(=기밀)이 계속 재생된다.
+  const markAudioChanged = useTranscriptStore((s) => s.markAudioChanged)
   const setSummaryError = useTranscriptStore((s) => s.setSummaryError)
   // 원격(다른 클라이언트) 전사 구조 변경 신호(split·redact). 채널 경로에서만 증가 — 로컬 조작
   // (handleTranscriptSplit 등)은 이 값을 건드리지 않는다.
@@ -368,6 +375,26 @@ export default function MeetingPage() {
     })
   }
 
+  // 전사 절단 로컬 반영 — 본체는 applyLocalRedaction(lib/applyLocalRedaction.ts)에 있고
+  // 여기서는 클로저 값만 주입하는 얇은 래퍼다. 본체를 이 안에 두면 markAudioChanged 호출을
+  // 자동 검증할 방법이 없는데, 그건 절단한 본인 화면이 옛 오디오(= 기밀)를 계속 재생하지
+  // 않게 하는 유일한 장치다(이 페이지는 전사 채널을 구독하지 않는다).
+  // 원격 브로드캐스트는 client_id 에코 가드에 걸리므로 중복 재조회가 나가지 않는다.
+  function handleTranscriptRedact(result: RedactTranscriptsResponse) {
+    void applyLocalRedaction(
+      {
+        reloadTranscripts: async () => {
+          const data = await getTranscripts(meetingId)
+          setTranscripts(data)
+          loadFinals(mapTranscriptsToFinals(data, true))
+        },
+        markAudioChanged,
+        notify: (message, durationMs) => useToastStore.getState().showStatus(message, durationMs),
+      },
+      result,
+    )
+  }
+
   // 뒤로가기: 원래 폴더 목록으로 복귀. 크로스 프로젝트 진입(딥링크·전역검색)이면
   // 대상 폴더가 현재 프로젝트 밖이므로, 먼저 프로젝트 컨텍스트를 회의의 프로젝트로
   // 동기화해야 빈 회의 목록에 떨어지지 않는다.
@@ -496,6 +523,9 @@ export default function MeetingPage() {
     belowSummary: typoSections,
     seekTick,
     onSplit: handleTranscriptSplit,
+    canRedact: canRedactMeeting(meeting, me) && !locked,
+    dflowSynced: !!meeting?.dflow_synced_at,
+    onRedacted: handleTranscriptRedact,
   })
 
   return (
@@ -635,6 +665,9 @@ export default function MeetingPage() {
                   readOnly={locked || !canEdit}
                   seekTick={seekTick}
                   onSplit={handleTranscriptSplit}
+                  canRedact={canRedactMeeting(meeting, me) && !locked}
+                  dflowSynced={!!meeting?.dflow_synced_at}
+                  onRedacted={handleTranscriptRedact}
                 />
               </div>
               {/* 배치 화자분리 결과 이름 변경/초기화 (MeetingViewerPage 데스크톱과 동일 패턴) */}

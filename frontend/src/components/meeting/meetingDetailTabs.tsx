@@ -48,6 +48,12 @@ interface BuildMeetingDetailTabsArgs {
   seekTick?: number
   /** 전사 분할 성공 시 호출 — 페이지가 자신의 transcripts 배열을 갱신하도록 전달. */
   onSplit?: (updated: Transcript, inserted: Transcript) => void
+  /** owner/admin 이고 미잠금일 때만 TranscriptPanel 에 기밀 구간 절단 UI 를 노출한다. */
+  canRedact?: boolean
+  /** D'Flow 전송 이력 여부(확인 다이얼로그 경고 게이팅). */
+  dflowSynced?: boolean
+  /** 절단 성공 시 호출 — 페이지가 transcripts 재조회·오디오 토큰 갱신을 하도록 알린다. */
+  onRedacted?: (result: import('../../api/meetings').RedactTranscriptsResponse) => void
 }
 
 /** 회의 상세 모바일 탭(기록/요약/AI챗/메모) 정의를 생성한다. (순수 함수 — 훅 아님) */
@@ -76,6 +82,9 @@ export function buildMeetingDetailTabs({
   belowSummary,
   seekTick,
   onSplit,
+  canRedact,
+  dflowSynced,
+  onRedacted,
 }: BuildMeetingDetailTabsArgs): Tab[] {
   return [
     {
@@ -108,6 +117,9 @@ export function buildMeetingDetailTabs({
               readOnly={locked || !canEdit}
               seekTick={seekTick}
               onSplit={onSplit}
+              canRedact={canRedact}
+              dflowSynced={dflowSynced}
+              onRedacted={onRedacted}
             />
           </div>
         </div>
