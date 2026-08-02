@@ -235,7 +235,8 @@ describe('transcript_split 처리 로직', () => {
       summarizationKind: null,
       lastUserEditAt: 0,
       lastResetAt: 0,
-      remoteSplitRevision: 0,
+      remoteStructureRevision: 0,
+      audioRevision: 0,
     })
   })
 
@@ -248,7 +249,7 @@ describe('transcript_split 처리 로직', () => {
     started_at_ms: 1500, ended_at_ms: 3000, sequence_number: 2, applied_to_minutes: false,
   }
 
-  it('타 client의 transcript_split이 store에 반영되고 remoteSplitRevision이 증가한다', () => {
+  it('타 client의 transcript_split이 store에 반영되고 remoteStructureRevision이 증가한다', () => {
     const received = captureReceived()
     received({ type: 'transcript_split', updated: updatedJson, inserted: insertedJson, client_id: 'other-client' })
 
@@ -260,10 +261,10 @@ describe('transcript_split 처리 로직', () => {
     expect(finals[1].speaker_label).toBe('B')
     // MeetingPage가 이 카운터 변화를 감지해 transcripts를 재조회한다(TranscriptPanel은
     // prop 구조 기반이라 store 반영만으론 삽입된 행이 화면에 안 나타나서).
-    expect(useTranscriptStore.getState().remoteSplitRevision).toBe(1)
+    expect(useTranscriptStore.getState().remoteStructureRevision).toBe(1)
   })
 
-  it('내 client_id면 drop (echo — 다이얼로그가 이미 store를 갱신함), remoteSplitRevision도 증가하지 않는다', () => {
+  it('내 client_id면 drop (echo — 다이얼로그가 이미 store를 갱신함), remoteStructureRevision도 증가하지 않는다', () => {
     const myClientId = useTranscriptStore.getState().clientId
     const received = captureReceived()
     received({ type: 'transcript_split', updated: updatedJson, inserted: insertedJson, client_id: myClientId })
@@ -273,10 +274,10 @@ describe('transcript_split 처리 로직', () => {
     expect(finals[0].content).toBe('섞인 발화 전체')
     // 로컬 split(SplitTranscriptDialog가 channel을 거치지 않고 applySplit을 직접 호출)의
     // echo이므로 MeetingPage가 중복 재조회를 하면 안 된다.
-    expect(useTranscriptStore.getState().remoteSplitRevision).toBe(0)
+    expect(useTranscriptStore.getState().remoteStructureRevision).toBe(0)
   })
 
-  it('reset 가드: lastResetAt 직후는 drop, remoteSplitRevision도 증가하지 않는다', () => {
+  it('reset 가드: lastResetAt 직후는 drop, remoteStructureRevision도 증가하지 않는다', () => {
     useTranscriptStore.setState({ lastResetAt: Date.now() })
     const received = captureReceived()
     received({ type: 'transcript_split', updated: updatedJson, inserted: insertedJson, client_id: 'other' })
@@ -284,15 +285,48 @@ describe('transcript_split 처리 로직', () => {
     const finals = useTranscriptStore.getState().finals
     expect(finals).toHaveLength(1)
     expect(finals[0].content).toBe('섞인 발화 전체')
-    expect(useTranscriptStore.getState().remoteSplitRevision).toBe(0)
+    expect(useTranscriptStore.getState().remoteStructureRevision).toBe(0)
   })
 
-  it('updated.id가 store에 없어도(방어적 no-op) remoteSplitRevision은 증가한다 — 재조회는 store 적재 상태와 무관하게 필요', () => {
+  it('updated.id가 store에 없어도(방어적 no-op) remoteStructureRevision은 증가한다 — 재조회는 store 적재 상태와 무관하게 필요', () => {
     useTranscriptStore.setState({ finals: [] })
     const received = captureReceived()
     received({ type: 'transcript_split', updated: updatedJson, inserted: insertedJson, client_id: 'other' })
 
     expect(useTranscriptStore.getState().finals).toEqual([])
-    expect(useTranscriptStore.getState().remoteSplitRevision).toBe(1)
+    expect(useTranscriptStore.getState().remoteStructureRevision).toBe(1)
+  })
+
+  it('transcript_redacted 수신 시 삭제 행이 store에서 빠지고 remoteStructureRevision이 증가한다', () => {
+    const received = captureReceived() // 이 파일의 기존 관용구 — 각 it 안에서 팩토리를 호출한다
+    useTranscriptStore.getState().loadFinals([
+      { id: 1, content: 'a', speaker_label: 'S0', started_at_ms: 0, ended_at_ms: 1000, sequence_number: 1, applied: true },
+      { id: 2, content: '기밀', speaker_label: 'S0', started_at_ms: 2000, ended_at_ms: 3000, sequence_number: 2, applied: true },
+    ])
+
+    received({ type: 'transcript_redacted', deleted_ids: [2], client_id: 'other' })
+
+    expect(useTranscriptStore.getState().finals.map((f) => f.id)).toEqual([1])
+    expect(useTranscriptStore.getState().remoteStructureRevision).toBe(1)
+  })
+
+  it('transcript_redacted가 내 client_id(에코)면 두 카운터 모두 건드리지 않는다', () => {
+    // 에코 = 내가 보낸 절단. 그 화면은 Task 12의 로컬 경로가 이미 갱신했고 audioRevision도
+    // 거기서 올린다 — 여기서 또 올리면 오디오 blob을 두 번 받는다(정확히 1회여야 한다).
+    const received = captureReceived()
+    const myId = useTranscriptStore.getState().clientId
+
+    received({ type: 'transcript_redacted', deleted_ids: [2], client_id: myId })
+
+    expect(useTranscriptStore.getState().audioRevision).toBe(0)
+    expect(useTranscriptStore.getState().remoteStructureRevision).toBe(0)
+  })
+
+  it('transcript_redacted(원격)는 audioRevision도 올린다 — 옛 blob이 기밀을 계속 재생하지 않도록', () => {
+    const received = captureReceived()
+
+    received({ type: 'transcript_redacted', deleted_ids: [2], client_id: 'other' })
+
+    expect(useTranscriptStore.getState().audioRevision).toBe(1)
   })
 })

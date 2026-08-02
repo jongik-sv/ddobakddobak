@@ -49,6 +49,12 @@ type BackendMessage = {
   is_final?: boolean
   ids?: number[]
   audio_source?: 'mic' | 'system'
+  // transcript_redacted: 파기된 전사 행 id 와 잘라낸 오디오 구간.
+  deleted_ids?: number[]
+  ranges?: { start_ms: number; end_ms: number }[]
+  total_cut_ms?: number
+  audio_duration_ms?: number
+  summaries_destroyed?: boolean
   // notes update extras
   source?: string
   client_id?: string
@@ -158,8 +164,30 @@ export function createTranscriptionChannel(
               // 행이 화면에 안 나타난다 — MeetingPage가 자신의 배열을 재조회하도록 신호를 올린다.
               // 로컬 split(SplitTranscriptDialog가 이 채널을 거치지 않고 store.applySplit을 직접
               // 호출하는 경로)은 여기를 타지 않으므로 카운터가 증가하지 않는다.
-              store.markRemoteSplit()
+              store.markRemoteStructureChange()
             }
+            break
+          }
+          case 'transcript_redacted': {
+            // Echo 가드: 내 절단 요청은 응답 경로(MeetingPage.handleTranscriptRedact)가 이미
+            // store·배열·audioRevision을 전부 갱신했다. 여기서 또 올리면 오디오 blob을 두 번
+            // 받는다 — 오디오 재로드는 어느 경로로든 정확히 1회여야 한다.
+            if (raw.client_id && raw.client_id === store.clientId) {
+              break
+            }
+            // Reset 가드: 최근 reset 직후의 잔여 broadcast 무시
+            if (Date.now() - store.lastResetAt < 5000) {
+              break
+            }
+            if (raw.deleted_ids && raw.deleted_ids.length > 0) {
+              store.removeFinals(raw.deleted_ids)
+            }
+            // TranscriptPanel은 prop(transcripts) 구조 기반이라 store만 갱신해선 삭제·시프트가
+            // 화면에 반영되지 않는다 — 페이지가 전체 재조회하도록 신호를 올린다.
+            store.markRemoteStructureChange()
+            // 오디오 파일이 같은 URL에서 교체됐다 — 캐시된 옛 blob을 계속 쓰면 절단한 기밀이
+            // 계속 들린다.
+            store.markAudioChanged()
             break
           }
           case 'meeting_reset':

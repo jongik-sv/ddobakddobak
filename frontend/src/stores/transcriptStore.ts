@@ -19,11 +19,17 @@ interface TranscriptState {
   lastUserEditAt: number
   lastResetAt: number
   clientId: string
-  /** 원격(다른 클라이언트) transcript_split 수신 횟수. 채널 경로(channels/transcription.ts)에서만
-   *  증가한다 — 로컬 split(SplitTranscriptDialog → applySplit 직접 호출)은 증가시키지 않는다.
+  /** 원격(다른 클라이언트)에서 전사 "구조"가 바뀐 횟수 — split(행 삽입)과 redact(행 삭제·ms 시프트)
+   *  양쪽이 여기로 모인다. 채널 경로(channels/transcription.ts)에서만 증가한다 — 로컬 조작은
+   *  호출부가 직접 반영하므로 증가시키지 않는다(중복 재조회 방지).
    *  MeetingPage가 이 값의 변화를 감지해 자신이 들고 있는 transcripts 배열을 재조회하는 트리거로 쓴다
-   *  (TranscriptPanel은 prop 구조 기반이라 store.applySplit만으론 삽입된 행이 화면에 안 나타나서). */
-  remoteSplitRevision: number
+   *  (TranscriptPanel은 prop기반이라 store 갱신만으론 행 수 변화가 화면에 안 나타나서). */
+  remoteStructureRevision: number
+  /** 서버 오디오 파일이 교체된 횟수. 절단은 같은 URL 의 파일 내용을 바꾸므로, 이 값을
+   *  useAudioPlayer 의 URL·deps 에 넣지 않으면 캐시된 옛 오디오(=기밀)가 계속 재생된다.
+   *  올리는 곳은 정확히 두 군데이며 서로 배타적이다 — 원격 수신(채널, 에코 아님)과
+   *  로컬 절단 성공(MeetingPage.handleTranscriptRedact). 둘 다 올리면 blob 을 두 번 받는다. */
+  audioRevision: number
 
   setPartial: (data: TranscriptPartialData) => void
   addFinal: (data: TranscriptFinalData) => void
@@ -36,8 +42,11 @@ interface TranscriptState {
   /** split 반영: updated.id인 기존 항목을 응답값으로 갱신하고 그 바로 뒤에 inserted를 끼운다.
    *  updated.id를 못 찾으면(아직 로드 전 등) no-op. */
   applySplit: (updated: Transcript, inserted: Transcript) => void
-  /** 원격 transcript_split 수신을 표시(카운터 증가). 채널 코드에서만 호출할 것. */
-  markRemoteSplit: () => void
+  /** 원격 구조 변경(split·redact) 수신을 표시(카운터 증가). 채널 코드에서만 호출할 것. */
+  markRemoteStructureChange: () => void
+  /** 오디오 파일 교체를 표시(카운터 증가). 원격 수신(채널, 에코 아님) 또는 로컬 절단 성공
+   *  경로에서만 호출한다 — 두 경로는 배타적이므로 한 절단당 정확히 1회 증가한다. */
+  markAudioChanged: () => void
   setSpeakerName: (speakerLabel: string, name: string | null) => void
   clearSpeakerNames: () => void
   setSummarizing: (kind: 'realtime' | 'final' | null) => void
@@ -67,7 +76,8 @@ const initialState = {
   summaryError: null as { kind: string; message: string } | null,
   lastUserEditAt: 0,
   lastResetAt: 0,
-  remoteSplitRevision: 0,
+  remoteStructureRevision: 0,
+  audioRevision: 0,
 }
 
 export const useTranscriptStore = create<TranscriptState>()((set) => ({
@@ -186,7 +196,9 @@ export const useTranscriptStore = create<TranscriptState>()((set) => ({
       return { finals, appliedIds }
     }),
 
-  markRemoteSplit: () => set((state) => ({ remoteSplitRevision: state.remoteSplitRevision + 1 })),
+  markRemoteStructureChange: () => set((state) => ({ remoteStructureRevision: state.remoteStructureRevision + 1 })),
+
+  markAudioChanged: () => set((state) => ({ audioRevision: state.audioRevision + 1 })),
 
   setSpeakerName: (speakerLabel, name) =>
     set((state) => {
