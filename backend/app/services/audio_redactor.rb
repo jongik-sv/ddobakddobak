@@ -153,29 +153,6 @@ class AudioRedactor
     purge_stale_upload_tmps!
   end
 
-  # 죽은 AudioUploadJob 이 남긴 <id>.mp3.upload-tmp 회수. audio_paths 글롭이 이 확장자를
-  # 제외만 하고(진행 중인 변환을 절단이 오인해 자르면 안 되니까) 지우는 코드가 없었다 —
-  # 방치하면 소스 오디오 **전체**의 mp3 사본, 즉 절단 전 기밀 오디오가 그대로 남는다.
-  # 시간 기반 회수(SttChunkStorage.sweep_upload_tmps!, 1시간)만으로는 부족하다 — 절단은
-  # "즉시 파기"가 원칙인데 대부분의 회의는 두 번 절단되지 않아 다음 절단이 회수해 줄 기회도 없다.
-  #
-  # ⭐ 진행 중인 업로드는 건드리지 않는다(AudioUploadJob.in_flight_for?). 지워도 열린 fd 자체는
-  # POSIX 상 안전하지만, 그 잡의 transcode_to_mp3 는 `File.exist?(dest)` 로 성공을 판정하므로
-  # (audio_upload_job.rb) 디렉터리 엔트리가 사라지면 멀쩡히 진행 중이던 변환이 조용히 "실패"로
-  # 처리돼 사용자 업로드가 통째로 날아간다. 그 잡은 성공·실패 **모든** 경로에서 ensure 로 자기
-  # tmp 를 지우므로(+ 그마저 못 지운 경우를 위한 hourly sweep) 여기서 남겨둬도 기밀 잔존
-  # 위험이 없다 — 이 메서드는 **죽은 잡이 남긴 것**만 지운다.
-  # in_flight_for? 는 값싼 조기 판정(dev/test 는 :async 큐라 항상 false)이지 보증이 아니지만,
-  # 여기서 필요한 건 정확히 그 정도다 — 진짜 안전장치는 위 문단의 ensure/hourly sweep 이다.
-  def purge_stale_upload_tmps!
-    return if AudioUploadJob.in_flight_for?(@meeting.id)
-
-    Dir.glob(File.join(audio_dir, "#{@meeting.id}.*.upload-tmp")).each do |p|
-      FileUtils.rm_f(p)
-      raise PurgeFailed, "변환 임시파일을 지우지 못했습니다: #{p}" if File.exist?(p)
-    end
-  end
-
   # 이전 절단이 남긴 .redact-backup 스윕. 이건 "임시 파일"이 아니라 **절단 전 오디오 전체**,
   # 즉 기밀 원음이다. 커밋 뒤 drop_backups! 가 실패하면 남는데, 그때 복구하는 것은 금지돼 있고
   # (DB 는 이미 커밋됐다 — 되살리면 전사만 지워진 채 기밀 오디오가 부활한다) audio_paths 글롭도
@@ -366,6 +343,33 @@ class AudioRedactor
     [ stat.ino, stat.size, stat.mtime.to_f ]
   rescue SystemCallError
     nil
+  end
+
+  # 죽은 AudioUploadJob 이 남긴 <id>.mp3.upload-tmp 회수. audio_paths 글롭이 이 확장자를
+  # 제외만 하고(진행 중인 변환을 절단이 오인해 자르면 안 되니까) 지우는 코드가 없었다 —
+  # 방치하면 소스 오디오 **전체**의 mp3 사본, 즉 절단 전 기밀 오디오가 그대로 남는다.
+  # 시간 기반 회수(SttChunkStorage.sweep_upload_tmps!, 1시간)만으로는 부족하다 — 절단은
+  # "즉시 파기"가 원칙인데 대부분의 회의는 두 번 절단되지 않아 다음 절단이 회수해 줄 기회도 없다.
+  #
+  # ⭐ 진행 중인 업로드는 건드리지 않는다(AudioUploadJob.in_flight_for?). 지워도 열린 fd 자체는
+  # POSIX 상 안전하지만, 그 잡의 transcode_to_mp3 는 `File.exist?(dest)` 로 성공을 판정하므로
+  # (audio_upload_job.rb) 디렉터리 엔트리가 사라지면 멀쩡히 진행 중이던 변환이 조용히 "실패"로
+  # 처리돼 사용자 업로드가 통째로 날아간다. 그 잡은 성공·실패 **모든** 경로에서 ensure 로 자기
+  # tmp 를 지우므로(+ 그마저 못 지운 경우를 위한 hourly sweep) 여기서 남겨둬도 기밀 잔존
+  # 위험이 없다 — 이 메서드는 **죽은 잡이 남긴 것**만 지운다.
+  # in_flight_for? 는 값싼 조기 판정(dev/test 는 :async 큐라 항상 false)이지 보증이 아니지만,
+  # 여기서 필요한 건 정확히 그 정도다 — 진짜 안전장치는 위 문단의 ensure/hourly sweep 이다.
+  #
+  # ⚠️ private — purge_duplicate_sources! 내부 전용이다. 4b654e2c 가 같은 이유로
+  # SttChunkStorage#sweep_chunks! 를 비공개화한 것과 같은 원칙: 외부 호출자가 없는 내부
+  # 분해 단계를 공개 API 로 노출해 두면 안 된다.
+  def purge_stale_upload_tmps!
+    return if AudioUploadJob.in_flight_for?(@meeting.id)
+
+    Dir.glob(File.join(audio_dir, "#{@meeting.id}.*.upload-tmp")).each do |p|
+      FileUtils.rm_f(p)
+      raise PurgeFailed, "변환 임시파일을 지우지 못했습니다: #{p}" if File.exist?(p)
+    end
   end
 
   def purge_tree!(path)
