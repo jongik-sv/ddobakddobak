@@ -116,7 +116,7 @@ describe('TranscriptPanel 기밀 구간 절단', () => {
     expect(nativeConfirm).not.toHaveBeenCalled()
   })
 
-  it('확인 문구에 비가역·오디오 재인코딩·회의록 삭제·챗 잔존·데스크톱 경고가 모두 들어간다', async () => {
+  it('확인 문구에 비가역·오디오 재인코딩·회의록 삭제·챗 잔존·데스크톱·후속 회의 시드 사본 경고가 모두 들어간다', async () => {
     renderPanel({ canRedact: true })
 
     await userEvent.click(screen.getAllByLabelText('절단 대상 선택')[1])
@@ -130,6 +130,11 @@ describe('TranscriptPanel 기밀 구간 절단', () => {
     expect(message).toContain('내 챗 기록에 인용된 내용은 남습니다')
     expect(message).toContain('직접 편집한 회의록도 함께 삭제되며 복구되지 않습니다')
     expect(message).toContain('데스크톱')
+    // 3차 감사 발견: Meeting#seed_summary_from_previous!가 이전 회의의 회의록을 후속 회의
+    // summaries.notes_markdown에 그대로 복사한다. 그 사본은 파기하지 않기로 결정했으므로
+    // (설계 §확인 다이얼로그) 고지 의무만 남는다 — 후속 회의 존재를 판정할 API 필드가 없어
+    // 무조건 표시한다.
+    expect(message).toContain('이전 회의로 참고한 다른 회의')
     expect(message).toContain('00:03') // 선택 구간 시작
   })
 

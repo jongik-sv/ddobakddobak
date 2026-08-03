@@ -200,6 +200,12 @@ export function TranscriptPanel({
       '· 직접 편집한 회의록도 함께 삭제되며 복구되지 않습니다.',
       '· 내 챗 기록에 인용된 내용은 남습니다.',
       '· 데스크톱에 업로드되지 않은 원음이 남아 있을 수 있습니다.',
+      // 3차 감사 발견: Meeting#seed_summary_from_previous!가 이전 회의의 회의록(current_notes_markdown)을
+      // 후속 회의 summaries.notes_markdown에 그대로 복사한다. 그 사본은 파기하지 않기로
+      // 결정했으므로(설계 §확인 다이얼로그, docs/superpowers/specs/2026-07-31-transcript-redact-range-design.md:446-448)
+      // 고지 의무만 남는다. 후속 회의 존재 여부(이 회의를 previous_meeting_id로 참조하는 회의가
+      // 있는지)를 판정할 API 필드가 없어 — 없다고 단정하는 쪽이 더 위험하므로 — 무조건 표시한다.
+      '· 이 회의를 이전 회의로 참고한 다른 회의의 회의록에 절단 전 내용이 이미 복사되어 남아 있을 수 있습니다.',
     ]
     // dflowSynced 를 모르는 호출부(undefined)에서는 경고를 빼지 않는다 — 빠뜨리는 쪽이 더 위험하다.
     if (dflowSynced !== false) {
