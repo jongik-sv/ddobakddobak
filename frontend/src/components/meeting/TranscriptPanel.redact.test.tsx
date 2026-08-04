@@ -83,15 +83,11 @@ describe('TranscriptPanel 기밀 구간 절단', () => {
     expect(screen.getByRole('button', { name: '기밀 구간 절단' })).toBeEnabled()
   })
 
-  it('전체 선택이 모든 행을 고르고 다시 누르면 해제한다', async () => {
+  it('전체 선택 체크박스는 존재하지 않는다 (개별 행 체크박스는 남아있다)', () => {
     renderPanel({ canRedact: true })
-    const all = screen.getByLabelText('전체 선택')
 
-    await userEvent.click(all)
-    expect(screen.getByText('2개 선택')).toBeInTheDocument()
-
-    await userEvent.click(all)
-    expect(screen.queryByText(/개 선택/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('전체 선택')).not.toBeInTheDocument()
+    expect(screen.getAllByLabelText('절단 대상 선택')).toHaveLength(2)
   })
 
   it('confirmDialog를 취소하면 API를 호출하지 않는다', async () => {

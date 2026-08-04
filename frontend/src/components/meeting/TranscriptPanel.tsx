@@ -65,7 +65,9 @@ export function TranscriptPanel({
 }: TranscriptPanelProps) {
   const highlightedRef = useRef<HTMLDivElement | null>(null)
   const [splittingTranscript, setSplittingTranscript] = useState<Transcript | null>(null)
-  // 선택 상태는 FullRecord.tsx:21,70-100 패턴을 그대로 미러링한다(Set + toggleSelect + toggleAll).
+  // 선택 상태는 FullRecord.tsx:21,70-100 패턴을 그대로 미러링한다(Set + toggleSelect).
+  // 단, 전체 선택은 여기서는 두지 않는다 — 기밀 구간 절단을 통째로 선택해서 실행할 일은
+  // 없다는 판단(개별 행을 전부 손으로 체크하면 여전히 도달 가능하며, 이는 의도된 경로다).
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [redacting, setRedacting] = useState(false)
   const removeFinalsInStore = useTranscriptStore((s) => s.removeFinals)
@@ -141,14 +143,6 @@ export function TranscriptPanel({
       return next
     })
   }, [])
-
-  const toggleAll = useCallback(() => {
-    if (selected.size === transcripts.length) {
-      setSelected(new Set())
-    } else {
-      setSelected(new Set(transcripts.map((t) => t.id)))
-    }
-  }, [transcripts, selected.size])
 
   // 이 파일의 formatTimestamp(:33-38)는 MM:SS 고정이라 90분이 "90:00"으로 보인다.
   // 확인 다이얼로그는 회의 전체 길이를 다루므로 시 단위가 필요하다(기존 함수는 세그먼트
@@ -293,20 +287,15 @@ export function TranscriptPanel({
   }
 
   return (
-    <div className="flex flex-col gap-1 p-4 overflow-y-auto">
+    <div className="flex flex-col gap-1 p-4">
       {canRedact && !readOnly && (
-        // 상단 sticky — 루트가 곧 스크롤 컨테이너라(하단 고정 바를 쓰려면 이 구조를 바꿔야 한다)
+        // 상단 sticky — 실제 스크롤 컨테이너는 이 루트가 아니라 부모다
+        // (meetingDetailTabs.tsx:113, MeetingPage.tsx:664 의 flex-1 overflow-y-auto).
+        // 루트는 높이 제약이 없어 내용만큼 늘어나므로, 여기에 overflow-y-auto 를 다시 달면
+        // 루트가 스크롤포트 자격을 가로채면서도 자기 자신은 절대 스크롤되지 않아
+        // sticky top-0 이 다시 죽는다. 되돌리지 말 것.
         // -mx-4 -mt-4 로 루트의 p-4 를 상쇄해 폭 전체를 차지하고 위쪽에 붙게 한다.
-        <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-2 px-4 py-2 bg-card border-b flex items-center justify-between">
-          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-            <input
-              type="checkbox"
-              checked={selected.size === transcripts.length && transcripts.length > 0}
-              onChange={toggleAll}
-              aria-label="전체 선택"
-            />
-            전체 선택
-          </label>
+        <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-2 px-4 py-2 bg-card border-b flex items-center justify-end">
           <div className="flex items-center gap-2">
             {selected.size > 0 && (
               <span className="text-xs text-muted-foreground">{selected.size}개 선택</span>
@@ -347,6 +336,8 @@ export function TranscriptPanel({
                 ref={isHighlighted ? highlightedRef : null}
                 data-highlighted={isHighlighted ? 'true' : 'false'}
                 className={`flex items-start gap-1 p-3 min-h-[44px] rounded cursor-pointer transition-colors ${
+                  canRedact && !readOnly ? 'scroll-mt-12' : ''
+                } ${
                   isHighlighted
                     ? 'bg-accent border-l-4 border-indigo-500'
                     : selected.has(transcript.id)
