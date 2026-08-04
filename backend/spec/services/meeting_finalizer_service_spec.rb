@@ -130,5 +130,22 @@ RSpec.describe MeetingFinalizerService do
         }.not_to change(Decision, :count)
       end
     end
+
+    # 감사 지적(CRITICAL): 이 서비스도 MeetingSummarizationJob 과 같은 창을 갖는다 — 절단 전
+    # 전사를 읽어 LLM 호출 중 기밀 절단이 커밋되면, 완료 후 ai_generated action_items/decisions
+    # 가 그대로 저장되어 기밀 파생 텍스트가 부활한다(redact 는 정확히 이 두 테이블을 파기 대상으로 삼는다).
+    context "redact race guard (기밀 절단 표식)" do
+      it "does not save action_items or decisions when transcripts_redacted_at is set during the LLM call" do
+        allow(llm_double).to receive(:summarize_action_items) do
+          meeting.update_columns(transcripts_redacted_at: Time.current)
+          action_items_result
+        end
+
+        expect {
+          described_class.new(meeting).call
+        }.not_to change { meeting.action_items.count }
+        expect(meeting.decisions.count).to eq(0)
+      end
+    end
   end
 end

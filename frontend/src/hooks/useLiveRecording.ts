@@ -33,7 +33,7 @@ import { getSttSettings, getLanguageSettings } from '../api/settings'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useRecordingSignalsStore } from '../stores/recordingSignalsStore'
 import { useRecordingStore } from '../stores/recordingStore'
-import { httpErrorInfo } from '../lib/errors'
+import { httpErrorInfo, isMeetingRedactedError } from '../lib/errors'
 import { IS_TAURI, getApiOrigin, getMode } from '../config'
 import { mapTranscriptsToFinals } from '../lib/transcriptMapper'
 import { useRecordingSummaryTimer } from './useRecordingSummaryTimer'
@@ -161,6 +161,15 @@ export function useLiveRecording(
   // 오디오 업로드 프로미스 추적 (중단→재시작 시 업로드 완료 보장)
   const uploadPromiseRef = useRef<Promise<void> | null>(null)
 
+  // 절단(transcripts#redact)된 회의에 녹음을 재개하면 오디오 create/chunk/finalize 가 전부
+  // 409(code=meeting_redacted, MeetingWriteGuard#reject_if_redacted!)로 영구 거절된다. 재시도는
+  // 의미가 없다 — 그 청크는 진짜 기밀이 아니라(절단 후 새로 녹음한 내용) 전송할 곳이 없는
+  // 데이터일 뿐이므로, 감지 즉시 진행 중인 캡처를 폐기(discard)하고 세션을 종결한다.
+  // discard/stopMicCapture/stopSystemCapture 는 아래에서(useAudioRecorder/useMicCapture/
+  // useSystemAudioCapture 선언 후) 채워진다 — feedSystemAudioRef 와 동일한 늦은-바인딩 패턴.
+  const redactedHandledRef = useRef(false)
+  const onMeetingRedactedRef = useRef<() => void>(() => {})
+
   const onStop = useCallback(
     async (blob: Blob) => {
       const task = (async () => {
@@ -175,8 +184,17 @@ export function useLiveRecording(
       try {
         await task
       } catch (err) {
-        // 업로드 실패 → recordings/<id>.wav 보존. 다음 앱 시작 시 복구 스윕이 재업로드한다.
-        console.error('[useLiveRecording] 오디오 업로드 실패, 복구용 파일 보존', err)
+        if (await isMeetingRedactedError(err)) {
+          onMeetingRedactedRef.current()
+          // 절단된 회의로는 다시 보낼 수 없으므로 복구용으로 남겨둘 이유가 없다 — 폐기한다.
+          if (IS_TAURI) {
+            const { invoke } = await import('@tauri-apps/api/core')
+            await invoke('delete_recording', { meetingId }).catch(() => {})
+          }
+        } else {
+          // 업로드 실패 → recordings/<id>.wav 보존. 다음 앱 시작 시 복구 스윕이 재업로드한다.
+          console.error('[useLiveRecording] 오디오 업로드 실패, 복구용 파일 보존', err)
+        }
       } finally {
         uploadPromiseRef.current = null
       }
@@ -192,10 +210,25 @@ export function useLiveRecording(
       onChunkRef.current(pcm, meta)
     },
     onStop,
-    // 모바일 청크 레코더: 녹음 중 압축 청크 연속 업로드 + 종료 시 서버 합치기/변환
-    onAudioChunk: (blob, seq) => uploadAudioChunk(meetingId, blob, seq),
+    // 모바일 청크 레코더: 녹음 중 압축 청크 연속 업로드 + 종료 시 서버 합치기/변환.
+    // meeting_redacted(영구 거부)는 여기서 소비하고(재시도 무의미) 폐기 핸들러를 발화시킨다 —
+    // 그 외 실패는 기존 관용대로 useAudioRecorder 내부 catch(console.error)로 넘긴다.
+    onAudioChunk: (blob, seq) =>
+      uploadAudioChunk(meetingId, blob, seq).catch(async (err) => {
+        if (await isMeetingRedactedError(err)) {
+          onMeetingRedactedRef.current()
+          return
+        }
+        throw err
+      }),
     onFinalize: () => {
-      uploadPromiseRef.current = finalizeAudio(meetingId)
+      uploadPromiseRef.current = finalizeAudio(meetingId).catch(async (err) => {
+        if (await isMeetingRedactedError(err)) {
+          onMeetingRedactedRef.current()
+          return
+        }
+        throw err
+      })
       return uploadPromiseRef.current
     },
   })
@@ -255,6 +288,19 @@ export function useLiveRecording(
       navigate(`/meetings/${meetingId}/viewer`, { replace: true })
     }
   }, [recordingDenied, isRecording, meetingId, navigate, location.pathname, discard, stopMicCapture, stopSystemCapture])
+
+  // 절단(redact)된 회의에 녹음 재개를 시도했을 때의 종결 핸들러 — discard/stopMicCapture/
+  // stopSystemCapture 가 모두 선언된 뒤라야 채울 수 있어 ref로 늦게 바인딩한다(위 onStop/
+  // onAudioChunk/onFinalize 선언 시점엔 이 값들이 아직 없다).
+  onMeetingRedactedRef.current = () => {
+    if (redactedHandledRef.current) return
+    redactedHandledRef.current = true
+    if (isRecording) discard()
+    if (IS_TAURI) stopMicCapture()
+    stopSystemCapture()
+    showStatus('이 회의는 기밀 절단되어 더 이상 녹음/전사를 추가할 수 없습니다.', 6000)
+    useRecordingStore.getState().endSession()
+  }
 
   const handleStart = async () => {
     // 이전 세션 오디오 업로드 완료 대기 (중단→재시작 싱크 보장)

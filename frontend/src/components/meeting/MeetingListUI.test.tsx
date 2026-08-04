@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { MeetingActionButtons, DflowSyncBadge } from './MeetingListUI'
+import { MeetingActionButtons, DflowSyncBadge, RedactedBadge } from './MeetingListUI'
 import type { Meeting } from '../../api/meetings'
 import { useAuthStore } from '../../stores/authStore'
 
@@ -167,5 +167,27 @@ describe('DflowSyncBadge 3상태 + 우선순위', () => {
   it('compact=false + isDesktop=false면 모바일 크기 클래스를 쓴다', () => {
     render(<DflowSyncBadge dflowSyncedAt="2026-03-25T12:00:00Z" isDesktop={false} />)
     expect(screen.getByText("D'Flow ✓")).toHaveClass('px-1.5', 'py-0', 'text-[10px]')
+  })
+})
+
+describe('RedactedBadge', () => {
+  it('미절단(false)이면 렌더 안 함', () => {
+    const { container } = render(<RedactedBadge redacted={false} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('undefined면 렌더 안 함', () => {
+    const { container } = render(<RedactedBadge />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('절단됨이면 배지를 렌더한다', () => {
+    render(<RedactedBadge redacted />)
+    expect(screen.getByText('기밀 절단됨')).toBeInTheDocument()
+  })
+
+  it('compact=true면 목록용 고정 크기 클래스를 쓴다', () => {
+    render(<RedactedBadge redacted compact />)
+    expect(screen.getByText('기밀 절단됨')).toHaveClass('px-1.5', 'py-0', 'text-[10px]')
   })
 })

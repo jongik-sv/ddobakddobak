@@ -600,10 +600,10 @@ describe('MeetingPage', () => {
 
   // 전사 분할(split): 원격(다른 클라이언트) split은 store.applySplit만으론 이 페이지의
   // transcripts(prop 구조)에 반영되지 않아 조각2가 화면에서 소실된 것처럼 보이던 버그의 회귀 방지.
-  // remoteSplitRevision 변화를 감지해 재조회하되, 로컬 split(onSplit 직접 호출)에서는
+  // remoteStructureRevision 변화를 감지해 재조회하되, 로컬 split(onSplit 직접 호출)에서는
   // 중복 재조회가 없어야 한다.
   describe('전사 분할(split) 재조회 배선', () => {
-    it('원격 split 신호(remoteSplitRevision 증가) 수신 후 getTranscripts가 재호출되고 화면에 반영된다', async () => {
+    it('원격 split 신호(remoteStructureRevision 증가) 수신 후 getTranscripts가 재호출되고 화면에 반영된다', async () => {
       mockMeetingWithId(340)
       vi.mocked(meetingsApi.getTranscripts).mockResolvedValueOnce([])
       renderPage('340')
@@ -618,7 +618,7 @@ describe('MeetingPage', () => {
       ])
 
       act(() => {
-        useTranscriptStore.getState().markRemoteSplit()
+        useTranscriptStore.getState().markRemoteStructureChange()
       })
 
       await waitFor(() => {

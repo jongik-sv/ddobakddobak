@@ -99,6 +99,8 @@ Rails.application.routes.draw do
           collection do
             delete :destroy_batch
             post :bulk, action: :bulk_create
+            # 기밀 구간 절단(비가역). 상세: docs/superpowers/specs/2026-07-31-transcript-redact-range-design.md
+            post :redact
           end
         end
         resources :blocks, only: %i[index create update destroy] do

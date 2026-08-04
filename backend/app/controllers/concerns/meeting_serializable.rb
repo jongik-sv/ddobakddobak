@@ -66,7 +66,14 @@ module MeetingSerializable
       # 해서 summarizing 과 같은 이유로 목록(full:false)에도 노출한다. public_uid·dflow_url 은
       # 카드가 링크를 걸지 않으므로 full 블록에만 남긴다(아래).
       dflow_synced_at: meeting.dflow_synced_at,
-      dflow_needs_resync: meeting.dflow_needs_resync?
+      dflow_needs_resync: meeting.dflow_needs_resync?,
+      # 기밀 구간 절단(transcripts#redact) 표식. 이 회의는 추가 녹음·전사 동기화를 받지 않는다
+      # (bulk_create·오디오 create/chunk/finalize 가 409 + code=meeting_redacted).
+      # summarizing 과 같은 이유로 목록(full:false)에도 노출한다 — 회의 카드가 상세 재조회 없이
+      # 배지를 그려야 하고, 프론트가 녹음 버튼을 비활성화할 판단 근거도 목록에서 필요하다.
+      # 불리언을 함께 주는 이유: 클라이언트가 nil 비교 대신 그대로 쓰게(문자열 truthy 함정 방지).
+      transcripts_redacted_at: meeting.transcripts_redacted_at&.iso8601,
+      transcripts_redacted: meeting.transcripts_redacted_at.present?
     }
 
     if full

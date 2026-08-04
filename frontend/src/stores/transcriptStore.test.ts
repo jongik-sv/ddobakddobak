@@ -268,28 +268,45 @@ describe('applySplit', () => {
   })
 })
 
-describe('markRemoteSplit', () => {
+describe('markRemoteStructureChange', () => {
   beforeEach(() => {
     useTranscriptStore.getState().reset()
   })
 
-  it('호출할 때마다 remoteSplitRevision을 증가시킨다', () => {
-    expect(useTranscriptStore.getState().remoteSplitRevision).toBe(0)
-    useTranscriptStore.getState().markRemoteSplit()
-    expect(useTranscriptStore.getState().remoteSplitRevision).toBe(1)
-    useTranscriptStore.getState().markRemoteSplit()
-    expect(useTranscriptStore.getState().remoteSplitRevision).toBe(2)
+  it('호출할 때마다 remoteStructureRevision을 증가시킨다', () => {
+    expect(useTranscriptStore.getState().remoteStructureRevision).toBe(0)
+    useTranscriptStore.getState().markRemoteStructureChange()
+    expect(useTranscriptStore.getState().remoteStructureRevision).toBe(1)
+    useTranscriptStore.getState().markRemoteStructureChange()
+    expect(useTranscriptStore.getState().remoteStructureRevision).toBe(2)
   })
 
-  it('applySplit 자체는 remoteSplitRevision을 건드리지 않는다 (로컬 경로에서 이중 재조회 방지)', () => {
+  it('applySplit 자체는 remoteStructureRevision을 건드리지 않는다 (로컬 경로에서 이중 재조회 방지)', () => {
     useTranscriptStore.getState().loadFinals([
-      { id: 1, content: 'a', speaker_label: 'A', started_at_ms: 0, ended_at_ms: 1000, sequence_number: 1, applied: false },
+      { id: 1, content: '원문', speaker_label: 'S0', started_at_ms: 0, ended_at_ms: 1000, sequence_number: 1, applied: true },
     ])
     useTranscriptStore.getState().applySplit(
-      { id: 1, content: 'x', speaker_label: 'A', started_at_ms: 0, ended_at_ms: 500, sequence_number: 1 },
-      { id: 2, content: 'y', speaker_label: 'A', started_at_ms: 500, ended_at_ms: 1000, sequence_number: 2 },
+      { id: 1, content: '원', speaker_label: 'S0', started_at_ms: 0, ended_at_ms: 500, sequence_number: 1 },
+      { id: 2, content: '문', speaker_label: 'S0', started_at_ms: 500, ended_at_ms: 1000, sequence_number: 2 },
     )
-    expect(useTranscriptStore.getState().remoteSplitRevision).toBe(0)
+    expect(useTranscriptStore.getState().remoteStructureRevision).toBe(0)
+  })
+})
+
+describe('markAudioChanged', () => {
+  beforeEach(() => {
+    useTranscriptStore.getState().reset()
+  })
+
+  it('호출할 때마다 audioRevision을 증가시킨다', () => {
+    expect(useTranscriptStore.getState().audioRevision).toBe(0)
+    useTranscriptStore.getState().markAudioChanged()
+    expect(useTranscriptStore.getState().audioRevision).toBe(1)
+  })
+
+  it('remoteStructureRevision과 독립이다 (원격 split은 오디오를 바꾸지 않는다)', () => {
+    useTranscriptStore.getState().markRemoteStructureChange()
+    expect(useTranscriptStore.getState().audioRevision).toBe(0)
   })
 })
 

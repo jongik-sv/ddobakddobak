@@ -99,6 +99,115 @@ RSpec.describe "Api::V1::MeetingsAudio", type: :request do
   end
 
   # ─────────────────────────────────────────────────────────
+  # 기밀 구간 절단 표식(meetings.transcripts_redacted_at) 이후의 오디오 writer 차단
+  #
+  # audio_file_path 를 쓰는 writer 는 3개인데 지금까지 AudioUploadJob 만 가드돼 있었다.
+  # #create 는 자기가 읽은 소스가 그 사이 절단됐는지 확인 없이 set_audio_file! 하고,
+  # #finalize 는 <id>_parts/ 를 이어붙여 <id>.webm 을 **재구성**한다 — 절단 전 청크가
+  # 남아 있거나 절단 후 도착하면 파기한 기밀 오디오가 그대로 복원된다.
+  # ─────────────────────────────────────────────────────────
+  describe "절단된 회의의 오디오 쓰기 차단" do
+    let(:audio_dir) { Rails.root.join("tmp", "test_audio_#{SecureRandom.hex(4)}").to_s }
+
+    around do |example|
+      prev = ENV["AUDIO_DIR"]
+      ENV["AUDIO_DIR"] = audio_dir
+      FileUtils.mkdir_p(audio_dir)
+      example.run
+    ensure
+      prev.nil? ? ENV.delete("AUDIO_DIR") : ENV["AUDIO_DIR"] = prev
+      FileUtils.rm_rf(audio_dir)
+    end
+
+    before { allow(AudioUploadJob).to receive(:perform_later) }
+
+    def redact_marker!
+      meeting.update!(transcripts_redacted_at: Time.current)
+    end
+
+    def chunk_file(content, seq)
+      Rack::Test::UploadedFile.new(
+        StringIO.new(content), "audio/webm;codecs=opus", true,
+        original_filename: "chunk-#{seq}.webm"
+      )
+    end
+
+    it "#create 는 409 + code=meeting_redacted 이고 파일도 audio_file_path 도 남기지 않는다" do
+      redact_marker!
+
+      post "/api/v1/meetings/#{meeting.id}/audio", params: { audio: webm_fixture }
+
+      expect(response).to have_http_status(:conflict)
+      # ⭐ 이 API 의 409 는 전부 재시도 가능(recorder 충돌 등)이라, 클라이언트가 "영구 거부"를
+      # 구분하려면 안정된 코드가 필요하다. status 만 보면 무한 재시도에 갇힌다.
+      expect(response.parsed_body["code"]).to eq("meeting_redacted")
+      expect(meeting.reload.audio_file_path).to be_nil
+      expect(Dir.glob(File.join(audio_dir, "*"))).to be_empty
+      expect(AudioUploadJob).not_to have_received(:perform_later)
+    end
+
+    it "#chunk 는 409 이고 파트 파일이 디스크에 쌓이지 않는다" do
+      # 파트를 계속 받으면 (a) finalize 가 그것으로 오디오를 재구성하고 (b) 파트 자체가
+      # 어떤 스위퍼에도 안 잡히는 절단 전 기밀 바이트로 디스크에 남는다
+      # (sweep_redact_backups! 는 *.redact-backup 만, AudioRedactor#audio_paths 는 _parts/ 제외).
+      redact_marker!
+
+      post "/api/v1/meetings/#{meeting.id}/audio_chunk",
+           params: { chunk: chunk_file("기밀청크", 0), sequence: 0 }
+
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body["code"]).to eq("meeting_redacted")
+      expect(Dir.exist?(File.join(audio_dir, "#{meeting.id}_parts"))).to be false
+    end
+
+    it "#finalize 는 409 이고 남아 있는 파트로 오디오를 재구성하지 않는다" do
+      # 절단 **전에** 이미 도착해 있던 파트가 남아 있는 상황.
+      dir = File.join(audio_dir, "#{meeting.id}_parts")
+      FileUtils.mkdir_p(dir)
+      File.binwrite(File.join(dir, "0.part"), "절단전기밀오디오")
+      redact_marker!
+
+      post "/api/v1/meetings/#{meeting.id}/audio_finalize"
+
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body["code"]).to eq("meeting_redacted")
+      expect(File.exist?(File.join(audio_dir, "#{meeting.id}.webm"))).to be false
+      expect(meeting.reload.audio_file_path).to be_nil
+      expect(AudioUploadJob).not_to have_received(:perform_later)
+    end
+
+    it "recorder 충돌보다 절단 표식이 먼저 응답한다 (영구 거부가 일시적 409 에 가리면 안 된다)" do
+      # ⭐ 배치 반증. reject_if_recorder_conflict! 도 **409** 라 status 로는 구분되지 않는다.
+      # 절단 가드가 뒤로 밀리면 클라이언트는 재시도 가능한 recorder_conflict 만 보게 되고,
+      # 그대로 무한 재시도에 갇혀 절단 전 오디오를 계속 밀어올린다. 순서가 계약이다.
+      meeting.update!(status: "recording", recording_client_id: "device-a",
+                      recording_client_platform: "desktop",
+                      recorder_heartbeat_at: Time.current, # stale 아님 → 자가복구로 통과하지 않는다
+                      transcripts_redacted_at: Time.current)
+
+      post "/api/v1/meetings/#{meeting.id}/audio_chunk",
+           params: { chunk: chunk_file("기밀청크", 0), sequence: 0 },
+           headers: { "X-Client-Id" => "device-b", "X-Client-Platform" => "mobile" }
+
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body["code"]).to eq("meeting_redacted")
+      expect(Dir.exist?(File.join(audio_dir, "#{meeting.id}_parts"))).to be false
+    end
+
+    it "표식이 없으면 세 액션 모두 그대로 통과한다 (가드가 정상 녹음을 막지 않는다)" do
+      post "/api/v1/meetings/#{meeting.id}/audio", params: { audio: webm_fixture }
+      expect(response).to have_http_status(:created)
+
+      post "/api/v1/meetings/#{meeting.id}/audio_chunk",
+           params: { chunk: chunk_file("AAAA", 0), sequence: 0 }
+      expect(response).to have_http_status(:ok)
+
+      post "/api/v1/meetings/#{meeting.id}/audio_finalize"
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  # ─────────────────────────────────────────────────────────
   # GET /api/v1/meetings/:id/audio
   # ─────────────────────────────────────────────────────────
   describe "GET /api/v1/meetings/:id/audio" do

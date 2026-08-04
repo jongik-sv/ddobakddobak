@@ -36,6 +36,19 @@ module MeetingLookup
     render json: { error: "회의를 제어할 권한이 없습니다" }, status: :forbidden
   end
 
+  # 관리 인가: admin / 소유자만. 협업자는 제외한다 — 복구 불가한 파기·구조 변경 액션 전용
+  # (idea 44 에서 정한 "관리 액션 = owner/admin" 원칙). 전사 절단(transcripts#redact)이 첫 사용처.
+  # split 이 authorize_meeting_control!(협업자 허용)인 이유는 "split 은 기밀 삭제가 아니라 편집"이며,
+  # 절단은 정확히 그 반대 케이스다.
+  # 같은 규칙이 MeetingsController#authorize_meeting_collaborator_admin! 에도 있으나 에러 문구가
+  # 액션 도메인별로 달라(협업자 관리 vs 회의 관리) 통합하지 않는다.
+  def authorize_meeting_admin!
+    return if meeting_admin?
+    return if @meeting.owner?(current_user)
+
+    render json: { error: "이 회의를 관리할 권한이 없습니다" }, status: :forbidden
+  end
+
   # idea 44: 직접 지정 협업자 또는 소속 폴더(및 조상)의 협업자인지.
   def meeting_collaborator?(meeting)
     MeetingCollaborator.exists?(meeting_id: meeting.id, user_id: current_user.id) ||

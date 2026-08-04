@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_23_000002) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_31_000001) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -276,6 +276,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_23_000002) do
     t.string "summary_verbosity", default: "standard", null: false
     t.string "title", null: false
     t.integer "transcription_progress", default: 0, null: false
+    t.datetime "transcripts_redacted_at"
     t.string "trash_group_id"
     t.boolean "trashed_as_root", default: false, null: false
     t.datetime "updated_at", null: false

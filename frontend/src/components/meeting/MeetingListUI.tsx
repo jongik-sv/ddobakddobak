@@ -121,6 +121,33 @@ export function DflowSyncBadge({ dflowSyncedAt, dflowNeedsResync, compact = fals
   )
 }
 
+interface RedactedBadgeProps {
+  redacted?: boolean
+  /** 목록(카드/테이블)처럼 항상 작은 고정 크기(px-1.5 py-0 text-[10px])로 렌더. DflowSyncBadge와
+   *  동일 패턴 — 소비처가 각자 크기 분기를 복붙하지 않도록 한다. */
+  compact?: boolean
+}
+
+/**
+ * 기밀 구간 절단(transcripts#redact) 적용 배지. meeting.transcripts_redacted 는 목록(full:false)
+ * 응답에도 노출되므로(meeting_serializable.rb) 카드/테이블 어디서나 재조회 없이 그릴 수 있다.
+ * 이 회의는 추가 녹음·전사 동기화를 받지 않는다 — 사용자가 왜 녹음 버튼이 없는지 알 수 있어야 한다.
+ */
+export function RedactedBadge({ redacted, compact = false }: RedactedBadgeProps) {
+  if (!redacted) return null
+
+  const sizeClass = compact ? 'px-1.5 py-0 text-[10px]' : 'px-2 py-0.5 text-xs'
+
+  return (
+    <span
+      className={`shrink-0 rounded-full border bg-red-50 text-red-700 border-red-300 ${sizeClass}`}
+      title="기밀 구간 절단이 적용되어 추가 녹음·전사를 받지 않습니다"
+    >
+      기밀 절단됨
+    </span>
+  )
+}
+
 export function MeetingTypeBadge({ type, typeMap }: { type: string; typeMap: Record<string, string> }) {
   return (
     <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200">

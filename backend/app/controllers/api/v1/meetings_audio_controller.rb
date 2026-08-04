@@ -12,6 +12,11 @@ module Api
       before_action :authenticate_user!
       before_action :set_meeting
       before_action :authorize_meeting_control!, only: %i[create chunk finalize]
+      # ⭐ 절단 가드는 인가 **뒤**, 나머지 가드 **앞**이다.
+      # - 인가 뒤: 비멤버에게 "이 회의는 절단됐다"를 알려주지 않는다(401/403 이 이긴다).
+      # - locked/recorder 충돌 앞: 그 둘은 **일시적** 409/403 이라 클라이언트가 재시도한다.
+      #   영구 거부가 일시적 거부에 가려지면 온디바이스 큐가 무한 재시도에 갇힌다.
+      before_action :reject_if_redacted!, only: %i[create chunk finalize]
       before_action :reject_if_locked!, only: %i[create chunk finalize]
       # 단일 녹음 기기 락: 녹음 중 REST 청크 업로드/종결도 점유 기기에서만(다른 기기는 409).
       before_action :reject_if_recorder_conflict!, only: %i[create chunk finalize]

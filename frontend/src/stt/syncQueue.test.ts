@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { HTTPError } from 'ky'
 import type { TranscriptFinalData } from '../channels/transcription'
 import { enqueue, flush, flushAll } from './syncQueue'
 import {
@@ -7,6 +8,7 @@ import {
   markPendingSync,
   listLocal,
   mergeLocalAudio,
+  deleteLocal,
 } from './localStore'
 import { createMeeting, getMeeting, bulkCreateTranscripts, promoteAudio } from '../api/meetings'
 
@@ -16,6 +18,7 @@ vi.mock('./localStore', () => ({
   markPendingSync: vi.fn(),
   listLocal: vi.fn(),
   mergeLocalAudio: vi.fn(),
+  deleteLocal: vi.fn(),
 }))
 
 vi.mock('../api/meetings', () => ({
@@ -34,6 +37,7 @@ const mSetServerId = vi.mocked(setServerId)
 const mMarkPendingSync = vi.mocked(markPendingSync)
 const mListLocal = vi.mocked(listLocal)
 const mMergeAudio = vi.mocked(mergeLocalAudio)
+const mDeleteLocal = vi.mocked(deleteLocal)
 const mCreateMeeting = vi.mocked(createMeeting)
 const mGetMeeting = vi.mocked(getMeeting)
 const mBulkCreate = vi.mocked(bulkCreateTranscripts)
@@ -100,7 +104,31 @@ beforeEach(() => {
   mMergeAudio.mockResolvedValue(null as never)
   mGetMeeting.mockResolvedValue({ has_audio_file: false } as never)
   mPromoteAudio.mockResolvedValue(undefined as never)
+  mDeleteLocal.mockResolvedValue(undefined as never)
 })
+
+/** bulkCreateTranscripts(apiClient=ky 경유) 가 던지는 실제 에러 모양 —
+ *  MeetingWriteGuard#reject_if_redacted! 의 409 응답 본문을 실은 ky HTTPError. */
+function makeRedactedHttpError(): HTTPError {
+  const response = new Response(
+    JSON.stringify({
+      error: '기밀 절단이 적용된 회의입니다. 추가 녹음·전사 동기화를 받지 않습니다.',
+      code: 'meeting_redacted',
+      transcripts_redacted_at: '2026-08-01T00:00:00.000Z',
+    }),
+    { status: 409, headers: { 'Content-Type': 'application/json' } },
+  )
+  return new HTTPError(response, new Request('http://localhost/test'), {} as never)
+}
+
+/** promoteAudio(raw fetch 헬퍼) 가 던지는 실제 에러 모양 — res.ok 체크 후 code 를 부착한 Error
+ *  (audio.ts). Response body 는 1회만 읽을 수 있어 Response 자체를 들고 있을 수 없다. */
+function makeRedactedFetchError(): Error {
+  return Object.assign(new Error('기밀 절단이 적용된 회의입니다. 추가 녹음·전사 동기화를 받지 않습니다.'), {
+    code: 'meeting_redacted',
+    status: 409,
+  })
+}
 
 // getLocal/listLocal는 실제 반환 타입이 이 테스트의 LocalRecord/LocalMeta와 정확히
 // 일치하지 않을 수 있으므로(타입은 sibling localStore 소유) 모킹 시 캐스팅한다.
@@ -268,6 +296,47 @@ describe('flush — 실패 시 pendingSync 유지', () => {
     const res = await flush('missing')
     expect(res).toEqual({ ok: false })
     expect(mCreateMeeting).not.toHaveBeenCalled()
+  })
+})
+
+describe('flush — meeting_redacted(영구 거부)', () => {
+  // 이 회의는 서버가 기밀 절단을 적용해 bulk_create/오디오 create·chunk·finalize 를 전부
+  // 409 + code=meeting_redacted 로 거절한다(MeetingWriteGuard#reject_if_redacted!). 워터마크가
+  // 없는 이 큐는 실패를 pendingSync 유지로 처리하면 flushAll 마다 절단된 전사를 계속
+  // 재전송 시도한다 — 재시도가 아니라 로컬 사본 자체를 파기해야 한다(그게 기밀이므로).
+  it('bulkCreateTranscripts가 meeting_redacted면 로컬 사본을 삭제한다(재시도 아님)', async () => {
+    resolveGetLocal(makeRecord({ serverId: 7 }))
+    mBulkCreate.mockRejectedValue(makeRedactedHttpError())
+
+    const res = await flush('local-abc')
+
+    expect(res).toEqual({ ok: false })
+    expect(mDeleteLocal).toHaveBeenCalledWith('local-abc')
+  })
+
+  it('promoteAudio가 meeting_redacted면(전사는 통과, 오디오만 거절) 로컬 사본을 삭제한다', async () => {
+    resolveGetLocal(makeRecord({ serverId: 7 }))
+    mMergeAudio.mockResolvedValue({ bytes: new Uint8Array([1]), segmentOffsetsMs: [0], durationMs: 1000 } as never)
+    mPromoteAudio.mockRejectedValue(makeRedactedFetchError())
+
+    const res = await flush('local-abc')
+
+    expect(res).toEqual({ ok: false })
+    expect(mDeleteLocal).toHaveBeenCalledWith('local-abc')
+  })
+
+  it('일반 409(잠금 등 재시도 가능한 실패)는 사본을 지우지 않는다 — code가 달라야 지운다', async () => {
+    resolveGetLocal(makeRecord({ serverId: 7 }))
+    const response = new Response(JSON.stringify({ error: '잠긴 회의입니다.' }), {
+      status: 409,
+      headers: { 'Content-Type': 'application/json' },
+    }) // code 없음
+    mBulkCreate.mockRejectedValue(new HTTPError(response, new Request('http://localhost/test'), {} as never))
+
+    const res = await flush('local-abc')
+
+    expect(res).toEqual({ ok: false })
+    expect(mDeleteLocal).not.toHaveBeenCalled()
   })
 })
 

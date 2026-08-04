@@ -27,6 +27,7 @@ import {
   markPendingSync,
   listLocal,
   mergeLocalAudio,
+  deleteLocal,
 } from './localStore'
 import {
   createMeeting,
@@ -36,6 +37,7 @@ import {
   type BulkTranscriptItem,
 } from '../api/meetings'
 import { useProjectStore } from '../stores/projectStore'
+import { isMeetingRedactedError } from '../lib/errors'
 
 export interface FlushResult {
   ok: boolean
@@ -105,8 +107,16 @@ export async function flush(localId: string): Promise<FlushResult> {
     // 4. 성공 → pendingSync 클리어
     await markPendingSync(localId, false)
     return { ok: true, serverId }
-  } catch {
-    // 실패 → pendingSync 유지(다음 트리거에 재시도). 마킹을 건드리지 않는다.
+  } catch (err) {
+    // 영구 거부(meeting_redacted): 이 회의는 절단되어 서버가 다시는 받아주지 않는다. pendingSync
+    // 를 유지하면(기존 기본 경로) 워터마크가 없는 이 큐가 flush 마다 보유 세그먼트 전체를
+    // 영원히 재시도한다 — 그 세그먼트 자체가 파기 대상 기밀이므로 재시도 억제로는 부족하고
+    // 디스크에서 지운다(다른 기기가 절단했어도 이 기기가 다음 flush 에서 이 경로로 감지한다).
+    if (await isMeetingRedactedError(err)) {
+      await deleteLocal(localId).catch(() => {})
+      return { ok: false }
+    }
+    // 그 외 실패 → pendingSync 유지(다음 트리거에 재시도). 마킹을 건드리지 않는다.
     return { ok: false }
   }
 }

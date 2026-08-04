@@ -8,7 +8,10 @@ import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
 import { useMemoEditor } from '../hooks/useMemoEditor'
 import type { Transcript } from '../api/meetings'
-import { getTranscripts, reopenMeeting, updateNotes, canEditMeeting } from '../api/meetings'
+import { getTranscripts, reopenMeeting, updateNotes, canEditMeeting, canRedactMeeting } from '../api/meetings'
+import type { RedactTranscriptsResponse } from '../api/meetings'
+import { useToastStore } from '../stores/toastStore'
+import { applyLocalRedaction } from '../lib/applyLocalRedaction'
 import { useAuthStore } from '../stores/authStore'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { MeetingPageSkeleton } from '../components/ui/Skeleton'
@@ -127,19 +130,25 @@ export default function MeetingPage() {
   const markUserEdit = useTranscriptStore((s) => s.markUserEdit)
   const clientId = useTranscriptStore((s) => s.clientId)
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
+  // 로컬 절단이 오디오 토큰을 직접 올린다 — MeetingPage 는 전사 채널을 구독하지 않아
+  // 브로드캐스트 경로가 발화하지 않는다(설계 §V4-b). 올리지 않으면 절단 후에도 캐시된
+  // 옛 blob(=기밀)이 계속 재생된다.
+  const markAudioChanged = useTranscriptStore((s) => s.markAudioChanged)
   const setSummaryError = useTranscriptStore((s) => s.setSummaryError)
-  // 원격(다른 클라이언트) transcript_split 신호. 채널 경로에서만 증가 — 로컬 split
-  // (handleTranscriptSplit)은 이 값을 건드리지 않는다.
-  const remoteSplitRevision = useTranscriptStore((s) => s.remoteSplitRevision)
+  // 원격(다른 클라이언트) 전사 구조 변경 신호(split·redact). 채널 경로에서만 증가 — 로컬 조작
+  // (handleTranscriptSplit 등)은 이 값을 건드리지 않는다.
+  const remoteStructureRevision = useTranscriptStore((s) => s.remoteStructureRevision)
+  // 오디오 파일 교체 신호(절단). useAudioPlayer 의 URL·deps 에 넣어야 캐시된 옛 오디오를 버린다.
+  const audioRevision = useTranscriptStore((s) => s.audioRevision)
   // null = "아래 reset 이펙트가 아직 기준선을 안 잡음"이라는 방어적 표식이다. 실제로는 이 값이
   // null인 채로 재조회 이펙트(아래, 319행 부근)가 실행되는 경우가 없다 — React는 같은 컴포넌트의
   // 이펙트를 선언 순서대로 실행하고, 마운트/회의전환 시 항상 이 reset 이펙트(선언이 더 앞)가
   // 먼저 실행되어 같은 커밋에서 0을 채워 넣기 때문이다. 그래도 두 이펙트의 선언 순서가 나중에
   // 바뀌거나 이 로직이 커스텀 훅으로 추출되는 리팩토링에도 안전하도록 가드는 남겨둔다.
-  const remoteSplitRevisionSeenRef = useRef<number | null>(null)
+  const remoteStructureRevisionSeenRef = useRef<number | null>(null)
   useEffect(() => {
     resetTranscriptStore()
-    remoteSplitRevisionSeenRef.current = 0
+    remoteStructureRevisionSeenRef.current = 0
   }, [meetingId, resetTranscriptStore])
   useEffect(() => {
     if (summary?.notes_markdown) {
@@ -192,7 +201,7 @@ export default function MeetingPage() {
   )
 
   // 오디오 상태 (AudioPlayer ↔ MiniAudioPlayer ↔ TranscriptPanel 공유)
-  const audio = useAudioPlayer(meetingId)
+  const audio = useAudioPlayer(meetingId, audioRevision)
   const [seekMs, setSeekMs] = useState<number | null>(null)
   // 동일 ms로 재-seek(마커 재클릭 등)해도 React state는 동일 값 setState를 bail-out하므로,
   // 값과 무관하게 "seek이 발생했다"는 사실만 전달하는 별도 트리거가 필요하다.
@@ -308,29 +317,30 @@ export default function MeetingPage() {
     })
   }, [meetingId, meeting?.status, loadFinals])
 
-  // 원격 split 재조회: TranscriptPanel은 transcripts prop(구조) 기반이라 store.applySplit만으론
-  // 다른 클라이언트가 만든 삽입 행이 화면에 안 나타난다(조각2가 소실된 것처럼 보임). remoteSplitRevision이
-  // 실제로 증가할 때만 전체 재조회로 채운다. 로컬 split은 handleTranscriptSplit이 이미 배열을 직접
-  // 갱신하고 이 카운터를 건드리지 않으므로 여기서 중복 재조회가 발생하지 않는다.
+  // 원격 구조 변경(split·redact) 재조회: TranscriptPanel은 transcripts prop(구조) 기반이라
+  // store.applySplit/removeFinals만으론 다른 클라이언트가 만든 삽입·삭제 행이 화면에 안 나타난다.
+  // remoteStructureRevision이 실제로 증가할 때만 전체 재조회로 채운다. 로컬 조작은
+  // handleTranscriptSplit 등이 이미 배열을 직접 갱신하고 이 카운터를 건드리지 않으므로 여기서
+  // 중복 재조회가 발생하지 않는다.
   //
   // 비교는 반드시 store의 "지금 값"(getState())으로 한다 — 위 reset 이펙트가 같은 커밋의 effect
-  // flush에서 먼저 실행되어(선언 순서상 앞) remoteSplitRevision을 이미 0으로 되돌렸을 수 있는데,
-  // 이 이펙트의 클로저가 들고 있는 reactive 값(파라미터 remoteSplitRevision)은 여전히 "이번 렌더가
+  // flush에서 먼저 실행되어(선언 순서상 앞) remoteStructureRevision을 이미 0으로 되돌렸을 수 있는데,
+  // 이 이펙트의 클로저가 들고 있는 reactive 값(파라미터 remoteStructureRevision)은 여전히 "이번 렌더가
   // 시작될 때의" 값(리셋 전 잔여치)이라 getState()와 어긋난다. getState()로 항상 최신값을 읽어야
   // reset 직후 커밋에서 잔여치 vs 0을 오비교해 스퓨리어스 재조회가 나가는 걸 막을 수 있다.
   useEffect(() => {
     // 방어적 가드일 뿐 실제로는 여기서 걸리지 않는다 — 위 reset 이펙트(선언이 이 이펙트보다
     // 앞)가 마운트/회의전환 시 항상 먼저 실행되어 같은 커밋에서 ref를 0으로 채우므로, 이 이펙트가
     // 실행되는 시점엔 ref.current가 이미 null이 아니다.
-    if (remoteSplitRevisionSeenRef.current === null) return
-    const current = useTranscriptStore.getState().remoteSplitRevision
-    if (current === remoteSplitRevisionSeenRef.current) return
-    remoteSplitRevisionSeenRef.current = current
+    if (remoteStructureRevisionSeenRef.current === null) return
+    const current = useTranscriptStore.getState().remoteStructureRevision
+    if (current === remoteStructureRevisionSeenRef.current) return
+    remoteStructureRevisionSeenRef.current = current
     getTranscripts(meetingId).then((data) => {
       setTranscripts(data)
       loadFinals(mapTranscriptsToFinals(data, true))
     })
-  }, [remoteSplitRevision, meetingId, loadFinals])
+  }, [remoteStructureRevision, meetingId, loadFinals])
 
   function handleSeek(ms: number) {
     setSeekMs(ms)
@@ -363,6 +373,34 @@ export default function MeetingPage() {
       next.splice(idx + 1, 0, inserted)
       return next
     })
+  }
+
+  // 전사 절단 로컬 반영 — 본체는 applyLocalRedaction(lib/applyLocalRedaction.ts)에 있고
+  // 여기서는 클로저 값만 주입하는 얇은 래퍼다. 본체를 이 안에 두면 markAudioChanged·
+  // clearMeetingNotes 호출을 자동 검증할 방법이 없는데, 그건 절단한 본인 화면이 옛 오디오
+  // (= 기밀)를 계속 재생하거나 파기된 회의록을 계속 보여주지 않게 하는 유일한 장치다
+  // (이 페이지는 전사 채널을 구독하지 않는다).
+  // 원격 브로드캐스트는 client_id 에코 가드에 걸리므로 중복 재조회가 나가지 않는다.
+  function handleTranscriptRedact(result: RedactTranscriptsResponse) {
+    void applyLocalRedaction(
+      {
+        reloadTranscripts: async () => {
+          const data = await getTranscripts(meetingId)
+          setTranscripts(data)
+          loadFinals(mapTranscriptsToFinals(data, true))
+        },
+        // useMeeting().refetch — meeting.transcripts_redacted 배지·brief_summary 등
+        // meeting 파생 필드를 최신화한다.
+        refetchMeeting: refetch,
+        markAudioChanged,
+        // AiSummaryPanel이 회의록을 읽는 유일한 소스(useTranscriptStore.meetingNotes)를
+        // 즉시 지운다 — summaries.destroy_all 후에도 이걸 안 하면 새로고침 전까지
+        // 파기됐어야 할 회의록 텍스트가 화면에 그대로 남는다.
+        clearMeetingNotes: () => setMeetingNotes(null),
+        notify: (message, durationMs) => useToastStore.getState().showStatus(message, durationMs),
+      },
+      result,
+    )
   }
 
   // 뒤로가기: 원래 폴더 목록으로 복귀. 크로스 프로젝트 진입(딥링크·전역검색)이면
@@ -493,6 +531,9 @@ export default function MeetingPage() {
     belowSummary: typoSections,
     seekTick,
     onSplit: handleTranscriptSplit,
+    canRedact: canRedactMeeting(meeting, me) && !locked,
+    dflowSynced: !!meeting?.dflow_synced_at,
+    onRedacted: handleTranscriptRedact,
   })
 
   return (
@@ -632,6 +673,9 @@ export default function MeetingPage() {
                   readOnly={locked || !canEdit}
                   seekTick={seekTick}
                   onSplit={handleTranscriptSplit}
+                  canRedact={canRedactMeeting(meeting, me) && !locked}
+                  dflowSynced={!!meeting?.dflow_synced_at}
+                  onRedacted={handleTranscriptRedact}
                 />
               </div>
               {/* 배치 화자분리 결과 이름 변경/초기화 (MeetingViewerPage 데스크톱과 동일 패턴) */}

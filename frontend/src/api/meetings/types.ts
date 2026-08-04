@@ -111,6 +111,12 @@ export interface Meeting {
   /** 최초 전송 이후 로컬 편집/요약 갱신이 마지막 전송보다 최신인지(서버 계산). 목록(full:false)에도
    *  노출 — 카드/테이블 배지 표시용. */
   dflow_needs_resync?: boolean
+  /** 기밀 구간 절단(transcripts#redact) 적용 시각(ISO 문자열). null=미적용. 이 회의는 적용 후
+   *  추가 녹음·전사 동기화를 받지 않는다(bulk_create·오디오 create/chunk/finalize가 409 +
+   *  code=meeting_redacted). 목록(full:false)에도 노출 — 카드/테이블 배지·녹음 버튼 게이팅용. */
+  transcripts_redacted_at?: string | null
+  /** transcripts_redacted_at.present? 의 불리언 버전 — nil 비교 대신 그대로 쓰라고 서버가 함께 준다. */
+  transcripts_redacted?: boolean
 }
 
 /** 반복 예약 규칙. days: 0=일~6=토 (weekly에서만 사용). time: "HH:MM". tz: IANA 타임존. */
@@ -238,6 +244,45 @@ export interface SplitTranscriptParams {
 export interface SplitTranscriptResponse {
   updated: Transcript
   inserted: Transcript
+}
+
+/** 서버가 확정한 절단 구간(이웃 gap 중간점으로 클램프·병합된 값). 요청의 행 ms 와 다를 수 있다. */
+export interface RedactedRange {
+  start_ms: number
+  end_ms: number
+}
+
+/** 화면에서 본 전사 행의 ms 경계. 동시 split 가드의 단언 단위. */
+export interface TranscriptBounds {
+  started_at_ms: number
+  ended_at_ms: number
+}
+
+/** POST transcripts/redact 요청 바디. 선택한 전사 행 id 집합 —
+ *  서버가 sequence_number 연속 런으로 묶어 구간 N개를 만든다. 되돌릴 수 없다. */
+export interface RedactTranscriptsParams {
+  transcript_ids: number[]
+  /** 각 선택 행의 "화면에서 본" ms 경계(키 = transcript id 문자열). 서버 현재값과 하나라도
+   *  다르면 409. **필수다** — 빠뜨리면 422다. optional 로 두면 동시 split 가드가 통째로
+   *  사라지고, 그 경우 기밀 텍스트가 절반만 잘려 살아남는다(겹침 완전성 검사로는 못 잡는다). */
+  expected_bounds: Record<string, TranscriptBounds>
+  client_id?: string
+}
+
+/** POST transcripts/redact 응답. */
+export interface RedactTranscriptsResponse {
+  deleted_ids: number[]
+  ranges: RedactedRange[]
+  total_cut_ms: number
+  /** 절단 후 ffprobe 로 재측정한 오디오 길이. 전사 ms 파생이 아니다. */
+  audio_duration_ms: number
+  /** 회의록(요약) 행이 삭제되었는지 — 사용자에게 재생성을 안내하는 데 쓴다. */
+  summaries_destroyed: boolean
+  chat_markers_updated: number
+  bookmarks_removed: number
+  /** 커밋 후 백업 파기가 실패해 `.redact-backup`(절단 전 원음)이 남았는지. true 면 다음 절단
+   *  또는 매시간 스위퍼가 회수할 때까지 디스크에 남는다. UI 가 경고에 쓸 수 있다. */
+  backup_retained: boolean
 }
 
 export interface ExportOptions {

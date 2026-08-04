@@ -2,6 +2,22 @@ require "rails_helper"
 require "tmpdir"
 
 RSpec.describe SttChunkStorage do
+  # ⚠️ sweep! 이 이제 오디오 디렉터리(.redact-backup 회수)도 훑는다. AUDIO_DIR 미설정 시 기본값은
+  # Rails.root/storage/audio — 이 저장소는 프로덕션 체크아웃에서 rspec 을 직접 돌리므로
+  # 반드시 tmp 로 격리한다(SttChunkStorage::ROOT 가 test 에서 tmp 로 갈라지는 것과 같은 이유).
+  # 메서드 자체에도 같은 취지의 구조적 방어선이 있지만(AUDIO_DIR 미설정 + test 면 0 반환),
+  # 두 겹으로 둔다 — 스펙 격리는 미래의 스펙이 빠뜨릴 수 있고 구조적 방어선은 그때도 남는다.
+  around do |example|
+    prev = ENV["AUDIO_DIR"]
+    dir = Rails.root.join("tmp", "test_audio_#{SecureRandom.hex(4)}").to_s
+    ENV["AUDIO_DIR"] = dir
+    FileUtils.mkdir_p(dir)
+    example.run
+  ensure
+    prev.nil? ? ENV.delete("AUDIO_DIR") : ENV["AUDIO_DIR"] = prev
+    FileUtils.rm_rf(dir)
+  end
+
   before do
     @tmp_root = Pathname.new(Dir.mktmpdir("stt_chunk_storage_spec"))
     stub_const("SttChunkStorage::ROOT", @tmp_root)
@@ -110,6 +126,175 @@ RSpec.describe SttChunkStorage do
       expect(removed).to eq(1) # other_path만 삭제됨
       expect(File).to exist(path)
       expect(File).not_to exist(other_path)
+    end
+
+    it "잔존 .redact-backup 도 함께 회수한다 (스위퍼 배선 — 이게 없으면 회수 경로가 없다)" do
+      # transcripts_controller 의 주석이 "(b) 매시간 SttChunkStorage.sweep! 가 회수한다"고
+      # 단언하는 지점. sweep_redact_backups! 를 직접 부르는 example 만 두면 sweep! 안의 호출을
+      # 통째로 지워도 green 이라 — 없는 방어선을 있다고 문서화한 상태가 그대로 남는다.
+      backup = File.join(ENV.fetch("AUDIO_DIR"), "7.mp3.redact-backup")
+      File.binwrite(backup, "절단 전 원음")
+      FileUtils.touch(backup, mtime: 3.hours.ago.to_time)
+
+      described_class.sweep!
+
+      expect(File.exist?(backup)).to be false
+    end
+
+    it "stt_chunks 루트가 없어도 오디오 디렉터리 회수는 돈다 (A3: 무관한 디렉터리에 걸리면 안 된다)" do
+      # backend/storage/ 는 .gitignore 로 통째 제외돼 있어 stt_chunks 디렉터리가 **없는 환경이
+      # 정상**이다. `return 0 unless Dir.exist?(ROOT)` 뒤에 백업 회수를 두면 그런 환경에서
+      # 절단 전 원음(.redact-backup)과 .upload-tmp 회수가 통째로 돌지 않는다.
+      FileUtils.rm_rf(@tmp_root)
+      backup = File.join(ENV.fetch("AUDIO_DIR"), "7.mp3.redact-backup")
+      File.binwrite(backup, "절단 전 원음")
+      FileUtils.touch(backup, mtime: 3.hours.ago.to_time)
+      tmp = File.join(ENV.fetch("AUDIO_DIR"), "7.mp3.upload-tmp")
+      File.binwrite(tmp, "절단 전 오디오의 mp3 사본")
+      FileUtils.touch(tmp, mtime: 3.hours.ago.to_time)
+
+      expect(described_class.sweep!).to eq(0) # 청크는 0건이지만
+
+      expect(File.exist?(backup)).to be false
+      expect(File.exist?(tmp)).to be false
+    end
+
+    it "잔존 .upload-tmp 도 함께 회수한다 (AudioUploadJob 이 SIGKILL 당한 경로)" do
+      # ensure 는 프로세스가 죽으면 돌지 않는다(배포·OOM·워커 재시작). 그때 남는
+      # <id>.mp3.upload-tmp 는 절단 전 오디오 **전체**의 mp3 사본이다.
+      tmp = File.join(ENV.fetch("AUDIO_DIR"), "7.mp3.upload-tmp")
+      File.binwrite(tmp, "절단 전 오디오의 mp3 사본")
+      FileUtils.touch(tmp, mtime: 3.hours.ago.to_time)
+
+      described_class.sweep!
+
+      expect(File.exist?(tmp)).to be false
+    end
+  end
+
+  describe ".sweep_upload_tmps!" do
+    let(:audio_dir) { ENV.fetch("AUDIO_DIR") }
+
+    it "임계보다 오래된 .upload-tmp 를 지운다" do
+      old = File.join(audio_dir, "7.mp3.upload-tmp")
+      File.binwrite(old, "절단 전 오디오의 mp3 사본")
+      FileUtils.touch(old, mtime: 3.hours.ago.to_time)
+
+      expect(described_class.sweep_upload_tmps!).to eq(1)
+      expect(File.exist?(old)).to be false
+    end
+
+    it "임계보다 최근 파일은 남긴다 (진행 중인 트랜스코딩을 뺏지 않는다)" do
+      # ffmpeg 이 쓰는 동안 mtime 이 계속 갱신되므로 "오래됨 = 죽음"이 성립한다.
+      fresh = File.join(audio_dir, "8.mp3.upload-tmp")
+      File.binwrite(fresh, "지금 인코딩 중")
+
+      expect(described_class.sweep_upload_tmps!).to eq(0)
+      expect(File.exist?(fresh)).to be true
+    end
+
+    it "오디오 파일 자체는 건드리지 않는다" do
+      audio = File.join(audio_dir, "9.mp3")
+      File.binwrite(audio, "x")
+      FileUtils.touch(audio, mtime: 3.hours.ago.to_time)
+
+      described_class.sweep_upload_tmps!
+
+      expect(File.exist?(audio)).to be true
+    end
+
+    it "test 환경에서 AUDIO_DIR 이 없으면 아무것도 하지 않는다 (프로덕션 storage/audio 오염 방지)" do
+      prev = ENV.delete("AUDIO_DIR")
+      expect(Dir).not_to receive(:glob)
+      expect(described_class.sweep_upload_tmps!).to eq(0)
+    ensure
+      ENV["AUDIO_DIR"] = prev
+    end
+  end
+
+  describe ".sweep_redact_backups!" do
+    let(:audio_dir) { ENV.fetch("AUDIO_DIR") }
+
+    it "임계보다 오래된 .redact-backup 을 지운다 (절단 전 원음 회수)" do
+      old = File.join(audio_dir, "7.mp3.redact-backup")
+      File.binwrite(old, "절단 전 원음")
+      FileUtils.touch(old, mtime: 3.hours.ago.to_time)
+
+      expect(described_class.sweep_redact_backups!).to eq(1)
+      expect(File.exist?(old)).to be false
+    end
+
+    it "임계보다 최근 파일은 남긴다 (진행 중인 절단의 백업을 뺏지 않는다)" do
+      fresh = File.join(audio_dir, "8.mp3.redact-backup")
+      File.binwrite(fresh, "지금 절단 중")
+
+      expect(described_class.sweep_redact_backups!).to eq(0)
+      expect(File.exist?(fresh)).to be true
+    end
+
+    it "오디오 파일 자체는 건드리지 않는다" do
+      audio = File.join(audio_dir, "9.mp3")
+      File.binwrite(audio, "x")
+      FileUtils.touch(audio, mtime: 3.hours.ago.to_time)
+
+      described_class.sweep_redact_backups!
+
+      expect(File.exist?(audio)).to be true
+    end
+
+    it "AudioRedactor 가 방금 만든 백업은 스윕하지 않는다 (A2: rename 은 mtime 을 보존한다)" do
+      # ⭐ 반증의 핵심. 백업은 swap_in! 의 FileUtils.mv = **같은 디렉토리 rename** 으로 만들어지고
+      # rename 은 mtime 을 바꾸지 않는다. 원본 녹음은 보통 수 시간~수일 전 파일이므로, 갓 만든
+      # 백업이 **생성되는 그 순간부터** 1시간 cutoff 를 넘어 있다 → 진행 중인 절단의 롤백 복구
+      # 대상을 스위퍼가 뺏어간다(커밋 실패 시 원본이 영구 소실).
+      meeting = create(:meeting)
+      src = File.join(audio_dir, "#{meeting.id}.wav")
+      File.binwrite(src, "원본 녹음")
+      FileUtils.touch(src, mtime: 3.hours.ago.to_time) # 어제 녹음한 회의
+      tmp = "#{src}.redact-tmp.wav"
+      File.binwrite(tmp, "절단본")
+      meeting.update!(audio_file_path: src)
+
+      AudioRedactor.new(meeting).swap_in!(src => tmp)
+      backup = "#{src}.redact-backup"
+      expect(File.exist?(backup)).to be true
+
+      expect(described_class.sweep_redact_backups!).to eq(0)
+      expect(File.exist?(backup)).to be true
+    end
+
+    it "move_all_audio_to_backup! 이 만든 백업도 마찬가지다 (전사 전체 선택 경로)" do
+      meeting = create(:meeting)
+      src = File.join(audio_dir, "#{meeting.id}.wav")
+      File.binwrite(src, "원본 녹음")
+      FileUtils.touch(src, mtime: 3.hours.ago.to_time)
+      meeting.update!(audio_file_path: src)
+
+      AudioRedactor.new(meeting).move_all_audio_to_backup!
+
+      expect(described_class.sweep_redact_backups!).to eq(0)
+      expect(File.exist?("#{src}.redact-backup")).to be true
+    end
+
+    it "회의 레코드가 없어도 파기한다 (전사 0건·회의 삭제 경로에서도 원음이 남으면 안 된다)" do
+      # 백업 파일명은 회의 id 접두일 뿐 DB 를 조회하지 않는다. 전사를 전부 선택해 회의에 전사가
+      # 0 건이 된 경우·회의가 삭제된 경우에도 디스크의 기밀 원음은 회수돼야 한다.
+      orphan = File.join(audio_dir, "#{Meeting.maximum(:id).to_i + 9999}.webm.redact-backup")
+      File.binwrite(orphan, "주인 없는 절단 전 원음")
+      FileUtils.touch(orphan, mtime: 3.hours.ago.to_time)
+
+      expect(described_class.sweep_redact_backups!).to eq(1)
+      expect(File.exist?(orphan)).to be false
+    end
+
+    it "test 환경에서 AUDIO_DIR 이 없으면 아무것도 하지 않는다 (프로덕션 storage/audio 오염 방지)" do
+      # 이 저장소는 프로덕션 체크아웃에서 rspec 을 돌린다. AUDIO_DIR 미설정 시 기본값이
+      # Rails.root/storage/audio 이므로, 격리를 빠뜨린 미래의 스펙이 실 파일을 지우게 된다.
+      prev = ENV.delete("AUDIO_DIR")
+      expect(Dir).not_to receive(:glob)
+      expect(described_class.sweep_redact_backups!).to eq(0)
+    ensure
+      ENV["AUDIO_DIR"] = prev
     end
   end
 end
