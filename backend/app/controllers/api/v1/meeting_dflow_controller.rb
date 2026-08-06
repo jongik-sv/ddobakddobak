@@ -21,16 +21,22 @@ module Api
                   DflowUploadService::BodyTooLongError,
                   DflowUploadService::FolderNameTooLongError,
                   with: :handle_upload_precondition_error
+      rescue_from DflowUploadService::MeetingValidationError, with: :handle_meeting_validation_error
 
-      # POST /api/v1/meetings/:id/dflow/upload  body { team?, title? }
+      # POST /api/v1/meetings/:id/dflow/upload  body { team?, title?, meeting?: {...} }
       # 응답 = 4필드 공통 상태 + D'Flow 편철 결과 에코(W19/W8) — folder_id/folder_path/folder_path_status.
+      # meeting 옵션: tasks/dflow-meeting-select/artifacts/ddobak-meeting-select-design.md §2.2/§2.3.
       def upload
         return head :forbidden unless @meeting.editable_by?(current_user)
+
+        meeting_option = parse_meeting_option
+        return if performed? # 구조 검증 실패 시 이미 400 을 렌더했다
 
         resp = DflowUploadService.call(
           @meeting, current_user,
           team_override: params[:team].presence,
-          title_override: params[:title].presence
+          title_override: params[:title].presence,
+          meeting_option: meeting_option
         )
         render json: dflow_status_json(@meeting).merge(dflow_folder_echo_json(resp))
       end
@@ -140,8 +146,70 @@ module Api
           public_uid: meeting.public_uid,
           dflow_synced_at: meeting.dflow_synced_at,
           dflow_url: meeting.dflow_url,
-          needs_resync: meeting.dflow_needs_resync?
+          needs_resync: meeting.dflow_needs_resync?,
+          # 회의 연결 스냅샷(design §2.3) — 단순 nullable 컬럼이라 항상 포함(3값 규약 대상 아님).
+          dflow_meeting_id: meeting.dflow_meeting_id,
+          dflow_meeting_title: meeting.dflow_meeting_title,
+          dflow_project_name: meeting.dflow_project_name
         }
+      end
+
+      # meeting 파라미터 구조 검증(design §2.3): mode 화이트리스트, link/create 필드 혼재 방어.
+      # 통과하면 DflowUploadService#call 에 그대로 넘길 Hash 를 반환한다. 실패 시 400 을 렌더하고
+      # nil 을 반환한다(호출부는 performed? 로 중단 여부를 판단).
+      def parse_meeting_option
+        raw = params[:meeting]
+        return nil if raw.blank?
+
+        permitted = raw.permit(:mode, :meeting_id, :project_id, :title, :date, :category,
+                                display: %i[meeting_title project_name])
+        mode = permitted[:mode].to_s
+
+        unless DflowUploadService::MEETING_MODES.include?(mode)
+          return render_meeting_validation_error(
+            "meeting.mode 는 #{DflowUploadService::MEETING_MODES.join('/')} 중 하나여야 합니다"
+          )
+        end
+
+        create_only_present = %i[project_id title date].any? { |k| permitted[k].present? } ||
+                               permitted[:category].present?
+
+        case mode
+        when "link"
+          if permitted[:meeting_id].blank?
+            return render_meeting_validation_error("meeting.mode=link 에는 meeting_id 가 필요합니다")
+          end
+          if create_only_present
+            return render_meeting_validation_error(
+              "meeting.mode=link 에는 project_id/title/date/category 를 함께 보낼 수 없습니다"
+            )
+          end
+        when "create"
+          if permitted[:meeting_id].present?
+            return render_meeting_validation_error("meeting.mode=create 에는 meeting_id 를 함께 보낼 수 없습니다")
+          end
+        when "unlink", "keep"
+          if permitted[:meeting_id].present? || create_only_present
+            return render_meeting_validation_error(
+              "meeting.mode=#{mode} 에는 meeting_id/project_id/title/date/category 를 함께 보낼 수 없습니다"
+            )
+          end
+        end
+
+        {
+          mode: mode,
+          meeting_id: permitted[:meeting_id],
+          project_id: permitted[:project_id],
+          title: permitted[:title],
+          date: permitted[:date],
+          category: permitted[:category],
+          display: (permitted[:display] || {}).to_h.symbolize_keys
+        }
+      end
+
+      def render_meeting_validation_error(message)
+        render json: { error: message, code: "validation_failed" }, status: :bad_request
+        nil
       end
 
       # W19/W8: D'Flow 업로드 응답(DflowUploadService#call 이 그대로 돌려주는 파싱된 Hash, 문자열 키)에서
@@ -186,8 +254,24 @@ module Api
                status: :bad_gateway
       end
 
+      # meeting 연결 에러 매핑(design §2.2 매핑 테이블): 그 외 code는 기존 통신 에러 규약(502)을 유지한다.
       def handle_dflow_api_error(e)
+        if e.code == "not_project_member"
+          return render json: { error: "선택한 D'Flow 프로젝트의 멤버가 아닙니다.", code: "not_project_member" },
+                        status: :forbidden
+        end
+        if e.code == "validation_failed" && e.message.to_s.include?("회의를 찾을 수 없습니다")
+          return render json: {
+            error: "연결하려던 회의가 D'Flow에서 삭제되었습니다. 연결을 해제하거나 다른 회의를 선택하세요.",
+            code: "dflow_meeting_not_found"
+          }, status: :unprocessable_entity
+        end
+
         render json: { error: e.message, code: e.code || "dflow_api_error" }, status: :bad_gateway
+      end
+
+      def handle_meeting_validation_error(e)
+        render json: { error: e.message, code: "meeting_validation_failed" }, status: :unprocessable_entity
       end
 
       def handle_upload_precondition_error(e)
