@@ -44,7 +44,7 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
         expect(body["public_uid"]).to eq("0198c9f2-3a41-7c22-b1e4-9f3d2a8c1b77")
         expect(body["dflow_url"]).to eq("https://dflow.example.com/minutes/abc")
         expect(DflowUploadService).to have_received(:call)
-          .with(meeting, editor, team_override: "MES", title_override: "커스텀")
+          .with(meeting, editor, team_override: "MES", title_override: "커스텀", meeting_option: nil)
       end
 
       # W19: DflowUploadService#call 의 반환값(D'Flow 응답을 그대로 담은 Hash, 문자열 키)에서
@@ -185,6 +185,106 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
         expect(response).to have_http_status(:bad_gateway)
         expect(response.parsed_body["code"]).to eq("validation_failed")
       end
+
+      # ── meeting 옵션(design §2.2/§2.3) ──
+
+      it "meeting 파라미터 없으면 DflowUploadService 를 meeting_option: nil 로 호출한다(하위호환)" do
+        allow(DflowUploadService).to receive(:call).and_return({ "ok" => true, "url" => "u" })
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: {}, as: :json
+        expect(response).to have_http_status(:ok)
+        expect(DflowUploadService).to have_received(:call).with(meeting, editor, hash_including(meeting_option: nil))
+      end
+
+      it "meeting.mode 가 화이트리스트(keep/link/unlink/create) 밖이면 400 code=validation_failed" do
+        expect(DflowUploadService).not_to receive(:call)
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: { meeting: { mode: "bogus" } }, as: :json
+        expect(response).to have_http_status(:bad_request)
+        expect(response.parsed_body["code"]).to eq("validation_failed")
+      end
+
+      it "mode: link 를 DflowUploadService 에 meeting_option 으로 전달한다" do
+        allow(DflowUploadService).to receive(:call).and_return({ "ok" => true, "url" => "u" })
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload",
+             params: { meeting: { mode: "link", meeting_id: "mtg-1" } }, as: :json
+        expect(response).to have_http_status(:ok)
+        expect(DflowUploadService).to have_received(:call)
+          .with(meeting, editor, hash_including(meeting_option: hash_including(mode: "link", meeting_id: "mtg-1")))
+      end
+
+      it "mode: link 에 meeting_id 가 없으면 400" do
+        expect(DflowUploadService).not_to receive(:call)
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: { meeting: { mode: "link" } }, as: :json
+        expect(response).to have_http_status(:bad_request)
+        expect(response.parsed_body["code"]).to eq("validation_failed")
+      end
+
+      it "mode: link 에 create 전용 필드(project_id 등)가 섞이면 400(필드 혼재 방어)" do
+        expect(DflowUploadService).not_to receive(:call)
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload",
+             params: { meeting: { mode: "link", meeting_id: "mtg-1", project_id: "proj-1" } }, as: :json
+        expect(response).to have_http_status(:bad_request)
+        expect(response.parsed_body["code"]).to eq("validation_failed")
+      end
+
+      it "mode: create 에 meeting_id 가 섞이면 400(필드 혼재 방어)" do
+        expect(DflowUploadService).not_to receive(:call)
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload",
+             params: { meeting: { mode: "create", meeting_id: "mtg-1", project_id: "proj-1", title: "t", date: "2026-08-06" } },
+             as: :json
+        expect(response).to have_http_status(:bad_request)
+        expect(response.parsed_body["code"]).to eq("validation_failed")
+      end
+
+      it "mode: unlink 를 DflowUploadService 에 그대로 전달한다" do
+        allow(DflowUploadService).to receive(:call).and_return({ "ok" => true, "url" => "u" })
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload", params: { meeting: { mode: "unlink" } }, as: :json
+        expect(response).to have_http_status(:ok)
+        expect(DflowUploadService).to have_received(:call)
+          .with(meeting, editor, hash_including(meeting_option: hash_including(mode: "unlink")))
+      end
+
+      it "mode: create 를 DflowUploadService 에 그대로 전달한다" do
+        allow(DflowUploadService).to receive(:call).and_return({ "ok" => true, "url" => "u" })
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload",
+             params: { meeting: { mode: "create", project_id: "proj-1", title: "킥오프", date: "2026-08-06", category: "kickoff" } },
+             as: :json
+        expect(response).to have_http_status(:ok)
+        expect(DflowUploadService).to have_received(:call).with(
+          meeting, editor,
+          hash_including(meeting_option: hash_including(mode: "create", project_id: "proj-1", title: "킥오프",
+                                                          date: "2026-08-06", category: "kickoff"))
+        )
+      end
+
+      it "DflowUploadService::MeetingValidationError → 422 code=meeting_validation_failed" do
+        allow(DflowUploadService).to receive(:call).and_raise(DflowUploadService::MeetingValidationError, "회의 제목을 입력하세요")
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload",
+             params: { meeting: { mode: "create", project_id: "proj-1", title: "", date: "2026-08-06" } }, as: :json
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body["code"]).to eq("meeting_validation_failed")
+      end
+
+      it "DflowClient::ApiError code=not_project_member → 403 안내 문구" do
+        allow(DflowUploadService).to receive(:call)
+          .and_raise(DflowClient::ApiError.new("해당 프로젝트의 멤버가 아닙니다.", code: "not_project_member", status: 403))
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload",
+             params: { meeting: { mode: "create", project_id: "proj-1", title: "t", date: "2026-08-06" } }, as: :json
+        expect(response).to have_http_status(:forbidden)
+        body = response.parsed_body
+        expect(body["code"]).to eq("not_project_member")
+        expect(body["error"]).to eq("선택한 D'Flow 프로젝트의 멤버가 아닙니다.")
+      end
+
+      it "DflowClient::ApiError code=validation_failed + 메시지에 '회의를 찾을 수 없습니다' → 422 안내 문구" do
+        allow(DflowUploadService).to receive(:call)
+          .and_raise(DflowClient::ApiError.new("회의를 찾을 수 없습니다", code: "validation_failed", status: 400))
+        post "/api/v1/meetings/#{meeting.id}/dflow/upload",
+             params: { meeting: { mode: "link", meeting_id: "deleted-mtg" } }, as: :json
+        expect(response).to have_http_status(:unprocessable_entity)
+        body = response.parsed_body
+        expect(body["code"]).to eq("dflow_meeting_not_found")
+        expect(body["error"]).to include("연결을 해제하거나 다른 회의를 선택하세요")
+      end
     end
 
     context "프로젝트 멤버(비소유자, editable_by? 실패)" do
@@ -221,6 +321,25 @@ RSpec.describe "Api::V1::MeetingDflow", type: :request do
       expect(body).not_to have_key("exists_on_dflow")
       expect(body).not_to have_key("dflow_title")
       expect(body).not_to have_key("dflow_date")
+    end
+
+    it "dflow_meeting_id/title/project_name 을 응답에 포함한다(design §2.3)" do
+      meeting.update!(dflow_meeting_id: "mtg-1", dflow_meeting_title: "주간 정례", dflow_project_name: "물류 프로젝트")
+      get "/api/v1/meetings/#{meeting.id}/dflow/status"
+
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body["dflow_meeting_id"]).to eq("mtg-1")
+      expect(body["dflow_meeting_title"]).to eq("주간 정례")
+      expect(body["dflow_project_name"]).to eq("물류 프로젝트")
+    end
+
+    it "연결된 회의가 없으면 dflow_meeting_id/title/project_name 은 null 로 포함된다" do
+      get "/api/v1/meetings/#{meeting.id}/dflow/status"
+
+      body = response.parsed_body
+      expect(body).to have_key("dflow_meeting_id")
+      expect(body["dflow_meeting_id"]).to be_nil
     end
 
     it "public_uid 있으면 list_minutes 를 include_archived: true 로 호출해 실존재를 확인하고 " \

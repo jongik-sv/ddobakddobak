@@ -338,4 +338,155 @@ RSpec.describe DflowUploadService, type: :service do
       end
     end
   end
+
+  # ── meeting 옵션(회의 연결·생성 확장, design §2.2) ──
+
+  describe "meeting 옵션" do
+    describe "keep(기본, meeting_option 없음 또는 mode: keep)" do
+      it "payload 에 meeting/meeting_id 키를 넣지 않는다" do
+        allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u" })
+        DflowUploadService.call(meeting, user)
+        expect(dflow_client).to have_received(:upload_minute) do |payload|
+          expect(payload).not_to have_key(:meeting_id)
+          expect(payload).not_to have_key(:meeting)
+        end
+      end
+
+      it "기존 dflow_meeting_* 3필드를 건드리지 않는다(update 대상에서 제외)" do
+        meeting.update!(dflow_meeting_id: "existing-id", dflow_meeting_title: "기존 회의", dflow_project_name: "기존 프로젝트")
+        allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u" })
+
+        DflowUploadService.call(meeting, user, meeting_option: { mode: "keep" })
+
+        meeting.reload
+        expect(meeting.dflow_meeting_id).to eq("existing-id")
+        expect(meeting.dflow_meeting_title).to eq("기존 회의")
+        expect(meeting.dflow_project_name).to eq("기존 프로젝트")
+      end
+    end
+
+    describe "link" do
+      it "payload 에 meeting_id: <uuid> 를 싣는다" do
+        allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u", "meeting_id" => "mtg-uuid-1" })
+
+        DflowUploadService.call(meeting, user, meeting_option: { mode: "link", meeting_id: "mtg-uuid-1" })
+
+        expect(dflow_client).to have_received(:upload_minute).with(hash_including(meeting_id: "mtg-uuid-1"))
+      end
+
+      it "성공 시 dflow_meeting_id 를 응답값으로, dflow_meeting_title/project_name 을 display 스냅샷으로 저장한다" do
+        allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u", "meeting_id" => "mtg-uuid-1" })
+
+        DflowUploadService.call(
+          meeting, user,
+          meeting_option: { mode: "link", meeting_id: "mtg-uuid-1",
+                             display: { meeting_title: "주간 정례", project_name: "물류 프로젝트" } }
+        )
+
+        meeting.reload
+        expect(meeting.dflow_meeting_id).to eq("mtg-uuid-1")
+        expect(meeting.dflow_meeting_title).to eq("주간 정례")
+        expect(meeting.dflow_project_name).to eq("물류 프로젝트")
+      end
+    end
+
+    describe "unlink" do
+      it "payload 에 meeting_id 키를 포함하고 값은 명시적 null 이다(키 부재와 구분)" do
+        allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u" })
+
+        DflowUploadService.call(meeting, user, meeting_option: { mode: "unlink" })
+
+        expect(dflow_client).to have_received(:upload_minute) do |payload|
+          expect(payload).to have_key(:meeting_id)
+          expect(payload[:meeting_id]).to be_nil
+        end
+      end
+
+      it "성공 시 dflow_meeting_* 3필드를 모두 nil 로 클리어한다" do
+        meeting.update!(dflow_meeting_id: "existing-id", dflow_meeting_title: "기존 회의", dflow_project_name: "기존 프로젝트")
+        allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u" })
+
+        DflowUploadService.call(meeting, user, meeting_option: { mode: "unlink" })
+
+        meeting.reload
+        expect(meeting.dflow_meeting_id).to be_nil
+        expect(meeting.dflow_meeting_title).to be_nil
+        expect(meeting.dflow_project_name).to be_nil
+      end
+    end
+
+    describe "create" do
+      let(:valid_create_option) do
+        { mode: "create", project_id: "proj-uuid-1", title: "킥오프 회의", date: "2026-08-06", category: "kickoff" }
+      end
+
+      it "payload 에 meeting: { project_id, title, date, category } 를 싣는다" do
+        allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u", "meeting_id" => "new-mtg-1" })
+
+        DflowUploadService.call(meeting, user, meeting_option: valid_create_option)
+
+        expect(dflow_client).to have_received(:upload_minute).with(
+          hash_including(meeting: { project_id: "proj-uuid-1", title: "킥오프 회의", date: "2026-08-06", category: "kickoff" })
+        )
+      end
+
+      it "category 생략 시 general 을 기본값으로 채운다" do
+        allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u", "meeting_id" => "new-mtg-1" })
+
+        DflowUploadService.call(meeting, user, meeting_option: valid_create_option.except(:category))
+
+        expect(dflow_client).to have_received(:upload_minute).with(hash_including(meeting: hash_including(category: "general")))
+      end
+
+      it "성공 시 dflow_meeting_id 를 응답 meeting_id 로, display 스냅샷을 저장한다" do
+        allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u", "meeting_id" => "new-mtg-1", "meeting_created" => true })
+
+        DflowUploadService.call(
+          meeting, user,
+          meeting_option: valid_create_option.merge(display: { meeting_title: "킥오프 회의", project_name: "물류 프로젝트" })
+        )
+
+        meeting.reload
+        expect(meeting.dflow_meeting_id).to eq("new-mtg-1")
+        expect(meeting.dflow_meeting_title).to eq("킥오프 회의")
+        expect(meeting.dflow_project_name).to eq("물류 프로젝트")
+      end
+
+      it "제목이 비어있으면 MeetingValidationError(전송 안 함)" do
+        expect(dflow_client).not_to receive(:upload_minute)
+        expect { DflowUploadService.call(meeting, user, meeting_option: valid_create_option.merge(title: "  ")) }
+          .to raise_error(DflowUploadService::MeetingValidationError)
+      end
+
+      it "제목이 200자를 초과하면 MeetingValidationError" do
+        expect(dflow_client).not_to receive(:upload_minute)
+        expect { DflowUploadService.call(meeting, user, meeting_option: valid_create_option.merge(title: "가" * 201)) }
+          .to raise_error(DflowUploadService::MeetingValidationError, /200자/)
+      end
+
+      it "제목이 정확히 200자면 통과한다" do
+        allow(dflow_client).to receive(:upload_minute).and_return({ "ok" => true, "url" => "u", "meeting_id" => "new-mtg-1" })
+        expect { DflowUploadService.call(meeting, user, meeting_option: valid_create_option.merge(title: "가" * 200)) }
+          .not_to raise_error
+      end
+
+      it "날짜 형식이 YYYY-MM-DD 가 아니면 MeetingValidationError" do
+        expect(dflow_client).not_to receive(:upload_minute)
+        expect { DflowUploadService.call(meeting, user, meeting_option: valid_create_option.merge(date: "2026/08/06")) }
+          .to raise_error(DflowUploadService::MeetingValidationError)
+      end
+
+      it "category 가 6종에 속하지 않으면 MeetingValidationError" do
+        expect(dflow_client).not_to receive(:upload_minute)
+        expect { DflowUploadService.call(meeting, user, meeting_option: valid_create_option.merge(category: "unknown")) }
+          .to raise_error(DflowUploadService::MeetingValidationError)
+      end
+
+      it "project_id 가 없으면 MeetingValidationError" do
+        expect(dflow_client).not_to receive(:upload_minute)
+        expect { DflowUploadService.call(meeting, user, meeting_option: valid_create_option.except(:project_id)) }
+          .to raise_error(DflowUploadService::MeetingValidationError)
+      end
+    end
+  end
 end
