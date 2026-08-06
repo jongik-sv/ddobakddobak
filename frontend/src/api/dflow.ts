@@ -31,6 +31,12 @@ export interface DflowMeetingStatus {
   dflow_synced_at: string | null
   dflow_url: string | null
   needs_resync: boolean
+  /** 연결된 D'Flow 회의 uuid. 미연결이면 null. 구버전 백엔드는 키 자체가 없을 수 있다(undefined=모름). */
+  dflow_meeting_id?: string | null
+  /** 연결된 회의 제목 표시 스냅샷(D'Flow에서 이름이 바뀌면 낡을 수 있음 — 표시 전용, SSOT 아님). */
+  dflow_meeting_title?: string | null
+  /** 연결된 회의가 속한 D'Flow 프로젝트명 표시 스냅샷. */
+  dflow_project_name?: string | null
 }
 
 export interface DflowMeetingStatusWithExists extends DflowMeetingStatus {
@@ -74,15 +80,44 @@ export interface DflowUploadResult extends DflowMeetingStatus {
   folder_id?: string | null
   folder_path?: string[] | null
   folder_path_status?: 'exact' | 'truncated' | 'partial' | 'unclassified'
+  /** meeting.mode='create'로 전송해 D'Flow가 신규 회의를 만들었으면 true, dedup 재사용이면 false.
+   *  meeting 옵션을 보내지 않은 요청의 응답에는 키 자체가 없다(하위호환 — 있는지부터 확인). */
+  meeting_created?: boolean
+}
+
+/**
+ * 회의 연결(선택) 요청 옵션 — 설계 §2.2 구조를 그대로 backend에 전달한다(변형 없음).
+ *   - keep: 보내지 않음(uploadToDflow 호출부가 meeting 자체를 생략) — 기존 연결 유지
+ *   - link: meeting_id로 기존 D'Flow 회의에 연결
+ *   - unlink: 연결 해제(meeting_id: null과 동등 — mode만으로 backend가 판단)
+ *   - create: project_id/title/date/category로 신규 회의 생성 + 연결
+ */
+export type DflowMeetingUploadMode = 'keep' | 'link' | 'unlink' | 'create'
+
+export interface DflowMeetingUploadOption {
+  mode: DflowMeetingUploadMode
+  /** mode=link일 때만. */
+  meeting_id?: string
+  /** mode=create일 때만. */
+  project_id?: string
+  /** mode=create일 때만. */
+  title?: string
+  /** mode=create일 때만 (YYYY-MM-DD). */
+  date?: string
+  /** mode=create일 때만. 생략 시 backend 기본값('general'). */
+  category?: string
+  /** mode=link/create 시 표시 스냅샷(dflow_meeting_title/dflow_project_name 저장용). */
+  display?: { meeting_title: string; project_name: string }
 }
 
 export async function uploadToDflow(
   meetingId: number,
-  params: { teamOverride?: string; titleOverride?: string } = {}
+  params: { teamOverride?: string; titleOverride?: string; meeting?: DflowMeetingUploadOption } = {}
 ): Promise<DflowUploadResult> {
-  const body: { team?: string; title?: string } = {}
+  const body: { team?: string; title?: string; meeting?: DflowMeetingUploadOption } = {}
   if (params.teamOverride) body.team = params.teamOverride
   if (params.titleOverride) body.title = params.titleOverride
+  if (params.meeting) body.meeting = params.meeting
   return apiClient.post(`meetings/${meetingId}/dflow/upload`, { json: body }).json()
 }
 
@@ -161,10 +196,22 @@ export interface DflowLimits {
   max_attachment_bytes: number
 }
 
+/** `getDflowMeta(projectId)` 응답의 회의 항목. category/recurrence는 D'Flow 쪽 enum을 그대로
+ *  문자열로 받는다(계약이 외부계이므로 union으로 좁히지 않음 — 라벨 매핑은 호출부가 폴백 처리). */
+export interface DflowMeetingItem {
+  id: string
+  title: string
+  date: string
+  category: string
+  recurrence: string
+}
+
 export interface DflowMeta {
   teams: string[]
   projects: DflowProject[]
   limits: DflowLimits
+  /** project_id 지정 시에만 포함(해당 프로젝트의 회의 목록, meeting_date 내림차순). 미지정 시 키 부재. */
+  meetings?: DflowMeetingItem[]
 }
 
 export async function getDflowMeta(projectId?: string): Promise<DflowMeta> {

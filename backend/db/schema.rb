@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_31_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_06_000001) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -238,6 +238,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_31_000001) do
     t.integer "created_by_id", null: false
     t.datetime "deleted_at"
     t.integer "deleted_by_id"
+    t.string "dflow_meeting_id"
+    t.string "dflow_meeting_title"
+    t.string "dflow_project_name"
     t.datetime "dflow_synced_at"
     t.string "dflow_url"
     t.float "diarization_threshold"
