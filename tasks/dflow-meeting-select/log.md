@@ -10,3 +10,4 @@
 [2026-08-06 09:50] [WORKER] backend 완료: 마이그 20260806000001(dev up·test prepare·puma 무사), DflowUploadService meeting_option 4모드, controller parse_meeting_option+status 확장+에러매핑. dflow·meeting 관련 spec 375 examples 0 failures.
 [2026-08-06 09:50] [VERIFICATION] Orchestrator 독립 재검증: rspec(서비스+request 2파일) 101/0 재현, tsc -p tsconfig.app.json exit 0, 프론트 payload 키 ↔ 컨트롤러 permit 정합 grep 대조 통과. 이탈 4건(422 코드 체계·status_json 공유 helper 포함·project_id 검증 추가·frontend 'unlink' 로컬 상태) 검토 후 수용. 미커밋.
 [2026-08-06 10:10] [BRANCH] 사용자 지적: main 작업 금지 → feature/dflow-meeting-select 생성, 전체 변경 커밋(34483f3b). main 무변경.
+[2026-08-06 10:20] [MERGE] main 머지·푸시 (b87b13d8). 잔여: D'Flow 스펙 전달·구현, 실서버 마이그, 수동 E2E.
