@@ -59,12 +59,6 @@ RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
       expect(LlmPrompts::VERBOSITY_CHAR_LIMITS.dig(:realtime, "very_detailed")).to eq(10_000)
       expect(LlmPrompts::VERBOSITY_CHAR_LIMITS.dig(:final, "very_detailed")).to eq(20_000)
     end
-
-    it "seeded_merge_instruction(메서드)도 바이트 동일하다" do
-      out = Class.new { include LlmPrompts }.new.seeded_merge_instruction
-      expect(Digest::SHA256.hexdigest(out)).to eq("2ee8bc99595a92f828a69826e0a07543dd6e39ddd69e83cd18be209e8c2f400c")
-      expect(out.bytesize).to eq(661)
-    end
   end
 
   describe "cross-constant 보간 resolve" do
@@ -93,7 +87,6 @@ RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
         def summarize = SUMMARIZE_SYSTEM_PROMPT
         def citation = CITATION_MARKER_INSTRUCTION
         def verbosity = VERBOSITY_CHAR_LIMITS
-        def merge = seeded_merge_instruction
       end
     end
 
@@ -104,7 +97,6 @@ RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
       expect(c.summarize).to eq(LlmPrompts::SUMMARIZE_SYSTEM_PROMPT)
       expect(c.citation).to eq(LlmPrompts::CITATION_MARKER_INSTRUCTION)
       expect(c.verbosity).to eq(LlmPrompts::VERBOSITY_CHAR_LIMITS)
-      expect(c.merge).to include(Meeting::PREVIOUS_MEETING_CUT_LINE)
     end
 
     it "외부에서 qualified(LlmPrompts::X) 로도 모든 상수가 resolve 된다" do

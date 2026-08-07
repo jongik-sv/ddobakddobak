@@ -182,45 +182,65 @@ class MeetingSummarizationJob < ApplicationJob
     applied_ids = new_transcripts.pluck(:id)
     channel = meeting.transcription_stream
 
-    current_notes = meeting.current_notes_markdown
+    # 연결 회의 상단 고정 요약(pinned_top)은 요약 틱이 절대 재작성하지 않는다(코드 레벨 보호) —
+    # LLM 에는 절취선 아래 본문(body_notes)만 current_notes 로 전달하고, pinned_top 은 문맥
+    # 연속성을 위한 참고용 컨텍스트로만 별도 제공한다. 절취선이 없으면(비연결) pinned_top=nil,
+    # body_notes=전체 문서 그대로 — 기존 동작과 동일(회귀 없음).
+    pinned_top, body_notes = PreviousMeetingNotes.split(meeting.current_notes_markdown)
+    # pinned_top 의 제목(H1)을 이 회의의 현재 title 로 갱신 — seed 시점 제목에 동결되지 않고
+    # 회의명 변경을 매 틱 반영한다(pinned_top 은 코드 관리 영역이라 무조건 갱신해도 안전).
+    pinned_top = refresh_pinned_title(pinned_top, meeting)
     payload = Transcript.to_sidecar_payload(new_transcripts)
 
     started = true
     ok = false
     error = nil
     broadcast_started(meeting, "realtime")
-    # 재구조화 OR 연결(이전 회의 참고)이면 refine 로 통합. 연결+증분은 seeded_merge 로 논의 절취선 삽입.
-    if meeting.summary_restructure? || meeting.previous_meeting_id.present?
+    # 재구조화 모드는 refine 로 본문 통짜 재작성, 그 외(증분)는 append 로 새 블록만 추가.
+    # previous_meeting_id 유무는 이 분기에 관여하지 않는다 — 이전 회의 내용은 이미 pinned_top 에
+    # 코드 레벨로 분리돼 있으므로, 본문(body_notes)은 비연결 회의와 동일하게 처리하면 된다.
+    if meeting.summary_restructure?
       result = llm_service_for(meeting).refine_notes(
-        current_notes, payload,
+        body_notes, payload,
         meeting_title: meeting.title,
         meeting_type: meeting.meeting_type,
         sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
         attendees: meeting.attendees,
         verbosity: meeting.summary_verbosity,
         verbosity_context: :realtime,
-        seeded_merge: meeting.previous_meeting_id.present? && !meeting.summary_restructure?,
         agenda_reference: agenda_ref,
         domain_reference: domain_ref,
-        custom_prompt: meeting.summary_custom_prompt
+        custom_prompt: meeting.summary_custom_prompt,
+        pinned_context: pinned_top
       )
-      notes_markdown = result["notes_markdown"]
+      body_result = result["notes_markdown"]
     else
-      # 비연결 증분 모드: 새 자막만 시간대별 블록으로 요약해 기존 회의록 뒤에 덧붙인다(앞 내용 불변).
+      # 증분 모드: 새 자막만 시간대별 블록으로 요약해 본문(body_notes) 뒤에 덧붙인다(앞 내용 불변).
       result = llm_service_for(meeting).append_notes(
-        current_notes, payload,
+        body_notes, payload,
         meeting_title: meeting.title,
         attendees: meeting.attendees,
         verbosity: meeting.summary_verbosity,
         agenda_reference: agenda_ref,
         domain_reference: domain_ref,
-        custom_prompt: meeting.summary_custom_prompt
+        custom_prompt: meeting.summary_custom_prompt,
+        pinned_context: pinned_top
       )
       # 시간 라벨은 소비셋(applied_ids) 스냅샷으로 계산 — 릴레이션 재질의는 LLM 호출(수십 초) 중
       # 도착한 자막까지 집계해 시간대가 과대/중첩된다.
-      notes_markdown = compose_appended_notes(current_notes, result["block_markdown"],
-                                              meeting.transcripts.where(id: applied_ids))
+      body_result = compose_appended_notes(body_notes, result["block_markdown"],
+                                           meeting.transcripts.where(id: applied_ids))
     end
+    # 연결 회의는 문서 제목(H1)을 pinned_top 최상단에 한 번만 둔다(사용자 실사용 피드백 — 제목이
+    # "이전 회의 요약"보다 먼저 나와야 함). refine_notes 는 REFINE_NOTES_SYSTEM_PROMPT 규칙 0에
+    # 따라 매 틱 본문 첫 줄에 H1 을 다시 쓰므로, pinned_top 이 있으면 그 중복 H1 을 여기서 제거한다.
+    # body 는 사용자 편집이 닿을 수 있는 영역이라 무조건 삭제(strip_leading_h1)가 아니라, 회의
+    # 제목과 정확히 일치할 때만 지우는 strip_matching_h1 을 쓴다 — 사용자가 본문 첫 줄에 직접 쓴
+    # 커스텀 H1(회의 제목과 다른 텍스트)은 보존한다. (append 모드 결과는 H1 로 시작하지 않아 no-op.)
+    body_result = PreviousMeetingNotes.strip_matching_h1(body_result, meeting.title) if pinned_top.present?
+    # 저장 직전 재조립: pinned_top + 절취선 + body_result. pinned_top 없으면(비연결) 절취선 없이
+    # body_result 그대로(join 이 처리) — 기존 단일 notes_markdown 계약과 동일하게 유지.
+    notes_markdown = PreviousMeetingNotes.join(pinned_top, body_result)
 
     # LLM 호출 중에 stop/reset/user-edit이 일어났을 수 있으므로 broadcast/저장 전에 재확인.
     meeting.reload
@@ -242,12 +262,15 @@ class MeetingSummarizationJob < ApplicationJob
       return
     end
 
-    if result["ok"] && notes_markdown.present?
+    # present? 판정은 body_result(본문) 기준 — pinned_top 이 있으면 notes_markdown(재조립본)은
+    # 본문이 비어도 항상 present 라 저장 여부 판단에 쓸 수 없다(연결 직후 첫 틱이 빈 블록이면
+    # 불필요한 재저장·브로드캐스트가 생긴다).
+    if result["ok"] && body_result.present?
       summary = meeting.summaries.find_or_initialize_by(summary_type: "realtime")
       summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
 
       meeting.clear_summary_error!
-      meeting.refresh_brief_summary!(notes_markdown)
+      meeting.refresh_brief_summary!(body_result)
       meeting.transcripts.where(id: applied_ids).update_all(applied_to_minutes: true)
 
       ActionCable.server.broadcast(channel, {
@@ -357,54 +380,87 @@ class MeetingSummarizationJob < ApplicationJob
 
     # 증분 모드의 base 는 "가장 최근 요약"이어야 한다. current_notes_markdown 은 completed 상태에서
     # 옛 final 을 하드 우선하므로(reopen 직후 stop 시) 재개 세션에서 append 된 realtime 블록을 버리게 된다.
-    latest_notes = meeting.summaries.order(generated_at: :desc, id: :desc).first&.notes_markdown.to_s
+    latest_full = meeting.summaries.order(generated_at: :desc, id: :desc).first&.notes_markdown.to_s
     # final 은 안건과 마찬가지로 1회주입 플래그 없이 항상 도메인 파일을 주입한다.
     domain_ref = DomainReferenceBuilder.build(meeting)
 
     started = true
     ok = false
     error = nil
+    pinned_top = nil
     broadcast_started(meeting, "final")
-    # refine 통짜 재생성 경로: 재구조화 / 연결(이전 회의 참고) / 증분이라도 base 백지(재생성 직후 등).
-    # 연결+증분은 seeded_merge 로 이전+현재를 한 회의로 통합하고 논의에 절취선을 넣는다.
-    if meeting.summary_restructure? || meeting.previous_meeting_id.present? || latest_notes.blank?
+    # 재구조화 모드는 항상 refine 통짜 재생성, 그 외(증분)는 base(latest_full 본문)가 백지일 때만
+    # refine 폴백, 그 외엔 append-only. previous_meeting_id 유무는 이 분기에 관여하지 않는다 —
+    # 이전 회의 내용은 이미 pinned_top(상단 고정 블록)에 코드 레벨로 분리돼 있으므로, 본문은
+    # 비연결 회의와 동일하게 처리한다. pinned_top 은 어느 분기든 절취선 아래만 LLM 에 전달하고
+    # (코드 레벨 보호) 저장 직전 재조립한다.
+    if meeting.summary_restructure?
+      pinned_top, refine_body = PreviousMeetingNotes.split(meeting.current_notes_markdown)
+      pinned_top = refresh_pinned_title(pinned_top, meeting)
       payload = Transcript.to_sidecar_payload(transcripts)
       result = llm_service_for(meeting).refine_notes(
-        meeting.current_notes_markdown, payload,
+        refine_body, payload,
         meeting_title: meeting.title,
         meeting_type: meeting.meeting_type,
         sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
         attendees: meeting.attendees,
         verbosity: meeting.summary_verbosity,
-        chronological: !meeting.summary_restructure? && meeting.previous_meeting_id.blank?, # 비연결 증분 백지폴백만 시간 흐름
-        seeded_merge: meeting.previous_meeting_id.present? && !meeting.summary_restructure?,
+        chronological: false,
         # final(종료·재생성)은 1회주입 플래그와 무관하게 항상 안건 전체를 주입한다.
         agenda_reference: meeting.agenda_reference.presence,
         domain_reference: domain_ref,
-        custom_prompt: meeting.summary_custom_prompt
+        custom_prompt: meeting.summary_custom_prompt,
+        pinned_context: pinned_top
       )
-      notes_markdown = result["notes_markdown"]
+      body_result = result["notes_markdown"]
     else
-      # 비연결 증분 final: 전체 재작성 없이 남은 미적용 자막만 마지막 블록으로 덧붙여 확정(append-only).
-      remaining_ids = transcripts.where(applied_to_minutes: false).pluck(:id)
-      if remaining_ids.any?
-        remaining = meeting.transcripts.where(id: remaining_ids).order(:sequence_number)
-        payload = Transcript.to_sidecar_payload(remaining)
-        result = llm_service_for(meeting).append_notes(
-          latest_notes, payload,
+      pinned_top, latest_body = PreviousMeetingNotes.split(latest_full)
+      pinned_top = refresh_pinned_title(pinned_top, meeting)
+      if latest_body.blank?
+        # 증분인데 본문 base 가 백지(재생성 직후·연결 직후 첫 final 등) — refine 폴백(시간 흐름 지시).
+        payload = Transcript.to_sidecar_payload(transcripts)
+        result = llm_service_for(meeting).refine_notes(
+          "", payload,
           meeting_title: meeting.title,
+          meeting_type: meeting.meeting_type,
+          sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
           attendees: meeting.attendees,
           verbosity: meeting.summary_verbosity,
+          chronological: true,
           agenda_reference: meeting.agenda_reference.presence,
           domain_reference: domain_ref,
-          custom_prompt: meeting.summary_custom_prompt
+          custom_prompt: meeting.summary_custom_prompt,
+          pinned_context: pinned_top
         )
-        notes_markdown = compose_appended_notes(latest_notes, result["block_markdown"], remaining)
+        body_result = result["notes_markdown"]
       else
-        result = { "ok" => true }
-        notes_markdown = latest_notes
+        # 전체 재작성 없이 남은 미적용 자막만 마지막 블록으로 덧붙여 확정(append-only).
+        remaining_ids = transcripts.where(applied_to_minutes: false).pluck(:id)
+        if remaining_ids.any?
+          remaining = meeting.transcripts.where(id: remaining_ids).order(:sequence_number)
+          payload = Transcript.to_sidecar_payload(remaining)
+          result = llm_service_for(meeting).append_notes(
+            latest_body, payload,
+            meeting_title: meeting.title,
+            attendees: meeting.attendees,
+            verbosity: meeting.summary_verbosity,
+            agenda_reference: meeting.agenda_reference.presence,
+            domain_reference: domain_ref,
+            custom_prompt: meeting.summary_custom_prompt,
+            pinned_context: pinned_top
+          )
+          body_result = compose_appended_notes(latest_body, result["block_markdown"], remaining)
+        else
+          result = { "ok" => true }
+          body_result = latest_body
+        end
       end
     end
+    # 연결 회의는 문서 제목(H1)을 pinned_top 최상단에 한 번만 둔다(사용자 실사용 피드백) —
+    # refine_notes 가 매 틱 본문 첫 줄에 다시 쓰는, 회의 제목과 정확히 일치하는 H1 만 여기서
+    # 제거해 중복을 막는다(strip_matching_h1 — 사용자가 본문에 직접 쓴 커스텀 H1은 보존).
+    # (append 모드 결과·기존 latest_body 승계는 H1 로 시작하지 않아 no-op.)
+    body_result = PreviousMeetingNotes.strip_matching_h1(body_result, meeting.title) if pinned_top.present?
     # LLM 도중 reset/사용자 편집 재확인을 실패 기록·저장 판단보다 먼저 수행한다 —
     # 의도된 스킵이면 성공·실패 결과 모두 버려, 초기화된 회의에 실패 배지가 남지 않는다.
     case final_post_llm_disposition(meeting, attempt, redacted_watermark)
@@ -426,19 +482,23 @@ class MeetingSummarizationJob < ApplicationJob
       Rails.logger.warn "[MeetingSummarizationJob] final transient failure meeting=#{meeting.id} (미소비)"
       return
     end
-    if notes_markdown.blank?
+    if body_result.blank?
       # ok:true 인데 결과가 빈 하드 실패 — final 은 재시도가 없으므로 broadcast 만으로는
-      # 새로고침 시 소실된다. 영속 기록해 배지로 레포트한다.
+      # 새로고침 시 소실된다. 영속 기록해 배지로 레포트한다. (pinned_top 유무와 무관 — 본문
+      # 기준으로 판정해야 연결 회의도 정확히 걸린다.)
       error = "요약 결과가 비어 있습니다"
       meeting.record_summary_error!(error)
       return
     end
 
+    # 저장 직전 재조립: pinned_top + 절취선 + body_result.
+    notes_markdown = PreviousMeetingNotes.join(pinned_top, body_result)
+
     summary = meeting.summaries.find_or_initialize_by(summary_type: "final")
     summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
 
     meeting.clear_summary_error!
-    meeting.refresh_brief_summary!(notes_markdown)
+    meeting.refresh_brief_summary!(body_result)
     # update_all 전에 "이번에 새로 적용되는" 자막 id를 스냅샷한다(프론트 라이브기록 미적용 배지 해제용).
     newly_applied_ids = meeting.transcripts.where(applied_to_minutes: false).pluck(:id)
     meeting.transcripts.update_all(applied_to_minutes: true)
@@ -465,6 +525,16 @@ class MeetingSummarizationJob < ApplicationJob
     Rails.logger.error "[MeetingSummarizationJob] final meeting=#{meeting.id} error=#{e.message}"
   ensure
     broadcast_finished(meeting, "final", ok: ok, error: ok ? nil : error) if started
+  end
+
+  # pinned_top(연결 회의 상단 고정 요약)의 문서 제목(H1)을 이 회의의 현재 title 로 갱신한다.
+  # seed 시점에 동결된 제목이 이후 회의명 변경을 반영하지 못하는 문제를 막기 위해, 저장 직전
+  # 재조립마다(realtime·final 공통) 호출한다. pinned_top 은 코드 관리 영역(LLM·사용자 편집이
+  # 닿지 않음)이라 무조건 strip 후 with_title 재적용해도 안전하다 — 레거시(제목 도입 전 시드)
+  # 문서도 다음 틱에 자동으로 제목이 붙는 부수 효과(마이그레이션 불필요).
+  def refresh_pinned_title(pinned_top, meeting)
+    return pinned_top if pinned_top.blank?
+    PreviousMeetingNotes.with_title(meeting.title, PreviousMeetingNotes.strip_leading_h1(pinned_top))
   end
 
   # 증분 블록을 시간대 헤딩과 함께 기존 회의록 뒤에 덧붙인 전체 노트 반환. 블록 없으면 기존 그대로.

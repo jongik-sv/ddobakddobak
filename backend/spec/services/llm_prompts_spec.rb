@@ -111,11 +111,13 @@ RSpec.describe LlmPrompts do
       end
     end
 
-    it "seeded_merge_instruction: 최우선 + 절취선 보간 보존" do
-      dummy = Class.new { include LlmPrompts }.new
-      out = dummy.seeded_merge_instruction
-      expect(out).to include("[최우선]")
-      expect(out).to include(Meeting::PREVIOUS_MEETING_CUT_LINE)
+    it "CONDENSE_PREVIOUS_NOTES_SYSTEM_PROMPT: 초간결 압축 지시 + 마커 비삽입 지시 포함" do
+      p = LlmPrompts::CONDENSE_PREVIOUS_NOTES_SYSTEM_PROMPT
+      expect(p).to include("결정사항")
+      expect(p).to include("Action Items")
+      expect(p).to include("5~10개") # 방향 지시(하드컷 아님)
+      expect(p).to include("마커")
+      expect(p).not_to include("보존") # 마커 보존 지시 없음(코드 레벨로 전부 제거하는 새 정책)
     end
   end
 

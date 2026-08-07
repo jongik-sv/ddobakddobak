@@ -541,12 +541,22 @@ class Meeting < ApplicationRecord
   end
 
   # 이전 회의 참고 시드: 이 회의에 요약이 아직 없고 previous_meeting 이 지정돼 있으면,
-  # 이전 회의록(notes_markdown) 스냅샷을 시작점으로 깐 초기 Summary 1건을 만든다.
-  # 이후 요약 잡(realtime/final)이 이 시드를 base 로 현재 자막을 이어쓴다.
+  # 이전 회의록을 "상단 고정 압축 요약 블록"으로 깐 초기 Summary 1건을 만든다.
+  # 이후 요약 잡(realtime/final)은 이 상단 블록을 절대 재작성하지 않고(코드 레벨 보호,
+  # PreviousMeetingNotes.split/join), 절취선 아래 본문만 이어쓴다.
   # 멱등: 요약이 하나라도 있으면 no-op (시드는 단 한 번). 스냅샷이므로 이후 이전 회의가 바뀌어도 고정.
   #
-  # 시드는 모드 무관 이전 회의록 base 만 깐다(절취선 없음). 이후 요약 잡이 이전+현재를 한 회의로
-  # 병합하며, 증분(연결) 모드에선 LLM 이 논의사항 안에 절취선(PREVIOUS_MEETING_CUT_LINE)을 한 번 삽입한다.
+  # 연쇄 연결(A→B→C…) 지원: 이전 회의(previous_meeting) 문서 자체가 이미 절취선을 갖고 있으면
+  # (= previous 도 자신의 이전 회의를 연결한 경우) 그 상단 블록들은 재압축 없이 그대로 승계하고,
+  # 이전 회의의 하단 본문만 이번에 1회 압축해 새 블록으로 뒤에 추가한다 — 각 회의는 정확히
+  # 1회만 압축되고 이후 불변. previous 문서에 절취선이 없으면(구 데이터·비연쇄) 문서 전체를
+  # 압축 대상 본문으로 취급한다.
+  #
+  # 문서 제목(H1)은 이 회의(현재 회의) 자신의 제목이 "이전 회의 요약"보다 먼저 나와야 한다
+  # (사용자 실사용 피드백). previous 의 top 에 그 회의 자신의 제목 H1 이 실려 있을 수 있으므로
+  # (연쇄 승계) #strip_leading_h1 로 그 제목을 걷어낸 HEADER+블록 부분만 승계하고, 그 위에
+  # #with_title 로 이 회의의 제목을 새로 얹는다 — 연결 몇 단을 거쳐도 top 에는 항상 "현재
+  # 연결하는 회의"의 제목 H1 하나만 존재한다.
   def seed_summary_from_previous!(summary_type: "realtime")
     return if summaries.exists?
     return if previous_meeting_id.blank?
@@ -554,10 +564,22 @@ class Meeting < ApplicationRecord
     base = previous_meeting&.current_notes_markdown.to_s
     return if base.blank?
 
+    prev_top, prev_body = PreviousMeetingNotes.split(base)
+    prev_header = PreviousMeetingNotes.strip_leading_h1(prev_top).presence
     # 이전 회의 스코프 마커(⟦t:..⟧)에 출처 회의ID를 각인(⟦m:<id>/t:..⟧) — 프론트가 현재 오디오
-    # 기준으로 엉뚱하게 seek하지 않도록 inert 배지로 구분한다. 이미 m: 인 마커(연쇄 연결)는 그대로 둠.
-    stamped = LlmPrompts::CitationMarkers.stamp_source_meeting(base, previous_meeting_id)
-    summaries.create!(summary_type: summary_type, notes_markdown: stamped.rstrip, generated_at: Time.current)
+    # 기준으로 엉뚱하게 seek하지 않도록 inert 배지로 구분한다. 이미 m: 인 마커(연쇄 승계분)는
+    # prev_header 에 남아 있고 여기서 건드리지 않는다 — 원출처가 각인 시각에 고정된다.
+    stamped_body = LlmPrompts::CitationMarkers.stamp_source_meeting(prev_body, previous_meeting_id)
+    prev_title = previous_meeting.title.to_s.strip.presence || "이전 회의"
+
+    condensed = condense_previous_meeting_body(stamped_body, prev_title)
+    block_body = condensed.presence || stamped_body.strip
+
+    new_top = PreviousMeetingNotes.append_block(prev_header, prev_title, block_body)
+    new_top = PreviousMeetingNotes.with_title(title, new_top)
+    doc = PreviousMeetingNotes.join(new_top, "")
+
+    summaries.create!(summary_type: summary_type, notes_markdown: doc.rstrip, generated_at: Time.current)
   end
 
   # 트랜스크립트·요약·액션아이템·블록(선택적으로 첨부)을 모두 삭제한다.
@@ -608,13 +630,21 @@ class Meeting < ApplicationRecord
     update_columns(summarizing: false, summarization_started_at: nil)
   end
 
-  # notes_markdown에서 의미 있는 요약 텍스트를 추출하여 brief_summary 컬럼에 저장
+  # notes_markdown에서 의미 있는 요약 텍스트를 추출하여 brief_summary 컬럼에 저장.
+  # 단일 진입점에서 절취선 상단(연결 회의 상단 고정 요약)을 항상 걷어내고 본문만 추출 대상으로
+  # 삼는다 — 안 그러면 연결 회의의 목록 미리보기가 "이 회의 자신의 내용" 대신 이전 회의 내용을
+  # 보여줄 수 있다. 호출부가 이미 본문만 넘겨도(job.rb) PreviousMeetingNotes.split 은 절취선이
+  # 없는 텍스트에 no-op(그대로 반환)이라 이중 적용해도 안전하다 — 호출부마다 분할을 기억할
+  # 필요 없이 이 메서드 하나가 항상 보장한다.
   def refresh_brief_summary!(notes_markdown = nil)
     notes_markdown ||= (summaries.find_by(summary_type: "final") ||
                         summaries.order(generated_at: :desc).first)&.notes_markdown
     return if notes_markdown.blank?
 
-    text = self.class.extract_brief_summary(notes_markdown)
+    _top, body = PreviousMeetingNotes.split(notes_markdown)
+    return if body.blank?
+
+    text = self.class.extract_brief_summary(body)
     update_column(:brief_summary, text) if text.present?
   end
 
@@ -653,6 +683,17 @@ class Meeting < ApplicationRecord
   end
 
   private
+
+  # 이전 회의 본문(body)을 LLM 으로 1회 압축한다. 압축 실패·LLM 미설정(NotConfiguredError 포함,
+  # LlmService.new 생성자 시점에 raise 될 수 있어 여기서 함께 잡는다) 등은 nil 반환 —
+  # 호출부(seed_summary_from_previous!)가 압축 없이 각인된 body 원문을 블록으로 폴백한다
+  # (시드 자체는 실패시키지 않는다).
+  def condense_previous_meeting_body(body, title)
+    LlmService.new(llm_config: creator&.effective_llm_config).condense_previous_notes(body, meeting_title: title)
+  rescue => e
+    Rails.logger.error "[Meeting] condense_previous_notes 실패 meeting=#{id}: #{e.message}"
+    nil
+  end
 
   # 회의 생성 시 important 를 폴더값으로 상속. important_explicitly_set 면 상속 생략(지정값 보존).
   # 폴더가 없으면 false. (목록은 important=true 만 표시 — 신규 회의는 폴더 정책을 따른다.)

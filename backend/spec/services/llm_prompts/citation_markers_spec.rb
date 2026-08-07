@@ -259,4 +259,24 @@ RSpec.describe LlmPrompts::CitationMarkers do
       expect(described_class.referenced_meeting_ids(nil)).to eq([])
     end
   end
+
+  describe ".strip_all" do
+    it "bare t: 마커와 m: 마커를 모두 제거한다" do
+      text = "결정됨. ⟦t:1000/s:화자 1⟧ 예산 승인. ⟦m:7/t:2000/s:화자 2⟧"
+      expect(described_class.strip_all(text)).to eq("결정됨.  예산 승인. ")
+    end
+
+    it "정상 형식이 아닌(깨진) 마커스러운 조각도 와일드카드로 제거한다" do
+      expect(described_class.strip_all("내용 ⟦아무거나⟧ 끝")).to eq("내용  끝")
+    end
+
+    it "마커가 없으면 원문 그대로" do
+      expect(described_class.strip_all("마커 없는 본문")).to eq("마커 없는 본문")
+    end
+
+    it "nil/blank 에도 안전하다" do
+      expect(described_class.strip_all(nil)).to eq("")
+      expect(described_class.strip_all("")).to eq("")
+    end
+  end
 end
