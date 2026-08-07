@@ -554,7 +554,10 @@ class Meeting < ApplicationRecord
     base = previous_meeting&.current_notes_markdown.to_s
     return if base.blank?
 
-    summaries.create!(summary_type: summary_type, notes_markdown: base.rstrip, generated_at: Time.current)
+    # 이전 회의 스코프 마커(⟦t:..⟧)에 출처 회의ID를 각인(⟦m:<id>/t:..⟧) — 프론트가 현재 오디오
+    # 기준으로 엉뚱하게 seek하지 않도록 inert 배지로 구분한다. 이미 m: 인 마커(연쇄 연결)는 그대로 둠.
+    stamped = LlmPrompts::CitationMarkers.stamp_source_meeting(base, previous_meeting_id)
+    summaries.create!(summary_type: summary_type, notes_markdown: stamped.rstrip, generated_at: Time.current)
   end
 
   # 트랜스크립트·요약·액션아이템·블록(선택적으로 첨부)을 모두 삭제한다.

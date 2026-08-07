@@ -14,6 +14,7 @@ export function useViewerData(meetingId: number) {
   const reset = useTranscriptStore((s) => s.reset)
   const loadFinals = useTranscriptStore((s) => s.loadFinals)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
+  const setCitationMeetings = useTranscriptStore((s) => s.setCitationMeetings)
 
   useEffect(() => {
     reset()
@@ -23,6 +24,7 @@ export function useViewerData(meetingId: number) {
         setMeetingTitle(m.title)
         setLocked(!!m.locked)
         setPaused(m.status === 'recording' && !!m.paused_at)
+        setCitationMeetings(m.citation_meetings ?? {})
       }),
       getTranscripts(meetingId).then((t) => loadFinals(mapTranscriptsToFinals(t))),
       getSummary(meetingId).then((s) => {
@@ -31,7 +33,7 @@ export function useViewerData(meetingId: number) {
     ])
       .then(() => setIsLoaded(true))
       .catch(() => setError('회의 정보를 불러올 수 없습니다'))
-  }, [meetingId, reset, loadFinals, setMeetingNotes])
+  }, [meetingId, reset, loadFinals, setMeetingNotes, setCitationMeetings])
 
   return { meetingTitle, locked, paused, isLoaded, error }
 }

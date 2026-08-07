@@ -70,6 +70,25 @@ RSpec.describe MarkdownExporter do
         expect(result).not_to include("## AI 요약")
       end
     end
+
+    context "notes_markdown에 인용 마커가 있을 때" do
+      it "⟦t:..⟧ 마커를 제거한다" do
+        create(:summary, meeting: meeting, summary_type: "final",
+               notes_markdown: "결정 보류 ⟦t:125000|s:화자 1⟧")
+        result = exporter.call
+        expect(result).not_to include("⟦t:")
+        expect(result).to include("결정 보류")
+      end
+
+      it "연결 회의 시드 각인 마커(⟦m:<id>/t:..⟧)도 제거한다" do
+        create(:summary, meeting: meeting, summary_type: "final",
+               notes_markdown: "결정 보류 ⟦m:42/t:125000|s:화자 1⟧")
+        result = exporter.call
+        expect(result).not_to include("⟦m:")
+        expect(result).not_to include("⟦t:")
+        expect(result).to include("결정 보류")
+      end
+    end
   end
 
   # --- Action Items ---

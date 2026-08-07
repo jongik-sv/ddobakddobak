@@ -70,4 +70,56 @@ RSpec.describe LlmPrompts::CitationMarkers do
       expect(described_class.format_marker_time(65_499, like: "2:05")).to eq("1:05")
     end
   end
+
+  describe ".stamp_source_meeting" do
+    it "bare t: 마커에 회의id를 각인해 m: 포맷으로 만든다" do
+      out = described_class.stamp_source_meeting("결정은 보류됐다. ⟦t:125000/s:화자 1⟧", 142)
+      expect(out).to eq("결정은 보류됐다. ⟦m:142/t:125000/s:화자 1⟧")
+    end
+
+    it "파이프 구분자·콜론 시간 형태도 원형을 보존한 채 각인한다" do
+      out = described_class.stamp_source_meeting("⟦t:2:05|s:화자 1⟧", 7)
+      expect(out).to eq("⟦m:7/t:2:05|s:화자 1⟧")
+    end
+
+    it "이미 m: 이 붙은 마커는 그대로 둔다(연쇄 연결 원출처 보존)" do
+      out = described_class.stamp_source_meeting("⟦m:99/t:125000/s:화자 1⟧", 142)
+      expect(out).to eq("⟦m:99/t:125000/s:화자 1⟧")
+    end
+
+    it "여러 마커가 섞여 있어도 bare 만 각인한다" do
+      out = described_class.stamp_source_meeting("A ⟦t:1000/s:화자 1⟧ B ⟦m:5/t:2000/s:화자 2⟧", 142)
+      expect(out).to eq("A ⟦m:142/t:1000/s:화자 1⟧ B ⟦m:5/t:2000/s:화자 2⟧")
+    end
+
+    it "마커가 없으면 원문 그대로" do
+      expect(described_class.stamp_source_meeting("마커 없는 텍스트", 142)).to eq("마커 없는 텍스트")
+    end
+  end
+
+  describe ".referenced_meeting_ids" do
+    it "m: 마커의 회의id를 정수로 수집한다" do
+      text = "예산 확정. ⟦m:142/t:125000/s:화자 1⟧"
+      expect(described_class.referenced_meeting_ids(text)).to eq([ 142 ])
+    end
+
+    it "중복 id는 한 번만" do
+      text = "⟦m:142/t:1000/s:화자 1⟧ ⟦m:142/t:2000/s:화자 2⟧"
+      expect(described_class.referenced_meeting_ids(text)).to eq([ 142 ])
+    end
+
+    it "연쇄 연결로 여러 id가 공존하면 전부 수집한다" do
+      text = "⟦m:1/t:1000/s:화자 1⟧ ⟦m:2/t:2000/s:화자 2⟧ ⟦m:3/t:3000/s:화자 3⟧"
+      expect(described_class.referenced_meeting_ids(text)).to eq([ 1, 2, 3 ])
+    end
+
+    it "bare t: 마커는 무시한다" do
+      expect(described_class.referenced_meeting_ids("⟦t:1000/s:화자 1⟧")).to eq([])
+    end
+
+    it "마커가 없으면 빈 배열" do
+      expect(described_class.referenced_meeting_ids("")).to eq([])
+      expect(described_class.referenced_meeting_ids(nil)).to eq([])
+    end
+  end
 end

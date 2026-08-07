@@ -32,8 +32,13 @@ export function parseCitationMarkers(text: string): CitationMarker[] {
   return out
 }
 
+// m:(FOLDER_CITATION_RE) 먼저 지워야 t:(CITATION_RE)와의 오매칭을 피한다(ChatMarkdown의
+// markersToSeekLinks/chatExport.stripAllMarkers와 동일한 순서 관용구).
 export function stripCitationMarkers(text: string): string {
-  return text.replace(new RegExp(CITATION_RE.source, 'g'), '').replace(/[ \t]+(?=\n|$)/g, '')
+  return text
+    .replace(new RegExp(FOLDER_CITATION_RE.source, 'g'), '')
+    .replace(new RegExp(CITATION_RE.source, 'g'), '')
+    .replace(/[ \t]+(?=\n|$)/g, '')
 }
 
 /** speakerAtMs가 받는 final의 최소 형태. transcriptStore의 TranscriptFinalData와 호환된다. */

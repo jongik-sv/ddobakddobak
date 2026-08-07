@@ -100,6 +100,10 @@ module MeetingSerializable
       json[:transcripts]   = serialize_transcripts(ordered_transcripts)
       json[:summary]       = serialize_summary(meeting)
       json[:action_items]  = serialize_action_items(meeting)
+      # 연결 회의 시드 각인(⟦m:<id>/t:..⟧) 출처 회의ID → 제목 맵. 프론트가 인용 마커를 inert
+      # 배지로 렌더할 때 표시용 제목을 얻는다. 연쇄 연결(A→B→C)이면 여러 id가 한 문서에
+      # 공존할 수 있어 전부 스캔한다.
+      json[:citation_meetings] = citation_meetings_map(meeting)
     end
 
     json
@@ -152,6 +156,33 @@ module MeetingSerializable
     JSON.parse(value)
   rescue JSON::ParserError
     nil
+  end
+
+  # 활성 요약 텍스트에서 ⟦m:<id>/t:..⟧ 마커의 회의id를 전부 스캔해 제목을 조회한다.
+  # 삭제됐거나 현재 사용자가 접근할 수 없는 회의는 맵에서 제외한다(프론트가 없는 id는
+  # "이전 회의" 폴백으로 표시하므로 제외로 충분 — 별도 플레이스홀더 불필요).
+  #
+  # 인가 기준은 단건 열람(authorize_meeting_read!, meeting_lookup.rb:20-28)과 동등해야 한다.
+  # accessible_by 스코프만으로는 admin/소유자/(프로젝트멤버 && shared)만 걸러지고 idea 44 협업자
+  # (직접 지정·폴더 상속)가 빠진다 — 폴더 상속 협업자가 shared:false 이전 회의를 연결한 경우
+  # 실열람 가능한데도 맵에서 제외돼 프론트가 "이전 회의" 폴백을 잘못 노출한다.
+  def citation_meetings_map(meeting)
+    text = meeting.active_summary&.notes_markdown
+    return {} if text.blank?
+
+    ids = LlmPrompts::CitationMarkers.referenced_meeting_ids(text)
+    return {} if ids.empty?
+
+    result = Meeting.accessible_by(current_user).where(id: ids).pluck(:id, :title).to_h
+    remaining_ids = ids - result.keys
+    return result if remaining_ids.empty?
+
+    # accessible_by 밖으로 걸러진 나머지만 협업자 분기로 보강한다(보통 0~소수건 — 새 권한 로직을
+    # 발명하지 않고 MeetingLookup#meeting_collaborator? 를 그대로 재사용해 인가 기준을 단일화).
+    Meeting.kept.where(id: remaining_ids).each do |candidate|
+      result[candidate.id] = candidate.title if meeting_collaborator?(candidate)
+    end
+    result
   end
 
   def serialize_action_items(meeting)

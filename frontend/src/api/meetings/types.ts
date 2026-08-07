@@ -88,6 +88,10 @@ export interface Meeting {
   previous_meeting_id?: number | null
   /** 이전 회의 참고 배지 표시용 제목 (상세 응답에만 포함) */
   previous_meeting_title?: string | null
+  /** 회의록 본문에 박힌 연결 회의 인용 마커(⟦m:<id>/...⟧)의 출처 회의id(문자열 키) → 제목 맵.
+   *  현재 사용자가 접근 불가/삭제된 회의는 제외(프론트는 없는 id를 "이전 회의" 폴백으로 표시).
+   *  상세 응답(show=full)에만 포함. */
+  citation_meetings?: Record<string, string>
   /** 배치 재전사에 실제 사용된 STT 엔진(실시간 녹음은 null). 회의 정보 표시용 */
   stt_engine?: string | null
   /** 예약 시작 시각 (ISO 문자열, UTC). null=즉시 회의(기존 동작). */

@@ -57,4 +57,14 @@ RSpec.describe MeetingChatContext do
     ctx = MeetingChatContext.new(meeting.reload, user, "질문")
     expect(ctx.send(:summary_text)).not_to include("⟦t:")
   end
+
+  it "summary_text는 연결 회의 시드 각인 마커(⟦m:<id>/t:..⟧)도 제거한다" do
+    create(:summary, meeting: meeting, summary_type: "final",
+      notes_markdown: "결정 보류. ⟦m:42/t:125000|s:화자 1⟧")
+    ctx = MeetingChatContext.new(meeting.reload, user, "질문")
+    text = ctx.send(:summary_text)
+    expect(text).not_to include("⟦m:")
+    expect(text).not_to include("⟦t:")
+    expect(text).to include("결정 보류")
+  end
 end

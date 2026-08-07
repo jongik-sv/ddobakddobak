@@ -11,6 +11,9 @@ interface TranscriptState {
   finals: TranscriptFinalData[]
   appliedIds: Set<number>
   meetingNotes: string | null
+  /** 이전 회의 인용 마커(⟦m:<id>/...⟧)의 출처 회의id → 제목 맵. 회의 상세 응답(Meeting.citation_meetings)에서
+   *  채워지며, inert 배지(TimestampBadge)가 표시용 회의명을 조회할 때 쓴다. 맵에 없는 id는 "이전 회의" 폴백. */
+  citationMeetings: Record<string, string>
   currentSpeaker: string | null
   isSummarizing: boolean
   summarizationKind: 'realtime' | 'final' | null
@@ -36,6 +39,7 @@ interface TranscriptState {
   loadFinals: (data: TranscriptFinalData[]) => void
   setSpeaker: (data: SpeakerChangeData) => void
   setMeetingNotes: (markdown: string | null) => void
+  setCitationMeetings: (map: Record<string, string>) => void
   markApplied: (ids: number[]) => void
   removeFinals: (ids: number[]) => void
   updateFinal: (id: number, content: string) => void
@@ -70,6 +74,7 @@ const initialState = {
   finals: [] as TranscriptFinalData[],
   appliedIds: new Set<number>(),
   meetingNotes: null,
+  citationMeetings: {} as Record<string, string>,
   currentSpeaker: null,
   isSummarizing: false,
   summarizationKind: null as 'realtime' | 'final' | null,
@@ -118,6 +123,9 @@ export const useTranscriptStore = create<TranscriptState>()((set) => ({
 
   setMeetingNotes: (markdown) =>
     set((state) => state.meetingNotes === markdown ? state : { meetingNotes: markdown }),
+
+  setCitationMeetings: (map) =>
+    set((state) => state.citationMeetings === map ? state : { citationMeetings: map }),
 
   markApplied: (ids) =>
     set((state) => {
