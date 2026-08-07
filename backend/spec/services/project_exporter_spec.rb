@@ -18,7 +18,6 @@ RSpec.describe ProjectExporter do
 
   let!(:transcript) { create(:transcript, meeting: meeting, content: "안녕하세요 회의 시작합니다") }
   let!(:summary)    { create(:summary, meeting: meeting) }
-  let!(:action_item) { create(:action_item, meeting: meeting) }
   let!(:block)       { create(:block, meeting: meeting) }
   let!(:contact)     { create(:meeting_contact, meeting: meeting) }
   let!(:bookmark)    { create(:meeting_bookmark, meeting: meeting) }
@@ -93,7 +92,6 @@ RSpec.describe ProjectExporter do
         expect(m[:transcripts].map { |t| t["id"] }).to contain_exactly(transcript.id)
         expect(m[:transcripts].first["content"]).to eq("안녕하세요 회의 시작합니다")
         expect(m[:summaries].map { |s| s["id"] }).to contain_exactly(summary.id)
-        expect(m[:action_items].map { |a| a["id"] }).to contain_exactly(action_item.id)
         expect(m[:blocks].map { |b| b["id"] }).to contain_exactly(block.id)
         expect(m[:contacts].map { |c| c["id"] }).to contain_exactly(contact.id)
         expect(m[:bookmarks].map { |b| b["id"] }).to contain_exactly(bookmark.id)

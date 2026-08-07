@@ -51,9 +51,6 @@ class FileTranscriptionJob < ApplicationJob
       # 4. AI 회의록 생성 (final 모드)
       generate_summary(meeting)
       broadcast_progress(channel, 99, "AI 회의록 생성 완료")
-
-      # 5. Action Items 추출
-      MeetingFinalizerService.new(meeting).call
     end
 
     # 6. 완료 — 실제 사용된 배치 STT 엔진을 회의 정보에 기록(sidecar resolve 결과)

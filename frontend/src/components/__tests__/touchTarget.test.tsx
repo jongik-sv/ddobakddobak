@@ -361,21 +361,3 @@ describe('MeetingPage 터치 타겟', () => {
     expect(ConfirmDialogSrc).toContain('취소')
   })
 })
-
-// ── 23. ActionItemList 터치 타겟 ──
-import ActionItemListSrc from '../action-item/ActionItemList?raw'
-
-describe('ActionItemList 터치 타겟', () => {
-  it('수정/삭제 버튼에 min-h-[44px] 적용', () => {
-    expect(ActionItemListSrc).toContain('min-h-[44px]')
-  })
-})
-
-// ── 25. ActionItemForm 터치 타겟 ──
-import ActionItemFormSrc from '../action-item/ActionItemForm?raw'
-
-describe('ActionItemForm 터치 타겟', () => {
-  it('버튼에 min-h-[44px] 적용', () => {
-    expect(ActionItemFormSrc).toContain('min-h-[44px]')
-  })
-})

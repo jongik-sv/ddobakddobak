@@ -1,6 +1,6 @@
 # 회의의 최종(활성) 요약에서 도메인 특화 용어를 LLM으로 추출한다.
 # "요약에서 용어 추출" 컨트롤러 액션(동기, 신규 잡 클래스 금지)에서 호출.
-# LLM = meeting.creator&.effective_llm_config(녹음자 규칙, meeting_finalizer_service.rb 동일 패턴).
+# LLM = meeting.creator&.effective_llm_config(녹음자 규칙, meeting_summarization_job.rb 동일 패턴).
 class DomainTermExtractionService
   def initialize(meeting)
     @meeting = meeting

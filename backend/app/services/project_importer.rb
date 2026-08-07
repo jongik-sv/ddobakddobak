@@ -307,11 +307,6 @@ class ProjectImporter
     (m["summaries"] || []).each do |s|
       meeting.summaries.create!(sanitize(s, Summary).merge("meeting_id" => meeting.id))
     end
-    (m["action_items"] || []).each do |a|
-      attrs = sanitize(a, ActionItem)
-      attrs["assignee_id"] = nil # 범위 밖 유저 참조 제거
-      meeting.action_items.create!(attrs.merge("meeting_id" => meeting.id))
-    end
     import_blocks(meeting, m["blocks"] || [])
     (m["contacts"] || []).each do |c|
       attrs = sanitize(c, MeetingContact)

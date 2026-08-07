@@ -467,10 +467,9 @@ RSpec.describe "Api::V1::Meetings", type: :request do
   # ============================================================
   describe "GET /api/v1/meetings/:id" do
     context "when authenticated as project member" do
-      it "returns meeting with transcripts, summary, and action_items" do
+      it "returns meeting with transcripts and summary" do
         transcript = create(:transcript, meeting: meeting, sequence_number: 1)
         summary = create(:summary, meeting: meeting, summary_type: "final")
-        action_item = create(:action_item, meeting: meeting)
 
         get "/api/v1/meetings/#{meeting.id}"
 
@@ -480,8 +479,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(json["meeting"]["transcripts"].length).to eq(1)
         expect(json["meeting"]["transcripts"].first["id"]).to eq(transcript.id)
         expect(json["meeting"]["summary"]).to include("key_points")
-        expect(json["meeting"]["action_items"].length).to eq(1)
-        expect(json["meeting"]["action_items"].first["id"]).to eq(action_item.id)
       end
 
       # 요약 진행 중 상태 영속 필드가 meeting_json 에 노출되는지 (회의목록 StatusBadge용).
@@ -856,16 +853,14 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(meeting.reload.ended_at).not_to be_nil
       end
 
-      it "enqueues finalizer + final summary when transcripts exist" do
+      it "enqueues final summary when transcripts exist" do
         create(:transcript, meeting: meeting)
-        expect(MeetingFinalizerJob).to receive(:perform_later).with(meeting.id)
         expect(MeetingSummarizationJob).to receive(:perform_later).with(meeting.id, type: "final")
 
         post "/api/v1/meetings/#{meeting.id}/stop"
       end
 
       it "does NOT enqueue jobs when no transcripts exist" do
-        expect(MeetingFinalizerJob).not_to receive(:perform_later)
         expect(MeetingSummarizationJob).not_to receive(:perform_later)
 
         post "/api/v1/meetings/#{meeting.id}/stop"
@@ -874,7 +869,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
       it "does NOT enqueue jobs when skip_summary=true even with transcripts" do
         create(:transcript, meeting: meeting)
-        expect(MeetingFinalizerJob).not_to receive(:perform_later)
         expect(MeetingSummarizationJob).not_to receive(:perform_later)
 
         post "/api/v1/meetings/#{meeting.id}/stop", params: { skip_summary: "true" }
@@ -884,7 +878,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
       it "clears paused_at on stop" do
         meeting.update!(paused_at: Time.current)
-        allow(MeetingFinalizerJob).to receive(:perform_later)
         allow(MeetingSummarizationJob).to receive(:perform_later)
 
         post "/api/v1/meetings/#{meeting.id}/stop"
@@ -892,7 +885,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "broadcasts recording_stopped to the meeting transcription stream" do
-        allow(MeetingFinalizerJob).to receive(:perform_later)
         allow(MeetingSummarizationJob).to receive(:perform_later)
 
         expect(ActionCable.server).to receive(:broadcast).with(
@@ -907,7 +899,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
       end
 
       it "clears the recording lock for the meeting" do
-        allow(MeetingFinalizerJob).to receive(:perform_later)
         allow(MeetingSummarizationJob).to receive(:perform_later)
         RecordingLock.acquire(meeting.id, "device-token")
 
@@ -918,7 +909,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
       it "전사가 있으면 EmbedBackfillJob을 meeting_id로 enqueue한다" do
         create(:transcript, meeting: meeting)
-        allow(MeetingFinalizerJob).to receive(:perform_later)
         allow(MeetingSummarizationJob).to receive(:perform_later)
 
         expect {
@@ -1109,25 +1099,6 @@ RSpec.describe "Api::V1::Meetings", type: :request do
     end
   end
 
-  # ============================================================
-  # POST /api/v1/meetings/:id/regenerate_notes
-  # ============================================================
-  describe "POST /api/v1/meetings/:id/regenerate_notes" do
-    let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
-
-    context "when meeting is completed with transcripts" do
-      before do
-        create(:transcript, meeting: meeting, sequence_number: 1, content: "test transcript")
-      end
-
-      it "MeetingFinalizerJob도 enqueue한다" do
-        expect(MeetingFinalizerJob).to receive(:perform_later).with(meeting.id)
-        allow(MeetingSummarizationJob).to receive(:perform_later)
-
-        post "/api/v1/meetings/#{meeting.id}/regenerate_notes"
-      end
-    end
-  end
 end
 
 RSpec.describe "Api::V1::Meetings summary options", type: :request do

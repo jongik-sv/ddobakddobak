@@ -42,12 +42,6 @@ class MarkdownExporter
       lines << ""
       lines << summary.notes_markdown.to_s.gsub(/[ \t]*⟦(?:m:\d+\/)?t:\d+[|\/]s:[^⟧]+⟧/, "")
 
-      action_items_lines = render_action_items
-      if action_items_lines
-        lines << ""
-        lines << action_items_lines
-      end
-
       return lines.join("\n")
     end
 
@@ -58,12 +52,6 @@ class MarkdownExporter
     append_bullet_section(lines, "### 핵심 요약",      parse_field(summary.key_points))
     append_bullet_section(lines, "### 결정사항",        parse_field(summary.decisions))
     append_bullet_section(lines, "### 주요 논의 내용", parse_field(summary.discussion_details))
-
-    action_items_lines = render_action_items
-    if action_items_lines
-      lines << ""
-      lines << action_items_lines
-    end
 
     lines.join("\n")
   end
@@ -93,24 +81,6 @@ class MarkdownExporter
         lines << "**#{t.speaker_name.presence || t.speaker_label}** (#{format_timestamp_ms(t.started_at_ms)})"
         lines << t.content
       end
-    end
-
-    lines.join("\n")
-  end
-
-  def render_action_items
-    items = @meeting.action_items.includes(:assignee)
-    return nil if items.empty?
-
-    lines = []
-    lines << "### Action Items"
-    items.each do |item|
-      checkbox = item.status == "done" ? "[x]" : "[ ]"
-      meta_parts = []
-      meta_parts << "@#{item.assignee.name}" if item.assignee
-      meta_parts << "마감: #{item.due_date}" if item.due_date
-      meta = meta_parts.any? ? " (#{meta_parts.join(", ")})" : ""
-      lines << "- #{checkbox} #{item.content}#{meta}"
     end
 
     lines.join("\n")

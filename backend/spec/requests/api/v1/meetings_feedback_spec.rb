@@ -2,7 +2,7 @@ require "rails_helper"
 
 # 오타 수정 적용(POST /feedback): 교정어가 회의의 모든 텍스트 표면에 적용되는지 검증.
 # 회귀: 과거엔 active summary notes_markdown + transcripts 만 교정 → 구조화 요약필드/
-# 비활성 summary/action_items/blocks 에 오타 잔존("적용이 다 안됨").
+# 비활성 summary/blocks 에 오타 잔존("적용이 다 안됨").
 RSpec.describe "Api::V1::Meetings feedback (term corrections)", type: :request do
   let(:user) { create(:user) }
   let(:project) { create(:project, creator: user) }
@@ -30,14 +30,13 @@ RSpec.describe "Api::V1::Meetings feedback (term corrections)", type: :request d
                       discussion_details: "".to_json,
                       generated_at: 2.minutes.ago)
     t1 = create(:transcript, meeting: meeting, content: "분목별 어쩌고")
-    ai = create(:action_item, meeting: meeting, content: "분목별 표 작성")
     blk = create(:block, meeting: meeting, content: "분목별 블록 본문")
 
     post_feedback([ { from: "분목별", to: "품목별" } ])
 
     expect(response).to have_http_status(:ok)
 
-    [ final, realtime, t1, ai, blk ].each(&:reload)
+    [ final, realtime, t1, blk ].each(&:reload)
 
     corrected = {
       "final.notes_markdown" => final.notes_markdown,
@@ -46,7 +45,6 @@ RSpec.describe "Api::V1::Meetings feedback (term corrections)", type: :request d
       "final.discussion_details" => final.discussion_details,
       "realtime.notes_markdown" => realtime.notes_markdown,
       "transcript.content" => t1.content,
-      "action_item.content" => ai.content,
       "block.content" => blk.content,
     }
     corrected.each do |label, text|

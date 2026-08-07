@@ -11,7 +11,6 @@ class Meeting < ApplicationRecord
   has_many :glossary_entries, as: :owner, dependent: :destroy
   has_many :transcripts, dependent: :destroy
   has_many :summaries, dependent: :destroy
-  has_many :action_items, dependent: :destroy
   has_many :blocks, dependent: :destroy
   has_many :meeting_attachments, dependent: :destroy
   has_many :meeting_contacts, dependent: :destroy
@@ -384,7 +383,6 @@ class Meeting < ApplicationRecord
     reload
 
     if transcripts.exists?
-      MeetingFinalizerJob.perform_later(id)
       MeetingSummarizationJob.perform_later(id, type: "final")
       reconcile_embeddings!
     end
@@ -560,11 +558,10 @@ class Meeting < ApplicationRecord
     summaries.create!(summary_type: summary_type, notes_markdown: stamped.rstrip, generated_at: Time.current)
   end
 
-  # 트랜스크립트·요약·액션아이템·블록(선택적으로 첨부)을 모두 삭제한다.
+  # 트랜스크립트·요약·블록(선택적으로 첨부)을 모두 삭제한다.
   def purge_transcription_content!(include_attachments: false)
     transcripts.destroy_all
     summaries.destroy_all
-    action_items.destroy_all
     blocks.destroy_all
     meeting_attachments.destroy_all if include_attachments
     # 콘텐츠 초기화(reset_content·재전사) 시 이전 요약 실패 기록도 함께 클리어 —

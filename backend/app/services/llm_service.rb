@@ -176,39 +176,6 @@ class LlmService
     { "block_markdown" => "", "ok" => false, "error" => self.class.user_facing_error_message(e) }
   end
 
-  # 구조화된 요약 (JSON): key_points, decisions, discussion_details, action_items
-  def summarize(transcripts, type: "realtime", context: nil, domain_reference: nil)
-    transcript_text = TextFormatter.format_transcripts(transcripts)
-    user_content = "요약 유형: #{type}\n\n회의 트랜스크립트:\n#{transcript_text}"
-    user_content += "\n\n" + domain_reference_block(domain_reference) if domain_reference.present?
-    user_content += "\n\n이전 요약 컨텍스트:\n#{context}" if context.present?
-
-    data = call_llm_json(SUMMARIZE_SYSTEM_PROMPT, user_content)
-    return empty_summary unless data
-
-    {
-      "key_points" => data["key_points"] || [],
-      "decisions" => data["decisions"] || [],
-      "discussion_details" => data["discussion_details"] || [],
-      "action_items" => data["action_items"] || []
-    }
-  rescue => e
-    Rails.logger.error "[LlmService] summarize failed: #{e.message}"
-    empty_summary
-  end
-
-  # Action Item 추출
-  def summarize_action_items(transcripts)
-    transcript_text = TextFormatter.format_transcripts(transcripts)
-    user_content = "회의 트랜스크립트:\n#{transcript_text}"
-
-    data = call_llm_json(ACTION_ITEMS_SYSTEM_PROMPT, user_content)
-    { "action_items" => data&.dig("action_items") || [] }
-  rescue => e
-    Rails.logger.error "[LlmService] summarize_action_items failed: #{e.message}"
-    { "action_items" => [] }
-  end
-
   # 회의 요약(notes_markdown)에서 도메인 특화 용어를 추출 — "요약에서 용어 추출" 동기 액션용.
   # DomainTermExtractionService가 호출한다. 실패(비배열 응답·예외 포함)는 nil로 통일.
   def extract_domain_terms(notes_markdown)
@@ -690,7 +657,4 @@ class LlmService
         .strip
   end
 
-  def empty_summary
-    { "key_points" => [], "decisions" => [], "discussion_details" => [], "action_items" => [] }
-  end
 end

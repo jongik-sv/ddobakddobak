@@ -98,12 +98,6 @@ RSpec.describe LlmPrompts do
       expect(p).to include('"expansions"')
     end
 
-    it "SUMMARIZE/ACTION_ITEMS: JSON 스키마 키 보존" do
-      expect(LlmPrompts::SUMMARIZE_SYSTEM_PROMPT).to include('"key_points"')
-      expect(LlmPrompts::SUMMARIZE_SYSTEM_PROMPT).to include('"action_items"')
-      expect(LlmPrompts::ACTION_ITEMS_SYSTEM_PROMPT).to include('"action_items"')
-    end
-
     it "DEFAULT_SECTION_STRUCTURE: 섹션 제목 5개 보존" do
       p = LlmPrompts::DEFAULT_SECTION_STRUCTURE
       ["## 1. 핵심 요약", "## 2. 논의 사항", "## 3. 결정사항", "## 4. Action Items", "## 5. 기타 논의"].each do |h|

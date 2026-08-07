@@ -59,21 +59,20 @@ RSpec.describe Meeting, "stale recording reaper" do
       expect { m.heal_stale_recording! }.not_to change { m.reload.status }
     end
 
-    it "전사 있으면 finalize/summary enqueue" do
+    it "전사 있으면 summary enqueue" do
       m = rec(heartbeat_at: nil)
       create(:transcript, meeting: m)
-      expect(MeetingFinalizerJob).to receive(:perform_later).with(m.id)
       expect(MeetingSummarizationJob).to receive(:perform_later).with(m.id, type: "final")
       m.heal_stale_recording!
     end
 
     it "전사 없으면 job 미enqueue" do
       m = rec(heartbeat_at: nil)
-      expect(MeetingFinalizerJob).not_to receive(:perform_later)
+      expect(MeetingSummarizationJob).not_to receive(:perform_later)
       m.heal_stale_recording!
     end
 
-    it "두 인스턴스 동시 heal → finalize/summary 각각 1회만 enqueue(원자 가드)" do
+    it "두 인스턴스 동시 heal → summary 는 1회만 enqueue(원자 가드)" do
       # 동시성 재현: 두 인스턴스를 모두 recording 상태로 로드한 뒤 각각 heal 호출.
       # 한 인스턴스가 먼저 DB 를 completed 로 전이하면, 다른 인스턴스는 자기 메모리상
       # status 가 여전히 recording 이라 중복 enqueue 를 시도한다 → update_all 변경행수
@@ -83,7 +82,6 @@ RSpec.describe Meeting, "stale recording reaper" do
       m1 = Meeting.find(m.id)
       m2 = Meeting.find(m.id)
 
-      expect(MeetingFinalizerJob).to receive(:perform_later).with(m.id).once
       expect(MeetingSummarizationJob).to receive(:perform_later).with(m.id, type: "final").once
 
       m1.heal_stale_recording!

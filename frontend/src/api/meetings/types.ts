@@ -317,12 +317,6 @@ export interface MeetingExportData {
     discussion_details?: string[]
   } | null
   memo?: string | null
-  action_items: Array<{
-    content: string
-    status: string
-    assignee_name: string | null
-    due_date: string | null
-  }>
   transcripts: Array<{
     speaker_label: string
     speaker_name?: string | null

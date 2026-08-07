@@ -78,13 +78,6 @@ vi.mock('../api/meetings', async () => ({
   correctTerms: vi.fn().mockResolvedValue({ corrected_transcripts: 0 }),
 }))
 
-vi.mock('../api/actionItems', () => ({
-  getActionItems: vi.fn().mockResolvedValue([]),
-  updateActionItem: vi.fn(),
-  deleteActionItem: vi.fn(),
-  createActionItem: vi.fn(),
-}))
-
 vi.mock('../hooks/useBlockSync', () => ({
   useBlockSync: vi.fn().mockReturnValue({
     isLoading: false,

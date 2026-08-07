@@ -428,7 +428,6 @@ module Api
             summaries_destroyed = @meeting.summaries.destroy_all.length.positive?
             # Summary 도 FtsIndexable(summaries_fts) 라 같은 best-effort 문제를 안는다.
             verify_fts_purged!("summaries_fts", summary_ids)
-            @meeting.action_items.where(ai_generated: true).destroy_all
 
             # brief_summary 는 명시적 nil. refresh_brief_summary! 가 `if text.present?`(meeting.rb:615)라
             # 재생성 결과가 빈 값이면 옛 발췌가 남고, 이 컬럼은 LIKE 검색 대상이다(meeting.rb:151).

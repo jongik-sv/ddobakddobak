@@ -16,7 +16,6 @@ class MeetingExportSerializer
     data = { meeting: build_meeting }
     data[:summary]      = build_summary      if @include_summary
     data[:memo]         = @meeting.memo       if @include_memo
-    data[:action_items] = build_action_items
     data[:transcripts]  = build_transcripts  if @include_transcript
     data
   end
@@ -58,17 +57,6 @@ class MeetingExportSerializer
         key_points:         parse_field(summary.key_points),
         decisions:          parse_field(summary.decisions),
         discussion_details: parse_field(summary.discussion_details)
-      }
-    end
-  end
-
-  def build_action_items
-    @meeting.action_items.includes(:assignee).map do |item|
-      {
-        content:       item.content,
-        status:        item.status,
-        assignee_name: item.assignee&.name,
-        due_date:      item.due_date&.to_s
       }
     end
   end
