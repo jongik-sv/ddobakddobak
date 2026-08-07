@@ -681,15 +681,61 @@ class Meeting < ApplicationRecord
 
   private
 
+  # 응축 캐시 버전 — 압축 프롬프트(CONDENSE_PREVIOUS_NOTES_SYSTEM_PROMPT)를 개정하면 이 값을
+  # 올려 기존 캐시를 전부 무효화한다(digest 에 섞여 들어가 자동으로 miss 처리됨).
+  CONDENSE_CACHE_VERSION = "v1".freeze
+
   # 이전 회의 본문(body)을 LLM 으로 1회 압축한다. 압축 실패·LLM 미설정(NotConfiguredError 포함,
   # LlmService.new 생성자 시점에 raise 될 수 있어 여기서 함께 잡는다) 등은 nil 반환 —
   # 호출부(seed_summary_from_previous!)가 압축 없이 각인된 body 원문을 블록으로 폴백한다
   # (시드 자체는 실패시키지 않는다).
+  #
+  # 캐시: "요약 재생성"(regenerate_notes/reset_content)은 summaries 를 지우고 seed 를 다시
+  # 태우므로, previous_meeting 이 그대로면 이 LLM 호출이 매번 반복돼 순수 낭비다. 이 회의
+  # (self) 에 이전 압축 결과를 digest 와 함께 저장해두고, 다음 호출에서 digest 가 일치하면
+  # LLM 호출 없이 캐시를 반환한다. previous 가 재요약돼 body 가 바뀌거나, previous 회의명이
+  # 바뀌거나(title 이 프롬프트에 실려 출력에 스며듦), LLM 모델/프로필을 바꾸거나,
+  # CONDENSE_CACHE_VERSION 이 오르면 digest 불일치로 자연 무효화된다.
   def condense_previous_meeting_body(body, title)
-    LlmService.new(llm_config: creator&.effective_llm_config).condense_previous_notes(body, meeting_title: title)
+    llm_config = creator&.effective_llm_config
+    digest = previous_condense_digest(body, title, llm_config)
+
+    if digest.present? && digest == prev_condensed_digest && prev_condensed_notes.present?
+      Rails.logger.info "[MeetingSummarizationJob] condense cache hit meeting=#{id}"
+      return prev_condensed_notes
+    end
+
+    condensed = LlmService.new(llm_config: llm_config).condense_previous_notes(body, meeting_title: title)
+
+    if condensed.present? && digest.present?
+      begin
+        update_columns(prev_condensed_notes: condensed, prev_condensed_digest: digest)
+      rescue => e
+        # 캐시 저장 실패는 이번 응축 결과 반환을 막지 않는다(캐시는 최적화일 뿐, 다음 호출에서
+        # 다시 시도됨) — 오염 없이 그냥 miss 로 남는다.
+        Rails.logger.error "[Meeting] condense cache 저장 실패 meeting=#{id}: #{e.message}"
+      end
+    end
+
+    condensed
   rescue => e
     Rails.logger.error "[Meeting] condense_previous_notes 실패 meeting=#{id}: #{e.message}"
     nil
+  end
+
+  # previous_meeting_id 가 없으면 캐시 불가(nil) — 시드 자체가 previous_meeting_id 필수라
+  # 실질적으로 항상 present 이지만 방어적으로 처리.
+  #
+  # digest 입력에 title 을 포함: condense_previous_notes 프롬프트가 "회의 제목: <title>"을
+  # 실어 응축 출력에 제목이 스며들 수 있어, previous 회의명이 바뀌면(body 불변이어도) 재응축이
+  # 필요하다. LLM provider/model 도 포함: 사용자가 모델/프로필을 바꾼 뒤 "요약 재생성"을
+  # 눌렀는데 옛 모델로 만든 캐시가 그대로 반환되면 기대와 어긋난다. auth_token/base_url 은
+  # 제외한다 — 같은 provider/model 이면 실질적으로 동일한 응축을 낸다고 간주해 토큰 로테이션
+  # 만으로 불필요한 무효화가 일어나지 않게 한다.
+  def previous_condense_digest(body, title, llm_config)
+    return nil if previous_meeting_id.blank?
+    fingerprint = llm_config.is_a?(Hash) ? "#{llm_config[:provider]}/#{llm_config[:model]}" : ""
+    Digest::SHA256.hexdigest("#{CONDENSE_CACHE_VERSION}|#{previous_meeting_id}|#{title}|#{fingerprint}|#{body}")
   end
 
   # 회의 생성 시 important 를 폴더값으로 상속. important_explicitly_set 면 상속 생략(지정값 보존).

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_07_200706) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_07_210000) do
   create_table "blocks", force: :cascade do |t|
     t.string "block_type", default: "text", null: false
     t.text "content"
@@ -226,6 +226,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_07_200706) do
     t.string "meeting_type", default: "general", null: false
     t.text "memo"
     t.datetime "paused_at"
+    t.string "prev_condensed_digest"
+    t.text "prev_condensed_notes"
     t.integer "previous_meeting_id"
     t.integer "project_id", null: false
     t.string "public_uid"
