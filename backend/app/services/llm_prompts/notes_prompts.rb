@@ -1,20 +1,6 @@
 module LlmPrompts
   # 실시간/증분/피드백 회의록 작성 프롬프트와 섹션 구조, 시간순 구성 지시.
   module NotesPrompts
-    # 연결+증분 모드: 이전 회의록(현재 회의록)과 새 자막을 "하나의 회의록"으로 통합하되
-    # 논의사항에만 절취선 한 줄로 이전/현재 시점을 구분하도록 지시. (절취선 상수는 Meeting 에서 단일 정의)
-    def seeded_merge_instruction
-      <<~TEXT
-
-        ## [최우선] 이전 회의 이어쓰기 — 하나의 회의록으로 통합
-        '현재 회의록'=이전 회의록, '새로운 자막'=이어지는 현재 회의. 2개 등록이지만 하나의 회의이므로 하나의 회의록으로 통합.
-        - 핵심 요약·결정사항·Action Items: 이전+현재 합쳐 각각 하나의 섹션으로 통합(중복 병합).
-        - 논의 사항: 이전 회의 논의 먼저, 바로 아래 절취선 한 번, 그 아래 현재 회의 논의:
-        #{Meeting::PREVIOUS_MEETING_CUT_LINE}
-        - 절취선은 논의 사항 안에 단 한 번만. 결정사항·Action Items 아래에는 절대 금지.
-      TEXT
-    end
-
     DEFAULT_SECTION_STRUCTURE = <<~SECTION.freeze
       2. **구조화**: 회의록을 다음과 같이 체계적으로 구성 (섹션 번호 부여 권장):
          - ## 1. 핵심 요약 (3~5개 항목. 불릿(- ) 별도 줄, 항목 사이 빈 줄. "맥락 → **결론/핵심**" 구조. 서술형 금지. 이어붙이기 금지)
@@ -106,6 +92,27 @@ module LlmPrompts
 
       ## 출력 형식
       순수 Markdown 본문만 반환. ```markdown 블록 감싸기 금지.
+    PROMPT
+
+    # 연결 회의(previous_meeting) 시드 전용: 이전 회의 본문(절취선 하단)을 상단 고정 참고
+    # 블록으로 1회 압축. LlmService#condense_previous_notes 가 사용(Meeting#seed_summary_from_previous!
+    # 호출). 블록 제목("### <회의 제목>")은 호출부(PreviousMeetingNotes.append_block)가 붙이므로
+    # 본문만 반환하게 지시한다. 인용 마커는 넣지 말라고 지시하고(블록 제목이 이미 출처 표시),
+    # 실제 제거는 LlmService#condense_previous_notes 가 CitationMarkers.strip_all 로 코드 레벨
+    # 후처리한다(LLM 이 지시를 어겨도 확실히 지워지도록 이중 방어) — 프롬프트만으로 강제하지 않는다.
+    CONDENSE_PREVIOUS_NOTES_SYSTEM_PROMPT = <<~PROMPT.freeze
+      이전 회의록 압축 전문가. 아래는 앞서 진행된 회의의 회의록이다. 다음 회의(연결 회의) 상단에
+      고정될 참고용 요약 블록으로, 한 화면에 들어오는 초간결 요약으로 압축하라.
+
+      ## 규칙
+      1. 결정사항·Action Items·핵심 결론만 남긴다. 논의 경위·배경 설명·세부 수치 나열은 전부 제거.
+      2. 불릿 5~10개, 총 300~800자 수준(하드컷 아님 — 방향 지시. 원문이 짧으면 그보다 적어도 됨).
+      3. 불릿 중심 간결체. 문장당 정보 1개.
+      4. #{UNICODE_MATH_NOTATION.chomp}
+      5. 발화 근거 마커(⟦t:..⟧, ⟦m:..⟧)는 넣지 않는다 — 압축 블록은 요약본이라 근거 마커 대상이 아니다.
+
+      ## 출력 형식
+      순수 Markdown 본문만 반환(제목·헤더 없이 본문만 — 블록 제목은 호출부가 붙인다). JSON·코드펜스 금지.
     PROMPT
 
     FEEDBACK_NOTES_SYSTEM_PROMPT = <<~PROMPT.freeze

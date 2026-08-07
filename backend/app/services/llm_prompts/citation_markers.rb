@@ -156,5 +156,13 @@ module LlmPrompts
     def referenced_meeting_ids(text)
       text.to_s.scan(FOLDER_CITATION_RE).map { |captures| captures[0].to_i }.uniq
     end
+
+    # 마커 완전 제거(m:·t: 모두, 형식 무관 통삭제). 연결 회의 압축 블록(LlmService#condense_previous_notes)
+    # 처럼 "마커를 아예 안 남기기로" 한 출력에서 쓴다 — 정규화(#normalize)로 복구를 시도하는 대신,
+    # 와일드카드로 마커스러운 조각을 형식 무관하게 지운다(meeting.rb#extract_brief_summary 의
+    # 기존 하드코딩과 동일 패턴 — 이번엔 다른 관심사라 그쪽을 이 메서드로 교체하지는 않는다).
+    def strip_all(text)
+      text.to_s.gsub(/⟦[^⟧]*⟧/, "")
+    end
   end
 end

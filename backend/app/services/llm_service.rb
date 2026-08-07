@@ -97,7 +97,9 @@ class LlmService
 
   # 회의록 정제: 기존 노트 + 새 자막 → 통합 회의록.
   # chronological: 증분(흐름) 회의의 통짜 생성 시 주제별 재구성 대신 시간순 요약 지시.
-  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil, verbosity: "standard", verbosity_context: :final, chronological: false, seeded_merge: false, agenda_reference: nil, domain_reference: nil, custom_prompt: nil)
+  # pinned_context: 연결 회의 상단 고정 요약(절취선 위, 코드 레벨 보호) — current_notes 에는
+  # 절대 포함하지 않고(재작성 대상 아님) 참고용으로만 별도 주입한다(문맥 연속성).
+  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil, verbosity: "standard", verbosity_context: :final, chronological: false, agenda_reference: nil, domain_reference: nil, custom_prompt: nil, pinned_context: nil)
     transcript_text = TextFormatter.format_transcripts(transcripts)
     return { "notes_markdown" => current_notes, "ok" => true } if transcript_text.blank?
 
@@ -106,6 +108,7 @@ class LlmService
     parts << "참석자: #{attendees}" if attendees.present?
     parts << agenda_reference_block(agenda_reference) if agenda_reference.present?
     parts << domain_reference_block(domain_reference) if domain_reference.present?
+    parts << pinned_context_block(pinned_context) if pinned_context.present?
     if current_notes.present?
       parts << "현재 회의록:\n#{current_notes}"
     else
@@ -126,8 +129,6 @@ class LlmService
     system_prompt = apply_verbosity(system_prompt, verbosity, context: verbosity_context)
     system_prompt = system_prompt + "\n\n" + LlmPrompts::CITATION_MARKER_INSTRUCTION
     system_prompt = apply_custom_prompt(system_prompt, custom_prompt)
-    # 이전 회의 통합+논의 절취선 지시는 분량 한도보다 우선해야 하므로 verbosity 뒤(맨 끝)에 붙인다.
-    system_prompt = system_prompt + seeded_merge_instruction if seeded_merge
 
     result = call_llm_raw(system_prompt, user_content, max_tokens: max_tokens)
     notes = LlmPrompts::CitationMarkers.normalize(TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(result)))
@@ -151,7 +152,7 @@ class LlmService
   # 증분(append-only) 모드: 새 자막만 시간대별 새 블록 하나로 요약. 기존 회의록 불변.
   # 시간 헤딩은 호출부(job)가 붙인다. 출력이 새 블록뿐이라 작음 → 틱 빠름.
   # 반환: { "block_markdown" =>, "ok" => }. ok:false 면 호출부가 transcript 미소비(무음 손실 차단).
-  def append_notes(current_notes, transcripts, meeting_title: "", attendees: nil, verbosity: "standard", agenda_reference: nil, domain_reference: nil, custom_prompt: nil)
+  def append_notes(current_notes, transcripts, meeting_title: "", attendees: nil, verbosity: "standard", agenda_reference: nil, domain_reference: nil, custom_prompt: nil, pinned_context: nil)
     transcript_text = TextFormatter.format_transcripts(transcripts)
     return { "block_markdown" => "", "ok" => true } if transcript_text.blank?
 
@@ -160,6 +161,7 @@ class LlmService
     parts << "참석자: #{attendees}" if attendees.present?
     parts << agenda_reference_block(agenda_reference) if agenda_reference.present?
     parts << domain_reference_block(domain_reference) if domain_reference.present?
+    parts << pinned_context_block(pinned_context) if pinned_context.present?
     parts << "기존 회의록(참고용 — 수정·반복 금지):\n#{current_notes}" if current_notes.present?
     parts << "새로운 자막:\n#{transcript_text}"
     user_content = parts.join("\n\n")
@@ -174,6 +176,30 @@ class LlmService
     Rails.logger.error "[LlmService] append_notes failed: #{e.message}"
     # error 는 사용자 노출용으로 정규화 — 예외 원문은 위 로그에만 남긴다.
     { "block_markdown" => "", "ok" => false, "error" => self.class.user_facing_error_message(e) }
+  end
+
+  # 연결 회의(previous_meeting) 시드 전용: 이전 회의 본문(절취선 하단)을 상단 고정 참고 블록으로
+  # 1회 압축한다(Meeting#seed_summary_from_previous! 가 호출). 결정사항·Action Items·핵심 결론만
+  # 남긴 초간결 요약(불릿 5~10개, 300~800자 수준 가이드). 블록 헤더("### <회의 제목>")가 이미
+  # 출처를 표시하므로 인용 마커(⟦t:..⟧/⟦m:..⟧)는 넣지 않도록 지시하고, LLM 이 그래도 마커를
+  # 흘리는 경우에 대비해 CitationMarkers.strip_all 로 코드 레벨 후처리까지 한다(이중 방어).
+  # 실패·빈 결과는 nil → 호출부가 압축 없이 원문(마커 각인 유지)을 블록으로 폴백한다
+  # (시드 자체를 실패시키지 않는다 — 폴백 경로에서는 inert 배지가 안전망이므로 마커 유지가 맞다).
+  def condense_previous_notes(notes, meeting_title: "")
+    return nil if notes.to_s.strip.blank?
+
+    parts = []
+    parts << "회의 제목: #{meeting_title}" if meeting_title.present?
+    parts << "회의록:\n#{notes}"
+    user_content = parts.join("\n\n")
+
+    result = call_llm_raw(CONDENSE_PREVIOUS_NOTES_SYSTEM_PROMPT, user_content, max_tokens: max_output_tokens)
+    plain = TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(result))
+    condensed = LlmPrompts::CitationMarkers.strip_all(plain).strip
+    condensed.presence
+  rescue => e
+    Rails.logger.error "[LlmService] condense_previous_notes failed: #{e.message}"
+    nil
   end
 
   # 회의 요약(notes_markdown)에서 도메인 특화 용어를 추출 — "요약에서 용어 추출" 동기 액션용.
@@ -278,6 +304,12 @@ class LlmService
   # 전문용어 표기 우선순위 가드와 함께 주입한다. agenda_reference_block과 동일 패턴.
   def domain_reference_block(domain_reference)
     "도메인 용어집(전문용어 참고 — 용어 표기는 아래를 우선 사용):\n#{domain_reference}"
+  end
+
+  # 연결 회의 상단 고정 요약 블록: current_notes 에는 포함하지 않고 참고용 컨텍스트로만 주입.
+  # 코드 레벨로 이미 보호되는 영역이라 LLM 에는 "수정·재출력 금지"만 명시(문맥 파악용).
+  def pinned_context_block(pinned_context)
+    "이전 회의 요약(참고용 — 수정·재출력 금지):\n#{pinned_context}"
   end
 
   # 압축율(verbosity) 분량 지시를 system 프롬프트 뒤에 append.
