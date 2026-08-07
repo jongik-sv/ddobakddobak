@@ -921,4 +921,175 @@ describe('SendToDflowDialog', () => {
       expect(onChanged).not.toHaveBeenCalled()
     })
   })
+
+  // 특성화 테스트(characterization) — MeetingLinkSection 추출 전 현행 동작을 고정한다.
+  // WP-F5 §2: 무테스트 영역이라 추출 전에 먼저 그린으로 만든다.
+  describe('회의 연결(선택)', () => {
+    const metaWithProject = {
+      teams: ['MES', 'MDM'],
+      projects: [{ id: 'proj-1', name: '테스트 프로젝트' }],
+      limits: { max_body_chars: 100000, max_request_bytes: 0, max_attachments: 0, max_attachment_bytes: 0 },
+    }
+    const projectMeetingItems = [
+      { id: 'meet-1', title: '킥오프 회의', date: '2026-07-15', category: 'kickoff', recurrence: 'none' },
+    ]
+
+    function mockMetaWithMeetings() {
+      vi.mocked(getDflowMeta).mockImplementation(async (projectId?: string) =>
+        projectId ? { ...metaWithProject, meetings: projectMeetingItems } : metaWithProject
+      )
+    }
+
+    it("status에 dflow_meeting_id가 있으면 meetingMode 초기값이 'keep'이라 연결 스냅샷(프로젝트/회의명 + 변경·연결 해제)을 보여준다", async () => {
+      vi.mocked(getDflowStatus).mockResolvedValue({
+        public_uid: 'abc-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+        dflow_meeting_id: 'meet-1', dflow_meeting_title: '킥오프 회의', dflow_project_name: '테스트 프로젝트',
+      })
+      mockMetaWithMeetings()
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+
+      expect(await screen.findByText('테스트 프로젝트 / 킥오프 회의')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '변경' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '연결 해제' })).toBeInTheDocument()
+      expect(screen.queryByLabelText("D'Flow 프로젝트")).not.toBeInTheDocument()
+    })
+
+    it("status에 dflow_meeting_id가 없으면 meetingMode 초기값이 'none'이라 프로젝트 select를 보여준다", async () => {
+      mockMetaWithMeetings()
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+
+      expect(await screen.findByLabelText("D'Flow 프로젝트")).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '변경' })).not.toBeInTheDocument()
+    })
+
+    it('프로젝트를 선택하면 getDflowMeta(projectId)로 회의 목록을 불러와 회의 select에 보여준다', async () => {
+      mockMetaWithMeetings()
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+
+      const projectSelect = await screen.findByLabelText("D'Flow 프로젝트")
+      await userEvent.selectOptions(projectSelect, 'proj-1')
+
+      await waitFor(() => {
+        expect(getDflowMeta).toHaveBeenCalledWith('proj-1')
+      })
+      const meetingSelect = await screen.findByLabelText("D'Flow 회의")
+      expect(screen.getByText(/킥오프 회의/)).toBeInTheDocument()
+      expect(screen.getByText('➕ 신규 회의 등록')).toBeInTheDocument()
+      expect(meetingSelect).toBeInTheDocument()
+    })
+
+    it('회의를 선택해 전송하면 meeting: { mode: "link", meeting_id, display } 이 함께 전송된다', async () => {
+      mockMetaWithMeetings()
+      vi.mocked(uploadToDflow).mockResolvedValue({
+        public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+      })
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+
+      const projectSelect = await screen.findByLabelText("D'Flow 프로젝트")
+      await userEvent.selectOptions(projectSelect, 'proj-1')
+      const meetingSelect = await screen.findByLabelText("D'Flow 회의")
+      await userEvent.selectOptions(meetingSelect, 'meet-1')
+
+      await userEvent.click(screen.getByRole('button', { name: '전송' }))
+
+      await waitFor(() => {
+        expect(uploadToDflow).toHaveBeenCalledWith(1, expect.objectContaining({
+          meeting: {
+            mode: 'link',
+            meeting_id: 'meet-1',
+            display: { meeting_title: '킥오프 회의', project_name: '테스트 프로젝트' },
+          },
+        }))
+      })
+    })
+
+    it('[변경] 클릭 시 keep 스냅샷에서 프로젝트/회의 재선택 UI로 전환한다', async () => {
+      vi.mocked(getDflowStatus).mockResolvedValue({
+        public_uid: 'abc-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+        dflow_meeting_id: 'meet-1', dflow_meeting_title: '킥오프 회의', dflow_project_name: '테스트 프로젝트',
+      })
+      mockMetaWithMeetings()
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+      await screen.findByText('테스트 프로젝트 / 킥오프 회의')
+
+      await userEvent.click(screen.getByRole('button', { name: '변경' }))
+
+      expect(await screen.findByLabelText("D'Flow 프로젝트")).toBeInTheDocument()
+      expect(screen.queryByText('테스트 프로젝트 / 킥오프 회의')).not.toBeInTheDocument()
+    })
+
+    it('[연결 해제] 클릭 시 해제 예정 안내를 보여주고, [취소] 클릭 시 원래 연결 스냅샷으로 되돌아간다', async () => {
+      vi.mocked(getDflowStatus).mockResolvedValue({
+        public_uid: 'abc-uid', dflow_synced_at: '2026-07-01T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+        dflow_meeting_id: 'meet-1', dflow_meeting_title: '킥오프 회의', dflow_project_name: '테스트 프로젝트',
+      })
+      mockMetaWithMeetings()
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+      await screen.findByText('테스트 프로젝트 / 킥오프 회의')
+
+      await userEvent.click(screen.getByRole('button', { name: '연결 해제' }))
+      expect(await screen.findByText(/연결 해제 예정/)).toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: '취소' }))
+      expect(await screen.findByText('테스트 프로젝트 / 킥오프 회의')).toBeInTheDocument()
+    })
+
+    it("'➕ 신규 회의 등록' 선택 시 제목·날짜·구분 입력 폼을 보여주고, 전송하면 meeting: { mode: 'create', ... } 이 전송된다", async () => {
+      mockMetaWithMeetings()
+      vi.mocked(uploadToDflow).mockResolvedValue({
+        public_uid: 'uid-1', dflow_synced_at: '2026-07-20T00:00:00Z', dflow_url: 'https://x', needs_resync: false,
+      })
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+
+      const projectSelect = await screen.findByLabelText("D'Flow 프로젝트")
+      await userEvent.selectOptions(projectSelect, 'proj-1')
+      const meetingSelect = await screen.findByLabelText("D'Flow 회의")
+      await userEvent.selectOptions(meetingSelect, '__new__')
+
+      expect(await screen.findByLabelText('제목')).toHaveValue('물류공정_260716')
+      expect(screen.getByLabelText('날짜')).toHaveValue('2026-07-16')
+
+      await userEvent.click(screen.getByRole('button', { name: '전송' }))
+
+      await waitFor(() => {
+        expect(uploadToDflow).toHaveBeenCalledWith(1, expect.objectContaining({
+          meeting: {
+            mode: 'create',
+            project_id: 'proj-1',
+            title: '물류공정_260716',
+            date: '2026-07-16',
+            category: 'general',
+            display: { meeting_title: '물류공정_260716', project_name: '테스트 프로젝트' },
+          },
+        }))
+      })
+    })
+
+    it('신규 회의 등록 모드에서 제목을 비우면 전송 버튼이 비활성화되고, 다시 채우면 활성화된다(추출 시 반응성 회귀 방지)', async () => {
+      mockMetaWithMeetings()
+      render(<SendToDflowDialog meeting={baseMeeting} onClose={vi.fn()} />)
+      await screen.findByText('MES')
+
+      const projectSelect = await screen.findByLabelText("D'Flow 프로젝트")
+      await userEvent.selectOptions(projectSelect, 'proj-1')
+      const meetingSelect = await screen.findByLabelText("D'Flow 회의")
+      await userEvent.selectOptions(meetingSelect, '__new__')
+
+      const titleInput = await screen.findByLabelText('제목')
+      await userEvent.clear(titleInput)
+
+      expect(screen.getByRole('button', { name: '전송' })).toBeDisabled()
+
+      await userEvent.type(titleInput, '새 회의 제목')
+
+      expect(screen.getByRole('button', { name: '전송' })).not.toBeDisabled()
+    })
+  })
 })
