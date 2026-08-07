@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react'
-import { Pencil, ArrowLeft, StickyNote, Paperclip, Bookmark, Search } from 'lucide-react'
+import { Pencil, ArrowLeft, PanelRight, Paperclip, Bookmark, Search } from 'lucide-react'
 import { Tooltip } from '../ui/Tooltip'
 
 interface MeetingDetailTopBarProps {
@@ -87,12 +87,12 @@ export function MeetingDetailTopBar({
       {/* 메모·북마크 토글은 데스크톱 패널 표시 전용 — 모바일은 탭으로 접근하므로 숨김 */}
       {isDesktop && (
         <>
-          <Tooltip text={memoVisible ? '메모 숨기기' : '메모 보기'}>
+          <Tooltip text={memoVisible ? '패널 접기' : '패널 펼치기'}>
             <button
               onClick={onToggleMemo}
               className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
             >
-              <StickyNote className="w-4 h-4" />
+              <PanelRight className="w-4 h-4" />
             </button>
           </Tooltip>
           <Tooltip text={bookmarksVisible ? '북마크 숨기기' : '북마크 보기'}>
