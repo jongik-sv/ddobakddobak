@@ -588,24 +588,11 @@ module Api
                                  .reject { |c| c[:from].blank? }
         return render json: { error: "No valid corrections provided" }, status: :unprocessable_entity if corrections.empty?
 
-        before_active_notes = @meeting.current_notes_markdown.to_s
-
         entries = corrections.map { |c| { from: c[:from], to: c[:to], match_type: "literal" } }
-        corrected_count = MeetingGlossaryApplier.new(@meeting, entries).apply_all!
-        @meeting.reconcile_embeddings!
+        corrected_notes, corrected_count = apply_glossary_entries!(entries)
 
         # D2=A: 적용한 교정을 회의 사전에 자동 영속(upsert). best-effort.
         persist_corrections_to_meeting_glossary(corrections)
-
-        corrected_notes = @meeting.reload.current_notes_markdown.to_s
-        if corrected_notes != before_active_notes
-          @meeting.update!(last_user_edit_at: Time.current)
-          @meeting.refresh_brief_summary!(corrected_notes)
-          ActionCable.server.broadcast(@meeting.transcription_stream, {
-            type: "meeting_notes_update",
-            notes_markdown: corrected_notes
-          })
-        end
 
         render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
       end
@@ -628,19 +615,7 @@ module Api
 
       def reapply_glossary
         entries = GlossaryResolver.for(@meeting)
-        before_active_notes = @meeting.current_notes_markdown.to_s
-        corrected_count = MeetingGlossaryApplier.new(@meeting, entries).apply_all!
-        @meeting.reconcile_embeddings!
-
-        corrected_notes = @meeting.reload.current_notes_markdown.to_s
-        if corrected_notes != before_active_notes
-          @meeting.update!(last_user_edit_at: Time.current)
-          @meeting.refresh_brief_summary!(corrected_notes)
-          ActionCable.server.broadcast(@meeting.transcription_stream, {
-            type: "meeting_notes_update",
-            notes_markdown: corrected_notes
-          })
-        end
+        corrected_notes, corrected_count = apply_glossary_entries!(entries)
 
         render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
       end
@@ -655,19 +630,7 @@ module Api
         end
 
         payload = [{ from: entry.from_text, to: entry.to_text, match_type: entry.match_type }]
-        before_active_notes = @meeting.current_notes_markdown.to_s
-        corrected_count = MeetingGlossaryApplier.new(@meeting, payload).apply_all!
-        @meeting.reconcile_embeddings!
-
-        corrected_notes = @meeting.reload.current_notes_markdown.to_s
-        if corrected_notes != before_active_notes
-          @meeting.update!(last_user_edit_at: Time.current)
-          @meeting.refresh_brief_summary!(corrected_notes)
-          ActionCable.server.broadcast(@meeting.transcription_stream, {
-            type: "meeting_notes_update",
-            notes_markdown: corrected_notes
-          })
-        end
+        corrected_notes, corrected_count = apply_glossary_entries!(payload)
 
         render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
       end
@@ -1069,6 +1032,27 @@ module Api
           owner_type: entry.owner_type,
           owner_id: entry.owner_id
         }
+      end
+
+      # feedback/reapply_glossary/apply_glossary_entry 공통 후반부: 교정 적용 → 임베딩 정합
+      # → 재조회 → 실제로 변경됐을 때만 편집시각 갱신·요약 캐시 갱신·구독자 브로드캐스트.
+      # 반환값 [corrected_notes, corrected_count] 를 각 액션이 그대로 render 한다.
+      def apply_glossary_entries!(entries)
+        before_active_notes = @meeting.current_notes_markdown.to_s
+        corrected_count = MeetingGlossaryApplier.new(@meeting, entries).apply_all!
+        @meeting.reconcile_embeddings!
+
+        corrected_notes = @meeting.reload.current_notes_markdown.to_s
+        if corrected_notes != before_active_notes
+          @meeting.update!(last_user_edit_at: Time.current)
+          @meeting.refresh_brief_summary!(corrected_notes)
+          ActionCable.server.broadcast(@meeting.transcription_stream, {
+            type: "meeting_notes_update",
+            notes_markdown: corrected_notes
+          })
+        end
+
+        [corrected_notes, corrected_count]
       end
 
       def persist_corrections_to_meeting_glossary(corrections)
