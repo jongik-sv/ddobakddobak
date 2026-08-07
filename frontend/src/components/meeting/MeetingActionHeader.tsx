@@ -23,12 +23,15 @@ interface MeetingActionHeaderProps {
   onToggleLock?: () => void
   /** 잠금/해제 요청 진행 중이면 버튼 비활성. */
   isTogglingLock?: boolean
+  /** 제목 인라인 편집 시작/종료 시 호출 — 상위(MeetingDetailTopBar)가 편집 중 주변 아이콘을 접는 데 사용. */
+  onEditingChange?: (editing: boolean) => void
 }
 
 /**
- * 회의 상세 제목 줄: 제목 인라인 편집 + 상태/유형/태그 배지.
- * 액션 버튼은 상단 툴바(MeetingDetailTopBar)로 분리됨(MeetingActions) → 이 줄은 제목 전용 폭을
- * 확보해 모바일에서 제목이 잘리지 않는다.
+ * 회의 상세 제목 + 상태/유형/태그 배지 + 제목 인라인 편집.
+ * 자체 행(border/배경/패딩)을 갖지 않는 콘텐츠 전용 컴포넌트 — 상단 툴바(MeetingDetailTopBar)의
+ * flex-wrap 영역 안에 인라인으로 흡수되어 제목 줄이 별도 행으로 분리되지 않는다(옵션 B: 배지는
+ * 전부 상시 노출하되 폭이 부족하면 이 영역 안에서만 자연스럽게 다음 줄로 wrap).
  */
 export function MeetingActionHeader({
   meeting,
@@ -38,11 +41,17 @@ export function MeetingActionHeader({
   canEdit = true,
   onToggleLock,
   isTogglingLock = false,
+  onEditingChange,
 }: MeetingActionHeaderProps) {
-  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [isEditingTitle, setIsEditingTitleState] = useState(false)
   const [editingTitleValue, setEditingTitleValue] = useState('')
   // 잠긴 회의는 제목 인라인 편집도 막는다(잠금 토글 버튼은 canEdit로 계속 노출).
   const titleEditable = canEdit && !meeting.locked
+
+  function setIsEditingTitle(editing: boolean) {
+    setIsEditingTitleState(editing)
+    onEditingChange?.(editing)
+  }
 
   function handleTitleClick() {
     setEditingTitleValue(meeting.title)
@@ -65,8 +74,8 @@ export function MeetingActionHeader({
   }
 
   return (
-    <div className={`flex items-center border-b bg-card shrink-0 ${isDesktop ? 'px-6 py-3' : 'px-3 py-2'}`}>
-      <div className={`flex items-center flex-1 min-w-0 ${isDesktop ? 'gap-3' : 'gap-2'}`}>
+    <>
+      <div className={`flex items-center flex-1 min-w-0 flex-wrap gap-y-1 ${isDesktop ? 'gap-x-3' : 'gap-x-2'}`}>
         {isEditingTitle && titleEditable ? (
           <input
             type="text"
@@ -74,19 +83,19 @@ export function MeetingActionHeader({
             onChange={(e) => setEditingTitleValue(e.target.value)}
             onBlur={handleTitleSubmit}
             onKeyDown={handleTitleKeyDown}
-            className="text-lg font-semibold text-foreground border-b-2 border-blue-500 outline-none bg-transparent flex-1 min-w-0"
+            className="text-lg font-semibold text-foreground border-b-2 border-blue-500 outline-none bg-transparent flex-1 min-w-[8ch]"
             autoFocus
           />
         ) : titleEditable ? (
           <h1
-            className="text-lg font-semibold text-foreground truncate cursor-pointer hover:text-blue-700"
+            className="min-w-0 max-w-[60vw] lg:max-w-[40vw] text-lg font-semibold text-foreground truncate cursor-pointer hover:text-blue-700"
             onClick={handleTitleClick}
             title="클릭하여 제목 편집"
           >
             {meeting.title ?? '회의'}
           </h1>
         ) : (
-          <h1 className="text-lg font-semibold text-foreground truncate">
+          <h1 className="min-w-0 max-w-[60vw] lg:max-w-[40vw] text-lg font-semibold text-foreground truncate">
             {meeting.title ?? '회의'}
           </h1>
         )}
@@ -156,6 +165,6 @@ export function MeetingActionHeader({
           </button>
         </Tooltip>
       )}
-    </div>
+    </>
   )
 }

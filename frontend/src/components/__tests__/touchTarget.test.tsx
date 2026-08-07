@@ -134,7 +134,9 @@ const mockAudio: AudioPlayerResult = {
 }
 
 describe('AudioPlayer 터치 타겟', () => {
-  it('재생 버튼이 w-11 h-11 (44px) 크기를 갖는다', () => {
+  // 헤더 컴팩트화 결정(2026-08)은 데스크톱 전용이다. 모바일(바텀시트 등)은 44px 터치
+  // 타깃을 그대로 유지하고, lg: 브레이크포인트에서만 32px로 컴팩트화(ExportButton과 동일 정책).
+  it('재생 버튼이 모바일 기준 w-11 h-11(44px), lg:에서 w-8 h-8(32px)로 축소된다', () => {
     const { container } = render(
       <AudioPlayer audio={mockAudio} onTimeUpdate={vi.fn()} seekMs={null} />
     )
@@ -142,14 +144,18 @@ describe('AudioPlayer 터치 타겟', () => {
     const playButton = container.querySelector('button')
     expect(playButton?.className).toContain('w-11')
     expect(playButton?.className).toContain('h-11')
+    expect(playButton?.className).toContain('lg:w-8')
+    expect(playButton?.className).toContain('lg:h-8')
   })
 
-  it('배속 버튼에 min-h-[44px] 클래스가 적용되어 있다', () => {
+  it('배속 버튼이 모바일 기준 min-h-[44px]를 유지하고, lg:에서만 재생 버튼과 동일한 높이(32px)로 정렬된다', () => {
     render(
       <AudioPlayer audio={mockAudio} onTimeUpdate={vi.fn()} seekMs={null} />
     )
     const speedButton = screen.getByText('1x')
     expect(speedButton.className).toContain('min-h-[44px]')
+    expect(speedButton.className).toContain('lg:py-2')
+    expect(speedButton.className).toContain('lg:min-h-0')
   })
 
   it('프로그레스 바 thumb에 hover-hide 클래스가 적용되어 있다', () => {

@@ -269,6 +269,7 @@ import * as meetingsApi from '../api/meetings'
 import type { Meeting } from '../api/meetings'
 import { useProjectStore } from '../stores/projectStore'
 import { useTranscriptStore } from '../stores/transcriptStore'
+import { useUiStore } from '../stores/uiStore'
 
 function renderPage(meetingId = '1') {
   return render(
@@ -345,6 +346,69 @@ describe('MeetingPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('speaker-panel')).toBeInTheDocument()
     })
+  })
+
+  // 우측(메모·AI챗) 패널 토글 시 트랜스크립트↔AI회의록 경계가 움직이던 버그의 회귀 방지.
+  // 패널을 unmount하는 대신 collapse(0%)/expand로만 크기를 바꿔, 해제된 폭을
+  // 항상 AI 회의록(가운데) 패널이 흡수하고 트랜스크립트(좌측) 폭은 고정되어야 한다.
+  it('우측 패널을 숨겨도 트랜스크립트 폭은 그대로고 AI 회의록 폭만 늘어난다', async () => {
+    useUiStore.setState({ memoVisible: true })
+    const { container } = renderPage()
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-summary')).toBeInTheDocument()
+    })
+
+    const getFlex = (id: string) =>
+      (container.querySelector(`#${id}`) as HTMLElement | null)?.style.flex
+
+    await waitFor(() => {
+      expect(getFlex('transcript')).toBeTruthy()
+      expect(getFlex('right-tabs')).toBeTruthy()
+    })
+    const transcriptBefore = getFlex('transcript')
+    const summaryBefore = getFlex('summary')
+
+    act(() => {
+      useUiStore.getState().toggleMemo()
+    })
+
+    // 우측 패널이 0%로 접힐 때까지 대기(collapse는 이펙트에서 비동기적으로 트리거됨)
+    await waitFor(() => {
+      expect(getFlex('right-tabs')).toMatch(/^0(\s|$)/)
+    })
+
+    expect(getFlex('transcript')).toBe(transcriptBefore)
+    expect(getFlex('summary')).not.toBe(summaryBefore)
+
+    useUiStore.setState({ memoVisible: true }) // 다른 테스트로 상태 오염 방지
+  })
+
+  // 우측 패널 토글 버튼을 탑바에서 패널 근처로 이동(사이드바 PanelLeftClose/PanelLeft와 대칭).
+  it('탑바에는 더 이상 메모 토글 버튼이 없고, 패널 접기/펼치기는 패널 자체 근처에서 동작한다', async () => {
+    useUiStore.setState({ memoVisible: true })
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-summary')).toBeInTheDocument()
+    })
+
+    // 탑바(StickyNote) 메모 토글 버튼은 완전히 제거되었다.
+    expect(screen.queryByRole('button', { name: '메모 보기' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '메모 숨기기' })).not.toBeInTheDocument()
+
+    // 열림 상태: 우측 패널(RightTabsPanel) 탭 헤더 안의 "패널 접기" 버튼으로 접는다.
+    const collapseButton = screen.getByRole('button', { name: '패널 접기' })
+    fireEvent.click(collapseButton)
+
+    // 접힘 상태: 화면 우측 엣지에 "패널 펼치기" 버튼이 나타나고, 접기 버튼은 사라진다(콘텐츠 언마운트).
+    const expandButton = await screen.findByRole('button', { name: '패널 펼치기' })
+    expect(screen.queryByRole('button', { name: '패널 접기' })).not.toBeInTheDocument()
+
+    // 다시 펼치면 탭 헤더와 접기 버튼이 복귀한다.
+    fireEvent.click(expandButton)
+    await screen.findByRole('button', { name: '패널 접기' })
+    expect(screen.queryByRole('button', { name: '패널 펼치기' })).not.toBeInTheDocument()
+
+    useUiStore.setState({ memoVisible: true }) // 다른 테스트로 상태 오염 방지
   })
 
   // idea 44: editable=false(비소유자)면 잠금 여부와 무관하게 전사·화자·AI요약이 readOnly여야 한다.

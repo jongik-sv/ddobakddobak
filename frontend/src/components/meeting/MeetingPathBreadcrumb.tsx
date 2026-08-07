@@ -4,10 +4,12 @@ interface Props {
   projectName?: string | null
   folderPath?: { id: number; name: string }[]
   className?: string
+  /** 컴팩트 표시: 마지막 세그먼트만 노출(전체 경로는 title 툴팁). 탑바 인라인 배치용. */
+  compact?: boolean
 }
 
 /** 회의 상세·라이브 상단에 '프로젝트 › 폴더 › 하위폴더' 위치 경로를 표시(비대화형). */
-export function MeetingPathBreadcrumb({ projectName, folderPath, className = '' }: Props) {
+export function MeetingPathBreadcrumb({ projectName, folderPath, className = '', compact = false }: Props) {
   const folders = folderPath ?? []
   const hasProject = !!projectName
   if (!hasProject && folders.length === 0) return null
@@ -16,6 +18,21 @@ export function MeetingPathBreadcrumb({ projectName, folderPath, className = '' 
   if (hasProject) segments.push(projectName as string)
   if (folders.length > 0) folders.forEach((f) => segments.push(f.name))
   else if (hasProject) segments.push('미분류')
+
+  if (compact) {
+    const lastSegment = segments[segments.length - 1]
+    const fullPath = segments.join(' › ')
+    return (
+      <nav
+        aria-label="회의 위치"
+        title={fullPath}
+        className={`flex items-center gap-1 text-xs text-muted-foreground min-w-0 ${className}`}
+      >
+        <FolderClosed className="w-3 h-3 shrink-0" />
+        <span className="truncate">{lastSegment}</span>
+      </nav>
+    )
+  }
 
   return (
     <nav aria-label="회의 위치" className={`flex items-center gap-1 text-xs text-muted-foreground min-w-0 ${className}`}>

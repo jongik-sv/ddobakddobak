@@ -50,11 +50,11 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
         <span className="text-sm text-muted-foreground">오디오 불러오는 중...</span>
       ) : (
         <>
-          {/* 재생/정지 버튼 */}
+          {/* 재생/정지 버튼 — 모바일은 44px 터치 타깃 유지, 데스크톱(lg:)만 32px로 컴팩트화 */}
           <button
             onClick={isPlaying ? pause : play}
             disabled={!srcReady}
-            className="shrink-0 w-11 h-11 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="shrink-0 w-11 h-11 lg:w-8 lg:h-8 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
           </button>
@@ -85,19 +85,19 @@ export function AudioPlayer({ audio, onTimeUpdate, seekMs, autoPlayOnSeek = fals
             {formatTime(durationMs)}
           </span>
 
-          {/* 배속 */}
+          {/* 배속 — 모바일은 44px 터치 타깃(min-h-[44px]) 유지, 데스크톱(lg:)은 재생 버튼(32px)과 높이를 맞춤 */}
           <button
             onClick={cycleSpeed}
-            className="shrink-0 px-3 py-1.5 min-h-[44px] rounded text-xs font-medium bg-muted text-muted-foreground hover:bg-accent tabular-nums flex items-center"
+            className="shrink-0 px-3 py-1.5 min-h-[44px] lg:py-2 lg:min-h-0 rounded text-xs font-medium bg-muted text-muted-foreground hover:bg-accent tabular-nums flex items-center"
           >
             {playbackRate}x
           </button>
 
-          {/* 다운로드 */}
+          {/* 다운로드 — 모바일 p-2.5(36px)는 원래 값 그대로, 데스크톱(lg:)만 p-2로 32px 정렬 */}
           <button
             onClick={() => download()}
             disabled={!hasAudio}
-            className="shrink-0 p-2.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="shrink-0 p-2.5 lg:p-2 rounded text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             title="다운로드"
           >
             <Download className="w-4 h-4" />

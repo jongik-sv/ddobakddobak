@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
-import { Settings, Monitor, Timer, Pencil, RotateCcw } from 'lucide-react'
+import { Settings, Monitor, Timer, Pencil, RotateCcw, PanelRightOpen } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
+import { Tooltip } from '../components/ui/Tooltip'
 import { useUiStore } from '../stores/uiStore'
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, usePanelRef } from 'react-resizable-panels'
 import { useMemoEditor } from '../hooks/useMemoEditor'
 import { useToastStore } from '../stores/toastStore'
 import { useRecordingStore } from '../stores/recordingStore'
@@ -280,6 +281,18 @@ export default function MeetingLivePage() {
   const attachmentsVisible = useUiStore((s) => s.attachmentsVisible)
   const toggleAttachments = useUiStore((s) => s.toggleAttachments)
 
+  // 우측(메모·오타수정·AI챗) 패널은 항상 마운트해두고 collapse/expand로만 크기를 바꾼다.
+  // 패널을 통째로 언마운트하면 react-resizable-panels가 남은 패널들의 flex 비율을
+  // 재정규화(renormalize)해 기록↔AI회의록 경계가 같이 움직인다(MeetingPage와 동일 버그) —
+  // 그래서 패널 개수를 고정하고 우측 패널만 0으로 접어 AI회의록이 그 폭을 흡수하게 한다.
+  const rightPanelRef = usePanelRef()
+  useEffect(() => {
+    const panel = rightPanelRef.current
+    if (!panel) return
+    if (memoVisible) panel.expand()
+    else panel.collapse()
+  }, [memoVisible, rightPanelRef])
+
   // 접근 권한 확인
   const { isLoading: accessLoading, error: accessError } = useMeetingAccess(meetingId)
 
@@ -326,6 +339,8 @@ export default function MeetingLivePage() {
       {/* 헤더 컨트롤 바 (데스크톱 전용 — 모바일은 MobileRecordControls 사용) */}
       <DesktopRecordControls
         title={meeting?.title || '회의실'}
+        projectName={meeting?.project_name}
+        folderPath={meeting?.folder_path}
         isActive={isActive}
         isPaused={isPaused}
         elapsedSeconds={elapsedSeconds}
@@ -335,8 +350,6 @@ export default function MeetingLivePage() {
         error={error}
         attachmentsVisible={attachmentsVisible}
         onToggleAttachments={toggleAttachments}
-        memoVisible={memoVisible}
-        onToggleMemo={toggleMemo}
         canManageTemplates={canManageTemplates}
         systemAudioEnabled={systemAudioEnabled}
         onToggleSystemAudio={handleToggleSystemAudio}
@@ -356,22 +369,17 @@ export default function MeetingLivePage() {
         canManualSummary={canManualSummary}
       />
 
-      {meeting && (
-        <MeetingPathBreadcrumb
-          projectName={meeting.project_name}
-          folderPath={meeting.folder_path}
-          className="hidden lg:flex px-4 py-1 border-b border-border bg-card/50"
-        />
-      )}
+      {/* 데스크톱 breadcrumb 전용 행은 DesktopRecordControls 안으로 통합(컴팩트). 모바일은 아래 lg:hidden 행 유지. */}
 
       {/* 첨부 파일/링크 섹션 */}
       {attachmentsVisible && <AttachmentSection meetingId={meetingId} />}
 
       {/* 데스크톱: 3영역 리사이즈 레이아웃 / 모바일: 탭 레이아웃 */}
       {isDesktop ? (
-        <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden">
+        <div className="flex-1 flex min-h-0 overflow-hidden">
+        <PanelGroup orientation="horizontal" className="flex-1 min-w-0">
           {/* 기록 + 화자 영역 — 기본 22% */}
-          <Panel defaultSize={22} minSize={15}>
+          <Panel id="record" defaultSize={22} minSize={15}>
             <section className="h-full border-r overflow-hidden flex flex-col">
               <div className="flex-1 overflow-hidden">
                 <RecordTabPanel
@@ -388,8 +396,8 @@ export default function MeetingLivePage() {
 
           <PanelResizeHandle className="w-1 bg-border hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-          {/* AI 회의록 영역 — 기본 48% */}
-          <Panel defaultSize={48} minSize={20}>
+          {/* AI 회의록 영역 — 기본 48%. 우측 패널 접힘/펼침으로 해제·회수되는 폭을 흡수하는 쪽 */}
+          <Panel id="summary" defaultSize={48} minSize={20}>
             <section
               data-testid="ai-minutes"
               className="h-full border-r overflow-hidden flex flex-col"
@@ -404,47 +412,69 @@ export default function MeetingLivePage() {
             </section>
           </Panel>
 
-          {memoVisible && (
-            <>
-              <PanelResizeHandle className="w-1 bg-border hover:bg-blue-400 transition-colors cursor-col-resize" />
+          {/* 우측 리사이즈 핸들 — memoVisible과 무관하게 항상 마운트(패널 개수 고정).
+              숨김 상태에서는 드래그로 열 수 없게 disabled 처리하고 시각적으로도 숨긴다(레이아웃 계산엔 영향 없음). */}
+          <PanelResizeHandle
+            disabled={!memoVisible}
+            className={`w-1 bg-border hover:bg-blue-400 transition-colors cursor-col-resize ${memoVisible ? '' : 'invisible pointer-events-none'}`}
+          />
 
-              {/* 메모 + 오타수정 + AI 챗 탭 — 나머지 30% */}
-              <Panel defaultSize={30} minSize={15}>
-                <RightTabsPanel
-                  meetingId={meetingId}
-                  memo={
-                    <section
-                      data-testid="memo-editor"
-                      className="h-full flex flex-col overflow-hidden"
-                    >
-                      <MemoHeader onSave={handleSaveMemo} isSaving={isSavingMemo} />
-                      <div className="flex-1 overflow-auto">
-                        <MeetingEditor editorRef={memoEditorRef} editable={canEdit} />
-                      </div>
-                    </section>
-                  }
-                  corrections={
-                    // idea 44: canEdit=false(비소유자·비협업자)면 오타수정 탭 자체를 숨긴다 —
-                    // 서버 authorize_meeting_control!이 최종 방어선이지만, UI도 편집 불가능한
-                    // 사람에게는 열지 않는다(잠금과 무관하게 readOnly 배선).
-                    canEdit ? (
-                      <div className="h-full flex flex-col overflow-hidden">
-                        <CorrectionsSection
-                          corrections={corrections}
-                          isApplyingCorrections={isApplyingCorrections}
-                          onUpdate={updateCorrection}
-                          onAdd={addCorrectionRow}
-                          onRemove={removeCorrectionRow}
-                          onApply={handleApplyCorrections}
-                        />
-                      </div>
-                    ) : undefined
-                  }
-                />
-              </Panel>
-            </>
-          )}
+          {/* 메모 + 오타수정 + AI 챗 탭 — 나머지 30%. 토글은 이 패널만 collapse(0)/expand하며,
+              해제된 폭은 항상 AI 회의록(가운데) 패널이 흡수한다 — 기록 패널 폭 고정. */}
+          <Panel id="right-tabs" defaultSize={30} minSize={15} collapsible collapsedSize={0} panelRef={rightPanelRef}>
+            {memoVisible && (
+              <RightTabsPanel
+                meetingId={meetingId}
+                memo={
+                  <section
+                    data-testid="memo-editor"
+                    className="h-full flex flex-col overflow-hidden"
+                  >
+                    <MemoHeader onSave={handleSaveMemo} isSaving={isSavingMemo} />
+                    <div className="flex-1 overflow-auto">
+                      <MeetingEditor editorRef={memoEditorRef} editable={canEdit} />
+                    </div>
+                  </section>
+                }
+                corrections={
+                  // idea 44: canEdit=false(비소유자·비협업자)면 오타수정 탭 자체를 숨긴다 —
+                  // 서버 authorize_meeting_control!이 최종 방어선이지만, UI도 편집 불가능한
+                  // 사람에게는 열지 않는다(잠금과 무관하게 readOnly 배선).
+                  canEdit ? (
+                    <div className="h-full flex flex-col overflow-hidden">
+                      <CorrectionsSection
+                        corrections={corrections}
+                        isApplyingCorrections={isApplyingCorrections}
+                        onUpdate={updateCorrection}
+                        onAdd={addCorrectionRow}
+                        onRemove={removeCorrectionRow}
+                        onApply={handleApplyCorrections}
+                      />
+                    </div>
+                  ) : undefined
+                }
+                onCollapse={toggleMemo}
+              />
+            )}
+          </Panel>
         </PanelGroup>
+        {/* 우측 패널이 접혔을 때 다시 펼칠 방법 — MeetingPage.tsx와 동일한 엣지 어포던스 패턴
+            (w-10 슬림 스트립 + 상단 고정 버튼). Panel 안에 넣으면 PanelGroup의 overflow:hidden에
+            잘려 안 보이므로 PanelGroup 밖의 flex 형제로 둔다. */}
+        {!memoVisible && (
+          <div className="flex flex-col items-center w-10 border-l border-border bg-card shrink-0 pt-3">
+            <Tooltip text="패널 펼치기" position="left">
+              <button
+                onClick={toggleMemo}
+                aria-label="패널 펼치기"
+                className="p-2.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+              >
+                <PanelRightOpen className="w-4 h-4" />
+              </button>
+            </Tooltip>
+          </div>
+        )}
+        </div>
       ) : (
         <>
           <MobileRecordControls
