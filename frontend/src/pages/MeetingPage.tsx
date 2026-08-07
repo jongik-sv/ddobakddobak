@@ -337,13 +337,13 @@ export default function MeetingPage() {
     })
   }, [remoteStructureRevision, meetingId, loadFinals])
 
-  function handleSeek(ms: number) {
+  const handleSeek = useCallback((ms: number) => {
     setSeekMs(ms)
     setSeekTick((t) => t + 1)
     // 낙관적 갱신: AudioPlayer의 onTimeUpdate(실제 오디오 timeupdate 경유)를 기다리면
     // highlightedIndex/스크롤 갱신이 한 박자 늦는다 — seek 즉시 반영해 전사 하이라이트가 따라가게 한다.
     setCurrentTimeMs(ms)
-  }
+  }, [])
 
   // 전사 분할: TranscriptPanel/store는 content override만 아는 것과 달리, 이 페이지가 들고 있는
   // transcripts 배열은 구조(행 수)까지 바꿔야 한다 — updated로 기존 행을 교체하고 그 바로 뒤에
