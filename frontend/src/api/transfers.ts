@@ -1,6 +1,5 @@
 import apiClient from './client'
-import { downloadBlob } from '../lib/download'
-import { filenameFromDisposition } from './projectTransfers'
+import { downloadWithDisposition } from './projectTransfers'
 
 /**
  * 회의·폴더 export/import.
@@ -30,11 +29,7 @@ export async function exportMeeting(
     json: { include_audio: opts.includeAudio },
     timeout: false,
   })
-  const disposition = response.headers.get('content-disposition')
-  const filename =
-    filenameFromDisposition(disposition) ?? `meeting-${meetingId}.ddobak-meeting.tgz`
-  const blob = await response.blob()
-  await downloadBlob(blob, filename)
+  await downloadWithDisposition(response, `meeting-${meetingId}.ddobak-meeting.tgz`)
 }
 
 // ── 회의 import ──────────────────────────────────────────────────────────────
@@ -73,11 +68,7 @@ export async function exportFolder(
     json: { include_audio: opts.includeAudio },
     timeout: false,
   })
-  const disposition = response.headers.get('content-disposition')
-  const filename =
-    filenameFromDisposition(disposition) ?? `folder-${folderId}.ddobak-folder.tgz`
-  const blob = await response.blob()
-  await downloadBlob(blob, filename)
+  await downloadWithDisposition(response, `folder-${folderId}.ddobak-folder.tgz`)
 }
 
 // ── 폴더 import ──────────────────────────────────────────────────────────────
@@ -116,10 +107,7 @@ export async function exportFolderSummaries(folderId: number): Promise<void> {
   const response = await apiClient.post(`folders/${folderId}/export_summaries`, {
     timeout: false,
   })
-  const disposition = response.headers.get('content-disposition')
-  const filename = filenameFromDisposition(disposition) ?? `folder-${folderId}-summaries.zip`
-  const blob = await response.blob()
-  await downloadBlob(blob, filename)
+  await downloadWithDisposition(response, `folder-${folderId}-summaries.zip`)
 }
 
 /**
@@ -130,8 +118,5 @@ export async function exportProjectSummaries(projectId: number): Promise<void> {
   const response = await apiClient.post(`projects/${projectId}/export_summaries`, {
     timeout: false,
   })
-  const disposition = response.headers.get('content-disposition')
-  const filename = filenameFromDisposition(disposition) ?? `project-${projectId}-summaries.zip`
-  const blob = await response.blob()
-  await downloadBlob(blob, filename)
+  await downloadWithDisposition(response, `project-${projectId}-summaries.zip`)
 }
