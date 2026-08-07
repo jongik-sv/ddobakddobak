@@ -88,14 +88,14 @@ export function MeetingActionHeader({
           />
         ) : titleEditable ? (
           <h1
-            className="min-w-0 max-w-[60vw] lg:max-w-[40vw] text-lg font-semibold text-foreground truncate cursor-pointer hover:text-blue-700"
+            className="min-w-[12ch] max-w-[60vw] lg:max-w-[40vw] text-lg font-semibold text-foreground truncate cursor-pointer hover:text-blue-700"
             onClick={handleTitleClick}
             title="클릭하여 제목 편집"
           >
             {meeting.title ?? '회의'}
           </h1>
         ) : (
-          <h1 className="min-w-0 max-w-[60vw] lg:max-w-[40vw] text-lg font-semibold text-foreground truncate">
+          <h1 className="min-w-[12ch] max-w-[60vw] lg:max-w-[40vw] text-lg font-semibold text-foreground truncate">
             {meeting.title ?? '회의'}
           </h1>
         )}
@@ -133,7 +133,7 @@ export function MeetingActionHeader({
             className={`shrink-0 rounded-full bg-violet-50 text-violet-600 border border-violet-200 ${isDesktop ? 'px-2 py-0.5 text-xs' : 'px-1.5 py-0 text-[10px]'}`}
             title={`이전 회의 이어받음: ${meeting.previous_meeting_title}`}
           >
-            {isDesktop ? `↩ 이전 회의: ${meeting.previous_meeting_title}` : '↩ 이전'}
+            ↩ 이전
           </span>
         )}
         <DflowSyncBadge dflowSyncedAt={meeting.dflow_synced_at} dflowNeedsResync={meeting.dflow_needs_resync} isDesktop={isDesktop} />

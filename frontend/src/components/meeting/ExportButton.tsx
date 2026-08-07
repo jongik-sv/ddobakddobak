@@ -136,7 +136,7 @@ export function ExportButton({ meetingId, meetingTitle, meetingDate, meeting, on
           aria-label="내보내기"
         >
           <Download className="w-4 h-4" />
-          <span className="hidden lg:inline">내보내기</span>
+          <span className="hidden min-[1440px]:inline">내보내기</span>
         </button>
       </Tooltip>
 

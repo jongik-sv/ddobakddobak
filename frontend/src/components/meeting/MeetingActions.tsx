@@ -59,7 +59,7 @@ export function MeetingActions({
             className={ACTION_NEUTRAL}
           >
             <RefreshCw className="w-4 h-4" />
-            {isDesktop && 'STT 재생성'}
+            {isDesktop && <span className="hidden min-[1440px]:inline">STT 재생성</span>}
           </button>
         </Tooltip>
       )}
@@ -76,7 +76,7 @@ export function MeetingActions({
             className={ACTION_NEUTRAL}
           >
             <Users className="w-4 h-4" />
-            {isDesktop && '화자분리만 재실행'}
+            {isDesktop && <span className="hidden min-[1440px]:inline">화자분리만 재실행</span>}
           </button>
         </Tooltip>
       )}
@@ -96,12 +96,12 @@ export function MeetingActions({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
-                    {isDesktop && '재생성 중...'}
+                    {isDesktop && <span className="hidden min-[1440px]:inline">재생성 중...</span>}
                   </>
                 ) : (
                   <>
                     <Bot className="w-4 h-4" />
-                    {isDesktop && '회의록 재생성'}
+                    {isDesktop && <span className="hidden min-[1440px]:inline">회의록 재생성</span>}
                   </>
                 )}
               </button>
@@ -115,7 +115,7 @@ export function MeetingActions({
               className={ACTION_AMBER}
             >
               <Play className="w-4 h-4" />
-              {isDesktop && '회의 재개'}
+              {isDesktop && <span className="hidden min-[1440px]:inline">회의 재개</span>}
             </button>
           </Tooltip>
         </>
@@ -129,7 +129,7 @@ export function MeetingActions({
             className={ACTION_BLUE}
           >
             <Play className="w-4 h-4" />
-            {isDesktop && '회의 진행'}
+            {isDesktop && <span className="hidden min-[1440px]:inline">회의 진행</span>}
           </button>
         </Tooltip>
       )}
@@ -149,7 +149,7 @@ export function MeetingActions({
             className={ACTION_DANGER}
           >
             <Trash2 className="w-4 h-4" />
-            {isDesktop && '삭제'}
+            {isDesktop && <span className="hidden min-[1440px]:inline">삭제</span>}
           </button>
         </Tooltip>
       )}
