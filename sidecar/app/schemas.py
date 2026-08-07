@@ -164,9 +164,107 @@ class TestLlmRequest(BaseModel):
     model: str
 
 
+# SpeakerDbPayload 상한 — 근거는 실측이다. sidecar/speaker_dbs/*.json 26개 기준
+# 최대 12라벨 / 화자당 임베딩 1개 / 임베딩 1024바이트(256-dim float32) /
+# 최대 파일 5.7KB이며, 유일한 생산자인 batch_processor는 화자당 [emb] 또는 []만
+# 쓴다. 아래 값은 실측 대비 2~3자릿수 여유를 둔 sanity guard다 — 이 sidecar는
+# localhost 전용(Rails만 호출)이라 DoS 경계가 아니라, 손상·폭주 payload가
+# 무제한 디코드 비용을 유발하는 것을 막는 것이 목적이다.
+MAX_SPEAKERS = 1000
+MAX_EMBEDDINGS_PER_SPEAKER = 1000
+MAX_EMBEDDING_BYTES = 65536  # 16384-dim float32까지 허용 (실측 256-dim의 64배)
+# names 쪽 상한 — speakers 쪽과 대칭을 맞춘다. 이전에는 names에 개수·길이
+# 제한이 전혀 없어서, 화자 0명짜리 payload로도 무제한 크기의 names를 디스크에
+# 쓸 수 있었다. 실측: 파일당 names 최대 8개(라벨은 최대 12개), 이름 최대 22자.
+MAX_NAMES = MAX_SPEAKERS
+MAX_NAME_CHARS = 256  # 실측 최대 22자의 10배 이상
+
+
 class RenameSpeakerRequest(BaseModel):
     """PUT /speakers/{speaker_id} 요청 스키마."""
-    name: str
+    # 상한은 SpeakerDbPayload.names와 반드시 같아야 한다 — 여기서만 긴 이름을
+    # 허용하면 rename으로 만든 DB를 export한 뒤 다시 import할 수 없게 된다.
+    name: str = Field(..., max_length=MAX_NAME_CHARS)
+
+
+_EMBEDDING_ITEMSIZE = 4  # np.float32 itemsize
+# 디코드 전 O(1) 차단용 base64 문자열 길이 상한. MAX_EMBEDDING_BYTES 이하의
+# 정상 문자열은 절대 걸리지 않도록 보수적으로(넉넉하게) 잡는다.
+_MAX_EMBEDDING_B64_CHARS = (MAX_EMBEDDING_BYTES + 2) * 4 // 3 + 4
+
+
+class SpeakerDbPayload(BaseModel):
+    """GET/PUT /speakers/db 요청·응답 스키마 — SpeakerDB 전체 상태(임베딩 포함).
+
+    export/import 왕복을 위해 SpeakerDB의 온디스크 표현을 그대로 반영한다:
+    speakers는 {화자 라벨: [base64 인코딩된 float32 임베딩, ...]}.
+    """
+    next_num: int
+    speakers: dict[str, list[str]]
+    names: dict[str, str]
+
+    @field_validator("speakers")
+    @classmethod
+    def validate_embeddings_base64(cls, v: dict[str, list[str]]) -> dict[str, list[str]]:
+        if len(v) > MAX_SPEAKERS:
+            raise ValueError(f"화자 수가 상한({MAX_SPEAKERS})을 초과했습니다: {len(v)}")
+        for label, emb_list in v.items():
+            if len(emb_list) > MAX_EMBEDDINGS_PER_SPEAKER:
+                raise ValueError(
+                    f"화자 '{label}'의 임베딩 개수가 상한({MAX_EMBEDDINGS_PER_SPEAKER})을 "
+                    f"초과했습니다: {len(emb_list)}"
+                )
+            for b64 in emb_list:
+                # 디코드 전 O(1) 차단 — 거대한 문자열을 디코드조차 하지 않는다
+                if len(b64) > _MAX_EMBEDDING_B64_CHARS:
+                    raise ValueError(
+                        f"화자 '{label}'의 임베딩 크기가 "
+                        f"상한({MAX_EMBEDDING_BYTES}바이트)을 초과했습니다"
+                    )
+                try:
+                    raw = binascii.a2b_base64(b64, strict_mode=True)
+                except binascii.Error as e:
+                    raise ValueError(f"화자 '{label}'의 임베딩이 유효한 base64가 아닙니다: {e}") from e
+                if len(raw) > MAX_EMBEDDING_BYTES:
+                    raise ValueError(
+                        f"화자 '{label}'의 임베딩 크기가 상한({MAX_EMBEDDING_BYTES}바이트)을 "
+                        f"초과했습니다: {len(raw)}바이트"
+                    )
+                # 빈 임베딩은 아래 4의 배수 검사(0 % 4 == 0)로는 절대 걸리지 않으므로
+                # 별도 분기가 필요하다. 로스터 전멸 벡터는 아니지만(np.frombuffer는
+                # 빈 배열을 주고 is_valid_embedding이 걸러낸다) 디스크에 남으면
+                # 왕복 무결성이 깨진다 — PUT한 [""]가 다음 GET에선 []이 된다.
+                # 문자열이 아니라 '디코드 결과 길이'로 판정한다.
+                if len(raw) == 0:
+                    raise ValueError(
+                        f"화자 '{label}'의 임베딩이 비어 있습니다(0바이트). "
+                        f"빈 임베딩은 저장해도 다음 로드에서 사라지므로 거부합니다"
+                    )
+                # float32 배열로 되살릴 수 없는 길이는 여기서 막는다. 통과시키면
+                # 파일은 정상적으로 쓰이지만 다음 SpeakerDB.load()에서
+                # np.frombuffer가 ValueError를 던지고, load()의 blanket except가
+                # 그 라벨만이 아니라 회의 전체 화자 로스터를 삼킨다.
+                # (is_valid_embedding 필터는 frombuffer 뒤라 이걸 막지 못한다.)
+                if len(raw) % _EMBEDDING_ITEMSIZE != 0:
+                    raise ValueError(
+                        f"화자 '{label}'의 임베딩 디코드 길이({len(raw)}바이트)가 "
+                        f"float32 크기({_EMBEDDING_ITEMSIZE})의 배수가 아닙니다"
+                    )
+        return v
+
+    @field_validator("names")
+    @classmethod
+    def validate_names(cls, v: dict[str, str]) -> dict[str, str]:
+        """names에도 speakers와 대칭인 개수·길이 상한을 적용한다."""
+        if len(v) > MAX_NAMES:
+            raise ValueError(f"이름 수가 상한({MAX_NAMES})을 초과했습니다: {len(v)}")
+        for label, name in v.items():
+            if len(name) > MAX_NAME_CHARS:
+                raise ValueError(
+                    f"화자 '{label}'의 이름 길이가 상한({MAX_NAME_CHARS}자)을 "
+                    f"초과했습니다: {len(name)}자"
+                )
+        return v
 
 
 class RefineNotesRequest(BaseModel):

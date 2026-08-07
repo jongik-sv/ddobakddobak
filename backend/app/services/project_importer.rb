@@ -45,6 +45,8 @@ class ProjectImporter
     @staged_files   = [] # 추출 단계 Tempfile **객체**(GC unlink 방지로 참조 유지 + 종료 시 정리)
     @audio_paths    = {} # "audio/<old_id>.<ext>" => staged temp 경로
     @attach_paths   = {} # "<basename>"          => staged temp 경로
+    @speaker_paths  = {} # "speakers/<old_id>.json" => staged temp 경로(바이트열 아님)
+    @speaker_skipped = [] # 상한 초과로 스테이징하지 않은 speakers/ 엔트리명
     @decompressed_bytes = 0
     @warnings       = [] # 복원 경고(예: public_uid 충돌, T7)
   end
@@ -55,6 +57,12 @@ class ProjectImporter
   def run!
     manifest = read_archive
     validate_manifest!(manifest)
+    # 아카이브가 만들어질 때 이미 로스터가 빠졌다면(사이드카 문제·상한 초과) import 쪽에서는
+    # 손쓸 수 없다. "speakers/ 엔트리 없음"은 구버전 하위호환 신호이기도 해서 표식 없이는
+    # 조용히 넘어가므로, exporter 가 남긴 표식을 보고 사용자에게 알린다.
+    if Transfer::SpeakerDbTransfer.degraded_manifest?(manifest)
+      add_warning(Transfer::SpeakerDbTransfer::EXPORT_DEGRADED_WARNING)
+    end
 
     project = nil
     meeting_map = {}
@@ -67,8 +75,10 @@ class ProjectImporter
       meeting_map = import_meetings(project, manifest["meetings"] || [], folder_map, tag_map)
     end
 
-    # 트랜잭션 커밋 후 임베딩 reconcile — 인-트랜잭션 enqueue(롤백 시 유령 잡) 회피.
-    # 임포트 전사는 인라인 임베딩이 없으므로(라이브 끊김 방지 정책) 회의별로 배치 흡수.
+    # 트랜잭션 커밋 후: 화자 DB 복원(sidecar) + 임베딩 reconcile.
+    # 둘 다 인-트랜잭션에서 하지 않는 이유는 동일 — 실패해도 유령 상태(롤백된 meeting에
+    # 대한 외부 부수효과)를 남기지 않기 위함.
+    restore_speaker_dbs(meeting_map)
     meeting_map.each_value do |mtg|
       mtg.reconcile_embeddings! if mtg.transcripts.exists?
     end
@@ -93,7 +103,13 @@ class ProjectImporter
     open_gz do |gz|
       Gem::Package::TarReader.new(gz) do |tar|
         tar.each do |entry|
-          next unless entry.file?
+          unless entry.file?
+            # 파일이 아닌 엔트리(디렉터리 등)도 header.size 를 크게 선언할 수 있고,
+            # 소비하지 않으면 Entry#close 가 계량 없이 그만큼 압축을 푼다.
+            # 정상 디렉터리 엔트리는 size 0 이라 no-op.
+            drain_entry(entry)
+            next
+          end
           name = entry.full_name
           guard_entry_name!(name)
 
@@ -103,11 +119,50 @@ class ProjectImporter
             @audio_paths[name] = stage_entry(entry)
           elsif name.start_with?("attachments/")
             @attach_paths[File.basename(name)] = stage_entry(entry)
+          elsif name.start_with?("speakers/")
+            stage_speaker_entry(name, entry)
+          else
+            # 처리 대상이 아닌 엔트리도 **계량하며** 드레인해야 한다.
+            # 읽지 않고 넘기면 TarReader::Entry#close 가 대신 끝까지 읽는데
+            # (GzipReader 는 :seek 에 응답하지 않아 read 루프로 떨어진다)
+            # 그 경로는 account_bytes! 를 타지 않아 누적 상한 가드가 무력해진다.
+            drain_entry(entry)
           end
         end
       end
     end
     manifest
+  end
+
+  # speakers/ 엔트리 스테이징. **선언 크기를 먼저** 상한과 대조한다.
+  #
+  # 곧장 stage_entry 로 보내면 64MB 상한이 import_file 의 File.size 에서,
+  # 즉 디스크에 다 쓴 **뒤에야** 걸린다(MeetingImporter 는 header.size 를 먼저 본다).
+  # 초과분은 스테이징하지 않고 보류 경고로 기록하되, 엔트리는 계량하며 드레인한다
+  # (읽지 않고 넘기면 Entry#close 가 계량 없이 압축을 다 풀어버린다 — 위 else 주석 참고).
+  def stage_speaker_entry(name, entry)
+    declared = entry.respond_to?(:header) && entry.header ? entry.header.size.to_i : nil
+    if declared && declared > Transfer::SpeakerDbTransfer::MAX_ROSTER_BYTES
+      Rails.logger.warn(
+        "ProjectImporter: roster entry #{name} declares #{declared} bytes " \
+        "(> #{Transfer::SpeakerDbTransfer::MAX_ROSTER_BYTES}) — 스테이징하지 않고 계량 드레인"
+      )
+      @speaker_skipped << name
+      drain_entry(entry)
+      return
+    end
+
+    # 로스터는 임베딩 때문에 크고, 복원은 커밋 **후**에 돈다 → 전체 바이트를
+    # 트랜잭션 내내(회의 N건 동시에) RAM 에 들지 않도록 audio/attachments 와
+    # 같은 방식으로 디스크에 스테이징한다.
+    @speaker_paths[name] = stage_entry(entry)
+  end
+
+  # 엔트리를 끝까지 읽되 데이터는 버리고 누적 상한에만 합산한다.
+  def drain_entry(entry)
+    Transfer::SpeakerDbTransfer.drain_entry(entry, chunk_size: CHUNK_SIZE) do |bytes|
+      account_bytes!(bytes)
+    end
   end
 
   # manifest.json 은 작아야 한다 → 메모리에 읽되 누적 상한도 함께 적용.
@@ -300,6 +355,41 @@ class ProjectImporter
     end
 
     meeting_map
+  end
+
+  # 회의별 sidecar SpeakerDB 복원. old_id → new meeting 맵을 순회해 각자의 speakers/
+  # 엔트리를 각자의 새 meeting_id 로 PUT 한다(회의 간 섞임 방지). 구버전 아카이브(엔트리
+  # 없음)는 스킵 — 하위호환.
+  #
+  # Transfer::SpeakerDbTransfer::Importer 인스턴스를 한 import 동안 **공유**한다
+  # (export 의 Exporter 와 대칭). 회의마다 새로 만들면 사이드카가 "붙어는 있는데 응답
+  # 없음"일 때 회의당 TIMEOUT(30초)을 전부 소모한다 — 100건이면 50분.
+  #
+  # import_file 은 sidecar 실패도 파일 I/O 실패도 흡수해 false 만 돌려준다. 여기서
+  # raise 가 새어나가면 커밋 **후**인데도 run! 의 rescue 가 복사 파일을 지운다.
+  # 실패는 @warnings 로 승격해 사용자에게 보고한다(로그만으로는 사용자가 못 본다).
+  def restore_speaker_dbs(meeting_map)
+    speaker_importer = Transfer::SpeakerDbTransfer::Importer.new
+
+    meeting_map.each do |old_id, new_meeting|
+      name = Transfer::SpeakerDbTransfer.entry_name(old_id)
+      # 상한 초과로 스테이징하지 않은 엔트리 — 읽기 시점이 아니라 여기서 한 번 판정한다.
+      if @speaker_skipped.include?(name)
+        add_warning(Transfer::SpeakerDbTransfer::RESTORE_FAILED_WARNING)
+        next
+      end
+
+      path = @speaker_paths[name]
+      next if path.nil?
+      next if speaker_importer.import_file(new_meeting.id, path)
+
+      add_warning(Transfer::SpeakerDbTransfer::RESTORE_FAILED_WARNING)
+    end
+  end
+
+  # 같은 경고를 회의 수만큼 반복해서 보여주지 않는다.
+  def add_warning(message)
+    @warnings << message unless @warnings.include?(message)
   end
 
   def import_meeting_children(meeting, m, tag_map)

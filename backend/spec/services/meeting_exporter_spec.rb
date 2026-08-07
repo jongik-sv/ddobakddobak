@@ -49,6 +49,14 @@ RSpec.describe MeetingExporter do
                                 uploaded_by_id: owner.id)
   end
 
+  # sidecar 는 개발 환경에서 실행 중일 수 있으므로 테스트가 실제 네트워크를 타지 않도록
+  # 기본 stub 을 전역 적용한다("화자 DB" describe 블록은 자체 stub 으로 override).
+  before do
+    default_sidecar = instance_double(SidecarClient,
+                                       get_speaker_db: { "next_num" => 1, "speakers" => {}, "names" => {} })
+    allow(SidecarClient).to receive(:new).and_return(default_sidecar)
+  end
+
   describe "#filename" do
     it "<slug>-meeting-YYYYMMDD.ddobak-meeting.tgz 형식이다(ASCII title)" do
       meeting.update_column(:title, "Weekly Sync")
@@ -225,6 +233,173 @@ RSpec.describe MeetingExporter do
           expect(entries["attachments/agenda.pdf.extracted/x.txt"]).to eq("EXTRACTED")
           expect(entries).to have_key("attachments/agenda.pdf.extracted/sub/y.md")
         end
+      end
+    end
+
+    describe "화자 DB(SpeakerDB) 번들링" do
+      let(:sidecar) { instance_double(SidecarClient) }
+      let(:speaker_db_payload) do
+        {
+          "next_num" => 3,
+          "speakers" => { "SPEAKER_00" => [ "AACAPwAAAEA=" ] }, # base64(float32 1.0, 2.0)
+          "names"    => { "SPEAKER_00" => "앨리스" }
+        }
+      end
+
+      before do
+        allow(SidecarClient).to receive(:new).and_return(sidecar)
+      end
+
+      it "sidecar 가 정상 응답하면 speakers/<meeting_id>.json 엔트리에 임베딩 포함 전체를 그대로 담는다" do
+        allow(sidecar).to receive(:get_speaker_db).with(meeting.id).and_return(speaker_db_payload)
+
+        io = StringIO.new
+        described_class.new(meeting, include_audio: false).write_to(io)
+        entries = read_tar_gz(io)
+
+        expect(entries).to have_key("speakers/#{meeting.id}.json")
+        expect(JSON.parse(entries["speakers/#{meeting.id}.json"])).to eq(speaker_db_payload)
+      end
+
+      it "sidecar 가 다운되어 있으면(ConnectionError) speaker 엔트리 없이 export 는 성공한다" do
+        allow(sidecar).to receive(:get_speaker_db).and_raise(SidecarClient::ConnectionError, "down")
+
+        io = StringIO.new
+        expect {
+          described_class.new(meeting, include_audio: false).write_to(io)
+        }.not_to raise_error
+
+        entries = read_tar_gz(io)
+        expect(entries.keys.none? { |k| k.start_with?("speakers/") }).to be(true)
+        expect(entries).to have_key("manifest.json") # 나머지 export 는 정상
+      end
+
+      # 적대 검토 #1: with_connection 이 SidecarError 로 변환하지 **못하는** 예외들.
+      # 응답 도중 연결이 끊기거나(ECONNRESET/EOFError) 200 인데 본문이 깨진 경우
+      # (JSON::ParserError)에도 export 는 완주해야 한다.
+      {
+        "Errno::ECONNRESET(응답 중 연결 리셋)" => -> { Errno::ECONNRESET.new("reset by peer") },
+        "EOFError(응답 도중 EOF)"             => -> { EOFError.new("end of file reached") },
+        "JSON::ParserError(200인데 본문 파손)"  => -> { JSON::ParserError.new("unexpected token") }
+      }.each do |label, builder|
+        it "#{label} 이어도 speaker 엔트리 없이 export 는 성공한다" do
+          allow(sidecar).to receive(:get_speaker_db).and_raise(builder.call)
+
+          io = StringIO.new
+          expect {
+            described_class.new(meeting, include_audio: false).write_to(io)
+          }.not_to raise_error
+
+          entries = read_tar_gz(io)
+          expect(entries.keys.none? { |k| k.start_with?("speakers/") }).to be(true)
+          expect(entries).to have_key("manifest.json")
+        end
+      end
+
+      # 적대 검토 #6: 로스터가 비어 있으면 tar 엔트리를 만들지 않는다
+      # (import 쪽 하위호환 경로가 엔트리 부재를 이미 처리한다).
+      it "로스터가 비어 있으면 speakers/ 엔트리를 만들지 않는다" do
+        allow(sidecar).to receive(:get_speaker_db)
+          .and_return({ "next_num" => 1, "speakers" => {}, "names" => {} })
+
+        io = StringIO.new
+        described_class.new(meeting, include_audio: false).write_to(io)
+        entries = read_tar_gz(io)
+
+        expect(entries.keys.none? { |k| k.start_with?("speakers/") }).to be(true)
+      end
+    end
+
+    # H1: 회의 단건 export 가 사이드카 문제로 로스터를 놓쳐도 아카이브에 신호가 없어
+    # import 가 "구버전 하위호환"으로 오인하고 조용히 넘어간다(§ProjectExporter/FolderExporter
+    # 와 동일한 R3 문제). ProjectExporter/FolderExporter 를 미러링해 표식을 쓴다.
+    describe "열화 표식(speaker_db_degraded, H1)" do
+      let(:sidecar) { instance_double(SidecarClient) }
+
+      before do
+        allow(SidecarClient).to receive(:new).and_return(sidecar)
+      end
+
+      it "정상 export 는 표식이 false 다" do
+        allow(sidecar).to receive(:get_speaker_db)
+          .and_return({ "next_num" => 1, "speakers" => {}, "names" => {} })
+
+        io = StringIO.new
+        described_class.new(meeting, include_audio: false).write_to(io)
+        parsed = JSON.parse(read_tar_gz(io)["manifest.json"])
+
+        expect(parsed[Transfer::SpeakerDbTransfer::DEGRADED_MANIFEST_KEY]).to be(false)
+      end
+
+      it "사이드카가 다운되면 표식이 true 로 기록된다" do
+        allow(sidecar).to receive(:get_speaker_db).and_raise(SidecarClient::ConnectionError, "down")
+
+        io = StringIO.new
+        described_class.new(meeting, include_audio: false).write_to(io)
+        entries = read_tar_gz(io)
+        parsed  = JSON.parse(entries["manifest.json"])
+
+        expect(entries.keys.none? { |k| k.start_with?("speakers/") }).to be(true)
+        expect(parsed[Transfer::SpeakerDbTransfer::DEGRADED_MANIFEST_KEY]).to be(true)
+      end
+
+      # manifest 는 append-only tar 에서 로스터 수집이 끝나야 표식값이 확정된다
+      # (ProjectExporter/FolderExporter 와 동일한 이유). MeetingImporter 는 이름으로
+      # manifest.json 을 찾으므로(순서 무관) 마지막으로 옮겨도 안전하다.
+      it "manifest 엔트리를 로스터 수집 뒤에 쓴다" do
+        allow(sidecar).to receive(:get_speaker_db)
+          .and_return({ "next_num" => 2, "speakers" => { "SPEAKER_00" => [ "AA==" ] }, "names" => {} })
+
+        io = StringIO.new
+        described_class.new(meeting, include_audio: false).write_to(io)
+
+        io.rewind
+        names = []
+        Gem::Package::TarReader.new(Zlib::GzipReader.new(io)) do |tar|
+          tar.each { |e| names << e.full_name if e.file? }
+        end
+        expect(names).to include("speakers/#{meeting.id}.json")
+        expect(names.last).to eq("manifest.json") # 표식을 채우려면 로스터가 먼저 끝나야 한다
+      end
+    end
+
+    # H2: tar.close 가 raise 하면 같은 ensure 의 gz.finish 가 건너뛰어져 gzip 트레일러
+    # (CRC+ISIZE) 없는 스트림이 남는다(GzipReader 가 "unexpected end of file"로 죽는다).
+    # ProjectExporter#close_tar_then_gz 와 같은 형태를 MeetingExporter 에도 적용한다.
+    describe "add_* 가 raise 해도 tar 는 닫힌다 (H2)" do
+      it "tar.close 가 실패해도 gz.finish 는 건너뛰지 않는다(gzip 트레일러 보존)" do
+        allow_any_instance_of(Gem::Package::TarWriter)
+          .to receive(:close).and_raise(IOError, "tar close boom")
+
+        io = StringIO.new
+        expect {
+          described_class.new(meeting, include_audio: false).write_to(io)
+        }.to raise_error(IOError, "tar close boom")
+
+        io.rewind
+        # gz.finish 가 실행됐다는 증거 — 안 됐으면 Zlib::GzipFile::Error 가 난다.
+        expect { Zlib::GzipReader.new(io).read }.not_to raise_error
+      end
+
+      # tar.close 실패를 조용히 삼키면 잘린 아카이브가 200 으로 나간다.
+      it "tar.close 실패를 삼키지 않는다 — 진행 중인 예외가 없으면 그대로 올린다" do
+        allow_any_instance_of(Gem::Package::TarWriter)
+          .to receive(:close).and_raise(IOError, "tar close boom")
+
+        expect {
+          described_class.new(meeting, include_audio: false).write_to(StringIO.new)
+        }.to raise_error(IOError, "tar close boom")
+      end
+
+      # 반대로 add_* 가 이미 raise 중이면 close 실패가 원인 예외를 덮어쓰면 안 된다.
+      it "진행 중인 예외가 있으면 close 실패로 덮어쓰지 않는다" do
+        allow(Transfer::SpeakerDbTransfer::Exporter).to receive(:new).and_raise(RuntimeError, "원인")
+        allow_any_instance_of(Gem::Package::TarWriter)
+          .to receive(:close).and_raise(IOError, "tar close boom")
+
+        expect {
+          described_class.new(meeting, include_audio: false).write_to(StringIO.new)
+        }.to raise_error(RuntimeError, "원인")
       end
     end
   end

@@ -3,13 +3,34 @@
 sidecar 재시작 후나 배치 전용 흐름에서도 화자 목록 조회/이름 변경/초기화가
 동작하도록 SpeakerDB 파일을 직접 읽고 쓴다.
 """
+import base64
+import json
+import os
+import tempfile
 import urllib.parse
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from app.schemas import RenameSpeakerRequest
+from app.schemas import RenameSpeakerRequest, SpeakerDbPayload
 
 router = APIRouter()
+
+
+def _atomic_write_json(path: Path, data: dict) -> None:
+    """임시 파일에 쓴 뒤 rename — 실패 시 기존 파일이 손상되지 않도록 한다."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def _open_db(meeting_id: int):
@@ -21,6 +42,18 @@ def _open_db(meeting_id: int):
     return db
 
 
+def _encode_db(db) -> dict:
+    """SpeakerDB(메모리) 상태를 export/import용 JSON payload로 인코딩한다."""
+    speakers = {
+        label: [
+            base64.b64encode(emb.astype("float32").tobytes()).decode()
+            for emb in emb_list
+        ]
+        for label, emb_list in db.embeddings.items()
+    }
+    return {"next_num": db.next_num, "speakers": speakers, "names": db.names}
+
+
 @router.get("/speakers")
 async def get_speakers(meeting_id: int) -> dict:
     """회의별 등록된 화자 목록을 반환한다."""
@@ -29,6 +62,32 @@ async def get_speakers(meeting_id: int) -> dict:
         {"id": label, "name": db.names.get(label, label)}
         for label in db.embeddings
     ]}
+
+
+@router.get("/speakers/db")
+async def get_speaker_db(meeting_id: int) -> dict:
+    """회의의 SpeakerDB 전체(임베딩 포함)를 반환한다.
+
+    export를 위해 Rails가 호출한다. 파일이 없는 회의(미분리 회의 등)는
+    404가 아니라 SpeakerDB의 기본 상태(빈 payload)를 반환한다.
+    """
+    db = _open_db(meeting_id)
+    return _encode_db(db)
+
+
+@router.put("/speakers/db")
+async def replace_speaker_db(meeting_id: int, payload: SpeakerDbPayload) -> dict:
+    """회의의 SpeakerDB 전체를 payload로 통째로 교체한다 (병합 아님).
+
+    import를 위해 Rails가 호출한다: 새 meeting_id로 내보낸 SpeakerDB(임베딩
+    포함)를 그대로 복원한다. 이 라우트는 `/speakers/{speaker_id}`보다 먼저
+    등록되어 있어야 한다 — 그렇지 않으면 speaker_id="db"로 잘못 매칭된다.
+    """
+    from app.diarization.speaker import _get_db_dir
+
+    path = _get_db_dir() / f"meeting_{meeting_id}.json"
+    _atomic_write_json(path, payload.model_dump())
+    return {"ok": True}
 
 
 @router.put("/speakers/{speaker_id}")

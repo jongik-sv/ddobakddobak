@@ -93,4 +93,16 @@ describe('importProject', () => {
     expect((opts.body as FormData).get('file')).toBe(file)
     expect(result).toEqual({ project_id: 42 })
   })
+
+  it('returns warnings from the response alongside project_id', async () => {
+    const warnings = ['화자 로스터 복원 실패 — 화자 관리에서 재등록하세요']
+    post.mockReturnValue({
+      json: () => Promise.resolve({ project_id: 42, warnings }),
+    })
+
+    const result = await importProject(new File(['x'], 'p.ddobak.tgz'))
+
+    expect(result.project_id).toBe(42)
+    expect(result.warnings).toEqual(warnings)
+  })
 })

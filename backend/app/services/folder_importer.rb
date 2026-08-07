@@ -11,7 +11,11 @@ require "tempfile"
 #   result = FolderImporter.new(io, user:, project:, parent_folder: nil).run!
 #   result[:folder_id]    # 새 루트 폴더 ID
 #   result[:meeting_ids]  # 새 회의 ID 배열
-#   result[:warnings]     # 복원 경고 메시지 배열(예: public_uid 충돌). 보통 빈 배열.
+#   result[:warnings]     # 복원 경고 메시지 배열(예: public_uid 충돌, 화자 DB 복원 실패). 보통 빈 배열.
+#
+# speakers/<원본meeting_id>.json 엔트리는 회의별 sidecar SpeakerDB(화자 이름·임베딩)다.
+# 디스크에 스테이징해 두었다가 DB 커밋 **후** 각 회의의 **새 id** 로 복원한다.
+# 엔트리가 없는 구버전 아카이브는 조용히 통과(하위호환), 실패는 warnings 로 승격한다.
 #
 # 예외:
 #   Transfer::Archive::InvalidArchiveError  — 손상 파일·scope!="folder"·미지원 버전·zip-bomb
@@ -31,41 +35,56 @@ class FolderImporter
     @parent_folder    = parent_folder
     @staged_paths     = {}   # tar 엔트리명 → staged Tempfile 경로
     @staged_files     = []   # Tempfile 객체 보관(GC 방지)
+    @speaker_paths    = {}   # "speakers/<원본meeting_id>.json" → staged Tempfile 경로(바이트열 아님)
+    @speaker_skipped  = []   # 상한 초과로 스테이징하지 않은 speakers/ 엔트리명
     @restorers        = []   # 각 MeetingRestorer 참조 — 롤백 시 copied_paths 수집
     @root_folder      = nil  # import 후 루트 Folder 레코드
+    @warnings         = []   # 화자 DB 복원 경고 — restorer.warnings 와 합쳐 노출
   end
 
   # @return [Hash] { folder_id: Integer, meeting_ids: [Integer, ...], warnings: [String, ...] }
   def run!
     manifest     = read_archive
     validate_manifest!(manifest)
+    # 아카이브가 만들어질 때 이미 로스터가 빠졌다면(사이드카 문제·상한 초과) import 쪽에서는
+    # 손쓸 수 없다. "speakers/ 엔트리 없음"은 구버전 하위호환 신호이기도 해서 표식 없이는
+    # 조용히 넘어가므로, exporter 가 남긴 표식을 보고 사용자에게 알린다.
+    if Transfer::SpeakerDbTransfer.degraded_manifest?(manifest)
+      add_warning(Transfer::SpeakerDbTransfer::EXPORT_DEGRADED_WARNING)
+    end
 
-    new_meetings = []
+    meeting_map = {}
 
     begin
       ActiveRecord::Base.transaction do
-        tag_map      = build_tag_map(manifest["tags"] || [])
-        folder_map   = import_folders(manifest, tag_map)
-        new_meetings = import_meetings(manifest, folder_map, tag_map)
+        tag_map     = build_tag_map(manifest["tags"] || [])
+        folder_map  = import_folders(manifest, tag_map)
+        meeting_map = import_meetings(manifest, folder_map, tag_map)
       end
     rescue StandardError
       # 트랜잭션 실패 시에만 복사된 storage/ 파일 롤백
       # @restorers 의 copied_paths 를 flatten — 중간에 raise 된 restorer 의 부분 복사본도 포함
       @restorers.flat_map(&:copied_paths).each { |path| FileUtils.rm_f(path) }
       raise
-    ensure
-      # 트랜잭션 성공·실패 무관, staged tempfile 은 항상 정리
-      cleanup_staged_files
     end
 
-    # ↓ 커밋 확정 후. 여기서 raise 해도 copied_paths 는 절대 삭제 안 됨
+    # ↓ 커밋 확정 후. 여기서 raise 해도 copied_paths 는 절대 삭제 안 됨.
+    #
+    # ⚠️ 화자 DB 복원은 스테이징 tempfile 을 읽으므로 cleanup_staged_files 보다 **먼저**
+    # 와야 한다. (정리를 트랜잭션 ensure 에 두면 여기서 전부 ENOENT 로 실패해 복원이
+    # 조용히 경고로만 떨어진다 — 그래서 정리를 run! 의 ensure 로 올렸다.)
+    new_meetings = meeting_map.values
+    restore_speaker_dbs(meeting_map)
     new_meetings.each do |mtg|
       EmbedBackfillJob.perform_later(meeting_id: mtg.id) if mtg.transcripts.exists?
     end
 
     # 내부 MeetingRestorer 들의 warnings 를 수집(T7) — public_uid 충돌 시 사용자에게 노출.
     { folder_id: @root_folder.id, meeting_ids: new_meetings.map(&:id),
-      warnings: @restorers.flat_map(&:warnings) }
+      warnings: @restorers.flat_map(&:warnings) + @warnings }
+  ensure
+    # 성공·실패 무관, staged tempfile 은 항상 정리
+    cleanup_staged_files
   end
 
   private
@@ -82,7 +101,15 @@ class FolderImporter
     open_gz do |gz|
       Gem::Package::TarReader.new(gz) do |tar|
         tar.each do |entry|
-          next unless entry.file?
+          unless entry.file?
+            # 파일이 아닌 엔트리(디렉터리 등)도 header.size 를 크게 선언할 수 있고,
+            # 소비하지 않으면 TarReader::Entry#close 가 계량 없이 그만큼 압축을 푼다.
+            # 정상 디렉터리 엔트리는 size 0 이라 no-op(§H3, MeetingImporter/ProjectImporter 와 동일).
+            Transfer::SpeakerDbTransfer.drain_entry(entry, chunk_size: CHUNK_SIZE) do |n|
+              Transfer::Archive.account_bytes!(n, counter)
+            end
+            next
+          end
 
           name = entry.full_name
           Transfer::Archive.guard_entry_name!(name)
@@ -91,8 +118,12 @@ class FolderImporter
             bytes = entry.read.to_s
             Transfer::Archive.account_bytes!(bytes.bytesize, counter)
             manifest = JSON.parse(bytes)
+          elsif name.start_with?("speakers/")
+            # generic else 보다 **먼저** 걸러야 한다 — @staged_paths 로 들어가면
+            # MeetingRestorer 의 file_lookup 에 로스터가 섞인다.
+            stage_speaker_entry(name, entry, counter)
           else
-            stage_entry(name, entry, counter)
+            @staged_paths[name] = stage_entry(name, entry, counter)
           end
         end
       end
@@ -101,7 +132,71 @@ class FolderImporter
     manifest
   end
 
-  # 엔트리를 Tempfile 에 청크 단위로 쓰고 스테이징 맵에 등록.
+  # speakers/ 엔트리 스테이징. **선언 크기를 먼저** 상한과 대조한다.
+  #
+  # 곧장 stage_entry 로 보내면 64MB 상한이 import_file 의 File.size 에서, 즉 디스크에 다 쓴
+  # **뒤에야** 걸린다. 초과분은 스테이징하지 않고 보류 상태로만 기록하되(판정은
+  # restore_speaker_dbs 에서 한 번), 엔트리는 **계량하며 끝까지 드레인**한다 —
+  # 읽지 않고 넘기면 TarReader::Entry#close 가 계량 없이 압축을 다 풀어 zip-bomb 가드가
+  # 무력해진다(GzipReader 는 :seek 에 응답하지 않아 read 루프로 떨어진다).
+  #
+  # 로스터는 임베딩 때문에 크고 복원은 커밋 **후**에 도므로, 전체 바이트를 트랜잭션 내내
+  # RAM 에 들지 않도록 audio/attachments 와 같은 방식으로 디스크에 스테이징한다.
+  def stage_speaker_entry(name, entry, counter)
+    declared = entry.respond_to?(:header) && entry.header ? entry.header.size.to_i : nil
+    if declared && declared > Transfer::SpeakerDbTransfer::MAX_ROSTER_BYTES
+      Rails.logger.warn(
+        "FolderImporter: roster entry #{name} declares #{declared} bytes " \
+        "(> #{Transfer::SpeakerDbTransfer::MAX_ROSTER_BYTES}) — 스테이징하지 않고 계량 드레인"
+      )
+      @speaker_skipped << name
+      Transfer::SpeakerDbTransfer.drain_entry(entry, chunk_size: CHUNK_SIZE) do |bytes|
+        Transfer::Archive.account_bytes!(bytes, counter)
+      end
+      return
+    end
+
+    @speaker_paths[name] = stage_entry(name, entry, counter)
+  end
+
+  # 회의별 sidecar SpeakerDB 복원. old_id → new meeting 맵을 순회해 **각자의** speakers/
+  # 엔트리를 **각자의** 새 meeting_id 로 PUT 한다.
+  #
+  # ⚠️ 폴더 스코프는 회의가 여러 개다 — 엔트리 순서나 인덱스로 짝지으면 남의 로스터가
+  # 들어간다. 반드시 old_id 로 키를 만들어 조회할 것. 구버전 아카이브(엔트리 없음)는 스킵.
+  #
+  # Transfer::SpeakerDbTransfer::Importer 인스턴스를 한 import 동안 **공유**한다
+  # (export 의 Exporter 와 대칭). 회의마다 새로 만들면 사이드카가 "붙어는 있는데 응답 없음"
+  # 일 때 회의당 TIMEOUT(30초)을 전부 소모한다.
+  #
+  # import_file 은 sidecar 실패도 파일 I/O 실패도 흡수해 false 만 돌려준다. 여기서 raise 가
+  # 새어나가면 커밋 **후**인데도 위 rescue 가 복사 파일을 지운다. 실패는 @warnings 로
+  # 승격해 사용자에게 보고한다(로그만으로는 사용자가 못 본다).
+  def restore_speaker_dbs(meeting_map)
+    speaker_importer = Transfer::SpeakerDbTransfer::Importer.new
+
+    meeting_map.each do |old_id, new_meeting|
+      name = Transfer::SpeakerDbTransfer.entry_name(old_id)
+      # 상한 초과로 스테이징하지 않은 엔트리 — 읽기 시점이 아니라 여기서 한 번 판정한다.
+      if @speaker_skipped.include?(name)
+        add_warning(Transfer::SpeakerDbTransfer::RESTORE_FAILED_WARNING)
+        next
+      end
+
+      path = @speaker_paths[name]
+      next if path.nil?
+      next if speaker_importer.import_file(new_meeting.id, path)
+
+      add_warning(Transfer::SpeakerDbTransfer::RESTORE_FAILED_WARNING)
+    end
+  end
+
+  # 같은 경고를 회의 수만큼 반복해서 보여주지 않는다.
+  def add_warning(message)
+    @warnings << message unless @warnings.include?(message)
+  end
+
+  # 엔트리를 Tempfile 에 청크 단위로 쓰고 그 경로를 반환한다.
   def stage_entry(name, entry, counter)
     tmp = Tempfile.new(["ddobak-folder-import", File.extname(name)])
     tmp.binmode
@@ -116,7 +211,7 @@ class FolderImporter
       tmp.close  # flush + fd 반납. 파일은 남김(close! 가 아님)
     end
 
-    @staged_paths[name] = tmp.path
+    tmp.path
   end
 
   # ── 검증 ──
@@ -232,10 +327,13 @@ class FolderImporter
   #         각 restorer 를 @restorers 에 누적 — 롤백 시 copied_paths 수집에 사용.
   # 2패스: previous_meeting_id 를 서브트리 내에서만 리맵
   #         (범위 밖이면 nil 유지).
+  #
+  # @return [Hash] old meeting id → 새 Meeting (삽입 순서 = 매니페스트 순서).
+  #   커밋 후 화자 DB 복원이 이 맵의 **키**로 speakers/ 엔트리를 찾으므로 배열이 아니라
+  #   맵을 돌려준다 — 순서로 짝지으면 회의 간 로스터가 섞인다.
   def import_meetings(manifest, folder_map, tag_map)
     meetings_data = manifest["meetings"] || []
     meeting_map   = {}
-    new_meetings  = []
     tag_resolver  = ->(old_tag_id) { tag_map[old_tag_id] }
 
     # Pass 1
@@ -250,9 +348,7 @@ class FolderImporter
         tag_resolver:        tag_resolver
       )
       @restorers << restorer  # restore! 전에 등록 — 중간 raise 시에도 부분 복사본 추적
-      new_meeting = restorer.restore!
-      meeting_map[m["id"]] = new_meeting
-      new_meetings << new_meeting
+      meeting_map[m["id"]] = restorer.restore!
     end
 
     # Pass 2: 서브트리 내 previous_meeting_id 리맵 (범위 밖이면 nil 유지)
@@ -266,7 +362,7 @@ class FolderImporter
       meeting_map[m["id"]].update_column(:previous_meeting_id, new_prev.id)
     end
 
-    new_meetings
+    meeting_map
   end
 
   # ── GZip 열기 ──

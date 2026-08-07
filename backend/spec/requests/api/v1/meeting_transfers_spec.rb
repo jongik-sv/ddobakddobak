@@ -9,6 +9,16 @@ require "stringio"
 RSpec.describe "Api::V1::MeetingTransfers", type: :request do
   before(:all) { Transcript.ensure_fts_tables! }
 
+  # export 경로가 sidecar 의 SpeakerDB 를 조회하므로, 러닝 dev sidecar 로 실요청이 나가지
+  # 않도록 전역 stub 을 둔다(테스트는 하네스 안에서만 검증한다).
+  let(:sidecar_stub) do
+    instance_double(SidecarClient,
+                    get_speaker_db: { "next_num" => 1, "speakers" => {}, "names" => {} },
+                    put_speaker_db: { "ok" => true })
+  end
+
+  before { allow(SidecarClient).to receive(:new).and_return(sidecar_stub) }
+
   let!(:editor)   { create(:user) }        # 회의 소유자 = editable_by? 통과
   let!(:member)   { create(:user) }        # 프로젝트 멤버, 비소유자 = editable_by? 실패
   let!(:outsider) { create(:user) }        # 비멤버 = accessible_by 실패

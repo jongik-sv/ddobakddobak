@@ -9,6 +9,15 @@ require "tmpdir"
 RSpec.describe ProjectImporter do
   before(:all) { Transcript.ensure_fts_tables! }
 
+  # sidecar 는 개발 환경에서 실행 중일 수 있으므로 테스트가 실제 네트워크를 타지 않도록
+  # 기본 stub 을 전역 적용한다(화자 DB 전용 describe 블록은 자체 stub 으로 override).
+  let(:default_speaker_db) { { "next_num" => 1, "speakers" => {}, "names" => {} } }
+  let(:sidecar_stub) do
+    instance_double(SidecarClient, get_speaker_db: default_speaker_db, put_speaker_db: { "ok" => true })
+  end
+
+  before { allow(SidecarClient).to receive(:new).and_return(sidecar_stub) }
+
   # ── 시드 데이터 ──
   let!(:owner)    { create(:user, name: "원작성자") }
   let!(:importer) { create(:user, name: "가져온사람", role: "admin") }
@@ -47,6 +56,17 @@ RSpec.describe ProjectImporter do
     ProjectExporter.new(project, include_audio: include_audio).write_to(io)
     io.rewind
     io
+  end
+
+  # 아카이브 안 특정 엔트리의 압축해제 크기(누적 상한 stub 값을 계산할 때 쓴다).
+  def read_entry_size(io, entry_name)
+    io.rewind
+    size = 0
+    Gem::Package::TarReader.new(Zlib::GzipReader.new(io)) do |tar|
+      tar.each { |e| size = e.header.size if e.file? && e.full_name == entry_name }
+    end
+    io.rewind
+    size
   end
 
   describe "EmbedBackfillJob enqueue (reconcile_embeddings!)" do
@@ -554,6 +574,294 @@ RSpec.describe ProjectImporter do
       # (관찰값: 배치크기 1000 → 3100건은 4회. 정확한 배치 수를 하드코딩하지 않고
       #  느슨한 상한으로 둔다 — MeetingRestorer 회귀 가드와 동일한 설계.)
       expect(transcript_inserts).to be < 100
+    end
+  end
+
+  # ── 화자 DB(SpeakerDB) 복원 ──
+
+  describe "화자 DB(SpeakerDB) 복원" do
+    let!(:meeting2) do
+      create(:meeting, project: project, creator: owner, folder: child_folder, title: "두 번째 회의")
+    end
+
+    let(:speaker_db_1) do
+      { "next_num" => 2, "speakers" => { "SPEAKER_00" => [ "AACAPwAAAEA=" ] }, "names" => { "SPEAKER_00" => "앨리스" } }
+    end
+    let(:speaker_db_2) do
+      { "next_num" => 3, "speakers" => { "SPEAKER_00" => [ "AABAQA==" ] }, "names" => { "SPEAKER_00" => "밥" } }
+    end
+
+    it "각 회의의 화자 DB 가 각자의 새 meeting_id 로 PUT 되어 서로 섞이지 않는다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).with(meeting.id).and_return(speaker_db_1)
+      allow(sidecar_stub).to receive(:get_speaker_db).with(meeting2.id).and_return(speaker_db_2)
+
+      new_project = described_class.new(export_io, importer).run!
+
+      new_meeting1 = new_project.meetings.find { |m| m.title == "주간 회의" }
+      new_meeting2 = new_project.meetings.find { |m| m.title == "두 번째 회의" }
+
+      expect(new_meeting1.id).not_to eq(meeting.id)
+      expect(new_meeting2.id).not_to eq(meeting2.id)
+      expect(sidecar_stub).to have_received(:put_speaker_db).with(new_meeting1.id, speaker_db_1)
+      expect(sidecar_stub).to have_received(:put_speaker_db).with(new_meeting2.id, speaker_db_2)
+    end
+
+    it "sidecar 가 다운되어 있으면(import PUT 실패) import 자체는 성공하고 나머지 데이터는 보존된다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(speaker_db_1)
+      allow(sidecar_stub).to receive(:put_speaker_db).and_raise(SidecarClient::ConnectionError, "down")
+
+      new_project = nil
+      expect { new_project = described_class.new(export_io, importer).run! }.not_to raise_error
+      expect(new_project.meetings.count).to eq(2)
+    end
+
+    # 적대 검토 #3: 반환값(true/false)을 아무도 안 쓰면 사용자에게 보고가 없다.
+    # public_uid 충돌과 같은 채널(importer.warnings)로 흘려보낸다.
+    it "복원 실패는 importer.warnings 로 보고되며 회의가 여러 건 실패해도 1건으로 합쳐진다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(speaker_db_1)
+      allow(sidecar_stub).to receive(:put_speaker_db).and_raise(SidecarClient::ConnectionError, "down")
+
+      subject_importer = described_class.new(export_io, importer)
+      subject_importer.run!
+
+      expect(subject_importer.warnings)
+        .to eq([ Transfer::SpeakerDbTransfer::RESTORE_FAILED_WARNING ])
+    end
+
+    it "복원에 성공하면 경고가 없다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(speaker_db_1)
+
+      subject_importer = described_class.new(export_io, importer)
+      subject_importer.run!
+
+      expect(subject_importer.warnings).to be_empty
+    end
+
+    # 적대 검토 #5: 모든 speakers/ 엔트리 전체 바이트를 DB 트랜잭션 내내 RAM 에 들고
+    # 있었다 → audio/attachments 처럼 Tempfile 로 스테이징한다.
+    #
+    # ⚠️ 스테이징 여부는 **실행 중에** 확인해야 한다. run! 의 ensure 가
+    # cleanup_staged_files 로 Tempfile 을 unlink 하므로 run! 이 끝난 뒤
+    # File.exist? 를 보면 항상 false 이고, "값이 String 이다"는 바이트열도 String 이라
+    # 아무것도 반증하지 못한다(2라운드 R7 무반증 스펙).
+    it "화자 엔트리를 메모리에 들지 않고 실제 디스크 경로로 스테이징한다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(speaker_db_1)
+      io = export_io
+
+      observed = []
+      allow(Transfer::SpeakerDbTransfer::Importer)
+        .to receive(:new).and_wrap_original do |orig, **kwargs|
+          inner = orig.call(**kwargs)
+          allow(inner).to receive(:import_file).and_wrap_original do |run, mid, path|
+            observed << {
+              path:    path,
+              exists:  File.exist?(path),
+              content: (File.binread(path) if File.exist?(path))
+            }
+            run.call(mid, path)
+          end
+          inner
+        end
+
+      subject_importer = described_class.new(io, importer)
+      subject_importer.run!
+
+      expect(observed.size).to eq(2)
+      observed.each do |o|
+        expect(o[:exists]).to be(true)                                  # 호출 시점에 실재하는 파일
+        expect(File.dirname(o[:path])).to start_with(Dir.tmpdir)        # tmpdir 하위
+        expect(JSON.parse(o[:content])).to eq(speaker_db_1)             # 내용은 로스터 JSON
+      end
+
+      staged = subject_importer.instance_variable_get(:@speaker_paths)
+      expect(staged.keys).to contain_exactly(
+        "speakers/#{meeting.id}.json", "speakers/#{meeting2.id}.json"
+      )
+      # 값이 "경로"임을 확인 — 바이트열이면 로스터 본문(next_num)이 들어 있을 것이다.
+      expect(staged.values).to contain_exactly(*observed.map { |o| o[:path] })
+      expect(staged.values.none? { |v| v.include?("next_num") }).to be(true)
+    end
+
+    # R4: import 쪽에도 circuit-break 가 필요하다(export 와 대칭).
+    # 없으면 "붙어는 있는데 응답 없음" 사이드카에서 회의당 TIMEOUT 30초를 전부 소모한다.
+    it "첫 회의에서 연결 거부를 만나면 이후 회의는 PUT 을 시도하지 않는다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(speaker_db_1)
+      allow(sidecar_stub).to receive(:put_speaker_db).and_raise(Errno::ECONNREFUSED)
+
+      subject_importer = described_class.new(export_io, importer)
+      subject_importer.run!
+
+      expect(sidecar_stub).to have_received(:put_speaker_db).once # 회의는 2건인데 호출은 1번
+      expect(subject_importer.warnings)
+        .to include(Transfer::SpeakerDbTransfer::RESTORE_FAILED_WARNING)
+    end
+
+    it "일시적 끊김(ECONNRESET)이면 두 번째 회의도 계속 복원한다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(speaker_db_1)
+      call = 0
+      allow(sidecar_stub).to receive(:put_speaker_db) do
+        call += 1
+        raise Errno::ECONNRESET, "reset" if call == 1
+        { "ok" => true }
+      end
+
+      described_class.new(export_io, importer).run!
+
+      expect(sidecar_stub).to have_received(:put_speaker_db).twice
+    end
+
+    it "회의마다 복원기를 새로 만들지 않고 하나를 공유한다(circuit 상태·클라이언트 재사용)" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(speaker_db_1)
+      io = export_io
+      allow(Transfer::SpeakerDbTransfer::Importer).to receive(:new).and_call_original
+
+      described_class.new(io, importer).run!
+
+      expect(sidecar_stub).to have_received(:put_speaker_db).twice # 회의 2건 복원
+      expect(Transfer::SpeakerDbTransfer::Importer).to have_received(:new).once
+    end
+
+    # R5: MeetingImporter 는 header.size 를 먼저 검사하는데 ProjectImporter 는
+    # speakers/ 를 곧장 stage_entry 로 보내, 64MB 상한이 디스크에 다 쓴 **뒤에야** 걸렸다.
+    it "선언 크기가 상한을 넘는 화자 엔트리는 디스크에 쓰지 않고 경고만 남긴다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(speaker_db_1)
+      io = export_io
+      stub_const("Transfer::SpeakerDbTransfer::MAX_ROSTER_BYTES", 8)
+
+      subject_importer = described_class.new(io, importer)
+      new_project = subject_importer.run!
+
+      expect(subject_importer.instance_variable_get(:@speaker_paths)).to be_empty
+      expect(sidecar_stub).not_to have_received(:put_speaker_db)
+      expect(subject_importer.warnings)
+        .to include(Transfer::SpeakerDbTransfer::RESTORE_FAILED_WARNING)
+      expect(new_project.meetings.count).to eq(2) # 나머지는 정상 복원
+    end
+
+    # R1 과 같은 이유 — 스킵해도 엔트리는 **계량하며** 드레인해야 한다.
+    # 소비하지 않으면 TarReader::Entry#close 가 계량 없이 대신 읽어(zip-bomb 계량 우회)
+    # 누적 상한 가드가 전혀 발화하지 않는다.
+    it "스킵한 화자 엔트리도 계량되어 zip-bomb 가드가 발화한다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(
+        { "next_num" => 2, "speakers" => { "SPEAKER_00" => [ "A" * 300_000 ] }, "names" => {} }
+      )
+      io = export_io
+      manifest_bytes = read_entry_size(io, "manifest.json")
+      stub_const("Transfer::SpeakerDbTransfer::MAX_ROSTER_BYTES", 8)
+      stub_const("ProjectImporter::MAX_DECOMPRESSED_BYTES", manifest_bytes + 100_000)
+
+      expect { described_class.new(io, importer).run! }
+        .to raise_error(ProjectImporter::InvalidArchiveError, /압축 해제 크기/)
+    end
+
+    # R1 의 같은 우회가 **알 수 없는 엔트리**에도 있다 — ProjectImporter 의 read_archive 는
+    # audio/·attachments/·speakers/·manifest.json 이 아닌 엔트리를 아예 읽지 않아
+    # Entry#close 가 계량 없이 압축을 다 풀어버린다.
+    it "알 수 없는 엔트리도 계량되어 zip-bomb 가드가 발화한다" do
+      io  = StringIO.new
+      gz  = Zlib::GzipWriter.new(io)
+      tar = Gem::Package::TarWriter.new(gz)
+      json = JSON.generate({ "format_version" => 1, "project" => project.attributes,
+                             "folders" => [], "tags" => [], "meetings" => [] }).b
+      tar.add_file_simple("manifest.json", 0o644, json.bytesize) { |e| e.write(json) }
+      junk = "\0" * (300 * 1024)
+      tar.add_file_simple("junk/blob.bin", 0o644, junk.bytesize) { |e| e.write(junk) }
+      tar.close
+      gz.finish
+      io.rewind
+
+      stub_const("ProjectImporter::MAX_DECOMPRESSED_BYTES", json.bytesize + 100_000)
+
+      expect { described_class.new(io, importer).run! }
+        .to raise_error(ProjectImporter::InvalidArchiveError, /압축 해제 크기/)
+    end
+
+    # R3: 사이드카 문제로 로스터가 통째로 빠진 아카이브가 정상처럼 보이면 안 된다.
+    it "내보내기 시점에 로스터가 빠진 아카이브는 import 가 경고로 알린다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_raise(SidecarClient::ConnectionError, "down")
+      io = export_io # 열화 표식이 박힌 아카이브
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(default_speaker_db)
+
+      subject_importer = described_class.new(io, importer)
+      subject_importer.run!
+
+      expect(subject_importer.warnings)
+        .to include(Transfer::SpeakerDbTransfer::EXPORT_DEGRADED_WARNING)
+    end
+
+    it "표식이 없는 구버전 아카이브는 export 열화 경고를 올리지 않는다(하위호환)" do
+      manifest = {
+        "format_version" => 1,
+        "project"        => project.attributes,
+        "folders"        => [], "tags" => [], "meetings" => []
+      }
+      io  = StringIO.new
+      gz  = Zlib::GzipWriter.new(io)
+      tar = Gem::Package::TarWriter.new(gz)
+      json = JSON.generate(manifest).b
+      tar.add_file_simple("manifest.json", 0o644, json.bytesize) { |e| e.write(json) }
+      tar.close
+      gz.finish
+      io.rewind
+
+      subject_importer = described_class.new(io, importer)
+      subject_importer.run!
+
+      expect(subject_importer.warnings).to be_empty
+    end
+
+    # 스테이징 도입의 함정: restore_speaker_dbs 는 **커밋 후**에 돈다.
+    # 여기서 raise 하면 run! 의 rescue 가 이미 커밋된 import 의 복사 파일을 지운다.
+    it "스테이징 파일이 사라져도 커밋된 import 를 롤백/파일삭제 하지 않고 경고만 남긴다" do
+      allow(sidecar_stub).to receive(:get_speaker_db).and_return(speaker_db_1)
+      io = export_io
+      subject_importer = described_class.new(io, importer)
+      # 스테이징 직후 파일을 지워 File 읽기가 ENOENT 로 실패하게 만든다.
+      # (복원은 공유 Importer 인스턴스를 거치므로 그 인스턴스의 import_file 을 감싼다.)
+      allow(Transfer::SpeakerDbTransfer::Importer).to receive(:new).and_wrap_original do |orig, **kwargs|
+        inner = orig.call(**kwargs)
+        allow(inner).to receive(:import_file).and_wrap_original do |run, mid, path|
+          FileUtils.rm_f(path)
+          run.call(mid, path)
+        end
+        inner
+      end
+
+      expect(subject_importer).not_to receive(:cleanup_copied_files)
+
+      new_project = nil
+      expect { new_project = subject_importer.run! }.not_to raise_error
+      expect(new_project.meetings.count).to eq(2)
+      expect(subject_importer.warnings)
+        .to include(Transfer::SpeakerDbTransfer::RESTORE_FAILED_WARNING)
+    end
+
+    it "구버전 아카이브(화자 엔트리 없음)도 정상 import 된다 (하위호환)" do
+      manifest = {
+        "format_version" => 1,
+        "project"        => project.attributes,
+        "folders"        => [],
+        "tags"           => [],
+        "meetings"       => [ meeting.attributes.merge(
+          "transcripts" => [], "summaries" => [], "action_items" => [],
+          "decisions"   => [], "blocks"    => [], "attachments"  => [],
+          "contacts"    => [], "bookmarks" => [],
+          "chat_messages" => [], "tag_ids" => [], "glossary_entries" => []
+        ) ]
+      }
+      io  = StringIO.new
+      gz  = Zlib::GzipWriter.new(io)
+      tar = Gem::Package::TarWriter.new(gz)
+      json = JSON.generate(manifest).b
+      tar.add_file_simple("manifest.json", 0o644, json.bytesize) { |e| e.write(json) }
+      tar.close
+      gz.finish
+      io.rewind
+
+      expect(sidecar_stub).not_to receive(:put_speaker_db)
+
+      new_project = described_class.new(io, importer).run!
+      expect(new_project.meetings.count).to eq(1)
     end
   end
 end

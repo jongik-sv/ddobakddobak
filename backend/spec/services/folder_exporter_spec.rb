@@ -19,6 +19,15 @@ RSpec.describe FolderExporter do
     entries
   end
 
+  # export 경로가 sidecar 의 SpeakerDB 를 조회하므로, 러닝 dev sidecar 로 실요청이 나가지
+  # 않도록 전역 stub 을 둔다("화자 DB" describe 블록은 자체 stub 으로 override).
+  # 기본 페이로드는 빈 로스터라 speakers/ 엔트리가 생기지 않는다 → 기존 예제는 그대로 통과.
+  before do
+    default_sidecar = instance_double(SidecarClient,
+                                      get_speaker_db: { "next_num" => 1, "speakers" => {}, "names" => {} })
+    allow(SidecarClient).to receive(:new).and_return(default_sidecar)
+  end
+
   let!(:owner)   { create(:user) }
   let!(:project) { create(:project, creator: owner, name: "기획팀") }
 
@@ -176,6 +185,133 @@ RSpec.describe FolderExporter do
         result = read_tar_gz(io)
 
         expect(result.keys.none? { |k| k.start_with?("audio/") }).to be(true)
+      end
+    end
+
+    # ── 화자 DB(SpeakerDB) 번들링 ──
+    #
+    # 회의 단건(MeetingExporter)·프로젝트(ProjectExporter)는 로스터를 보존하는데 그 중간
+    # 단위인 폴더만 조용히 전부 잃었다. import 쪽은 엔트리가 없으면 "구버전 아카이브"
+    # 하위호환 경로로 흘러 경고조차 없다 → 사용자가 예측할 수 없는 비대칭.
+    describe "화자 DB(SpeakerDB) 번들링" do
+      let(:speaker_db_1) do
+        { "next_num" => 2, "speakers" => { "SPEAKER_00" => [ "AACAPwAAAEA=" ] },
+          "names" => { "SPEAKER_00" => "앨리스" } }
+      end
+      let(:speaker_db_2) do
+        { "next_num" => 3, "speakers" => { "SPEAKER_00" => [ "AABAQA==" ] },
+          "names" => { "SPEAKER_00" => "밥" } }
+      end
+      let(:empty_db) { { "next_num" => 1, "speakers" => {}, "names" => {} } }
+
+      it "서브트리 각 회의의 SpeakerDB 를 speakers/<원본meeting_id>.json 으로 회의별 번들한다" do
+        sidecar = instance_double(SidecarClient)
+        allow(SidecarClient).to receive(:new).and_return(sidecar)
+        allow(sidecar).to receive(:get_speaker_db).with(meeting1.id).and_return(speaker_db_1)
+        allow(sidecar).to receive(:get_speaker_db).with(meeting2.id).and_return(speaker_db_2)
+
+        io = StringIO.new
+        described_class.new(folder_a, include_audio: false).write_to(io)
+        entries = read_tar_gz(io)
+
+        # 회의2 는 하위 폴더 B 소속 — 서브트리 전체를 돌아야 잡힌다
+        expect(JSON.parse(entries["speakers/#{meeting1.id}.json"])).to eq(speaker_db_1)
+        expect(JSON.parse(entries["speakers/#{meeting2.id}.json"])).to eq(speaker_db_2)
+      end
+
+      it "sidecar 가 다운되어 있으면 speaker 엔트리 없이 export 는 성공한다" do
+        sidecar = instance_double(SidecarClient)
+        allow(SidecarClient).to receive(:new).and_return(sidecar)
+        allow(sidecar).to receive(:get_speaker_db).and_raise(SidecarClient::ConnectionError, "down")
+
+        io = StringIO.new
+        expect {
+          described_class.new(folder_a, include_audio: false).write_to(io)
+        }.not_to raise_error
+
+        entries = read_tar_gz(io)
+        expect(entries.keys.none? { |k| k.start_with?("speakers/") }).to be(true)
+        expect(entries).to have_key("manifest.json")
+      end
+
+      # 회의마다 Exporter 를 새로 만들면 circuit-break 상태가 공유되지 않아
+      # "붙어는 있는데 응답 없음" 사이드카에서 회의당 TIMEOUT(30초)을 전부 소모한다.
+      it "첫 사이드카 연결 실패 이후 회의는 아예 호출하지 않는다(circuit-break)" do
+        sidecar = instance_double(SidecarClient)
+        allow(SidecarClient).to receive(:new).and_return(sidecar)
+        allow(sidecar).to receive(:get_speaker_db).and_raise(SidecarClient::TimeoutError, "no response")
+
+        io = StringIO.new
+        described_class.new(folder_a, include_audio: false).write_to(io)
+
+        expect(Meeting.where(folder_id: [ folder_a.id, folder_b.id ]).count).to eq(2) # 회의는 2건인데
+        expect(sidecar).to have_received(:get_speaker_db).once                        # 호출은 1번뿐
+      end
+
+      it "로스터가 빈 회의는 speakers/ 엔트리를 만들지 않는다" do
+        sidecar = instance_double(SidecarClient)
+        allow(SidecarClient).to receive(:new).and_return(sidecar)
+        allow(sidecar).to receive(:get_speaker_db).with(meeting1.id).and_return(speaker_db_1)
+        allow(sidecar).to receive(:get_speaker_db).with(meeting2.id).and_return(empty_db)
+
+        io = StringIO.new
+        described_class.new(folder_a, include_audio: false).write_to(io)
+        entries = read_tar_gz(io)
+
+        expect(entries).to have_key("speakers/#{meeting1.id}.json")
+        expect(entries).not_to have_key("speakers/#{meeting2.id}.json")
+      end
+
+      # "엔트리 없음"은 구버전 아카이브 신호이기도 해서, 표식이 없으면 사이드카 문제로
+      # 로스터가 통째로 빠진 아카이브가 정상처럼 보이고 import 도 조용히 넘어간다.
+      it "로스터를 하나라도 놓치면 manifest 에 speaker_db_degraded=true 를 남긴다" do
+        sidecar = instance_double(SidecarClient)
+        allow(SidecarClient).to receive(:new).and_return(sidecar)
+        allow(sidecar).to receive(:get_speaker_db).and_raise(SidecarClient::ConnectionError, "down")
+
+        io = StringIO.new
+        described_class.new(folder_a, include_audio: false).write_to(io)
+        parsed = JSON.parse(read_tar_gz(io)["manifest.json"])
+
+        expect(parsed[Transfer::SpeakerDbTransfer::DEGRADED_MANIFEST_KEY]).to be(true)
+      end
+
+      it "로스터가 원래 비어있던 회의뿐이면 열화 표식은 false 다" do
+        io = StringIO.new
+        described_class.new(folder_a, include_audio: false).write_to(io)
+        parsed = JSON.parse(read_tar_gz(io)["manifest.json"])
+
+        expect(parsed[Transfer::SpeakerDbTransfer::DEGRADED_MANIFEST_KEY]).to be(false)
+      end
+    end
+
+    # tar.close 가 raise 하면 같은 ensure 의 gz.finish 가 건너뛰어져 gzip 트레일러
+    # (CRC+ISIZE) 없는 스트림이 남는다(GzipReader 가 "unexpected end of file"로 죽는다).
+    # ProjectExporter/MeetingExporter#close_tar_then_gz 와 같은 형태를 FolderExporter 에도 적용한다.
+    describe "add_* 가 raise 해도 tar 는 닫힌다" do
+      it "tar.close 가 실패해도 gz.finish 는 건너뛰지 않는다(gzip 트레일러 보존)" do
+        allow_any_instance_of(Gem::Package::TarWriter)
+          .to receive(:close).and_raise(IOError, "tar close boom")
+
+        io = StringIO.new
+        expect {
+          described_class.new(folder_a, include_audio: false).write_to(io)
+        }.to raise_error(IOError, "tar close boom")
+
+        io.rewind
+        # gz.finish 가 실행됐다는 증거 — 안 됐으면 Zlib::GzipFile::Error 가 난다.
+        expect { Zlib::GzipReader.new(io).read }.not_to raise_error
+      end
+
+      # 반대로 add_* 가 이미 raise 중이면 close 실패가 원인 예외를 덮어쓰면 안 된다.
+      it "진행 중인 예외가 있으면 close 실패로 덮어쓰지 않는다" do
+        allow(Transfer::SpeakerDbTransfer::Exporter).to receive(:new).and_raise(RuntimeError, "원인")
+        allow_any_instance_of(Gem::Package::TarWriter)
+          .to receive(:close).and_raise(IOError, "tar close boom")
+
+        expect {
+          described_class.new(folder_a, include_audio: false).write_to(StringIO.new)
+        }.to raise_error(RuntimeError, "원인")
       end
     end
 

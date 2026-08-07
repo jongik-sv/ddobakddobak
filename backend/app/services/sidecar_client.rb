@@ -92,6 +92,17 @@ class SidecarClient
     delete("/speakers?meeting_id=#{meeting_id}")
   end
 
+  # 회의의 SpeakerDB 전체(임베딩 포함)를 조회한다. export 용.
+  # 미등록 meeting_id 도 404 가 아니라 기본 상태({"next_num"=>1,"speakers"=>{},"names"=>{}})를 반환한다.
+  def get_speaker_db(meeting_id)
+    get("/speakers/db?meeting_id=#{meeting_id}")
+  end
+
+  # 회의의 SpeakerDB 전체를 payload 로 통째로 교체한다(병합 아님). import 용.
+  def put_speaker_db(meeting_id, payload)
+    put("/speakers/db?meeting_id=#{meeting_id}", payload)
+  end
+
   # ── Embeddings ──
 
   # 텍스트 배열 → 임베딩 벡터 배열. folder-chat 의미검색용.
