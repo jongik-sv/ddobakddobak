@@ -6,6 +6,7 @@ import { RecordingLayer } from '../components/recording/RecordingLayer'
 import { useRecordingSignalsStore } from '../stores/recordingSignalsStore'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useRecordingStore } from '../stores/recordingStore'
+import { useUiStore } from '../stores/uiStore'
 
 // ────────────────���─────────────────────────────
 // Mocks
@@ -412,6 +413,64 @@ describe('MeetingLivePage', () => {
     it('MobileTabLayout 탭이 표시되지 않음', () => {
       renderPage()
       expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+    })
+
+    // 우측 패널 토글 버튼을 탑바(DesktopRecordControls)에서 패널 근처로 이동(MeetingPage와 동일 패턴).
+    it('탑바에는 더 이상 메모 토글 버튼이 없고, 패널 접기/펼치기는 패널 자체 근처에서 동작한다', async () => {
+      useUiStore.setState({ memoVisible: true })
+      renderPage()
+      expect(screen.getByTestId('ai-summary')).toBeInTheDocument()
+
+      // 탑바(StickyNote) 메모 토글 버튼은 완전히 제거되었다.
+      expect(screen.queryByRole('button', { name: '메모 보기' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '메모 숨기기' })).not.toBeInTheDocument()
+
+      // 열림 상태: 우측 패널(RightTabsPanel) 탭 헤더 안의 "패널 접기" 버튼으로 접는다.
+      const collapseButton = screen.getByRole('button', { name: '패널 접기' })
+      fireEvent.click(collapseButton)
+
+      // 접힘 상태: 화면 우측 엣지에 "패널 펼치기" 버튼이 나타나고, 접기 버튼은 사라진다(콘텐츠 언마운트).
+      const expandButton = await screen.findByRole('button', { name: '패널 펼치기' })
+      expect(screen.queryByRole('button', { name: '패널 접기' })).not.toBeInTheDocument()
+
+      // 다시 펼치면 탭 헤더와 접기 버튼이 복귀한다.
+      fireEvent.click(expandButton)
+      await screen.findByRole('button', { name: '패널 접기' })
+      expect(screen.queryByRole('button', { name: '패널 펼치기' })).not.toBeInTheDocument()
+
+      useUiStore.setState({ memoVisible: true }) // 다른 테스트로 상태 오염 방지
+    })
+
+    // 우측(메모·오타수정·AI챗) 패널 토글 시 기록↔AI회의록 경계가 움직이던 버그의 회귀 방지
+    // (MeetingPage와 동일 원인·동일 수정). 패널을 unmount하는 대신 collapse(0%)/expand로만
+    // 크기를 바꿔, 해제된 폭을 항상 AI 회의록(가운데) 패널이 흡수하고 기록(좌측) 폭은 고정되어야 한다.
+    it('우측 패널을 숨겨도 기록 폭은 그대로고 AI 회의록 폭만 늘어난다', async () => {
+      useUiStore.setState({ memoVisible: true })
+      const { container } = renderPage()
+      expect(screen.getByTestId('ai-summary')).toBeInTheDocument()
+
+      const getFlex = (id: string) =>
+        (container.querySelector(`#${id}`) as HTMLElement | null)?.style.flex
+
+      await waitFor(() => {
+        expect(getFlex('record')).toBeTruthy()
+        expect(getFlex('right-tabs')).toBeTruthy()
+      })
+      const recordBefore = getFlex('record')
+      const summaryBefore = getFlex('summary')
+
+      act(() => {
+        useUiStore.getState().toggleMemo()
+      })
+
+      await waitFor(() => {
+        expect(getFlex('right-tabs')).toMatch(/^0(\s|$)/)
+      })
+
+      expect(getFlex('record')).toBe(recordBefore)
+      expect(getFlex('summary')).not.toBe(summaryBefore)
+
+      useUiStore.setState({ memoVisible: true }) // 다른 테스트로 상태 오염 방지
     })
   })
 

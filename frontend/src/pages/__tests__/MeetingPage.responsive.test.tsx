@@ -138,6 +138,31 @@ vi.mock('../../api/bookmarks', () => ({
   deleteBookmark: vi.fn(),
 }))
 
+// 제목이 실제 회의 제목(비동기 로드)으로 바뀌면서 RightTabsPanel(AiChatPanel)까지 마운트될
+// 여유가 생겼다 — 미mock이면 api/chat·api/glossary가 실백엔드로 나가 Unhandled Rejection을
+// 일으킨다(MeetingPage.test.tsx와 동일 패턴).
+vi.mock('../../api/glossary', () => ({
+  getGlossary: vi.fn().mockResolvedValue({
+    meeting: { entries: [] },
+    folder: null,
+    ancestors: [],
+    resolved: [],
+  }),
+  createMeetingGlossaryEntry: vi.fn(),
+  createFolderGlossaryEntry: vi.fn(),
+  updateGlossaryEntry: vi.fn(),
+  deleteGlossaryEntry: vi.fn(),
+  reapplyGlossary: vi.fn(),
+  applyGlossaryEntry: vi.fn(),
+}))
+
+vi.mock('../../api/chat', () => ({
+  getChatMessages: vi.fn().mockResolvedValue([]),
+  sendChatMessage: vi.fn(),
+  getScopedChatMessages: vi.fn().mockResolvedValue([]),
+  sendScopedChatMessage: vi.fn(),
+}))
+
 vi.mock('../../components/meeting/ExportButton', () => ({
   ExportButton: () => <button data-testid="export-button">내보내기</button>,
 }))
@@ -229,12 +254,17 @@ describe('MeetingPage 반응형 분기', () => {
       expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
     })
 
-    it('헤더 제목이 text-xl 클래스를 가짐', async () => {
+    // 탑바 고정 라벨("회의 미리보기")은 실제 회의 제목(MeetingActionHeader, 인라인 편집 가능)으로
+    // 대체되었다 — 별도 행이 아니라 탑바 안에 흡수(옵션 B: 3줄→2줄, 배지는 상시 노출+wrap).
+    it('탑바에 고정 라벨 대신 실제 회의 제목이 표시된다', async () => {
       renderPage()
       await waitFor(() => {
-        const heading = screen.getByText('회의 미리보기')
-        expect(heading.className).toContain('text-xl')
+        const heading = screen.getByText('반응형 테스트 회의')
+        expect(heading.tagName).toBe('H1')
+        expect(heading.className).toContain('text-lg')
+        expect(heading.className).not.toContain('sr-only')
       })
+      expect(screen.queryByText('회의 미리보기')).not.toBeInTheDocument()
     })
   })
 
@@ -301,13 +331,15 @@ describe('MeetingPage 반응형 분기', () => {
       expect(chatTab).toHaveAttribute('aria-selected', 'false')
     })
 
-    it('헤더 제목이 모바일에서 sr-only로 숨겨짐', async () => {
+    // 탑바 고정 라벨이 사라지고 실제 제목이 그 자리를 대신하면서, 모바일에서도(breadcrumb보다
+    // 우선) 실제 제목은 sr-only로 숨지 않고 보인다 — 기존엔 고정 라벨만 모바일에서 숨겼었다.
+    it('모바일에서도 탑바에 실제 회의 제목이 sr-only 없이 표시된다', async () => {
       renderPage()
       await waitFor(() => {
-        const heading = screen.getByText('회의 미리보기')
-        expect(heading.className).toContain('sr-only')
-        expect(heading.className).not.toContain('text-xl')
+        const heading = screen.getByText('반응형 테스트 회의')
+        expect(heading.className).not.toContain('sr-only')
       })
+      expect(screen.queryByText('회의 미리보기')).not.toBeInTheDocument()
     })
   })
 })

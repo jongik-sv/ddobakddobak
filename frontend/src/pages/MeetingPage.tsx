@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { PanelRightOpen } from 'lucide-react'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useProjectStore } from '../stores/projectStore'
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, usePanelRef } from 'react-resizable-panels'
+import { Tooltip } from '../components/ui/Tooltip'
 import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
@@ -39,7 +41,6 @@ import { GlossaryPanel } from '../components/meeting/GlossaryPanel'
 import { MeetingActionHeader } from '../components/meeting/MeetingActionHeader'
 import { MeetingActions } from '../components/meeting/MeetingActions'
 import { MeetingDetailTopBar } from '../components/meeting/MeetingDetailTopBar'
-import { MeetingPathBreadcrumb } from '../components/meeting/MeetingPathBreadcrumb'
 import { buildMeetingDetailTabs } from '../components/meeting/meetingDetailTabs'
 import { MeetingSearchBar } from '../components/meeting/MeetingSearchBar'
 import { useMeetingSearch } from '../hooks/useMeetingSearch'
@@ -67,6 +68,8 @@ export default function MeetingPage() {
   const { meeting, summary, isLoading, error: meetingError, updateTitle, updateMeetingInfo, deleteMeeting, refetch } =
     useMeeting(meetingId)
   const [showEditDialog, setShowEditDialog] = useState(false)
+  // 제목 인라인 편집 중이면 탑바의 주변 아이콘(검색/첨부/정보수정/북마크)을 접어 입력창에 폭을 몰아준다.
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
 
   // 소유권 게이팅: 수정 어포던스는 소유자/admin에게만 노출 (서버는 403으로 강제).
   const me = useAuthStore((s) => s.user)
@@ -191,6 +194,18 @@ export default function MeetingPage() {
   const attachmentsVisible = useUiStore((s) => s.attachmentsVisible)
   const toggleAttachments = useUiStore((s) => s.toggleAttachments)
   const { memoEditorRef, onEditorReady: onMemoEditorReady, isSavingMemo, handleSaveMemo } = useMemoEditor(meetingId, meeting?.memo)
+
+  // 우측(메모·AI챗) 패널은 항상 마운트해두고 collapse/expand로만 크기를 바꾼다.
+  // 패널을 통째로 언마운트하면 react-resizable-panels가 남은 패널들의 flex 비율을
+  // 재정규화(renormalize)해 트랜스크립트↔AI회의록 경계가 같이 움직인다 — 그래서
+  // 이 방식 대신 패널 개수를 고정하고 우측 패널만 0으로 접어 AI회의록이 그 폭을 흡수하게 한다.
+  const rightPanelRef = usePanelRef()
+  useEffect(() => {
+    const panel = rightPanelRef.current
+    if (!panel) return
+    if (memoVisible) panel.expand()
+    else panel.collapse()
+  }, [memoVisible, rightPanelRef])
 
   const handleNotesChange = useCallback(
     (markdown: string) => {
@@ -542,8 +557,22 @@ export default function MeetingPage() {
       <MeetingDetailTopBar
         isDesktop={isDesktop}
         hasMeeting={!!meeting}
+        titleArea={meeting ? (
+          <MeetingActionHeader
+            meeting={meeting}
+            isDesktop={isDesktop}
+            meetingTypeLabel={meetingTypeLabel}
+            onUpdateTitle={updateTitle}
+            canEdit={canEdit}
+            onToggleLock={handleToggleLock}
+            isTogglingLock={isTogglingLock}
+            onEditingChange={setIsEditingTitle}
+          />
+        ) : undefined}
+        isEditingTitle={isEditingTitle}
+        projectName={meeting?.project_name}
+        folderPath={meeting?.folder_path}
         attachmentsVisible={attachmentsVisible}
-        memoVisible={memoVisible}
         bookmarksVisible={bookmarksVisible}
         searchOpen={search.isOpen}
         canEdit={canEdit}
@@ -551,7 +580,6 @@ export default function MeetingPage() {
         onBack={handleBack}
         onToggleAttachments={toggleAttachments}
         onShowEdit={() => setShowEditDialog(true)}
-        onToggleMemo={toggleMemo}
         onToggleBookmarks={toggleBookmarks}
         onToggleSearch={() => (search.isOpen ? search.close() : search.open())}
         actions={meeting ? (
@@ -575,14 +603,6 @@ export default function MeetingPage() {
           />
         ) : undefined}
       />
-
-      {meeting && (
-        <MeetingPathBreadcrumb
-          projectName={meeting.project_name}
-          folderPath={meeting.folder_path}
-          className="px-3 lg:px-6 py-1.5 border-b border-border bg-card/50"
-        />
-      )}
 
       {/* 페이지 내 검색 바 (전사 + AI요약) */}
       {search.isOpen && (
@@ -636,27 +656,15 @@ export default function MeetingPage() {
         />
       )}
 
-      {/* 제목 줄 (제목 인라인 편집 + 배지). 액션 버튼은 상단 툴바로 이동(MeetingActions). */}
-      {meeting && (
-        <MeetingActionHeader
-          meeting={meeting}
-          isDesktop={isDesktop}
-          meetingTypeLabel={meetingTypeLabel}
-          onUpdateTitle={updateTitle}
-          canEdit={canEdit}
-          onToggleLock={handleToggleLock}
-          isTogglingLock={isTogglingLock}
-        />
-      )}
-
       {/* 첨부 파일/링크 섹션 (명함 탭 선택 시 참석자 패널은 섹션 내부에서 표시) */}
       {attachmentsVisible && <AttachmentSection meetingId={meetingId} readOnly={locked} />}
 
       {/* 패널 레이아웃: 데스크톱(PanelGroup) / 모바일(MobileTabLayout) */}
       {isDesktop ? (
-        <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden min-h-0">
+        <div className="flex-1 flex min-h-0 overflow-hidden">
+        <PanelGroup orientation="horizontal" className="flex-1 min-w-0">
           {/* 트랜스크립트 + 북마크 패널 — 기본 22% */}
-          <Panel defaultSize={22} minSize={15}>
+          <Panel id="transcript" defaultSize={22} minSize={15}>
             <div className="h-full flex flex-col overflow-hidden">
               {bookmarksVisible && (
                 <BookmarkList bookmarks={bookmarks} onSeek={handleSeek} onDelete={handleDeleteBookmark} onAdd={handleOpenBookmark} onEdit={handleEditBookmark} readOnly={locked || !canEdit} collapsible />
@@ -687,8 +695,8 @@ export default function MeetingPage() {
 
           <PanelResizeHandle className="w-1 bg-border hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-          {/* AI 회의록 — 기본 48% */}
-          <Panel defaultSize={48} minSize={20}>
+          {/* AI 회의록 — 기본 48%. 우측 패널 접힘/펼침으로 해제·회수되는 폭을 흡수하는 쪽 */}
+          <Panel id="summary" defaultSize={48} minSize={20}>
             <div data-search-region="summary" className="h-full bg-muted overflow-hidden flex flex-col min-h-0">
               <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
                 <AiSummaryPanel
@@ -704,33 +712,55 @@ export default function MeetingPage() {
             </div>
           </Panel>
 
-          {memoVisible && (
-            <>
-              <PanelResizeHandle className="w-1 bg-border hover:bg-blue-400 transition-colors cursor-col-resize" />
+          {/* 우측(메모·AI챗) 리사이즈 핸들 — memoVisible과 무관하게 항상 마운트(패널 개수 고정).
+              숨김 상태에서는 드래그로 열 수 없게 disabled 처리하고 시각적으로도 숨긴다(레이아웃 계산엔 영향 없음). */}
+          <PanelResizeHandle
+            disabled={!memoVisible}
+            className={`w-1 bg-border hover:bg-blue-400 transition-colors cursor-col-resize ${memoVisible ? '' : 'invisible pointer-events-none'}`}
+          />
 
-              {/* 메모 + AI 챗 탭 — 기본 30% */}
-              <Panel defaultSize={30} minSize={15}>
-                <RightTabsPanel
-                  meetingId={meetingId}
-                  memo={
-                    <MemoEditorPanel
-                      meetingId={meetingId}
-                      editorRef={memoEditorRef}
-                      onEditorReady={onMemoEditorReady}
-                      onSave={handleSaveMemo}
-                      isSaving={isSavingMemo}
-                      readOnly={locked || !canEdit}
-                    />
-                  }
-                  onSeek={handleSeek}
-                  folderId={meeting?.folder_id ?? null}
-                  projectId={meeting?.project_id ?? null}
-                  onSeekMeeting={handleSeekMeeting}
-                />
-              </Panel>
-            </>
-          )}
+          {/* 메모 + AI 챗 탭 — 기본 30%. 토글은 이 패널만 collapse(0)/expand하며,
+              해제된 폭은 항상 AI 회의록(가운데) 패널이 흡수한다 — 트랜스크립트 폭 고정. */}
+          <Panel id="right-tabs" defaultSize={30} minSize={15} collapsible collapsedSize={0} panelRef={rightPanelRef}>
+            {memoVisible && (
+              <RightTabsPanel
+                meetingId={meetingId}
+                memo={
+                  <MemoEditorPanel
+                    meetingId={meetingId}
+                    editorRef={memoEditorRef}
+                    onEditorReady={onMemoEditorReady}
+                    onSave={handleSaveMemo}
+                    isSaving={isSavingMemo}
+                    readOnly={locked || !canEdit}
+                  />
+                }
+                onSeek={handleSeek}
+                folderId={meeting?.folder_id ?? null}
+                projectId={meeting?.project_id ?? null}
+                onSeekMeeting={handleSeekMeeting}
+                onCollapse={toggleMemo}
+              />
+            )}
+          </Panel>
         </PanelGroup>
+        {/* 우측 패널이 접혔을 때 다시 펼칠 방법 — 사이드바 접힘 상태(AppLayout.tsx)와 동일한
+            엣지 어포던스 패턴(w-10 슬림 스트립 + 상단 고정 버튼). Panel 안에 넣으면 PanelGroup의
+            overflow:hidden에 잘려 안 보이므로 PanelGroup 밖의 flex 형제로 둔다. */}
+        {!memoVisible && (
+          <div className="flex flex-col items-center w-10 border-l border-border bg-card shrink-0 pt-3">
+            <Tooltip text="패널 펼치기" position="left">
+              <button
+                onClick={toggleMemo}
+                aria-label="패널 펼치기"
+                className="p-2.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+              >
+                <PanelRightOpen className="w-4 h-4" />
+              </button>
+            </Tooltip>
+          </div>
+        )}
+        </div>
       ) : (
         <MobileTabLayout
           tabs={mobileTabs}

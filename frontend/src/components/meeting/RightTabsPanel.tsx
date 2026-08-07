@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { PanelRightClose } from 'lucide-react'
 import { AiChatPanel } from './AiChatPanel'
 import { useUiStore } from '../../stores/uiStore'
+import { Tooltip } from '../ui/Tooltip'
 
 type Tab = 'memo' | 'corrections' | 'chat'
 type ChatScope = 'meeting' | 'folder' | 'project'
@@ -14,6 +16,7 @@ export function RightTabsPanel({
   folderId,
   projectId,
   onSeekMeeting,
+  onCollapse,
 }: {
   meetingId: number
   memo: ReactNode
@@ -23,6 +26,8 @@ export function RightTabsPanel({
   folderId?: number | null
   projectId?: number | null
   onSeekMeeting?: (meetingId: number, ms: number) => void
+  /** 이 패널을 접는 콜백(사이드바 PanelLeftClose와 대칭인 PanelRightClose 버튼). 미지정 시 버튼 미노출. */
+  onCollapse?: () => void
 }) {
   const [tab, setTab] = useState<Tab>('chat')
   // 회의 전환(다른 회의 navigate) 시에도 보던 스코프 유지 — 로컬 state 대신 uiStore로 전역화.
@@ -57,7 +62,7 @@ export function RightTabsPanel({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex border-b border-border shrink-0">
+      <div className="flex items-center border-b border-border shrink-0">
         <button className={btn('chat')} onClick={() => setTab('chat')}>
           AI 챗
         </button>
@@ -69,6 +74,17 @@ export function RightTabsPanel({
         <button className={btn('memo')} onClick={() => setTab('memo')}>
           메모
         </button>
+        {onCollapse && (
+          <Tooltip text="패널 접기" position="left">
+            <button
+              onClick={onCollapse}
+              aria-label="패널 접기"
+              className="ml-auto mr-1.5 p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+            >
+              <PanelRightClose className="w-4 h-4" />
+            </button>
+          </Tooltip>
+        )}
       </div>
       {tab === 'chat' && (
         <div className="flex items-center gap-1 border-b border-border px-3 py-2 shrink-0">

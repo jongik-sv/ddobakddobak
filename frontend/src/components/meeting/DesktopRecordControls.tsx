@@ -1,13 +1,16 @@
-import { Settings, Monitor, Mic, ArrowLeft, StickyNote, Paperclip, Bookmark, Save, Timer, Pencil } from 'lucide-react'
+import { Settings, Monitor, Mic, ArrowLeft, Paperclip, Bookmark, Save, Timer, Pencil } from 'lucide-react'
 import { Switch } from '../ui/Switch'
 import { Tooltip } from '../ui/Tooltip'
 import { useUiStore } from '../../stores/uiStore'
 import { formatElapsedSeconds } from '../../lib/audioUtils'
 import { IS_TAURI, SUMMARY_INTERVAL_OPTIONS } from '../../config'
+import { MeetingPathBreadcrumb } from './MeetingPathBreadcrumb'
 
 /** 데스크톱 전용 녹음 컨트롤 헤더 바 (모바일은 MobileRecordControls 사용) */
 export function DesktopRecordControls({
   title,
+  projectName,
+  folderPath,
   isActive,
   isPaused,
   elapsedSeconds,
@@ -17,8 +20,6 @@ export function DesktopRecordControls({
   error,
   attachmentsVisible,
   onToggleAttachments,
-  memoVisible,
-  onToggleMemo,
   canManageTemplates,
   systemAudioEnabled,
   onToggleSystemAudio,
@@ -38,6 +39,9 @@ export function DesktopRecordControls({
   canManualSummary,
 }: {
   title: string
+  /** breadcrumb(프로젝트 › 폴더 경로) 컴팩트 표시용. 없으면 breadcrumb 미노출. */
+  projectName?: string | null
+  folderPath?: { id: number; name: string }[]
   isActive: boolean
   isPaused: boolean
   elapsedSeconds: number
@@ -47,8 +51,6 @@ export function DesktopRecordControls({
   error: string | null
   attachmentsVisible: boolean
   onToggleAttachments: () => void
-  memoVisible: boolean
-  onToggleMemo: () => void
   canManageTemplates: boolean
   systemAudioEnabled: boolean
   onToggleSystemAudio: (next: boolean) => void
@@ -77,7 +79,7 @@ export function DesktopRecordControls({
           : 'bg-card border-b'
     }`}>
       {/* 좌측: 네비게이션 */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 min-w-0">
         <Tooltip text="미리보기로">
           <button
             onClick={onNavigateBack}
@@ -97,6 +99,13 @@ export function DesktopRecordControls({
             <Pencil className="w-4 h-4" />
           </button>
         </Tooltip>
+        {/* breadcrumb 전용 행을 대체 — 제목 옆에 컴팩트로 인라인 배치, 전체 경로는 title 툴팁 */}
+        <MeetingPathBreadcrumb
+          compact
+          projectName={projectName}
+          folderPath={folderPath}
+          className="min-w-0 shrink max-w-[140px]"
+        />
         <Tooltip text={attachmentsVisible ? '첨부 숨기기' : '첨부 보기'}>
           <button
             onClick={onToggleAttachments}
@@ -105,14 +114,8 @@ export function DesktopRecordControls({
             <Paperclip className="w-4 h-4" />
           </button>
         </Tooltip>
-        <Tooltip text={memoVisible ? '메모 숨기기' : '메모 보기'}>
-          <button
-            onClick={onToggleMemo}
-            className={`p-1.5 rounded-md transition-colors ${memoVisible ? 'text-blue-600 bg-blue-50' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
-          >
-            <StickyNote className="w-4 h-4" />
-          </button>
-        </Tooltip>
+        {/* 메모 패널 토글 버튼은 여기서 제거됨 — 우측 패널 헤더의 PanelRightClose(펼침 상태) /
+            패널 접힘 시 화면 우측 엣지의 PanelRightOpen(MeetingLivePage.tsx)으로 이동. */}
         <Tooltip text="설정">
           <button
             onClick={useUiStore.getState().openSettings}
