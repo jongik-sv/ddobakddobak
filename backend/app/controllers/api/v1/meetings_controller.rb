@@ -90,7 +90,7 @@ module Api
                         .offset((pagination_page - 1) * pagination_per)
 
         render json: {
-          meetings: meetings.map { |m| meeting_json(m) },
+          meetings: meetings.map { |m| meeting_json(m, collaborator_batch: collaborator_editable_batch) },
           meta: { total: total, page: pagination_page, per: pagination_per, status_counts: status_counts, scheduled_count: scheduled_count }
         }
       end
@@ -107,7 +107,7 @@ module Api
                           .order(:scheduled_start_time)
 
         render json: {
-          meetings: meetings.map { |m| meeting_json(m).merge(missed: m.scheduled_start_time < missed_before) }
+          meetings: meetings.map { |m| meeting_json(m, collaborator_batch: collaborator_editable_batch).merge(missed: m.scheduled_start_time < missed_before) }
         }
       end
 

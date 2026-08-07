@@ -247,11 +247,29 @@ class Meeting < ApplicationRecord
 
   # 수정·삭제 권한: admin(god-mode) / 본인 소유 / 직접 지정 협업자 / 소속 폴더(및 조상)의 협업자.
   # idea 44: 폴더 단위 협업자는 Folder#collaborator?(실시간 조상체인 평가, 스냅샷 아님)로 판정.
-  def editable_by?(user)
+  #
+  # collaborator_meeting_ids/collaborator_folder_ids: 목록 직렬화의 N+1 회피용 선택적 배치 인자.
+  # 둘 다 기본 nil이면 기존과 동일하게 회의별 라이브 쿼리(MeetingCollaborator.exists?/
+  # Folder#collaborator?)를 그대로 탄다 — 단건 호출(쓰기 인가 등)은 이 인자를 넘기지 않으므로
+  # 동작·쿼리 경로 모두 이전과 완전히 동일하다. 넘겨질 때는 각각 "user가 직접 협업자인
+  # meeting_id 집합", "user가 (직접 또는 조상 상속으로) 협업자인 folder_id 집합"이어야 하며,
+  # 호출부가 그 계약을 지키는 한 반환값은 라이브 쿼리 경로와 항상 동일하다.
+  def editable_by?(user, collaborator_meeting_ids: nil, collaborator_folder_ids: nil)
     return false unless user
-    (user.respond_to?(:admin?) && user.admin?) || created_by_id == user.id ||
-      MeetingCollaborator.exists?(meeting_id: id, user_id: user.id) ||
-      (folder&.collaborator?(user) || false)
+    return true if (user.respond_to?(:admin?) && user.admin?) || created_by_id == user.id
+
+    direct_collaborator = if collaborator_meeting_ids
+      collaborator_meeting_ids.include?(id)
+    else
+      MeetingCollaborator.exists?(meeting_id: id, user_id: user.id)
+    end
+    return true if direct_collaborator
+
+    if collaborator_folder_ids
+      folder_id.present? && collaborator_folder_ids.include?(folder_id)
+    else
+      folder&.collaborator?(user) || false
+    end
   end
 
   def transcription_stream
