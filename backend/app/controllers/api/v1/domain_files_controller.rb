@@ -15,7 +15,14 @@ module Api
         scope = DomainFile.accessible_by(current_user)
         scope = scope.where(project_id: [ nil, params[:project_id] ]) if params[:project_id].present?
 
-        render json: { domain_files: scope.order(:name).map { |f| summary_json(f) } }
+        # content(TEXT, 최대 50,000자) 전체를 로드해 .length만 쓰는 낭비를 피하려고
+        # SQL LENGTH(content)를 별도 선택 컬럼으로 끌어온다. SQLite length()는 문자 수를
+        # 반환(UTF-8 기준)하므로 Ruby String#length와 일치.
+        records = scope.order(:name)
+                        .select(:id, :name, :project_id, :created_by_id, :updated_at)
+                        .select("LENGTH(content) AS content_length")
+
+        render json: { domain_files: records.map { |f| summary_json(f, f.content_length) } }
       end
 
       def create
@@ -177,13 +184,15 @@ module Api
         end
       end
 
-      def summary_json(f)
+      # content_chars: index의 배치 조회(LENGTH(content))에서 넘기면 그 값을, 아니면(show 등
+      # 완전한 레코드 보유 시) f.content.length를 그대로 쓴다.
+      def summary_json(f, content_chars = nil)
         {
           id: f.id,
           name: f.name,
           project_id: f.project_id,
           created_by_id: f.created_by_id,
-          content_chars: f.content.length,
+          content_chars: content_chars || f.content.length,
           updated_at: f.updated_at,
           editable: f.editable_by?(current_user)
         }

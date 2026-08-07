@@ -38,6 +38,15 @@ RSpec.describe "Api::V1::DomainFiles", type: :request do
       expect(response.parsed_body["domain_files"].first).not_to have_key("content")
     end
 
+    it "content_chars는 한글 콘텐츠에서도 SQL LENGTH와 Ruby String#length가 일치한다" do
+      korean_file = create(:domain_file, name: "한글 콘텐츠 사전", creator: creator,
+                            content: "- **품질**: 한글 용어 설명입니다\n- **개선**: 두 번째 한글 라인")
+      login_as(creator)
+      get "/api/v1/domain_files"
+      by_name = response.parsed_body["domain_files"].index_by { |f| f["name"] }
+      expect(by_name["한글 콘텐츠 사전"]["content_chars"]).to eq(korean_file.content.length)
+    end
+
     it "각 항목에 editable(현재 유저 기준)을 포함한다 (UX 증분 A)" do
       login_as(creator)
       get "/api/v1/domain_files"

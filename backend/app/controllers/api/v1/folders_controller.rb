@@ -13,10 +13,12 @@ module Api
 
         if params[:flat] == "true"
           # flat은 이동-폴더 선택기용이라 비공개 폴더도 노출(숨김은 트리만). 카운트만 접근 스코프.
-          folders = Folder.kept.ordered.where(project_id: project.id).to_a
+          folders = Folder.kept.ordered.includes(:tags).where(project_id: project.id).to_a
           counts = Meeting.accessible_by(current_user).where(project_id: project.id)
                           .where(folder_id: folders.map(&:id)).group(:folder_id).count
-          render json: { folders: folders.map { |f| folder_json(f, counts[f.id] || 0) } }
+          children_counts = Folder.where(parent_id: folders.map(&:id)).group(:parent_id).count
+          by_id = folders.index_by(&:id)
+          render json: { folders: folders.map { |f| folder_json(f, counts[f.id] || 0, children_counts[f.id] || 0, by_id) } }
         else
           render json: { folders: Folder.tree(current_user, project.id) }
         end
@@ -205,7 +207,10 @@ module Api
         result
       end
 
-      def folder_json(folder, meeting_count = nil)
+      # meeting_count/children_count/by_id는 index(flat) 배치 호출용 선택 인자.
+      # by_id가 주어지면(같은 배치로 로드된 폴더 맵) ancestors도 쿼리 없이 in-memory로 계산한다
+      # (Folder.visible_folder_ids 기법과 동일한 parent_id 체인 워크).
+      def folder_json(folder, meeting_count = nil, children_count = nil, by_id = nil)
         {
           id: folder.id,
           name: folder.name,
@@ -214,12 +219,24 @@ module Api
           shared: folder.shared,
           important: folder.important,
           meeting_count: meeting_count || folder.meetings.accessible_by(current_user).count,
-          children_count: folder.children.count,
+          children_count: children_count || folder.children.count,
           tags: folder.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
-          ancestors: folder.ancestors,
+          ancestors: by_id ? ancestors_from_map(folder, by_id) : folder.ancestors,
           created_at: folder.created_at,
           updated_at: folder.updated_at
         }
+      end
+
+      def ancestors_from_map(folder, by_id)
+        path = []
+        seen = {}
+        current = folder.parent_id && by_id[folder.parent_id]
+        while current && !seen[current.id]
+          seen[current.id] = true
+          path.unshift({ id: current.id, name: current.name })
+          current = current.parent_id && by_id[current.parent_id]
+        end
+        path
       end
     end
   end
