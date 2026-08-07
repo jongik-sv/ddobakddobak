@@ -226,8 +226,9 @@ vi.mock('../hooks/useMemoEditor', () => ({
   }),
 }))
 
+let mockIsDesktop = true
 vi.mock('../hooks/useMediaQuery', () => ({
-  useMediaQuery: vi.fn(() => true), // 데스크톱 모드 고정
+  useMediaQuery: () => mockIsDesktop,
   BREAKPOINTS: {
     sm: '(min-width: 640px)',
     md: '(min-width: 768px)',
@@ -277,6 +278,7 @@ function renderPage(meetingId = '1') {
 describe('MeetingPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockIsDesktop = true
     vi.mocked(meetingsApi.getMeeting).mockResolvedValue(mockMeetingBase)
     vi.mocked(meetingsApi.getSummary).mockResolvedValue({
       id: 1,
@@ -402,6 +404,18 @@ describe('MeetingPage', () => {
     expect(screen.queryByRole('button', { name: '패널 펼치기' })).not.toBeInTheDocument()
 
     useUiStore.setState({ memoVisible: true }) // 다른 테스트로 상태 오염 방지
+  })
+
+  // 데스크톱/모바일 두 분기가 MeetingActionHeader에 넘기는 공통 prop(메모 스프레드 추출) 회귀 방지.
+  // isDesktop=false(모바일)일 때도 제목·잠금 토글 등 동일 prop이 그대로 전달되어야 한다.
+  it('isDesktop=false(모바일)에서도 MeetingActionHeader에 제목·잠금 토글이 정상 전달된다', async () => {
+    mockIsDesktop = false
+    renderPage()
+
+    await screen.findByText('테스트 회의')
+
+    // 잠금 토글 버튼(canEdit=true, onToggleLock 전달)이 모바일 분기에서도 노출된다.
+    expect(screen.getByRole('button', { name: /잠금/ })).toBeInTheDocument()
   })
 
   // idea 44: editable=false(비소유자)면 잠금 여부와 무관하게 전사·화자·AI요약이 readOnly여야 한다.

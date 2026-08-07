@@ -601,6 +601,17 @@ export default function MeetingPage() {
     actions: meetingActions,
   }
 
+  // MeetingActionHeader에 공통으로 넘기는 prop — 데스크톱 titleArea / 모바일 분기 양쪽에서 동일하게 사용.
+  const meetingActionHeaderCommon = {
+    isDesktop,
+    meetingTypeLabel,
+    onUpdateTitle: updateTitle,
+    canEdit,
+    onToggleLock: handleToggleLock,
+    isTogglingLock,
+    onEditingChange: setIsEditingTitle,
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* 상단 툴바 */}
@@ -610,26 +621,14 @@ export default function MeetingPage() {
           titleArea={meeting ? (
             <MeetingActionHeader
               meeting={meeting}
-              isDesktop={isDesktop}
-              meetingTypeLabel={meetingTypeLabel}
-              onUpdateTitle={updateTitle}
-              canEdit={canEdit}
-              onToggleLock={handleToggleLock}
-              isTogglingLock={isTogglingLock}
-              onEditingChange={setIsEditingTitle}
+              {...meetingActionHeaderCommon}
             />
           ) : undefined}
         />
       ) : meeting ? (
         <MeetingActionHeader
           meeting={meeting}
-          isDesktop={isDesktop}
-          meetingTypeLabel={meetingTypeLabel}
-          onUpdateTitle={updateTitle}
-          canEdit={canEdit}
-          onToggleLock={handleToggleLock}
-          isTogglingLock={isTogglingLock}
-          onEditingChange={setIsEditingTitle}
+          {...meetingActionHeaderCommon}
         >
           {(parts) => (
             <MeetingDetailTopBar
