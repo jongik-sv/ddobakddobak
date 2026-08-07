@@ -38,6 +38,7 @@ import { RightTabsPanel } from '../components/meeting/RightTabsPanel'
 import { TranscribingProgress } from '../components/meeting/TranscribingProgress'
 import { TermCorrectionDetails } from '../components/meeting/TermCorrectionDetails'
 import { GlossaryPanel } from '../components/meeting/GlossaryPanel'
+import { TypoToolsCompactBar } from '../components/meeting/TypoToolsCompactBar'
 import { MeetingActionHeader } from '../components/meeting/MeetingActionHeader'
 import { MeetingActions } from '../components/meeting/MeetingActions'
 import { MeetingDetailTopBar } from '../components/meeting/MeetingDetailTopBar'
@@ -502,9 +503,10 @@ export default function MeetingPage() {
     <SummaryOptionsControl meeting={meeting} onSave={updateMeetingInfo} />
   ) : undefined
 
-  // 오타수정·오타사전 — AI 회의록 아래에 배치(데스크톱 패널 + 모바일 요약 탭 공통).
+  // 오타수정·오타사전 — AI 회의록 아래에 배치.
   // 잠금 또는 편집 권한 없음(비소유자·비협업자) 시 숨김 — 서버 authorize_meeting_control!이
   // 최종 방어선이지만 UI도 편집 불가능한 사람에게는 열지 않는다(idea 44 readOnly 배선).
+  // 데스크톱 패널: 두 섹션을 기존처럼 개별 <details>로 렌더(무변경).
   const typoSections = !locked && canEdit ? (
     <div className="shrink-0 max-h-[45%] overflow-y-auto">
       <TermCorrectionDetails
@@ -518,6 +520,22 @@ export default function MeetingPage() {
       />
       {meeting?.id && <GlossaryPanel meetingId={meeting.id} />}
     </div>
+  ) : null
+
+  // 모바일 요약 탭: 접힌 두 섹션이 헤더 2줄(~95px)을 상시 점유하던 문제 대응 — 한 줄
+  // 토글 바(TypoToolsCompactBar)로 병합. 데스크톱 typoSections와는 별개 트리이므로
+  // 데스크톱 렌더에는 영향 없다.
+  const typoSectionsMobile = !locked && canEdit && meeting?.id ? (
+    <TypoToolsCompactBar
+      meetingId={meeting.id}
+      corrections={corrections}
+      status={correctionStatus}
+      isApplying={isApplyingCorrections}
+      onUpdate={updateCorrection}
+      onAdd={addCorrectionRow}
+      onRemove={removeCorrectionRow}
+      onApply={handleApplyCorrections}
+    />
   ) : null
 
   // 모바일 탭 정의
@@ -543,7 +561,7 @@ export default function MeetingPage() {
     suppressAutoScroll: !!search.effectiveQuery,
     locked,
     canEdit,
-    belowSummary: typoSections,
+    belowSummary: typoSectionsMobile,
     seekTick,
     onSplit: handleTranscriptSplit,
     canRedact: canRedactMeeting(meeting, me) && !locked,
@@ -551,58 +569,90 @@ export default function MeetingPage() {
     onRedacted: handleTranscriptRedact,
   })
 
+  const meetingActions = meeting ? (
+    <MeetingActions
+      meeting={meeting}
+      meetingId={meetingId}
+      isDesktop={isDesktop}
+      transcriptsCount={transcripts.length}
+      isRegeneratingNotes={isRegeneratingNotes}
+      onShowSttConfirm={() => setShowSttConfirm(true)}
+      onShowReDiarizeConfirm={() => setShowReDiarizeConfirm(true)}
+      onShowNotesConfirm={() => setShowNotesConfirm(true)}
+      onReopen={async () => {
+        await reopenMeeting(meetingId)
+        navigate(`/meetings/${meetingId}/live`)
+      }}
+      onGoLive={() => navigate(`/meetings/${meetingId}/live`)}
+      onDelete={deleteMeeting}
+      canEdit={canEdit}
+      onChanged={refetch}
+    />
+  ) : undefined
+
+  // 상단 툴바 공통 prop — 데스크톱/모바일 두 조립 분기가 공유(데스크톱 분기는 titleArea만 채워
+  // 기존과 동일하게, 모바일 분기는 mobileTitleArea/mobileBadgesArea/mobileLockToggle을 추가로 채운다).
+  const topBarCommon = {
+    isDesktop,
+    hasMeeting: !!meeting,
+    isEditingTitle,
+    projectName: meeting?.project_name,
+    folderPath: meeting?.folder_path,
+    attachmentsVisible,
+    bookmarksVisible,
+    searchOpen: search.isOpen,
+    canEdit,
+    locked,
+    onBack: handleBack,
+    onToggleAttachments: toggleAttachments,
+    onShowEdit: () => setShowEditDialog(true),
+    onToggleBookmarks: toggleBookmarks,
+    onToggleSearch: () => (search.isOpen ? search.close() : search.open()),
+    actions: meetingActions,
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* 상단 툴바 */}
-      <MeetingDetailTopBar
-        isDesktop={isDesktop}
-        hasMeeting={!!meeting}
-        titleArea={meeting ? (
-          <MeetingActionHeader
-            meeting={meeting}
-            isDesktop={isDesktop}
-            meetingTypeLabel={meetingTypeLabel}
-            onUpdateTitle={updateTitle}
-            canEdit={canEdit}
-            onToggleLock={handleToggleLock}
-            isTogglingLock={isTogglingLock}
-            onEditingChange={setIsEditingTitle}
-          />
-        ) : undefined}
-        isEditingTitle={isEditingTitle}
-        projectName={meeting?.project_name}
-        folderPath={meeting?.folder_path}
-        attachmentsVisible={attachmentsVisible}
-        bookmarksVisible={bookmarksVisible}
-        searchOpen={search.isOpen}
-        canEdit={canEdit}
-        locked={locked}
-        onBack={handleBack}
-        onToggleAttachments={toggleAttachments}
-        onShowEdit={() => setShowEditDialog(true)}
-        onToggleBookmarks={toggleBookmarks}
-        onToggleSearch={() => (search.isOpen ? search.close() : search.open())}
-        actions={meeting ? (
-          <MeetingActions
-            meeting={meeting}
-            meetingId={meetingId}
-            isDesktop={isDesktop}
-            transcriptsCount={transcripts.length}
-            isRegeneratingNotes={isRegeneratingNotes}
-            onShowSttConfirm={() => setShowSttConfirm(true)}
-            onShowReDiarizeConfirm={() => setShowReDiarizeConfirm(true)}
-            onShowNotesConfirm={() => setShowNotesConfirm(true)}
-            onReopen={async () => {
-              await reopenMeeting(meetingId)
-              navigate(`/meetings/${meetingId}/live`)
-            }}
-            onGoLive={() => navigate(`/meetings/${meetingId}/live`)}
-            onDelete={deleteMeeting}
-            canEdit={canEdit}
-            onChanged={refetch}
-          />
-        ) : undefined}
-      />
+      {isDesktop ? (
+        <MeetingDetailTopBar
+          {...topBarCommon}
+          titleArea={meeting ? (
+            <MeetingActionHeader
+              meeting={meeting}
+              isDesktop={isDesktop}
+              meetingTypeLabel={meetingTypeLabel}
+              onUpdateTitle={updateTitle}
+              canEdit={canEdit}
+              onToggleLock={handleToggleLock}
+              isTogglingLock={isTogglingLock}
+              onEditingChange={setIsEditingTitle}
+            />
+          ) : undefined}
+        />
+      ) : meeting ? (
+        <MeetingActionHeader
+          meeting={meeting}
+          isDesktop={isDesktop}
+          meetingTypeLabel={meetingTypeLabel}
+          onUpdateTitle={updateTitle}
+          canEdit={canEdit}
+          onToggleLock={handleToggleLock}
+          isTogglingLock={isTogglingLock}
+          onEditingChange={setIsEditingTitle}
+        >
+          {(parts) => (
+            <MeetingDetailTopBar
+              {...topBarCommon}
+              mobileTitleArea={parts.title}
+              mobileBadgesArea={parts.badges}
+              mobileLockToggle={parts.lockToggle}
+            />
+          )}
+        </MeetingActionHeader>
+      ) : (
+        <MeetingDetailTopBar {...topBarCommon} />
+      )}
 
       {/* 페이지 내 검색 바 (전사 + AI요약) */}
       {search.isOpen && (

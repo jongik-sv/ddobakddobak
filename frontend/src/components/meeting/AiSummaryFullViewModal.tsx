@@ -14,7 +14,7 @@ const CARD_DESKTOP =
   'relative flex flex-col h-full min-h-0 rounded-xl bg-card shadow-2xl border border-border overflow-hidden'
 
 const CLOSE_BTN =
-  'p-1.5 min-h-[44px] flex items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors'
+  'p-1.5 min-h-[28px] flex items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors'
 
 /** 데스크톱 떠 있는 창의 위치·크기. localStorage에 저장해 다음 열람 때 복원한다. */
 interface Geometry {
@@ -151,19 +151,17 @@ export function AiSummaryFullViewModal({
     setGeometry(next)
   }
 
-  // 헤더(드래그 핸들)와 본문은 양쪽 경로 공용. 데스크톱에서만 드래그 관련 클래스를 덧붙인다.
-  // 데스크톱 전용 testid는 E2E용 — 모바일은 컬럼 래퍼에 ai-summary-fullview 하나만 둔다(중복 방지).
+  // 데스크톱 전용 헤더(드래그 핸들). 모바일은 자체 헤더를 그리지 않고 중첩 AiSummaryPanel의
+  // 헤더에 닫기 버튼을 끼워 넣어 "AI 회의록 · A± · X" 한 줄로 합친다(제목 중복·이중 헤더 방지).
   const header = (
     <div
-      data-testid={isDesktop ? 'ai-summary-fullview-header' : undefined}
-      className={`flex items-center justify-between px-6 py-4 border-b shrink-0${
-        isDesktop ? ' ai-summary-drag-handle cursor-move select-none' : ''
-      }`}
+      data-testid="ai-summary-fullview-header"
+      className="flex items-center justify-between px-4 py-1.5 border-b shrink-0 ai-summary-drag-handle cursor-move select-none"
     >
-      <h2 className="text-lg font-semibold text-foreground">AI 회의록</h2>
+      <h2 className="text-sm font-semibold text-foreground">AI 회의록</h2>
       <button
         onClick={onClose}
-        className={`${CLOSE_BTN}${isDesktop ? ' ai-summary-no-drag' : ''}`}
+        className={`${CLOSE_BTN} ai-summary-no-drag`}
         aria-label="닫기"
       >
         <X className="w-5 h-5" />
@@ -171,6 +169,18 @@ export function AiSummaryFullViewModal({
     </div>
   )
 
+  const mobileCloseButton = (
+    <button
+      onClick={onClose}
+      className={CLOSE_BTN}
+      aria-label="닫기"
+    >
+      <X className="w-5 h-5" />
+    </button>
+  )
+
+  // 데스크톱은 모달 header가 제목을 그리므로 중첩 패널의 제목은 숨긴다(hideTitle).
+  // 모바일은 모달 header가 없으므로 중첩 패널이 제목을 그대로 그리고, 닫기 버튼만 headerTrailing으로 주입한다.
   const body = (
     <div
       data-testid={isDesktop ? 'ai-summary-fullview' : undefined}
@@ -181,11 +191,14 @@ export function AiSummaryFullViewModal({
         editable={editable}
         isRecording={false}
         hideExpand
+        hideTitle={isDesktop}
+        headerTrailing={!isDesktop ? mobileCloseButton : undefined}
       />
     </div>
   )
 
-  // 모바일: 기존 풀스크린 Dialog 경로 그대로(드래그·리사이즈 없음, 배경 스크롤 잠금·Esc는 Dialog가 처리).
+  // 모바일: 풀스크린 Dialog(드래그·리사이즈 없음, 배경 스크롤 잠금·Esc는 Dialog가 처리).
+  // 모달 자체 header는 그리지 않는다 — 중첩 AiSummaryPanel의 헤더가 유일한 상단 바가 된다.
   if (!isDesktop) {
     return (
       <Dialog
@@ -195,7 +208,6 @@ export function AiSummaryFullViewModal({
         className={CONTAINER_MOBILE}
       >
         <div data-testid="ai-summary-fullview" className="flex flex-col h-full min-h-0">
-          {header}
           {body}
         </div>
       </Dialog>

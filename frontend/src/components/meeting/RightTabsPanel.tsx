@@ -75,15 +75,17 @@ export function RightTabsPanel({
           메모
         </button>
         {onCollapse && (
-          <Tooltip text="패널 접기" position="left">
-            <button
-              onClick={onCollapse}
-              aria-label="패널 접기"
-              className="ml-auto mr-1.5 p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-            >
-              <PanelRightClose className="w-4 h-4" />
-            </button>
-          </Tooltip>
+          <span className="ml-auto shrink-0">
+            <Tooltip text="패널 접기" position="left">
+              <button
+                onClick={onCollapse}
+                aria-label="패널 접기"
+                className="mr-1.5 p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+              >
+                <PanelRightClose className="w-4 h-4" />
+              </button>
+            </Tooltip>
+          </span>
         )}
       </div>
       {tab === 'chat' && (

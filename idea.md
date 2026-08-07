@@ -128,6 +128,11 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
 37. 서버 LLM 모델 설정에 선택 안함 추가해줘. 선택 안함 추가하면 요약이 실행이 안되게 하고 싶어. (완 — 자동 realtime 틱은 무음 skip, 회의종료/수동 재생성은 에러 안내)
 38. 내 LLM 설정에 CLI 모델 추가 (실행은 로컬 실행이 아니고 서버에서 실행한다.) (완 — 백엔드는 이미 CLI 허용, 프론트 cliAllowed 로컬모드 제한 해제 + CLI 선택 시 "서버에서 실행" 안내문)
 39. 회의록 md 파일만 내보내기 하는 옵션이 있으면 좋겠어. 기존 프로젝트, 폴더 내보내기 할때 md 파일만 내보내기 하는거야. 이것은 import 할 용도가 아니라 이 내용을 llm을 입력으로 분석하기 위한거야. 또 내보낼때 폴더 모양 그대로 내보내기 되면 좋겠다.
+40. 오타 수정을 할 경우 AI 회의록 보고 있는 위치가 아니라 다시 처음으로 올라가서 불편 (완 — f0b2a4cc. AiSummaryPanel에 scrollContainerRef 추가, 외부발 setMeetingNotes로 replaceBlocks 전체치환 직전 scrollTop 저장 → 이중 rAF로 복원(mermaid 등 비동기 레이아웃 확정 대비). 회귀테스트 AiSummaryPanel.scroll.test.tsx)
+41. 전사 내용을 회의 미리보기에서 수정이 안되는 문제 발생 (보류 — 44번으로 통합. 실증상은 "비소유자 편집 UI는 열리는데 저장만 403으로 조용히 실패". canEdit 게이팅+저장실패 토스트를 구현했다 revert함)
+42. 회의록 마커가 가끔씩 동작하지 않는 문제 발생 (보류 — 재현 확인 대기. 확정 원인 후보: 같은 ms 마커 재클릭 시 setState bail-out으로 AudioPlayer seekTo 미호출(AudioPlayer.tsx seek useEffect deps에 seekTick 없음). 수정했다 revert함. 2차 용의 = citationInline.tsx 단일 텍스트노드 정규식이 md 서식 경계에서 마커를 쪼갬)
+43. 마커를 눌러서 해당 시간대로 이동하더라도 전사 위치는 그대로여서 오디오가 나오는 시점으로 수동으로 옮겨야 하는 문제 발생 (완 — 18938cf4. MeetingPage에 seekTick 추가(동일 ms 재-seek 시 bail-out 우회) + handleSeek에서 setCurrentTimeMs 낙관 갱신, TranscriptPanel이 seekTick 변화 시 suppressAutoScroll 무시하고 강제 scrollIntoView)
+44. 회의 소유자가 아닌 사람이 회의를 수정하면 수정은 되지만 DB에 최정 저장은 안됨. 처음 부터 수정이 안되게 해야함(readOnly 처리), 수정 권한을 여러명에게 주는 방법 검토 (완 — cdf6e8d1, main 커밋·푸시 안 함. MeetingCollaborator/FolderCollaborator(폴더협업자는 하위회의 상속) + editable_by?/collaborator? + 협업자 CRUD 엔드포인트(추가·제거는 owner/admin만). 프론트 canEdit을 전 편집지점 readOnly 배선 + CollaboratorsPanel/FolderCollaboratorsDialog. 감사로 발견·수정: folders#collaborators GET 인가누락 IDOR·create/update/upload_audio folder_id 교차프로젝트 미검증(협업자상속 우회)·shared 토글 협업자 차단. 관리액션(destroy·lock·shared)=owner/admin, reset_content=협업자 허용(사용자 결정). 백엔드 풀스위트 1979·프론트 vitest 1796·tsc 0 통과. 잔여=브라우저 수동 E2E)
 
 ## 향후 추가 계획 — 미완료
 2. 회의 내용을 llm-wiki 로 구성해서 회의 내용을 검색하거나 요약하도록 구성
@@ -162,8 +167,9 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
 15. 회의 예약하면 미리 알림 기능할 수 있도록 추가(예 10분전 알림, 30분전 알림) 
 16. 시스템 오디오 입력은 음성이 뒤에 짤림 
 26. 최대 3개의 회의만 실행되도록 제한(회의 4개부터 유실 우려). 실시간/배치 동시/ 처리 시 실시간 우선으로 처리
-40. 오타 수정을 할 경우 AI 회의록 보고 있는 위치가 아니라 다시 처음으로 올라가서 불편 (완 — f0b2a4cc. AiSummaryPanel에 scrollContainerRef 추가, 외부발 setMeetingNotes로 replaceBlocks 전체치환 직전 scrollTop 저장 → 이중 rAF로 복원(mermaid 등 비동기 레이아웃 확정 대비). 회귀테스트 AiSummaryPanel.scroll.test.tsx)
-41. 전사 내용을 회의 미리보기에서 수정이 안되는 문제 발생 (보류 — 44번으로 통합. 실증상은 "비소유자 편집 UI는 열리는데 저장만 403으로 조용히 실패". canEdit 게이팅+저장실패 토스트를 구현했다 revert함)
-42. 회의록 마커가 가끔씩 동작하지 않는 문제 발생 (보류 — 재현 확인 대기. 확정 원인 후보: 같은 ms 마커 재클릭 시 setState bail-out으로 AudioPlayer seekTo 미호출(AudioPlayer.tsx seek useEffect deps에 seekTick 없음). 수정했다 revert함. 2차 용의 = citationInline.tsx 단일 텍스트노드 정규식이 md 서식 경계에서 마커를 쪼갬)
-43. 마커를 눌러서 해당 시간대로 이동하더라도 전사 위치는 그대로여서 오디오가 나오는 시점으로 수동으로 옮겨야 하는 문제 발생 (완 — 18938cf4. MeetingPage에 seekTick 추가(동일 ms 재-seek 시 bail-out 우회) + handleSeek에서 setCurrentTimeMs 낙관 갱신, TranscriptPanel이 seekTick 변화 시 suppressAutoScroll 무시하고 강제 scrollIntoView)
-44. 회의 소유자가 아닌 사람이 회의를 수정하면 수정은 되지만 DB에 최정 저장은 안됨. 처음 부터 수정이 안되게 해야함(readOnly 처리), 수정 권한을 여러명에게 주는 방법 검토 (완 — cdf6e8d1, main 커밋·푸시 안 함. MeetingCollaborator/FolderCollaborator(폴더협업자는 하위회의 상속) + editable_by?/collaborator? + 협업자 CRUD 엔드포인트(추가·제거는 owner/admin만). 프론트 canEdit을 전 편집지점 readOnly 배선 + CollaboratorsPanel/FolderCollaboratorsDialog. 감사로 발견·수정: folders#collaborators GET 인가누락 IDOR·create/update/upload_audio folder_id 교차프로젝트 미검증(협업자상속 우회)·shared 토글 협업자 차단. 관리액션(destroy·lock·shared)=owner/admin, reset_content=협업자 허용(사용자 결정). 백엔드 풀스위트 1979·프론트 vitest 1796·tsc 0 통과. 잔여=브라우저 수동 E2E)
+27. 
+45. 디플로우에 전송할때 Action Items의 활용 방안 강구
+46. 회의록에서 이슈 자동 도출
+47. 특정 프로그램에 대해서 수정사항을 얘기할때 자동으로 수정 프롬프트 생성 기능
+48. 특정 프로그램에 대해서 화면 수정에 대한 논의 시 직접 화면 접속 및 화면 캡쳐 후 수정 방안 제시 (이건 뭐 Agent 기능이지) --> 로컬/원격 에이전트에서 동작해서 처리
+49. 대화 시 '또박아', '또박이' 라고 얘기하면 AI 스피커처럼 명령 수행 (ㅎㅎㅎ 가능한가?)
