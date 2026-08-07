@@ -120,15 +120,16 @@ async def test_chunked_transcribe_realtime_waits_while_chunk_holds_lock():
 
 # ── (c) 비분할 경로(file_chunk_sec<=0)는 락을 잡지 않는다 ────────────────────
 def test_unsplit_path_does_not_reference_gpu_lock():
-    """transcribe_file의 비분할(else) 분기 소스에 gpu_lock 참조가 없어야 한다.
+    """transcribe_file의 STT 청크 분기(_run_file_stt)의 비분할(else) 분기에 gpu_lock 참조가 없어야 한다.
 
     이 경로는 Rails가 쓰지 않는 직접 호출 전용이며, 파일 전체 추론 동안
     gpu_lock을 쥐면 실시간이 그만큼 굶는 역효과가 나므로 의도적으로 무락 유지.
+    (WP-S2: transcribe_file() 단계별 추출로 이 분기는 _run_file_stt()에 위치)
     """
     import inspect
     from app.routers import stt as stt_router
 
-    src = inspect.getsource(stt_router.transcribe_file)
+    src = inspect.getsource(stt_router._run_file_stt)
     else_block = src.split("        else:\n", 1)[1].split("    finally:")[0]
     # 주석에는 "gpu_lock"이라는 단어 자체가 (안 잡는 이유 설명으로) 등장할 수 있으므로
     # 실제로 락을 거는 코드 패턴("async with ... gpu_lock")만 부재를 검증한다.
