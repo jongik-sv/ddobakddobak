@@ -1,5 +1,12 @@
 class Meeting < ApplicationRecord
   include Trashable
+  include Meeting::RecurringSchedule
+  include Meeting::AudioDuration
+  include Meeting::AccessControl
+  include Meeting::Dflow
+  include Meeting::TranscriptionQueue
+  include Meeting::RecordingHealing
+  include Meeting::SummaryManagement
 
   belongs_to :project, optional: true
   belongs_to :creator, class_name: "User", foreign_key: "created_by_id"
@@ -54,90 +61,10 @@ class Meeting < ApplicationRecord
     locked_at.present?
   end
 
-  # 반복 예약 회의 여부. recurrence_rule(JSON)이 있으면 반복 시리즈.
-  def recurring?
-    recurrence_rule.present?
-  end
-
-  # recurrence_rule(JSON 텍스트)을 파싱한 해시. 비반복/파싱불가면 nil.
-  def parsed_recurrence_rule
-    return nil if recurrence_rule.blank?
-    JSON.parse(recurrence_rule)
-  rescue JSON::ParserError
-    nil
-  end
-
-  # 반복 시리즈의 다음 occurrence(미래) pending 회의를 복제 생성한다.
-  # - 비반복이면 no-op(nil).
-  # - 멱등: 이미 이 회의를 시드로 한 예약(scheduled) successor 가 있으면 중복 생성하지 않는다.
-  # - 다음 occurrence 가 없으면(규칙 불완전 등) no-op(nil).
-  # title/유형/폴더/프로젝트/공유/중요/모드/규칙·요약옵션만 승계하고, started_at·ended_at·locked_at·
-  # 오디오·dismiss 같은 상태 필드는 깨끗하게 둔다(새 pending 회의). previous_meeting_id 로 체이닝해
-  # "이전 회의 참고" 시드가 시리즈를 따라 이어진다.
-  # 중요(important)는 원본값을 명시 승계한다 — important_explicitly_set=true 로 표시해
-  # before_create :seed_importance_from_folder 가 폴더값으로 덮어쓰지 않게 한다(컨트롤러
-  # apply_explicit_importance! 와 동일 패턴). 그래야 중요한 반복 시리즈의 후속 occurrence 가
-  # important=true 를 유지해 기본(important 필터) 회의 목록에서 사라지지 않는다.
-  def materialize_next_occurrence!
-    return unless recurring?
-    # 이미 미래 형제(이 회의를 시드로 한 예약 successor)가 있으면 중복 방지(every-minute 롤오버 멱등).
-    return if Meeting.where(previous_meeting_id: id).scheduled.exists?
-
-    next_time = Recurrence.next_occurrence(parsed_recurrence_rule, after: Time.current)
-    return if next_time.nil?
-
-    successor = Meeting.new(
-      title: title,
-      meeting_type: meeting_type,
-      folder_id: folder_id,
-      project_id: project_id,
-      shared: shared,
-      important: important,
-      created_by_id: created_by_id,
-      summary_verbosity: summary_verbosity,
-      summary_restructure: summary_restructure,
-      summary_custom_prompt: summary_custom_prompt,
-      auto_start_mode: auto_start_mode,
-      recurrence_rule: recurrence_rule,
-      previous_meeting_id: id,
-      scheduled_start_time: next_time
-    )
-    successor.important_explicitly_set = true # 폴더값 override 방지(중요 플래그 명시 승계)
-    successor.save!
-    successor
-  end
-
   # 중요 플래그 상속: 회의 생성 시 important 를 명시 지정하지 않았으면 소속 폴더값을 상속한다.
   # 명시 지정(컨트롤러가 important_explicitly_set=true 세팅) 케이스는 상속을 건너뛰고 지정값 보존.
   attr_accessor :important_explicitly_set
   before_create :seed_importance_from_folder
-
-  # ── 오디오 길이 측정/캐시 ──
-  # audio_file_path 파일의 길이(ms)를 ffprobe로 측정한다. 파일이 없으면 0.
-  def measure_audio_duration_ms
-    path = audio_file_path
-    return 0 unless path.present? && File.exist?(path)
-
-    output = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 #{Shellwords.escape(path)}`.strip
-    (output.to_f * 1000).to_i
-  rescue StandardError
-    0
-  end
-
-  # 측정값을 audio_duration_ms 컬럼에 저장(콜백·검증 우회). audio_file_path가 바뀌는
-  # 쓰기 지점에서 호출해 컬럼이 항상 현재 파일 길이를 반영하게 한다(merge로 path가
-  # 그대로여도 내용이 커지므로 무조건 재측정한다).
-  def refresh_audio_duration!
-    update_column(:audio_duration_ms, measure_audio_duration_ms)
-  end
-
-  # audio_file_path를 바꾸는 모든 쓰기 지점의 단일 진입점. 경로를 저장(검증 실행)하고
-  # 곧바로 길이를 재측정·캐시해 path↔duration 결합을 모델에서 강제한다(콜백 부재 →
-  # 새 쓰기 지점이 refresh를 빠뜨리는 일 방지). 파일을 '비우는' reset 경로는 별개.
-  def set_audio_file!(path)
-    update!(audio_file_path: path)
-    refresh_audio_duration!
-  end
 
   # SQLite LIKE는 기본 ESCAPE 문자가 없어 sanitize_sql_like의 백슬래시 이스케이프가
   # 리터럴로 매치된다(%·_ 포함 검색어 오동작) — ESCAPE '\' 명시 필수.
@@ -173,238 +100,7 @@ class Meeting < ApplicationRecord
     scheduled.pending.where(schedule_dismissed_at: nil).where(scheduled_start_time: ...SCHEDULE_TRIGGER_GRACE.ago)
   }
 
-  # 열람 가능한 회의 목록 범위: admin은 전체, 그 외는 본인 소유분 + "공유로 보이는" 회의.
-  # 유효 공유 가시성 = meetings.shared AND (폴더 없음 OR 폴더와 모든 조상이 shared). 즉 상위
-  # 폴더를 비공개로 두면 그 하위 폴더·회의가 개별 shared 여부와 무관하게 전부 숨는다(상속·폴더 우선).
-  # (개별 회의 접근 인가는 MeetingLookup#authorize_meeting_read! — 이 스코프는 목록 쿼리용)
-  # Folder.visible_folder_ids가 조상 체인을 in-memory로 평가해 보이는 폴더 id만 IN 으로 넘긴다.
-  # Phase 5 컨트롤러 스코핑(index 등)에서 사용 예정.
   scope :in_project, ->(pid) { pid.present? ? where(project_id: pid) : all }
-
-  scope :accessible_by, ->(user) {
-    if user.admin?
-      kept
-    else
-      member_pids = ProjectMembership.where(user_id: user.id).select(:project_id)
-      base = kept.where(project_id: member_pids)
-      visible_shared = base.where(shared: true).where(
-        "meetings.folder_id IS NULL OR meetings.folder_id IN (?)",
-        Folder.visible_folder_ids
-      )
-      base.where(created_by_id: user.id).or(visible_shared)
-    end
-  }
-
-  # 수정·삭제 가능한 회의 목록 범위: admin은 전체, 그 외는 본인 소유분만.
-  scope :editable_by, ->(user) { user.admin? ? all : where(created_by_id: user.id) }
-
-  # ── D'Flow 전송 상태 필터(목록 dflow_status 파라미터용) ──
-  scope :dflow_not_sent, -> { where(dflow_synced_at: nil) }
-  # #dflow_needs_resync? 를 SQL로 미러링한다. 활성 요약(#active_summary) 선택 규칙까지 그대로
-  # 옮겨야 한다 — "아무 요약이나 동기화 이후 갱신됐으면 재전송 필요"로 단순화하면 비활성 요약만
-  # 수정된 행(completed 인데 안 쓰는 realtime 이 갱신된 경우 등)까지 오탐한다. CASE 로 completed
-  # 여부에 따라 분기하고, 각 분기 안에서 다시 (a) final 최소 id 우선 (b) 없으면
-  # [generated_at, id] 최댓값 폴백을 그대로 재현한다(Ruby 쪽과 순서 규칙을 1:1로 맞춤).
-  scope :dflow_needs_resync, -> {
-    where(<<~SQL.squish)
-      meetings.public_uid IS NOT NULL AND meetings.dflow_synced_at IS NOT NULL AND (
-        meetings.last_user_edit_at > meetings.dflow_synced_at
-        OR (
-          CASE WHEN meetings.status = 'completed' THEN
-            COALESCE(
-              (SELECT s.updated_at FROM summaries s
-               WHERE s.meeting_id = meetings.id AND s.summary_type = 'final'
-               ORDER BY s.id ASC LIMIT 1),
-              (SELECT s.updated_at FROM summaries s
-               WHERE s.meeting_id = meetings.id
-               ORDER BY s.generated_at DESC, s.id DESC LIMIT 1)
-            )
-          ELSE
-            (SELECT s.updated_at FROM summaries s
-             WHERE s.meeting_id = meetings.id
-             ORDER BY s.generated_at DESC, s.id DESC LIMIT 1)
-          END
-        ) > meetings.dflow_synced_at
-      )
-    SQL
-  }
-  # dflow_synced 는 dflow_needs_resync 집합을 제외해야 한다 — 프론트 4지선다(전체/전송됨/재전송
-  # 필요/미전송)가 사용자에게 배타적 분할로 보이므로, "전송됨"을 고르면 재전송 필요(amber) 배지
-  # 행이 함께 나오면 안 된다(리뷰 지적: "재전송 필요" 필터가 초록 배지 행을 반환하는 버그의
-  # 거울상 — 위 dflow_needs_resync 정의 다음에 둬야 참조할 수 있다).
-  scope :dflow_synced, -> { where.not(dflow_synced_at: nil).where.not(id: dflow_needs_resync.select(:id)) }
-
-  def owner?(user)
-    created_by_id == user.id
-  end
-
-  # 유효 공유 가시성(타인 열람 허용 여부): 회의가 공유이고, 폴더가 없거나 폴더와 모든 조상이 공유일 때만.
-  # 상위 폴더를 비공개로 두면 하위 회의는 개별 shared 여부와 무관하게 타인에게 안 보인다(상속·폴더 우선).
-  # accessible_by 스코프(목록 쿼리)와 동일 규칙을 단건(show 인가)에서 표현한다.
-  def shared_visible?
-    shared? && (folder_id.nil? || folder&.effectively_shared?)
-  end
-
-  # 수정·삭제 권한: admin(god-mode) / 본인 소유 / 직접 지정 협업자 / 소속 폴더(및 조상)의 협업자.
-  # idea 44: 폴더 단위 협업자는 Folder#collaborator?(실시간 조상체인 평가, 스냅샷 아님)로 판정.
-  #
-  # collaborator_meeting_ids/collaborator_folder_ids: 목록 직렬화의 N+1 회피용 선택적 배치 인자.
-  # 둘 다 기본 nil이면 기존과 동일하게 회의별 라이브 쿼리(MeetingCollaborator.exists?/
-  # Folder#collaborator?)를 그대로 탄다 — 단건 호출(쓰기 인가 등)은 이 인자를 넘기지 않으므로
-  # 동작·쿼리 경로 모두 이전과 완전히 동일하다. 넘겨질 때는 각각 "user가 직접 협업자인
-  # meeting_id 집합", "user가 (직접 또는 조상 상속으로) 협업자인 folder_id 집합"이어야 하며,
-  # 호출부가 그 계약을 지키는 한 반환값은 라이브 쿼리 경로와 항상 동일하다.
-  def editable_by?(user, collaborator_meeting_ids: nil, collaborator_folder_ids: nil)
-    return false unless user
-    return true if (user.respond_to?(:admin?) && user.admin?) || created_by_id == user.id
-
-    direct_collaborator = if collaborator_meeting_ids
-      collaborator_meeting_ids.include?(id)
-    else
-      MeetingCollaborator.exists?(meeting_id: id, user_id: user.id)
-    end
-    return true if direct_collaborator
-
-    if collaborator_folder_ids
-      folder_id.present? && collaborator_folder_ids.include?(folder_id)
-    else
-      folder&.collaborator?(user) || false
-    end
-  end
-
-  def transcription_stream
-    "meeting_#{id}_transcription"
-  end
-
-  # 파일 전사 대기열 위치. file_transcription 큐는 스레드 1개 직렬이라, 앞선 회의가 오래 걸리면
-  # (예: 70분 파일) 뒤에 업로드된 회의는 진행률이 계속 0%로 보여 "고장"으로 오인된다(실사고).
-  # transcribing인데 자기 잡이 아직 대기(미claim) 상태면 앞선 미완료 잡 수(N)를 반환 —
-  # 프론트는 이걸로 "앞에 N건 대기 중"을 보여주다가, 잡이 claim(실행 시작)되면 nil로 전환해
-  # 기존 진행률 표시(ActionCable broadcast)로 자연스럽게 넘어간다.
-  # SolidQueue::Job은 :queue DB 별도 커넥션(config/environments/production.rb connects_to)이라
-  # primary DB 커넥션풀에 영향 없음. dev/test(:async 어댑터)는 큐 테이블 자체가 없어
-  # StatementInvalid가 나므로 nil로 폴백(기존 "잡 못 찾으면 null" 동작과 동일 취급).
-  TRANSCRIPTION_QUEUE_NAME = "file_transcription".freeze
-  TRANSCRIPTION_QUEUE_JOB_CLASSES = %w[FileTranscriptionJob ReDiarizeJob].freeze
-
-  # jobs: 미리 조회해둔 스냅샷(옵션) — meeting_serializable#transcription_queue_jobs_snapshot 가
-  # 요청(컨트롤러 인스턴스) 단위로 1회 조회한 배열을 넘겨 목록 직렬화의 회의별 재조회(N+1)를
-  # 피한다. 생략하면(단건 조회 등) 기존처럼 그 자리에서 조회한다.
-  def transcription_queue_position(jobs = nil)
-    return nil unless transcribing?
-
-    jobs ||= self.class.unfinished_transcription_queue_jobs
-    own_index = jobs.find_index do |job|
-      TRANSCRIPTION_QUEUE_JOB_CLASSES.include?(job.class_name) &&
-        self.class.transcription_queue_job_meeting_id(job) == id
-    end
-    return nil unless own_index
-
-    return nil if jobs[own_index].claimed? # 실행 중 — 진행률 표시로 전환
-
-    own_index
-  rescue ActiveRecord::StatementInvalid
-    nil
-  end
-
-  # queue_name=file_transcription, 미완료(finished_at nil) 잡을 id 순(=enqueue 순)으로 스냅샷.
-  # ReDiarizeJob도 같은 큐를 공유하므로 자연히 포함된다(다른 회의의 재분리도 대기열을 밀어야 정확).
-  # failed_execution 이 붙은 잡은 제외 — SolidQueue는 실패해도 finished_at을 채우지 않으므로
-  # (gem 소스 SolidQueue::Job::Executable#finished! 은 성공 경로에서만 호출) 워커 강제종료(배포
-  # 재시작·OOM 시 프로세스 prune 의 fail_all_claimed_executions_with)로 죽은 잡이 제외 없이는
-  # 영구 대기 카운트에 잡혀 뒤 회의들의 대기 수를 과대표시하고, 자기 잡이 failed면 영원히
-  # "대기 중"으로 멈춘다.
-  def self.unfinished_transcription_queue_jobs
-    # claimed_execution 을 함께 preload — meeting_serializable#transcription_queue_jobs_snapshot 가
-    # 요청당 1회 이 스냅샷을 재사용하는 목록 직렬화 경로에서, 회의마다 호출되는 jobs[i].claimed?
-    # (has_one 존재 체크)가 추가 쿼리 없이 미리 로드된 값을 쓰게 한다.
-    SolidQueue::Job.where(queue_name: TRANSCRIPTION_QUEUE_NAME, finished_at: nil)
-                   .where.missing(:failed_execution)
-                   .includes(:claimed_execution)
-                   .order(:id).to_a
-  end
-
-  # SolidQueue::Job#arguments = ActiveJob 직렬화 해시(예: {"job_class"=>"FileTranscriptionJob",
-  # "arguments"=>[meeting_id], ...}). meeting_id(Integer)는 ActiveJob 허용 원시타입이라 그대로 보존.
-  def self.transcription_queue_job_meeting_id(job)
-    args = job.arguments
-    return nil unless args.is_a?(Hash)
-    Array(args["arguments"]).first
-  end
-
-  # 화자분리만 재실행(ReDiarizeJob)이 :async 잡 드롭(서버 리로드 등)으로 멈추면 회의가
-  # transcribing 에 영구정지된다 — 재실행 버튼은 completed 에서만 보여 UI 로는 회복 불가.
-  # re_diarize_started_at 가 임계시간보다 오래되면 stale 로 보고 completed 로 자가복구한다.
-  # 실 STT(FileTranscriptionJob)는 이 컬럼을 쓰지 않으므로 절대 건드리지 않는다(클로버 방지).
-  RE_DIARIZE_STALE_AFTER = 5.minutes
-
-  def heal_stale_re_diarize!
-    return unless transcribing? && re_diarize_started_at.present?
-    return if re_diarize_started_at > RE_DIARIZE_STALE_AFTER.ago
-
-    update_columns(status: "completed", transcription_progress: 100, re_diarize_started_at: nil)
-  end
-
-  # 이 회의의 전사 content가 확정된 시점에 임베딩을 일관되게 맞춘다(배치, 라이브 밖).
-  # 라이브/파일STT/import 핫패스에서 인라인 임베딩을 제거했으므로, 확정 경계에서 이 메서드로 흡수한다.
-  # diff 기반(EmbedBackfillJob)이라 신규 전사 + 무효화로 삭제된 행을 모두 재생성한다. 멱등.
-  def reconcile_embeddings!
-    EmbedBackfillJob.perform_later(meeting_id: id)
-  end
-
-  # 강제종료/크래시로 recording 에 고정된 회의 자가복구. recorder presence(하트비트)
-  # 부재로만 판정 — 침묵과 무관(침묵은 클라측 silenceAutoComplete 가 stop 호출).
-  # RecordingLock 미사용 이유: acquire 가 audio_chunk(발화)에서만 호출돼 시작직후 침묵에
-  # holder 가 nil → 활성 녹음 오종결. 하트비트는 VAD/일시정지 무관하게 전송돼 정확.
-  RECORDER_HEARTBEAT_STALE_AFTER = 90.seconds
-
-  def stale_recording?
-    return false unless recording?
-
-    recorder_heartbeat_at.nil? || recorder_heartbeat_at < RECORDER_HEARTBEAT_STALE_AFTER.ago
-  end
-
-  # 활성 점유 녹음 여부: recording 이고 점유 기기 하트비트가 신선(stale 아님)할 때만 true.
-  # 단일 녹음 기기 락의 충돌 판정과 serializer(recorder_active) 노출이 공유하는 판정.
-  def recorder_active?
-    recording? && !stale_recording?
-  end
-
-  def heal_stale_recording!
-    return unless stale_recording?
-
-    # 종료시각 = 마지막 presence(하트비트). 부재(레거시/#207)면 치유 호출 시각.
-    ended = recorder_heartbeat_at || Time.current
-
-    # 원자적 종결: recording 인 행만 completed 로 전이. 변경행수 0이면(다른 요청·인스턴스가
-    # 먼저 종결) early return — stop 과 동일 시맨틱(브로드캐스트·lock·job)을 중복 실행하지 않는다.
-    # update_all 은 콜백/검증 우회(status 전이엔 콜백 불필요). reload 로 in-memory 갱신.
-    changed = Meeting.where(id: id, status: "recording")
-                     .update_all(status: "completed", ended_at: ended, paused_at: nil, updated_at: Time.current)
-    if changed.zero?
-      # 다른 healer 가 먼저 completed 로 전이한 경우 — in-memory @meeting 이 recording 으로
-      # 잔존하면 가드(reject_if_recorder_conflict!) 통과 후 downstream 액션(stop/pause)이
-      # stale recording?=true 로 오작동한다. 성공 분기와 동일하게 reload 로 상태를 맞춘다.
-      reload
-      return
-    end
-
-    RecordingLock.clear(id)
-
-    # stop 액션과 동일하게 녹음 종료 브로드캐스트(읽기전용 뷰어 라우팅 등 프론트 신호).
-    ActionCable.server.broadcast(
-      transcription_stream,
-      { type: "recording_stopped", meeting_id: id }
-    )
-
-    # in-memory status 갱신 — show/index serializer 가 종결 후 상태를 일관되게 읽도록.
-    reload
-
-    if transcripts.exists?
-      MeetingSummarizationJob.perform_later(id, type: "final")
-      reconcile_embeddings!
-    end
-  end
 
   # 명함에서 인식한 참석자 이름을 attendees 자유텍스트에 비파괴 append.
   # 기존 사용자 입력은 지우지 않고, 같은 이름이 이미 있으면 skip(중복 방지).
@@ -420,92 +116,6 @@ class Meeting < ApplicationRecord
     label   = company.to_s.strip.present? ? "#{name} (#{company.to_s.strip})" : name
     updated = existing.strip.empty? ? label : "#{existing}, #{label}"
     update_column(:attendees, updated)
-  end
-
-  # completed 회의만 final 을 하드 우선. reopen(=recording 복귀) 후엔 최신 우선 —
-  # stale final 이 reopen 후 쌓이는 realtime 진행분을 가리지 않게 (구현리뷰 useredit-M5).
-  #
-  # loaded-aware: summaries 가 이미 로드돼 있으면(목록 preload) in-memory 로 고른다 — 매번 SQL을
-  # 치던 걸 없애 목록 N건에서 N+1을 막는다(meeting_attachments.loaded? 와 동일 관용구,
-  # meeting_serializable.rb 참고). in-memory 분기는 SQL 분기와 정확히 같은 레코드를 골라야 한다:
-  # - completed? 인 최소 id final(= 바인딩 없는 bare find_by 의 rowid/id 순서를 미러링)
-  # - fallback은 [generated_at, id] 최댓값(= order(generated_at: :desc, id: :desc).first 와 동일)
-  def active_summary
-    if summaries.loaded?
-      if completed?
-        finals = summaries.select { |s| s.summary_type == "final" }
-        finals.min_by(&:id) || summaries.max_by { |s| [ s.generated_at, s.id ] }
-      else
-        summaries.max_by { |s| [ s.generated_at, s.id ] }
-      end
-    else
-      if completed?
-        summaries.find_by(summary_type: "final") ||
-          summaries.order(generated_at: :desc, id: :desc).first
-      else
-        summaries.order(generated_at: :desc, id: :desc).first
-      end
-    end
-  end
-
-  def current_notes_markdown
-    active_summary&.notes_markdown.to_s
-  end
-
-  # D'Flow 전송 team 자동 판정 재료: 폴더 체인의 최상위 폴더명. 폴더 없으면 nil.
-  def dflow_root_folder_name
-    dflow_folder_chain.last&.name
-  end
-
-  # D'Flow 전송 제목 자동 조립 재료: 최상위 바로 아래 폴더명. 3단계 이상이면 그 아래는 무시.
-  def dflow_sub_folder_name
-    chain = dflow_folder_chain
-    chain.length >= 2 ? chain[-2].name : nil
-  end
-
-  # D'Flow 편철 경로(root-first). dflow_folder_chain 은 leaf-first(자기폴더→조상)라 반드시 뒤집는다.
-  # 폴더 없으면 [] — 뒤집어도 빈 배열 그대로다(§3.4 3값 규약: 키 생략 아님).
-  def dflow_folder_path_names
-    dflow_folder_chain.reverse.map(&:name)
-  end
-
-  # D'Flow 전송 제목: 원제목 그대로(200자 캡). folder_path로 실제 폴더에 편철되므로
-  # 하위폴더명 접두를 붙이면 이중 라벨이 된다(워크리스트 §4 W2) — 접두 버전은
-  # #dflow_legacy_prefixed_title 로 분리 보존.
-  def dflow_auto_title
-    title.to_s.strip[0, 200]
-  end
-
-  # (레거시) D'Flow 전송 제목: "<하위폴더명>-<원제목>" (하위 폴더 없으면 원제목). 200자 초과 시 원제목 쪽을 잘라 맞춘다.
-  # #dflow_auto_title 에서 접두를 걷어낸 뒤에도 보존한다 — 자동 링크 매칭(워크리스트 §7.7 C2)이
-  # 기존 19건 연동의 접두 있는 D'Flow 제목을 재현·비교해야 하기 때문(접두 없이 비교하면 전건 0매칭).
-  def dflow_legacy_prefixed_title
-    stripped = title.to_s.strip
-    sub = dflow_sub_folder_name
-    return stripped[0, 200] if sub.nil?
-
-    prefix = "#{sub}-"
-    full = "#{prefix}#{stripped}"
-    return full unless full.length > 200
-
-    prefix + stripped[0, 200 - prefix.length]
-  end
-
-  # 최초 전송 이후 재전송이 필요한지(로컬 편집/요약 갱신이 마지막 전송보다 최신인지).
-  def dflow_needs_resync?
-    return false if public_uid.blank? || dflow_synced_at.blank?
-    edited = [ last_user_edit_at, active_summary&.updated_at ].compact.max
-    edited.present? && edited > dflow_synced_at
-  end
-
-  # 발급 순서 불변 규칙(§1.2, 계약 §4.6): uuid 생성 → update! 로 DB 커밋. D'Flow 전송(업로드/link)은
-  # 이 메서드가 반환한 뒤 호출부가 별도로 수행하며, 전송이 실패해도 여기서 커밋된 public_uid 는
-  # 유지된다(재발급 절대 금지 — 재시도 시 같은 external_id 를 재사용해야 D'Flow 쪽 upsert 가 멱등하다).
-  # DflowUploadService#call 과 MeetingDflowController#claim 양쪽이 이 메서드 하나만 호출해
-  # 불변식이 두 곳에 흩어지지 않도록 한다(이미 발급된 경우 재사용 — 아무 것도 하지 않음).
-  def ensure_dflow_public_uid!
-    return if public_uid.present?
-    update!(public_uid: SecureRandom.uuid_v7)
   end
 
   # 회의 실효 도메인 파일 세트 = 회의 자체 링크 + 폴더 조상체인 링크 + 프로젝트 링크(합집합, 파일 id 중복제거).
@@ -556,151 +166,17 @@ class Meeting < ApplicationRecord
     result
   end
 
-  # 이전 회의 참고 시드: 이 회의에 요약이 아직 없고 previous_meeting 이 지정돼 있으면,
-  # 이전 회의록을 "상단 고정 압축 요약 블록"으로 깐 초기 Summary 1건을 만든다.
-  # 이후 요약 잡(realtime/final)은 이 상단 블록을 절대 재작성하지 않고(코드 레벨 보호,
-  # PreviousMeetingNotes.split/join), 절취선 아래 본문만 이어쓴다.
-  # 멱등: 요약이 하나라도 있으면 no-op (시드는 단 한 번). 스냅샷이므로 이후 이전 회의가 바뀌어도 고정.
-  #
-  # 연쇄 연결(A→B→C…) 지원: 이전 회의(previous_meeting) 문서 자체가 이미 절취선을 갖고 있으면
-  # (= previous 도 자신의 이전 회의를 연결한 경우) 그 상단 블록들은 재압축 없이 그대로 승계하고,
-  # 이전 회의의 하단 본문만 이번에 1회 압축해 새 블록으로 뒤에 추가한다 — 각 회의는 정확히
-  # 1회만 압축되고 이후 불변. previous 문서에 절취선이 없으면(구 데이터·비연쇄) 문서 전체를
-  # 압축 대상 본문으로 취급한다.
-  #
-  # 문서 제목(H1)은 이 회의(현재 회의) 자신의 제목이 "이전 회의 요약"보다 먼저 나와야 한다
-  # (사용자 실사용 피드백). previous 의 top 에 그 회의 자신의 제목 H1 이 실려 있을 수 있으므로
-  # (연쇄 승계) #strip_leading_h1 로 그 제목을 걷어낸 HEADER+블록 부분만 승계하고, 그 위에
-  # #with_title 로 이 회의의 제목을 새로 얹는다 — 연결 몇 단을 거쳐도 top 에는 항상 "현재
-  # 연결하는 회의"의 제목 H1 하나만 존재한다.
-  def seed_summary_from_previous!(summary_type: "realtime")
-    return if summaries.exists?
-    return if previous_meeting_id.blank?
-
-    base = previous_meeting&.current_notes_markdown.to_s
-    return if base.blank?
-
-    prev_top, prev_body = PreviousMeetingNotes.split(base)
-    prev_header = PreviousMeetingNotes.strip_leading_h1(prev_top).presence
-    # 이전 회의 스코프 마커(⟦t:..⟧)에 출처 회의ID를 각인(⟦m:<id>/t:..⟧) — 프론트가 현재 오디오
-    # 기준으로 엉뚱하게 seek하지 않도록 inert 배지로 구분한다. 이미 m: 인 마커(연쇄 승계분)는
-    # prev_header 에 남아 있고 여기서 건드리지 않는다 — 원출처가 각인 시각에 고정된다.
-    stamped_body = LlmPrompts::CitationMarkers.stamp_source_meeting(prev_body, previous_meeting_id)
-    prev_title = previous_meeting.title.to_s.strip.presence || "이전 회의"
-
-    condensed = condense_previous_meeting_body(stamped_body, prev_title)
-    block_body = condensed.presence || stamped_body.strip
-
-    new_top = PreviousMeetingNotes.append_block(prev_header, prev_title, block_body)
-    new_top = PreviousMeetingNotes.with_title(title, new_top)
-    doc = PreviousMeetingNotes.join(new_top, "")
-
-    summaries.create!(summary_type: summary_type, notes_markdown: doc.rstrip, generated_at: Time.current)
-  end
-
-  # 트랜스크립트·요약·블록(선택적으로 첨부)을 모두 삭제한다.
-  def purge_transcription_content!(include_attachments: false)
-    transcripts.destroy_all
-    summaries.destroy_all
-    blocks.destroy_all
-    meeting_attachments.destroy_all if include_attachments
-    # 콘텐츠 초기화(reset_content·재전사) 시 이전 요약 실패 기록도 함께 클리어 —
-    # 잔존하면 초기화된 회의에 오탐 실패 배지가 영구 노출된다.
-    clear_summary_error!
-  end
-
-  # ── 요약 실패 레포트 (summary_error) ──
-  # 영속 기록의 메시지 상한 — broadcast·meeting_json 노출 공통(과대 메시지 방어).
-  SUMMARY_ERROR_MESSAGE_MAX = 500
-
-  # 요약(LLM) final 실패 영속 기록 — meeting_json 으로 노출돼 새로고침 후에도 사용자가
-  # 실패를 알 수 있다. MeetingSummarizationJob 과 FileTranscriptionJob(파일 전사 경유
-  # final)이 공유하는 단일 진입점. update_columns: 콜백·updated_at 오염 방지.
-  def record_summary_error!(message)
-    update_columns(
-      summary_error_message: message.to_s.truncate(SUMMARY_ERROR_MESSAGE_MAX),
-      summary_error_at: Time.current
-    )
-  end
-
-  # 성공 저장 시 이전 실패 기록 클리어 — 기록이 없으면 쓰기 생략(매 틱 불필요한 UPDATE 방지).
-  def clear_summary_error!
-    return if summary_error_message.nil? && summary_error_at.nil?
-    update_columns(summary_error_message: nil, summary_error_at: nil)
-  end
-
-  # ── 요약 진행 중 상태 (summarizing) ──
-  # regenerate_notes/summarize/final/realtime 요약이 실행 중임을 회의 모델에 영속화한다.
-  # 회의 상세 배지뿐 아니라 회의목록(StatusBadge)에서도 새로고침·페이지 이탈 후에도 "요약중"
-  # 상태를 유지하기 위한 단일 진입점. MeetingSummarizationJob 의 시작/종료 브로드캐스트
-  # 지점에서만 토글된다(동시성 제한으로 같은 회의 중복 실행이 없어 시작/종료 짝이 안전).
-  # update_columns: 콜백·updated_at 오염 방지(record_summary_error! 와 동일 패턴).
-  def record_summary_start!
-    update_columns(summarizing: true, summarization_started_at: Time.current)
-  end
-
-  # 종료 해제는 멱등 — 시작하지 않은 회의(broadcast_finished 만 온 give-up 경로)에
-  # 호출돼도 false 유지로 무해하다. summarization_started_at 도 함께 클리어.
-  def record_summary_finished!
-    update_columns(summarizing: false, summarization_started_at: nil)
-  end
-
-  # notes_markdown에서 의미 있는 요약 텍스트를 추출하여 brief_summary 컬럼에 저장.
-  # 단일 진입점에서 절취선 상단(연결 회의 상단 고정 요약)을 항상 걷어내고 본문만 추출 대상으로
-  # 삼는다 — 안 그러면 연결 회의의 목록 미리보기가 "이 회의 자신의 내용" 대신 이전 회의 내용을
-  # 보여줄 수 있다. 호출부가 이미 본문만 넘겨도(job.rb) PreviousMeetingNotes.split 은 절취선이
-  # 없는 텍스트에 no-op(그대로 반환)이라 이중 적용해도 안전하다 — 호출부마다 분할을 기억할
-  # 필요 없이 이 메서드 하나가 항상 보장한다.
-  def refresh_brief_summary!(notes_markdown = nil)
-    notes_markdown ||= (summaries.find_by(summary_type: "final") ||
-                        summaries.order(generated_at: :desc).first)&.notes_markdown
-    return if notes_markdown.blank?
-
-    _top, body = PreviousMeetingNotes.split(notes_markdown)
-    return if body.blank?
-
-    text = self.class.extract_brief_summary(body)
-    update_column(:brief_summary, text) if text.present?
-  end
-
-  def self.extract_brief_summary(notes_markdown, max_length: 150)
-    # 인용 마커(⟦t:…⟧, ⟦m:…⟧) 제거 — 절단 전에 지워야 반토막 마커가 남지 않는다
-    notes_markdown = notes_markdown.gsub(/⟦[^⟧]*⟧/, "").gsub(/[ \t]{2,}/, " ")
-    lines = notes_markdown.lines.map(&:strip).reject(&:empty?)
-
-    # 마크다운 헤더, 구분선, 빈 블릿 등 건너뛰고 실제 내용 추출
-    content_lines = lines.reject { |l|
-      l.match?(/\A\#{1,6}\s/) ||      # 헤더
-      l.match?(/\A[-=*]{3,}\z/) ||     # 구분선
-      l.match?(/\A```/) ||             # 코드블록
-      l.match?(/\A\|/)                 # 테이블
-    }.map { |l|
-      l.gsub(/\A[-*+]\s+/, "")        # 불릿 마커 제거
-       .gsub(/\*\*(.+?)\*\*/, '\1')   # 볼드 제거
-       .gsub(/[*_~`>]/, "")           # 나머지 마크다운 기호 제거
-       .strip
-    }.reject(&:empty?)
-
-    return nil if content_lines.empty?
-
-    # 첫 2~3줄을 합쳐서 의미 있는 길이 확보
-    result = ""
-    content_lines.each do |line|
-      candidate = result.empty? ? line : "#{result} #{line}"
-      if candidate.length > max_length
-        result = result.empty? ? "#{line[0...max_length]}..." : result
-        break
-      end
-      result = candidate
-    end
-
-    result.presence
-  end
-
   private
 
   # 응축 캐시 버전 — 압축 프롬프트(CONDENSE_PREVIOUS_NOTES_SYSTEM_PROMPT)를 개정하면 이 값을
   # 올려 기존 캐시를 전부 무효화한다(digest 에 섞여 들어가 자동으로 miss 처리됨).
+  #
+  # ⚠️ Meeting::SummaryManagement concern으로 옮기지 않는다: spec/models/meeting_condense_cache_spec.rb
+  # 가 `stub_const("Meeting::CONDENSE_CACHE_VERSION", "v2")` 로 스텁하는데, RSpec 상수 스텁은
+  # `mod.const_defined?(name, false)`(inherit: false)만 확인해 include된 모듈의 상수를 "미정의"로
+  # 보고 Meeting 위에 새 상수를 얹는다 — 그러면 코드가 실제로 참조하는(렉시컬 스코프) 상수는
+  # 그대로 남아 캐시 무효화 테스트가 깨진다. condense_previous_meeting_body/previous_condense_digest
+  # 도 같은 이유로 이 자리에 함께 남긴다.
   CONDENSE_CACHE_VERSION = "v1".freeze
 
   # 이전 회의 본문(body)을 LLM 으로 1회 압축한다. 압축 실패·LLM 미설정(NotConfiguredError 포함,
@@ -767,12 +243,5 @@ class Meeting < ApplicationRecord
   def previous_meeting_not_self
     return if previous_meeting_id.blank? || id.blank?
     errors.add(:previous_meeting_id, "는 자기 자신일 수 없습니다") if previous_meeting_id == id
-  end
-
-  # 폴더 체인(가까운→먼): 자기 폴더 + 조상들. ancestor_records가 자기 자신을 제외하므로 앞에 붙인다
-  # (effective_domain_files 등 기존 선례와 동일 패턴, meeting.rb / meetings_controller.rb).
-  def dflow_folder_chain
-    return [] unless folder
-    [ folder ] + folder.ancestor_records
   end
 end
