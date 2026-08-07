@@ -13,7 +13,6 @@ MLXWhisperAdapter와 동일한 입출력 계약(PCM bytes → list[TranscriptSeg
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator
 
 import numpy as np
 
@@ -71,10 +70,7 @@ class MLXWhisperBeamAdapter(SttAdapter):
         single 모드: languages[0]을 ISO 코드로 인식 언어 강제.
         multi 모드: 자동감지(language=None) 후 result["language"]를 세그먼트에 기록.
         """
-        if not self._is_loaded:
-            raise RuntimeError(
-                "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
-            )
+        self._ensure_loaded()
 
         audio_array = pcm_bytes_to_float32(audio_chunk)
         if len(audio_array) == 0:
@@ -125,12 +121,3 @@ class MLXWhisperBeamAdapter(SttAdapter):
         segments = result.get("segments") or []
         detected = result.get("language")
         return segments, detected
-
-    async def transcribe_stream(
-        self, audio_stream
-    ) -> AsyncIterator[TranscriptSegment]:
-        """오디오 스트림을 청크 단위로 순차 변환한다."""
-        async for chunk in audio_stream:
-            segments = await self.transcribe(chunk)
-            for seg in segments:
-                yield seg

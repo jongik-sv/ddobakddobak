@@ -6,7 +6,6 @@ CPU에서도 동작하지만, GPU 없는 환경에서는 whisper.cpp가 더 효�
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator
 
 from app.stt import lang_utils
 from app.stt.audio_utils import is_hallucination, pcm_bytes_to_float32
@@ -101,10 +100,7 @@ class FasterWhisperAdapter(SttAdapter):
         single 모드: languages[0]을 ISO 코드로 인식 언어 강제.
         multi 모드: 자동감지 후 info.language를 세그먼트에 기록(필터는 main에서).
         """
-        if not self._is_loaded:
-            raise RuntimeError(
-                "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
-            )
+        self._ensure_loaded()
 
         audio_array = pcm_bytes_to_float32(audio_chunk)
         if len(audio_array) == 0:
@@ -143,24 +139,12 @@ class FasterWhisperAdapter(SttAdapter):
             ))
         return results
 
-    async def transcribe_stream(
-        self, audio_stream
-    ) -> AsyncIterator[TranscriptSegment]:
-        """오디오 스트림을 청크 단위로 순차 변환한다."""
-        async for chunk in audio_stream:
-            segments = await self.transcribe(chunk)
-            for seg in segments:
-                yield seg
-
     async def transcribe_file(self, file_path: str, languages: list[str] | None = None) -> list[TranscriptSegment]:
         """오디오 파일 전체를 변환한다.
 
         faster-whisper는 파일 경로를 직접 받을 수 있어 메모리 효율적이다.
         """
-        if not self._is_loaded:
-            raise RuntimeError(
-                "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
-            )
+        self._ensure_loaded()
 
         loop = asyncio.get_running_loop()
         language = languages[0] if languages and len(languages) == 1 else None

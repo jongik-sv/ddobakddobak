@@ -5,7 +5,6 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import AsyncIterator
 
 from app.stt import lang_utils
 from app.stt.audio_utils import is_hallucination, pcm_bytes_to_float32
@@ -68,10 +67,7 @@ class WhisperAdapter(SttAdapter):
         single 모드: languages[0]을 ISO 코드로 인식 언어 강제.
         multi 모드: 자동감지(language=auto) 후 감지언어를 세그먼트에 기록(필터는 main에서).
         """
-        if not self._is_loaded:
-            raise RuntimeError(
-                "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
-            )
+        self._ensure_loaded()
 
         engine_lang = lang_utils.iso_force_lang(languages, mode)  # ISO or None
         audio_array = pcm_bytes_to_float32(audio_chunk)
@@ -108,16 +104,6 @@ class WhisperAdapter(SttAdapter):
             None,
             lambda: self._model.transcribe(audio_array, language=lang),
         )
-
-    async def transcribe_stream(
-        self, audio_stream
-    ) -> AsyncIterator[TranscriptSegment]:
-        """오디오 스트림을 청크 단위로 순차 변환한다."""
-        async for chunk in audio_stream:
-            segments = await self.transcribe(chunk)
-            for seg in segments:
-                yield seg
-
 
 def _to_transcript_segment(raw_seg, language: str | None = None) -> TranscriptSegment:
     """pywhispercpp Segment → TranscriptSegment 변환.

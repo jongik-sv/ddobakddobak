@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import AsyncIterator
 
 import numpy as np
 
@@ -72,10 +71,7 @@ class MLXWhisperAdapter(SttAdapter):
         single 모드: languages[0]을 ISO 코드로 인식 언어 강제.
         multi 모드: 자동감지(language=None) 후 result.language를 세그먼트에 기록(필터는 main에서).
         """
-        if not self._is_loaded:
-            raise RuntimeError(
-                "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
-            )
+        self._ensure_loaded()
 
         audio_array = pcm_bytes_to_float32(audio_chunk)
         if len(audio_array) == 0:
@@ -127,16 +123,6 @@ class MLXWhisperAdapter(SttAdapter):
         elif isinstance(lang_attr, str):
             detected = lang_attr
         return segments, detected
-
-    async def transcribe_stream(
-        self, audio_stream
-    ) -> AsyncIterator[TranscriptSegment]:
-        """오디오 스트림을 청크 단위로 순차 변환한다."""
-        async for chunk in audio_stream:
-            segments = await self.transcribe(chunk)
-            for seg in segments:
-                yield seg
-
 
 # 임의 부분문자열(unit)이 연속 4회 이상 반복되면 2회로 축약.
 # 글자단위("상상상…", 공백없음), 단어단위("우리가우리가…"), 구절단위
