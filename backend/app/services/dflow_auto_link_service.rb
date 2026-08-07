@@ -6,13 +6,12 @@
 # 결정: tasks/dflow-minutes-upload/artifacts/decisions-final-2026-07-27.md §6.
 # 계약: dflow-minutes-upload-api-spec.md §4b(link)·§4b-1(연결 초기화)·§5.1(GET /minutes).
 #
-# ⚠️ claim(계약 §4b)은 MeetingDflowController#claim 을 재사용하지 않는다 — 그 액션은
-# authenticate_user!/editable_by? 에 묶여 rake 에서 호출할 수 없다. 그렇다고 DflowClient#link_minute
-# 를 단독 호출하면 컨트롤러에만 있는 부수 로직 2개(Meeting#ensure_dflow_public_uid! 호출 · dflow_url
-# 조립)가 빠져 "링크는 되는데 D'Flow 바로가기가 안 생기는" 회귀가 난다(§7.7 머리말 경고). 그래서
-# #perform_claim 이 그 두 로직을 여기서도 그대로 수행한다. 컨트롤러와 실제로 코드를 공유하는 DRY
-# 추출은 이번 작업 write_scope(backend/app/controllers/** 변경 금지)가 막아 다음 티켓으로 미룬다
-# (행동 요건 — ensure_dflow_public_uid! 호출·dflow_url 조립 — 은 이 파일 안에서 충족된다).
+# claim(계약 §4b)은 MeetingDflowController#claim 의 인가(authenticate_user!/editable_by?)를
+# 그대로 재사용할 수 없다(그 액션은 rake 에서 호출 불가) — 그래서 #perform_claim 은 인가를
+# 자체 판정(auto_claimable && !sender_match)으로 대체한다. 순수 claim 시퀀스(ensure_dflow_public_uid!
+# 호출 · external_id 조립 · link_minute · dflow_url 조립·저장)는 컨트롤러와 완전히 동일해야
+# "링크는 되는데 D'Flow 바로가기가 안 생기는" 회귀(§7.7 머리말 경고)가 재발하지 않으므로
+# DflowClaimer(app/services/dflow_claimer.rb) 로 추출해 양쪽이 공유한다.
 #
 # 사용법:
 #   DflowAutoLinkService.call(actor_email: "...", sender_names: [...])                       # dry-run
@@ -171,7 +170,9 @@ class DflowAutoLinkService
   # ── 대상 수집(§7.7 「대상」·「감지 방법」) ──────────────────────────────────
 
   def base_scope
-    Meeting.kept.where(status: "completed")
+    # eligible?/current_notes_markdown이 회의당 active_summary를 참조 — summaries preload로
+    # Meeting#active_summary의 loaded-aware 분기를 태워 N+1을 없앤다.
+    Meeting.kept.where(status: "completed").includes(:summaries)
   end
 
   # 전송 가능 조건과 동일(§7.7): completed 이고 본문이 있어야 한다. FROM/TO(있으면) 창도 여기서.
@@ -425,15 +426,12 @@ class DflowAutoLinkService
 
     meeting = result[:meeting]
     candidate = result[:candidates].first
-    meeting.ensure_dflow_public_uid! # 이미 있으면 재사용(신규 발급 금지) — §7.7 대상1 ⚠️ 그대로
-    external_id = "ddobak:#{meeting.public_uid}"
-
-    resp = client.link_minute(minute_id: candidate[:id], external_id: external_id, user_email: @actor_email)
-    dflow_url = "#{client.base_url}/minutes/#{resp['id']}"
-    meeting.update!(dflow_url: dflow_url) # dflow_synced_at은 건드리지 않는다(claim은 전송이 아님, §7.7)
+    # 순수 claim 시퀀스(발급 순서·external_id 조립·dflow_url 조립)는 MeetingDflowController#claim 과
+    # 공유 — DflowClaimer 단일 출처(파일 머리말 참고).
+    outcome = DflowClaimer.call(meeting: meeting, minute_id: candidate[:id], user_email: @actor_email, client: client)
 
     claimed << { meeting_id: meeting.id, public_uid: meeting.public_uid, dflow_minute_id: candidate[:id],
-                 external_id: external_id, dflow_url: dflow_url, grade: "exact" }
+                 external_id: outcome[:external_id], dflow_url: outcome[:dflow_url], grade: "exact" }
   rescue DflowClient::LinkConflictError, DflowClient::UnknownUserError, DflowClient::ApiError => e
     claim_errors << { meeting_id: meeting.id, error: e.message, code: (e.respond_to?(:code) ? e.code : nil) }
   end

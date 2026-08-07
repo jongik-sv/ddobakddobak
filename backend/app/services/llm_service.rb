@@ -103,12 +103,9 @@ class LlmService
     transcript_text = TextFormatter.format_transcripts(transcripts)
     return { "notes_markdown" => current_notes, "ok" => true } if transcript_text.blank?
 
-    parts = []
-    parts << "회의 제목: #{meeting_title}" if meeting_title.present?
-    parts << "참석자: #{attendees}" if attendees.present?
-    parts << agenda_reference_block(agenda_reference) if agenda_reference.present?
-    parts << domain_reference_block(domain_reference) if domain_reference.present?
-    parts << pinned_context_block(pinned_context) if pinned_context.present?
+    parts = build_context_parts(meeting_title: meeting_title, attendees: attendees,
+                                 agenda_reference: agenda_reference, domain_reference: domain_reference,
+                                 pinned_context: pinned_context)
     if current_notes.present?
       parts << "현재 회의록:\n#{current_notes}"
     else
@@ -156,12 +153,9 @@ class LlmService
     transcript_text = TextFormatter.format_transcripts(transcripts)
     return { "block_markdown" => "", "ok" => true } if transcript_text.blank?
 
-    parts = []
-    parts << "회의 제목: #{meeting_title}" if meeting_title.present?
-    parts << "참석자: #{attendees}" if attendees.present?
-    parts << agenda_reference_block(agenda_reference) if agenda_reference.present?
-    parts << domain_reference_block(domain_reference) if domain_reference.present?
-    parts << pinned_context_block(pinned_context) if pinned_context.present?
+    parts = build_context_parts(meeting_title: meeting_title, attendees: attendees,
+                                 agenda_reference: agenda_reference, domain_reference: domain_reference,
+                                 pinned_context: pinned_context)
     parts << "기존 회의록(참고용 — 수정·반복 금지):\n#{current_notes}" if current_notes.present?
     parts << "새로운 자막:\n#{transcript_text}"
     user_content = parts.join("\n\n")
@@ -213,25 +207,6 @@ class LlmService
     nil
   end
 
-  # 사용자 피드백 반영
-  def apply_feedback(current_notes, feedback, meeting_title: "", attendees: nil)
-    parts = []
-    parts << "회의 제목: #{meeting_title}" if meeting_title.present?
-    parts << "참석자: #{attendees}" if attendees.present?
-    if current_notes.present?
-      parts << "현재 회의록:\n#{current_notes}"
-    else
-      parts << "현재 회의록: (아직 없음 — 피드백 내용을 바탕으로 새로 작성해주세요)"
-    end
-    parts << "사용자 피드백:\n#{feedback}"
-
-    result = call_llm_raw(FEEDBACK_NOTES_SYSTEM_PROMPT, parts.join("\n\n"), max_tokens: max_output_tokens)
-    { "notes_markdown" => LlmPrompts::CitationMarkers.normalize(TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(result))) }
-  rescue => e
-    Rails.logger.error "[LlmService] apply_feedback failed: #{e.message}"
-    { "notes_markdown" => current_notes }
-  end
-
   # 외부 LLM용 프롬프트 조립 (LLM 호출 없음). 압축율 분량 지시 포함(통짜 생성 = final 캡).
   # 증분(restructure=false) 회의는 시간 흐름 요약 지시를 포함 — 주제별 재구성 금지.
   def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil, attendees: nil, verbosity: "standard", restructure: true, agenda_reference: nil, domain_reference: nil, custom_prompt: nil)
@@ -245,11 +220,8 @@ class LlmService
     system_prompt = apply_custom_prompt(system_prompt, custom_prompt)
 
     transcript_text = TextFormatter.format_transcripts(transcripts)
-    parts = []
-    parts << "회의 제목: #{meeting_title}" if meeting_title.present?
-    parts << "참석자: #{attendees}" if attendees.present?
-    parts << agenda_reference_block(agenda_reference) if agenda_reference.present?
-    parts << domain_reference_block(domain_reference) if domain_reference.present?
+    parts = build_context_parts(meeting_title: meeting_title, attendees: attendees,
+                                 agenda_reference: agenda_reference, domain_reference: domain_reference)
     parts << (current_notes.present? ? "현재 회의록:\n#{current_notes}" : "현재 회의록: (아직 없음 — 새로 작성해주세요)")
     parts << "새로운 자막:\n#{transcript_text}" if transcript_text.present?
     user_content = parts.join("\n\n")
@@ -294,6 +266,19 @@ class LlmService
   end
 
   private
+
+  # refine_notes/append_notes/build_prompt 3곳에서 반복되던 컨텍스트 parts 조립(제목·참석자·안건
+  # 자료·도메인 용어집·연결 회의 상단 고정 요약)을 공용화. 호출부별 라벨이 다른 "현재/기존 회의록"
+  # 줄은 의미가 갈려(수정 대상 vs 참고용) 헬퍼 밖에 그대로 남긴다 — 헬퍼는 그 앞부분까지만 담당.
+  def build_context_parts(meeting_title:, attendees:, agenda_reference: nil, domain_reference: nil, pinned_context: nil)
+    parts = []
+    parts << "회의 제목: #{meeting_title}" if meeting_title.present?
+    parts << "참석자: #{attendees}" if attendees.present?
+    parts << agenda_reference_block(agenda_reference) if agenda_reference.present?
+    parts << domain_reference_block(domain_reference) if domain_reference.present?
+    parts << pinned_context_block(pinned_context) if pinned_context.present?
+    parts
+  end
 
   # 안건 자료 블록: 회의록 작성 시 참고만 하고 그대로 베끼지 말라는 가드를 라벨에 명시한다.
   def agenda_reference_block(agenda_reference)

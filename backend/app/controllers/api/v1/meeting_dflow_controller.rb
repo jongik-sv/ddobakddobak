@@ -108,15 +108,9 @@ module Api
                         status: :unprocessable_entity
         end
 
-        # 발급 순서 불변 규칙(§1.2)은 Meeting#ensure_dflow_public_uid! 단일 소스에 위임한다
-        # (DflowUploadService#call 과 로직 공유 — 두 곳에 흩어지면 한쪽만 수정될 위험이 있다).
-        @meeting.ensure_dflow_public_uid!
-        external_id = "ddobak:#{@meeting.public_uid}"
-
-        dflow_client = DflowClient.new
-        resp = dflow_client.link_minute(minute_id: minute_id, external_id: external_id, user_email: current_user.email)
-        # link 응답(계약 §4b)엔 url 필드가 없어 upload 응답(§4.3)과 동일한 규칙으로 직접 조립한다.
-        @meeting.update!(dflow_url: "#{dflow_client.base_url}/minutes/#{resp['id']}")
+        # 순수 claim 시퀀스(발급 순서·external_id 조립·dflow_url 조립)는 DflowAutoLinkService#perform_claim
+        # 과 공유 — DflowClaimer 단일 출처(인가는 여기 컨트롤러가 계속 담당).
+        DflowClaimer.call(meeting: @meeting, minute_id: minute_id, user_email: current_user.email)
 
         render json: dflow_status_json(@meeting)
       end
