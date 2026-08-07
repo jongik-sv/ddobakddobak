@@ -15,6 +15,7 @@ import { speakerAtMs } from '../../lib/citationMarkers'
 import { shouldShowDiarizationHint } from './diarizationHint'
 import { AiSummaryFullViewModal } from './AiSummaryFullViewModal'
 import { SummaryFontSizeControl } from './SummaryFontSizeControl'
+import { useDebouncedCallback } from '../../hooks/useDebouncedCallback'
 
 /**
  * Defense 2 (데이터 손실 가드): 자동저장이 파괴적인 빈 저장인지 판정한다.
@@ -61,7 +62,6 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
   const prevMarkdownRef = useRef<string>('')
   const isUserEditingRef = useRef(false)
   const isProgrammaticRef = useRef(false)
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   // 외부발 갱신(오타교정·재생성)이 replaceBlocks로 문서를 전체 치환할 때 스크롤 위치를 보존하기 위한 컨테이너 참조
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isDirty, setIsDirty] = useState(false)
@@ -95,7 +95,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
     // 보류 중인 자동저장도 취소 — 안 하면 옛 내용/빈 문서가 user-edit으로 저장돼
     // 재생성 결과를 stale 가드가 폐기한다(160초 LLM 결과 증발 버그).
     if (meetingNotes === null) {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+      cancelAutosave()
       isUserEditingRef.current = false
       setIsDirty(false)
       prevMarkdownRef.current = ''
@@ -205,23 +205,24 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
     }
   }, [editor, setMeetingNotes, onNotesChange])
 
+  // 자동저장 디바운스(2000ms). autosaveFn을 saveNow에 대해서만 재생성해 run/handleChange의
+  // 참조 안정성을 saveNow가 바뀔 때만 갱신되던 기존 동작(구 handleChange deps=[saveNow])과 맞춘다.
+  // cancel은 위 meetingNotes===null 분기(구 98)에서도 보류 중인 자동저장을 취소하는 데 쓰인다.
+  const autosaveFn = useCallback(() => saveNow('auto'), [saveNow])
+  const { run: scheduleAutosave, cancel: cancelAutosave } = useDebouncedCallback(autosaveFn, 2000)
+
   const handleChange = useCallback(() => {
     if (isProgrammaticRef.current) return
     isUserEditingRef.current = true
     setIsDirty(true)
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-    debounceTimerRef.current = setTimeout(() => saveNow('auto'), 2000)
-  }, [saveNow])
+    scheduleAutosave()
+  }, [scheduleAutosave])
 
   const handleManualSave = useCallback(async () => {
     setIsSaving(true)
     await saveNow('manual')
     setIsSaving(false)
   }, [saveNow])
-
-  useEffect(() => {
-    return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current) }
-  }, [])
 
   return (
     <>
