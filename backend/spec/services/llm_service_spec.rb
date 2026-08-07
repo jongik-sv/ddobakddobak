@@ -258,6 +258,35 @@ RSpec.describe LlmService, "ok signalling" do
       expect(captured).to include("기존 회의록에 이미 있는")
     end
   end
+
+  # LLM 응답에 실측 변형 인용 마커가 섞여 있어도 refine_notes/append_notes/apply_feedback
+  # 반환 직전에 CitationMarkers.normalize 가 적용돼 정본 형식으로 교정된다.
+  describe "인용 마커 정규화 적용 (LlmService 반환 지점)" do
+    let(:broken_marker) { "⟦t:846000ms|s:화자 2⟧" }
+    let(:normalized_marker) { "⟦t:846000|s:화자 2⟧" }
+    let(:transcripts) { [{ "speaker" => "A", "text" => "새 내용" }] }
+
+    it "#refine_notes 반환값의 마커가 정규화된다" do
+      allow(service).to receive(:call_llm_raw).and_return("## 요약\n- 결정됨 #{broken_marker}")
+      result = service.refine_notes("기존", transcripts)
+      expect(result["notes_markdown"]).to include(normalized_marker)
+      expect(result["notes_markdown"]).not_to include(broken_marker)
+    end
+
+    it "#append_notes 반환값의 마커가 정규화된다" do
+      allow(service).to receive(:call_llm_raw).and_return("- 새 논의 #{broken_marker}")
+      result = service.append_notes("기존", transcripts)
+      expect(result["block_markdown"]).to include(normalized_marker)
+      expect(result["block_markdown"]).not_to include(broken_marker)
+    end
+
+    it "#apply_feedback 반환값의 마커가 정규화된다" do
+      allow(service).to receive(:call_llm_raw).and_return("## 요약\n- 반영됨 #{broken_marker}")
+      result = service.apply_feedback("기존", "피드백 내용")
+      expect(result["notes_markdown"]).to include(normalized_marker)
+      expect(result["notes_markdown"]).not_to include(broken_marker)
+    end
+  end
 end
 
 # 사용자 노출 오류 메시지 정규화(allowlist): 예외 원문(내부 호스트:포트·경로·CLI stderr)이
