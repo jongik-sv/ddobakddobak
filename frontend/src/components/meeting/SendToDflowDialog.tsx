@@ -141,18 +141,9 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
   const [bodyTooLong, setBodyTooLong] = useState(false)
   const [sendResult, setSendResult] = useState<DflowUploadResult | null>(null)
 
-  const [copied, setCopied] = useState(false)
-  const [reissueNotice, setReissueNotice] = useState(false)
-  const [linkActionBusy, setLinkActionBusy] = useState(false)
-  const [linkActionError, setLinkActionError] = useState<string | null>(null)
-
-  const [showManualInput, setShowManualInput] = useState(false)
-  const [manualUid, setManualUid] = useState('')
-  const [manualUidError, setManualUidError] = useState<string | null>(null)
-  // false=경고 없음, 'missing'=D'Flow에 없음, 'archived'=D'Flow에서 보관됨 — 두 원인의 문구가 다르다.
-  const [manualMissingWarning, setManualMissingWarning] = useState<false | 'missing' | 'archived'>(false)
-  const [manualSaving, setManualSaving] = useState(false)
-
+  // 연결 관리(복사·해제·재발급·수동 입력·D'Flow에서 찾기) 상태·핸들러는 LinkManagementSection으로
+  // 옮겼다. detailsOpen/showSearch만 여기 남는다 — dflowMissing 안내의 [D'Flow에서 찾기로 재연결]
+  // (handleOpenSearchFromNotice)이 그 섹션 밖에서 열어야 하기 때문(컴포넌트 경계를 건너는 유일한 상태).
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
 
@@ -391,87 +382,6 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
   function handleOpenSearchFromNotice() {
     setDetailsOpen(true)
     setShowSearch(true)
-  }
-
-  async function handleCopyUid() {
-    if (!status?.public_uid) return
-    try {
-      await navigator.clipboard.writeText(status.public_uid)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // clipboard 미지원 환경 — 표시 전용으로 동작 (MeetingIdBadge.tsx 관례)
-    }
-  }
-
-  async function handleUnlink() {
-    const ok = await confirmDialog(UNLINK_CONFIRM_MESSAGE)
-    if (!ok) return
-    setLinkActionBusy(true)
-    setLinkActionError(null)
-    try {
-      await setDflowLink(meeting.id, null)
-      await refreshStatus()
-      setReissueNotice(false)
-      onChanged?.()
-    } catch (err) {
-      const { message } = await parseDflowError(err, '연결 해제에 실패했습니다.')
-      setLinkActionError(message)
-    } finally {
-      setLinkActionBusy(false)
-    }
-  }
-
-  async function handleReissue() {
-    const ok = await confirmDialog(REISSUE_CONFIRM_MESSAGE)
-    if (!ok) return
-    setLinkActionBusy(true)
-    setLinkActionError(null)
-    try {
-      await setDflowLink(meeting.id, null)
-      await refreshStatus()
-      setReissueNotice(true)
-      onChanged?.()
-    } catch (err) {
-      const { message } = await parseDflowError(err, '재발급 준비에 실패했습니다.')
-      setLinkActionError(message)
-    } finally {
-      setLinkActionBusy(false)
-    }
-  }
-
-  async function handleManualSave() {
-    setManualUidError(null)
-    setManualMissingWarning(false)
-    // 서버 link는 소문자 UUID만 허용 — 대문자 붙여넣기도 통과시키기 위해 정규화 후 검증·전송.
-    const normalized = manualUid.trim().toLowerCase()
-    if (!isValidDflowUuid(normalized)) {
-      setManualUidError('올바른 UUID 형식이 아닙니다.')
-      return
-    }
-    setManualSaving(true)
-    try {
-      await setDflowLink(meeting.id, normalized)
-      const fresh = await refreshStatus()
-      if (fresh?.exists_on_dflow === false) {
-        setManualMissingWarning('missing')
-      } else if (fresh?.dflow_archived === true) {
-        setManualMissingWarning('archived')
-      }
-      setManualUid('')
-      onChanged?.()
-    } catch (err) {
-      const { message } = await parseDflowError(err, '연결 저장에 실패했습니다.')
-      setManualUidError(message)
-    } finally {
-      setManualSaving(false)
-    }
-  }
-
-  async function handleMinuteLinked() {
-    await refreshStatus()
-    setShowSearch(false)
-    onChanged?.()
   }
 
   return (
@@ -851,138 +761,275 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
           )}
 
           {/* 연결 관리 */}
-          <details
-            open={detailsOpen}
-            onToggle={(e) => setDetailsOpen(e.currentTarget.open)}
-            className="group border-t border-border pt-3"
-          >
-            <summary className="flex cursor-pointer select-none items-center gap-2 text-sm font-semibold text-muted-foreground">
-              <span className="transition-transform group-open:rotate-90">&rsaquo;</span>
-              연결 관리
-            </summary>
-
-            <div className="mt-3 space-y-3">
-              {statusError && <p className="text-sm text-red-600">{statusError}</p>}
-
-              {!statusError && (
-                <>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">public_uid</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-foreground">{status?.public_uid ?? '미발급'}</span>
-                      {status?.public_uid && (
-                        <button
-                          type="button"
-                          onClick={handleCopyUid}
-                          className="text-xs text-blue-600 hover:underline"
-                        >
-                          {copied ? '복사됨' : '복사'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {status?.public_uid && (
-                    <p className="text-xs text-muted-foreground">
-                      D'Flow 존재 확인:{' '}
-                      {status.exists_on_dflow === undefined
-                        ? '알 수 없음'
-                        : status.exists_on_dflow
-                          ? status.dflow_archived === true
-                            ? '존재함(보관됨)'
-                            : '존재함'
-                          : '존재하지 않음(다음 전송 시 새로 생성됩니다)'}
-                    </p>
-                  )}
-
-                  {reissueNotice && (
-                    <p className="text-xs text-blue-600">다음 전송 시 새 식별자가 자동 발급됩니다.</p>
-                  )}
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowManualInput((v) => !v)}
-                      className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent"
-                    >
-                      수동 입력
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleUnlink}
-                      disabled={!status?.public_uid || linkActionBusy}
-                      className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50"
-                    >
-                      해제
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleReissue}
-                      disabled={!status?.public_uid || linkActionBusy}
-                      className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50"
-                    >
-                      재발급
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowSearch((v) => !v)}
-                      className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent"
-                    >
-                      D'Flow에서 찾기
-                    </button>
-                  </div>
-
-                  {linkActionError && <p className="text-xs text-red-600">{linkActionError}</p>}
-
-                  {showManualInput && (
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          value={manualUid}
-                          onChange={(e) => setManualUid(e.target.value)}
-                          placeholder="00000000-0000-0000-0000-000000000000"
-                          aria-label="D'Flow public_uid 수동 입력"
-                          disabled={manualSaving}
-                          className="w-full rounded-md border px-3 py-1.5 text-xs font-mono outline-none focus:ring-2 focus:ring-ring"
-                        />
-                        {manualUidError && <p className="mt-1 text-xs text-red-600">{manualUidError}</p>}
-                        {manualMissingWarning === 'missing' && (
-                          <p className="mt-1 text-xs text-amber-600">
-                            D'Flow에 해당 회의록이 없습니다. 연결은 저장되었습니다.
-                          </p>
-                        )}
-                        {manualMissingWarning === 'archived' && (
-                          <p className="mt-1 text-xs text-amber-600">
-                            D'Flow에서 보관된 회의록입니다. 연결은 저장되었습니다.
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleManualSave}
-                        disabled={manualSaving}
-                        className="shrink-0 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        {manualSaving ? '저장 중…' : '저장'}
-                      </button>
-                    </div>
-                  )}
-
-                  {showSearch && (
-                    <DflowMinuteSearchPanel
-                      meetingId={meeting.id}
-                      teams={meta?.teams ?? []}
-                      onLinked={handleMinuteLinked}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-          </details>
+          <LinkManagementSection
+            meetingId={meeting.id}
+            status={status}
+            statusError={statusError}
+            teams={meta?.teams ?? []}
+            detailsOpen={detailsOpen}
+            onDetailsOpenChange={setDetailsOpen}
+            showSearch={showSearch}
+            onShowSearchChange={setShowSearch}
+            refreshStatus={refreshStatus}
+            onChanged={onChanged}
+          />
         </div>
       )}
     </Dialog>
+  )
+}
+
+interface LinkManagementSectionProps {
+  meetingId: number
+  status: DflowMeetingStatusWithExists | null
+  statusError: string | null
+  teams: string[]
+  detailsOpen: boolean
+  onDetailsOpenChange: (open: boolean) => void
+  showSearch: boolean
+  onShowSearchChange: (show: boolean) => void
+  refreshStatus: () => Promise<DflowMeetingStatusWithExists | null>
+  onChanged?: () => void
+}
+
+/** '연결 관리' 접이 섹션: public_uid 복사·해제·재발급·수동 입력·[D'Flow에서 찾기]. detailsOpen/showSearch만
+ *  부모가 소유(dflowMissing 안내의 [D'Flow에서 찾기로 재연결]이 이 섹션 밖에서 열어야 해서) — 나머지 9개
+ *  상태는 이 컴포넌트 안에서만 쓰인다. DflowMinuteSearchPanel과 같은 파일 하단 배치 패턴을 따른다. */
+function LinkManagementSection({
+  meetingId,
+  status,
+  statusError,
+  teams,
+  detailsOpen,
+  onDetailsOpenChange,
+  showSearch,
+  onShowSearchChange,
+  refreshStatus,
+  onChanged,
+}: LinkManagementSectionProps) {
+  const [copied, setCopied] = useState(false)
+  const [reissueNotice, setReissueNotice] = useState(false)
+  const [linkActionBusy, setLinkActionBusy] = useState(false)
+  const [linkActionError, setLinkActionError] = useState<string | null>(null)
+
+  const [showManualInput, setShowManualInput] = useState(false)
+  const [manualUid, setManualUid] = useState('')
+  const [manualUidError, setManualUidError] = useState<string | null>(null)
+  // false=경고 없음, 'missing'=D'Flow에 없음, 'archived'=D'Flow에서 보관됨 — 두 원인의 문구가 다르다.
+  const [manualMissingWarning, setManualMissingWarning] = useState<false | 'missing' | 'archived'>(false)
+  const [manualSaving, setManualSaving] = useState(false)
+
+  async function handleCopyUid() {
+    if (!status?.public_uid) return
+    try {
+      await navigator.clipboard.writeText(status.public_uid)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // clipboard 미지원 환경 — 표시 전용으로 동작 (MeetingIdBadge.tsx 관례)
+    }
+  }
+
+  async function handleUnlink() {
+    const ok = await confirmDialog(UNLINK_CONFIRM_MESSAGE)
+    if (!ok) return
+    setLinkActionBusy(true)
+    setLinkActionError(null)
+    try {
+      await setDflowLink(meetingId, null)
+      await refreshStatus()
+      setReissueNotice(false)
+      onChanged?.()
+    } catch (err) {
+      const { message } = await parseDflowError(err, '연결 해제에 실패했습니다.')
+      setLinkActionError(message)
+    } finally {
+      setLinkActionBusy(false)
+    }
+  }
+
+  async function handleReissue() {
+    const ok = await confirmDialog(REISSUE_CONFIRM_MESSAGE)
+    if (!ok) return
+    setLinkActionBusy(true)
+    setLinkActionError(null)
+    try {
+      await setDflowLink(meetingId, null)
+      await refreshStatus()
+      setReissueNotice(true)
+      onChanged?.()
+    } catch (err) {
+      const { message } = await parseDflowError(err, '재발급 준비에 실패했습니다.')
+      setLinkActionError(message)
+    } finally {
+      setLinkActionBusy(false)
+    }
+  }
+
+  async function handleManualSave() {
+    setManualUidError(null)
+    setManualMissingWarning(false)
+    // 서버 link는 소문자 UUID만 허용 — 대문자 붙여넣기도 통과시키기 위해 정규화 후 검증·전송.
+    const normalized = manualUid.trim().toLowerCase()
+    if (!isValidDflowUuid(normalized)) {
+      setManualUidError('올바른 UUID 형식이 아닙니다.')
+      return
+    }
+    setManualSaving(true)
+    try {
+      await setDflowLink(meetingId, normalized)
+      const fresh = await refreshStatus()
+      if (fresh?.exists_on_dflow === false) {
+        setManualMissingWarning('missing')
+      } else if (fresh?.dflow_archived === true) {
+        setManualMissingWarning('archived')
+      }
+      setManualUid('')
+      onChanged?.()
+    } catch (err) {
+      const { message } = await parseDflowError(err, '연결 저장에 실패했습니다.')
+      setManualUidError(message)
+    } finally {
+      setManualSaving(false)
+    }
+  }
+
+  async function handleMinuteLinked() {
+    await refreshStatus()
+    onShowSearchChange(false)
+    onChanged?.()
+  }
+
+  return (
+    <details
+      open={detailsOpen}
+      onToggle={(e) => onDetailsOpenChange(e.currentTarget.open)}
+      className="group border-t border-border pt-3"
+    >
+      <summary className="flex cursor-pointer select-none items-center gap-2 text-sm font-semibold text-muted-foreground">
+        <span className="transition-transform group-open:rotate-90">&rsaquo;</span>
+        연결 관리
+      </summary>
+
+      <div className="mt-3 space-y-3">
+        {statusError && <p className="text-sm text-red-600">{statusError}</p>}
+
+        {!statusError && (
+          <>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">public_uid</span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-foreground">{status?.public_uid ?? '미발급'}</span>
+                {status?.public_uid && (
+                  <button
+                    type="button"
+                    onClick={handleCopyUid}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    {copied ? '복사됨' : '복사'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {status?.public_uid && (
+              <p className="text-xs text-muted-foreground">
+                D'Flow 존재 확인:{' '}
+                {status.exists_on_dflow === undefined
+                  ? '알 수 없음'
+                  : status.exists_on_dflow
+                    ? status.dflow_archived === true
+                      ? '존재함(보관됨)'
+                      : '존재함'
+                    : '존재하지 않음(다음 전송 시 새로 생성됩니다)'}
+              </p>
+            )}
+
+            {reissueNotice && (
+              <p className="text-xs text-blue-600">다음 전송 시 새 식별자가 자동 발급됩니다.</p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setShowManualInput((v) => !v)}
+                className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent"
+              >
+                수동 입력
+              </button>
+              <button
+                type="button"
+                onClick={handleUnlink}
+                disabled={!status?.public_uid || linkActionBusy}
+                className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50"
+              >
+                해제
+              </button>
+              <button
+                type="button"
+                onClick={handleReissue}
+                disabled={!status?.public_uid || linkActionBusy}
+                className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50"
+              >
+                재발급
+              </button>
+              <button
+                type="button"
+                onClick={() => onShowSearchChange(!showSearch)}
+                className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent"
+              >
+                D'Flow에서 찾기
+              </button>
+            </div>
+
+            {linkActionError && <p className="text-xs text-red-600">{linkActionError}</p>}
+
+            {showManualInput && (
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={manualUid}
+                    onChange={(e) => setManualUid(e.target.value)}
+                    placeholder="00000000-0000-0000-0000-000000000000"
+                    aria-label="D'Flow public_uid 수동 입력"
+                    disabled={manualSaving}
+                    className="w-full rounded-md border px-3 py-1.5 text-xs font-mono outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  {manualUidError && <p className="mt-1 text-xs text-red-600">{manualUidError}</p>}
+                  {manualMissingWarning === 'missing' && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      D'Flow에 해당 회의록이 없습니다. 연결은 저장되었습니다.
+                    </p>
+                  )}
+                  {manualMissingWarning === 'archived' && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      D'Flow에서 보관된 회의록입니다. 연결은 저장되었습니다.
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleManualSave}
+                  disabled={manualSaving}
+                  className="shrink-0 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {manualSaving ? '저장 중…' : '저장'}
+                </button>
+              </div>
+            )}
+
+            {showSearch && (
+              <DflowMinuteSearchPanel
+                meetingId={meetingId}
+                teams={teams}
+                onLinked={handleMinuteLinked}
+              />
+            )}
+          </>
+        )}
+      </div>
+    </details>
   )
 }
 
