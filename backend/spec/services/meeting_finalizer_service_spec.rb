@@ -10,14 +10,9 @@ RSpec.describe MeetingFinalizerService do
     { "action_items" => [ { "content" => "item1" }, { "content" => "item2" } ] }
   end
 
-  let(:summarize_result) do
-    { "decisions" => [ "결정사항 1", "결정사항 2" ], "key_points" => [], "discussion_details" => [], "action_items" => [] }
-  end
-
   before do
     allow(LlmService).to receive(:new).and_return(llm_double)
     allow(llm_double).to receive(:summarize_action_items).and_return(action_items_result)
-    allow(llm_double).to receive(:summarize).and_return(summarize_result)
     create(:transcript, meeting: meeting)
   end
 
@@ -91,51 +86,11 @@ RSpec.describe MeetingFinalizerService do
       end
     end
 
-    # Decision 추출 테스트
-    it "calls LlmService#summarize to extract decisions" do
-      expect(llm_double).to receive(:summarize).with(
-        array_including(hash_including(speaker: anything, text: anything, started_at_ms: anything)),
-        type: "final"
-      )
-      described_class.new(meeting).call
-    end
-
-    it "creates decisions with ai_generated: true" do
-      expect {
-        described_class.new(meeting).call
-      }.to change { meeting.decisions.where(ai_generated: true).count }.by(2)
-    end
-
-    it "creates decisions with correct content" do
-      described_class.new(meeting).call
-      contents = meeting.decisions.pluck(:content)
-      expect(contents).to include("결정사항 1", "결정사항 2")
-    end
-
-    it "creates decisions with status 'active'" do
-      described_class.new(meeting).call
-      meeting.decisions.each do |d|
-        expect(d.status).to eq("active")
-      end
-    end
-
-    context "when decisions result is empty" do
-      before do
-        allow(llm_double).to receive(:summarize).and_return({ "decisions" => [] })
-      end
-
-      it "creates no decisions" do
-        expect {
-          described_class.new(meeting).call
-        }.not_to change(Decision, :count)
-      end
-    end
-
     # 감사 지적(CRITICAL): 이 서비스도 MeetingSummarizationJob 과 같은 창을 갖는다 — 절단 전
-    # 전사를 읽어 LLM 호출 중 기밀 절단이 커밋되면, 완료 후 ai_generated action_items/decisions
-    # 가 그대로 저장되어 기밀 파생 텍스트가 부활한다(redact 는 정확히 이 두 테이블을 파기 대상으로 삼는다).
+    # 전사를 읽어 LLM 호출 중 기밀 절단이 커밋되면, 완료 후 ai_generated action_items
+    # 가 그대로 저장되어 기밀 파생 텍스트가 부활한다(redact 는 정확히 이 테이블을 파기 대상으로 삼는다).
     context "redact race guard (기밀 절단 표식)" do
-      it "does not save action_items or decisions when transcripts_redacted_at is set during the LLM call" do
+      it "does not save action_items when transcripts_redacted_at is set during the LLM call" do
         allow(llm_double).to receive(:summarize_action_items) do
           meeting.update_columns(transcripts_redacted_at: Time.current)
           action_items_result
@@ -144,7 +99,6 @@ RSpec.describe MeetingFinalizerService do
         expect {
           described_class.new(meeting).call
         }.not_to change { meeting.action_items.count }
-        expect(meeting.decisions.count).to eq(0)
       end
     end
   end

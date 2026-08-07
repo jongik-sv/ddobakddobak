@@ -71,6 +71,8 @@ export interface Meeting {
   summary_verbosity?: SummaryVerbosity
   /** true=지속 재구조화(매 틱 전체 재정리), false=증분(앞 내용 불변, 시간대별 추가) */
   summary_restructure?: boolean
+  /** 회의록 생성 시 system 프롬프트에 추가되는 자유 텍스트 지시 (최대 2000자). null=미지정 */
+  summary_custom_prompt?: string | null
   /** 자동 요약 주기(초). 0=안함. 서버 영속 — cron 자동요약 게이트 */
   summary_interval_sec?: number
   /** 최근 최종(final) 요약 실패 사유. 성공 저장 시 서버가 null로 클리어. */
@@ -195,6 +197,8 @@ export interface UpdateMeetingParams {
   important?: boolean
   summary_verbosity?: SummaryVerbosity
   summary_restructure?: boolean
+  /** 회의록 생성 시 system 프롬프트에 추가되는 자유 텍스트 지시 (최대 2000자). null/빈값=해제 */
+  summary_custom_prompt?: string | null
   /** 자동 요약 주기(초). 0=안함. 서버 영속 — cron 자동요약 게이트 */
   summary_interval_sec?: number
   /** 이전 회의 참고. null/빈값이면 해제 */

@@ -312,9 +312,6 @@ class ProjectImporter
       attrs["assignee_id"] = nil # 범위 밖 유저 참조 제거
       meeting.action_items.create!(attrs.merge("meeting_id" => meeting.id))
     end
-    (m["decisions"] || []).each do |d|
-      meeting.decisions.create!(sanitize(d, Decision).merge("meeting_id" => meeting.id))
-    end
     import_blocks(meeting, m["blocks"] || [])
     (m["contacts"] || []).each do |c|
       attrs = sanitize(c, MeetingContact)

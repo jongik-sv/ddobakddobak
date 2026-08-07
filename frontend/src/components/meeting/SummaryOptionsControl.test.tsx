@@ -79,8 +79,84 @@ describe('SummaryOptionsControl', () => {
 
     const trigger = screen.getByRole('button', { name: /보통/ })
     expect(trigger.textContent).not.toContain('증분')
+    expect(trigger.textContent).not.toContain('지시')
     fireEvent.click(trigger)
     expect(screen.getByRole('radio', { name: /보통/ })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('요약 추가 지시가 있으면 트리거 버튼에 "지시" 표시', () => {
+    render(
+      <SummaryOptionsControl
+        meeting={{ summary_verbosity: 'standard', summary_restructure: true, summary_custom_prompt: '숫자는 표로 정리' }}
+        onSave={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /보통 · 지시/ })).toBeInTheDocument()
+  })
+
+  it('팝오버를 열면 저장된 추가 지시가 textarea 에 채워짐', () => {
+    render(
+      <SummaryOptionsControl
+        meeting={{ summary_verbosity: 'standard', summary_restructure: true, summary_custom_prompt: '영어 용어 병기' }}
+        onSave={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /보통/ }))
+    expect(screen.getByLabelText('요약 추가 지시')).toHaveValue('영어 용어 병기')
+  })
+
+  it('추가 지시 입력 후 blur → onSave({ summary_custom_prompt }) 호출', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(
+      <SummaryOptionsControl
+        meeting={{ summary_verbosity: 'standard', summary_restructure: true }}
+        onSave={onSave}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /보통/ }))
+    const textarea = screen.getByLabelText('요약 추가 지시')
+    fireEvent.change(textarea, { target: { value: '  수치는 표로 정리  ' } })
+    fireEvent.blur(textarea)
+
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({ summary_custom_prompt: '수치는 표로 정리' }),
+    )
+  })
+
+  it('추가 지시를 비우고 저장하면 null 전달', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(
+      <SummaryOptionsControl
+        meeting={{ summary_verbosity: 'standard', summary_restructure: true, summary_custom_prompt: '기존 지시' }}
+        onSave={onSave}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /보통/ }))
+    const textarea = screen.getByLabelText('요약 추가 지시')
+    fireEvent.change(textarea, { target: { value: '' } })
+    fireEvent.blur(textarea)
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ summary_custom_prompt: null }))
+  })
+
+  it('변경 없이 blur 하면 저장하지 않음', () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(
+      <SummaryOptionsControl
+        meeting={{ summary_verbosity: 'standard', summary_restructure: true, summary_custom_prompt: '기존 지시' }}
+        onSave={onSave}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /보통/ }))
+    const textarea = screen.getByLabelText('요약 추가 지시')
+    fireEvent.blur(textarea)
+
+    expect(onSave).not.toHaveBeenCalled()
   })
 })

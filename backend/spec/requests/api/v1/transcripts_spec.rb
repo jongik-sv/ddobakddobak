@@ -1155,18 +1155,14 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         expect(response.parsed_body["summaries_destroyed"]).to be true
       end
 
-      it "ai_generated 액션아이템·결정만 삭제하고 사람이 쓴 것은 남긴다" do
+      it "ai_generated 액션아이템만 삭제하고 사람이 쓴 것은 남긴다" do
         ai_item    = meeting.action_items.create!(content: "AI 추출", ai_generated: true)
         human_item = meeting.action_items.create!(content: "사람 입력", ai_generated: false)
-        ai_dec     = meeting.decisions.create!(content: "AI 결정", ai_generated: true)
-        human_dec  = meeting.decisions.create!(content: "사람 결정", ai_generated: false)
 
         do_redact([ t2.id ])
 
         expect(ActionItem.where(id: ai_item.id)).not_to exist
         expect(ActionItem.where(id: human_item.id)).to exist
-        expect(Decision.where(id: ai_dec.id)).not_to exist
-        expect(Decision.where(id: human_dec.id)).to exist
       end
     end
 

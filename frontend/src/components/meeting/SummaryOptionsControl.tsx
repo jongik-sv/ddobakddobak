@@ -3,15 +3,17 @@ import type { Meeting, SummaryVerbosity, UpdateMeetingParams } from '../../api/m
 import { Switch } from '../ui/Switch'
 
 export const VERBOSITY_OPTIONS: { value: SummaryVerbosity; label: string; desc: string }[] = [
-  { value: 'very_concise', label: '아주 간결', desc: '결정·액션만, 항목당 1문장 (가장 빠름)' },
-  { value: 'concise', label: '간결', desc: '항목당 1문장, 표 최소' },
+  { value: 'very_concise', label: '아주 간결', desc: '결정·액션 위주, 표·차트는 유지 (가장 빠름)' },
+  { value: 'concise', label: '간결', desc: '항목당 1문장, 표·차트는 유지' },
   { value: 'standard', label: '보통', desc: '기본 분량' },
   { value: 'detailed', label: '상세', desc: '맥락·근거 충실, 표 적극 활용' },
   { value: 'very_detailed', label: '아주 상세', desc: '발언 흐름·반론까지 전부 (가장 느림)' },
 ]
 
+const CUSTOM_PROMPT_MAX_LENGTH = 2000
+
 interface SummaryOptionsControlProps {
-  meeting: Pick<Meeting, 'summary_verbosity' | 'summary_restructure'>
+  meeting: Pick<Meeting, 'summary_verbosity' | 'summary_restructure' | 'summary_custom_prompt'>
   /** PATCH 책임은 페이지가 짐 (live=store setMeeting, preview=useMeeting.updateMeetingInfo) */
   onSave: (params: UpdateMeetingParams) => Promise<void>
   disabled?: boolean
@@ -32,7 +34,11 @@ export function SummaryOptionsControl({ meeting, onSave, disabled = false }: Sum
 
   const verbosity = meeting.summary_verbosity ?? 'standard'
   const restructure = meeting.summary_restructure ?? true
+  const customPrompt = meeting.summary_custom_prompt ?? ''
   const verbosityLabel = VERBOSITY_OPTIONS.find((o) => o.value === verbosity)?.label ?? '보통'
+
+  // 텍스트 입력은 타이핑 중 저장하지 않으므로(blur/저장 버튼에서만) 로컬 draft 로 편집한다.
+  const [customPromptDraft, setCustomPromptDraft] = useState(customPrompt)
 
   function toggleOpen() {
     if (!open && triggerRef.current) {
@@ -40,7 +46,15 @@ export function SummaryOptionsControl({ meeting, onSave, disabled = false }: Sum
       setPos({ top: rect.bottom + 4, right: Math.max(8, window.innerWidth - rect.right) })
     }
     setSaveError(false)
+    // 열 때마다 최신 저장값으로 draft 를 리셋 — 이전에 취소한 미저장 편집이 남지 않게.
+    if (!open) setCustomPromptDraft(customPrompt)
     setOpen((v) => !v)
+  }
+
+  function saveCustomPrompt() {
+    const trimmed = customPromptDraft.trim()
+    if (trimmed === customPrompt) return // 변경 없으면 저장 생략
+    save({ summary_custom_prompt: trimmed || null })
   }
 
   useEffect(() => {
@@ -89,7 +103,7 @@ export function SummaryOptionsControl({ meeting, onSave, disabled = false }: Sum
         <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <path d="M4 6h16M7 12h10M10 18h4" strokeLinecap="round" />
         </svg>
-        {verbosityLabel}{restructure ? '' : ' · 증분'}
+        {verbosityLabel}{restructure ? '' : ' · 증분'}{customPrompt ? ' · 지시' : ''}
       </button>
 
       {open && pos && (
@@ -146,6 +160,34 @@ export function SummaryOptionsControl({ meeting, onSave, disabled = false }: Sum
                 저장 실패 — 네트워크 또는 권한을 확인하고 다시 시도하세요
               </p>
             )}
+          </div>
+
+          <div className="mt-2 pt-2 border-t border-border">
+            <label htmlFor="summary-custom-prompt" className="block text-xs font-semibold text-muted-foreground mb-1">
+              요약 추가 지시
+            </label>
+            <textarea
+              id="summary-custom-prompt"
+              value={customPromptDraft}
+              disabled={busy}
+              maxLength={CUSTOM_PROMPT_MAX_LENGTH}
+              placeholder="예: 수치는 표로 정리, 영어 용어 병기"
+              onChange={(e) => setCustomPromptDraft(e.target.value)}
+              onBlur={saveCustomPrompt}
+              rows={3}
+              className="w-full rounded border border-border bg-background px-2 py-1 text-xs resize-none disabled:opacity-50"
+            />
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-[11px] text-muted-foreground">{customPromptDraft.length}/{CUSTOM_PROMPT_MAX_LENGTH}자</span>
+              <button
+                type="button"
+                disabled={busy || customPromptDraft.trim() === customPrompt}
+                onClick={saveCustomPrompt}
+                className="px-2 py-0.5 rounded text-[11px] font-medium bg-muted text-muted-foreground hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                저장
+              </button>
+            </div>
           </div>
         </div>
       )}

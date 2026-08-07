@@ -97,7 +97,7 @@ class LlmService
 
   # 회의록 정제: 기존 노트 + 새 자막 → 통합 회의록.
   # chronological: 증분(흐름) 회의의 통짜 생성 시 주제별 재구성 대신 시간순 요약 지시.
-  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil, verbosity: "standard", verbosity_context: :final, chronological: false, seeded_merge: false, agenda_reference: nil, domain_reference: nil)
+  def refine_notes(current_notes, transcripts, meeting_title: "", meeting_type: "general", sections_prompt: nil, attendees: nil, verbosity: "standard", verbosity_context: :final, chronological: false, seeded_merge: false, agenda_reference: nil, domain_reference: nil, custom_prompt: nil)
     transcript_text = TextFormatter.format_transcripts(transcripts)
     return { "notes_markdown" => current_notes, "ok" => true } if transcript_text.blank?
 
@@ -125,6 +125,7 @@ class LlmService
     system_prompt = system_prompt + CHRONOLOGICAL_NOTES_INSTRUCTION if chronological
     system_prompt = apply_verbosity(system_prompt, verbosity, context: verbosity_context)
     system_prompt = system_prompt + "\n\n" + LlmPrompts::CITATION_MARKER_INSTRUCTION
+    system_prompt = apply_custom_prompt(system_prompt, custom_prompt)
     # 이전 회의 통합+논의 절취선 지시는 분량 한도보다 우선해야 하므로 verbosity 뒤(맨 끝)에 붙인다.
     system_prompt = system_prompt + seeded_merge_instruction if seeded_merge
 
@@ -150,7 +151,7 @@ class LlmService
   # 증분(append-only) 모드: 새 자막만 시간대별 새 블록 하나로 요약. 기존 회의록 불변.
   # 시간 헤딩은 호출부(job)가 붙인다. 출력이 새 블록뿐이라 작음 → 틱 빠름.
   # 반환: { "block_markdown" =>, "ok" => }. ok:false 면 호출부가 transcript 미소비(무음 손실 차단).
-  def append_notes(current_notes, transcripts, meeting_title: "", attendees: nil, verbosity: "standard", agenda_reference: nil, domain_reference: nil)
+  def append_notes(current_notes, transcripts, meeting_title: "", attendees: nil, verbosity: "standard", agenda_reference: nil, domain_reference: nil, custom_prompt: nil)
     transcript_text = TextFormatter.format_transcripts(transcripts)
     return { "block_markdown" => "", "ok" => true } if transcript_text.blank?
 
@@ -164,6 +165,7 @@ class LlmService
     user_content = parts.join("\n\n")
 
     system_prompt = apply_verbosity(APPEND_NOTES_SYSTEM_PROMPT, verbosity, context: :append)
+    system_prompt = apply_custom_prompt(system_prompt, custom_prompt)
 
     raw = call_llm_raw(system_prompt, user_content, max_tokens: max_output_tokens)
     block = TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(raw))
@@ -239,7 +241,7 @@ class LlmService
 
   # 외부 LLM용 프롬프트 조립 (LLM 호출 없음). 압축율 분량 지시 포함(통짜 생성 = final 캡).
   # 증분(restructure=false) 회의는 시간 흐름 요약 지시를 포함 — 주제별 재구성 금지.
-  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil, attendees: nil, verbosity: "standard", restructure: true, agenda_reference: nil, domain_reference: nil)
+  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil, attendees: nil, verbosity: "standard", restructure: true, agenda_reference: nil, domain_reference: nil, custom_prompt: nil)
     system_prompt = if sections_prompt.present?
       REFINE_NOTES_SYSTEM_PROMPT.sub(DEFAULT_SECTION_STRUCTURE, sections_prompt)
     else
@@ -247,6 +249,7 @@ class LlmService
     end
     system_prompt = system_prompt + CHRONOLOGICAL_NOTES_INSTRUCTION unless restructure
     system_prompt = apply_verbosity(system_prompt, verbosity, context: :final)
+    system_prompt = apply_custom_prompt(system_prompt, custom_prompt)
 
     transcript_text = TextFormatter.format_transcripts(transcripts)
     parts = []
@@ -327,6 +330,16 @@ class LlmService
       lines << "회의록 전체 분량은 약 #{ActiveSupport::NumberHelper.number_to_delimited(limit)}자 이내로 유지하세요."
       lines << "이 분량 한도는 다른 규칙(기존 내용 보존 포함)보다 우선합니다 — 한도를 넘으면 오래된 세부 내용부터 압축해 요지만 남기세요."
     end
+    system_prompt + lines.join("\n") + "\n"
+  end
+
+  # 회의별 사용자 추가 지시(meeting.summary_custom_prompt)를 system 프롬프트에 append.
+  # 분량 지시(apply_verbosity)와 충돌할 수 있으므로 사용자 지시가 우선한다고 명시한다.
+  def apply_custom_prompt(system_prompt, custom_prompt)
+    return system_prompt if custom_prompt.blank?
+
+    lines = [ "", "## 사용자 추가 지시", custom_prompt.to_s.strip,
+              "이 지시가 위의 다른 규칙(분량 지시 포함)과 충돌하면 이 사용자 지시를 우선하세요." ]
     system_prompt + lines.join("\n") + "\n"
   end
 

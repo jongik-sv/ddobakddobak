@@ -210,7 +210,8 @@ class FileTranscriptionJob < ApplicationJob
       attendees: meeting.attendees,
       verbosity: meeting.summary_verbosity,
       chronological: !meeting.summary_restructure, # 증분 선택 업로드 = 시간 흐름 요약
-      domain_reference: DomainReferenceBuilder.build(meeting)
+      domain_reference: DomainReferenceBuilder.build(meeting),
+      custom_prompt: meeting.summary_custom_prompt
     )
     notes_markdown = result["notes_markdown"]
 

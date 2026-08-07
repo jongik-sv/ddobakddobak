@@ -13,7 +13,6 @@ RSpec.describe "Api::V1::MeetingLock", type: :request do
   let!(:contact)    { create(:meeting_contact, meeting: meeting) }
   let!(:attachment) { create(:meeting_attachment, meeting: meeting) }
   let!(:action_item) { create(:action_item, meeting: meeting) }
-  let!(:decision)   { create(:decision, meeting: meeting) }
   let!(:block)      { create(:block, meeting: meeting) }
   let!(:glossary) do
     meeting.glossary_entries.create!(from_text: "a", to_text: "b", match_type: "literal", created_by_id: owner.id)
@@ -69,11 +68,6 @@ RSpec.describe "Api::V1::MeetingLock", type: :request do
       [:post,   "/api/v1/meetings/#{m}/action_items",                   { action_item: { content: "c" } }],
       [:patch,  "/api/v1/action_items/#{action_item.id}",              { action_item: { content: "c2" } }],
       [:delete, "/api/v1/action_items/#{action_item.id}",              {}],
-
-      # decisions (nested create + top-level update/destroy)
-      [:post,   "/api/v1/meetings/#{m}/decisions",                      { decision: { content: "d" } }],
-      [:patch,  "/api/v1/decisions/#{decision.id}",                    { decision: { content: "d2" } }],
-      [:delete, "/api/v1/decisions/#{decision.id}",                    {}],
 
       # blocks
       [:post,   "/api/v1/meetings/#{m}/blocks",                         { block: { content: "b" } }],

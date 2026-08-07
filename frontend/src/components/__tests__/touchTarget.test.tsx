@@ -356,30 +356,12 @@ describe('MeetingPage 터치 타겟', () => {
   })
 })
 
-// ── 22. DecisionList 터치 타겟 ──
-import DecisionListSrc from '../decision/DecisionList?raw'
-
-describe('DecisionList 터치 타겟', () => {
-  it('수정/삭제 버튼에 min-h-[44px] 적용', () => {
-    expect(DecisionListSrc).toContain('min-h-[44px]')
-  })
-})
-
 // ── 23. ActionItemList 터치 타겟 ──
 import ActionItemListSrc from '../action-item/ActionItemList?raw'
 
 describe('ActionItemList 터치 타겟', () => {
   it('수정/삭제 버튼에 min-h-[44px] 적용', () => {
     expect(ActionItemListSrc).toContain('min-h-[44px]')
-  })
-})
-
-// ── 24. DecisionForm 터치 타겟 ──
-import DecisionFormSrc from '../decision/DecisionForm?raw'
-
-describe('DecisionForm 터치 타겟', () => {
-  it('버튼에 min-h-[44px] 적용', () => {
-    expect(DecisionFormSrc).toContain('min-h-[44px]')
   })
 })
 

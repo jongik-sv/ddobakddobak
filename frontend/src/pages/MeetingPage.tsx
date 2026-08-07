@@ -708,7 +708,7 @@ export default function MeetingPage() {
             <>
               <PanelResizeHandle className="w-1 bg-border hover:bg-blue-400 transition-colors cursor-col-resize" />
 
-              {/* 메모 + Decision Log + AI 챗 탭 — 기본 30% */}
+              {/* 메모 + AI 챗 탭 — 기본 30% */}
               <Panel defaultSize={30} minSize={15}>
                 <RightTabsPanel
                   meetingId={meetingId}
