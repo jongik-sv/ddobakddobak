@@ -130,7 +130,7 @@ class LlmService
     system_prompt = system_prompt + seeded_merge_instruction if seeded_merge
 
     result = call_llm_raw(system_prompt, user_content, max_tokens: max_tokens)
-    notes = TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(result))
+    notes = LlmPrompts::CitationMarkers.normalize(TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(result)))
     # thinking 누출 방어(solo 2026-07 commit 6209fad 이식, 회의38: 8k자→727자 추론쓰레기로
     # 누적 노트가 통째 소실된 사고): refine 출력이 기존 노트를 대량 유실하면 오염으로 간주,
     # 기존 노트 보존 + ok:false로 재시도 유도(D8 anchor-C1과 동일 계약: 호출부 미저장·미소비).
@@ -168,7 +168,7 @@ class LlmService
     system_prompt = apply_custom_prompt(system_prompt, custom_prompt)
 
     raw = call_llm_raw(system_prompt, user_content, max_tokens: max_output_tokens)
-    block = TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(raw))
+    block = LlmPrompts::CitationMarkers.normalize(TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(raw)))
     { "block_markdown" => block, "ok" => true }
   rescue => e
     Rails.logger.error "[LlmService] append_notes failed: #{e.message}"
@@ -233,7 +233,7 @@ class LlmService
     parts << "사용자 피드백:\n#{feedback}"
 
     result = call_llm_raw(FEEDBACK_NOTES_SYSTEM_PROMPT, parts.join("\n\n"), max_tokens: max_output_tokens)
-    { "notes_markdown" => TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(result)) }
+    { "notes_markdown" => LlmPrompts::CitationMarkers.normalize(TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(result))) }
   rescue => e
     Rails.logger.error "[LlmService] apply_feedback failed: #{e.message}"
     { "notes_markdown" => current_notes }
