@@ -36,9 +36,13 @@ interface AiSummaryPanelProps {
   hideExpand?: boolean
   /** 오디오 점프 콜백. ms 단위. */
   onSeek?: (ms: number) => void
+  /** 헤더의 "AI 회의록" 제목 숨김. 바깥(모달 등)이 이미 제목을 그릴 때 중복을 막는다. 기본 false. */
+  hideTitle?: boolean
+  /** 헤더 우측 컨트롤 그룹 맨 끝에 끼울 추가 요소(닫기 버튼 주입 등). */
+  headerTrailing?: React.ReactNode
 }
 
-export function AiSummaryPanel({ meetingId, isRecording = false, editable = true, onNotesChange, headerExtra, hideExpand = false, onSeek }: AiSummaryPanelProps) {
+export function AiSummaryPanel({ meetingId, isRecording = false, editable = true, onNotesChange, headerExtra, hideExpand = false, onSeek, hideTitle = false, headerTrailing }: AiSummaryPanelProps) {
   const meetingNotes = useTranscriptStore((s) => s.meetingNotes)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const isSummarizing = useTranscriptStore((s) => s.isSummarizing)
@@ -221,9 +225,9 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
 
   return (
     <>
-      <div className="flex items-center justify-between px-4 py-2 border-b bg-card shrink-0">
+      <div className="flex items-center justify-between px-4 py-1 border-b bg-card shrink-0">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-muted-foreground">AI 회의록</h2>
+          {!hideTitle && <h2 className="text-sm font-semibold text-muted-foreground">AI 회의록</h2>}
           {isSummarizing && (
             <span
               className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700"
@@ -265,7 +269,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
               onClick={() => setShowFullView(true)}
               aria-label="전체보기"
               title="전체보기"
-              className="p-1.5 min-h-[44px] flex items-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="p-1.5 min-h-[28px] flex items-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <Maximize2 className="w-4 h-4" />
             </button>
@@ -279,7 +283,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
             <button
               onClick={handleManualSave}
               disabled={!isDirty || isSaving}
-              className={`px-2 py-0.5 min-h-[44px] flex items-center rounded text-[11px] font-medium transition-colors ${
+              className={`px-2 py-0.5 min-h-[28px] flex items-center rounded text-[11px] font-medium transition-colors ${
                 isDirty
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'bg-muted text-muted-foreground cursor-default'
@@ -289,6 +293,7 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
             </button>
           )
         )}
+          {headerTrailing}
         </div>
       </div>
       {showManualHint && (

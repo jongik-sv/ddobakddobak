@@ -43,7 +43,10 @@ export function SummaryOptionsControl({ meeting, onSave, disabled = false }: Sum
   function toggleOpen() {
     if (!open && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect()
-      setPos({ top: rect.bottom + 4, right: Math.max(8, window.innerWidth - rect.right) })
+      // 팝업이 뷰포트 왼쪽 밖으로 밀리지 않게 클램프 (w-72=288px, 좌우 여백 8px)
+      const popupWidth = Math.min(288, window.innerWidth - 16)
+      const right = Math.min(Math.max(8, window.innerWidth - rect.right), window.innerWidth - popupWidth - 8)
+      setPos({ top: rect.bottom + 4, right })
     }
     setSaveError(false)
     // 열 때마다 최신 저장값으로 draft 를 리셋 — 이전에 취소한 미저장 편집이 남지 않게.

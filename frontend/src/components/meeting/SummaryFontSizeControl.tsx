@@ -1,10 +1,10 @@
 import { useUiStore, SUMMARY_FONT_DEFAULT, SUMMARY_FONT_STEP } from '../../stores/uiStore'
 
 const BTN =
-  'p-1.5 min-h-[44px] flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors'
-// 숫자 readout은 A± 버튼보다 좁되 터치 타깃은 그대로(min-h-[44px]는 BTN과 공유).
+  'p-1.5 min-h-[28px] flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors'
+// 숫자 readout은 A± 버튼보다 좁되 높이는 BTN과 공유(min-h-[28px] 컴팩트).
 const READOUT =
-  'min-h-[44px] min-w-[2rem] px-1 flex items-center justify-center rounded text-xs font-medium tabular-nums text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer select-none'
+  'min-h-[28px] min-w-[2rem] px-1 flex items-center justify-center rounded text-xs font-medium tabular-nums text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer select-none'
 
 /**
  * AI 회의록 본문 글자크기 조절 — A− / 숫자 readout(현재 px, 클릭=기본 리셋) / A+ 3버튼.

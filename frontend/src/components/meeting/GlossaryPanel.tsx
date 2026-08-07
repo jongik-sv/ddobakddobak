@@ -1,12 +1,97 @@
 import { useState } from 'react'
 import { useGlossary } from '../../hooks/useGlossary'
-import type { GlossaryEntry, GlossaryLevel, GlossaryEntryInput } from '../../api/glossary'
+import type { GlossaryEntry, GlossaryLevel, GlossaryEntryInput, GlossaryView } from '../../api/glossary'
+
+interface GlossaryPanelContentProps {
+  view: GlossaryView
+  status: string
+  addMeetingEntry: (d: GlossaryEntryInput) => Promise<void>
+  addFolderEntry: (folderId: number, d: GlossaryEntryInput) => Promise<void>
+  editEntry: (id: number, d: Partial<GlossaryEntryInput>) => void
+  removeEntry: (id: number) => void
+  reapply: () => Promise<void>
+  applyEntry: (id: number) => Promise<void>
+  /** 'details'(기본) 컨테이너 내부(마진 포함) / 'bare' = 병합 바 아코디언용, 여백 없이 내용만. */
+  variant?: 'details' | 'bare'
+}
+
+/**
+ * 오타사전 내용부(상위폴더들 → 현재폴더 → 현재회의 3단 테이블) — <details> 래퍼 없는 순수 렌더.
+ * export하는 이유: TypoToolsCompactBar(모바일 병합 바)가 useGlossary를 직접 호출해(중복 fetch 방지)
+ * 그 결과를 이 컴포넌트에 그대로 넘겨 아코디언 콘텐츠로 재사용한다.
+ */
+export function GlossaryPanelContent({
+  view, status, addMeetingEntry, addFolderEntry, editEntry, removeEntry, reapply, applyEntry,
+  variant = 'details',
+}: GlossaryPanelContentProps) {
+  return (
+    <div className={variant === 'bare' ? 'flex flex-col gap-4 max-w-2xl' : 'mt-2 flex flex-col gap-4 max-w-2xl'}>
+      {variant === 'bare' && status && <span className="text-xs font-normal text-blue-500">{status}</span>}
+      {view.ancestors.map((lvl) => (
+        <GlossaryLevelTable
+          key={`a-${lvl.folder.id}`}
+          title={`상위폴더: ${lvl.folder.name}`}
+          level={lvl}
+          warnMeetings
+          onAdd={(d) => addFolderEntry(lvl.folder.id, d)}
+          onEdit={editEntry}
+          onRemove={removeEntry}
+          onApply={applyEntry}
+        />
+      ))}
+
+      {view.folder && (
+        <GlossaryLevelTable
+          title={`현재 폴더: ${view.folder.folder.name}`}
+          level={view.folder}
+          warnMeetings
+          onAdd={(d) => addFolderEntry(view.folder!.folder.id, d)}
+          onEdit={editEntry}
+          onRemove={removeEntry}
+          onApply={applyEntry}
+        />
+      )}
+
+      <GlossaryLevelTable
+        title="현재 회의"
+        level={{ folder: { id: 0, name: '' }, entries: view.meeting.entries }}
+        onAdd={(d) => addMeetingEntry(d)}
+        onEdit={editEntry}
+        onRemove={removeEntry}
+        onApply={applyEntry}
+      />
+
+      <button
+        onClick={() => reapply()}
+        className="self-end px-4 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+      >
+        사전 재적용
+      </button>
+    </div>
+  )
+}
 
 /** 폴더별 오타사전 패널 — 상위폴더들 → 현재폴더 → 현재회의 3단 테이블 (회의 상세 하단) */
-export function GlossaryPanel({ meetingId }: { meetingId: number }) {
+export function GlossaryPanel({ meetingId, variant = 'details' }: { meetingId: number; variant?: 'details' | 'bare' }) {
   const { view, status, addMeetingEntry, addFolderEntry, editEntry, removeEntry, reapply, applyEntry } = useGlossary(meetingId)
 
   if (!view) return null
+
+  if (variant === 'bare') {
+    return (
+      <GlossaryPanelContent
+        view={view}
+        status={status}
+        addMeetingEntry={addMeetingEntry}
+        addFolderEntry={addFolderEntry}
+        editEntry={editEntry}
+        removeEntry={removeEntry}
+        reapply={reapply}
+        applyEntry={applyEntry}
+        variant="bare"
+      />
+    )
+  }
 
   return (
     <div className="border-t bg-card px-6 py-3 shrink-0">
@@ -17,48 +102,17 @@ export function GlossaryPanel({ meetingId }: { meetingId: number }) {
           {status && <span className="text-xs font-normal text-blue-500 ml-2">{status}</span>}
         </summary>
 
-        <div className="mt-2 flex flex-col gap-4 max-w-2xl">
-          {view.ancestors.map((lvl) => (
-            <GlossaryLevelTable
-              key={`a-${lvl.folder.id}`}
-              title={`상위폴더: ${lvl.folder.name}`}
-              level={lvl}
-              warnMeetings
-              onAdd={(d) => addFolderEntry(lvl.folder.id, d)}
-              onEdit={editEntry}
-              onRemove={removeEntry}
-              onApply={applyEntry}
-            />
-          ))}
-
-          {view.folder && (
-            <GlossaryLevelTable
-              title={`현재 폴더: ${view.folder.folder.name}`}
-              level={view.folder}
-              warnMeetings
-              onAdd={(d) => addFolderEntry(view.folder!.folder.id, d)}
-              onEdit={editEntry}
-              onRemove={removeEntry}
-              onApply={applyEntry}
-            />
-          )}
-
-          <GlossaryLevelTable
-            title="현재 회의"
-            level={{ folder: { id: 0, name: '' }, entries: view.meeting.entries }}
-            onAdd={(d) => addMeetingEntry(d)}
-            onEdit={editEntry}
-            onRemove={removeEntry}
-            onApply={applyEntry}
-          />
-
-          <button
-            onClick={() => reapply()}
-            className="self-end px-4 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-          >
-            사전 재적용
-          </button>
-        </div>
+        <GlossaryPanelContent
+          view={view}
+          status={status}
+          addMeetingEntry={addMeetingEntry}
+          addFolderEntry={addFolderEntry}
+          editEntry={editEntry}
+          removeEntry={removeEntry}
+          reapply={reapply}
+          applyEntry={applyEntry}
+          variant="details"
+        />
       </details>
     </div>
   )
