@@ -23,3 +23,5 @@
 [2026-08-07 16:30] [VERIFICATION] 전체 rspec 3차(fresh, baseline fix 반영): 2372 examples, 0 failures (12분41초). 모든 검증 게이트 green.
 [2026-08-07 16:30] [STATUS] 작업 완료. 미커밋(규칙대로 사용자 결정 대기). 구현자 리포트 2건을 backend-report.md/frontend-report.md로 보존. 병합 조건 2건=①feature/citation-marker-normalize 병합 시 relocation baseline 재계산 ②MeetingLivePage citation_meetings 배선 후속 티켓.
 [2026-08-07 16:38] [ACTION] 사용자 지시로 전체 커밋: feature/prev-meeting-citation-inert 14a7084f (29파일 +905/-42). 푸시 안 함.
+[2026-08-07 17:20] [ACTION] main 머지: local-main worktree에서 충돌 3파일(citation_markers.rb·spec·relocation baseline) 해소 — 양 기능 보존, baseline은 합쳐진 heredoc 재계산(884de172…/1145). 검증=rspec 141건·tsc 0·vitest 75건 green. 머지 커밋 172af146.
+[2026-08-07 17:20] [ACTION] origin/main 푸시(8ed98cb7..172af146). 로컬 서버 적용: puma=주 리포(172af146로 FF, dev autoreload)·vite=local-main worktree(머지로 파일 갱신, HMR). 재시작 불필요(신규 autoload 루트·마이그 없음).
