@@ -351,7 +351,7 @@ function renderTranscripts(transcripts: MeetingExportData['transcripts']): strin
  *        Mermaid SVG 렌더링, 테이블, 불릿/번호 리스트, 체크박스,
  *        인용, 수평선, 링크, 이미지, 취소선
  */
-function markdownToHtml(md: string): string {
+export function markdownToHtml(md: string): string {
   const lines = md.split('\n')
   const output: string[] = []
   let i = 0
