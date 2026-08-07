@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { HTTPError } from 'ky'
 import { Dialog } from '../ui/Dialog'
 import { useAuthStore } from '../../stores/authStore'
 import { confirmDialog } from '../../lib/confirmDialog'
+import { httpErrorInfo } from '../../lib/errors'
 import {
   detectDflowTeam,
   buildDflowTitle,
@@ -66,13 +66,11 @@ const FOLDER_PATH_STATUS_BADGE: Record<'truncated' | 'partial' | 'unclassified',
   unclassified: { label: '미분류', className: 'bg-amber-100 text-amber-700' },
 }
 
-/** ky HTTPError → { message, code } 공통 파싱 (DflowSettingsPanel.tsx handleTest 관례). */
+/** ky HTTPError → { message, code } 공통 파싱 (DflowSettingsPanel.tsx handleTest 관례). lib/errors.ts httpErrorInfo 기반. */
 async function parseDflowError(err: unknown, fallback: string): Promise<{ message: string; code?: string }> {
-  if (err instanceof HTTPError) {
-    const body = (await err.response.json().catch(() => ({}))) as { error?: string; code?: string }
-    return { message: body.error ?? fallback, code: body.code }
-  }
-  return { message: fallback }
+  const info = await httpErrorInfo(err)
+  if (!info) return { message: fallback }
+  return { message: info.message ?? fallback, code: info.code ?? undefined }
 }
 
 // ── 회의 연결(선택) ──

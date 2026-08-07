@@ -12,6 +12,7 @@ import { useTranscriptStore } from '../../stores/transcriptStore'
 import { useToastStore } from '../../stores/toastStore'
 import { confirmDialog } from '../../lib/confirmDialog'
 import { formatTime } from '../../lib/audioUtils'
+import { httpErrorInfo } from '../../lib/errors'
 
 interface TranscriptPanelProps {
   meetingId: number
@@ -224,14 +225,9 @@ export function TranscriptPanel({
       onRedacted?.(result)
     } catch (err) {
       // 403(비 owner·잠금) / 409(진행 중·동시 변경) / 422(검증) 모두 서버가 한글 메시지를 준다.
-      // ky 의 HTTPError 는 body 를 읽어주지 않으므로 직접 파싱한다.
-      let message = '기밀 구간 절단에 실패했습니다.'
-      const res = (err as { response?: Response }).response
-      if (res) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null
-        if (body?.error) message = body.error
-      }
-      useToastStore.getState().showStatus(message, 5000)
+      // ky 의 HTTPError 는 body 를 읽어주지 않으므로 lib/errors.ts httpErrorInfo 로 파싱한다.
+      const info = await httpErrorInfo(err)
+      useToastStore.getState().showStatus(info?.message ?? '기밀 구간 절단에 실패했습니다.', 5000)
     } finally {
       setRedacting(false)
     }
