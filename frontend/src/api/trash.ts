@@ -21,9 +21,8 @@ export interface TrashItem {
 }
 
 export async function listTrash(): Promise<TrashItem[]> {
-  const data = await apiClient.get('trash').json<{ items?: TrashItem[] } | TrashItem[]>()
-  if (Array.isArray(data)) return data
-  return data.items ?? []
+  const data = await apiClient.get('trash').json<{ items: TrashItem[] }>()
+  return data.items
 }
 
 export async function restoreTrashItem(type: TrashItemType, id: number): Promise<void> {

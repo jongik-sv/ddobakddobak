@@ -55,16 +55,6 @@ export async function generatePdf(data: MeetingExportData): Promise<Blob> {
   }
 }
 
-/**
- * 회의 ID와 날짜로 PDF 파일명을 생성한다.
- * 형식: meeting-{id}-{YYYY-MM-DD}.pdf
- */
-export function buildPdfFilename(meetingId: number, date?: string | Date): string {
-  const d = date ? new Date(date) : new Date()
-  const dateStr = d.toISOString().slice(0, 10)
-  return `meeting-${meetingId}-${dateStr}.pdf`
-}
-
 // ── Mermaid SVG 렌더링 ─────────────────────────
 
 async function renderMermaidBlocks(container: HTMLElement): Promise<void> {

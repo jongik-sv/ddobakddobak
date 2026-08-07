@@ -36,13 +36,6 @@ export async function getFolderTree(projectId: number): Promise<FolderNode[]> {
   return res.folders
 }
 
-export async function getFoldersFlat(): Promise<Folder[]> {
-  const res = await apiClient
-    .get('folders', { searchParams: { flat: 'true' } })
-    .json<{ folders: Folder[] }>()
-  return res.folders
-}
-
 export async function createFolder(data: {
   name: string
   parent_id?: number | null
@@ -62,15 +55,6 @@ export async function updateFolder(
 
 export async function deleteFolder(id: number): Promise<void> {
   await apiClient.delete(`folders/${id}`)
-}
-
-export async function moveMeetingsToFolder(
-  meetingIds: number[],
-  folderId: number | null,
-): Promise<{ updated: number }> {
-  return apiClient
-    .post('meetings/move_to_folder', { json: { meeting_ids: meetingIds, folder_id: folderId } })
-    .json()
 }
 
 export async function moveFolderToProject(

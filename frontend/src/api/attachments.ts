@@ -64,17 +64,6 @@ export async function createLinkAttachment(
   return res.attachment
 }
 
-export async function updateAttachment(
-  meetingId: number,
-  attachmentId: number,
-  data: { display_name?: string; category?: AttachmentCategory },
-): Promise<MeetingAttachment> {
-  const res = await apiClient
-    .patch(`meetings/${meetingId}/attachments/${attachmentId}`, { json: data })
-    .json<{ attachment: MeetingAttachment }>()
-  return res.attachment
-}
-
 export async function deleteAttachment(
   meetingId: number,
   attachmentId: number,
@@ -87,18 +76,4 @@ export function getAttachmentDownloadUrl(
   attachmentId: number,
 ): string {
   return `${getApiBaseUrl()}/meetings/${meetingId}/attachments/${attachmentId}/download`
-}
-
-export async function reorderAttachment(
-  meetingId: number,
-  attachmentId: number,
-  prevId: number | null,
-  nextId: number | null,
-): Promise<MeetingAttachment> {
-  const res = await apiClient
-    .patch(`meetings/${meetingId}/attachments/${attachmentId}/reorder`, {
-      json: { prev_id: prevId, next_id: nextId },
-    })
-    .json<{ attachment: MeetingAttachment }>()
-  return res.attachment
 }
