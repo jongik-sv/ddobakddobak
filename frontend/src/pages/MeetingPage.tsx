@@ -9,6 +9,7 @@ import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
 import { useMemoEditor } from '../hooks/useMemoEditor'
 import { useRightPanelCollapse } from '../hooks/useRightPanelCollapse'
+import { useConsumeSearchParamOnce } from '../hooks/useConsumeSearchParamOnce'
 import type { Transcript } from '../api/meetings'
 import { getTranscripts, reopenMeeting, updateNotes, canEditMeeting, canRedactMeeting } from '../api/meetings'
 import type { RedactTranscriptsResponse } from '../api/meetings'
@@ -274,43 +275,31 @@ export default function MeetingPage() {
   // 전역 검색에서 넘어온 경우(?q=) 회의내 검색을 자동 실행 — 1회만.
   // URL의 q는 적용 후 제거(replace)해 새로고침/뒤로가기 시 재발동·재포커스 방지.
   const [searchParams, setSearchParams] = useSearchParams()
-  const appliedSearchQ = useRef(false)
-  useEffect(() => {
-    if (appliedSearchQ.current) return
-    const q = searchParams.get('q')
-    if (!q) return
-    appliedSearchQ.current = true
-    search.open()
-    search.setQuery(q)
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('q')
-        return next
-      },
-      { replace: true }
-    )
-  }, [searchParams, search, setSearchParams])
+  useConsumeSearchParamOnce(
+    searchParams,
+    setSearchParams,
+    'q',
+    (raw) => (raw ? raw : undefined),
+    true,
+    (q) => {
+      search.open()
+      search.setQuery(q)
+    }
+  )
 
   // 폴더/프로젝트 챗 인용 클릭으로 ?t=<ms> 와 함께 진입한 경우 — 오디오 준비 후 1회 자동 seek.
   // audioLoaded(=canplay)가 떠야 seekTo+자동재생이 실제로 먹는다. 적용 후 t 파라미터 제거(새로고침/뒤로가기 재발동 방지).
-  const appliedSeekT = useRef(false)
-  useEffect(() => {
-    if (appliedSeekT.current) return
-    const t = Number(searchParams.get('t'))
-    if (!(t > 0)) return
-    if (!audio.audioLoaded) return
-    appliedSeekT.current = true
-    setSeekMs(t)
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('t')
-        return next
-      },
-      { replace: true }
-    )
-  }, [searchParams, audio.audioLoaded, setSearchParams])
+  useConsumeSearchParamOnce(
+    searchParams,
+    setSearchParams,
+    't',
+    (raw) => {
+      const t = Number(raw)
+      return t > 0 ? t : undefined
+    },
+    audio.audioLoaded,
+    (t) => setSeekMs(t)
+  )
 
   // meeting 상태가 completed로 바뀌면 트랜스크립트도 리로드 (파일 업로드 완료 시)
   useEffect(() => {
