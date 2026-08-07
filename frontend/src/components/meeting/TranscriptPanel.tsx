@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import { Scissors } from 'lucide-react'
 import type { Transcript, RedactTranscriptsResponse, TranscriptBounds } from '../../api/meetings'
 import { redactTranscripts } from '../../api/meetings'
@@ -49,6 +50,108 @@ function formatTimestamp(ms: number): string {
   const seconds = totalSeconds % 60
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
+
+interface TranscriptRowProps {
+  /** 원본 세그먼트. MeetingPage의 transcripts state 배열에서 온 값이라, 구조가 안 바뀌는 한
+   *  참조가 안정적이다(재생 중 timeupdate로는 이 배열이 갈리지 않는다) — memo가 걸리는 전제. */
+  transcript: Transcript
+  /** store override(인라인 편집) 반영 후 content. transcript.content 그대로가 아닐 수 있다. */
+  content: string
+  isHighlighted: boolean
+  isSelected: boolean
+  /** canRedact && !readOnly — 체크박스 노출·scroll-mt-12 두 곳에 동일하게 쓰여 하나로 묶는다. */
+  showCheckbox: boolean
+  readOnly: boolean
+  meetingId: number
+  searchQuery: string
+  activeOccurrence: number
+  highlightedRef: RefObject<HTMLDivElement | null>
+  onSeek: (ms: number) => void
+  onToggleSelect: (id: number) => void
+  onOpenSplit: (transcript: Transcript) => void
+}
+
+/** TranscriptPanel:321-399(구)를 추출한 행 컴포넌트. 재생 중 timeupdate마다 바뀌는 건
+ *  isHighlighted 하나뿐이라 나머지 세그먼트는 원시값 props가 그대로면 리렌더를 건너뛴다. */
+const TranscriptRow = memo(function TranscriptRow({
+  transcript,
+  content,
+  isHighlighted,
+  isSelected,
+  showCheckbox,
+  readOnly,
+  meetingId,
+  searchQuery,
+  activeOccurrence,
+  highlightedRef,
+  onSeek,
+  onToggleSelect,
+  onOpenSplit,
+}: TranscriptRowProps) {
+  return (
+    <div
+      ref={isHighlighted ? highlightedRef : null}
+      data-highlighted={isHighlighted ? 'true' : 'false'}
+      className={`flex items-start gap-1 p-3 min-h-[44px] rounded cursor-pointer transition-colors ${
+        showCheckbox ? 'scroll-mt-12' : ''
+      } ${
+        isHighlighted
+          ? 'bg-accent border-l-4 border-indigo-500'
+          : isSelected
+            ? 'bg-red-50'
+            : 'hover:bg-muted active:bg-muted'
+      }`}
+      onClick={() => onSeek(transcript.started_at_ms)}
+    >
+      {showCheckbox && (
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={() => onToggleSelect(transcript.id)}
+          // 행 onClick 이 onSeek 이므로 stopPropagation 이 필수다(FullRecord.tsx:142 동일).
+          onClick={(e) => e.stopPropagation()}
+          aria-label="절단 대상 선택"
+          className="mt-1 shrink-0"
+        />
+      )}
+      <div className="flex-1 min-w-0">
+        {searchQuery ? (
+          // 검색 중엔 읽기전용 하이라이트 렌더 — contentEditable DOM에 <mark> 주입 불가
+          <HighlightedText
+            text={content}
+            query={searchQuery}
+            activeOccurrence={activeOccurrence}
+            className="text-sm text-foreground select-text"
+          />
+        ) : (
+          <EditableTranscriptText
+            transcriptId={transcript.id}
+            meetingId={meetingId}
+            content={content}
+            editable={!readOnly}
+            className="text-sm text-foreground select-text"
+          />
+        )}
+      </div>
+      {!readOnly && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenSplit(transcript)
+          }}
+          aria-label="발언 분할"
+          title="분할"
+          // 터치 기기는 hover가 없어 opacity-0 그룹호버로 숨기면 진입점이 아예 안 보인다 —
+          // 항상 은은하게 보이고 호버/포커스 시에만 강조한다.
+          className="shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground hover:bg-muted-foreground/10 focus:text-foreground focus:opacity-100 transition-colors"
+        >
+          <Scissors size={14} />
+        </button>
+      )}
+    </div>
+  )
+})
 
 export function TranscriptPanel({
   meetingId,
@@ -233,7 +336,9 @@ export function TranscriptPanel({
     }
   }, [meetingId, transcripts, selected, clientId, dflowSynced, onRedacted, removeFinalsInStore])
 
-  function openSplitDialog(transcript: Transcript) {
+  // TranscriptRow에 memo-safe 콜백으로 넘기기 위해 useCallback. contentOverrides/
+  // speakerNameOverrides가 바뀔 때만 재생성되며, 둘 다 timeupdate로는 바뀌지 않는다.
+  const openSplitDialog = useCallback((transcript: Transcript) => {
     // store override(인라인 편집·rename)가 있으면 그 값을 다이얼로그의 기준(expected_content)으로 삼는다 —
     // prop의 transcript는 EditableTranscriptText가 store만 갱신하므로 stale할 수 있다.
     setSplittingTranscript({
@@ -243,7 +348,7 @@ export function TranscriptPanel({
         ? speakerNameOverrides.get(transcript.id) ?? null
         : transcript.speaker_name,
     })
-  }
+  }, [contentOverrides, speakerNameOverrides])
 
   function handleSplitSuccess(updated: Transcript, inserted: Transcript) {
     applySplitInStore(updated, inserted)
@@ -318,75 +423,26 @@ export function TranscriptPanel({
               {formatTimestamp(group.startedAtMs)}
             </span>
           </div>
-          {group.segments.map(({ transcript, flatIdx }) => {
-            const isHighlighted = flatIdx === highlightedIndex
-            return (
-              <div
-                key={transcript.id}
-                ref={isHighlighted ? highlightedRef : null}
-                data-highlighted={isHighlighted ? 'true' : 'false'}
-                className={`flex items-start gap-1 p-3 min-h-[44px] rounded cursor-pointer transition-colors ${
-                  canRedact && !readOnly ? 'scroll-mt-12' : ''
-                } ${
-                  isHighlighted
-                    ? 'bg-accent border-l-4 border-indigo-500'
-                    : selected.has(transcript.id)
-                      ? 'bg-red-50'
-                      : 'hover:bg-muted active:bg-muted'
-                }`}
-                onClick={() => onSeek(transcript.started_at_ms)}
-              >
-                {canRedact && !readOnly && (
-                  <input
-                    type="checkbox"
-                    checked={selected.has(transcript.id)}
-                    onChange={() => toggleSelect(transcript.id)}
-                    // 행 onClick 이 onSeek 이므로 stopPropagation 이 필수다(FullRecord.tsx:142 동일).
-                    onClick={(e) => e.stopPropagation()}
-                    aria-label="절단 대상 선택"
-                    className="mt-1 shrink-0"
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  {searchQuery ? (
-                    // 검색 중엔 읽기전용 하이라이트 렌더 — contentEditable DOM에 <mark> 주입 불가
-                    <HighlightedText
-                      text={contentOverrides.get(transcript.id) ?? transcript.content}
-                      query={searchQuery}
-                      activeOccurrence={
-                        activeSearch?.transcriptId === transcript.id ? activeSearch.occurrence : -1
-                      }
-                      className="text-sm text-foreground select-text"
-                    />
-                  ) : (
-                    <EditableTranscriptText
-                      transcriptId={transcript.id}
-                      meetingId={meetingId}
-                      content={contentOverrides.get(transcript.id) ?? transcript.content}
-                      editable={!readOnly}
-                      className="text-sm text-foreground select-text"
-                    />
-                  )}
-                </div>
-                {!readOnly && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      openSplitDialog(transcript)
-                    }}
-                    aria-label="발언 분할"
-                    title="분할"
-                    // 터치 기기는 hover가 없어 opacity-0 그룹호버로 숨기면 진입점이 아예 안 보인다 —
-                    // 항상 은은하게 보이고 호버/포커스 시에만 강조한다.
-                    className="shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground hover:bg-muted-foreground/10 focus:text-foreground focus:opacity-100 transition-colors"
-                  >
-                    <Scissors size={14} />
-                  </button>
-                )}
-              </div>
-            )
-          })}
+          {group.segments.map(({ transcript, flatIdx }) => (
+            <TranscriptRow
+              key={transcript.id}
+              transcript={transcript}
+              content={contentOverrides.get(transcript.id) ?? transcript.content}
+              isHighlighted={flatIdx === highlightedIndex}
+              isSelected={selected.has(transcript.id)}
+              showCheckbox={canRedact && !readOnly}
+              readOnly={readOnly}
+              meetingId={meetingId}
+              searchQuery={searchQuery}
+              activeOccurrence={
+                activeSearch?.transcriptId === transcript.id ? activeSearch.occurrence : -1
+              }
+              highlightedRef={highlightedRef}
+              onSeek={onSeek}
+              onToggleSelect={toggleSelect}
+              onOpenSplit={openSplitDialog}
+            />
+          ))}
         </div>
       ))}
 
