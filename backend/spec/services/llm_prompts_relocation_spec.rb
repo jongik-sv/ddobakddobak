@@ -21,8 +21,6 @@ require "digest"
 RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
   # 이동 전 baseline: name => [sha256(value), bytesize]. String 상수만.
   BASELINE_SHA = {
-    "SUMMARIZE_SYSTEM_PROMPT" => ["4bda7c6302a20e4a1c3d94e9edf0c8d0551d647811dc5492f81858add124ab25", 518],
-    "ACTION_ITEMS_SYSTEM_PROMPT" => ["3ba066be75f5807fe6a38f4d4b22873bdadf51508ff23f01481385c99afe91de", 339],
     "DEFAULT_SECTION_STRUCTURE" => ["ab9c42efa9aa05c4e1066cb7e5c3fd17500f5942f7a2f98134d2b044aa806496", 480],
     "REFINE_NOTES_SYSTEM_PROMPT" => ["d42eb70cd740b535c9e1200070f541b927ab35f76633281d84164554d38a373f", 3745],
     "CHRONOLOGICAL_NOTES_INSTRUCTION" => ["0d277c0663e0ad4acb93ff74051cf41caa6a8fd342ddbe52fa388592da5fc5bc", 419],
@@ -90,7 +88,6 @@ RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
         include LlmPrompts
         def refine = REFINE_NOTES_SYSTEM_PROMPT
         def section = DEFAULT_SECTION_STRUCTURE
-        def summarize = SUMMARIZE_SYSTEM_PROMPT
         def citation = CITATION_MARKER_INSTRUCTION
         def verbosity = VERBOSITY_CHAR_LIMITS
         def merge = seeded_merge_instruction
@@ -101,7 +98,6 @@ RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
       c = RelocationSpecScope::Consumer.new
       expect(c.refine).to eq(LlmPrompts::REFINE_NOTES_SYSTEM_PROMPT)
       expect(c.section).to eq(LlmPrompts::DEFAULT_SECTION_STRUCTURE)
-      expect(c.summarize).to eq(LlmPrompts::SUMMARIZE_SYSTEM_PROMPT)
       expect(c.citation).to eq(LlmPrompts::CITATION_MARKER_INSTRUCTION)
       expect(c.verbosity).to eq(LlmPrompts::VERBOSITY_CHAR_LIMITS)
       expect(c.merge).to include(Meeting::PREVIOUS_MEETING_CUT_LINE)

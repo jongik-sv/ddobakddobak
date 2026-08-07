@@ -15,7 +15,6 @@ RSpec.describe FileTranscriptionJob, type: :job do
     allow(sidecar).to receive(:get_speakers).and_return({ "speakers" => [] })
     allow(sidecar).to receive(:get_transcribe_progress).and_return(nil)
     allow_any_instance_of(described_class).to receive(:generate_summary)
-    allow(MeetingFinalizerService).to receive(:new).and_return(instance_double(MeetingFinalizerService, call: nil))
   end
 
   it "passes the meeting creator's language config to the sidecar, not ENV" do
@@ -142,10 +141,9 @@ RSpec.describe FileTranscriptionJob, type: :job do
       allow(AppSettings).to receive(:diarization_config).and_return({ "enable" => true, "clustering_threshold" => 0.6 })
     end
 
-    it "회의록 자동생성과 finalizer를 스킵하고 completed로 만든다" do
+    it "회의록 자동생성을 스킵하고 completed로 만든다" do
       # 상단 before의 generate_summary allow 스텁을 부정 기대로 대체해 실제 분기를 검증
       expect_any_instance_of(described_class).not_to receive(:generate_summary)
-      expect(MeetingFinalizerService).not_to receive(:new)
       described_class.perform_now(meeting.id)
       expect(meeting.reload.status).to eq("completed")
     end

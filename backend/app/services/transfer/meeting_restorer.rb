@@ -93,7 +93,6 @@ module Transfer
     def restore_children(meeting)
       restore_transcripts(meeting)
       restore_summaries(meeting)
-      restore_action_items(meeting)
       restore_blocks(meeting)
       attachment_map = restore_attachments(meeting)
       restore_contacts(meeting, attachment_map)
@@ -146,14 +145,6 @@ module Transfer
     def restore_summaries(meeting)
       (@m["summaries"] || []).each do |s|
         meeting.summaries.create!(sanitize(Summary, s).merge("meeting_id" => meeting.id))
-      end
-    end
-
-    def restore_action_items(meeting)
-      (@m["action_items"] || []).each do |a|
-        attrs = sanitize(ActionItem, a)
-        attrs["assignee_id"] = nil  # 범위 밖 유저 참조 제거
-        meeting.action_items.create!(attrs.merge("meeting_id" => meeting.id))
       end
     end
 

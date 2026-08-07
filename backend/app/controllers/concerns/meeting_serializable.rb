@@ -99,7 +99,6 @@ module MeetingSerializable
       json[:last_sequence_number] = ordered_transcripts.map(&:sequence_number).max.to_i
       json[:transcripts]   = serialize_transcripts(ordered_transcripts)
       json[:summary]       = serialize_summary(meeting)
-      json[:action_items]  = serialize_action_items(meeting)
       # 연결 회의 시드 각인(⟦m:<id>/t:..⟧) 출처 회의ID → 제목 맵. 프론트가 인용 마커를 inert
       # 배지로 렌더할 때 표시용 제목을 얻는다. 연쇄 연결(A→B→C)이면 여러 id가 한 문서에
       # 공존할 수 있어 전부 스캔한다.
@@ -183,18 +182,6 @@ module MeetingSerializable
       result[candidate.id] = candidate.title if meeting_collaborator?(candidate)
     end
     result
-  end
-
-  def serialize_action_items(meeting)
-    meeting.action_items.order(:created_at).map do |ai|
-      {
-        id: ai.id,
-        content: ai.content,
-        status: ai.status,
-        ai_generated: ai.ai_generated,
-        created_at: ai.created_at
-      }
-    end
   end
 
   # 파일 전사 대기열 잡 스냅샷 — 컨트롤러 인스턴스(=요청) 단위로 1회만 조회해 meeting_json

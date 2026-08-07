@@ -91,41 +91,6 @@ RSpec.describe MarkdownExporter do
     end
   end
 
-  # --- Action Items ---
-  describe "Action Items 섹션" do
-    let!(:summary) { create(:summary, meeting: meeting, summary_type: "final") }
-
-    context "todo 상태 Action Item" do
-      before { create(:action_item, meeting: meeting, content: "보고서 작성", status: "todo") }
-
-      it "미완료 체크박스로 출력한다" do
-        expect(exporter.call).to include("- [ ] 보고서 작성")
-      end
-    end
-
-    context "done 상태 Action Item" do
-      before { create(:action_item, meeting: meeting, content: "킥오프 준비", status: "done") }
-
-      it "완료 체크박스로 출력한다" do
-        expect(exporter.call).to include("- [x] 킥오프 준비")
-      end
-    end
-
-    context "담당자가 있는 Action Item" do
-      let(:assignee) { create(:user, name: "김철수") }
-      before do
-        create(:action_item, meeting: meeting, content: "계획서 작성",
-               status: "todo", assignee: assignee,
-               due_date: Date.parse("2026-06-10"))
-      end
-
-      it "담당자와 마감일을 포함한다" do
-        expect(exporter.call).to include("@김철수")
-        expect(exporter.call).to include("2026-06-10")
-      end
-    end
-  end
-
   # --- 원본 텍스트 섹션 ---
   describe "원본 텍스트 섹션" do
     before do

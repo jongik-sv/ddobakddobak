@@ -12,7 +12,6 @@ RSpec.describe "Api::V1::MeetingLock", type: :request do
   let!(:bookmark)   { create(:meeting_bookmark, meeting: meeting) }
   let!(:contact)    { create(:meeting_contact, meeting: meeting) }
   let!(:attachment) { create(:meeting_attachment, meeting: meeting) }
-  let!(:action_item) { create(:action_item, meeting: meeting) }
   let!(:block)      { create(:block, meeting: meeting) }
   let!(:glossary) do
     meeting.glossary_entries.create!(from_text: "a", to_text: "b", match_type: "literal", created_by_id: owner.id)
@@ -64,11 +63,6 @@ RSpec.describe "Api::V1::MeetingLock", type: :request do
       [:delete, "/api/v1/meetings/#{m}/attachments/#{attachment.id}",   {}],
       [:patch,  "/api/v1/meetings/#{m}/attachments/#{attachment.id}/reorder", {}],
 
-      # action_items (nested create + top-level update/destroy)
-      [:post,   "/api/v1/meetings/#{m}/action_items",                   { action_item: { content: "c" } }],
-      [:patch,  "/api/v1/action_items/#{action_item.id}",              { action_item: { content: "c2" } }],
-      [:delete, "/api/v1/action_items/#{action_item.id}",              {}],
-
       # blocks
       [:post,   "/api/v1/meetings/#{m}/blocks",                         { block: { content: "b" } }],
       [:patch,  "/api/v1/meetings/#{m}/blocks/#{block.id}",             { block: { content: "b2" } }],
@@ -102,7 +96,7 @@ RSpec.describe "Api::V1::MeetingLock", type: :request do
   end
 
   it "차단 검증 엔드포인트 개수가 충분하다(회귀 안전망)" do
-    expect(blocked_endpoints.size).to be >= 45
+    expect(blocked_endpoints.size).to be >= 40
   end
 
   # ── 허용 목록(잠겨도 통과) ──

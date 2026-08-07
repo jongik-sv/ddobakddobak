@@ -85,9 +85,6 @@ Rails.application.routes.draw do
           put  "dflow/link",   to: "meeting_dflow#link"
           post "dflow/claim",  to: "meeting_dflow#claim"
         end
-        resources :action_items,
-          only: %i[index create],
-          controller: "meeting_action_items"
         resources :transcripts, only: [] do
           member do
             patch :update_content
@@ -147,9 +144,6 @@ Rails.application.routes.draw do
 
       # Tags
       resources :tags, only: %i[index create update destroy]
-
-      # Action Items (update, destroy)
-      resources :action_items, only: %i[update destroy]
 
       # Speakers (화자 목록 조회 / 이름 변경 / 리셋)
       resources :speakers, only: %i[index update] do

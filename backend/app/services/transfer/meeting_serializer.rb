@@ -23,7 +23,6 @@ module Transfer
       @meeting.attributes.merge(
         transcripts:      @meeting.transcripts.map(&:attributes),
         summaries:        @meeting.summaries.map(&:attributes),
-        action_items:     @meeting.action_items.map(&:attributes),
         blocks:           @meeting.blocks.map(&:attributes),
         attachments:      @meeting.meeting_attachments.map { |a| serialize_attachment(a) },
         contacts:         @meeting.meeting_contacts.map(&:attributes),

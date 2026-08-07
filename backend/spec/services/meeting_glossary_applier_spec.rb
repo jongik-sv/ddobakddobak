@@ -29,15 +29,13 @@ RSpec.describe MeetingGlossaryApplier do
       expect { MeetingGlossaryApplier.new(meeting, []).apply_all! }.not_to(change { meeting.transcripts.first.content })
     end
 
-    it "action_items / blocks / summary 전 컬럼을 교정한다" do
-      create(:action_item, meeting: meeting, content: "회진 액션")
+    it "blocks / summary 전 컬럼을 교정한다" do
       create(:block, meeting: meeting, content: "회진 블록")
       summary = meeting.summaries.first
       summary.update!(key_points: "회진 포인트", discussion_details: "회진 상세")
 
       MeetingGlossaryApplier.new(meeting, entries).apply_all!
 
-      expect(meeting.action_items.first.reload.content).to eq("회의 액션")
       expect(meeting.blocks.first.reload.content).to eq("회의 블록")
       expect(summary.reload.key_points).to eq("회의 포인트")
       expect(summary.reload.discussion_details).to eq("회의 상세")

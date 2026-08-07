@@ -218,11 +218,6 @@ const BASE_STYLES = `
   .action-list li {
     margin-bottom: 6px;
   }
-  .action-meta {
-    font-size: 9pt;
-    color: #888;
-    margin-left: 4px;
-  }
   .transcript-entry {
     margin-bottom: 12px;
     break-inside: avoid;
@@ -296,11 +291,6 @@ function renderExportHtml(data: MeetingExportData): string {
     parts.push(`<h2>메모</h2>\n<p>${esc(data.memo).replace(/\n/g, '<br>')}</p>`)
   }
 
-  // Action Items
-  if (data.action_items?.length > 0) {
-    parts.push(renderActionItems(data.action_items))
-  }
-
   // Transcripts
   if (data.transcripts?.length > 0) {
     parts.push(renderTranscripts(data.transcripts))
@@ -346,22 +336,6 @@ function renderSummary(summary: MeetingExportData['summary']): string {
 function renderBulletList(items: string[]): string {
   const lis = items.map((item) => `  <li>${esc(item)}</li>`).join('\n')
   return `<ul>\n${lis}\n</ul>`
-}
-
-function renderActionItems(items: MeetingExportData['action_items']): string {
-  const lis = items
-    .map((item) => {
-      const checked = item.status === 'completed'
-      const prefix = checked ? '☑' : '☐'
-      const meta: string[] = []
-      if (item.assignee_name) meta.push(item.assignee_name)
-      if (item.due_date) meta.push(`기한: ${item.due_date}`)
-      const metaStr = meta.length > 0 ? ` <span class="action-meta">(${esc(meta.join(' / '))})</span>` : ''
-      return `  <li>${prefix} ${esc(item.content)}${metaStr}</li>`
-    })
-    .join('\n')
-
-  return `<h2>실행 항목</h2>\n<ul class="action-list">\n${lis}\n</ul>`
 }
 
 function renderTranscripts(transcripts: MeetingExportData['transcripts']): string {

@@ -55,7 +55,7 @@ import { useBookmarks } from '../hooks/useBookmarks'
 // ──────────────────────────────────────────────
 
 /**
- * 회의 상세 페이지 — 2컬럼 레이아웃 (에디터 + AI요약 + ActionItems)
+ * 회의 상세 페이지 — 2컬럼 레이아웃 (에디터 + AI요약)
  */
 export default function MeetingPage() {
   const { id } = useParams<{ id: string }>()

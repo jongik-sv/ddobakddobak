@@ -420,7 +420,6 @@ module Api
         skip = params[:skip_summary].to_s == "true"
         if @meeting.transcripts.exists?
           unless skip
-            MeetingFinalizerJob.perform_later(@meeting.id)
             MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
           end
           @meeting.reconcile_embeddings!
@@ -566,10 +565,8 @@ module Api
         end
 
         @meeting.summaries.destroy_all
-        @meeting.action_items.where(ai_generated: true).destroy_all
 
         MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
-        MeetingFinalizerJob.perform_later(@meeting.id)
         render json: { ok: true }
       end
 
@@ -579,7 +576,7 @@ module Api
         if summary
           render json: serialize_summary_hash(summary)
         else
-          render json: { key_points: [], decisions: [], discussion_details: [], action_items: [] }
+          render json: { key_points: [], decisions: [], discussion_details: [] }
         end
       end
 

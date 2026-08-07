@@ -265,15 +265,6 @@ RSpec.describe "Api::V1::Meetings 공유/비공개", type: :request do
   describe "중첩 mutating 권한 (타인 shared 회의)" do
     before { login_as(user) }
 
-    it "action_items create 403 (read index 는 200)" do
-      get "/api/v1/meetings/#{foreign_shared.id}/action_items"
-      expect(response).to have_http_status(:ok)
-
-      post "/api/v1/meetings/#{foreign_shared.id}/action_items",
-           params: { action_item: { content: "해킹 액션" } }, as: :json
-      expect(response).to have_http_status(:forbidden)
-    end
-
     it "transcripts destroy_batch 403" do
       t = create(:transcript, meeting: foreign_shared, sequence_number: 1)
       delete "/api/v1/meetings/#{foreign_shared.id}/transcripts/destroy_batch",
@@ -330,35 +321,6 @@ RSpec.describe "Api::V1::Meetings 공유/비공개", type: :request do
     it "동일 read(transcripts index) 는 200" do
       get "/api/v1/meetings/#{foreign_shared.id}/transcripts"
       expect(response).to have_http_status(:ok)
-    end
-  end
-
-  # ============================================================
-  # 최상위 action_items update·destroy (#6 R1 보강)
-  #   비소유자는 타인 shared 회의의 항목 ID를 index 로 수집할 수 있으므로,
-  #   회의 단위 제어 인가 없이 최상위 PATCH/DELETE 가 열려 있으면 권한상승이다.
-  # ============================================================
-  describe "최상위 action_items 변조 권한 (타인 shared 회의)" do
-    before { login_as(user) }
-
-    it "action_items#update 403 (내용 불변)" do
-      ai = create(:action_item, meeting: foreign_shared, content: "원본")
-      patch "/api/v1/action_items/#{ai.id}", params: { action_item: { content: "변조" } }, as: :json
-      expect(response).to have_http_status(:forbidden)
-      expect(ai.reload.content).to eq("원본")
-    end
-
-    it "action_items#destroy 403 (삭제 안 됨)" do
-      ai = create(:action_item, meeting: foreign_shared)
-      expect { delete "/api/v1/action_items/#{ai.id}" }.not_to change(ActionItem, :count)
-      expect(response).to have_http_status(:forbidden)
-    end
-
-    it "소유자는 본인 회의 action_item 을 update 할 수 있다(200)" do
-      ai = create(:action_item, meeting: own_shared, content: "원본")
-      patch "/api/v1/action_items/#{ai.id}", params: { action_item: { content: "수정" } }, as: :json
-      expect(response).to have_http_status(:ok)
-      expect(ai.reload.content).to eq("수정")
     end
   end
 

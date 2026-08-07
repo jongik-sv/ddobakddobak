@@ -29,7 +29,6 @@ RSpec.describe ProjectImporter do
 
   let!(:transcript) { create(:transcript, meeting: meeting, content: "안녕하세요 회의 시작합니다 검색어포함") }
   let!(:summary)    { create(:summary, meeting: meeting) }
-  let!(:action_item) { create(:action_item, meeting: meeting) }
   let!(:block)       { create(:block, meeting: meeting) }
   let!(:contact)     { create(:meeting_contact, meeting: meeting) }
   let!(:bookmark)    { create(:meeting_bookmark, meeting: meeting) }
@@ -96,7 +95,6 @@ RSpec.describe ProjectImporter do
       expect(new_project.meetings.count).to eq(1)
       expect(m.transcripts.count).to eq(1)
       expect(m.summaries.count).to eq(1)
-      expect(m.action_items.count).to eq(1)
       expect(m.blocks.count).to eq(1)
       expect(m.meeting_contacts.count).to eq(1)
       expect(m.meeting_bookmarks.count).to eq(1)

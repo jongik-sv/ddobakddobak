@@ -10,7 +10,7 @@ export async function generateDocx(data: MeetingExportData): Promise<Blob> {
   const { Document, Packer, Paragraph, TextRun, HeadingLevel, Table } = await import('docx')
   const { markdownToDocxParagraphs } = await import('./markdownToDocx')
 
-  const { meeting, summary, action_items = [], transcripts = [] } = data
+  const { meeting, summary, transcripts = [] } = data
 
   const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = []
 
@@ -117,37 +117,7 @@ export async function generateDocx(data: MeetingExportData): Promise<Blob> {
     }
   }
 
-  // ── 5. Action Items ──
-  if (action_items.length > 0) {
-    children.push(new Paragraph({ text: '' }))
-    children.push(
-      new Paragraph({
-        heading: HeadingLevel.HEADING_2,
-        children: [new TextRun({ text: 'Action Items' })],
-      }),
-    )
-    for (const item of action_items) {
-      const checked = item.status === 'completed'
-      const prefix = checked ? '\u2611 ' : '\u2610 '
-      const parts: InstanceType<typeof TextRun>[] = [
-        new TextRun({ text: `${prefix}${item.content}` }),
-      ]
-      if (item.assignee_name) {
-        parts.push(new TextRun({ text: ` (@${item.assignee_name})`, italics: true }))
-      }
-      if (item.due_date) {
-        parts.push(new TextRun({ text: ` [${item.due_date}]`, color: '888888' }))
-      }
-      children.push(
-        new Paragraph({
-          bullet: { level: 0 },
-          children: parts,
-        }),
-      )
-    }
-  }
-
-  // ── 6. 원본 텍스트 ──
+  // ── 5. 원본 텍스트 ──
   if (transcripts.length > 0) {
     children.push(new Paragraph({ text: '' }))
     children.push(
