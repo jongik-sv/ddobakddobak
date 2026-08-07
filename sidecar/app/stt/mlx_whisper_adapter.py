@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from typing import Awaitable, Callable
 
 import numpy as np
 
@@ -72,33 +73,7 @@ class MLXWhisperAdapter(SttAdapter):
         multi 모드: 자동감지(language=None) 후 result.language를 세그먼트에 기록(필터는 main에서).
         """
         self._ensure_loaded()
-
-        audio_array = pcm_bytes_to_float32(audio_chunk)
-        if len(audio_array) == 0:
-            return []
-
-        engine_lang = lang_utils.iso_force_lang(languages, mode)  # ISO or None
-        raw_segments, detected = await self._run_inference(audio_array, engine_lang)
-
-        seg_lang = (
-            lang_utils.normalize_to_iso(detected)
-            if mode == "multi"
-            else (languages[0] if languages else "ko")
-        ) or "ko"
-
-        results: list[TranscriptSegment] = []
-        for seg in raw_segments:
-            text = _collapse_repetition((seg.get("text") or "").strip())
-            if not text or is_hallucination(text, languages):
-                continue
-            results.append(TranscriptSegment(
-                text=text,
-                started_at_ms=int(float(seg.get("start", 0.0)) * 1000),
-                ended_at_ms=int(float(seg.get("end", 0.0)) * 1000),
-                language=seg_lang,
-                confidence=_seg_confidence(seg),
-            ))
-        return results
+        return await run_backend_transcribe(self._run_inference, audio_chunk, languages, mode)
 
     async def _run_inference(
         self, audio_array: np.ndarray, language: str | None
@@ -166,3 +141,48 @@ def _seg_confidence(seg: dict) -> float:
     if isinstance(val, (int, float)):
         return float(val)
     return 0.85
+
+
+# MLXWhisperAdapter(greedy)와 MLXWhisperBeamAdapter(beam search)가 공유하는
+# transcribe() 본문. 두 어댑터는 오디오 → 텍스트 세그먼트 변환 계약이 동일하고
+# 차이는 백엔드 추론 호출(_run_inference)뿐이므로, 그 콜러블만 주입받는다.
+_RunInference = Callable[[np.ndarray, "str | None"], Awaitable[tuple[list[dict], "str | None"]]]
+
+
+async def run_backend_transcribe(
+    run_inference: _RunInference,
+    audio_chunk: bytes,
+    languages: list[str] | None,
+    mode: str,
+) -> list[TranscriptSegment]:
+    """PCM 오디오 청크 → 텍스트 세그먼트 변환 공통 로직.
+
+    single 모드: languages[0]을 ISO 코드로 인식 언어 강제.
+    multi 모드: 자동감지(language=None) 후 감지언어를 세그먼트에 기록(필터는 main에서).
+    """
+    audio_array = pcm_bytes_to_float32(audio_chunk)
+    if len(audio_array) == 0:
+        return []
+
+    engine_lang = lang_utils.iso_force_lang(languages, mode)  # ISO or None
+    raw_segments, detected = await run_inference(audio_array, engine_lang)
+
+    seg_lang = (
+        lang_utils.normalize_to_iso(detected)
+        if mode == "multi"
+        else (languages[0] if languages else "ko")
+    ) or "ko"
+
+    results: list[TranscriptSegment] = []
+    for seg in raw_segments:
+        text = _collapse_repetition((seg.get("text") or "").strip())
+        if not text or is_hallucination(text, languages):
+            continue
+        results.append(TranscriptSegment(
+            text=text,
+            started_at_ms=int(float(seg.get("start", 0.0)) * 1000),
+            ended_at_ms=int(float(seg.get("end", 0.0)) * 1000),
+            language=seg_lang,
+            confidence=_seg_confidence(seg),
+        ))
+    return results

@@ -16,10 +16,8 @@ import asyncio
 
 import numpy as np
 
-from app.stt import lang_utils
-from app.stt.audio_utils import is_hallucination, pcm_bytes_to_float32
 from app.stt.base import SttAdapter, TranscriptSegment
-from app.stt.mlx_whisper_adapter import _collapse_repetition, _seg_confidence
+from app.stt.mlx_whisper_adapter import run_backend_transcribe
 
 # beam은 full(비양자화) turbo repo에서 검증됨. 8bit/fp16 양자화 repo와 별개로 1회 다운(~1.6GB).
 _REPO = "mlx-community/whisper-large-v3-turbo"
@@ -71,33 +69,7 @@ class MLXWhisperBeamAdapter(SttAdapter):
         multi 모드: 자동감지(language=None) 후 result["language"]를 세그먼트에 기록.
         """
         self._ensure_loaded()
-
-        audio_array = pcm_bytes_to_float32(audio_chunk)
-        if len(audio_array) == 0:
-            return []
-
-        engine_lang = lang_utils.iso_force_lang(languages, mode)  # ISO or None
-        raw_segments, detected = await self._run_inference(audio_array, engine_lang)
-
-        seg_lang = (
-            lang_utils.normalize_to_iso(detected)
-            if mode == "multi"
-            else (languages[0] if languages else "ko")
-        ) or "ko"
-
-        results: list[TranscriptSegment] = []
-        for seg in raw_segments:
-            text = _collapse_repetition((seg.get("text") or "").strip())
-            if not text or is_hallucination(text, languages):
-                continue
-            results.append(TranscriptSegment(
-                text=text,
-                started_at_ms=int(float(seg.get("start", 0.0)) * 1000),
-                ended_at_ms=int(float(seg.get("end", 0.0)) * 1000),
-                language=seg_lang,
-                confidence=_seg_confidence(seg),
-            ))
-        return results
+        return await run_backend_transcribe(self._run_inference, audio_chunk, languages, mode)
 
     async def _run_inference(
         self, audio_array: np.ndarray, language: str | None
