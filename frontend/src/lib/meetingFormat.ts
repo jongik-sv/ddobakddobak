@@ -33,16 +33,20 @@ export function scheduleSummary(
   return mode
 }
 
-export function formatDate(dateStr: string): string {
+const DEFAULT_DATE_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23', // 24시간제 — 오전/오후 제거(레이아웃 줄바꿈 방지)
+}
+
+/** 날짜/시각 포맷 공유 헬퍼. options 생략 시 기존 기본 포맷(연월일 시:분, 24h)을 그대로 쓴다.
+ *  DashboardPage/UserManagementPanel/AttachmentCard가 각자 쓰던 포맷을 이 options로 그대로 전달한다. */
+export function formatDate(dateStr: string, options: Intl.DateTimeFormatOptions = DEFAULT_DATE_FORMAT_OPTIONS): string {
   const date = new Date(dateStr)
-  return date.toLocaleDateString('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23', // 24시간제 — 오전/오후 제거(레이아웃 줄바꿈 방지)
-  })
+  return date.toLocaleDateString('ko-KR', options)
 }
 
 export function folderName(folders: FolderNode[], id: number): string | null {

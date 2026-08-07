@@ -12,6 +12,7 @@ import { CreateUserDialog } from './CreateUserDialog'
 import { DeleteConfirmDialog } from './DeleteConfirmDialog'
 import { ResetPasswordDialog } from './ResetPasswordDialog'
 import { EditUserDialog } from './EditUserDialog'
+import { formatDate as formatDateShared } from '../../lib/meetingFormat'
 
 // admin → manager → member → admin 순환
 const NEXT_ROLE: Record<AdminUser['role'], AdminUser['role']> = {
@@ -31,7 +32,7 @@ const ROLE_BADGE_CLASS: Record<AdminUser['role'], string> = {
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ko-KR', {
+  return formatDateShared(iso, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
