@@ -886,7 +886,7 @@ interface LinkManagementSectionProps {
   detailsOpen: boolean
   onDetailsOpenChange: (open: boolean) => void
   showSearch: boolean
-  onShowSearchChange: (show: boolean) => void
+  onShowSearchChange: Dispatch<SetStateAction<boolean>>
   refreshStatus: () => Promise<DflowMeetingStatusWithExists | null>
   onChanged?: () => void
 }
@@ -1074,7 +1074,7 @@ function LinkManagementSection({
               </button>
               <button
                 type="button"
-                onClick={() => onShowSearchChange(!showSearch)}
+                onClick={() => onShowSearchChange((v) => !v)}
                 className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent"
               >
                 D'Flow에서 찾기
