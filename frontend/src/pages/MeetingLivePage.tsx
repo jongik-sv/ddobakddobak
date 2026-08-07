@@ -1,11 +1,12 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
-import { Settings, Monitor, Timer, Pencil, RotateCcw, PanelRightOpen } from 'lucide-react'
+import { Settings, Monitor, Timer, Pencil, RotateCcw } from 'lucide-react'
 import { Switch } from '../components/ui/Switch'
-import { Tooltip } from '../components/ui/Tooltip'
+import { PanelExpandStrip } from '../components/ui/PanelExpandStrip'
 import { useUiStore } from '../stores/uiStore'
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, usePanelRef } from 'react-resizable-panels'
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useMemoEditor } from '../hooks/useMemoEditor'
+import { useRightPanelCollapse } from '../hooks/useRightPanelCollapse'
 import { useToastStore } from '../stores/toastStore'
 import { useRecordingStore } from '../stores/recordingStore'
 import { useLiveTermCorrections } from '../hooks/useLiveTermCorrections'
@@ -282,16 +283,8 @@ export default function MeetingLivePage() {
   const toggleAttachments = useUiStore((s) => s.toggleAttachments)
 
   // 우측(메모·오타수정·AI챗) 패널은 항상 마운트해두고 collapse/expand로만 크기를 바꾼다.
-  // 패널을 통째로 언마운트하면 react-resizable-panels가 남은 패널들의 flex 비율을
-  // 재정규화(renormalize)해 기록↔AI회의록 경계가 같이 움직인다(MeetingPage와 동일 버그) —
-  // 그래서 패널 개수를 고정하고 우측 패널만 0으로 접어 AI회의록이 그 폭을 흡수하게 한다.
-  const rightPanelRef = usePanelRef()
-  useEffect(() => {
-    const panel = rightPanelRef.current
-    if (!panel) return
-    if (memoVisible) panel.expand()
-    else panel.collapse()
-  }, [memoVisible, rightPanelRef])
+  // (MeetingPage.tsx와 동일 패턴 — useRightPanelCollapse 참조)
+  const rightPanelRef = useRightPanelCollapse(memoVisible)
 
   // 접근 권한 확인
   const { isLoading: accessLoading, error: accessError } = useMeetingAccess(meetingId)
@@ -458,22 +451,8 @@ export default function MeetingLivePage() {
             )}
           </Panel>
         </PanelGroup>
-        {/* 우측 패널이 접혔을 때 다시 펼칠 방법 — MeetingPage.tsx와 동일한 엣지 어포던스 패턴
-            (w-10 슬림 스트립 + 상단 고정 버튼). Panel 안에 넣으면 PanelGroup의 overflow:hidden에
-            잘려 안 보이므로 PanelGroup 밖의 flex 형제로 둔다. */}
-        {!memoVisible && (
-          <div className="flex flex-col items-center w-10 border-l border-border bg-card shrink-0 pt-3">
-            <Tooltip text="패널 펼치기" position="left">
-              <button
-                onClick={toggleMemo}
-                aria-label="패널 펼치기"
-                className="p-2.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-              >
-                <PanelRightOpen className="w-4 h-4" />
-              </button>
-            </Tooltip>
-          </div>
-        )}
+        {/* 우측 패널이 접혔을 때 다시 펼칠 방법 (MeetingPage.tsx와 공용 — PanelExpandStrip 참조) */}
+        {!memoVisible && <PanelExpandStrip onExpand={toggleMemo} />}
         </div>
       ) : (
         <>
