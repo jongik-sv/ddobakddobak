@@ -266,6 +266,10 @@ module Api
         attrs[:attendees] = params[:attendees] if params.key?(:attendees)
         attrs[:expected_participants] = params[:expected_participants].presence&.to_i if params.key?(:expected_participants)
         attrs[:summary_verbosity] = params[:summary_verbosity] if params.key?(:summary_verbosity)
+        # 회의별 요약 추가 지시(자유 텍스트). 빈 문자열은 nil 로 정규화(해제)해 length 검증 노이즈를 피한다.
+        if params.key?(:summary_custom_prompt)
+          attrs[:summary_custom_prompt] = params[:summary_custom_prompt].to_s.strip.presence
+        end
         if params.key?(:summary_interval_sec)
           # 음이 아닌 정수(문자열/숫자)만 반영. ""/null/음수/비숫자는 무시 — NOT NULL 컬럼이라 500 방지.
           interval = params[:summary_interval_sec]
@@ -563,7 +567,6 @@ module Api
 
         @meeting.summaries.destroy_all
         @meeting.action_items.where(ai_generated: true).destroy_all
-        @meeting.decisions.where(ai_generated: true).destroy_all
 
         MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
         MeetingFinalizerJob.perform_later(@meeting.id)
@@ -842,7 +845,8 @@ module Api
           attendees: @meeting.attendees,
           verbosity: @meeting.summary_verbosity,
           restructure: @meeting.summary_restructure,
-          domain_reference: DomainReferenceBuilder.build(@meeting)
+          domain_reference: DomainReferenceBuilder.build(@meeting),
+          custom_prompt: @meeting.summary_custom_prompt
         )
 
         filename = "prompt_#{@meeting.id}_#{Date.today}.txt"

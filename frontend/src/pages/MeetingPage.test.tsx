@@ -162,10 +162,6 @@ vi.mock('../components/meeting/SpeakerPanel', () => ({
   ),
 }))
 
-vi.mock('../components/decision/DecisionList', () => ({
-  DecisionList: () => <div data-testid="decision-list" />,
-}))
-
 vi.mock('../api/bookmarks', () => ({
   getBookmarks: vi.fn().mockResolvedValue([]),
   deleteBookmark: vi.fn().mockResolvedValue(undefined),
@@ -215,17 +211,6 @@ vi.mock('../api/bookmarks', () => ({
   createBookmark: vi.fn(),
 }))
 
-vi.mock('../api/decisions', () => ({
-  getDecisions: vi.fn().mockResolvedValue([]),
-  createDecision: vi.fn(),
-  updateDecision: vi.fn(),
-  deleteDecision: vi.fn(),
-  getDecisionTimeline: vi.fn().mockResolvedValue([]),
-}))
-
-vi.mock('../components/decision/DecisionList', () => ({
-  DecisionList: () => <div data-testid="decision-list" />,
-}))
 
 vi.mock('../components/meeting/EditMeetingDialog', () => ({
   default: () => null,

@@ -12,7 +12,6 @@ class Meeting < ApplicationRecord
   has_many :transcripts, dependent: :destroy
   has_many :summaries, dependent: :destroy
   has_many :action_items, dependent: :destroy
-  has_many :decisions, dependent: :destroy
   has_many :blocks, dependent: :destroy
   has_many :meeting_attachments, dependent: :destroy
   has_many :meeting_contacts, dependent: :destroy
@@ -41,6 +40,7 @@ class Meeting < ApplicationRecord
   validates :status, inclusion: { in: %w[pending recording transcribing completed] }
   validates :summary_verbosity, inclusion: { in: SUMMARY_VERBOSITY_LEVELS }
   validates :summary_restructure, inclusion: { in: [ true, false ] } # NOT NULL 컬럼 — nil 이 500 대신 422 가 되게
+  validates :summary_custom_prompt, length: { maximum: 2000 }, allow_nil: true
   validates :summary_interval_sec, numericality: { only_integer: true, greater_than_or_equal_to: 0 } # 0 = 자동 요약 안 함
   validates :source, inclusion: { in: %w[live upload] }
   validates :expected_participants, numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 100 }, allow_nil: true
@@ -97,6 +97,7 @@ class Meeting < ApplicationRecord
       created_by_id: created_by_id,
       summary_verbosity: summary_verbosity,
       summary_restructure: summary_restructure,
+      summary_custom_prompt: summary_custom_prompt,
       auto_start_mode: auto_start_mode,
       recurrence_rule: recurrence_rule,
       previous_meeting_id: id,
@@ -556,12 +557,11 @@ class Meeting < ApplicationRecord
     summaries.create!(summary_type: summary_type, notes_markdown: base.rstrip, generated_at: Time.current)
   end
 
-  # 트랜스크립트·요약·액션아이템·결정·블록(선택적으로 첨부)을 모두 삭제한다.
+  # 트랜스크립트·요약·액션아이템·블록(선택적으로 첨부)을 모두 삭제한다.
   def purge_transcription_content!(include_attachments: false)
     transcripts.destroy_all
     summaries.destroy_all
     action_items.destroy_all
-    decisions.destroy_all
     blocks.destroy_all
     meeting_attachments.destroy_all if include_attachments
     # 콘텐츠 초기화(reset_content·재전사) 시 이전 요약 실패 기록도 함께 클리어 —

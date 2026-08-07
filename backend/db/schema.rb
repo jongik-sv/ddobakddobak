@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_06_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_07_140429) do
   create_table "action_items", force: :cascade do |t|
     t.boolean "ai_generated", default: false, null: false
     t.integer "assignee_id"
@@ -54,21 +54,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_06_000001) do
     t.index ["meeting_id"], name: "index_chat_messages_on_meeting_id"
     t.index ["scope_type", "scope_id", "user_id", "created_at"], name: "index_chat_messages_on_scope_and_user"
     t.index ["user_id"], name: "index_chat_messages_on_user_id"
-  end
-
-  create_table "decisions", force: :cascade do |t|
-    t.boolean "ai_generated", default: false, null: false
-    t.text "content", null: false
-    t.text "context"
-    t.datetime "created_at", null: false
-    t.datetime "decided_at"
-    t.integer "meeting_id", null: false
-    t.text "participants"
-    t.string "status", default: "active", null: false
-    t.datetime "updated_at", null: false
-    t.index ["meeting_id"], name: "index_decisions_on_meeting_id"
-    t.index ["status"], name: "index_decisions_on_status"
-    t.check_constraint "status IN ('active','revised','cancelled')", name: "chk_decisions_status"
   end
 
   create_table "domain_file_links", force: :cascade do |t|
@@ -272,6 +257,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_06_000001) do
     t.string "stt_engine"
     t.datetime "summarization_started_at"
     t.boolean "summarizing", default: false, null: false
+    t.text "summary_custom_prompt"
     t.datetime "summary_error_at"
     t.text "summary_error_message"
     t.integer "summary_interval_sec", default: 180, null: false

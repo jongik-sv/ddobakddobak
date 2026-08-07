@@ -201,7 +201,8 @@ class MeetingSummarizationJob < ApplicationJob
         verbosity_context: :realtime,
         seeded_merge: meeting.previous_meeting_id.present? && !meeting.summary_restructure?,
         agenda_reference: agenda_ref,
-        domain_reference: domain_ref
+        domain_reference: domain_ref,
+        custom_prompt: meeting.summary_custom_prompt
       )
       notes_markdown = result["notes_markdown"]
     else
@@ -212,7 +213,8 @@ class MeetingSummarizationJob < ApplicationJob
         attendees: meeting.attendees,
         verbosity: meeting.summary_verbosity,
         agenda_reference: agenda_ref,
-        domain_reference: domain_ref
+        domain_reference: domain_ref,
+        custom_prompt: meeting.summary_custom_prompt
       )
       # 시간 라벨은 소비셋(applied_ids) 스냅샷으로 계산 — 릴레이션 재질의는 LLM 호출(수십 초) 중
       # 도착한 자막까지 집계해 시간대가 과대/중첩된다.
@@ -378,7 +380,8 @@ class MeetingSummarizationJob < ApplicationJob
         seeded_merge: meeting.previous_meeting_id.present? && !meeting.summary_restructure?,
         # final(종료·재생성)은 1회주입 플래그와 무관하게 항상 안건 전체를 주입한다.
         agenda_reference: meeting.agenda_reference.presence,
-        domain_reference: domain_ref
+        domain_reference: domain_ref,
+        custom_prompt: meeting.summary_custom_prompt
       )
       notes_markdown = result["notes_markdown"]
     else
@@ -393,7 +396,8 @@ class MeetingSummarizationJob < ApplicationJob
           attendees: meeting.attendees,
           verbosity: meeting.summary_verbosity,
           agenda_reference: meeting.agenda_reference.presence,
-          domain_reference: domain_ref
+          domain_reference: domain_ref,
+          custom_prompt: meeting.summary_custom_prompt
         )
         notes_markdown = compose_appended_notes(latest_notes, result["block_markdown"], remaining)
       else

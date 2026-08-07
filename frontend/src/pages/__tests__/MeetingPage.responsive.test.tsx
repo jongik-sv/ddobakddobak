@@ -133,10 +133,6 @@ vi.mock('../../components/meeting/SpeakerPanel', () => ({
   SpeakerPanel: () => <div data-testid="speaker-panel">화자 영역</div>,
 }))
 
-vi.mock('../../components/decision/DecisionList', () => ({
-  DecisionList: () => <div data-testid="decision-list" />,
-}))
-
 vi.mock('../../api/bookmarks', () => ({
   getBookmarks: vi.fn().mockResolvedValue([]),
   deleteBookmark: vi.fn(),

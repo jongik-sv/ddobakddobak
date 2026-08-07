@@ -23,7 +23,6 @@ RSpec.describe MeetingImporter do
   let!(:transcript)   { create(:transcript, meeting: meeting, content: "안녕하세요 회의 시작합니다 검색어포함") }
   let!(:summary)      { create(:summary, meeting: meeting) }
   let!(:action_item)  { create(:action_item, meeting: meeting) }
-  let!(:decision)     { create(:decision, meeting: meeting) }
   let!(:parent_block) { create(:block, meeting: meeting, parent_block_id: nil) }
   let!(:child_block)  { create(:block, meeting: meeting, parent_block_id: parent_block.id) }
   let!(:contact)      { create(:meeting_contact, meeting: meeting) }
@@ -118,7 +117,6 @@ RSpec.describe MeetingImporter do
       expect(new_meeting.transcripts.count).to eq(1)
       expect(new_meeting.summaries.count).to eq(1)
       expect(new_meeting.action_items.count).to eq(1)
-      expect(new_meeting.decisions.count).to eq(1)
       expect(new_meeting.blocks.count).to eq(2)
       expect(new_meeting.meeting_contacts.count).to eq(1)
       expect(new_meeting.meeting_bookmarks.count).to eq(1)
@@ -398,7 +396,7 @@ RSpec.describe MeetingImporter do
         "scope"          => "meeting",
         "meeting"        => meeting.attributes.merge(
           "transcripts" => [], "summaries" => [], "action_items" => [],
-          "decisions"   => [], "blocks"    => [], "attachments"  => [],
+          "blocks"    => [], "attachments"  => [],
           "contacts"    => [], "bookmarks" => [],
           "chat_messages" => [], "tag_ids" => [], "glossary_entries" => []
         ),
