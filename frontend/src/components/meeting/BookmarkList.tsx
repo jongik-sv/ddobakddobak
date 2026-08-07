@@ -1,15 +1,12 @@
 import { useState } from 'react'
 import { Bookmark, Trash2, Plus, Pencil, Check, X, ChevronDown, ChevronRight } from 'lucide-react'
 import type { Bookmark as BookmarkType } from '../../api/bookmarks'
+import { formatElapsedSeconds } from '../../lib/audioUtils'
 
+// formatElapsedSeconds(초 단위, 시 단위도 2자리 패딩)는 이 파일이 쓰던 ms 단위 formatMs와
+// 출력이 100% 동일하다(같은 h/m/s 패딩 규칙) — 초 단위 변환만 감싼다.
 function formatMs(ms: number) {
-  const totalSec = Math.floor(ms / 1000)
-  const h = Math.floor(totalSec / 3600)
-  const m = Math.floor((totalSec % 3600) / 60)
-  const s = totalSec % 60
-  return h > 0
-    ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  return formatElapsedSeconds(Math.floor(ms / 1000))
 }
 
 /**

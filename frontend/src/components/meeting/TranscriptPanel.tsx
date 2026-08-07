@@ -11,6 +11,7 @@ import { resolveHighlightIndex } from './transcriptHighlight'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 import { useToastStore } from '../../stores/toastStore'
 import { confirmDialog } from '../../lib/confirmDialog'
+import { formatTime } from '../../lib/audioUtils'
 
 interface TranscriptPanelProps {
   meetingId: number
@@ -147,15 +148,8 @@ export function TranscriptPanel({
   // 이 파일의 formatTimestamp(:33-38)는 MM:SS 고정이라 90분이 "90:00"으로 보인다.
   // 확인 다이얼로그는 회의 전체 길이를 다루므로 시 단위가 필요하다(기존 함수는 세그먼트
   // 헤더용이라 그대로 둔다 — 표시 폭이 바뀌면 레이아웃이 흔들린다).
-  function formatDuration(ms: number): string {
-    const total = Math.floor(ms / 1000)
-    const h = Math.floor(total / 3600)
-    const m = Math.floor((total % 3600) / 60)
-    const s = total % 60
-    const mm = String(m).padStart(2, '0')
-    const ss = String(s).padStart(2, '0')
-    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
-  }
+  // lib/audioUtils의 formatTime과 출력이 100% 동일해(패딩 규칙까지 일치) 그대로 위임한다.
+  const formatDuration = formatTime
 
   // 선택 정리: transcripts 가 갈리면(절단 후 재조회·원격 구조 변경·회의 전환) 사라진 행의 id 를
   // 버린다. FullRecord 에는 이 처리가 없지만 여기서는 필요하다 — TranscriptPanel 은 prop 배열

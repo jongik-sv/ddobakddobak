@@ -14,6 +14,7 @@ import { getTranscripts, reopenMeeting, updateNotes, canEditMeeting, canRedactMe
 import type { RedactTranscriptsResponse } from '../api/meetings'
 import { useToastStore } from '../stores/toastStore'
 import { applyLocalRedaction } from '../lib/applyLocalRedaction'
+import { messageDialog } from '../lib/messageDialog'
 import { useAuthStore } from '../stores/authStore'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { MeetingPageSkeleton } from '../components/ui/Skeleton'
@@ -93,10 +94,7 @@ export default function MeetingPage() {
       await refetch()
     } catch (e) {
       console.error('[toggleLock] 실패:', e)
-      const { message } = await import('@tauri-apps/plugin-dialog')
-        .then((m) => ({ message: m.message }))
-        .catch(() => ({ message: (msg: string) => window.alert(msg) }))
-      message('잠금 상태 변경에 실패했습니다. 권한을 확인하세요.')
+      messageDialog('잠금 상태 변경에 실패했습니다. 권한을 확인하세요.')
     } finally {
       setIsTogglingLock(false)
     }
