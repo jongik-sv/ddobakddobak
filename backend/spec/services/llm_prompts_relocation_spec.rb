@@ -14,9 +14,10 @@ require "digest"
 # 중복 제거·유니코드 수식 표기 공용화·문체 압축, DIAGRAM_INSTRUCTION/MERMAID_SYNTAX_RULES 도입)로
 # 내용이 의도적으로 변경됐다 — baseline 갱신. APPEND_NOTES_SYSTEM_PROMPT 는 실시간 틱 경로라 원문을
 # 그대로 유지했으므로 baseline 불변.
-# CITATION_MARKER_INSTRUCTION 은 인용 마커 정규화 패스 도입(LlmService 출력에
-# CitationMarkers.normalize 적용)에 맞춰 "마커는 원형 그대로 복사" 지시 1줄이 추가되어
-# 내용이 의도적으로 변경됐다 — baseline 갱신.
+# CITATION_MARKER_INSTRUCTION 은 두 변경이 겹쳐 내용이 의도적으로 바뀌었다 — baseline 갱신.
+# (1) 연결 회의 시드 마커 각인(⟦m:<id>/t:..⟧) 도입에 맞춰 "[최우선] 보존" 지시에 ⟦m:..⟧ 도 명시.
+# (2) 인용 마커 정규화 패스 도입(LlmService 출력에 CitationMarkers.normalize 적용)에 맞춰
+#     "마커는 원형 그대로 복사" 지시 1줄 추가. 두 변경 합산 1013→1145바이트.
 RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
   # 이동 전 baseline: name => [sha256(value), bytesize]. String 상수만.
   BASELINE_SHA = {
@@ -28,7 +29,7 @@ RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
     "APPEND_NOTES_SYSTEM_PROMPT" => ["b12b3b501a1df5c88bfd0549b7cf6e257058a79a76d7bedbc74f8e5ba8f0018a", 1498],
     "FEEDBACK_NOTES_SYSTEM_PROMPT" => ["8cc8484195a3bbbaf07a2f7e1a91527442a634fe9146e055371eb300cfcc2664", 1240],
     "COMPRESS_AGENDA_SYSTEM_PROMPT" => ["2f5a182f91fab66712c614028079a9553da55088587634f549dfad895118481d", 505],
-    "CITATION_MARKER_INSTRUCTION" => ["4ba0d0238c404185242a547a7fbcc98bc28425b6b476949f11b385c85462b486", 1133],
+    "CITATION_MARKER_INSTRUCTION" => ["884de17289ede921311d0a21b4614e421f4617b20bdae43a752927d70e992e26", 1145],
     "FOLDER_CHAT_CITATION_INSTRUCTION" => ["589520d25880ece86e92a1510ad3c447ec8081b912aa9ad8d27bd997a7b734d5", 573],
     "MEETING_CHAT_SYSTEM_PROMPT" => ["db664f098abb908032280fc22c70460e6d825f82727dce785eb24b7912206192", 4498],
     "FOLDER_CHAT_EXPANSION_PROMPT" => ["c8a9ad72d07a4f00efcd3e113c2b81421f87334ecb800d0bfbec3e348457a5fc", 778],

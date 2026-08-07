@@ -25,6 +25,12 @@ describe('citationMarkers', () => {
     const r = dedupeMarkers([{ ms: 1, speaker: '화자 1' }, { ms: 1, speaker: '화자 1' }, { ms: 2, speaker: '화자 1' }])
     expect(r).toEqual([{ ms: 1, speaker: '화자 1' }, { ms: 2, speaker: '화자 1' }])
   })
+  it('strips m: (cross-meeting citation) markers too', () => {
+    expect(stripCitationMarkers('이전 결정. ⟦m:5/t:90000/s:화자 1⟧')).toBe('이전 결정.')
+  })
+  it('strips mixed m: and t: markers in the same text', () => {
+    expect(stripCitationMarkers('이전 ⟦m:5/t:90000/s:화자 1⟧ 현재 ⟦t:1000/s:화자 2⟧')).toBe('이전  현재')
+  })
 })
 
 describe('markerTimeToMs', () => {

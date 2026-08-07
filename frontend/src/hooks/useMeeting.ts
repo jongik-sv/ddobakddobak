@@ -7,6 +7,7 @@ import {
   deleteMeeting as deleteMeetingApi,
 } from '../api/meetings'
 import type { Meeting, SummaryResponse, UpdateMeetingParams } from '../api/meetings'
+import { useTranscriptStore } from '../stores/transcriptStore'
 
 // 모듈 레벨 캐시 — 페이지 전환 시 이전 데이터 즉시 표시
 const meetingCache = new Map<number, { meeting: Meeting; summary: SummaryResponse | null }>()
@@ -56,6 +57,8 @@ export function useMeeting(meetingId: number): UseMeetingReturn {
         if (cancelled) return
         setMeeting(meetingData)
         setSummary(summaryData)
+        // 이전 회의 인용 마커 배지용 회의명 맵 — AiSummaryPanel이 store에서 직접 읽는다.
+        useTranscriptStore.getState().setCitationMeetings(meetingData.citation_meetings ?? {})
         meetingCache.set(meetingId, { meeting: meetingData, summary: summaryData })
       })
       .catch((err: Error) => {

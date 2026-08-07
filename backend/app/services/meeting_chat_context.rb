@@ -47,7 +47,7 @@ class MeetingChatContext
     return @summary_text if defined?(@summary_text)
     s = @meeting.summaries.where(summary_type: "final").order(:created_at).last ||
         @meeting.summaries.order(:created_at).last
-    text = s&.notes_markdown.to_s.gsub(/⟦t:\d+[|\/]s:[^⟧]+⟧/, "")
+    text = s&.notes_markdown.to_s.gsub(/⟦(?:m:\d+\/)?t:\d+[|\/]s:[^⟧]+⟧/, "")
     cap = self.class::SUMMARY_MAX_CHARS
     if text.length > cap
       text = text[0, cap] + "\n…(요약 일부 생략 — 길어서 잘림)…"

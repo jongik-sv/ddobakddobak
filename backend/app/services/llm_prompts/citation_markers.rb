@@ -4,12 +4,16 @@ module LlmPrompts
   # markerTimeToMs(:9-15) 와 1:1로 대응한다.
   #
   # 절단(transcripts#redact)은 마커를 "쓰기" 때문에 단일 소스가 필수다. 기존 하드코딩 4곳은
-  # 표현식이 제각각이고 그중 둘은 폴더 스코프 m: 형태를 아예 못 다룬다 — 통일은 별도 후속이며
-  # 여기서는 대조만 해둔다:
-  #   app/models/summary.rb:14                /⟦t:\d+(?::\d+)*[|\/]s:[^⟧]+⟧/  콜론 O, m: X
-  #   app/models/meeting.rb:620               /⟦[^⟧]*⟧/                        전 마커 통삭제
-  #   app/services/markdown_exporter.rb:43    /[ \t]*⟦t:\d+[|\/]s:[^⟧]+⟧/      콜론 X, m: X
-  #   app/services/meeting_chat_context.rb:50 /⟦t:\d+[|\/]s:[^⟧]+⟧/            콜론 X, m: X
+  # 표현식이 제각각이었다 — 콜론(mm:ss) 지원 여부 통일은 별도 후속이며 여기서는 대조만 해둔다.
+  # m: 형태(연결 회의 시드 각인) 처리는 아래 세 곳 모두 확장 완료, meeting.rb:620 은 와일드카드라
+  # 애초에 두 포맷 다 지운다:
+  #   app/models/summary.rb:14                /⟦(?:m:\d+\/)?t:\d+(?::\d+)*[|\/]s:[^⟧]+⟧/  콜론 O, m: O
+  #   app/models/meeting.rb:620               /⟦[^⟧]*⟧/                                     전 마커 통삭제(m: 포함)
+  #   app/services/markdown_exporter.rb:43    /[ \t]*⟦(?:m:\d+\/)?t:\d+[|\/]s:[^⟧]+⟧/       콜론 X, m: O
+  #   app/services/meeting_chat_context.rb:50 /⟦(?:m:\d+\/)?t:\d+[|\/]s:[^⟧]+⟧/             콜론 X, m: O
+  #
+  # .normalize 는 위 스트립/각인과 다른 별도 관심사다 — LLM 출력이 정본 마커 형식을 변형해
+  # 내보내는 것을 정본으로 교정하는 패스(요약 저장 직전 1회 적용). 상세는 아래 정의부 주석 참고.
   module CitationMarkers
     # 회의 스코프 마커. 캡처: 1=시간문자열(ms 또는 mm:ss/hh:mm:ss), 2=화자.
     CITATION_RE = /⟦t:(\d+(?::\d+)*)[|\/]s:([^⟧]+)⟧/
@@ -137,6 +141,20 @@ module LlmPrompts
     def log_unrepairable(fragment)
       return unless defined?(Rails)
       Rails.logger.info "[CitationMarkers.normalize] unrepairable: #{fragment.inspect}"
+    end
+
+    # 연결 회의 시드: 이전 회의록을 복사할 때 그 회의 스코프 마커(⟦t:..⟧)에 출처 회의ID를
+    # 각인해 ⟦m:<meetingId>/t:..⟧ 로 만든다(프론트가 inert 배지로 구분). CITATION_RE 는 ⟦t: 로
+    # 시작하는 마커만 매치하므로 이미 m: 이 붙은 마커(연쇄 연결 A→B→C 로 이미 각인됨)는 매치되지
+    # 않아 그대로 남는다 — 원출처가 각인 시각에 고정되고 재각인되지 않는다.
+    def stamp_source_meeting(text, meeting_id)
+      text.to_s.gsub(CITATION_RE) { |match| match.sub("⟦t:", "⟦m:#{meeting_id}/t:") }
+    end
+
+    # 텍스트에 각인된 m: 마커들의 회의id 전부(중복 제거, 정수 배열). 연쇄 연결이면 한 문서에
+    # 여러 id 가 공존할 수 있어 전부 스캔한다.
+    def referenced_meeting_ids(text)
+      text.to_s.scan(FOLDER_CITATION_RE).map { |captures| captures[0].to_i }.uniq
     end
   end
 end

@@ -60,5 +60,20 @@ RSpec.describe Summary, type: :model do
       expect(row["notes_markdown"]).to include("첫 항목")
       expect(row["notes_markdown"]).to include("두 번째")
     end
+
+    it "연결 회의 시드 각인 마커(⟦m:<id>/t:..⟧)도 FTS 인덱싱에서 제거된다" do
+      Summary.ensure_fts_tables!
+      s = meeting.summaries.create!(
+        summary_type: "final",
+        generated_at: Time.current,
+        notes_markdown: "결정 보류 ⟦m:42/t:125000/s:화자 1⟧"
+      )
+      row = ActiveRecord::Base.connection.execute(
+        "SELECT notes_markdown FROM summaries_fts WHERE source_id = #{s.id}"
+      ).first
+      expect(row["notes_markdown"]).not_to include("⟦m:")
+      expect(row["notes_markdown"]).not_to include("⟦t:")
+      expect(row["notes_markdown"]).to include("결정 보류")
+    end
   end
 end

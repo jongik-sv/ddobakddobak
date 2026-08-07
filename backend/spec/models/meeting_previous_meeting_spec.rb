@@ -57,6 +57,35 @@ RSpec.describe Meeting, type: :model do
       m = create(:meeting, project: project, creator: user, status: "recording", previous_meeting: blank_prev)
       expect { m.seed_summary_from_previous! }.not_to change { m.summaries.count }
     end
+
+    context "인용 마커 각인 (연결 회의 inert 배지)" do
+      it "이전 회의의 ⟦t:..⟧ 마커에 출처 회의ID를 각인해 ⟦m:<id>/t:..⟧ 로 만든다" do
+        marked_prev = create(:meeting, project: project, creator: user, status: "completed")
+        create(:summary, meeting: marked_prev, summary_type: "final",
+               notes_markdown: "결정은 보류됐다. ⟦t:125000/s:화자 1⟧", generated_at: 1.day.ago)
+        m = create(:meeting, project: project, creator: user, status: "recording", previous_meeting: marked_prev)
+
+        m.seed_summary_from_previous!(summary_type: "realtime")
+
+        seeded = m.summaries.order(:id).last
+        expect(seeded.notes_markdown).to include("⟦m:#{marked_prev.id}/t:125000/s:화자 1⟧")
+        expect(seeded.notes_markdown).not_to include("⟦t:125000/s:화자 1⟧")
+      end
+
+      it "연쇄 연결(A→B→C): 이미 m: 인 마커는 재각인하지 않고 원출처를 보존한다" do
+        origin = create(:meeting, project: project, creator: user, status: "completed")
+        middle = create(:meeting, project: project, creator: user, status: "completed", previous_meeting: origin)
+        create(:summary, meeting: middle, summary_type: "final",
+               notes_markdown: "합의됨. ⟦m:#{origin.id}/t:5000/s:화자 1⟧", generated_at: 1.day.ago)
+        last = create(:meeting, project: project, creator: user, status: "recording", previous_meeting: middle)
+
+        last.seed_summary_from_previous!(summary_type: "realtime")
+
+        seeded = last.summaries.order(:id).last
+        expect(seeded.notes_markdown).to include("⟦m:#{origin.id}/t:5000/s:화자 1⟧")
+        expect(seeded.notes_markdown).not_to include("⟦m:#{middle.id}/")
+      end
+    end
   end
 
   describe "previous_meeting self-reference validation" do
