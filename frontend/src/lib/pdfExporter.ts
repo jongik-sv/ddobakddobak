@@ -1,5 +1,6 @@
 import type { MeetingExportData } from '../api/meetings'
 import { stripCitationMarkers } from './citationMarkers'
+import { isTableSeparatorRow, parseTableCells } from './markdownBlocks'
 
 // ── Public API ──────────────────────────────────
 
@@ -463,16 +464,12 @@ export function markdownToHtml(md: string): string {
       while (i < lines.length && lines[i]!.trimStart().startsWith('|')) {
         const row = lines[i]!.trim()
         // separator row (|---|---|)
-        if (/^\|[\s:]*-{3,}[\s:]*(\|[\s:]*-{3,}[\s:]*)*\|?\s*$/.test(row)) {
+        if (isTableSeparatorRow(row)) {
           hasHeader = tableRows.length > 0
           i++
           continue
         }
-        const cells = row
-          .split('|')
-          .map((c) => c.trim())
-          .filter((_, idx, arr) => !(idx === 0 && arr[0] === '') && !(idx === arr.length - 1 && arr[arr.length - 1] === ''))
-        tableRows.push(cells)
+        tableRows.push(parseTableCells(row))
         i++
       }
 

@@ -12,6 +12,7 @@ import {
   ShadingType,
   ImageRun,
 } from 'docx'
+import { isTableSeparatorRow, parseTableCells } from './markdownBlocks'
 
 /**
  * Mermaid 코드를 SVG → PNG(ArrayBuffer)로 변환한다.
@@ -244,20 +245,13 @@ export async function markdownToDocxParagraphs(markdown: string): Promise<(Parag
       // separator row 찾기
       let separatorIdx = -1
       for (let s = 0; s < tableLines.length; s++) {
-        if (/^\|[\s:]*-{3,}[\s:]*(\|[\s:]*-{3,}[\s:]*)*\|?\s*$/.test(tableLines[s]!.trim())) {
+        if (isTableSeparatorRow(tableLines[s]!)) {
           separatorIdx = s
           break
         }
       }
 
-      const parseCells = (rowLine: string): string[] =>
-        rowLine
-          .split('|')
-          .map((c) => c.trim())
-          .filter(
-            (_, idx, arr) =>
-              !(idx === 0 && arr[0] === '') && !(idx === arr.length - 1 && arr[arr.length - 1] === ''),
-          )
+      const parseCells = parseTableCells
 
       let headerCells: string[] | null = null
       let dataLines: string[]
