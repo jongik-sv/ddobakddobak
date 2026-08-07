@@ -9,16 +9,18 @@ import { useAuthStore } from '../stores/authStore'
 const {
   mockGetMeetings,
   mockCreateMeeting,
+  mockDeleteMeeting,
 } = vi.hoisted(() => ({
   mockGetMeetings: vi.fn(),
   mockCreateMeeting: vi.fn(),
+  mockDeleteMeeting: vi.fn(),
 }))
 
 vi.mock('../api/meetings', async () => ({
   ...(await vi.importActual<typeof import('../api/meetings')>('../api/meetings')),
   getMeetings: mockGetMeetings,
   createMeeting: mockCreateMeeting,
-  deleteMeeting: vi.fn(),
+  deleteMeeting: mockDeleteMeeting,
   stopMeeting: vi.fn(),
   updateMeeting: vi.fn(),
   uploadAudioFile: vi.fn(),
@@ -33,6 +35,11 @@ const { mockGetDflowSettings } = vi.hoisted(() => ({
 }))
 vi.mock('../api/dflow', () => ({
   getDflowSettings: mockGetDflowSettings,
+}))
+
+const mockConfirmDialog = vi.fn(async (..._args: unknown[]) => true)
+vi.mock('../lib/confirmDialog', () => ({
+  confirmDialog: (...args: unknown[]) => mockConfirmDialog(...args),
 }))
 // 기본값: D'Flow 비활성(기존 동작과 동일 — 필터 컨트롤 미노출). vi.clearAllMocks()는 구현을
 // 지우지 않으므로(mockReset과 다름) 이 기본값이 파일 전체 테스트에 유지된다.
@@ -920,5 +927,55 @@ describe("MeetingsPage D'Flow 전송 상태 필터", () => {
     await userEvent.click(screen.getByRole('button', { name: /초기화/i }))
 
     expect(useMeetingStore.getState().dflowFilter).toBe('')
+  })
+})
+
+describe('MeetingsPage 회의 삭제 확인(confirmDialog)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsDesktop = true
+    mockConfirmDialog.mockResolvedValue(true)
+    useAuthStore.setState({ user: { id: 1, email: 'me@x.com', name: '사용자1', role: 'member' } })
+    useMeetingStore.getState().reset()
+    mockGetDflowSettings.mockResolvedValue({ enabled: false, base_url: null, api_secret_masked: '' })
+    mockGetMeetings.mockResolvedValue({
+      meetings,
+      meta: { total: 3, page: 1, per: 20 },
+    })
+    useMeetingStore.setState({
+      meetings,
+      meta: { total: 3, page: 1, per: 20 },
+      isLoading: false,
+      hasLoadedOnce: true,
+    })
+  })
+
+  it('confirmDialog에서 취소(false)하면 deleteMeeting이 호출되지 않는다', async () => {
+    mockConfirmDialog.mockResolvedValue(false)
+    renderPage()
+
+    await screen.findByText('첫 번째 회의')
+    const [menuButton] = screen.getAllByLabelText('회의 메뉴')
+    await userEvent.click(menuButton)
+    const [deleteButton] = await screen.findAllByLabelText('삭제')
+    await userEvent.click(deleteButton)
+
+    expect(mockConfirmDialog).toHaveBeenCalled()
+    expect(mockDeleteMeeting).not.toHaveBeenCalled()
+  })
+
+  it('confirmDialog에서 확인(true)하면 deleteMeeting이 호출된다', async () => {
+    mockConfirmDialog.mockResolvedValue(true)
+    renderPage()
+
+    await screen.findByText('첫 번째 회의')
+    const [menuButton] = screen.getAllByLabelText('회의 메뉴')
+    await userEvent.click(menuButton)
+    const [deleteButton] = await screen.findAllByLabelText('삭제')
+    await userEvent.click(deleteButton)
+
+    await waitFor(() => {
+      expect(mockDeleteMeeting).toHaveBeenCalledWith(1)
+    })
   })
 })

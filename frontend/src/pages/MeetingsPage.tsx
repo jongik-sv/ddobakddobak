@@ -8,7 +8,8 @@ import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
 import { paramToFolder } from '../lib/folderNav'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
-import { BREAKPOINTS, IS_TAURI } from '../config'
+import { BREAKPOINTS } from '../config'
+import { confirmDialog } from '../lib/confirmDialog'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useMeetingsFolderView } from '../hooks/useMeetingsFolderView'
 import { BottomSheet } from '../components/ui/BottomSheet'
@@ -222,13 +223,7 @@ export default function MeetingsPage() {
   }, [fetchMeetings, currentPage])
 
   const handleDeleteMeeting = useCallback(async (meeting: Meeting) => {
-    let ok: boolean
-    if (IS_TAURI) {
-      const { confirm } = await import('@tauri-apps/plugin-dialog')
-      ok = await confirm(`"${meeting.title}" 회의를 휴지통으로 이동합니다. 계속할까요?`, { title: '회의 삭제', kind: 'warning' })
-    } else {
-      ok = window.confirm(`"${meeting.title}" 회의를 휴지통으로 이동합니다. 계속할까요?`)
-    }
+    const ok = await confirmDialog(`"${meeting.title}" 회의를 휴지통으로 이동합니다. 계속할까요?`, { title: '회의 삭제', kind: 'warning' })
     if (!ok) return
     try {
       await deleteMeeting(meeting.id)
