@@ -133,14 +133,9 @@ module Api
         # 진행 중인 회의는 split 금지 — 이유가 각각 다르다(설계 문서 "검증" 절 참조):
         # recording은 bulk_create 멱등키(sequence_number)와 재번호가 충돌하고,
         # transcribing은 파일 전사가 행을 계속 만들어 sequence_number가 유동적이다.
-        if @meeting.recording? || @meeting.transcribing?
-          return render json: { error: "녹음 또는 전사 중에는 분할할 수 없습니다." }, status: :conflict
-        end
         # 요약 잡이 applied_to_minutes: false 행을 읽는 중이라, 그 사이 행을 쪼개면
         # append 대상이 어긋난다(meeting_summarization_job.rb).
-        if @meeting.summarizing?
-          return render json: { error: "요약 중에는 분할할 수 없습니다." }, status: :conflict
-        end
+        return if reject_if_meeting_busy!("분할")
 
         # expected_content 검증이 최우선이어야 한다 — 다이얼로그가 열려 있는 동안 다른 클라이언트가
         # update_content를 호출했을 수 있고, 그러면 split_index는 이미 사라진 텍스트 기준이 된다.
@@ -265,12 +260,7 @@ module Api
         return render json: { error: "transcript_ids required" }, status: :unprocessable_entity if ids.empty?
 
         # 진행 상태 가드는 split 과 동일한 이유(재번호 충돌 / 행이 계속 생성 중 / 요약 append 대상 어긋남).
-        if @meeting.recording? || @meeting.transcribing?
-          return render json: { error: "녹음 또는 전사 중에는 절단할 수 없습니다." }, status: :conflict
-        end
-        if @meeting.summarizing?
-          return render json: { error: "요약 중에는 절단할 수 없습니다." }, status: :conflict
-        end
+        return if reject_if_meeting_busy!("절단")
         # 값싼 조기 409(UX)일 뿐 보증이 아니다 — 실제 경합은 AudioUploadJob 의 소스 identity 검증이
         # 닫는다(dev/test 는 :async 어댑터라 이 조회가 항상 false 다).
         if AudioUploadJob.in_flight_for?(@meeting.id)
@@ -555,6 +545,21 @@ module Api
       end
 
       private
+
+      # split·redact 공용 진행 상태 가드. recording?/transcribing?/summarizing? 중이면 409로
+      # 막고 true를 반환(호출부는 `return if reject_if_meeting_busy!(...)`로 액션을 종료한다).
+      # 문구의 동사만 액션마다 다르다(분할/절단) — 그 외 조건·상태코드는 동일.
+      def reject_if_meeting_busy!(verb)
+        if @meeting.recording? || @meeting.transcribing?
+          render json: { error: "녹음 또는 전사 중에는 #{verb}할 수 없습니다." }, status: :conflict
+          return true
+        end
+        if @meeting.summarizing?
+          render json: { error: "요약 중에는 #{verb}할 수 없습니다." }, status: :conflict
+          return true
+        end
+        false
+      end
 
       # split_ms/split_index가 .to_i를 호출해도 안전한 타입(String/Numeric)인지 확인한다.
       # Hash(ActionController::Parameters)나 Array가 오면 .to_i가 정의되지 않아 NoMethodError →
