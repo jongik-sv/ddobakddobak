@@ -77,6 +77,13 @@ async function writeMeta(meta: LocalMeetingMeta): Promise<void> {
   await writeTextFile(await metaPath(meta.localId), JSON.stringify(meta))
 }
 
+/** read-modify-write 공통 헬퍼: meta를 읽어 patch를 얹고 다시 쓴다. */
+async function updateMeta(localId: string, patch: Partial<LocalMeetingMeta>): Promise<void> {
+  const meta = await readMeta(localId)
+  Object.assign(meta, patch)
+  await writeMeta(meta)
+}
+
 /**
  * 새 로컬 회의 생성. localId='local-'+crypto.randomUUID(). meta.json + audio/ 디렉터리 기록.
  */
@@ -252,10 +259,7 @@ export async function setServerId(
   localId: string,
   serverId: number,
 ): Promise<void> {
-  const meta = await readMeta(localId)
-  meta.serverId = serverId
-  meta.pendingSync = false
-  await writeMeta(meta)
+  await updateMeta(localId, { serverId, pendingSync: false })
 }
 
 /** pendingSync 플래그 토글. */
@@ -263,9 +267,7 @@ export async function markPendingSync(
   localId: string,
   pending: boolean,
 ): Promise<void> {
-  const meta = await readMeta(localId)
-  meta.pendingSync = pending
-  await writeMeta(meta)
+  await updateMeta(localId, { pendingSync: pending })
 }
 
 /** status 갱신(예: 회의 종료 시 'completed'). */
@@ -273,16 +275,12 @@ export async function setStatus(
   localId: string,
   status: LocalMeetingMeta['status'],
 ): Promise<void> {
-  const meta = await readMeta(localId)
-  meta.status = status
-  await writeMeta(meta)
+  await updateMeta(localId, { status })
 }
 
 /** title 갱신(다른 필드 보존). setStatus/setServerId와 동일 read-modify-write 패턴. */
 export async function renameLocal(localId: string, title: string): Promise<void> {
-  const meta = await readMeta(localId)
-  meta.title = title
-  await writeMeta(meta)
+  await updateMeta(localId, { title })
 }
 
 /**
