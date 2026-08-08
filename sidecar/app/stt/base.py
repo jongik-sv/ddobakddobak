@@ -44,6 +44,16 @@ class SttAdapter(ABC):
         """
         return "gpu" if self._is_loaded else "unloaded"
 
+    def _ensure_loaded(self) -> None:
+        """모델이 로드되었는지 확인하고, 아니면 RuntimeError를 발생시킨다.
+
+        transcribe()/transcribe_file() 등 모델 사용 전 가드로 호출한다.
+        """
+        if not self._is_loaded:
+            raise RuntimeError(
+                "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
+            )
+
     async def maybe_offload(self, idle_unload_sec: float, idle_full_unload_sec: float) -> None:
         """유휴 시간 기반 GPU 오프로드 점검. 기본은 no-op(오프로드 미지원 엔진).
 
@@ -77,11 +87,14 @@ class SttAdapter(ABC):
         """
         ...
 
-    @abstractmethod
     async def transcribe_stream(
         self, audio_stream
     ) -> AsyncIterator[TranscriptSegment]:
         """실시간 오디오 스트리밍 변환.
+
+        기본 구현: audio_stream의 각 청크를 transcribe()에 순차 위임한다.
+        다른 처리가 필요한 어댑터(시그니처가 다르거나 실제 오디오를 소비하지
+        않는 등)는 이 메서드를 override 한다.
 
         Args:
             audio_stream: 오디오 청크를 yield하는 이터러블
@@ -89,7 +102,10 @@ class SttAdapter(ABC):
         Yields:
             TranscriptSegment (확정/부분 결과)
         """
-        ...
+        async for chunk in audio_stream:
+            segments = await self.transcribe(chunk)
+            for seg in segments:
+                yield seg
 
     async def transcribe_file(self, file_path: str) -> list[TranscriptSegment]:
         """파일 전체 변환 (녹음 원본 후처리).

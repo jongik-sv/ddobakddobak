@@ -259,7 +259,7 @@ RSpec.describe LlmService, "ok signalling" do
     end
   end
 
-  # LLM 응답에 실측 변형 인용 마커가 섞여 있어도 refine_notes/append_notes/apply_feedback
+  # LLM 응답에 실측 변형 인용 마커가 섞여 있어도 refine_notes/append_notes
   # 반환 직전에 CitationMarkers.normalize 가 적용돼 정본 형식으로 교정된다.
   describe "인용 마커 정규화 적용 (LlmService 반환 지점)" do
     let(:broken_marker) { "⟦t:846000ms|s:화자 2⟧" }
@@ -278,13 +278,6 @@ RSpec.describe LlmService, "ok signalling" do
       result = service.append_notes("기존", transcripts)
       expect(result["block_markdown"]).to include(normalized_marker)
       expect(result["block_markdown"]).not_to include(broken_marker)
-    end
-
-    it "#apply_feedback 반환값의 마커가 정규화된다" do
-      allow(service).to receive(:call_llm_raw).and_return("## 요약\n- 반영됨 #{broken_marker}")
-      result = service.apply_feedback("기존", "피드백 내용")
-      expect(result["notes_markdown"]).to include(normalized_marker)
-      expect(result["notes_markdown"]).not_to include(broken_marker)
     end
   end
 end

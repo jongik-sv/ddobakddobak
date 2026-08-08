@@ -8,7 +8,7 @@ import { useMeetingStore } from '../stores/meetingStore'
 import { useProjectStore } from '../stores/projectStore'
 import { CreateMeetingModal } from '../components/meeting/CreateMeetingModal'
 import { StatusBadge } from '../components/meeting/MeetingListUI'
-import { formatScheduledStart, scheduleSummary } from '../lib/meetingFormat'
+import { formatScheduledStart, scheduleSummary, formatDate as formatDateShared } from '../lib/meetingFormat'
 import { stripCitationMarkers } from '../lib/citationMarkers'
 import { MissedScheduledMeetings } from '../components/meeting/MissedScheduledMeetings'
 import { UpcomingScheduledMeetings } from '../components/meeting/UpcomingScheduledMeetings'
@@ -17,8 +17,7 @@ import { IS_TAURI, IS_MOBILE } from '../config'
 import * as localStore from '../stt/localStore'
 
 function formatDate(dateStr: string): string {
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('ko-KR', {
+  return formatDateShared(dateStr, {
     month: 'long',
     day: 'numeric',
     hour: '2-digit',

@@ -60,14 +60,6 @@ RSpec.describe LlmPrompts do
       expect(p).to include('A["')
     end
 
-    it "FEEDBACK_NOTES: [필수] mermaid 3규칙 보존" do
-      p = LlmPrompts::FEEDBACK_NOTES_SYSTEM_PROMPT
-      expect(p).to include("[필수]")
-      expect(p).to include('A["라벨"]')
-      expect(p).to include("<br/>")
-      expect(p).to include('id["라벨"]')
-    end
-
     it "CITATION_MARKER: 마커 토큰/화자값/최우선 보존" do
       p = LlmPrompts::CITATION_MARKER_INSTRUCTION
       expect(p).to include("⟦t:<ms>/s:<화자>⟧")

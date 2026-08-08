@@ -64,6 +64,26 @@ export function useLiveRecording(
   const showStatus = (msg: string, durationMs?: number) =>
     useToastStore.getState().showStatus(msg, durationMs)
 
+  // 409(다른 기기 점유) 공통 처리: status===409면 안내 토스트를 표시하고, httpErrorInfo 결과를
+  // 그대로 반환해 호출부가 이어서(예: handleStart의 code==='recorder_conflict' 분기) 판단하게 한다.
+  const notifyConflict = async (err: unknown) => {
+    const info = await httpErrorInfo(err)
+    if (info?.status === 409) {
+      showStatus(info.message ?? '다른 기기에서 녹음이 진행 중입니다.', 5000)
+    }
+    return info
+  }
+
+  // meeting_redacted(영구 거부)면 폐기 핸들러를 발화시키고 소비, 그 외는 그대로 재던진다.
+  // onAudioChunk/onFinalize 공용(onStop은 폐기 후 추가 정리가 있어 별도 유지).
+  const catchRedacted = async (err: unknown): Promise<void> => {
+    if (await isMeetingRedactedError(err)) {
+      onMeetingRedactedRef.current()
+      return
+    }
+    throw err
+  }
+
   // 회의실 진입 시 사이드바 닫기 + 이전 거부 플래그 초기화
   useEffect(() => {
     useUiStore.setState({ sidebarOpen: false })
@@ -214,21 +234,9 @@ export function useLiveRecording(
     // meeting_redacted(영구 거부)는 여기서 소비하고(재시도 무의미) 폐기 핸들러를 발화시킨다 —
     // 그 외 실패는 기존 관용대로 useAudioRecorder 내부 catch(console.error)로 넘긴다.
     onAudioChunk: (blob, seq) =>
-      uploadAudioChunk(meetingId, blob, seq).catch(async (err) => {
-        if (await isMeetingRedactedError(err)) {
-          onMeetingRedactedRef.current()
-          return
-        }
-        throw err
-      }),
+      uploadAudioChunk(meetingId, blob, seq).catch(catchRedacted),
     onFinalize: () => {
-      uploadPromiseRef.current = finalizeAudio(meetingId).catch(async (err) => {
-        if (await isMeetingRedactedError(err)) {
-          onMeetingRedactedRef.current()
-          return
-        }
-        throw err
-      })
+      uploadPromiseRef.current = finalizeAudio(meetingId).catch(catchRedacted)
       return uploadPromiseRef.current
     },
   })
@@ -379,11 +387,11 @@ export function useLiveRecording(
         await startMeeting(meetingId)
       }
     } catch (err) {
-      const info = await httpErrorInfo(err)
+      const info = await notifyConflict(err)
       if (info?.status === 409 && info.code === 'recorder_conflict') {
         // 다른 기기가 녹음 점유(하트비트 신선) — 캡처 시작 전에 중단하고
-        // 기존 recordingDenied 경로 재사용(진행 중 캡처 폐기 + 읽기전용 뷰어 이동).
-        showStatus(info.message ?? '다른 기기에서 녹음이 진행 중입니다.', 5000)
+        // 기존 recordingDenied 경로 재사용(진행 중 캡처 폐기 + 읽기전용 뷰어 이동). 토스트는
+        // notifyConflict가 이미 표시했다.
         useRecordingSignalsStore.getState().setRecordingDenied(true)
         return
       }
@@ -437,10 +445,7 @@ export function useLiveRecording(
     pause()
     // 일시정지 중 요약 완전 금지 — flush 호출하지 않음. 서버에 일시정지 통지(cron 자동요약 차단).
     // 409(다른 기기 점유)는 사유만 표기 — 보통 진입 시 리다이렉트로 도달 불가한 방어 코드.
-    pauseMeeting(meetingId).catch(async (err) => {
-      const info = await httpErrorInfo(err)
-      if (info?.status === 409) showStatus(info.message ?? '다른 기기에서 녹음이 진행 중입니다.', 5000)
-    })
+    pauseMeeting(meetingId).catch(notifyConflict)
   }
 
   const handleResume = () => {
@@ -449,10 +454,7 @@ export function useLiveRecording(
       import('@tauri-apps/api/core').then(({ invoke }) => invoke('resume_recording')).catch(() => {})
     }
     resume()
-    resumeMeeting(meetingId).catch(async (err) => {
-      const info = await httpErrorInfo(err)
-      if (info?.status === 409) showStatus(info.message ?? '다른 기기에서 녹음이 진행 중입니다.', 5000)
-    })
+    resumeMeeting(meetingId).catch(notifyConflict)
   }
 
   // 종료 버튼: 라이브 기록 있으면 최종요약 여부 확인 다이얼로그, 없으면 바로 종료(skip).
@@ -514,12 +516,9 @@ export function useLiveRecording(
       try {
         await stopMeeting(meetingId, { skipSummary })
       } catch (err) {
-        const info = await httpErrorInfo(err)
-        if (info?.status === 409) {
-          // 다른 기기 점유 중 종료 거부 — 사유 표기 후 로컬 세션만 정리(finally).
-          showStatus(info.message ?? '다른 기기에서 녹음이 진행 중입니다.', 5000)
-          return
-        }
+        // 다른 기기 점유 중 종료 거부 — 사유 표기(notifyConflict) 후 로컬 세션만 정리(finally).
+        const info = await notifyConflict(err)
+        if (info?.status === 409) return
         throw err
       }
       // 최종 회의록 다시 로드

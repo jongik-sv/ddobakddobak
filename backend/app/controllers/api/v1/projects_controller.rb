@@ -14,7 +14,15 @@ module Api
         else
           current_user.projects.kept.includes(:creator)
         end
-        render json: { projects: projects.distinct.map { |p| project_json(p) } }
+        projects = projects.distinct.to_a
+        project_ids = projects.map(&:id)
+        # role/member_count/meeting_count을 프로젝트당 쿼리 대신 사전 배치 조회(3쿼리)로 대체.
+        # ⚠️ meeting_count는 원본대로 .kept 미적용(휴지통 포함 카운트) 유지.
+        roles = ProjectMembership.where(project_id: project_ids, user_id: current_user.id)
+                                  .pluck(:project_id, :role).to_h
+        member_counts = ProjectMembership.where(project_id: project_ids).group(:project_id).count
+        meeting_counts = Meeting.where(project_id: project_ids).group(:project_id).count
+        render json: { projects: projects.map { |p| project_json(p, roles[p.id], member_counts[p.id] || 0, meeting_counts[p.id] || 0) } }
       end
 
       def show
@@ -158,15 +166,17 @@ module Api
         params.permit(:name, :description, :icon_type, :icon_value, :color)
       end
 
-      def project_json(p)
+      # role/member_count/meeting_count은 index의 배치 조회 결과를 넘길 때만 사용,
+      # 그 외(show/create/update)는 nil로 두어 기존 per-record 쿼리 경로를 그대로 탄다.
+      def project_json(p, role = :unset, member_count = nil, meeting_count = nil)
         {
           id: p.id, name: p.name, description: p.description,
           icon_type: p.icon_type, icon_value: p.icon_value, color: p.color,
           personal: p.personal,
           owner: p.creator&.name,
-          role: p.project_memberships.find_by(user_id: current_user.id)&.role,
-          member_count: p.project_memberships.count,
-          meeting_count: p.meetings.count
+          role: role == :unset ? p.project_memberships.find_by(user_id: current_user.id)&.role : role,
+          member_count: member_count || p.project_memberships.count,
+          meeting_count: meeting_count || p.meetings.count
         }
       end
 

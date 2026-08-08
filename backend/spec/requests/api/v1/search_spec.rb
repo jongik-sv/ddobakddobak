@@ -146,6 +146,56 @@ RSpec.describe "Api::V1::Search", type: :request do
       end
     end
 
+    # SearchService: 필터가 하나도 없으면 SQLite에 넘기던 거대 IN(pluck한 전체 접근가능
+    # meeting_id) 목록을 FTS 서브쿼리(IN (SELECT id FROM meetings WHERE ...))로 대체했다.
+    # 결과 집합이 기존과 동일한지(여러 프로젝트·폴더에 걸친 회의를 모두 포함, soft-delete는
+    # 계속 제외) 회귀 방지용으로 고정한다.
+    context "무필터(전건) 검색 — pluck+거대 IN → FTS 서브쿼리 재작성 회귀 방지" do
+      let(:other_project) { create(:project, creator: user) }
+      let!(:other_membership) { create(:project_membership, user: user, project: other_project, role: "admin") }
+      let!(:folder) { create(:folder, project: project) }
+      let!(:meeting_in_folder) { create(:meeting, project: project, creator: user, folder: folder) }
+      let!(:meeting_other_project) { create(:meeting, project: other_project, creator: user) }
+      let!(:deleted_meeting) { create(:meeting, project: project, creator: user) }
+
+      before do
+        create(:transcript, meeting: meeting, content: "무필터매칭 기본 회의", speaker_label: "SPEAKER_00")
+        create(:transcript, meeting: meeting_in_folder, content: "무필터매칭 폴더 회의", speaker_label: "SPEAKER_00")
+        create(:transcript, meeting: meeting_other_project, content: "무필터매칭 다른 프로젝트 회의", speaker_label: "SPEAKER_00")
+        create(:transcript, meeting: deleted_meeting, content: "무필터매칭 삭제된 회의", speaker_label: "SPEAKER_00")
+        deleted_meeting.update_columns(deleted_at: Time.current)
+      end
+
+      it "필터 없이도 여러 프로젝트·폴더에 걸친 접근가능 회의를 모두 반환한다" do
+        get "/api/v1/search", params: { q: "무필터매칭" }
+        expect(response).to have_http_status(:ok)
+
+        json = response.parsed_body
+        meeting_ids = json["results"].map { |r| r["meeting_id"] }
+        expect(meeting_ids).to contain_exactly(meeting.id, meeting_in_folder.id, meeting_other_project.id)
+      end
+
+      it "soft-delete된 회의는 필터 없이도 계속 제외된다" do
+        get "/api/v1/search", params: { q: "무필터매칭" }
+
+        json = response.parsed_body
+        meeting_ids = json["results"].map { |r| r["meeting_id"] }
+        expect(meeting_ids).not_to include(deleted_meeting.id)
+      end
+
+      # 서브쿼리를 raw SQL에 문자열로 박아넣으면서, 필터 값(사용자 입력)에 리터럴 "?"가 들어있으면
+      # sanitize_sql_array의 순진한 gsub(/\?/) 바인딩과 충돌할 위험이 생긴다. status는
+      # ActiveRecord enum이 아니라 permit된 사용자 입력 문자열을 그대로 .where(status: ...)에
+      # 태우므로, 매치되는 값이 없어 빈 결과가 되더라도 500(바인드 개수 불일치)이 나면 안 된다.
+      it "필터 값에 물음표(?)가 섞여도 깨지지 않는다(바인드 매칭 오염 회귀 방지)" do
+        get "/api/v1/search", params: { q: "무필터매칭", status: "abc?def", speaker: "누구?" }
+        expect(response).to have_http_status(:ok)
+
+        json = response.parsed_body
+        expect(json["total"]).to eq(0)
+      end
+    end
+
     context "페이지네이션" do
       before do
         25.times do |i|

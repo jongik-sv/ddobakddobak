@@ -1,5 +1,5 @@
 # 폴더/프로젝트 챗 컨텍스트: 스코프 회의 ∩ 사용자 접근권 → 하이브리드(FTS+벡터 RRF) 발췌 + 목차 + history.
-# ⚠️ SearchService#accessible_meeting_ids는 Meeting.kept만 쓰므로 재사용 금지 — 여기선 accessible_by(user)로 인가한다.
+# ⚠️ SearchService#accessible_meeting_scope는 Meeting.kept만 쓰므로 재사용 금지 — 여기선 accessible_by(user)로 인가한다.
 # ⚠️ FTS·벡터 두 경로 모두 동일 meeting_ids로 필터 — privilege escalation 방지.
 class FolderChatContext
   MAX_CHARS   = 120_000

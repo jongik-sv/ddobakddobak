@@ -8,7 +8,8 @@ import { useMeetingStore } from '../stores/meetingStore'
 import { useFolderStore } from '../stores/folderStore'
 import { paramToFolder } from '../lib/folderNav'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
-import { BREAKPOINTS, IS_TAURI } from '../config'
+import { BREAKPOINTS } from '../config'
+import { confirmDialog } from '../lib/confirmDialog'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useMeetingsFolderView } from '../hooks/useMeetingsFolderView'
 import { BottomSheet } from '../components/ui/BottomSheet'
@@ -30,14 +31,7 @@ import ImportTransferButton from '../components/transfer/ImportTransferButton'
 import { folderName } from '../lib/meetingFormat'
 import { useUiStore } from '../stores/uiStore'
 import { VIEW_MODE_KEY, getStoredViewMode, type ViewMode, type SortField, type SortDirection } from './meetings/types'
-
-// D'Flow 전송 상태 필터 옵션 — 데스크톱 select와 모바일 BottomSheet select가 공유한다.
-const DFLOW_FILTER_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: '전체' },
-  { value: 'synced', label: "D'Flow 전송됨" },
-  { value: 'needs_resync', label: '재전송 필요' },
-  { value: 'not_sent', label: '미전송' },
-]
+import { DflowFilterSelect } from '../components/meeting/DflowFilterSelect'
 
 export default function MeetingsPage() {
   const navigate = useNavigate()
@@ -222,13 +216,7 @@ export default function MeetingsPage() {
   }, [fetchMeetings, currentPage])
 
   const handleDeleteMeeting = useCallback(async (meeting: Meeting) => {
-    let ok: boolean
-    if (IS_TAURI) {
-      const { confirm } = await import('@tauri-apps/plugin-dialog')
-      ok = await confirm(`"${meeting.title}" 회의를 휴지통으로 이동합니다. 계속할까요?`, { title: '회의 삭제', kind: 'warning' })
-    } else {
-      ok = window.confirm(`"${meeting.title}" 회의를 휴지통으로 이동합니다. 계속할까요?`)
-    }
+    const ok = await confirmDialog(`"${meeting.title}" 회의를 휴지통으로 이동합니다. 계속할까요?`, { title: '회의 삭제', kind: 'warning' })
     if (!ok) return
     try {
       await deleteMeeting(meeting.id)
@@ -310,16 +298,11 @@ export default function MeetingsPage() {
           </Tooltip>
           {/* D'Flow 전송 상태 필터 — 연동 비활성이면 숨김 */}
           {dflowEnabled && (
-            <select
+            <DflowFilterSelect
               value={dflowFilter}
-              onChange={(e) => setDflowFilter(e.target.value)}
-              aria-label="D'Flow 전송 상태"
+              onChange={setDflowFilter}
               className="ml-2 rounded-md border px-3 py-1.5 text-sm bg-card text-foreground border-border outline-none focus:ring-2 focus:ring-ring"
-            >
-              {DFLOW_FILTER_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+            />
           )}
         </div>
       )}
@@ -451,16 +434,11 @@ export default function MeetingsPage() {
             {dflowEnabled && (
               <div>
                 <h3 className="text-sm font-medium mb-2">D'Flow 전송 상태</h3>
-                <select
+                <DflowFilterSelect
                   value={dflowFilter}
-                  onChange={(e) => setDflowFilter(e.target.value)}
-                  aria-label="D'Flow 전송 상태"
+                  onChange={setDflowFilter}
                   className="w-full rounded-md border px-3 py-2 text-sm bg-card text-foreground border-border outline-none focus:ring-2 focus:ring-ring"
-                >
-                  {DFLOW_FILTER_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                />
               </div>
             )}
 

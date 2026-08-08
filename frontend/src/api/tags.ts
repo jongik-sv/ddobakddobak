@@ -18,15 +18,3 @@ export async function createTag(data: {
   const res = await apiClient.post('tags', { json: data }).json<{ tag: Tag }>()
   return res.tag
 }
-
-export async function updateTag(
-  id: number,
-  data: { name?: string; color?: string },
-): Promise<Tag> {
-  const res = await apiClient.patch(`tags/${id}`, { json: data }).json<{ tag: Tag }>()
-  return res.tag
-}
-
-export async function deleteTag(id: number): Promise<void> {
-  await apiClient.delete(`tags/${id}`)
-}

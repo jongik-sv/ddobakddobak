@@ -3,7 +3,10 @@ module MeetingSerializable
 
   private
 
-  def meeting_json(meeting, full: false)
+  # collaborator_batch: index/scheduled처럼 meeting_json을 회의마다 반복 호출하는 목록 응답에서만
+  # 넘긴다(collaborator_editable_batch 참조). nil이면 editable_by?가 기존 라이브 쿼리 경로를 그대로
+  # 타므로 단건 show/update 등은 동작·쿼리 패턴 모두 이전과 동일하다.
+  def meeting_json(meeting, full: false, collaborator_batch: nil)
     attachment_counts = meeting.meeting_attachments.loaded? ?
       meeting.meeting_attachments.group_by(&:category).transform_values(&:size) :
       meeting.meeting_attachments.group(:category).count
@@ -25,7 +28,9 @@ module MeetingSerializable
       locked: meeting.locked?,
       locked_at: meeting.locked_at,
       important: meeting.important,
-      editable: meeting.editable_by?(current_user),
+      editable: collaborator_batch ?
+        meeting.editable_by?(current_user, collaborator_meeting_ids: collaborator_batch[:meeting_ids], collaborator_folder_ids: collaborator_batch[:folder_ids]) :
+        meeting.editable_by?(current_user),
       brief_summary: meeting.brief_summary,
       source: meeting.source,
       transcription_progress: meeting.transcription_progress,
@@ -195,6 +200,41 @@ module MeetingSerializable
       Meeting.unfinished_transcription_queue_jobs
     rescue ActiveRecord::StatementInvalid
       []
+    end
+  end
+
+  # 목록(index/scheduled) 직렬화 전 1회만 조회해 meeting_json 반복 호출 중 Meeting#editable_by?가
+  # 회의마다 던지던 MeetingCollaborator.exists?(1쿼리) + Folder#collaborator?(조상체인 쿼리) N+1을
+  # 없앤다. transcription_queue_jobs_snapshot과 동일하게 컨트롤러 인스턴스(=요청) 단위로 메모이즈.
+  def collaborator_editable_batch
+    return @collaborator_editable_batch if defined?(@collaborator_editable_batch)
+    @collaborator_editable_batch = {
+      meeting_ids: MeetingCollaborator.where(user_id: current_user&.id).pluck(:meeting_id).to_set,
+      folder_ids: collaborator_folder_ids_snapshot
+    }
+  end
+
+  # Folder#collaborator?(직접 지정 + 조상 상속)와 동일한 규칙을 폴더 전체 1회 로드로 배치 평가한다.
+  # FolderCollaborator가 직접 가리키는 폴더들에서 시작해 자손 방향으로 전개한다 — 어떤 폴더 F가
+  # collaborator?(F) == true 인 것은 "F 자신 또는 F의 조상 중 하나가 직접 지정 대상"과 동치이므로,
+  # 뒤집으면 "직접 지정된 폴더 D의 자기자신+모든 자손"의 합집합과 같다. Folder.visible_folder_ids와
+  # 같은 이유로 kept 필터 없이 전 폴더(trashed 포함)를 로드한다 — ancestor_records/belongs_to :folder
+  # 모두 deleted_at으로 거르지 않으므로, 여기서 걸러버리면 라이브 쿼리 경로와 결과가 어긋난다.
+  def collaborator_folder_ids_snapshot
+    return @collaborator_folder_ids_snapshot if defined?(@collaborator_folder_ids_snapshot)
+    direct_ids = FolderCollaborator.where(user_id: current_user&.id).pluck(:folder_id)
+    @collaborator_folder_ids_snapshot = if direct_ids.empty?
+      Set.new
+    else
+      children_by_parent = Folder.all.to_a.group_by(&:parent_id)
+      result = Set.new
+      stack = direct_ids.dup
+      until stack.empty?
+        fid = stack.pop
+        next unless result.add?(fid) # 이미 방문 — 사이클/중복 가드
+        (children_by_parent[fid] || []).each { |child| stack << child.id }
+      end
+      result
     end
   end
 

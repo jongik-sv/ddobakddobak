@@ -96,7 +96,7 @@ class SummaryZipExporter
       seen << folder.id
       # C1: 회의 read 인가 — Meeting.accessible_by(user)로 필터(목록 필터와 동일 규칙,
       # meeting.rb:183). 프로젝트 멤버라도 shared:false 타인 회의는 여기서 제외된다.
-      folder.meetings.kept.accessible_by(@current_user).each { |m| pairs << [m, parts] }
+      folder.meetings.kept.accessible_by(@current_user).includes(:summaries).each { |m| pairs << [m, parts] }
       folder.children.kept.each { |c| walk.call(c, parts + [c.name]) }
     end
     walk.call(@folder, [])
@@ -110,7 +110,7 @@ class SummaryZipExporter
     return [] if @project.trashed?
 
     # C1: 회의 read 인가 — folder_scope_pairs 와 동일하게 accessible_by 필터.
-    @project.meetings.kept.accessible_by(@current_user).includes(:folder).filter_map do |meeting|
+    @project.meetings.kept.accessible_by(@current_user).includes(:folder, :summaries).filter_map do |meeting|
       # 폴더 체인에 휴지통 폴더가 있으면 제외 — 폴더 스코프의 children.kept DFS와
       # 대칭 (kept 회의가 trashed 폴더 아래 남는 상태는 실재 가능: Trash::Restorer 선례)
       next if meeting.folder && ([meeting.folder] + meeting.folder.ancestor_records).any?(&:trashed?)

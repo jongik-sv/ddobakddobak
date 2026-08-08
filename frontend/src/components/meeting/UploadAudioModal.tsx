@@ -4,6 +4,7 @@ import type { Meeting, SummaryVerbosity } from '../../api/meetings'
 import { useProjectStore } from '../../stores/projectStore'
 import { IS_TAURI, IS_MOBILE } from '../../config'
 import { errorToMessage } from '../../lib/errors'
+import { formatSize } from '../../lib/formatBytes'
 import { Dialog } from '../ui/Dialog'
 import { MeetingTypeSelector } from './MeetingListUI'
 import { VERBOSITY_OPTIONS } from './SummaryOptionsControl'
@@ -109,11 +110,6 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
     } finally {
       setLoading(false)
     }
-  }
-
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   }
 
   return (

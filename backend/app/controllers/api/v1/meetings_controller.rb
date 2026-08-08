@@ -90,7 +90,7 @@ module Api
                         .offset((pagination_page - 1) * pagination_per)
 
         render json: {
-          meetings: meetings.map { |m| meeting_json(m) },
+          meetings: meetings.map { |m| meeting_json(m, collaborator_batch: collaborator_editable_batch) },
           meta: { total: total, page: pagination_page, per: pagination_per, status_counts: status_counts, scheduled_count: scheduled_count }
         }
       end
@@ -107,7 +107,7 @@ module Api
                           .order(:scheduled_start_time)
 
         render json: {
-          meetings: meetings.map { |m| meeting_json(m).merge(missed: m.scheduled_start_time < missed_before) }
+          meetings: meetings.map { |m| meeting_json(m, collaborator_batch: collaborator_editable_batch).merge(missed: m.scheduled_start_time < missed_before) }
         }
       end
 
@@ -258,60 +258,11 @@ module Api
         end
 
         attrs = {}
-        attrs[:title] = params[:title] if params.key?(:title)
-        attrs[:folder_id] = params[:folder_id] if params.key?(:folder_id)
-        attrs[:meeting_type] = params[:meeting_type] if params.key?(:meeting_type)
-        attrs[:memo] = params[:memo] if params.key?(:memo)
-        attrs[:brief_summary] = params[:brief_summary] if params.key?(:brief_summary)
-        attrs[:attendees] = params[:attendees] if params.key?(:attendees)
-        attrs[:expected_participants] = params[:expected_participants].presence&.to_i if params.key?(:expected_participants)
-        attrs[:summary_verbosity] = params[:summary_verbosity] if params.key?(:summary_verbosity)
-        # 회의별 요약 추가 지시(자유 텍스트). 빈 문자열은 nil 로 정규화(해제)해 length 검증 노이즈를 피한다.
-        if params.key?(:summary_custom_prompt)
-          attrs[:summary_custom_prompt] = params[:summary_custom_prompt].to_s.strip.presence
-        end
-        if params.key?(:summary_interval_sec)
-          # 음이 아닌 정수(문자열/숫자)만 반영. ""/null/음수/비숫자는 무시 — NOT NULL 컬럼이라 500 방지.
-          interval = params[:summary_interval_sec]
-          attrs[:summary_interval_sec] = interval.to_i if interval.to_s.match?(/\A\d+\z/)
-        end
-        attrs[:important] = ActiveModel::Type::Boolean.new.cast(params[:important]) if params.key?(:important)
-        if params.key?(:summary_restructure)
-          # cast 가 nil 을 주는 입력(""/null)은 무시 — NOT NULL 컬럼이라 500 으로 터진다
-          restructure = ActiveModel::Type::Boolean.new.cast(params[:summary_restructure])
-          attrs[:summary_restructure] = restructure unless restructure.nil?
-        end
-        # shared 변경은 소유자/admin 만 가능 (비소유 host 의 toggle 무시)
-        attrs[:shared] = ActiveModel::Type::Boolean.new.cast(params[:shared]) if params.key?(:shared) && (meeting_admin? || @meeting.owner?(current_user))
-        # 이전 회의 참고: 접근 가능 + 같은 폴더만 허용. 빈 값/비접근/타폴더는 nil(해제)로 정규화.
-        # 같은 요청에서 폴더도 옮기면 옮긴 폴더 기준, 아니면 현재 폴더 기준.
-        if params.key?(:previous_meeting_id)
-          target_folder = params.key?(:folder_id) ? params[:folder_id].presence&.to_i : @meeting.folder_id
-          attrs[:previous_meeting_id] = accessible_previous_meeting_id(params[:previous_meeting_id], target_folder)
-        end
-
-        if params.key?(:tag_ids)
-          tag_ids = Array(params[:tag_ids]).map(&:to_i)
-          @meeting.tag_ids = tag_ids
-        end
-
-        # 예약 필드는 pending 회의에서만 편집 가능. 비pending(녹음중/완료 등)은 조용히 무시한다
-        # — 이미 시작/종료된 회의에 stray scheduled_start_time 을 심어 자동시작 대상이 되는 것 방지.
-        # create 의 parse/normalize 헬퍼를 재사용한다(중복 구현 금지).
-        if @meeting.status == "pending" && params.key?(:scheduled_start_time)
-          st = parse_scheduled_start_time(params[:scheduled_start_time])
-          attrs[:scheduled_start_time] = st
-          if st.nil?
-            # 예약 해제: 부속 필드(모드·반복 규칙)도 함께 정리한다.
-            attrs[:auto_start_mode] = nil
-            attrs[:recurrence_rule] = nil
-          else
-            attrs[:auto_start_mode] = params[:auto_start_mode].presence if params.key?(:auto_start_mode)
-            attrs[:recurrence_rule] = normalize_recurrence_rule(params[:recurrence_rule]) if params.key?(:recurrence_rule)
-          end
-          # 예약 시각 변경(설정·해제 모두): 놓침/닫힘 상태를 리셋해 다시 스케줄 대상이 되게 한다.
-          attrs[:schedule_dismissed_at] = nil
-        end
+        attrs.merge!(simple_attrs_for_update)
+        attrs.merge!(summary_attrs_for_update)
+        attrs.merge!(access_attrs_for_update)
+        apply_tag_ids_for_update!
+        attrs.merge!(scheduling_attrs_for_update)
 
         if @meeting.update(attrs)
           render json: { meeting: meeting_json(@meeting) }
@@ -588,24 +539,11 @@ module Api
                                  .reject { |c| c[:from].blank? }
         return render json: { error: "No valid corrections provided" }, status: :unprocessable_entity if corrections.empty?
 
-        before_active_notes = @meeting.current_notes_markdown.to_s
-
         entries = corrections.map { |c| { from: c[:from], to: c[:to], match_type: "literal" } }
-        corrected_count = MeetingGlossaryApplier.new(@meeting, entries).apply_all!
-        @meeting.reconcile_embeddings!
+        corrected_notes, corrected_count = apply_glossary_entries!(entries)
 
         # D2=A: 적용한 교정을 회의 사전에 자동 영속(upsert). best-effort.
         persist_corrections_to_meeting_glossary(corrections)
-
-        corrected_notes = @meeting.reload.current_notes_markdown.to_s
-        if corrected_notes != before_active_notes
-          @meeting.update!(last_user_edit_at: Time.current)
-          @meeting.refresh_brief_summary!(corrected_notes)
-          ActionCable.server.broadcast(@meeting.transcription_stream, {
-            type: "meeting_notes_update",
-            notes_markdown: corrected_notes
-          })
-        end
 
         render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
       end
@@ -628,19 +566,7 @@ module Api
 
       def reapply_glossary
         entries = GlossaryResolver.for(@meeting)
-        before_active_notes = @meeting.current_notes_markdown.to_s
-        corrected_count = MeetingGlossaryApplier.new(@meeting, entries).apply_all!
-        @meeting.reconcile_embeddings!
-
-        corrected_notes = @meeting.reload.current_notes_markdown.to_s
-        if corrected_notes != before_active_notes
-          @meeting.update!(last_user_edit_at: Time.current)
-          @meeting.refresh_brief_summary!(corrected_notes)
-          ActionCable.server.broadcast(@meeting.transcription_stream, {
-            type: "meeting_notes_update",
-            notes_markdown: corrected_notes
-          })
-        end
+        corrected_notes, corrected_count = apply_glossary_entries!(entries)
 
         render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
       end
@@ -655,19 +581,7 @@ module Api
         end
 
         payload = [{ from: entry.from_text, to: entry.to_text, match_type: entry.match_type }]
-        before_active_notes = @meeting.current_notes_markdown.to_s
-        corrected_count = MeetingGlossaryApplier.new(@meeting, payload).apply_all!
-        @meeting.reconcile_embeddings!
-
-        corrected_notes = @meeting.reload.current_notes_markdown.to_s
-        if corrected_notes != before_active_notes
-          @meeting.update!(last_user_edit_at: Time.current)
-          @meeting.refresh_brief_summary!(corrected_notes)
-          ActionCable.server.broadcast(@meeting.transcription_stream, {
-            type: "meeting_notes_update",
-            notes_markdown: corrected_notes
-          })
-        end
+        corrected_notes, corrected_count = apply_glossary_entries!(payload)
 
         render json: { notes_markdown: corrected_notes, corrected_transcripts: corrected_count }
       end
@@ -970,6 +884,84 @@ module Api
         (raw.respond_to?(:to_unsafe_h) ? raw.to_unsafe_h : raw).to_json
       end
 
+      # update 액션: 단순 필드(1:1 params 매핑, 검증/정규화 거의 없음).
+      def simple_attrs_for_update
+        attrs = {}
+        attrs[:title] = params[:title] if params.key?(:title)
+        attrs[:folder_id] = params[:folder_id] if params.key?(:folder_id)
+        attrs[:meeting_type] = params[:meeting_type] if params.key?(:meeting_type)
+        attrs[:memo] = params[:memo] if params.key?(:memo)
+        attrs[:brief_summary] = params[:brief_summary] if params.key?(:brief_summary)
+        attrs[:attendees] = params[:attendees] if params.key?(:attendees)
+        attrs[:expected_participants] = params[:expected_participants].presence&.to_i if params.key?(:expected_participants)
+        attrs[:important] = ActiveModel::Type::Boolean.new.cast(params[:important]) if params.key?(:important)
+        attrs
+      end
+
+      # update 액션: 요약 관련 필드. 빈 문자열/nil 캐스트는 NOT NULL 컬럼 500 방지를 위해 무시(해제는 별도 규칙).
+      def summary_attrs_for_update
+        attrs = {}
+        attrs[:summary_verbosity] = params[:summary_verbosity] if params.key?(:summary_verbosity)
+        # 회의별 요약 추가 지시(자유 텍스트). 빈 문자열은 nil 로 정규화(해제)해 length 검증 노이즈를 피한다.
+        if params.key?(:summary_custom_prompt)
+          attrs[:summary_custom_prompt] = params[:summary_custom_prompt].to_s.strip.presence
+        end
+        if params.key?(:summary_interval_sec)
+          # 음이 아닌 정수(문자열/숫자)만 반영. ""/null/음수/비숫자는 무시 — NOT NULL 컬럼이라 500 방지.
+          interval = params[:summary_interval_sec]
+          attrs[:summary_interval_sec] = interval.to_i if interval.to_s.match?(/\A\d+\z/)
+        end
+        if params.key?(:summary_restructure)
+          # cast 가 nil 을 주는 입력(""/null)은 무시 — NOT NULL 컬럼이라 500 으로 터진다
+          restructure = ActiveModel::Type::Boolean.new.cast(params[:summary_restructure])
+          attrs[:summary_restructure] = restructure unless restructure.nil?
+        end
+        attrs
+      end
+
+      # update 액션: 접근/공유 관련 필드(권한 체크 포함).
+      def access_attrs_for_update
+        attrs = {}
+        # shared 변경은 소유자/admin 만 가능 (비소유 host 의 toggle 무시)
+        attrs[:shared] = ActiveModel::Type::Boolean.new.cast(params[:shared]) if params.key?(:shared) && (meeting_admin? || @meeting.owner?(current_user))
+        # 이전 회의 참고: 접근 가능 + 같은 폴더만 허용. 빈 값/비접근/타폴더는 nil(해제)로 정규화.
+        # 같은 요청에서 폴더도 옮기면 옮긴 폴더 기준, 아니면 현재 폴더 기준.
+        if params.key?(:previous_meeting_id)
+          target_folder = params.key?(:folder_id) ? params[:folder_id].presence&.to_i : @meeting.folder_id
+          attrs[:previous_meeting_id] = accessible_previous_meeting_id(params[:previous_meeting_id], target_folder)
+        end
+        attrs
+      end
+
+      # update 액션: 태그는 has_many association 을 통해 별도 반영(attrs 해시로 update 불가) — 부수효과.
+      def apply_tag_ids_for_update!
+        return unless params.key?(:tag_ids)
+        tag_ids = Array(params[:tag_ids]).map(&:to_i)
+        @meeting.tag_ids = tag_ids
+      end
+
+      # update 액션: 예약 필드는 pending 회의에서만 편집 가능. 비pending(녹음중/완료 등)은 조용히 무시한다
+      # — 이미 시작/종료된 회의에 stray scheduled_start_time 을 심어 자동시작 대상이 되는 것 방지.
+      # create 의 parse/normalize 헬퍼를 재사용한다(중복 구현 금지).
+      def scheduling_attrs_for_update
+        return {} unless @meeting.status == "pending" && params.key?(:scheduled_start_time)
+
+        attrs = {}
+        st = parse_scheduled_start_time(params[:scheduled_start_time])
+        attrs[:scheduled_start_time] = st
+        if st.nil?
+          # 예약 해제: 부속 필드(모드·반복 규칙)도 함께 정리한다.
+          attrs[:auto_start_mode] = nil
+          attrs[:recurrence_rule] = nil
+        else
+          attrs[:auto_start_mode] = params[:auto_start_mode].presence if params.key?(:auto_start_mode)
+          attrs[:recurrence_rule] = normalize_recurrence_rule(params[:recurrence_rule]) if params.key?(:recurrence_rule)
+        end
+        # 예약 시각 변경(설정·해제 모두): 놓침/닫힘 상태를 리셋해 다시 스케줄 대상이 되게 한다.
+        attrs[:schedule_dismissed_at] = nil
+        attrs
+      end
+
       # 이전 회의 참고 id 정규화: 현재 사용자가 열람 가능 + 대상과 같은 폴더인 회의만 통과.
       # 그 외(빈 값·비접근·다른 폴더)는 nil. 셀렉터가 같은 폴더만 보여주므로 정상 경로는 통과,
       # 위변조·타폴더 id 만 걸러진다. target_folder_id 는 정규화된 정수 또는 nil(루트).
@@ -1069,6 +1061,27 @@ module Api
           owner_type: entry.owner_type,
           owner_id: entry.owner_id
         }
+      end
+
+      # feedback/reapply_glossary/apply_glossary_entry 공통 후반부: 교정 적용 → 임베딩 정합
+      # → 재조회 → 실제로 변경됐을 때만 편집시각 갱신·요약 캐시 갱신·구독자 브로드캐스트.
+      # 반환값 [corrected_notes, corrected_count] 를 각 액션이 그대로 render 한다.
+      def apply_glossary_entries!(entries)
+        before_active_notes = @meeting.current_notes_markdown.to_s
+        corrected_count = MeetingGlossaryApplier.new(@meeting, entries).apply_all!
+        @meeting.reconcile_embeddings!
+
+        corrected_notes = @meeting.reload.current_notes_markdown.to_s
+        if corrected_notes != before_active_notes
+          @meeting.update!(last_user_edit_at: Time.current)
+          @meeting.refresh_brief_summary!(corrected_notes)
+          ActionCable.server.broadcast(@meeting.transcription_stream, {
+            type: "meeting_notes_update",
+            notes_markdown: corrected_notes
+          })
+        end
+
+        [corrected_notes, corrected_count]
       end
 
       def persist_corrections_to_meeting_glossary(corrections)

@@ -16,6 +16,18 @@ export function filenameFromDisposition(disposition: string | null): string | nu
   return match?.[1] ?? null
 }
 
+/**
+ * ky/fetch 응답의 Content-Disposition 에서 파일명을 읽어(없으면 fallback) blob 을
+ * 다운로드까지 트리거하는 공용 4단계(헤더 읽기 → 파일명 결정 → blob 변환 → 다운로드) 헬퍼.
+ * export/export_summaries 계열 엔드포인트가 공유한다.
+ */
+export async function downloadWithDisposition(response: Response, fallbackFilename: string): Promise<void> {
+  const disposition = response.headers.get('content-disposition')
+  const filename = filenameFromDisposition(disposition) ?? fallbackFilename
+  const blob = await response.blob()
+  await downloadBlob(blob, filename)
+}
+
 export interface ExportOptions {
   includeAudio: boolean
   /** Content-Disposition 가 없을 때 쓸 폴백 파일명 베이스(보통 프로젝트 이름). */
@@ -33,10 +45,7 @@ export async function exportProject(projectId: number, opts: ExportOptions): Pro
     // 음성 포함 대용량 export 는 처리에 오래 걸려 ky 기본 타임아웃(10s)에 abort 될 수 있어 해제.
     timeout: false,
   })
-  const disposition = response.headers.get('content-disposition')
-  const filename = filenameFromDisposition(disposition) ?? `${opts.fallbackName}-export.ddobak.tgz`
-  const blob = await response.blob()
-  await downloadBlob(blob, filename)
+  await downloadWithDisposition(response, `${opts.fallbackName}-export.ddobak.tgz`)
 }
 
 export interface ImportProjectResult {

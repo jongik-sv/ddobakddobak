@@ -16,6 +16,7 @@ import {
   toApiBlockType,
   extractTextContent,
 } from '../lib/blockAdapter'
+import { useDebouncedCallback } from './useDebouncedCallback'
 
 type CustomBlock = {
   id: string
@@ -140,12 +141,6 @@ export function useBlockSync({
 
   // 이전 블록 스냅샷
   const prevBlocksRef = useRef<CustomBlock[]>([])
-
-  // 디바운스 타이머
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // 현재 블록 (디바운스 flush용)
-  const pendingBlocksRef = useRef<CustomBlock[]>([])
 
   // 초기 API 블록 순서 보관 (첫 onChange 시 순서 기반 UUID ↔ DB id 매핑 구성에 사용)
   const initialApiBlocksRef = useRef<ApiBlock[]>([])
@@ -283,6 +278,10 @@ export function useBlockSync({
     [meetingId]
   )
 
+  // 디바운스: flushChanges를 예약 시점 인자(currentBlocks)로 delayMs 후 실행.
+  // 언마운트 시 보류 타이머 정리도 훅이 담당한다(구 305-312의 cleanup effect와 동일 동작).
+  const { run: scheduleFlush } = useDebouncedCallback(flushChanges, debounceMs)
+
   /**
    * MeetingEditor의 onChange에 연결할 핸들러
    */
@@ -293,28 +292,10 @@ export function useBlockSync({
         buildInitialMapping(currentBlocks)
       }
 
-      pendingBlocksRef.current = currentBlocks
-
-      // 디바운스 타이머 리셋
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current)
-      }
-
-      debounceTimerRef.current = setTimeout(() => {
-        flushChanges(pendingBlocksRef.current)
-      }, debounceMs)
+      scheduleFlush(currentBlocks)
     },
-    [buildInitialMapping, flushChanges, debounceMs]
+    [buildInitialMapping, scheduleFlush]
   )
-
-  // 언마운트 시 타이머 정리
-  useEffect(() => {
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current)
-      }
-    }
-  }, [])
 
   return {
     isLoading,

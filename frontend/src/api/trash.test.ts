@@ -38,24 +38,6 @@ describe('listTrash', () => {
     expect(get).toHaveBeenCalledWith('trash')
     expect(result).toEqual(items)
   })
-
-  it('falls back to res.data when no items key', async () => {
-    const items = [
-      {
-        type: 'folder',
-        id: 2,
-        title: '폴더',
-        deleted_at: '2026-06-18T00:00:00Z',
-        deleted_by_id: 1,
-        trash_group_id: 'g2',
-      },
-    ]
-    get.mockReturnValue({ json: () => Promise.resolve(items) })
-
-    const result = await listTrash()
-
-    expect(result).toEqual(items)
-  })
 })
 
 describe('restoreTrashItem', () => {

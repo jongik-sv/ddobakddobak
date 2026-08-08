@@ -1,5 +1,6 @@
 import type { MeetingExportData } from '../api/meetings'
 import { stripCitationMarkers } from './citationMarkers'
+import { isTableSeparatorRow, parseTableCells } from './markdownBlocks'
 
 // ── Public API ──────────────────────────────────
 
@@ -53,16 +54,6 @@ export async function generatePdf(data: MeetingExportData): Promise<Blob> {
   } finally {
     document.body.removeChild(wrapper)
   }
-}
-
-/**
- * 회의 ID와 날짜로 PDF 파일명을 생성한다.
- * 형식: meeting-{id}-{YYYY-MM-DD}.pdf
- */
-export function buildPdfFilename(meetingId: number, date?: string | Date): string {
-  const d = date ? new Date(date) : new Date()
-  const dateStr = d.toISOString().slice(0, 10)
-  return `meeting-${meetingId}-${dateStr}.pdf`
 }
 
 // ── Mermaid SVG 렌더링 ─────────────────────────
@@ -361,7 +352,7 @@ function renderTranscripts(transcripts: MeetingExportData['transcripts']): strin
  *        Mermaid SVG 렌더링, 테이블, 불릿/번호 리스트, 체크박스,
  *        인용, 수평선, 링크, 이미지, 취소선
  */
-function markdownToHtml(md: string): string {
+export function markdownToHtml(md: string): string {
   const lines = md.split('\n')
   const output: string[] = []
   let i = 0
@@ -473,16 +464,12 @@ function markdownToHtml(md: string): string {
       while (i < lines.length && lines[i]!.trimStart().startsWith('|')) {
         const row = lines[i]!.trim()
         // separator row (|---|---|)
-        if (/^\|[\s:]*-{3,}[\s:]*(\|[\s:]*-{3,}[\s:]*)*\|?\s*$/.test(row)) {
+        if (isTableSeparatorRow(row)) {
           hasHeader = tableRows.length > 0
           i++
           continue
         }
-        const cells = row
-          .split('|')
-          .map((c) => c.trim())
-          .filter((_, idx, arr) => !(idx === 0 && arr[0] === '') && !(idx === arr.length - 1 && arr[arr.length - 1] === ''))
-        tableRows.push(cells)
+        tableRows.push(parseTableCells(row))
         i++
       }
 

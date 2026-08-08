@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import MeetingPage from './MeetingPage'
 
 // ──────────────────────────────────────────────
@@ -112,7 +112,9 @@ vi.mock('../hooks/useAudioPlayer', () => ({
 }))
 
 vi.mock('../components/meeting/AudioPlayer', () => ({
-  AudioPlayer: () => <div data-testid="audio-player" />,
+  AudioPlayer: (props: { seekMs?: number | null }) => (
+    <div data-testid="audio-player" data-seek-ms={props.seekMs ?? ''} />
+  ),
 }))
 
 vi.mock('../components/meeting/MiniAudioPlayer', () => ({
@@ -226,8 +228,9 @@ vi.mock('../hooks/useMemoEditor', () => ({
   }),
 }))
 
+let mockIsDesktop = true
 vi.mock('../hooks/useMediaQuery', () => ({
-  useMediaQuery: vi.fn(() => true), // 데스크톱 모드 고정
+  useMediaQuery: () => mockIsDesktop,
   BREAKPOINTS: {
     sm: '(min-width: 640px)',
     md: '(min-width: 768px)',
@@ -264,9 +267,17 @@ import { useProjectStore } from '../stores/projectStore'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useUiStore } from '../stores/uiStore'
 
-function renderPage(meetingId = '1') {
+// 테스트에서 URL 쿼리스트링 상태를 관찰하기 위한 프로브 — MemoryRouter는 실제
+// window.location을 건드리지 않으므로 useLocation()으로 직접 읽어 DOM에 노출한다.
+function LocationSearchProbe() {
+  const location = useLocation()
+  return <div data-testid="location-search" data-search={location.search} />
+}
+
+function renderPage(meetingId = '1', search = '') {
   return render(
-    <MemoryRouter initialEntries={[`/meetings/${meetingId}`]}>
+    <MemoryRouter initialEntries={[`/meetings/${meetingId}${search}`]}>
+      <LocationSearchProbe />
       <Routes>
         <Route path="/meetings/:id" element={<MeetingPage />} />
       </Routes>
@@ -277,6 +288,7 @@ function renderPage(meetingId = '1') {
 describe('MeetingPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockIsDesktop = true
     vi.mocked(meetingsApi.getMeeting).mockResolvedValue(mockMeetingBase)
     vi.mocked(meetingsApi.getSummary).mockResolvedValue({
       id: 1,
@@ -402,6 +414,18 @@ describe('MeetingPage', () => {
     expect(screen.queryByRole('button', { name: '패널 펼치기' })).not.toBeInTheDocument()
 
     useUiStore.setState({ memoVisible: true }) // 다른 테스트로 상태 오염 방지
+  })
+
+  // 데스크톱/모바일 두 분기가 MeetingActionHeader에 넘기는 공통 prop(메모 스프레드 추출) 회귀 방지.
+  // isDesktop=false(모바일)일 때도 제목·잠금 토글 등 동일 prop이 그대로 전달되어야 한다.
+  it('isDesktop=false(모바일)에서도 MeetingActionHeader에 제목·잠금 토글이 정상 전달된다', async () => {
+    mockIsDesktop = false
+    renderPage()
+
+    await screen.findByText('테스트 회의')
+
+    // 잠금 토글 버튼(canEdit=true, onToggleLock 전달)이 모바일 분기에서도 노출된다.
+    expect(screen.getByRole('button', { name: /잠금/ })).toBeInTheDocument()
   })
 
   // idea 44: editable=false(비소유자)면 잠금 여부와 무관하게 전사·화자·AI요약이 readOnly여야 한다.
@@ -617,6 +641,30 @@ describe('MeetingPage', () => {
     await waitFor(() => {
       expect(meetingsApi.getMeeting).toHaveBeenCalledWith(1)
       expect(meetingsApi.getSummary).toHaveBeenCalledWith(1)
+    })
+  })
+
+  // 전역 검색에서 ?q=<query>와 함께 진입하면 회의내 검색이 1회 자동 실행되고,
+  // 적용 후 URL에서 q가 제거되어야 한다(새로고침/뒤로가기 재발동 방지).
+  it('?q= 로 진입하면 회의내 검색이 자동 실행되고 URL에서 q가 제거된다', async () => {
+    renderPage('1', '?q=테스트검색어')
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('전사·요약 검색')).toHaveValue('테스트검색어')
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('location-search').getAttribute('data-search')).not.toContain('q=')
+    })
+  })
+
+  // 폴더/프로젝트 챗 인용 클릭으로 ?t=<ms>와 함께 진입하면 오디오 준비 후 1회 자동 seek되고,
+  // 적용 후 URL에서 t가 제거되어야 한다.
+  it('?t=<ms> 로 진입하면 오디오가 자동 seek되고 URL에서 t가 제거된다', async () => {
+    renderPage('1', '?t=5000')
+    await waitFor(() => {
+      expect(screen.getByTestId('audio-player')).toHaveAttribute('data-seek-ms', '5000')
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('location-search').getAttribute('data-search')).not.toContain('t=')
     })
   })
 

@@ -118,6 +118,118 @@ async def transcribe(request: TranscribeRequest, http_request: Request) -> Trans
     )
 
 
+def _init_file_progress(audio_bytes: bytes, meeting_id) -> int:
+    """총 길이(ms) 계산 + 진행 레지스트리를 0/total 로 초기화(폴러가 즉시 total을 받도록).
+
+    Returns:
+        total_duration_ms
+    """
+    total_duration_ms = int(len(audio_bytes) / (_SAMPLE_RATE * _BYTES_PER_SAMPLE) * 1000)
+    logger.info(f"[transcribe-file] 파일 크기={len(audio_bytes)} bytes, 길이={total_duration_ms}ms")
+    _set_file_progress(meeting_id, 0, total_duration_ms)
+    return total_duration_ms
+
+
+async def _select_file_adapter(adapter):
+    """배치 STT 엔진 결정, 실시간 엔진과 다르면 별도 어댑터 로드.
+
+    Returns:
+        (file_adapter, file_engine, loaded_here, load_elapsed_sec)
+    """
+    from app.stt.factory import (
+        auto_select_engine,
+        create_stt_adapter,
+        resolve_file_engine,
+    )
+    file_engine = resolve_file_engine(settings.STT_FILE_ENGINE)
+    realtime_engine = settings.STT_ENGINE
+    if realtime_engine == "auto":
+        realtime_engine = auto_select_engine()
+
+    file_adapter = adapter
+    loaded_here = False
+    t_load = time.monotonic()
+    if file_engine != realtime_engine:
+        logger.info("[transcribe-file] 배치 STT 엔진 로드: %s (실시간=%s)", file_engine, realtime_engine)
+        file_adapter = create_stt_adapter(file_engine)
+        await file_adapter.load_model()
+        loaded_here = True
+    return file_adapter, file_engine, loaded_here, time.monotonic() - t_load
+
+
+async def _run_file_stt(file_adapter, audio_bytes: bytes, request, total_duration_ms: int, gpu_lock, loaded_here: bool):
+    """STT 청크 분기(청크 분할 모드 vs 단일 호출) 실행 + 진행률/자원 정리.
+
+    Returns:
+        segments
+    """
+    chunk_sec = request.file_chunk_sec
+    try:
+        if chunk_sec > 0:
+            # 청크 분할 모드: 지정된 시간 단위로 분할하여 처리 (다국어 감지에 유리)
+            logger.info(f"[transcribe-file] 청크 분할 모드 ({chunk_sec}초)")
+            segments = await _chunked_transcribe(
+                file_adapter, audio_bytes,
+                chunk_sec=chunk_sec, overlap_sec=2,
+                languages=request.languages,
+                mode=request.mode,
+                meeting_id=request.meeting_id,
+                gpu_lock=gpu_lock,
+            )
+        else:
+            # 분할 없이 Whisper 내부 윈도우(~30초)로 처리.
+            # 이 경로는 gpu_lock을 잡지 않는다 — Rails는 file_chunk_sec=30을 항상 전달하므로
+            # 여기는 직접 호출 전용(비프로덕션 경로)이고, 파일 전체 추론 동안 락을 쥐면
+            # 실시간 /transcribe가 그만큼(수십 초~수 분) 굶는 역효과가 난다.
+            segments = await file_adapter.transcribe(
+                audio_bytes, languages=request.languages, mode=request.mode
+            )
+    finally:
+        if loaded_here:
+            del file_adapter
+            import gc; gc.collect()
+        # STT 단계 종료 → phase="post"(90% 고정)로 유지. 화자분리·후처리 동안 폴러가
+        # "화자 분리·후처리 중…"을 표시해 진행바 정지를 막는다. 정리는 엔드포인트 끝에서.
+        _set_file_progress(request.meeting_id, total_duration_ms, total_duration_ms, phase="post")
+    return segments
+
+
+async def _apply_diarization(segments, audio_bytes: bytes, request):
+    """화자 분리(speakrs) 적용. 비활성/미설치/실패 시 세그먼트를 그대로 반환(예외 무시)."""
+    diar_cfg = request.diarization_config or {}
+    enable_diarization = diar_cfg.get("enable", False)
+    ahc_threshold = diar_cfg.get("ahc_threshold")
+    if enable_diarization and segments:
+        diar_engine = _resolve_diar_engine()
+        try:
+            if diar_engine == "speakrs":
+                # speakrs는 별도 프로세스라 STT와 프로세스는 분리돼 있지만, 이 배포는
+                # systemd SPEAKRS_MODE=cuda로 떠 있어 STT와 같은 GPU를 두고 경쟁한다
+                # (CoreML 전제로 "경쟁 없음"이라 적혀 있던 과거 주석은 부정확 — 이번 범위는
+                # STT 추론 호출 락뿐이라 여기에 게이트를 추가하지는 않는다. 필요성 실측 후 검토).
+                from app.diarization.batch_processor import batch_diarize_speakrs
+                segments = await batch_diarize_speakrs(
+                    audio_bytes, segments, meeting_id=request.meeting_id,
+                    ahc_threshold=ahc_threshold,
+                )
+                logger.info("[transcribe-file] 배치 화자 분리 완료 (speakrs)")
+            else:
+                logger.info("[transcribe-file] 화자 분리 엔진 사용 불가(speakrs 미설치) — 라벨 없이 진행")
+        except Exception as e:
+            logger.exception(f"[transcribe-file] 화자 분리 실패 (무시): {e}")
+    else:
+        logger.info(f"[transcribe-file] 화자 분리 스킵")
+    return segments
+
+
+def _split_file_sentences(segments):
+    """한국어 문장 분리 후처리."""
+    from app.stt.sentence_segmenter import segment_korean_sentences
+    segments = segment_korean_sentences(segments)
+    logger.info(f"[transcribe-file] 문장 분리 후 {len(segments)}개 세그먼트")
+    return segments
+
+
 @router.post("/transcribe-file", response_model=TranscribeFileResponse)
 async def transcribe_file(request: TranscribeFileRequest, http_request: Request) -> TranscribeFileResponse:
     """오디오 파일 전체 STT + 화자분리 + 한국어 문장 분리 엔드포인트.
@@ -142,63 +254,17 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
     if len(audio_bytes) < 3200:  # 최소 0.1초
         raise HTTPException(status_code=400, detail="오디오 파일이 너무 짧습니다.")
 
-    total_duration_ms = int(len(audio_bytes) / (_SAMPLE_RATE * _BYTES_PER_SAMPLE) * 1000)
-    logger.info(f"[transcribe-file] 파일 크기={len(audio_bytes)} bytes, 길이={total_duration_ms}ms")
-
-    # 진행 레지스트리 등록 — 폴러가 즉시 total 을 받도록 STT 시작 전에 0/total 로 초기화
-    _set_file_progress(request.meeting_id, 0, total_duration_ms)
+    total_duration_ms = _init_file_progress(audio_bytes, request.meeting_id)
 
     # 2. STT 실행 — 배치 엔진은 settings.STT_FILE_ENGINE로 선택 (실시간 엔진과 분리)
     timings: dict[str, float] = {}
-    from app.stt.factory import (
-        auto_select_engine,
-        create_stt_adapter,
-        resolve_file_engine,
-    )
-    file_engine = resolve_file_engine(settings.STT_FILE_ENGINE)
-    realtime_engine = settings.STT_ENGINE
-    if realtime_engine == "auto":
-        realtime_engine = auto_select_engine()
+    file_adapter, file_engine, loaded_here, timings["model_load"] = await _select_file_adapter(adapter)
 
-    file_adapter = adapter
-    _file_adapter_loaded_here = False
-    _t_load = time.monotonic()
-    if file_engine != realtime_engine:
-        logger.info("[transcribe-file] 배치 STT 엔진 로드: %s (실시간=%s)", file_engine, realtime_engine)
-        file_adapter = create_stt_adapter(file_engine)
-        await file_adapter.load_model()
-        _file_adapter_loaded_here = True
-    timings["model_load"] = time.monotonic() - _t_load
-
-    chunk_sec = request.file_chunk_sec
     _t_stt = time.monotonic()
-    try:
-        if chunk_sec > 0:
-            # 청크 분할 모드: 지정된 시간 단위로 분할하여 처리 (다국어 감지에 유리)
-            logger.info(f"[transcribe-file] 청크 분할 모드 ({chunk_sec}초)")
-            segments = await _chunked_transcribe(
-                file_adapter, audio_bytes,
-                chunk_sec=chunk_sec, overlap_sec=2,
-                languages=request.languages,
-                mode=request.mode,
-                meeting_id=request.meeting_id,
-                gpu_lock=http_request.app.state.gpu_lock,
-            )
-        else:
-            # 분할 없이 Whisper 내부 윈도우(~30초)로 처리.
-            # 이 경로는 gpu_lock을 잡지 않는다 — Rails는 file_chunk_sec=30을 항상 전달하므로
-            # 여기는 직접 호출 전용(비프로덕션 경로)이고, 파일 전체 추론 동안 락을 쥐면
-            # 실시간 /transcribe가 그만큼(수십 초~수 분) 굶는 역효과가 난다.
-            segments = await file_adapter.transcribe(
-                audio_bytes, languages=request.languages, mode=request.mode
-            )
-    finally:
-        if _file_adapter_loaded_here:
-            del file_adapter
-            import gc; gc.collect()
-        # STT 단계 종료 → phase="post"(90% 고정)로 유지. 화자분리·후처리 동안 폴러가
-        # "화자 분리·후처리 중…"을 표시해 진행바 정지를 막는다. 정리는 엔드포인트 끝에서.
-        _set_file_progress(request.meeting_id, total_duration_ms, total_duration_ms, phase="post")
+    segments = await _run_file_stt(
+        file_adapter, audio_bytes, request, total_duration_ms,
+        http_request.app.state.gpu_lock, loaded_here,
+    )
     timings["stt"] = time.monotonic() - _t_stt
 
     logger.info(f"[transcribe-file] STT 세그먼트 {len(segments)}개")
@@ -210,37 +276,13 @@ async def transcribe_file(request: TranscribeFileRequest, http_request: Request)
 
     # 3. 화자 분리 — speakrs(CoreML, 별도 프로세스) 단일 엔진
     _t_diar = time.monotonic()
-    diar_cfg = request.diarization_config or {}
-    enable_diarization = diar_cfg.get("enable", False)
-    ahc_threshold = diar_cfg.get("ahc_threshold")
-    if enable_diarization and segments:
-        diar_engine = _resolve_diar_engine()
-        try:
-            if diar_engine == "speakrs":
-                # speakrs는 별도 프로세스라 STT와 프로세스는 분리돼 있지만, 이 배포는
-                # systemd SPEAKRS_MODE=cuda로 떠 있어 STT와 같은 GPU를 두고 경쟁한다
-                # (CoreML 전제로 "경쟁 없음"이라 적혀 있던 과거 주석은 부정확 — 이번 범위는
-                # STT 추론 호출 락뿐이라 여기에 게이트를 추가하지는 않는다. 필요성 실측 후 검토).
-                from app.diarization.batch_processor import batch_diarize_speakrs
-                segments = await batch_diarize_speakrs(
-                    audio_bytes, segments, meeting_id=request.meeting_id,
-                    ahc_threshold=ahc_threshold,
-                )
-                logger.info("[transcribe-file] 배치 화자 분리 완료 (speakrs)")
-            else:
-                logger.info("[transcribe-file] 화자 분리 엔진 사용 불가(speakrs 미설치) — 라벨 없이 진행")
-        except Exception as e:
-            logger.exception(f"[transcribe-file] 화자 분리 실패 (무시): {e}")
-    else:
-        logger.info(f"[transcribe-file] 화자 분리 스킵")
+    segments = await _apply_diarization(segments, audio_bytes, request)
     timings["diarization"] = time.monotonic() - _t_diar
 
     # 4. 한국어 문장 분리 후처리
     _t_seg = time.monotonic()
-    from app.stt.sentence_segmenter import segment_korean_sentences
-    segments = segment_korean_sentences(segments)
+    segments = _split_file_sentences(segments)
     timings["sentence_split"] = time.monotonic() - _t_seg
-    logger.info(f"[transcribe-file] 문장 분리 후 {len(segments)}개 세그먼트")
 
     _total = time.monotonic() - t0
     audio_sec = total_duration_ms / 1000.0

@@ -3,6 +3,7 @@ import { createFileAttachment } from '../../api/attachments'
 import type { AttachmentCategory } from '../../api/attachments'
 import { IS_TAURI } from '../../config'
 import { errorToMessage } from '../../lib/errors'
+import { formatSize } from '../../lib/formatBytes'
 import { notifyContactsChanged } from '../../hooks/useContacts'
 import { Dialog } from '../ui/Dialog'
 
@@ -71,11 +72,6 @@ interface FileItem {
   progress: number
   status: 'pending' | 'uploading' | 'done' | 'error'
   error?: string
-}
-
-function formatSize(bytes: number) {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 export function AddFileDialog({ meetingId, defaultCategory, onClose, onUploaded }: AddFileDialogProps) {

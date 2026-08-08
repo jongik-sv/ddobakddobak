@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { HTTPError } from 'ky'
+import type { Dispatch, SetStateAction } from 'react'
 import { Dialog } from '../ui/Dialog'
 import { useAuthStore } from '../../stores/authStore'
 import { confirmDialog } from '../../lib/confirmDialog'
+import { httpErrorInfo } from '../../lib/errors'
 import {
   detectDflowTeam,
   buildDflowTitle,
@@ -66,13 +67,11 @@ const FOLDER_PATH_STATUS_BADGE: Record<'truncated' | 'partial' | 'unclassified',
   unclassified: { label: '미분류', className: 'bg-amber-100 text-amber-700' },
 }
 
-/** ky HTTPError → { message, code } 공통 파싱 (DflowSettingsPanel.tsx handleTest 관례). */
+/** ky HTTPError → { message, code } 공통 파싱 (DflowSettingsPanel.tsx handleTest 관례). lib/errors.ts httpErrorInfo 기반. */
 async function parseDflowError(err: unknown, fallback: string): Promise<{ message: string; code?: string }> {
-  if (err instanceof HTTPError) {
-    const body = (await err.response.json().catch(() => ({}))) as { error?: string; code?: string }
-    return { message: body.error ?? fallback, code: body.code }
-  }
-  return { message: fallback }
+  const info = await httpErrorInfo(err)
+  if (!info) return { message: fallback }
+  return { message: info.message ?? fallback, code: info.code ?? undefined }
 }
 
 // ── 회의 연결(선택) ──
@@ -120,45 +119,19 @@ function absDaysBetween(a: string, b: string): number {
 const NO_DFLOW_PROJECTS_MESSAGE = "D'Flow 프로젝트가 없습니다 — 연결 없이 전송해 주세요."
 const MEETING_LIST_ERROR_MESSAGE = '회의 목록을 불러오지 못했습니다.'
 
-/**
- * D'Flow(회의록 아카이브) 전송 모달. 열릴 때 상태(getDflowStatus)·구분 목록(getDflowMeta)을
- * 조회해 team 자동 판정·제목 자동 조립을 미리보기로 재현하고, 전송/연결 관리(수동 입력·해제·재발급·
- * D'Flow에서 찾기)를 제공한다. ExportButton 드롭다운의 "D'Flow로 전송" 항목에서 연다.
- */
-export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendToDflowDialogProps) {
-  const user = useAuthStore((s) => s.user)
+interface UseDflowMeetingLinkArgs {
+  meeting: Meeting
+  meetingDateStr: string
+  meta: DflowMeta | null
+  status: DflowMeetingStatusWithExists | null
+}
 
-  const [status, setStatus] = useState<DflowMeetingStatusWithExists | null>(null)
-  const [statusError, setStatusError] = useState<string | null>(null)
-  const [meta, setMeta] = useState<DflowMeta | null>(null)
-  const [metaError, setMetaError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const [title, setTitle] = useState(() => buildDflowTitle(meeting.title))
-  const [selectedTeam, setSelectedTeam] = useState('')
-  const [forceTeamSelect, setForceTeamSelect] = useState(false)
-
-  const [sending, setSending] = useState(false)
-  const [sendError, setSendError] = useState<string | null>(null)
-  const [bodyTooLong, setBodyTooLong] = useState(false)
-  const [sendResult, setSendResult] = useState<DflowUploadResult | null>(null)
-
-  const [copied, setCopied] = useState(false)
-  const [reissueNotice, setReissueNotice] = useState(false)
-  const [linkActionBusy, setLinkActionBusy] = useState(false)
-  const [linkActionError, setLinkActionError] = useState<string | null>(null)
-
-  const [showManualInput, setShowManualInput] = useState(false)
-  const [manualUid, setManualUid] = useState('')
-  const [manualUidError, setManualUidError] = useState<string | null>(null)
-  // false=경고 없음, 'missing'=D'Flow에 없음, 'archived'=D'Flow에서 보관됨 — 두 원인의 문구가 다르다.
-  const [manualMissingWarning, setManualMissingWarning] = useState<false | 'missing' | 'archived'>(false)
-  const [manualSaving, setManualSaving] = useState(false)
-
-  const [detailsOpen, setDetailsOpen] = useState(false)
-  const [showSearch, setShowSearch] = useState(false)
-
-  // 회의 연결(선택) — 'unlink'는 §3.2 스니펫에 없지만 [연결 해제] 액션(§0)을 표현할 상태가
+/** 회의 연결(선택) 상태·파생값·핸들러 — 커스텀 hook으로 뺐을 뿐 상태 소유는 그대로
+ *  SendToDflowDialog 렌더 안에 있다(값이 handleSend의 meetingSelectionInvalid 체크·전송 버튼
+ *  disabled·MeetingLinkSection JSX 세 곳에서 매 렌더 읽혀야 해서 상태 자체를 자식 컴포넌트로
+ *  내리면 부모 리렌더가 어긋난다 — WP-F5 결정 사항). */
+function useDflowMeetingLink({ meeting, meetingDateStr, meta, status }: UseDflowMeetingLinkArgs) {
+  // 'unlink'는 §3.2 스니펫에 없지만 [연결 해제] 액션(§0)을 표현할 상태가
   // 필요해 이 파일 안에서만 추가했다(설계와 다른 결정 — 최종 보고 참조).
   const [meetingMode, setMeetingMode] = useState<'keep' | 'none' | 'link' | 'create' | 'unlink'>('none')
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
@@ -170,68 +143,6 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
     () => ({ title: buildDflowTitle(meeting.title), date: toKstDateString(meeting.started_at ?? meeting.created_at), category: 'general' })
   )
 
-  const loadMeta = useCallback(async () => {
-    try {
-      const m = await getDflowMeta()
-      setMeta(m)
-      setMetaError(null)
-      return m
-    } catch {
-      setMetaError('구분(team) 목록을 불러오지 못했습니다.')
-      return null
-    }
-  }, [])
-
-  const refreshStatus = useCallback(async () => {
-    try {
-      const s = await getDflowStatus(meeting.id)
-      setStatus(s)
-      setStatusError(null)
-      return s
-    } catch {
-      setStatusError('연결 상태를 불러오지 못했습니다.')
-      return null
-    }
-  }, [meeting.id])
-
-  useEffect(() => {
-    setLoading(true)
-    Promise.all([refreshStatus(), loadMeta()]).then(([s]) => {
-      // §3.2: 초기값은 status에 dflow_meeting_id 있으면 'keep', 없으면 'none'. 이후 useEffect
-      // 재실행 없이(빈 deps) 1회만 판정 — refreshStatus가 이후 전송 성공으로 다시 불려도
-      // meetingMode를 덮어쓰지 않는다(사용자가 고른 모드가 전송 결과로 리셋되면 안 됨).
-      setMeetingMode(s?.dflow_meeting_id ? 'keep' : 'none')
-    }).finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 열릴 때 1회만 조회
-  }, [])
-
-  const detectedTeam = meta ? detectDflowTeam(meeting.folder_path, meta.teams) : null
-  const needsTeamSelect = forceTeamSelect || detectedTeam === null
-  // §2-C: "경고는 teamOverride 확정 이후 재평가" — 이번 전송에서 실제로 보낼 team(자동 판정값
-  // 또는 select 확정값)을 root와 비교해야 한다. detectedTeam만 쓰면 team_required 재시도로
-  // selectedTeam이 root와 다른 team으로 확정된 경우를 놓친다(root는 meta.teams에 있지만 이번
-  // 전송은 다른 team으로 나가는 경우). select 미확정(''）이면 null — 보수적으로 +1 쪽으로 평가한다.
-  const resolvedTeam = needsTeamSelect ? (selectedTeam.trim() || null) : detectedTeam
-  const depthWarning = meta ? dflowFolderDepthExceedsWarningLimit(meeting.folder_path, resolvedTeam) : false
-  // W7: "MES / 품질 / 주간정례" 형태의 편철 경로 미리보기. dflowEffectiveFolderDepth(위 depthWarning)와
-  // 판정 기준(dflowRootIsResolvedTeamRoot)을 공유한다 — 사본을 두지 않는다(브리프 경고).
-  const previewPath = meta ? dflowFolderPreviewPath(meeting.folder_path, resolvedTeam) : []
-
-  // 전송 이력(dflow_synced_at)은 있는데 D'Flow에서 확인되지 않음 — 원인(초기화·보관·삭제)을
-  // 단정할 수 없다. dflow_synced_at이 없으면(수동 입력 직후 등) 정상 상태이므로 띄우지 않는다.
-  const dflowMissing = !sendResult && status?.exists_on_dflow === false && !!status?.dflow_synced_at
-  // R1 이후 D'Flow가 보관 상태를 명시적으로 알려준 경우 — dflow_archived === true로만 판정한다.
-  // undefined는 "모름"이지 "아님"이 아니다.
-  const dflowArchived = !sendResult && status?.exists_on_dflow === true && status?.dflow_archived === true
-  // [전송] 차단은 원인을 단정할 수 없는 dflowMissing에만 건다(브리프 §W14 요건 2 문구 그대로).
-  // dflowArchived는 "권하지 말 것"이지 차단 대상이 아니다 — 클라이언트가 보는 archived 플래그는
-  // stale할 수 있고(예: 방금 D'Flow에서 보관 해제), 막으면 D'Flow가 실제로 주는 정확한 409
-  // 안내("보관된 회의록입니다. 복원 후 다시 시도하세요.")로 갈 길이 없어진다.
-  // 회의 연결(선택) 파생값 — meeting.date와의 근접순 정렬(§0), 신규 회의 폼 유효성.
-  const meetingDateStr = useMemo(
-    () => toKstDateString(meeting.started_at ?? meeting.created_at),
-    [meeting.started_at, meeting.created_at]
-  )
   const sortedProjectMeetings = useMemo(() => {
     if (!projectMeetings) return []
     return [...projectMeetings].sort(
@@ -244,7 +155,6 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
   const meetingSelectionInvalid =
     (meetingMode === 'link' && !selectedMeetingId) ||
     (meetingMode === 'create' && !(isNewMeetingTitleValid && isNewMeetingDateValid))
-  const sendBlocked = dflowMissing
 
   /** 회의 연결 옵션(브리프 §2.2 구조 그대로) — keep/none은 undefined(meeting 키 자체를 생략). */
   function buildMeetingOption(): DflowMeetingUploadOption | undefined {
@@ -332,13 +242,129 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
     setProjectMeetingsError(null)
   }
 
+  return {
+    meetingMode,
+    setMeetingMode,
+    selectedProjectId,
+    projectMeetingsLoading,
+    projectMeetingsError,
+    selectedMeetingId,
+    newMeeting,
+    setNewMeeting,
+    sortedProjectMeetings,
+    meetingSelectionInvalid,
+    handleProjectChange,
+    handleMeetingSelect,
+    handleChangeMeeting,
+    handleMarkUnlink,
+    handleCancelMeetingEdit,
+    buildMeetingOption,
+  }
+}
+
+/**
+ * D'Flow(회의록 아카이브) 전송 모달. 열릴 때 상태(getDflowStatus)·구분 목록(getDflowMeta)을
+ * 조회해 team 자동 판정·제목 자동 조립을 미리보기로 재현하고, 전송/연결 관리(수동 입력·해제·재발급·
+ * D'Flow에서 찾기)를 제공한다. ExportButton 드롭다운의 "D'Flow로 전송" 항목에서 연다.
+ */
+export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendToDflowDialogProps) {
+  const user = useAuthStore((s) => s.user)
+
+  const [status, setStatus] = useState<DflowMeetingStatusWithExists | null>(null)
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const [meta, setMeta] = useState<DflowMeta | null>(null)
+  const [metaError, setMetaError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const [title, setTitle] = useState(() => buildDflowTitle(meeting.title))
+  const [selectedTeam, setSelectedTeam] = useState('')
+  const [forceTeamSelect, setForceTeamSelect] = useState(false)
+
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const [bodyTooLong, setBodyTooLong] = useState(false)
+  const [sendResult, setSendResult] = useState<DflowUploadResult | null>(null)
+
+  // 연결 관리(복사·해제·재발급·수동 입력·D'Flow에서 찾기) 상태·핸들러는 LinkManagementSection으로
+  // 옮겼다. detailsOpen/showSearch만 여기 남는다 — dflowMissing 안내의 [D'Flow에서 찾기로 재연결]
+  // (handleOpenSearchFromNotice)이 그 섹션 밖에서 열어야 하기 때문(컴포넌트 경계를 건너는 유일한 상태).
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
+
+  // 회의 연결(선택) 파생값 — meeting.date와의 근접순 정렬(§0) 기준. useDflowMeetingLink(meetingMode 등)
+  // 보다 먼저 계산해 hook에 전달한다.
+  const meetingDateStr = useMemo(
+    () => toKstDateString(meeting.started_at ?? meeting.created_at),
+    [meeting.started_at, meeting.created_at]
+  )
+  const meetingLink = useDflowMeetingLink({ meeting, meetingDateStr, meta, status })
+
+  const loadMeta = useCallback(async () => {
+    try {
+      const m = await getDflowMeta()
+      setMeta(m)
+      setMetaError(null)
+      return m
+    } catch {
+      setMetaError('구분(team) 목록을 불러오지 못했습니다.')
+      return null
+    }
+  }, [])
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const s = await getDflowStatus(meeting.id)
+      setStatus(s)
+      setStatusError(null)
+      return s
+    } catch {
+      setStatusError('연결 상태를 불러오지 못했습니다.')
+      return null
+    }
+  }, [meeting.id])
+
+  useEffect(() => {
+    setLoading(true)
+    Promise.all([refreshStatus(), loadMeta()]).then(([s]) => {
+      // §3.2: 초기값은 status에 dflow_meeting_id 있으면 'keep', 없으면 'none'. 이후 useEffect
+      // 재실행 없이(빈 deps) 1회만 판정 — refreshStatus가 이후 전송 성공으로 다시 불려도
+      // meetingMode를 덮어쓰지 않는다(사용자가 고른 모드가 전송 결과로 리셋되면 안 됨).
+      meetingLink.setMeetingMode(s?.dflow_meeting_id ? 'keep' : 'none')
+    }).finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 열릴 때 1회만 조회
+  }, [])
+
+  const detectedTeam = meta ? detectDflowTeam(meeting.folder_path, meta.teams) : null
+  const needsTeamSelect = forceTeamSelect || detectedTeam === null
+  // §2-C: "경고는 teamOverride 확정 이후 재평가" — 이번 전송에서 실제로 보낼 team(자동 판정값
+  // 또는 select 확정값)을 root와 비교해야 한다. detectedTeam만 쓰면 team_required 재시도로
+  // selectedTeam이 root와 다른 team으로 확정된 경우를 놓친다(root는 meta.teams에 있지만 이번
+  // 전송은 다른 team으로 나가는 경우). select 미확정(''）이면 null — 보수적으로 +1 쪽으로 평가한다.
+  const resolvedTeam = needsTeamSelect ? (selectedTeam.trim() || null) : detectedTeam
+  const depthWarning = meta ? dflowFolderDepthExceedsWarningLimit(meeting.folder_path, resolvedTeam) : false
+  // W7: "MES / 품질 / 주간정례" 형태의 편철 경로 미리보기. dflowEffectiveFolderDepth(위 depthWarning)와
+  // 판정 기준(dflowRootIsResolvedTeamRoot)을 공유한다 — 사본을 두지 않는다(브리프 경고).
+  const previewPath = meta ? dflowFolderPreviewPath(meeting.folder_path, resolvedTeam) : []
+
+  // 전송 이력(dflow_synced_at)은 있는데 D'Flow에서 확인되지 않음 — 원인(초기화·보관·삭제)을
+  // 단정할 수 없다. dflow_synced_at이 없으면(수동 입력 직후 등) 정상 상태이므로 띄우지 않는다.
+  const dflowMissing = !sendResult && status?.exists_on_dflow === false && !!status?.dflow_synced_at
+  // R1 이후 D'Flow가 보관 상태를 명시적으로 알려준 경우 — dflow_archived === true로만 판정한다.
+  // undefined는 "모름"이지 "아님"이 아니다.
+  const dflowArchived = !sendResult && status?.exists_on_dflow === true && status?.dflow_archived === true
+  // [전송] 차단은 원인을 단정할 수 없는 dflowMissing에만 건다(브리프 §W14 요건 2 문구 그대로).
+  // dflowArchived는 "권하지 말 것"이지 차단 대상이 아니다 — 클라이언트가 보는 archived 플래그는
+  // stale할 수 있고(예: 방금 D'Flow에서 보관 해제), 막으면 D'Flow가 실제로 주는 정확한 409
+  // 안내("보관된 회의록입니다. 복원 후 다시 시도하세요.")로 갈 길이 없어진다.
+  const sendBlocked = dflowMissing
+
   async function handleSend() {
     if (needsTeamSelect && !selectedTeam) return
-    if (meetingSelectionInvalid) return
+    if (meetingLink.meetingSelectionInvalid) return
     setSending(true)
     setSendError(null)
     try {
-      const meetingOption = buildMeetingOption()
+      const meetingOption = meetingLink.buildMeetingOption()
       const result = await uploadToDflow(meeting.id, {
         titleOverride: title,
         ...(needsTeamSelect ? { teamOverride: selectedTeam } : {}),
@@ -393,87 +419,6 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
   function handleOpenSearchFromNotice() {
     setDetailsOpen(true)
     setShowSearch(true)
-  }
-
-  async function handleCopyUid() {
-    if (!status?.public_uid) return
-    try {
-      await navigator.clipboard.writeText(status.public_uid)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // clipboard 미지원 환경 — 표시 전용으로 동작 (MeetingIdBadge.tsx 관례)
-    }
-  }
-
-  async function handleUnlink() {
-    const ok = await confirmDialog(UNLINK_CONFIRM_MESSAGE)
-    if (!ok) return
-    setLinkActionBusy(true)
-    setLinkActionError(null)
-    try {
-      await setDflowLink(meeting.id, null)
-      await refreshStatus()
-      setReissueNotice(false)
-      onChanged?.()
-    } catch (err) {
-      const { message } = await parseDflowError(err, '연결 해제에 실패했습니다.')
-      setLinkActionError(message)
-    } finally {
-      setLinkActionBusy(false)
-    }
-  }
-
-  async function handleReissue() {
-    const ok = await confirmDialog(REISSUE_CONFIRM_MESSAGE)
-    if (!ok) return
-    setLinkActionBusy(true)
-    setLinkActionError(null)
-    try {
-      await setDflowLink(meeting.id, null)
-      await refreshStatus()
-      setReissueNotice(true)
-      onChanged?.()
-    } catch (err) {
-      const { message } = await parseDflowError(err, '재발급 준비에 실패했습니다.')
-      setLinkActionError(message)
-    } finally {
-      setLinkActionBusy(false)
-    }
-  }
-
-  async function handleManualSave() {
-    setManualUidError(null)
-    setManualMissingWarning(false)
-    // 서버 link는 소문자 UUID만 허용 — 대문자 붙여넣기도 통과시키기 위해 정규화 후 검증·전송.
-    const normalized = manualUid.trim().toLowerCase()
-    if (!isValidDflowUuid(normalized)) {
-      setManualUidError('올바른 UUID 형식이 아닙니다.')
-      return
-    }
-    setManualSaving(true)
-    try {
-      await setDflowLink(meeting.id, normalized)
-      const fresh = await refreshStatus()
-      if (fresh?.exists_on_dflow === false) {
-        setManualMissingWarning('missing')
-      } else if (fresh?.dflow_archived === true) {
-        setManualMissingWarning('archived')
-      }
-      setManualUid('')
-      onChanged?.()
-    } catch (err) {
-      const { message } = await parseDflowError(err, '연결 저장에 실패했습니다.')
-      setManualUidError(message)
-    } finally {
-      setManualSaving(false)
-    }
-  }
-
-  async function handleMinuteLinked() {
-    await refreshStatus()
-    setShowSearch(false)
-    onChanged?.()
   }
 
   return (
@@ -552,172 +497,24 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
           {/* 회의 연결(선택) — §0. keep(재전송 기본, 연결 있음) / none(신규 전송 기본, 미연결) /
               link·create(선택 중) / unlink(해제 예정, [연결 해제] 클릭 후). meeting 옵션은 전송
               시에만 buildMeetingOption()으로 조립되어 나간다 — 여기서는 API를 즉시 호출하지 않는다. */}
-          <div className="space-y-3 rounded-md border border-border p-3 text-sm">
-            <label className="block text-xs font-medium text-muted-foreground">회의 연결 (선택)</label>
-
-            {meetingMode === 'keep' && status?.dflow_meeting_id && (
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-foreground">
-                  {status.dflow_project_name ?? '-'} / {status.dflow_meeting_title ?? '-'}
-                </span>
-                <div className="flex shrink-0 gap-2">
-                  <button
-                    type="button"
-                    onClick={handleChangeMeeting}
-                    disabled={sending}
-                    className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-accent disabled:opacity-50"
-                  >
-                    변경
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleMarkUnlink}
-                    disabled={sending}
-                    className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-accent disabled:opacity-50"
-                  >
-                    연결 해제
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {meetingMode === 'unlink' && (
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-amber-600">연결 해제 예정 — 전송하면 D'Flow 연결이 해제됩니다.</span>
-                <button
-                  type="button"
-                  onClick={handleCancelMeetingEdit}
-                  disabled={sending}
-                  className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-accent disabled:opacity-50"
-                >
-                  취소
-                </button>
-              </div>
-            )}
-
-            {(meetingMode === 'none' || meetingMode === 'link' || meetingMode === 'create') && (
-              <div className="space-y-2">
-                {meta && meta.projects.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">{NO_DFLOW_PROJECTS_MESSAGE}</p>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <select
-                        aria-label="D'Flow 프로젝트"
-                        value={selectedProjectId ?? NO_PROJECT_OPTION_VALUE}
-                        onChange={(e) => handleProjectChange(e.target.value)}
-                        disabled={sending}
-                        className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
-                      >
-                        <option value={NO_PROJECT_OPTION_VALUE}>연결 안 함</option>
-                        {meta?.projects.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
-                      {status?.dflow_meeting_id && (
-                        <button
-                          type="button"
-                          onClick={handleCancelMeetingEdit}
-                          disabled={sending}
-                          className="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50"
-                        >
-                          취소
-                        </button>
-                      )}
-                    </div>
-
-                    {selectedProjectId && (
-                      <>
-                        {projectMeetingsLoading && (
-                          <p role="status" className="text-xs text-muted-foreground">회의 목록 불러오는 중...</p>
-                        )}
-                        {projectMeetingsError && (
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs text-red-600">{projectMeetingsError}</p>
-                            <button
-                              type="button"
-                              onClick={() => handleProjectChange(selectedProjectId)}
-                              className="shrink-0 text-xs text-blue-600 hover:underline"
-                            >
-                              재시도
-                            </button>
-                          </div>
-                        )}
-                        {!projectMeetingsLoading && !projectMeetingsError && (
-                          <select
-                            aria-label="D'Flow 회의"
-                            value={selectedMeetingId ?? NO_PROJECT_OPTION_VALUE}
-                            onChange={(e) => handleMeetingSelect(e.target.value)}
-                            disabled={sending}
-                            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
-                          >
-                            <option value={NO_PROJECT_OPTION_VALUE}>선택하세요</option>
-                            <option value={NEW_MEETING_OPTION_VALUE}>➕ 신규 회의 등록</option>
-                            {sortedProjectMeetings.map((m) => (
-                              <option key={m.id} value={m.id}>
-                                {m.title} · {m.date} · {meetingCategoryLabel(m.category)}
-                                {m.recurrence !== 'none' ? ' · 반복' : ''}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-
-                        {meetingMode === 'create' && (
-                          <div className="space-y-2 rounded-md border border-border p-2.5">
-                            <div>
-                              <label htmlFor="dflow-new-meeting-title" className="mb-1 block text-xs font-medium text-muted-foreground">
-                                제목
-                              </label>
-                              <input
-                                id="dflow-new-meeting-title"
-                                type="text"
-                                value={newMeeting.title}
-                                onChange={(e) => setNewMeeting((v) => ({ ...v, title: e.target.value }))}
-                                disabled={sending}
-                                maxLength={200}
-                                className="w-full rounded-md border px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
-                              />
-                            </div>
-                            <div>
-                              <label htmlFor="dflow-new-meeting-date" className="mb-1 block text-xs font-medium text-muted-foreground">
-                                날짜
-                              </label>
-                              <input
-                                id="dflow-new-meeting-date"
-                                type="date"
-                                value={newMeeting.date}
-                                onChange={(e) => setNewMeeting((v) => ({ ...v, date: e.target.value }))}
-                                disabled={sending}
-                                className="w-full rounded-md border px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
-                              />
-                            </div>
-                            <div>
-                              <label htmlFor="dflow-new-meeting-category" className="mb-1 block text-xs font-medium text-muted-foreground">
-                                구분
-                              </label>
-                              <select
-                                id="dflow-new-meeting-category"
-                                value={newMeeting.category}
-                                onChange={(e) =>
-                                  setNewMeeting((v) => ({ ...v, category: e.target.value as DflowMeetingCategory }))
-                                }
-                                disabled={sending}
-                                className="w-full rounded-md border px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
-                              >
-                                {DFLOW_MEETING_CATEGORY_OPTIONS.map((c) => (
-                                  <option key={c} value={c}>{DFLOW_MEETING_CATEGORY_LABELS[c]}</option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+          <MeetingLinkSection
+            status={status}
+            meta={meta}
+            sending={sending}
+            meetingMode={meetingLink.meetingMode}
+            selectedProjectId={meetingLink.selectedProjectId}
+            projectMeetingsLoading={meetingLink.projectMeetingsLoading}
+            projectMeetingsError={meetingLink.projectMeetingsError}
+            selectedMeetingId={meetingLink.selectedMeetingId}
+            sortedProjectMeetings={meetingLink.sortedProjectMeetings}
+            newMeeting={meetingLink.newMeeting}
+            onNewMeetingChange={meetingLink.setNewMeeting}
+            onProjectChange={meetingLink.handleProjectChange}
+            onMeetingSelect={meetingLink.handleMeetingSelect}
+            onChangeMeeting={meetingLink.handleChangeMeeting}
+            onMarkUnlink={meetingLink.handleMarkUnlink}
+            onCancelMeetingEdit={meetingLink.handleCancelMeetingEdit}
+          />
 
           {sendError && (
             <div role="alert" className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-600">
@@ -751,7 +548,7 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
                 <button
                   type="button"
                   onClick={handleForceSend}
-                  disabled={sending || bodyTooLong || (needsTeamSelect && !selectedTeam) || meetingSelectionInvalid}
+                  disabled={sending || bodyTooLong || (needsTeamSelect && !selectedTeam) || meetingLink.meetingSelectionInvalid}
                   className="rounded-md border border-amber-600 px-2.5 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
                 >
                   새로 전송
@@ -843,7 +640,7 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
                   bodyTooLong ||
                   sendBlocked ||
                   (needsTeamSelect && !selectedTeam) ||
-                  meetingSelectionInvalid
+                  meetingLink.meetingSelectionInvalid
                 }
                 className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow transition-colors hover:bg-blue-700 disabled:opacity-50"
               >
@@ -853,138 +650,485 @@ export default function SendToDflowDialog({ meeting, onClose, onChanged }: SendT
           )}
 
           {/* 연결 관리 */}
-          <details
-            open={detailsOpen}
-            onToggle={(e) => setDetailsOpen(e.currentTarget.open)}
-            className="group border-t border-border pt-3"
-          >
-            <summary className="flex cursor-pointer select-none items-center gap-2 text-sm font-semibold text-muted-foreground">
-              <span className="transition-transform group-open:rotate-90">&rsaquo;</span>
-              연결 관리
-            </summary>
-
-            <div className="mt-3 space-y-3">
-              {statusError && <p className="text-sm text-red-600">{statusError}</p>}
-
-              {!statusError && (
-                <>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">public_uid</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-foreground">{status?.public_uid ?? '미발급'}</span>
-                      {status?.public_uid && (
-                        <button
-                          type="button"
-                          onClick={handleCopyUid}
-                          className="text-xs text-blue-600 hover:underline"
-                        >
-                          {copied ? '복사됨' : '복사'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {status?.public_uid && (
-                    <p className="text-xs text-muted-foreground">
-                      D'Flow 존재 확인:{' '}
-                      {status.exists_on_dflow === undefined
-                        ? '알 수 없음'
-                        : status.exists_on_dflow
-                          ? status.dflow_archived === true
-                            ? '존재함(보관됨)'
-                            : '존재함'
-                          : '존재하지 않음(다음 전송 시 새로 생성됩니다)'}
-                    </p>
-                  )}
-
-                  {reissueNotice && (
-                    <p className="text-xs text-blue-600">다음 전송 시 새 식별자가 자동 발급됩니다.</p>
-                  )}
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowManualInput((v) => !v)}
-                      className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent"
-                    >
-                      수동 입력
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleUnlink}
-                      disabled={!status?.public_uid || linkActionBusy}
-                      className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50"
-                    >
-                      해제
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleReissue}
-                      disabled={!status?.public_uid || linkActionBusy}
-                      className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50"
-                    >
-                      재발급
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowSearch((v) => !v)}
-                      className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent"
-                    >
-                      D'Flow에서 찾기
-                    </button>
-                  </div>
-
-                  {linkActionError && <p className="text-xs text-red-600">{linkActionError}</p>}
-
-                  {showManualInput && (
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          value={manualUid}
-                          onChange={(e) => setManualUid(e.target.value)}
-                          placeholder="00000000-0000-0000-0000-000000000000"
-                          aria-label="D'Flow public_uid 수동 입력"
-                          disabled={manualSaving}
-                          className="w-full rounded-md border px-3 py-1.5 text-xs font-mono outline-none focus:ring-2 focus:ring-ring"
-                        />
-                        {manualUidError && <p className="mt-1 text-xs text-red-600">{manualUidError}</p>}
-                        {manualMissingWarning === 'missing' && (
-                          <p className="mt-1 text-xs text-amber-600">
-                            D'Flow에 해당 회의록이 없습니다. 연결은 저장되었습니다.
-                          </p>
-                        )}
-                        {manualMissingWarning === 'archived' && (
-                          <p className="mt-1 text-xs text-amber-600">
-                            D'Flow에서 보관된 회의록입니다. 연결은 저장되었습니다.
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleManualSave}
-                        disabled={manualSaving}
-                        className="shrink-0 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        {manualSaving ? '저장 중…' : '저장'}
-                      </button>
-                    </div>
-                  )}
-
-                  {showSearch && (
-                    <DflowMinuteSearchPanel
-                      meetingId={meeting.id}
-                      teams={meta?.teams ?? []}
-                      onLinked={handleMinuteLinked}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-          </details>
+          <LinkManagementSection
+            meetingId={meeting.id}
+            status={status}
+            statusError={statusError}
+            teams={meta?.teams ?? []}
+            detailsOpen={detailsOpen}
+            onDetailsOpenChange={setDetailsOpen}
+            showSearch={showSearch}
+            onShowSearchChange={setShowSearch}
+            refreshStatus={refreshStatus}
+            onChanged={onChanged}
+          />
         </div>
       )}
     </Dialog>
+  )
+}
+
+interface MeetingLinkSectionProps {
+  status: DflowMeetingStatusWithExists | null
+  meta: DflowMeta | null
+  sending: boolean
+  meetingMode: 'keep' | 'none' | 'link' | 'create' | 'unlink'
+  selectedProjectId: string | null
+  projectMeetingsLoading: boolean
+  projectMeetingsError: string | null
+  selectedMeetingId: string | null
+  sortedProjectMeetings: DflowMeetingItem[]
+  newMeeting: { title: string; date: string; category: DflowMeetingCategory }
+  onNewMeetingChange: Dispatch<SetStateAction<{ title: string; date: string; category: DflowMeetingCategory }>>
+  onProjectChange: (projectId: string) => void
+  onMeetingSelect: (value: string) => void
+  onChangeMeeting: () => void
+  onMarkUnlink: () => void
+  onCancelMeetingEdit: () => void
+}
+
+/** '회의 연결(선택)' 섹션 — §0. keep(재전송 기본, 연결 있음) / none(신규 전송 기본, 미연결) /
+ *  link·create(선택 중) / unlink(해제 예정, [연결 해제] 클릭 후). 상태·파생값은 useDflowMeetingLink가
+ *  부모에서 소유하고(전송 버튼 disabled·handleSend가 매 렌더 읽어야 해서), 이 컴포넌트는 순수 표시만 맡는다. */
+function MeetingLinkSection({
+  status,
+  meta,
+  sending,
+  meetingMode,
+  selectedProjectId,
+  projectMeetingsLoading,
+  projectMeetingsError,
+  selectedMeetingId,
+  sortedProjectMeetings,
+  newMeeting,
+  onNewMeetingChange,
+  onProjectChange,
+  onMeetingSelect,
+  onChangeMeeting,
+  onMarkUnlink,
+  onCancelMeetingEdit,
+}: MeetingLinkSectionProps) {
+  return (
+    <div className="space-y-3 rounded-md border border-border p-3 text-sm">
+      <label className="block text-xs font-medium text-muted-foreground">회의 연결 (선택)</label>
+
+      {meetingMode === 'keep' && status?.dflow_meeting_id && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-foreground">
+            {status.dflow_project_name ?? '-'} / {status.dflow_meeting_title ?? '-'}
+          </span>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={onChangeMeeting}
+              disabled={sending}
+              className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-accent disabled:opacity-50"
+            >
+              변경
+            </button>
+            <button
+              type="button"
+              onClick={onMarkUnlink}
+              disabled={sending}
+              className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-accent disabled:opacity-50"
+            >
+              연결 해제
+            </button>
+          </div>
+        </div>
+      )}
+
+      {meetingMode === 'unlink' && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-amber-600">연결 해제 예정 — 전송하면 D'Flow 연결이 해제됩니다.</span>
+          <button
+            type="button"
+            onClick={onCancelMeetingEdit}
+            disabled={sending}
+            className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-accent disabled:opacity-50"
+          >
+            취소
+          </button>
+        </div>
+      )}
+
+      {(meetingMode === 'none' || meetingMode === 'link' || meetingMode === 'create') && (
+        <div className="space-y-2">
+          {meta && meta.projects.length === 0 ? (
+            <p className="text-xs text-muted-foreground">{NO_DFLOW_PROJECTS_MESSAGE}</p>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <select
+                  aria-label="D'Flow 프로젝트"
+                  value={selectedProjectId ?? NO_PROJECT_OPTION_VALUE}
+                  onChange={(e) => onProjectChange(e.target.value)}
+                  disabled={sending}
+                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
+                >
+                  <option value={NO_PROJECT_OPTION_VALUE}>연결 안 함</option>
+                  {meta?.projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                {status?.dflow_meeting_id && (
+                  <button
+                    type="button"
+                    onClick={onCancelMeetingEdit}
+                    disabled={sending}
+                    className="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50"
+                  >
+                    취소
+                  </button>
+                )}
+              </div>
+
+              {selectedProjectId && (
+                <>
+                  {projectMeetingsLoading && (
+                    <p role="status" className="text-xs text-muted-foreground">회의 목록 불러오는 중...</p>
+                  )}
+                  {projectMeetingsError && (
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-red-600">{projectMeetingsError}</p>
+                      <button
+                        type="button"
+                        onClick={() => onProjectChange(selectedProjectId)}
+                        className="shrink-0 text-xs text-blue-600 hover:underline"
+                      >
+                        재시도
+                      </button>
+                    </div>
+                  )}
+                  {!projectMeetingsLoading && !projectMeetingsError && (
+                    <select
+                      aria-label="D'Flow 회의"
+                      value={selectedMeetingId ?? NO_PROJECT_OPTION_VALUE}
+                      onChange={(e) => onMeetingSelect(e.target.value)}
+                      disabled={sending}
+                      className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
+                    >
+                      <option value={NO_PROJECT_OPTION_VALUE}>선택하세요</option>
+                      <option value={NEW_MEETING_OPTION_VALUE}>➕ 신규 회의 등록</option>
+                      {sortedProjectMeetings.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.title} · {m.date} · {meetingCategoryLabel(m.category)}
+                          {m.recurrence !== 'none' ? ' · 반복' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {meetingMode === 'create' && (
+                    <div className="space-y-2 rounded-md border border-border p-2.5">
+                      <div>
+                        <label htmlFor="dflow-new-meeting-title" className="mb-1 block text-xs font-medium text-muted-foreground">
+                          제목
+                        </label>
+                        <input
+                          id="dflow-new-meeting-title"
+                          type="text"
+                          value={newMeeting.title}
+                          onChange={(e) => onNewMeetingChange((v) => ({ ...v, title: e.target.value }))}
+                          disabled={sending}
+                          maxLength={200}
+                          className="w-full rounded-md border px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="dflow-new-meeting-date" className="mb-1 block text-xs font-medium text-muted-foreground">
+                          날짜
+                        </label>
+                        <input
+                          id="dflow-new-meeting-date"
+                          type="date"
+                          value={newMeeting.date}
+                          onChange={(e) => onNewMeetingChange((v) => ({ ...v, date: e.target.value }))}
+                          disabled={sending}
+                          className="w-full rounded-md border px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="dflow-new-meeting-category" className="mb-1 block text-xs font-medium text-muted-foreground">
+                          구분
+                        </label>
+                        <select
+                          id="dflow-new-meeting-category"
+                          value={newMeeting.category}
+                          onChange={(e) =>
+                            onNewMeetingChange((v) => ({ ...v, category: e.target.value as DflowMeetingCategory }))
+                          }
+                          disabled={sending}
+                          className="w-full rounded-md border px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring bg-background"
+                        >
+                          {DFLOW_MEETING_CATEGORY_OPTIONS.map((c) => (
+                            <option key={c} value={c}>{DFLOW_MEETING_CATEGORY_LABELS[c]}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface LinkManagementSectionProps {
+  meetingId: number
+  status: DflowMeetingStatusWithExists | null
+  statusError: string | null
+  teams: string[]
+  detailsOpen: boolean
+  onDetailsOpenChange: (open: boolean) => void
+  showSearch: boolean
+  onShowSearchChange: Dispatch<SetStateAction<boolean>>
+  refreshStatus: () => Promise<DflowMeetingStatusWithExists | null>
+  onChanged?: () => void
+}
+
+/** '연결 관리' 접이 섹션: public_uid 복사·해제·재발급·수동 입력·[D'Flow에서 찾기]. detailsOpen/showSearch만
+ *  부모가 소유(dflowMissing 안내의 [D'Flow에서 찾기로 재연결]이 이 섹션 밖에서 열어야 해서) — 나머지 9개
+ *  상태는 이 컴포넌트 안에서만 쓰인다. DflowMinuteSearchPanel과 같은 파일 하단 배치 패턴을 따른다. */
+function LinkManagementSection({
+  meetingId,
+  status,
+  statusError,
+  teams,
+  detailsOpen,
+  onDetailsOpenChange,
+  showSearch,
+  onShowSearchChange,
+  refreshStatus,
+  onChanged,
+}: LinkManagementSectionProps) {
+  const [copied, setCopied] = useState(false)
+  const [reissueNotice, setReissueNotice] = useState(false)
+  const [linkActionBusy, setLinkActionBusy] = useState(false)
+  const [linkActionError, setLinkActionError] = useState<string | null>(null)
+
+  const [showManualInput, setShowManualInput] = useState(false)
+  const [manualUid, setManualUid] = useState('')
+  const [manualUidError, setManualUidError] = useState<string | null>(null)
+  // false=경고 없음, 'missing'=D'Flow에 없음, 'archived'=D'Flow에서 보관됨 — 두 원인의 문구가 다르다.
+  const [manualMissingWarning, setManualMissingWarning] = useState<false | 'missing' | 'archived'>(false)
+  const [manualSaving, setManualSaving] = useState(false)
+
+  async function handleCopyUid() {
+    if (!status?.public_uid) return
+    try {
+      await navigator.clipboard.writeText(status.public_uid)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // clipboard 미지원 환경 — 표시 전용으로 동작 (MeetingIdBadge.tsx 관례)
+    }
+  }
+
+  async function handleUnlink() {
+    const ok = await confirmDialog(UNLINK_CONFIRM_MESSAGE)
+    if (!ok) return
+    setLinkActionBusy(true)
+    setLinkActionError(null)
+    try {
+      await setDflowLink(meetingId, null)
+      await refreshStatus()
+      setReissueNotice(false)
+      onChanged?.()
+    } catch (err) {
+      const { message } = await parseDflowError(err, '연결 해제에 실패했습니다.')
+      setLinkActionError(message)
+    } finally {
+      setLinkActionBusy(false)
+    }
+  }
+
+  async function handleReissue() {
+    const ok = await confirmDialog(REISSUE_CONFIRM_MESSAGE)
+    if (!ok) return
+    setLinkActionBusy(true)
+    setLinkActionError(null)
+    try {
+      await setDflowLink(meetingId, null)
+      await refreshStatus()
+      setReissueNotice(true)
+      onChanged?.()
+    } catch (err) {
+      const { message } = await parseDflowError(err, '재발급 준비에 실패했습니다.')
+      setLinkActionError(message)
+    } finally {
+      setLinkActionBusy(false)
+    }
+  }
+
+  async function handleManualSave() {
+    setManualUidError(null)
+    setManualMissingWarning(false)
+    // 서버 link는 소문자 UUID만 허용 — 대문자 붙여넣기도 통과시키기 위해 정규화 후 검증·전송.
+    const normalized = manualUid.trim().toLowerCase()
+    if (!isValidDflowUuid(normalized)) {
+      setManualUidError('올바른 UUID 형식이 아닙니다.')
+      return
+    }
+    setManualSaving(true)
+    try {
+      await setDflowLink(meetingId, normalized)
+      const fresh = await refreshStatus()
+      if (fresh?.exists_on_dflow === false) {
+        setManualMissingWarning('missing')
+      } else if (fresh?.dflow_archived === true) {
+        setManualMissingWarning('archived')
+      }
+      setManualUid('')
+      onChanged?.()
+    } catch (err) {
+      const { message } = await parseDflowError(err, '연결 저장에 실패했습니다.')
+      setManualUidError(message)
+    } finally {
+      setManualSaving(false)
+    }
+  }
+
+  async function handleMinuteLinked() {
+    await refreshStatus()
+    onShowSearchChange(false)
+    onChanged?.()
+  }
+
+  return (
+    <details
+      open={detailsOpen}
+      onToggle={(e) => onDetailsOpenChange(e.currentTarget.open)}
+      className="group border-t border-border pt-3"
+    >
+      <summary className="flex cursor-pointer select-none items-center gap-2 text-sm font-semibold text-muted-foreground">
+        <span className="transition-transform group-open:rotate-90">&rsaquo;</span>
+        연결 관리
+      </summary>
+
+      <div className="mt-3 space-y-3">
+        {statusError && <p className="text-sm text-red-600">{statusError}</p>}
+
+        {!statusError && (
+          <>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">public_uid</span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-foreground">{status?.public_uid ?? '미발급'}</span>
+                {status?.public_uid && (
+                  <button
+                    type="button"
+                    onClick={handleCopyUid}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    {copied ? '복사됨' : '복사'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {status?.public_uid && (
+              <p className="text-xs text-muted-foreground">
+                D'Flow 존재 확인:{' '}
+                {status.exists_on_dflow === undefined
+                  ? '알 수 없음'
+                  : status.exists_on_dflow
+                    ? status.dflow_archived === true
+                      ? '존재함(보관됨)'
+                      : '존재함'
+                    : '존재하지 않음(다음 전송 시 새로 생성됩니다)'}
+              </p>
+            )}
+
+            {reissueNotice && (
+              <p className="text-xs text-blue-600">다음 전송 시 새 식별자가 자동 발급됩니다.</p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setShowManualInput((v) => !v)}
+                className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent"
+              >
+                수동 입력
+              </button>
+              <button
+                type="button"
+                onClick={handleUnlink}
+                disabled={!status?.public_uid || linkActionBusy}
+                className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50"
+              >
+                해제
+              </button>
+              <button
+                type="button"
+                onClick={handleReissue}
+                disabled={!status?.public_uid || linkActionBusy}
+                className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50"
+              >
+                재발급
+              </button>
+              <button
+                type="button"
+                onClick={() => onShowSearchChange((v) => !v)}
+                className="rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-accent"
+              >
+                D'Flow에서 찾기
+              </button>
+            </div>
+
+            {linkActionError && <p className="text-xs text-red-600">{linkActionError}</p>}
+
+            {showManualInput && (
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={manualUid}
+                    onChange={(e) => setManualUid(e.target.value)}
+                    placeholder="00000000-0000-0000-0000-000000000000"
+                    aria-label="D'Flow public_uid 수동 입력"
+                    disabled={manualSaving}
+                    className="w-full rounded-md border px-3 py-1.5 text-xs font-mono outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  {manualUidError && <p className="mt-1 text-xs text-red-600">{manualUidError}</p>}
+                  {manualMissingWarning === 'missing' && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      D'Flow에 해당 회의록이 없습니다. 연결은 저장되었습니다.
+                    </p>
+                  )}
+                  {manualMissingWarning === 'archived' && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      D'Flow에서 보관된 회의록입니다. 연결은 저장되었습니다.
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleManualSave}
+                  disabled={manualSaving}
+                  className="shrink-0 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {manualSaving ? '저장 중…' : '저장'}
+                </button>
+              </div>
+            )}
+
+            {showSearch && (
+              <DflowMinuteSearchPanel
+                meetingId={meetingId}
+                teams={teams}
+                onLinked={handleMinuteLinked}
+              />
+            )}
+          </>
+        )}
+      </div>
+    </details>
   )
 }
 

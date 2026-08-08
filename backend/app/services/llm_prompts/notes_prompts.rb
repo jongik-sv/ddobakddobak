@@ -114,21 +114,5 @@ module LlmPrompts
       ## 출력 형식
       순수 Markdown 본문만 반환(제목·헤더 없이 본문만 — 블록 제목은 호출부가 붙인다). JSON·코드펜스 금지.
     PROMPT
-
-    FEEDBACK_NOTES_SYSTEM_PROMPT = <<~PROMPT.freeze
-      회의록 편집 전문가. 현재 회의록(Markdown)과 사용자 피드백을 받아 회의록을 수정.
-
-      ## 규칙
-      1. 피드백을 정확히 반영해 수정.
-      2. 피드백에서 언급 없는 부분은 그대로 유지.
-      3. 전체 구조·형식 유지, 필요한 부분만 변경.
-      4. Markdown만 반환: 전체 출력을 ```markdown 블록으로 감싸지 말 것. 본문 내 ```mermaid 코드블록은 허용.
-      5. 다이어그램: 요청 시 ```mermaid 코드블록 사용. 지원: flowchart, sequenceDiagram, gantt, pie, mindmap. 라벨은 한국어.
-      6. #{UNICODE_MATH_NOTATION.chomp}
-      7. #{LlmPrompts::MermaidPrompts::MERMAID_SYNTAX_RULES.chomp}
-
-      ## 출력 형식
-      순수 Markdown 텍스트만 반환. JSON 금지. ```markdown 블록 감싸기 금지. ```mermaid 코드블록은 본문 내 허용.
-    PROMPT
   end
 end

@@ -186,10 +186,7 @@ class MeetingSummarizationJob < ApplicationJob
     # LLM 에는 절취선 아래 본문(body_notes)만 current_notes 로 전달하고, pinned_top 은 문맥
     # 연속성을 위한 참고용 컨텍스트로만 별도 제공한다. 절취선이 없으면(비연결) pinned_top=nil,
     # body_notes=전체 문서 그대로 — 기존 동작과 동일(회귀 없음).
-    pinned_top, body_notes = PreviousMeetingNotes.split(meeting.current_notes_markdown)
-    # pinned_top 의 제목(H1)을 이 회의의 현재 title 로 갱신 — seed 시점 제목에 동결되지 않고
-    # 회의명 변경을 매 틱 반영한다(pinned_top 은 코드 관리 영역이라 무조건 갱신해도 안전).
-    pinned_top = refresh_pinned_title(pinned_top, meeting)
+    pinned_top, body_notes = split_pinned_notes(meeting.current_notes_markdown, meeting)
     payload = Transcript.to_sidecar_payload(new_transcripts)
 
     started = true
@@ -200,32 +197,15 @@ class MeetingSummarizationJob < ApplicationJob
     # previous_meeting_id 유무는 이 분기에 관여하지 않는다 — 이전 회의 내용은 이미 pinned_top 에
     # 코드 레벨로 분리돼 있으므로, 본문(body_notes)은 비연결 회의와 동일하게 처리하면 된다.
     if meeting.summary_restructure?
-      result = llm_service_for(meeting).refine_notes(
-        body_notes, payload,
-        meeting_title: meeting.title,
-        meeting_type: meeting.meeting_type,
-        sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
-        attendees: meeting.attendees,
-        verbosity: meeting.summary_verbosity,
-        verbosity_context: :realtime,
-        agenda_reference: agenda_ref,
-        domain_reference: domain_ref,
-        custom_prompt: meeting.summary_custom_prompt,
-        pinned_context: pinned_top
-      )
+      result = call_refine_notes(meeting, body_notes, payload,
+                                  agenda_reference: agenda_ref, domain_reference: domain_ref,
+                                  pinned_top: pinned_top, verbosity_context: :realtime)
       body_result = result["notes_markdown"]
     else
       # 증분 모드: 새 자막만 시간대별 블록으로 요약해 본문(body_notes) 뒤에 덧붙인다(앞 내용 불변).
-      result = llm_service_for(meeting).append_notes(
-        body_notes, payload,
-        meeting_title: meeting.title,
-        attendees: meeting.attendees,
-        verbosity: meeting.summary_verbosity,
-        agenda_reference: agenda_ref,
-        domain_reference: domain_ref,
-        custom_prompt: meeting.summary_custom_prompt,
-        pinned_context: pinned_top
-      )
+      result = call_append_notes(meeting, body_notes, payload,
+                                  agenda_reference: agenda_ref, domain_reference: domain_ref,
+                                  pinned_top: pinned_top)
       # 시간 라벨은 소비셋(applied_ids) 스냅샷으로 계산 — 릴레이션 재질의는 LLM 호출(수십 초) 중
       # 도착한 자막까지 집계해 시간대가 과대/중첩된다.
       body_result = compose_appended_notes(body_notes, result["block_markdown"],
@@ -237,7 +217,7 @@ class MeetingSummarizationJob < ApplicationJob
     # body 는 사용자 편집이 닿을 수 있는 영역이라 무조건 삭제(strip_leading_h1)가 아니라, 회의
     # 제목과 정확히 일치할 때만 지우는 strip_matching_h1 을 쓴다 — 사용자가 본문 첫 줄에 직접 쓴
     # 커스텀 H1(회의 제목과 다른 텍스트)은 보존한다. (append 모드 결과는 H1 로 시작하지 않아 no-op.)
-    body_result = PreviousMeetingNotes.strip_matching_h1(body_result, meeting.title) if pinned_top.present?
+    body_result = strip_pinned_h1(body_result, pinned_top, meeting)
     # 저장 직전 재조립: pinned_top + 절취선 + body_result. pinned_top 없으면(비연결) 절취선 없이
     # body_result 그대로(join 이 처리) — 기존 단일 notes_markdown 계약과 동일하게 유지.
     notes_markdown = PreviousMeetingNotes.join(pinned_top, body_result)
@@ -395,43 +375,23 @@ class MeetingSummarizationJob < ApplicationJob
     # 비연결 회의와 동일하게 처리한다. pinned_top 은 어느 분기든 절취선 아래만 LLM 에 전달하고
     # (코드 레벨 보호) 저장 직전 재조립한다.
     if meeting.summary_restructure?
-      pinned_top, refine_body = PreviousMeetingNotes.split(meeting.current_notes_markdown)
-      pinned_top = refresh_pinned_title(pinned_top, meeting)
+      pinned_top, refine_body = split_pinned_notes(meeting.current_notes_markdown, meeting)
       payload = Transcript.to_sidecar_payload(transcripts)
-      result = llm_service_for(meeting).refine_notes(
-        refine_body, payload,
-        meeting_title: meeting.title,
-        meeting_type: meeting.meeting_type,
-        sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
-        attendees: meeting.attendees,
-        verbosity: meeting.summary_verbosity,
-        chronological: false,
-        # final(종료·재생성)은 1회주입 플래그와 무관하게 항상 안건 전체를 주입한다.
-        agenda_reference: meeting.agenda_reference.presence,
-        domain_reference: domain_ref,
-        custom_prompt: meeting.summary_custom_prompt,
-        pinned_context: pinned_top
-      )
+      # final(종료·재생성)은 1회주입 플래그와 무관하게 항상 안건 전체를 주입한다.
+      result = call_refine_notes(meeting, refine_body, payload,
+                                  agenda_reference: meeting.agenda_reference.presence,
+                                  domain_reference: domain_ref, pinned_top: pinned_top,
+                                  chronological: false)
       body_result = result["notes_markdown"]
     else
-      pinned_top, latest_body = PreviousMeetingNotes.split(latest_full)
-      pinned_top = refresh_pinned_title(pinned_top, meeting)
+      pinned_top, latest_body = split_pinned_notes(latest_full, meeting)
       if latest_body.blank?
         # 증분인데 본문 base 가 백지(재생성 직후·연결 직후 첫 final 등) — refine 폴백(시간 흐름 지시).
         payload = Transcript.to_sidecar_payload(transcripts)
-        result = llm_service_for(meeting).refine_notes(
-          "", payload,
-          meeting_title: meeting.title,
-          meeting_type: meeting.meeting_type,
-          sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
-          attendees: meeting.attendees,
-          verbosity: meeting.summary_verbosity,
-          chronological: true,
-          agenda_reference: meeting.agenda_reference.presence,
-          domain_reference: domain_ref,
-          custom_prompt: meeting.summary_custom_prompt,
-          pinned_context: pinned_top
-        )
+        result = call_refine_notes(meeting, "", payload,
+                                    agenda_reference: meeting.agenda_reference.presence,
+                                    domain_reference: domain_ref, pinned_top: pinned_top,
+                                    chronological: true)
         body_result = result["notes_markdown"]
       else
         # 전체 재작성 없이 남은 미적용 자막만 마지막 블록으로 덧붙여 확정(append-only).
@@ -439,16 +399,9 @@ class MeetingSummarizationJob < ApplicationJob
         if remaining_ids.any?
           remaining = meeting.transcripts.where(id: remaining_ids).order(:sequence_number)
           payload = Transcript.to_sidecar_payload(remaining)
-          result = llm_service_for(meeting).append_notes(
-            latest_body, payload,
-            meeting_title: meeting.title,
-            attendees: meeting.attendees,
-            verbosity: meeting.summary_verbosity,
-            agenda_reference: meeting.agenda_reference.presence,
-            domain_reference: domain_ref,
-            custom_prompt: meeting.summary_custom_prompt,
-            pinned_context: pinned_top
-          )
+          result = call_append_notes(meeting, latest_body, payload,
+                                      agenda_reference: meeting.agenda_reference.presence,
+                                      domain_reference: domain_ref, pinned_top: pinned_top)
           body_result = compose_appended_notes(latest_body, result["block_markdown"], remaining)
         else
           result = { "ok" => true }
@@ -460,7 +413,7 @@ class MeetingSummarizationJob < ApplicationJob
     # refine_notes 가 매 틱 본문 첫 줄에 다시 쓰는, 회의 제목과 정확히 일치하는 H1 만 여기서
     # 제거해 중복을 막는다(strip_matching_h1 — 사용자가 본문에 직접 쓴 커스텀 H1은 보존).
     # (append 모드 결과·기존 latest_body 승계는 H1 로 시작하지 않아 no-op.)
-    body_result = PreviousMeetingNotes.strip_matching_h1(body_result, meeting.title) if pinned_top.present?
+    body_result = strip_pinned_h1(body_result, pinned_top, meeting)
     # LLM 도중 reset/사용자 편집 재확인을 실패 기록·저장 판단보다 먼저 수행한다 —
     # 의도된 스킵이면 성공·실패 결과 모두 버려, 초기화된 회의에 실패 배지가 남지 않는다.
     case final_post_llm_disposition(meeting, attempt, redacted_watermark)
@@ -535,6 +488,61 @@ class MeetingSummarizationJob < ApplicationJob
   def refresh_pinned_title(pinned_top, meeting)
     return pinned_top if pinned_top.blank?
     PreviousMeetingNotes.with_title(meeting.title, PreviousMeetingNotes.strip_leading_h1(pinned_top))
+  end
+
+  # realtime/final 공통: source_markdown 을 절취선 기준 pinned_top/body 로 나누고, pinned_top
+  # 제목을 갱신한다(refresh_pinned_title). 호출부 3곳(realtime 1·final 2) 모두 결과를
+  # `pinned_top, body = split_pinned_notes(...)` 형태로 받아 그대로 이어 쓴다.
+  def split_pinned_notes(source_markdown, meeting)
+    pinned_top, body = PreviousMeetingNotes.split(source_markdown)
+    [ refresh_pinned_title(pinned_top, meeting), body ]
+  end
+
+  # realtime/final 공통: refine_notes 호출부 조립(회의 제목·타입·섹션 프롬프트·참석자·verbosity·
+  # custom_prompt 등 meeting 파생 파라미터는 항상 동일). verbosity_context/chronological 은
+  # LlmService#refine_notes 의 기존 기본값(:final / false)과 동일한 기본값을 여기서도 유지해
+  # 명시적으로 넘기지 않는 호출부(realtime의 chronological, final restructure 분기의
+  # verbosity_context)의 동작이 바뀌지 않게 한다. agenda_reference/domain_reference/pinned_top
+  # 은 호출부마다 다르므로(1회주입 여부·현재 vs base 문서 등) 그대로 인자로 받는다.
+  def call_refine_notes(meeting, body, payload, agenda_reference:, domain_reference:, pinned_top:,
+                         verbosity_context: :final, chronological: false)
+    llm_service_for(meeting).refine_notes(
+      body, payload,
+      meeting_title: meeting.title,
+      meeting_type: meeting.meeting_type,
+      sections_prompt: PromptTemplate.sections_prompt_for(meeting.meeting_type),
+      attendees: meeting.attendees,
+      verbosity: meeting.summary_verbosity,
+      verbosity_context: verbosity_context,
+      chronological: chronological,
+      agenda_reference: agenda_reference,
+      domain_reference: domain_reference,
+      custom_prompt: meeting.summary_custom_prompt,
+      pinned_context: pinned_top
+    )
+  end
+
+  # realtime/final 공통: append_notes 호출부 조립. agenda_reference/domain_reference/pinned_top
+  # 은 호출부마다 다르므로 그대로 인자로 받는다(결과의 시간대 블록 조립(compose_appended_notes)은
+  # 호출부 책임 — 소비 자막 스냅샷 시점이 realtime/final 서로 다르다).
+  def call_append_notes(meeting, body, payload, agenda_reference:, domain_reference:, pinned_top:)
+    llm_service_for(meeting).append_notes(
+      body, payload,
+      meeting_title: meeting.title,
+      attendees: meeting.attendees,
+      verbosity: meeting.summary_verbosity,
+      agenda_reference: agenda_reference,
+      domain_reference: domain_reference,
+      custom_prompt: meeting.summary_custom_prompt,
+      pinned_context: pinned_top
+    )
+  end
+
+  # realtime/final 공통: pinned_top 이 있을 때만(연결 회의) 본문 첫 줄의 회의 제목과 정확히
+  # 일치하는 H1 을 제거한다(strip_matching_h1). pinned_top 없으면(비연결) 그대로 반환.
+  def strip_pinned_h1(body_result, pinned_top, meeting)
+    return body_result unless pinned_top.present?
+    PreviousMeetingNotes.strip_matching_h1(body_result, meeting.title)
   end
 
   # 증분 블록을 시간대 헤딩과 함께 기존 회의록 뒤에 덧붙인 전체 노트 반환. 블록 없으면 기존 그대로.

@@ -402,6 +402,53 @@ RSpec.describe "Api::V1::Meetings", type: :request do
         expect(summary_selects).to eq(1)
       end
     end
+
+    # WP-B4: editable_by? 목록 N+1 회피(collaborator_editable_batch). 배치 경로가 라이브 쿼리
+    # 경로와 정확히 같은 editable을 내는지 + 실제로 회의당 재조회가 아닌 1회만 조회되는지 확인.
+    context "editable 필드 — collaborator_editable_batch N+1 회피" do
+      it "소유자/직접 협업자/폴더상속 협업자/무관자에서 editable이 라이브 쿼리와 동일하게 계산된다" do
+        collaborator = create(:user)
+        create(:project_membership, user: collaborator, project: project, role: "member")
+        root = create(:folder, project: project)
+        child = create(:folder, project: project, parent: root)
+
+        owned            = create(:meeting, project: project, creator: user)
+        direct           = create(:meeting, project: project, creator: user)
+        MeetingCollaborator.create!(meeting: direct, user: collaborator)
+        folder_inherited = create(:meeting, project: project, creator: user, folder: child)
+        FolderCollaborator.create!(folder: root, user: collaborator)
+        unrelated        = create(:meeting, project: project, creator: user)
+
+        login_as(collaborator)
+        get "/api/v1/meetings", params: { show_all: true }
+
+        expect(response).to have_http_status(:ok)
+        by_id = response.parsed_body["meetings"].index_by { |m| m["id"] }
+        expect(by_id[owned.id]["editable"]).to be false
+        expect(by_id[direct.id]["editable"]).to be true
+        expect(by_id[folder_inherited.id]["editable"]).to be true
+        expect(by_id[unrelated.id]["editable"]).to be false
+      end
+
+      it "목록 N건에서 협업자 조회(meeting_collaborators/folder_collaborators)는 각 1회만 발생한다" do
+        create_list(:meeting, 5, project: project, creator: user)
+
+        collaborator_queries = 0
+        counter = lambda do |*args|
+          sql = args.last[:sql].to_s
+          if sql.start_with?("SELECT") && (sql.include?("meeting_collaborators") || sql.include?("folder_collaborators"))
+            collaborator_queries += 1
+          end
+        end
+
+        ActiveSupport::Notifications.subscribed(counter, "sql.active_record") do
+          get "/api/v1/meetings"
+        end
+
+        expect(response.parsed_body["meetings"].length).to eq(5)
+        expect(collaborator_queries).to eq(2)
+      end
+    end
   end
 
   # ============================================================

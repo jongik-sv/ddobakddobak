@@ -3,6 +3,8 @@ import { FileText, FileSpreadsheet, FileImage, File, Link, Download, Trash2, Ext
 import type { MeetingAttachment } from '../../api/attachments'
 import apiClient from '../../api/client'
 import { downloadBlob } from '../../lib/download'
+import { formatFileSize } from '../../lib/formatBytes'
+import { formatDate as formatDateShared } from '../../lib/meetingFormat'
 import { Dialog } from '../ui/Dialog'
 
 interface AttachmentCardProps {
@@ -23,13 +25,6 @@ function getFileIcon(contentType: string | null) {
   return <File className="w-5 h-5 text-gray-400" />
 }
 
-function formatFileSize(bytes: number | null): string {
-  if (bytes === null) return ''
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
-
 function extractDomain(url: string | null): string {
   if (!url) return ''
   try {
@@ -40,8 +35,7 @@ function extractDomain(url: string | null): string {
 }
 
 function formatDate(dateStr: string): string {
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+  return formatDateShared(dateStr, { month: 'short', day: 'numeric' })
 }
 
 export function AttachmentCard({ attachment, meetingId, onDelete, readOnly = false }: AttachmentCardProps) {

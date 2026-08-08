@@ -213,10 +213,7 @@ class Qwen3TransformersAdapter(SttAdapter):
 
     async def transcribe(self, audio_chunk: bytes, languages: list[str] | None = None, mode: str = "single") -> list[TranscriptSegment]:
         """PCM 오디오 청크를 텍스트 세그먼트로 변환한다."""
-        if not self._is_loaded:
-            raise RuntimeError(
-                "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
-            )
+        self._ensure_loaded()
 
         audio_array = pcm_bytes_to_float32(audio_chunk)
         if len(audio_array) == 0:
@@ -245,20 +242,44 @@ class Qwen3TransformersAdapter(SttAdapter):
             sf.write(tmp.name, audio_array, _SAMPLE_RATE)
             results = self._model.transcribe(audio=tmp.name, context=self._context, language=engine_lang)
 
+        return self._build_segments(
+            results, languages, mode,
+            ended_at_ms=max(chunk_duration_ms, 1000),
+            use_result_lang_fallback=False,
+        )
+
+    def _build_segments(
+        self,
+        results,
+        languages: list[str] | None,
+        mode: str,
+        ended_at_ms: int,
+        use_result_lang_fallback: bool = True,
+    ) -> list[TranscriptSegment]:
+        """qwen-asr 원본 결과(results) -> TranscriptSegment 리스트 변환 (공통 필터/언어결정 로직).
+
+        Args:
+            ended_at_ms: 이 배치의 모든 세그먼트에 공통 적용할 종료 시각(ms).
+            use_result_lang_fallback: single 모드에서 languages 미지정 시
+                r.language(결과 감지언어)로 폴백할지("ko" 대신) 여부.
+        """
         segments = []
         for r in results:
             text = r.text.strip()
             if not text or is_hallucination(text, languages):
                 continue
-            seg_lang = (
-                lang_utils.normalize_to_iso(r.language)
-                if mode == "multi"
-                else (languages[0] if languages else "ko")
-            )
+            if mode == "multi":
+                seg_lang = lang_utils.normalize_to_iso(r.language)
+            elif languages:
+                seg_lang = languages[0]
+            elif use_result_lang_fallback:
+                seg_lang = r.language or "ko"
+            else:
+                seg_lang = "ko"
             segments.append(TranscriptSegment(
                 text=text,
                 started_at_ms=0,
-                ended_at_ms=max(chunk_duration_ms, 1000),
+                ended_at_ms=ended_at_ms,
                 language=seg_lang,
                 confidence=0.9,
             ))
@@ -275,10 +296,7 @@ class Qwen3TransformersAdapter(SttAdapter):
 
     async def transcribe_file(self, file_path: str, languages: list[str] | None = None, mode: str = "single") -> list[TranscriptSegment]:
         """오디오 파일 전체를 변환한다."""
-        if not self._is_loaded:
-            raise RuntimeError(
-                "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
-            )
+        self._ensure_loaded()
 
         engine_lang = lang_utils.qwen_force_lang(languages, mode)
         loop = asyncio.get_running_loop()
@@ -289,23 +307,7 @@ class Qwen3TransformersAdapter(SttAdapter):
                 return self._transcribe_pcm_file(file_path, languages=languages, mode=mode)
 
             results = self._model.transcribe(audio=file_path, context=self._context, language=engine_lang)
-            segments = []
-            for r in results:
-                text = r.text.strip()
-                if text and not is_hallucination(text, languages):
-                    seg_lang = (
-                        lang_utils.normalize_to_iso(r.language)
-                        if mode == "multi"
-                        else (languages[0] if languages else (r.language or "ko"))
-                    )
-                    segments.append(TranscriptSegment(
-                        text=text,
-                        started_at_ms=0,
-                        ended_at_ms=0,
-                        language=seg_lang,
-                        confidence=0.9,
-                    ))
-            return segments
+            return self._build_segments(results, languages, mode, ended_at_ms=0)
 
         async with self._idle:
             return await loop.run_in_executor(None, _transcribe)
@@ -322,20 +324,7 @@ class Qwen3TransformersAdapter(SttAdapter):
             sf.write(tmp.name, audio_array, _SAMPLE_RATE)
             results = self._model.transcribe(audio=tmp.name, context=self._context, language=engine_lang)
 
-        segments = []
-        for r in results:
-            text = r.text.strip()
-            if text and not is_hallucination(text, languages):
-                seg_lang = (
-                    lang_utils.normalize_to_iso(r.language)
-                    if mode == "multi"
-                    else (languages[0] if languages else (r.language or "ko"))
-                )
-                segments.append(TranscriptSegment(
-                    text=text,
-                    started_at_ms=0,
-                    ended_at_ms=int(len(audio_array) / _SAMPLE_RATE * 1000),
-                    language=seg_lang,
-                    confidence=0.9,
-                ))
-        return segments
+        return self._build_segments(
+            results, languages, mode,
+            ended_at_ms=int(len(audio_array) / _SAMPLE_RATE * 1000),
+        )

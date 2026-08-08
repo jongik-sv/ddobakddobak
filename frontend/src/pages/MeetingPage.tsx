@@ -1,19 +1,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { PanelRightOpen } from 'lucide-react'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useProjectStore } from '../stores/projectStore'
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, usePanelRef } from 'react-resizable-panels'
-import { Tooltip } from '../components/ui/Tooltip'
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
+import { PanelExpandStrip } from '../components/ui/PanelExpandStrip'
 import { useMeeting } from '../hooks/useMeeting'
 import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgress'
 import { useMemoEditor } from '../hooks/useMemoEditor'
+import { useRightPanelCollapse } from '../hooks/useRightPanelCollapse'
+import { useConsumeSearchParamOnce } from '../hooks/useConsumeSearchParamOnce'
 import type { Transcript } from '../api/meetings'
 import { getTranscripts, reopenMeeting, updateNotes, canEditMeeting, canRedactMeeting } from '../api/meetings'
 import type { RedactTranscriptsResponse } from '../api/meetings'
 import { useToastStore } from '../stores/toastStore'
 import { applyLocalRedaction } from '../lib/applyLocalRedaction'
+import { messageDialog } from '../lib/messageDialog'
 import { useAuthStore } from '../stores/authStore'
 import { usePromptTemplateStore } from '../stores/promptTemplateStore'
 import { MeetingPageSkeleton } from '../components/ui/Skeleton'
@@ -93,10 +95,7 @@ export default function MeetingPage() {
       await refetch()
     } catch (e) {
       console.error('[toggleLock] 실패:', e)
-      const { message } = await import('@tauri-apps/plugin-dialog')
-        .then((m) => ({ message: m.message }))
-        .catch(() => ({ message: (msg: string) => window.alert(msg) }))
-      message('잠금 상태 변경에 실패했습니다. 권한을 확인하세요.')
+      messageDialog('잠금 상태 변경에 실패했습니다. 권한을 확인하세요.')
     } finally {
       setIsTogglingLock(false)
     }
@@ -197,16 +196,8 @@ export default function MeetingPage() {
   const { memoEditorRef, onEditorReady: onMemoEditorReady, isSavingMemo, handleSaveMemo } = useMemoEditor(meetingId, meeting?.memo)
 
   // 우측(메모·AI챗) 패널은 항상 마운트해두고 collapse/expand로만 크기를 바꾼다.
-  // 패널을 통째로 언마운트하면 react-resizable-panels가 남은 패널들의 flex 비율을
-  // 재정규화(renormalize)해 트랜스크립트↔AI회의록 경계가 같이 움직인다 — 그래서
-  // 이 방식 대신 패널 개수를 고정하고 우측 패널만 0으로 접어 AI회의록이 그 폭을 흡수하게 한다.
-  const rightPanelRef = usePanelRef()
-  useEffect(() => {
-    const panel = rightPanelRef.current
-    if (!panel) return
-    if (memoVisible) panel.expand()
-    else panel.collapse()
-  }, [memoVisible, rightPanelRef])
+  // (MeetingLivePage.tsx와 동일 패턴 — useRightPanelCollapse 참조)
+  const rightPanelRef = useRightPanelCollapse(memoVisible)
 
   const handleNotesChange = useCallback(
     (markdown: string) => {
@@ -284,43 +275,31 @@ export default function MeetingPage() {
   // 전역 검색에서 넘어온 경우(?q=) 회의내 검색을 자동 실행 — 1회만.
   // URL의 q는 적용 후 제거(replace)해 새로고침/뒤로가기 시 재발동·재포커스 방지.
   const [searchParams, setSearchParams] = useSearchParams()
-  const appliedSearchQ = useRef(false)
-  useEffect(() => {
-    if (appliedSearchQ.current) return
-    const q = searchParams.get('q')
-    if (!q) return
-    appliedSearchQ.current = true
-    search.open()
-    search.setQuery(q)
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('q')
-        return next
-      },
-      { replace: true }
-    )
-  }, [searchParams, search, setSearchParams])
+  useConsumeSearchParamOnce(
+    searchParams,
+    setSearchParams,
+    'q',
+    (raw) => (raw ? raw : undefined),
+    true,
+    (q) => {
+      search.open()
+      search.setQuery(q)
+    }
+  )
 
   // 폴더/프로젝트 챗 인용 클릭으로 ?t=<ms> 와 함께 진입한 경우 — 오디오 준비 후 1회 자동 seek.
   // audioLoaded(=canplay)가 떠야 seekTo+자동재생이 실제로 먹는다. 적용 후 t 파라미터 제거(새로고침/뒤로가기 재발동 방지).
-  const appliedSeekT = useRef(false)
-  useEffect(() => {
-    if (appliedSeekT.current) return
-    const t = Number(searchParams.get('t'))
-    if (!(t > 0)) return
-    if (!audio.audioLoaded) return
-    appliedSeekT.current = true
-    setSeekMs(t)
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('t')
-        return next
-      },
-      { replace: true }
-    )
-  }, [searchParams, audio.audioLoaded, setSearchParams])
+  useConsumeSearchParamOnce(
+    searchParams,
+    setSearchParams,
+    't',
+    (raw) => {
+      const t = Number(raw)
+      return t > 0 ? t : undefined
+    },
+    audio.audioLoaded,
+    (t) => setSeekMs(t)
+  )
 
   // meeting 상태가 completed로 바뀌면 트랜스크립트도 리로드 (파일 업로드 완료 시)
   useEffect(() => {
@@ -358,13 +337,13 @@ export default function MeetingPage() {
     })
   }, [remoteStructureRevision, meetingId, loadFinals])
 
-  function handleSeek(ms: number) {
+  const handleSeek = useCallback((ms: number) => {
     setSeekMs(ms)
     setSeekTick((t) => t + 1)
     // 낙관적 갱신: AudioPlayer의 onTimeUpdate(실제 오디오 timeupdate 경유)를 기다리면
     // highlightedIndex/스크롤 갱신이 한 박자 늦는다 — seek 즉시 반영해 전사 하이라이트가 따라가게 한다.
     setCurrentTimeMs(ms)
-  }
+  }, [])
 
   // 전사 분할: TranscriptPanel/store는 content override만 아는 것과 달리, 이 페이지가 들고 있는
   // transcripts 배열은 구조(행 수)까지 바꿔야 한다 — updated로 기존 행을 교체하고 그 바로 뒤에
@@ -611,6 +590,17 @@ export default function MeetingPage() {
     actions: meetingActions,
   }
 
+  // MeetingActionHeader에 공통으로 넘기는 prop — 데스크톱 titleArea / 모바일 분기 양쪽에서 동일하게 사용.
+  const meetingActionHeaderCommon = {
+    isDesktop,
+    meetingTypeLabel,
+    onUpdateTitle: updateTitle,
+    canEdit,
+    onToggleLock: handleToggleLock,
+    isTogglingLock,
+    onEditingChange: setIsEditingTitle,
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* 상단 툴바 */}
@@ -620,26 +610,14 @@ export default function MeetingPage() {
           titleArea={meeting ? (
             <MeetingActionHeader
               meeting={meeting}
-              isDesktop={isDesktop}
-              meetingTypeLabel={meetingTypeLabel}
-              onUpdateTitle={updateTitle}
-              canEdit={canEdit}
-              onToggleLock={handleToggleLock}
-              isTogglingLock={isTogglingLock}
-              onEditingChange={setIsEditingTitle}
+              {...meetingActionHeaderCommon}
             />
           ) : undefined}
         />
       ) : meeting ? (
         <MeetingActionHeader
           meeting={meeting}
-          isDesktop={isDesktop}
-          meetingTypeLabel={meetingTypeLabel}
-          onUpdateTitle={updateTitle}
-          canEdit={canEdit}
-          onToggleLock={handleToggleLock}
-          isTogglingLock={isTogglingLock}
-          onEditingChange={setIsEditingTitle}
+          {...meetingActionHeaderCommon}
         >
           {(parts) => (
             <MeetingDetailTopBar
@@ -794,22 +772,8 @@ export default function MeetingPage() {
             )}
           </Panel>
         </PanelGroup>
-        {/* 우측 패널이 접혔을 때 다시 펼칠 방법 — 사이드바 접힘 상태(AppLayout.tsx)와 동일한
-            엣지 어포던스 패턴(w-10 슬림 스트립 + 상단 고정 버튼). Panel 안에 넣으면 PanelGroup의
-            overflow:hidden에 잘려 안 보이므로 PanelGroup 밖의 flex 형제로 둔다. */}
-        {!memoVisible && (
-          <div className="flex flex-col items-center w-10 border-l border-border bg-card shrink-0 pt-3">
-            <Tooltip text="패널 펼치기" position="left">
-              <button
-                onClick={toggleMemo}
-                aria-label="패널 펼치기"
-                className="p-2.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-              >
-                <PanelRightOpen className="w-4 h-4" />
-              </button>
-            </Tooltip>
-          </div>
-        )}
+        {/* 우측 패널이 접혔을 때 다시 펼칠 방법 (MeetingLivePage.tsx와 공용 — PanelExpandStrip 참조) */}
+        {!memoVisible && <PanelExpandStrip onExpand={toggleMemo} />}
         </div>
       ) : (
         <MobileTabLayout

@@ -13,14 +13,11 @@ MLXWhisperAdapter와 동일한 입출력 계약(PCM bytes → list[TranscriptSeg
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator
 
 import numpy as np
 
-from app.stt import lang_utils
-from app.stt.audio_utils import is_hallucination, pcm_bytes_to_float32
 from app.stt.base import SttAdapter, TranscriptSegment
-from app.stt.mlx_whisper_adapter import _collapse_repetition, _seg_confidence
+from app.stt.mlx_whisper_adapter import run_backend_transcribe
 
 # beam은 full(비양자화) turbo repo에서 검증됨. 8bit/fp16 양자화 repo와 별개로 1회 다운(~1.6GB).
 _REPO = "mlx-community/whisper-large-v3-turbo"
@@ -71,37 +68,8 @@ class MLXWhisperBeamAdapter(SttAdapter):
         single 모드: languages[0]을 ISO 코드로 인식 언어 강제.
         multi 모드: 자동감지(language=None) 후 result["language"]를 세그먼트에 기록.
         """
-        if not self._is_loaded:
-            raise RuntimeError(
-                "모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요."
-            )
-
-        audio_array = pcm_bytes_to_float32(audio_chunk)
-        if len(audio_array) == 0:
-            return []
-
-        engine_lang = lang_utils.iso_force_lang(languages, mode)  # ISO or None
-        raw_segments, detected = await self._run_inference(audio_array, engine_lang)
-
-        seg_lang = (
-            lang_utils.normalize_to_iso(detected)
-            if mode == "multi"
-            else (languages[0] if languages else "ko")
-        ) or "ko"
-
-        results: list[TranscriptSegment] = []
-        for seg in raw_segments:
-            text = _collapse_repetition((seg.get("text") or "").strip())
-            if not text or is_hallucination(text, languages):
-                continue
-            results.append(TranscriptSegment(
-                text=text,
-                started_at_ms=int(float(seg.get("start", 0.0)) * 1000),
-                ended_at_ms=int(float(seg.get("end", 0.0)) * 1000),
-                language=seg_lang,
-                confidence=_seg_confidence(seg),
-            ))
-        return results
+        self._ensure_loaded()
+        return await run_backend_transcribe(self._run_inference, audio_chunk, languages, mode)
 
     async def _run_inference(
         self, audio_array: np.ndarray, language: str | None
@@ -125,12 +93,3 @@ class MLXWhisperBeamAdapter(SttAdapter):
         segments = result.get("segments") or []
         detected = result.get("language")
         return segments, detected
-
-    async def transcribe_stream(
-        self, audio_stream
-    ) -> AsyncIterator[TranscriptSegment]:
-        """오디오 스트림을 청크 단위로 순차 변환한다."""
-        async for chunk in audio_stream:
-            segments = await self.transcribe(chunk)
-            for seg in segments:
-                yield seg

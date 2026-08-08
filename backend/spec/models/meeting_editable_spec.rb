@@ -43,4 +43,29 @@ RSpec.describe Meeting, "#editable_by?" do
   it "user가 nil이면 false" do
     expect(meeting.editable_by?(nil)).to be false
   end
+
+  # WP-B4: 목록 직렬화 N+1 회피용 배치 키워드 인자(collaborator_meeting_ids/collaborator_folder_ids).
+  # 라이브 쿼리 경로(키워드 인자 없음)와 정확히 같은 불리언을 내야 한다.
+  describe "배치 키워드 인자 (collaborator_meeting_ids/collaborator_folder_ids)" do
+    it "직접 지정 협업자: 집합에 포함되면 true, 비어있으면 false" do
+      MeetingCollaborator.create!(meeting: meeting, user: collaborator)
+      expect(meeting.editable_by?(collaborator, collaborator_meeting_ids: Set[meeting.id], collaborator_folder_ids: Set.new)).to be true
+      expect(meeting.editable_by?(collaborator, collaborator_meeting_ids: Set.new, collaborator_folder_ids: Set.new)).to be false
+    end
+
+    it "소속 폴더(직속) 협업자: folder_id가 집합에 포함되면 true" do
+      m = create(:meeting, creator: owner, folder: leaf)
+      expect(m.editable_by?(collaborator, collaborator_meeting_ids: Set.new, collaborator_folder_ids: Set[leaf.id])).to be true
+      expect(m.editable_by?(collaborator, collaborator_meeting_ids: Set.new, collaborator_folder_ids: Set.new)).to be false
+    end
+
+    it "폴더가 없는 회의는 folder_ids 집합과 무관하게 false" do
+      expect(meeting.editable_by?(collaborator, collaborator_meeting_ids: Set.new, collaborator_folder_ids: Set[999_999])).to be false
+    end
+
+    it "소유자/admin은 배치 인자가 비어있어도 true (단락 평가로 배치 조회 자체를 안 탐)" do
+      expect(meeting.editable_by?(owner, collaborator_meeting_ids: Set.new, collaborator_folder_ids: Set.new)).to be true
+      expect(meeting.editable_by?(admin, collaborator_meeting_ids: Set.new, collaborator_folder_ids: Set.new)).to be true
+    end
+  end
 end
