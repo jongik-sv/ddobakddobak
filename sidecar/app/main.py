@@ -20,6 +20,21 @@ from app.stt.factory import create_stt_adapter
 _IDLE_OFFLOAD_INTERVAL_SEC = 60.0
 
 
+def _collect_idle_targets(app: FastAPI) -> list:
+    """유휴 오프로드 점검 대상을 현재 app.state에서 수집한다.
+
+    매 틱 새로 수집하므로 STT 엔진이 런타임에 교체돼도 항상 최신 어댑터를 점검한다.
+    GPU 상주 모델이 늘면 여기에 추가한다.
+    """
+    candidates = [
+        getattr(app.state, "stt_adapter", None),
+        getattr(app.state, "embedder", None),
+    ]
+    # None이거나 maybe_offload 코루틴이 없는 대상은 걸러낸다.
+    # (엔진 교체 도중 stt_adapter가 일시적으로 None인 창이 있음)
+    return [c for c in candidates if c is not None and callable(getattr(c, "maybe_offload", None))]
+
+
 async def _idle_offload_loop(app: FastAPI, interval_sec: float = _IDLE_OFFLOAD_INTERVAL_SEC) -> None:
     """주기적으로 유휴 관리 대상(STT 어댑터·임베딩 인코더)의 GPU 오프로드를 점검한다.
 
@@ -41,9 +56,7 @@ async def _idle_offload_loop(app: FastAPI, interval_sec: float = _IDLE_OFFLOAD_I
     )
     while True:
         await asyncio.sleep(interval_sec)
-        for target in getattr(app.state, "idle_managed", []):
-            if target is None:
-                continue
+        for target in _collect_idle_targets(app):
             try:
                 await target.maybe_offload(idle_unload_sec, idle_full_unload_sec)
             except Exception:
@@ -65,8 +78,6 @@ async def lifespan(app: FastAPI):
     from app.embeddings.encoder import KureEncoder
     from app.config import settings as _settings
     app.state.embedder = KureEncoder(_settings.EMBED_MODEL, _settings.EMBED_MODEL_VERSION, _settings.EMBED_DEVICE)
-    # 유휴 오프로드 점검 대상. GPU 상주 모델이 늘면 여기에 추가한다.
-    app.state.idle_managed = [app.state.stt_adapter, app.state.embedder]
     app.state.idle_offload_task = asyncio.create_task(_idle_offload_loop(app))
 
     yield
@@ -78,7 +89,6 @@ async def lifespan(app: FastAPI):
         with contextlib.suppress(asyncio.CancelledError):
             await idle_task
     app.state.stt_adapter = None
-    app.state.idle_managed = []
     gc.collect()
 
 
