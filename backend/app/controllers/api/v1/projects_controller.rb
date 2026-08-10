@@ -126,13 +126,22 @@ module Api
 
       # 프로젝트 즐겨찾기 토글. set_project 통과(=볼 수 있는 프로젝트)면 충분 — admin 불필요.
       def favorite
+        unless params.key?(:favorite)
+          return render json: { error: "favorite 파라미터가 필요합니다" }, status: :bad_request
+        end
+
         want = ActiveModel::Type::Boolean.new.cast(params[:favorite])
+        if want.nil?
+          return render json: { error: "favorite 파라미터가 올바르지 않습니다" }, status: :bad_request
+        end
+
         if want
-          ProjectFavorite.find_or_create_by!(user: current_user, project: @project)
+          # bang 없는 find_or_create_by — unique 인덱스가 멱등성을 보장한다.
+          ProjectFavorite.find_or_create_by(user: current_user, project: @project)
         else
           ProjectFavorite.where(user: current_user, project: @project).destroy_all
         end
-        render json: { favorite: want }
+        render json: { favorite: !!want }
       end
 
       # 프로젝트의 도메인 파일 링크 세트를 통째로 교체(빈 배열=전체 해제). 프로젝트 관리 권한 필요.

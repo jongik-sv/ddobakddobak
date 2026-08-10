@@ -73,6 +73,36 @@ RSpec.describe "Api::V1::Projects favorite", type: :request do
       expect(ProjectFavorite.exists?(user_id: stranger.id, project_id: project.id)).to be false
     end
 
+    it "favorite 파라미터 누락은 400이며 상태를 바꾸지 않는다" do
+      create(:project_favorite, user: user, project: project)
+
+      expect {
+        put "/api/v1/projects/#{project.id}/favorite", params: {}, as: :json
+      }.not_to change(ProjectFavorite, :count)
+
+      expect(response).to have_http_status(:bad_request)
+      expect(ProjectFavorite.exists?(user_id: user.id, project_id: project.id)).to be true
+    end
+
+    it "favorite 파라미터가 빈 문자열(boolean으로 캐스팅되지 않음)이면 400이며 상태를 바꾸지 않는다" do
+      # ActiveModel::Type::Boolean 캐스팅 규칙상 빈 문자열/null만 nil로 캐스팅되므로 이 케이스로 검증한다.
+      expect {
+        put "/api/v1/projects/#{project.id}/favorite", params: { favorite: "" }, as: :json
+      }.not_to change(ProjectFavorite, :count)
+
+      expect(response).to have_http_status(:bad_request)
+      expect(ProjectFavorite.exists?(user_id: user.id, project_id: project.id)).to be false
+    end
+
+    it "favorite 파라미터가 임의 문자열(예: \"maybe\")이면 false-값 목록에 없으므로 true로 캐스팅된다(코드베이스 boolean 캐스팅 컨벤션, folders_controller와 동일)" do
+      expect {
+        put "/api/v1/projects/#{project.id}/favorite", params: { favorite: "maybe" }, as: :json
+      }.to change(ProjectFavorite, :count).by(1)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["favorite"]).to be true
+    end
+
     it "타 사용자의 즐겨찾기 상태에 영향을 주지 않는다" do
       create(:project_membership, user: other_user, project: project, role: "member")
       create(:project_favorite, user: other_user, project: project)
