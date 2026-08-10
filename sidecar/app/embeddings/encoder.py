@@ -132,7 +132,19 @@ class KureEncoder:
 
     @property
     def resident_state(self) -> str:
-        return self._idle.state.value
+        """모델의 실제 상주 위치("gpu" / "cpu" / "unloaded").
+
+        IdleOffloadController.mark_loaded()는 원래 GPU 전용 STT 어댑터를 가정해
+        만들어져 있어, 로드가 끝나면 디바이스와 무관하게 무조건 ResidentState.GPU로
+        세팅한다(app/stt/idle_offload.py는 STT 어댑터 2개와 공유하므로 여기서 수정하지
+        않는다). 그 결과 EMBED_DEVICE=cpu로 로드된 인코더도 컨트롤러 상태만 보면
+        "gpu"로 거짓 보고된다. 언로드 상태가 아니고 디바이스가 cuda가 아니면
+        "cpu"로 보정해 반환한다. UNLOADED는 디바이스와 무관하게 그대로 유지한다.
+        """
+        state = self._idle.state
+        if state != ResidentState.UNLOADED and not str(self.device).startswith("cuda"):
+            return ResidentState.CPU.value
+        return state.value
 
     async def maybe_offload(self, idle_unload_sec: float, idle_full_unload_sec: float) -> None:
         await self._idle.maybe_offload(idle_unload_sec, idle_full_unload_sec)
@@ -151,7 +163,18 @@ class KureEncoder:
         return vecs.cpu().tolist()
 
     def encode(self, texts: list[str]) -> list[list[float]]:
-        """동기 진입점 (테스트·직접 호출 호환). 유휴 상태 추적을 하지 않는다."""
+        """동기 진입점 (테스트·직접 호출 호환). 유휴 상태 추적을 하지 않는다.
+
+        경고: 이 메서드는 IdleOffloadController의 락을 우회한다.
+        1) 오프로드가 활성화된 상태에서 encode()를 동시 호출하면, executor 스레드에서
+           _offload_to_cpu/_reload_from_cpu/_offload_full이 self._model을 이동·해제하는
+           도중 encode()가 같은 모델 객체로 추론을 시도하는 데이터 레이스가 발생할 수 있다.
+        2) touch()를 호출하지 않으므로 last_used가 갱신되지 않는다 — 이 경로만 반복
+           호출되면 실제로는 사용 중인데도 유휴 오프로드 루프가 "유휴"로 오판해
+           모델을 회수할 수 있다.
+        프로덕션 경로(/embed 라우터)는 encode_async를 사용하므로 위 문제가 없다.
+        새 코드에서는 반드시 encode()가 아니라 encode_async()를 사용해야 한다.
+        """
         self.load()
         return self._encode_sync(texts)
 

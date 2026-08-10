@@ -63,6 +63,12 @@ def test_starts_unloaded(monkeypatch):
     assert enc.gpu_resident is False
 
 
+def test_starts_unloaded_cpu_device(monkeypatch):
+    """CPU 디바이스로 생성해도 로드 전 상태는 디바이스와 무관하게 unloaded여야 한다."""
+    enc = _make_encoder(monkeypatch, device="cpu")
+    assert enc.resident_state == "unloaded"
+
+
 @pytest.mark.asyncio
 async def test_maybe_offload_before_first_load_is_noop(monkeypatch):
     """첫 encode 전에 오프로드 틱이 와도 크래시하지 않는다 (None.to() 방지)."""
@@ -86,16 +92,21 @@ async def test_first_encode_loads_to_gpu(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_two_stage_offload_transitions(monkeypatch):
-    """gpu -> cpu -> unloaded 순서로 전이한다."""
-    enc = _make_encoder(monkeypatch)
+    """gpu -> cpu -> unloaded 순서로 전이한다. 상태 문자열뿐 아니라 실제 .to() 호출로
+    텐서가 이동했는지(device_history)까지 검증한다."""
+    loads = []
+    enc = _make_encoder(monkeypatch, loads=loads)
     await enc.encode_async(["안녕"])
     assert enc.resident_state == "gpu"
+    model = loads[0]
+    assert model.device_history == ["cuda"]  # 최초 로드 시 .to(device)
 
     # 1단계: 유휴 TTL 초과
     enc._idle.last_used -= 700
     await enc.maybe_offload(600, 3600)
     assert enc.resident_state == "cpu"
     assert enc._model is not None            # CPU에 가중치 유지
+    assert model.device_history == ["cuda", "cpu"]  # 실제 GPU -> CPU 이동 확인
 
     # 2단계: 완전 해제 TTL 초과
     enc._idle.last_used -= 4000
@@ -104,6 +115,8 @@ async def test_two_stage_offload_transitions(monkeypatch):
     assert enc._model is None                # RAM 반납
     assert enc._tok is None
     assert enc.dim == 4                      # dim은 유지 (빈 texts 조기 반환용)
+    # 2단계는 참조 제거일 뿐 추가 .to() 호출은 없다 — 마지막 기록은 여전히 cpu
+    assert model.device_history == ["cuda", "cpu"]
 
 
 @pytest.mark.asyncio
@@ -135,9 +148,13 @@ async def test_encode_from_cpu_returns_to_gpu(monkeypatch):
     await enc.maybe_offload(600, 3600)
     assert enc.resident_state == "cpu"
 
+    model = loads[0]
+    assert model.device_history == ["cuda", "cpu"]
+
     await enc.encode_async(["다시"])
     assert enc.resident_state == "gpu"
     assert len(loads) == 1                   # 재로드 없이 텐서만 이동
+    assert model.device_history == ["cuda", "cpu", "cuda"]  # 실제 CPU -> GPU 복귀 확인
 
 
 @pytest.mark.asyncio
@@ -151,6 +168,37 @@ async def test_cpu_device_offloads_straight_to_unloaded(monkeypatch):
 
     assert enc.resident_state == "unloaded"
     assert enc._model is None
+
+
+@pytest.mark.asyncio
+async def test_resident_state_reports_gpu_for_cuda_device(monkeypatch):
+    """CUDA 디바이스로 로드하면 resident_state는 gpu여야 한다."""
+    enc = _make_encoder(monkeypatch, device="cuda")
+    await enc.encode_async(["안녕"])
+    assert enc.resident_state == "gpu"
+
+
+@pytest.mark.asyncio
+async def test_resident_state_reports_cpu_for_cpu_device(monkeypatch):
+    """IdleOffloadController.mark_loaded()는 무조건 GPU 상태로 세팅하지만,
+    EMBED_DEVICE=cpu로 로드된 인코더는 resident_state가 실제 디바이스인 cpu를
+    반영해야 한다 (거짓으로 gpu를 보고하면 안 됨)."""
+    enc = _make_encoder(monkeypatch, device="cpu")
+    await enc.encode_async(["안녕"])
+    assert enc.resident_state == "cpu"
+
+
+@pytest.mark.asyncio
+async def test_resident_state_cpu_device_unloaded_after_full_offload(monkeypatch):
+    """CPU 디바이스는 완전 해제 후에도(cpu 보정 로직과 무관하게) unloaded를 유지해야 한다."""
+    enc = _make_encoder(monkeypatch, device="cpu")
+    await enc.encode_async(["안녕"])
+    assert enc.resident_state == "cpu"
+
+    enc._idle.last_used -= 700
+    await enc.maybe_offload(600, 3600)
+
+    assert enc.resident_state == "unloaded"
 
 
 @pytest.mark.asyncio
