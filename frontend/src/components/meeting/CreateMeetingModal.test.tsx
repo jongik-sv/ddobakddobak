@@ -324,6 +324,7 @@ describe('CreateMeetingModal 도메인 파일', () => {
   const testProject = {
     id: 5, name: '반도체 프로젝트', description: null, icon_type: null, icon_value: null,
     color: null, personal: false, role: 'member' as const, member_count: 1, meeting_count: 0, owner: null,
+    favorite: false,
   }
 
   beforeEach(async () => {

@@ -2,12 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useProjectStore } from './projectStore'
 import type { Project } from '../api/projects'
 
-const { mockGetProjects } = vi.hoisted(() => ({ mockGetProjects: vi.fn() }))
+const { mockGetProjects, mockToggleProjectFavorite } = vi.hoisted(() => ({
+  mockGetProjects: vi.fn(),
+  mockToggleProjectFavorite: vi.fn(),
+}))
 vi.mock('../api/projects', () => ({
   getProjects: mockGetProjects,
   createProject: vi.fn(),
   updateProject: vi.fn(),
   deleteProject: vi.fn(),
+  toggleProjectFavorite: mockToggleProjectFavorite,
 }))
 
 function makeProject(o: Partial<Project> = {}): Project {
@@ -23,6 +27,7 @@ function makeProject(o: Partial<Project> = {}): Project {
     member_count: 1,
     meeting_count: 0,
     owner: null,
+    favorite: false,
     ...o,
   }
 }
@@ -62,5 +67,42 @@ describe('projectStore', () => {
     ])
     await useProjectStore.getState().fetchProjects()
     expect(useProjectStore.getState().currentProjectId).toBe(6)
+  })
+})
+
+describe('projectStore.toggleFavorite', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useProjectStore.getState().reset()
+  })
+
+  it('낙관적으로 해당 프로젝트의 favorite를 즉시 갱신하고 API를 호출한다', async () => {
+    mockToggleProjectFavorite.mockResolvedValue(true)
+    useProjectStore.setState({ projects: [makeProject({ id: 5, favorite: false })] })
+
+    await useProjectStore.getState().toggleFavorite(5, true)
+
+    expect(mockToggleProjectFavorite).toHaveBeenCalledWith(5, true)
+    expect(useProjectStore.getState().projects[0].favorite).toBe(true)
+  })
+
+  it('다른 프로젝트의 favorite는 건드리지 않는다', async () => {
+    mockToggleProjectFavorite.mockResolvedValue(true)
+    useProjectStore.setState({
+      projects: [makeProject({ id: 5, favorite: false }), makeProject({ id: 6, favorite: false })],
+    })
+
+    await useProjectStore.getState().toggleFavorite(5, true)
+
+    expect(useProjectStore.getState().projects.find((p) => p.id === 6)?.favorite).toBe(false)
+  })
+
+  it('API 실패 시 이전 projects 배열로 롤백한다', async () => {
+    mockToggleProjectFavorite.mockRejectedValue(new Error('boom'))
+    useProjectStore.setState({ projects: [makeProject({ id: 5, favorite: false })] })
+
+    await useProjectStore.getState().toggleFavorite(5, true)
+
+    expect(useProjectStore.getState().projects[0].favorite).toBe(false)
   })
 })

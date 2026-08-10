@@ -37,6 +37,7 @@ export default function ProjectDialog({ project, onClose, onSaved }: ProjectDial
     role: project?.role ?? 'admin',
     member_count: project?.member_count ?? 1,
     meeting_count: project?.meeting_count ?? 0,
+    favorite: project?.favorite ?? false,
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -33,7 +33,7 @@ vi.mock('../components/project/ProjectDialog', () => ({
 function makeProject(o: Partial<Project> = {}): Project {
   return {
     id: 1, name: 'P', description: null, icon_type: null, icon_value: null,
-    color: null, personal: false, role: 'admin', member_count: 1, meeting_count: 0, owner: null, ...o,
+    color: null, personal: false, role: 'admin', member_count: 1, meeting_count: 0, owner: null, favorite: false, ...o,
   }
 }
 

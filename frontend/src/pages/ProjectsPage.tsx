@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { HTTPError } from 'ky'
-import { Plus, MoreVertical, Pencil, Users, Trash2, Download, FileDown } from 'lucide-react'
+import { Plus, MoreVertical, Pencil, Users, Trash2, Download, FileDown, Star } from 'lucide-react'
 import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore, canCreateProject } from '../stores/authStore'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
@@ -22,10 +22,14 @@ export default function ProjectsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const projects = useProjectStore((s) => s.projects)
-  const visibleProjects = projects.filter((p) => !isHiddenClutterProject(p))
+  // favorite 먼저, 그 안에서는 기존 순서 유지(Array#sort는 stable).
+  const visibleProjects = projects
+    .filter((p) => !isHiddenClutterProject(p))
+    .sort((a, b) => Number(b.favorite) - Number(a.favorite))
   const fetchProjects = useProjectStore((s) => s.fetchProjects)
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject)
   const removeProject = useProjectStore((s) => s.removeProject)
+  const toggleFavorite = useProjectStore((s) => s.toggleFavorite)
   const systemRole = useAuthStore((s) => s.user?.role)
   // 시스템 admin은 비멤버(role=null) 프로젝트도 삭제 권한이 있음(백엔드 override).
   const isSystemAdmin = systemRole === 'admin'
@@ -143,6 +147,18 @@ export default function ProjectsPage() {
                   멤버 {p.member_count} · 회의 {p.meeting_count}
                 </p>
               </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleFavorite(p.id, !p.favorite)
+                }}
+                className={`rounded-md p-1 transition-opacity hover:bg-accent ${
+                  p.favorite ? 'text-yellow-500' : 'text-muted-foreground opacity-0 group-hover:opacity-100'
+                }`}
+                aria-label={p.favorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
+              >
+                <Star className="h-4 w-4" fill={p.favorite ? 'currentColor' : 'none'} />
+              </button>
               <div className="relative" onClick={(e) => e.stopPropagation()}>
                 <button
                   onClick={() => setMenuId(menuId === p.id ? null : p.id)}

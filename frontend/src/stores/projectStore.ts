@@ -4,6 +4,7 @@ import {
   createProject as apiCreate,
   updateProject as apiUpdate,
   deleteProject as apiDelete,
+  toggleProjectFavorite as apiToggleFavorite,
 } from '../api/projects'
 import type { Project, ProjectInput } from '../api/projects'
 
@@ -20,6 +21,7 @@ interface ProjectState {
   createProject: (data: ProjectInput) => Promise<Project>
   updateProject: (id: number, data: Partial<ProjectInput>) => Promise<void>
   removeProject: (id: number) => Promise<void>
+  toggleFavorite: (id: number, favorite: boolean) => Promise<void>
   reset: () => void
 }
 
@@ -72,6 +74,19 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     await apiDelete(id)
     if (get().currentProjectId === id) localStorage.removeItem(CURRENT_KEY)
     await get().fetchProjects()
+  },
+
+  toggleFavorite: async (id, favorite) => {
+    // 낙관적 갱신: projects 배열의 해당 항목만 즉시 바꾸고, API 실패 시 이전 배열로 복원.
+    const prevProjects = get().projects
+    set({
+      projects: prevProjects.map((p) => (p.id === id ? { ...p, favorite } : p)),
+    })
+    try {
+      await apiToggleFavorite(id, favorite)
+    } catch {
+      set({ projects: prevProjects })
+    }
   },
 
   reset: () =>

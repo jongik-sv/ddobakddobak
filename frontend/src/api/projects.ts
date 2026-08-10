@@ -14,6 +14,7 @@ export interface Project {
   member_count: number
   meeting_count: number
   owner: string | null
+  favorite: boolean
 }
 
 export function projectDisplayName(p: Pick<Project, 'name' | 'personal' | 'owner'>): string {
@@ -69,6 +70,12 @@ export async function updateProject(id: number, data: Partial<ProjectInput>): Pr
 
 export async function deleteProject(id: number): Promise<void> {
   await apiClient.delete(`projects/${id}`)
+}
+
+export async function toggleProjectFavorite(id: number, favorite: boolean): Promise<boolean> {
+  return (
+    await apiClient.put(`projects/${id}/favorite`, { json: { favorite } }).json<{ favorite: boolean }>()
+  ).favorite
 }
 
 export async function getProjectMembers(id: number): Promise<ProjectMember[]> {
