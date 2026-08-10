@@ -12,6 +12,7 @@ admin 관리자로 들어갔을때 설정에서 유저관리를 분리하고 싶
 여러 서버를 사용하면서 회의 데이터의 파편화가 걱정이 되는데 하나의 DB를 사용하게 할 수 있을까?
 
 ## 회의록 프롬프트 작성 요령
+
 1. 연결된 회의가 있을 때 회의록 재생성
   - 회의록 지시문 (지금과 동일)
   - 이전 회의록 노트 (이전 회의록 요약 본 포함)
@@ -26,23 +27,22 @@ admin 관리자로 들어갔을때 설정에서 유저관리를 분리하고 싶
 4. 연결된 회의가 없을 때 타이머에 의해 추가 반영 : 2번과 동일
 
 ## 최종 정리
+
 1. 기존 회의록 있을 경우(1, 2, 4)
 2. 기존 회의록 없을 경우(3)
-
 
 전부 main에 있음 (현재 HEAD=main, 미머지 브랜치 없음). 금요일(6/12)~지금 ~52커밋. 굵직한 덩어리 6개:
 
 
 
 ## 향후 Refactoring 계획
+
 1. 성능 측면(***)
 2. 관리 측면(**)
 3. 기술부채 해소(***)
 
-
 3순위 altalt 대비 ([[project_altalt_feature_gaps]]): ①AI Chat(회의에 질문)
 리팩토링 로드맵 잔여 ([[project_refactor_roadmap]]): #7 프론트 god 분해 / #11 FK / #2 잔여 인덱스
-
 
 회의록 전체보기 팝업 (한눈에 보이게 크게 보이도록)
 
@@ -51,6 +51,7 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
 
 
 ## 향후 추가 계획 — 완료 (완)
+
 1. 프로젝트별 관리 기능(완)
   - 프로젝트 생성 및 정보관리 기능
   - 프로젝트의 사용자 관리
@@ -58,64 +59,64 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
   - 할당된 프로젝트만 볼수 있음
   - 프로젝트 초대 기능
   - 프로젝트의 특징을 잘 나타낼 수 있는 아이콘 할당
-3. 실제 서비스 환경 구축 
+2. 실제 서비스 환경 구축
   - sidecar
   - backend + postgres
   - frontend 페이지/앱
-  - stt 모델 서버, 요약 LLM 모델 서버  
-5. 프로젝트 휴지통 (완)
-6. Decision Log 에 결정한 시각을 자동으로 넣어두는 것은 어떨까? 또 그 시각을 누르면 해당 위치로 점프하는 거지분리해서 (폐기)6. 
-7. 회의 요약에 대한 근거(발화 시각)를 각 항목에 넣는것은 어떨까? (완)
+  - stt 모델 서버, 요약 LLM 모델 서버
+3. 프로젝트 휴지통 (완)
+4. Decision Log 에 결정한 시각을 자동으로 넣어두는 것은 어떨까? 또 그 시각을 누르면 해당 위치로 점프하는 거지분리해서 (폐기)6.
+5. 회의 요약에 대한 근거(발화 시각)를 각 항목에 넣는것은 어떨까? (완)
   - 화자들이 발화한 시각을 요약의 각 문장 마지막에 같이 받는다.
   - 회의록 표시는 그냥 간단한 타이머 아이콘 또는 화자번호별로 ⓿, ❶, ❷, ❸, ❹, ❺, ❻, ❼, ❽, ❾, ❿ 또는 [화자1], [장종익][장종익] 형식으로 표시(한 사람이 여러번 나올 수도 있음)
   - 발화 근거를 누르면 해당 시각으로 점프한다.
-8. 프로젝트/폴더 안에서 묻기 — Top picks 1번(폴더/팀 교차 AI Q&A) (완)
-  ※ 코어만 완료. 미래계획(pgvector·리랭커)은 아래 "미완료" 챕터 참조.
+6. 프로젝트/폴더 안에서 묻기 — Top picks 1번(폴더/팀 교차 AI Q&amp;A) (완)
+※ 코어만 완료. 미래계획(pgvector·리랭커)은 아래 "미완료" 챕터 참조.
 
   **✅ 완료 (main 머지·푸시)**
-  - 폴더/팀 교차 AI Q&A "폴더에게 묻기"(머지 `b73e718`): 회의 1건에 묶였던 챗을 폴더·팀 전체 스코프로 확대. 13 TDD 태스크.
+  - 폴더/팀 교차 AI Q&amp;A "폴더에게 묻기"(머지 `b73e718`): 회의 1건에 묶였던 챗을 폴더·팀 전체 스코프로 확대. 13 TDD 태스크.
   - 의미검색(임베딩)(머지 `3d2d834`): KURE-v1(MIT, 1024dim) 임베딩 + FTS5 하이브리드(RRF). 런타임=PyTorch+transformers(AutoModel, CLS풀+L2정규화), device 자동감지(기본 CPU, Nvidia 서버=CUDA). 저장=`transcript_embeddings` plain BLOB 테이블(transcript 행 단위), 검색=numo-narray exact cosine(브루트포스, `transcript_vector_search`의 `VectorIndex` 추상화로 교체지점 마련). 인가=FTS와 동일 `accessible_by` meeting_id 필터.
   - 쿼리 확장(머지 `3d2d834`): LLM 동의어·약어 확장 → 다중 벡터 + FTS RRF(`folder_chat_query_expansion`). 검색단 추가 LLM 호출 0.
   - 운영 남음(코드 아님): 신규/모델교체 시 `rails embeddings:backfill`(재실행 가능) + sidecar 재시작 필요.
-9. 화자 창에서 해당 화자가 누군지 음성을 들어야 이름을 넣을 수 있는데 지금은 아주 나중에 말한 화자는 말하는 위치로 넘어가기가 힘들어. 그래서 화자를 누르면 해당 화자의 말로 위치가 이동하면 좋겠어. 방법은 가장 위가 아닌 지금 현재 음성이 플레이 되고 있는 위치보다 아래에 있는 화자의 발화 위치로 이동하면 된다. 만약 플레이 되고 있지 않다면 가장 처음 발화 위치로 이동하면 된다. 그래서 화자 1을 계속 누르면 화자 1이 말한 것을 계속 아래로 가면서 들려주면 되는거야. '화자 1' 이렇게 되어 있는 텍스트(또는 버튼)을 누를때 마다 이동하면 된다. 
-12. tauri는 백그라운드 실행 가능, 윈도우(시스템 트레이), 맥북(막대 메뉴)에서 누르면 화면에 팝업, 다시 닫으면 백그라운드로 실행 하도록 하자. 백그라운드에서도 예약이 자동으로 실행되어야해. 화면이 꺼지거나 슬립 시에도 실행하고 싶다. (완)
-17. 트랜스크립트를 들으면서 화자목록이 아닌 트랜스크립트의 이름에서 더블클릭하면 화자 이름을 바꿀 수 있게 하자. (완)
-17. 백그라운드 레코딩 : 회의 녹음/STT는 회의를 빠져나와도 계속 되면 좋겟어. 들어가서 종료하기 전까지 계속 되면 좋겠다. (완)
-18. 회의 화면의 AI 챗도 해당 회의, 폴더, 프로젝트 전체에 각각 AI 챗을 할 수 있도록 하자.(완)
-19. 설정 > LLM 에서 왜 CLI가 없지? 이 설정은 원래 서버 설정 아니야? 여기서 CLI를 설정한다고 해도 로컬 PC에서 실행 되는 것이 아니라 서버에서 실행되는거잖아. (완)
+7. 화자 창에서 해당 화자가 누군지 음성을 들어야 이름을 넣을 수 있는데 지금은 아주 나중에 말한 화자는 말하는 위치로 넘어가기가 힘들어. 그래서 화자를 누르면 해당 화자의 말로 위치가 이동하면 좋겠어. 방법은 가장 위가 아닌 지금 현재 음성이 플레이 되고 있는 위치보다 아래에 있는 화자의 발화 위치로 이동하면 된다. 만약 플레이 되고 있지 않다면 가장 처음 발화 위치로 이동하면 된다. 그래서 화자 1을 계속 누르면 화자 1이 말한 것을 계속 아래로 가면서 들려주면 되는거야. '화자 1' 이렇게 되어 있는 텍스트(또는 버튼)을 누를때 마다 이동하면 된다.
+8. tauri는 백그라운드 실행 가능, 윈도우(시스템 트레이), 맥북(막대 메뉴)에서 누르면 화면에 팝업, 다시 닫으면 백그라운드로 실행 하도록 하자. 백그라운드에서도 예약이 자동으로 실행되어야해. 화면이 꺼지거나 슬립 시에도 실행하고 싶다. (완)
+9. 트랜스크립트를 들으면서 화자목록이 아닌 트랜스크립트의 이름에서 더블클릭하면 화자 이름을 바꿀 수 있게 하자. (완)
+10. 백그라운드 레코딩 : 회의 녹음/STT는 회의를 빠져나와도 계속 되면 좋겟어. 들어가서 종료하기 전까지 계속 되면 좋겠다. (완)
+11. 회의 화면의 AI 챗도 해당 회의, 폴더, 프로젝트 전체에 각각 AI 챗을 할 수 있도록 하자.(완)
+12. 설정 &gt; LLM 에서 왜 CLI가 없지? 이 설정은 원래 서버 설정 아니야? 여기서 CLI를 설정한다고 해도 로컬 PC에서 실행 되는 것이 아니라 서버에서 실행되는거잖아. (완)
   - admin이면 CLI 보여야 함
   - 서버는 원격인데 추론만 내 로컬에서?
-20. AI 회의록에서 확장했을 때 뜨는 팝업은 폭을 더 키우고 크기와 위치를 이동 할 수 있도록 해줘. (완)
-21. 회의 생성 시 회의 날짜 자동 입력
-22. 회의·폴더 단위 내보내기/가져오기 (완)
+13. AI 회의록에서 확장했을 때 뜨는 팝업은 폭을 더 키우고 크기와 위치를 이동 할 수 있도록 해줘. (완)
+14. 회의 생성 시 회의 날짜 자동 입력
+15. 회의·폴더 단위 내보내기/가져오기 (완)
   - 회의 1건을 `.ddobak-meeting.tgz` 로 내보내 다른 기기 현재 프로젝트·현재 폴더에 새 회의로 복원
   - 폴더(디렉토리) 서브트리+소속 회의 통째로 `.ddobak-folder.tgz` 내보내기/가져오기 (프로젝트/폴더/회의 3단 완성)
   - 공유 `Transfer::Archive`(보안 primitive)·`MeetingSerializer`/`MeetingRestorer`. 기존 프로젝트 export/import 무수정
-23. 회의중에는 뒤로가기 안되도록 보호
-24. 도메인 용어 처리 기능 (완)
-25. 회원가입 시 패스워드 2번 입력 하도록 변경 (완)
-27. STT 큐 성능 개선 
-28. LLM 설정 프리셋 개선
+16. 회의중에는 뒤로가기 안되도록 보호
+17. 도메인 용어 처리 기능 (완)
+18. 회원가입 시 패스워드 2번 입력 하도록 변경 (완)
+19. STT 큐 성능 개선
+20. LLM 설정 프리셋 개선
   - 현재 프리셋은 입력 가능한 값의 항목만 제공 
   - 프리셋에 Google Gemini(API 전용) 없음
   - 프리셋에 API를 발행 받을 수 있는 링크 추가
   - 저장을 하면 새로운 서버/개인 설정값 저장 (같은 프리셋이라도 다앙한 값 선택 가능)
-29. 필터에 검색값이 들어 가 있는 상태에서 폴더들을 누르면 화면 깜박임 현상 발생한다. 아마도 폴더안의 회의 조회 후 필터가 동작해서 그런것 같아. (완 — 실원인은 폴더클릭이 검색 디바운스 공유)
-30. AI 챗에서 mermaid 추가, 또 스타일이 회의요약과 많이 다름다 (완 — 프론트 렌더는 기존 완성, 백엔드 프롬프트/새니타이즈 + 스타일 토큰 통일)
+21. 필터에 검색값이 들어 가 있는 상태에서 폴더들을 누르면 화면 깜박임 현상 발생한다. 아마도 폴더안의 회의 조회 후 필터가 동작해서 그런것 같아. (완 — 실원인은 폴더클릭이 검색 디바운스 공유)
+22. AI 챗에서 mermaid 추가, 또 스타일이 회의요약과 많이 다름다 (완 — 프론트 렌더는 기존 완성, 백엔드 프롬프트/새니타이즈 + 스타일 토큰 통일)
   - 스타일만 통일 (저비용, 추천): 렌더러는 각자 두고 타이포·간격·코드블록·표 CSS를 공통 클래스/토큰으로 뽑아 두 컴포넌트에 적용. "보이는 표현"의 어긋남 대부분은 이걸로 해소.
-31. 프로필관리 창 모양이 안좋다. 수정하자.
- 32. 회의록 D'Flow에 바로 업로드 기능
-  - 또박또박 : ddobak-dflow-sender-spec.md
-  - D'Flow : dflow-minutes-upload-api-spec.md
-33. AI 챗의 AI 답변을 크게 키워서 볼 수 있도록 해줘. md 파일 저장도 되면 좋겠다. 물론 마커는 빼고 파일로 저장해야된다. (완)
-34. AI 회의록에 글자크기 조절 옵션 (mdview 참고) (완 — uiStore summaryFontSize 16/11~28/step2 + SummaryFontSizeControl A−/숫자(클릭=리셋)/A+ + .bn-default-styles var(--bn-body-font-size) 오버라이드. 헤딩 em 비례 스케일, 코드블록 13px 고정. 상세·전체보기 uiStore 전역 공유)
+23. 프로필관리 창 모양이 안좋다. 수정하자.
+  32. 회의록 D'Flow에 바로 업로드 기능
+   또박또박 : ddobak-dflow-sender-spec.md
+   D'Flow : dflow-minutes-upload-api-spec.md
+24. AI 챗의 AI 답변을 크게 키워서 볼 수 있도록 해줘. md 파일 저장도 되면 좋겠다. 물론 마커는 빼고 파일로 저장해야된다. (완)
+25. AI 회의록에 글자크기 조절 옵션 (mdview 참고) (완 — uiStore summaryFontSize 16/11~28/step2 + SummaryFontSizeControl A−/숫자(클릭=리셋)/A+ + .bn-default-styles var(--bn-body-font-size) 오버라이드. 헤딩 em 비례 스케일, 코드블록 13px 고정. 상세·전체보기 uiStore 전역 공유)
   - 계획:
     - 현황: 회의록 본문은 BlockNote 렌더(`AiSummaryPanel.tsx`), 본문 글자크기 조절 지점 전무(오버라이드는 코드블록 `--md-code-font-size`뿐)
     - UI: mdview 패턴(`~/project/mdview/src/main.ts:589-622`) 이식 — `A−`/`숫자(클릭=기본값 리셋)`/`A+` 3버튼. 리셋을 별도 숫자 버튼으로 두는 이유=연타 중 더블클릭 리셋 오발동 회피(mdview 실전 교훈). 상수: 기본 16px, min 11, max 28, step 2
     - 삽입 위치 2곳: `AiSummaryPanel.tsx` 헤더(전체보기 버튼 옆) + `AiSummaryFullViewModal.tsx` 헤더 — 같은 회의록을 다른 마운트로 렌더하므로 값 공유 필수
     - 상태/영속: `uiStore.ts`의 `sidebarWidth`/`folderChatWidth` 패턴 그대로 — `summaryFontSize` 필드 + clamp 헬퍼 + localStorage
     - 적용: 본문 wrapper에 `fontSize` 인라인(또는 CSS 변수) 주입. BlockNote 내부가 px 하드코딩이면 추가 오버라이드 필요(구현 시 실측)
-35. AI 챗(폴더/프로젝트)에서 마커를 누르면 해당 회의가 열릴때 회의 뿐만 아니라 AI 챗이 새로 열리기 때문에 위치가 초기화 되어서 불편하다. AI 챗은 그대로 두는 것이 좋겠다. (완 — 1단계 chatStore 스코프 캐시 맵 개편으로 리마운트 시 대화·draft·스크롤 즉시 복원 + 2단계 FolderChatDrawer를 GatedApp 루트로 승격·uiStore 전역화·onSeekMeeting onClose 제거로 회의 상세 이동 시에도 챗 드로어가 실제로 유지)
+26. AI 챗(폴더/프로젝트)에서 마커를 누르면 해당 회의가 열릴때 회의 뿐만 아니라 AI 챗이 새로 열리기 때문에 위치가 초기화 되어서 불편하다. AI 챗은 그대로 두는 것이 좋겠다. (완 — 1단계 chatStore 스코프 캐시 맵 개편으로 리마운트 시 대화·draft·스크롤 즉시 복원 + 2단계 FolderChatDrawer를 GatedApp 루트로 승격·uiStore 전역화·onSeekMeeting onClose 제거로 회의 상세 이동 시에도 챗 드로어가 실제로 유지)
   - 계획:
     - 원인 3중: ① `/meetings`↔`/meetings/:id`가 서로 다른 Route element라 마커 클릭 navigate 시 `FolderChatDrawer`(챗 포함) 통째 unmount ② 회의 상세에서도 첫 방문 회의면 `MeetingPageSkeleton` 분기가 `RightTabsPanel`을 갈아엎어 리마운트 ③ `chatStore`가 스코프 키 없는 단일 `messages` 배열이라 복원용 캐시조차 없음(항상 서버 재조회)
     - 1단계(난이도 중, 즉효): `chatStore`를 스코프 키 맵(`{scope:scopeId → {messages, draft, scrollTop}}`)으로 개편 + `AiChatPanel` 로컬 state를 스토어로 승격, 로드는 "캐시 우선 표시 후 백그라운드 refresh" — 리마운트돼도 대화·스크롤 즉시 복원
@@ -124,26 +125,25 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
     - 진행:
       - 1단계 완료(feature/idea-35, 2026-07): `chatStore`를 `Record<scopeKey, ChatScopeState>`로 개편(messages·loading·draft·scrollTop·expandedMessage·savingMessageId·saveError), `AiChatPanel` 로컬 state→스토어 승격, 캐시 우선 로드, 신규 메시지 추가 시에만 하단 스크롤(scrollTop 복원과 충돌 회피), `applyUpdate`/`subscribeChat` 스코프 명시 전달. 리마운트 시 캐시로 대화·draft·스크롤 즉시 복원.
       - 2단계 완료(feature/idea-35-2, 2026-07, main 머지 3baeda74): `FolderChatDrawer`를 GatedApp 루트(App.tsx 글로벌 영역, Routes 형제)로 승격 + open/scope 상태 `uiStore` 전역화(folderChatOpen/folderChatScope) + `onSeekMeeting`의 `onClose()` 제거 — 라우트 이동에도 챗이 "실제로" 안 죽음. 회의 상세의 `RightTabsPanel`(meeting 스코프)과 전역 드로어(folder/project 스코프) 공존. 보류: MeetingPageSkeleton 가드 축소(MeetingPage.tsx:346, 별개 후속).
-36. 요약 재실행 중 다른 화면으로 이동하면 요약되고 있는지 알 방법이 없다. 회의 자체의 요약중 상태가 있어야 UI 에서 확인할 수 있다. 회의목록에서도 요약이 진행중인지 알수 있으면 좋겠다. (완 — summarizing:boolean + summarization_started_at 영속화. MeetingSummarizationJob#broadcast_started/finished 에서 record_summary_start!/finished! 짝(동시성 제한으로 중복 없음). meeting_json 노출 → StatusBadge 파란 "요약중" pulse + MeetingActionHeader 상단. 이탈·새로고침 후에도 유지, 완료 시 소멸, 실패 시 기존 실패배지)
-37. 서버 LLM 모델 설정에 선택 안함 추가해줘. 선택 안함 추가하면 요약이 실행이 안되게 하고 싶어. (완 — 자동 realtime 틱은 무음 skip, 회의종료/수동 재생성은 에러 안내)
-38. 내 LLM 설정에 CLI 모델 추가 (실행은 로컬 실행이 아니고 서버에서 실행한다.) (완 — 백엔드는 이미 CLI 허용, 프론트 cliAllowed 로컬모드 제한 해제 + CLI 선택 시 "서버에서 실행" 안내문)
-39. 회의록 md 파일만 내보내기 하는 옵션이 있으면 좋겠어. 기존 프로젝트, 폴더 내보내기 할때 md 파일만 내보내기 하는거야. 이것은 import 할 용도가 아니라 이 내용을 llm을 입력으로 분석하기 위한거야. 또 내보낼때 폴더 모양 그대로 내보내기 되면 좋겠다.
-40. 오타 수정을 할 경우 AI 회의록 보고 있는 위치가 아니라 다시 처음으로 올라가서 불편 (완 — f0b2a4cc. AiSummaryPanel에 scrollContainerRef 추가, 외부발 setMeetingNotes로 replaceBlocks 전체치환 직전 scrollTop 저장 → 이중 rAF로 복원(mermaid 등 비동기 레이아웃 확정 대비). 회귀테스트 AiSummaryPanel.scroll.test.tsx)
-41. 전사 내용을 회의 미리보기에서 수정이 안되는 문제 발생 (보류 — 44번으로 통합. 실증상은 "비소유자 편집 UI는 열리는데 저장만 403으로 조용히 실패". canEdit 게이팅+저장실패 토스트를 구현했다 revert함)
-42. 회의록 마커가 가끔씩 동작하지 않는 문제 발생 (보류 — 재현 확인 대기. 확정 원인 후보: 같은 ms 마커 재클릭 시 setState bail-out으로 AudioPlayer seekTo 미호출(AudioPlayer.tsx seek useEffect deps에 seekTick 없음). 수정했다 revert함. 2차 용의 = citationInline.tsx 단일 텍스트노드 정규식이 md 서식 경계에서 마커를 쪼갬)
-43. 마커를 눌러서 해당 시간대로 이동하더라도 전사 위치는 그대로여서 오디오가 나오는 시점으로 수동으로 옮겨야 하는 문제 발생 (완 — 18938cf4. MeetingPage에 seekTick 추가(동일 ms 재-seek 시 bail-out 우회) + handleSeek에서 setCurrentTimeMs 낙관 갱신, TranscriptPanel이 seekTick 변화 시 suppressAutoScroll 무시하고 강제 scrollIntoView)
-44. 회의 소유자가 아닌 사람이 회의를 수정하면 수정은 되지만 DB에 최정 저장은 안됨. 처음 부터 수정이 안되게 해야함(readOnly 처리), 수정 권한을 여러명에게 주는 방법 검토 (완 — cdf6e8d1, main 커밋·푸시 안 함. MeetingCollaborator/FolderCollaborator(폴더협업자는 하위회의 상속) + editable_by?/collaborator? + 협업자 CRUD 엔드포인트(추가·제거는 owner/admin만). 프론트 canEdit을 전 편집지점 readOnly 배선 + CollaboratorsPanel/FolderCollaboratorsDialog. 감사로 발견·수정: folders#collaborators GET 인가누락 IDOR·create/update/upload_audio folder_id 교차프로젝트 미검증(협업자상속 우회)·shared 토글 협업자 차단. 관리액션(destroy·lock·shared)=owner/admin, reset_content=협업자 허용(사용자 결정). 백엔드 풀스위트 1979·프론트 vitest 1796·tsc 0 통과. 잔여=브라우저 수동 E2E)
+27. 요약 재실행 중 다른 화면으로 이동하면 요약되고 있는지 알 방법이 없다. 회의 자체의 요약중 상태가 있어야 UI 에서 확인할 수 있다. 회의목록에서도 요약이 진행중인지 알수 있으면 좋겠다. (완 — summarizing:boolean + summarization_started_at 영속화. MeetingSummarizationJob#broadcast_started/finished 에서 record_summary_start!/finished! 짝(동시성 제한으로 중복 없음). meeting_json 노출 → StatusBadge 파란 "요약중" pulse + MeetingActionHeader 상단. 이탈·새로고침 후에도 유지, 완료 시 소멸, 실패 시 기존 실패배지)
+28. 서버 LLM 모델 설정에 선택 안함 추가해줘. 선택 안함 추가하면 요약이 실행이 안되게 하고 싶어. (완 — 자동 realtime 틱은 무음 skip, 회의종료/수동 재생성은 에러 안내)
+29. 내 LLM 설정에 CLI 모델 추가 (실행은 로컬 실행이 아니고 서버에서 실행한다.) (완 — 백엔드는 이미 CLI 허용, 프론트 cliAllowed 로컬모드 제한 해제 + CLI 선택 시 "서버에서 실행" 안내문)
+30. 회의록 md 파일만 내보내기 하는 옵션이 있으면 좋겠어. 기존 프로젝트, 폴더 내보내기 할때 md 파일만 내보내기 하는거야. 이것은 import 할 용도가 아니라 이 내용을 llm을 입력으로 분석하기 위한거야. 또 내보낼때 폴더 모양 그대로 내보내기 되면 좋겠다.
+31. 오타 수정을 할 경우 AI 회의록 보고 있는 위치가 아니라 다시 처음으로 올라가서 불편 (완 — f0b2a4cc. AiSummaryPanel에 scrollContainerRef 추가, 외부발 setMeetingNotes로 replaceBlocks 전체치환 직전 scrollTop 저장 → 이중 rAF로 복원(mermaid 등 비동기 레이아웃 확정 대비). 회귀테스트 AiSummaryPanel.scroll.test.tsx)
+32. 전사 내용을 회의 미리보기에서 수정이 안되는 문제 발생 (보류 — 44번으로 통합. 실증상은 "비소유자 편집 UI는 열리는데 저장만 403으로 조용히 실패". canEdit 게이팅+저장실패 토스트를 구현했다 revert함)
+33. 회의록 마커가 가끔씩 동작하지 않는 문제 발생 (보류 — 재현 확인 대기. 확정 원인 후보: 같은 ms 마커 재클릭 시 setState bail-out으로 AudioPlayer seekTo 미호출(AudioPlayer.tsx seek useEffect deps에 seekTick 없음). 수정했다 revert함. 2차 용의 = citationInline.tsx 단일 텍스트노드 정규식이 md 서식 경계에서 마커를 쪼갬)
+34. 마커를 눌러서 해당 시간대로 이동하더라도 전사 위치는 그대로여서 오디오가 나오는 시점으로 수동으로 옮겨야 하는 문제 발생 (완 — 18938cf4. MeetingPage에 seekTick 추가(동일 ms 재-seek 시 bail-out 우회) + handleSeek에서 setCurrentTimeMs 낙관 갱신, TranscriptPanel이 seekTick 변화 시 suppressAutoScroll 무시하고 강제 scrollIntoView)
+35. 회의 소유자가 아닌 사람이 회의를 수정하면 수정은 되지만 DB에 최정 저장은 안됨. 처음 부터 수정이 안되게 해야함(readOnly 처리), 수정 권한을 여러명에게 주는 방법 검토 (완 — cdf6e8d1, main 커밋·푸시 안 함. MeetingCollaborator/FolderCollaborator(폴더협업자는 하위회의 상속) + editable_by?/collaborator? + 협업자 CRUD 엔드포인트(추가·제거는 owner/admin만). 프론트 canEdit을 전 편집지점 readOnly 배선 + CollaboratorsPanel/FolderCollaboratorsDialog. 감사로 발견·수정: folders#collaborators GET 인가누락 IDOR·create/update/upload_audio folder_id 교차프로젝트 미검증(협업자상속 우회)·shared 토글 협업자 차단. 관리액션(destroy·lock·shared)=owner/admin, reset_content=협업자 허용(사용자 결정). 백엔드 풀스위트 1979·프론트 vitest 1796·tsc 0 통과. 잔여=브라우저 수동 E2E)
 
 ## 향후 추가 계획 — 미완료
-2. 회의 내용을 llm-wiki 로 구성해서 회의 내용을 검색하거나 요약하도록 구성
-4. 증분방식 재설계
-  - 충분한 요약 속도 보장되는 조건으로 적용 가능
-  - 세션유지(기존 회의록) + 신규 트랜스크립트 --> 수정위치/수정내용 으로 변경
 
-8. 프로젝트/폴더 안에서 묻기
+2. 회의 내용을 llm-wiki 로 구성해서 회의 내용을 검색하거나 요약하도록 구성
+3. 증분방식 재설계
+  - 충분한 요약 속도 보장되는 조건으로 적용 가능
+  - 세션유지(기존 회의록) + 신규 트랜스크립트 --&gt; 수정위치/수정내용 으로 변경
+4. 프로젝트/폴더 안에서 묻기
   - 서버가 제 모습을 갖추면 가능
   **🔮 미래계획**
-
   - **① 벡터 스토어 스케일 — pgvector 이전**
     - 현황: 검색은 이미 `VectorIndex` 추상화 뒤(교체지점 확보). 현 규모(전사 ~24k행)에선 브루트포스가 더 빠르고·정확(exact)·단순.
     - 트리거: 회의록 규모 급증(수십만~수백만 벡터) **또는** 상용화(중앙 멀티유저 서버).
@@ -151,25 +151,84 @@ AI 챗 답변에서 답변 후 다음 예상 질문 (3건 정도)을 추가해. 
     - 마이그 비용: 임베딩 BLOB은 모델 안 바뀌면 재임베딩 없이 재인덱싱만. PyTorch 런타임 그대로 device=cuda로(서버=Nvidia GPU).
     - 건너뛰는 단계: sqlite-vec — "지금 하기엔 무겁고 스케일 가선 pgvector한테 밀리는" 중간 단계.
     - 연계: [[project_refactor_roadmap]] #12 Postgres 계획.
-
   - **② 리랭커(Phase 3) — 정밀 재정렬**
     - 현황: v1 = KURE bi-encoder + RRF만.
     - 트리거: 검색 품질 부족 시.
     - 방법: `dragonkue/bge-reranker-v2-m3-ko`(cross-encoder, XLM-R-large ~568M, Apache) 추가 → 하이브리드 top-K 후보를 `(질문, 발췌)` 쌍으로 정밀 재정렬.
-    - 비용: 두 번째 ~1.1GB 모델 로드 + 쿼리마다 K쌍 추론(CPU선 수백ms~수초).
+    - 비용: 두 번째 ~~1.1GB 모델 로드 + 쿼리마다 K쌍 추론(CPU선 수백ms~~수초).
     - 도입 시점: **Nvidia GPU 서버 전환 이후**(GPU면 빠름).
     - 성격: 기능 포기 아님 — GPU 가서 켜는 옵션.
-11. 자동으로 이어지는 회의
+5. 자동으로 이어지는 회의
   - 자동으로 몇분 뒤 시작할 연결된 예약 회의 생성함
   - 반복 회의 등록
-13. 그런데 회의 예약을 해놓으면 하나의 컴퓨터에서 자동으로 실행되게 할 방법을 찾아야함.
-14. 회의 예약하면 회의실도 예약하게 하는 것이 좋겠다.(회의실 예약 시스템이 있으면) 그리고 참석자를 미리 지정하면 참석자에게 메일이 가게 하는 것도 좋은 아이디어, 미리 회의 자료도 올릴 수 있으면 좋겠네.
-15. 회의 예약하면 미리 알림 기능할 수 있도록 추가(예 10분전 알림, 30분전 알림) 
-16. 시스템 오디오 입력은 음성이 뒤에 짤림 
-26. 최대 3개의 회의만 실행되도록 제한(회의 4개부터 유실 우려). 실시간/배치 동시/ 처리 시 실시간 우선으로 처리
+6. 그런데 회의 예약을 해놓으면 하나의 컴퓨터에서 자동으로 실행되게 할 방법을 찾아야함.
+7. 회의 예약하면 회의실도 예약하게 하는 것이 좋겠다.(회의실 예약 시스템이 있으면) 그리고 참석자를 미리 지정하면 참석자에게 메일이 가게 하는 것도 좋은 아이디어, 미리 회의 자료도 올릴 수 있으면 좋겠네.
+8. 회의 예약하면 미리 알림 기능할 수 있도록 추가(예 10분전 알림, 30분전 알림)
+9. 시스템 오디오 입력은 음성이 뒤에 짤림
+10. 최대 3개의 회의만 실행되도록 제한(회의 4개부터 유실 우려). 실시간/배치 동시/ 처리 시 실시간 우선으로 처리
+11. 디플로우에 전송할때 Action Items의 활용 방안 강구
+12. 회의록에서 이슈 자동 도출
+13. 특정 프로그램에 대해서 수정사항을 얘기할때 자동으로 수정 프롬프트 생성 기능 --&gt; 이 기능이 되면 회의중 자동으로 프로그램 수정 가능
+14. 특정 프로그램에 대해서 화면 수정에 대한 논의 시 직접 화면 접속 및 화면 캡쳐 후 수정 방안 제시 (이건 뭐 Agent 기능이지) --&gt; 로컬/원격 에이전트에서 동작해서 처리
+15. 대화 시 '또박아', '또박이' 라고 얘기하면 AI 스피커처럼 명령 수행 (ㅎㅎㅎ 가능한가?)
 
-45. 디플로우에 전송할때 Action Items의 활용 방안 강구
-46. 회의록에서 이슈 자동 도출
-47. 특정 프로그램에 대해서 수정사항을 얘기할때 자동으로 수정 프롬프트 생성 기능 --> 이 기능이 되면 회의중 자동으로 프로그램 수정 가능
-48. 특정 프로그램에 대해서 화면 수정에 대한 논의 시 직접 화면 접속 및 화면 캡쳐 후 수정 방안 제시 (이건 뭐 Agent 기능이지) --> 로컬/원격 에이전트에서 동작해서 처리
-49. 대화 시 '또박아', '또박이' 라고 얘기하면 AI 스피커처럼 명령 수행 (ㅎㅎㅎ 가능한가?)
+
+
+&nbsp;
+
+&nbsp;
+
+---
+작업중 명료하지 않은 내용에 대해서 사용자에게 꼭 질문을 받을 수 있는 방법이 필요해. 예를들어 WBS 보는 화면에서 내용을 입력을 받는다던지 그런 방법이 필요하다.
+
+
+1️⃣ D'Flow 서버 — ~/project/wbs-web 에서 실행
+
+docs/superpowers/plans/2026-08-10-dflow-agent-work-server.md 구현 계획을 실행해줘.
+superpowers:executing-plans 스킬로 Task 1부터 순서대로, 체크박스 단위로 진행하고
+Task 완료마다 체크 표시를 갱신해.
+
+시작 전 필수: 계획의 Global Constraints와 정본 스펙
+docs/superpowers/specs/2026-08-10-claude-code-work-integration-review-appendix.md 를 먼저 읽어.
+
+지킬 것:
+- Task 0(TSK-00-02 테스트 환경 실측)이 첫 관문 — wbs-web-test Supabase 실재 확인,
+  AGENT_API_* 는 테스트 환경 전용으로만. 운영 Vercel env 금지.
+- 마이그레이션(0069/0071/0072/0073)은 코드와 별도 커밋(G1), _rollback.sql 동반,
+  적용은 Supabase Management API 경유. 운영 D-CUBE 데이터 접근 금지.
+- HeaderChrome.tsx 1줄 변경은 ui/account 브랜치 경유(G2).
+- git add -A 금지, 커밋 메시지 한국어.
+- 기존 tests/agent/ 8개 파일이 v1 회귀 기준선 — 게이트 리팩터 전에 초록 확인.
+
+2️⃣ dev-workflow 툴체인 — ~/project/dev-plugin 에서 실행
+
+/Users/jji/project/wbs-web/docs/superpowers/plans/2026-08-10-dev-workflow-toolchain.md
+구현 계획을 실행해줘. superpowers:executing-plans 스킬로 Task 1~6 순서대로,
+TDD 스텝(실패 테스트 → 최소 구현 → 통과) 그대로 따라가.
+
+지킬 것:
+- 편집 대상은 이 리포(~/project/dev-plugin)뿐. ~/.claude/plugins/marketplaces/dev-tools/ 는
+  설치 사본이라 건드리지 않는다.
+- wbs-transition.py · merge-state-json.py · references/state-machine.json 은 무변경 —
+  계획이 그렇게 설계됨. 부록 A(스코프 아웃)는 구현하지 않는다.
+- export JSON은 계약 v2(schema_version "2.0", 17키, spec_sections) 정확히 —
+  계획 Task 3에 스키마 전문 있음.
+- 검증 실물: /Users/jji/project/dev-workflow/docs/MES/wbs.md (67노드, task 40),
+  docs/bookloop/wbs.md (23노드). 기존 회귀 테스트 전부 초록 유지.
+- 완료 후 커밋(파일명 명시)하고 플러그인 버전 올릴지 물어봐.
+
+3️⃣ wbs-wsf 스킬 — ~/project/dev-workflow 에서 실행
+
+/Users/jji/project/wbs-web/docs/superpowers/plans/2026-08-10-wbs-wsf-skill-local-changes.md
+구현 계획을 실행해줘. superpowers:executing-plans 스킬로 Task 1~10 순서대로.
+
+지킬 것:
+- 편집 대상은 .claude/skills/wbs-wsf/SKILL.md 로컬 오버라이드 단 하나.
+  플러그인 원본(~/.claude/plugins/...)은 읽기 참조만.
+- 이 디렉토리는 git 저장소가 아님 — 계획대로 수정 전 .bak 백업 필수.
+- "wbs.md는 은퇴한다" 전제(계획의 확정 전제 절)와 명세 블록 파싱 계약 4규칙
+  (헤딩 깊이·열 0 필드·2칸 bullet·빈 리스트 `-`)을 어기는 변경 금지.
+- 생성 WBS의 status는 항상 [ ], ID는 재import 매칭 키라 재번호매김 금지.
+- 검증은 계획의 샘플 프로그램 리스트로 실제 생성해서 확인.
+
+---
