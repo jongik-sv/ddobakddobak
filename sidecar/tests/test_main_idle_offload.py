@@ -14,9 +14,9 @@ class _FakeState:
 
 
 class _FakeApp:
-    def __init__(self, adapter):
+    def __init__(self, *managed):
         self.state = _FakeState()
-        self.state.stt_adapter = adapter
+        self.state.idle_managed = [m for m in managed if m is not None]
 
 
 class _CountingAdapter:
@@ -88,15 +88,15 @@ async def test_loop_exits_immediately_when_disabled(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_loop_survives_none_adapter(monkeypatch):
-    """엔진 교체 중(app.state.stt_adapter=None) 틱이 와도 예외 없이 스킵한다."""
+async def test_loop_survives_empty_managed_list(monkeypatch):
+    """엔진 교체 중 등록 대상이 비어도 틱이 예외 없이 지나간다."""
     from app.config import settings
     from app.main import _idle_offload_loop
 
     monkeypatch.setattr(settings, "STT_IDLE_UNLOAD_SEC", 600)
     monkeypatch.setattr(settings, "STT_IDLE_FULL_UNLOAD_SEC", 3600)
 
-    fake_app = _FakeApp(adapter=None)
+    fake_app = _FakeApp()
 
     task = asyncio.create_task(_idle_offload_loop(fake_app, interval_sec=0.02))
     await asyncio.sleep(0.05)
@@ -133,3 +133,52 @@ async def test_loop_survives_maybe_offload_exception(monkeypatch):
         await task
 
     assert adapter.calls >= 2  # 예외에도 불구하고 다음 주기에 재시도됨
+
+
+@pytest.mark.asyncio
+async def test_loop_checks_every_managed_target(monkeypatch):
+    """STT 어댑터와 임베딩 인코더가 모두 점검된다."""
+    from app.config import settings
+    from app.main import _idle_offload_loop
+
+    monkeypatch.setattr(settings, "STT_IDLE_UNLOAD_SEC", 600)
+    monkeypatch.setattr(settings, "STT_IDLE_FULL_UNLOAD_SEC", 3600)
+
+    stt = _CountingAdapter()
+    embedder = _CountingAdapter()
+    fake_app = _FakeApp(stt, embedder)
+
+    task = asyncio.create_task(_idle_offload_loop(fake_app, interval_sec=0.02))
+    await asyncio.sleep(0.09)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert len(stt.calls) >= 2
+    assert len(embedder.calls) >= 2
+    assert embedder.calls[0] == (600, 3600)
+
+
+@pytest.mark.asyncio
+async def test_one_target_failure_does_not_block_others(monkeypatch):
+    """한 대상이 터져도 같은 틱의 다른 대상은 점검된다."""
+    from app.config import settings
+    from app.main import _idle_offload_loop
+
+    monkeypatch.setattr(settings, "STT_IDLE_UNLOAD_SEC", 600)
+    monkeypatch.setattr(settings, "STT_IDLE_FULL_UNLOAD_SEC", 3600)
+
+    class _Exploding:
+        async def maybe_offload(self, *_args):
+            raise RuntimeError("boom")
+
+    healthy = _CountingAdapter()
+    fake_app = _FakeApp(_Exploding(), healthy)
+
+    task = asyncio.create_task(_idle_offload_loop(fake_app, interval_sec=0.02))
+    await asyncio.sleep(0.07)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert len(healthy.calls) >= 2
