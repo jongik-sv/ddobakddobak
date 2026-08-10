@@ -59,7 +59,6 @@ async def lifespan(app: FastAPI):
     from app.embeddings.encoder import KureEncoder
     from app.config import settings as _settings
     app.state.embedder = KureEncoder(_settings.EMBED_MODEL, _settings.EMBED_MODEL_VERSION, _settings.EMBED_DEVICE)
-    app.state.embed_lock = asyncio.Lock()
     app.state.idle_offload_task = asyncio.create_task(_idle_offload_loop(app))
 
     yield
