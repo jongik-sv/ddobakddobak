@@ -162,11 +162,18 @@ get_vmwp_gpu_mb() {
 }
 
 get_sidecar_rss_kb() {
-    local pid
+    local pid child
     pid=$(systemctl show "$SERVICE_NAME" -p ExecMainPID --value 2>/dev/null | tr -d '[:space:]')
     if [ -z "$pid" ] || [ "$pid" = "0" ]; then
         echo "N/A"
         return
+    fi
+    # ExecMainPID는 `uv run` 래퍼(RSS ~47MB)이고 모델을 들고 있는 건 그 자식인 실제
+    # python 프로세스다. 래퍼를 재면 오프로드 전후가 항상 동일하게 나와 RAM 반납을
+    # 측정할 수 없다. 자식 python이 있으면 그것을, 없으면 래퍼를 사용한다.
+    child=$(ps -o pid= --ppid "$pid" 2>/dev/null | tr -d ' ' | head -1)
+    if [ -n "$child" ]; then
+        pid="$child"
     fi
     local rss
     rss=$(ps -o rss= -p "$pid" 2>/dev/null | tr -d '[:space:]')
