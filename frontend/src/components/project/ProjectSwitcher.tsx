@@ -38,7 +38,12 @@ export default function ProjectSwitcher() {
   }, [open])
 
   const current = projects.find((p) => p.id === currentProjectId) ?? null
-  const visibleProjects = projects.filter((p) => !isHiddenClutterProject(p))
+  const nonHiddenProjects = projects.filter((p) => !isHiddenClutterProject(p))
+  // 즐겨찾기만 표시. 0개면 전체 목록으로 폴백. 현재 선택 프로젝트가 빠지면 맨 위에 추가.
+  const favoriteProjects = nonHiddenProjects.filter((p) => p.favorite)
+  const baseProjects = favoriteProjects.length > 0 ? favoriteProjects : nonHiddenProjects
+  const visibleProjects =
+    current && !baseProjects.some((p) => p.id === current.id) ? [current, ...baseProjects] : baseProjects
 
   const handleSelect = (id: number) => {
     setOpen(false)
@@ -103,7 +108,7 @@ export default function ProjectSwitcher() {
             className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent"
           >
             <FolderKanban className="h-4 w-4 shrink-0" />
-            전체 프로젝트
+            전체 프로젝트…
           </button>
           {canCreate && (
             <button

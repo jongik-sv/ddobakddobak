@@ -26,6 +26,7 @@ const project: Project = {
   member_count: 3,
   meeting_count: 5,
   owner: null,
+  favorite: false,
 }
 
 describe('ProjectDialog — 도메인 파일 섹션', () => {

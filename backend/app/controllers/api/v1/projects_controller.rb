@@ -4,7 +4,7 @@ module Api
       include ProjectScoped
 
       before_action :authenticate_user!
-      before_action :set_project, only: %i[show update destroy members add_member update_member remove_member domain_files update_domain_files]
+      before_action :set_project, only: %i[show update destroy members add_member update_member remove_member domain_files update_domain_files favorite]
       before_action :authorize_project_admin!, only: %i[update destroy add_member update_member remove_member update_domain_files]
 
       def index
@@ -22,7 +22,8 @@ module Api
                                   .pluck(:project_id, :role).to_h
         member_counts = ProjectMembership.where(project_id: project_ids).group(:project_id).count
         meeting_counts = Meeting.where(project_id: project_ids).group(:project_id).count
-        render json: { projects: projects.map { |p| project_json(p, roles[p.id], member_counts[p.id] || 0, meeting_counts[p.id] || 0) } }
+        favorite_ids = ProjectFavorite.where(user_id: current_user.id, project_id: project_ids).pluck(:project_id).to_set
+        render json: { projects: projects.map { |p| project_json(p, roles[p.id], member_counts[p.id] || 0, meeting_counts[p.id] || 0, favorite_ids.include?(p.id)) } }
       end
 
       def show
@@ -123,6 +124,26 @@ module Api
         render json: { domain_files: project_domain_files_json(@project) }
       end
 
+      # 프로젝트 즐겨찾기 토글. set_project 통과(=볼 수 있는 프로젝트)면 충분 — admin 불필요.
+      def favorite
+        unless params.key?(:favorite)
+          return render json: { error: "favorite 파라미터가 필요합니다" }, status: :bad_request
+        end
+
+        want = ActiveModel::Type::Boolean.new.cast(params[:favorite])
+        if want.nil?
+          return render json: { error: "favorite 파라미터가 올바르지 않습니다" }, status: :bad_request
+        end
+
+        if want
+          # bang 없는 find_or_create_by — unique 인덱스가 멱등성을 보장한다.
+          ProjectFavorite.find_or_create_by(user: current_user, project: @project)
+        else
+          ProjectFavorite.where(user: current_user, project: @project).destroy_all
+        end
+        render json: { favorite: !!want }
+      end
+
       # 프로젝트의 도메인 파일 링크 세트를 통째로 교체(빈 배열=전체 해제). 프로젝트 관리 권한 필요.
       def update_domain_files
         ids = Array(params[:domain_file_ids]).reject(&:blank?).map(&:to_i).uniq
@@ -166,9 +187,9 @@ module Api
         params.permit(:name, :description, :icon_type, :icon_value, :color)
       end
 
-      # role/member_count/meeting_count은 index의 배치 조회 결과를 넘길 때만 사용,
+      # role/member_count/meeting_count/favorite은 index의 배치 조회 결과를 넘길 때만 사용,
       # 그 외(show/create/update)는 nil로 두어 기존 per-record 쿼리 경로를 그대로 탄다.
-      def project_json(p, role = :unset, member_count = nil, meeting_count = nil)
+      def project_json(p, role = :unset, member_count = nil, meeting_count = nil, favorite = :unset)
         {
           id: p.id, name: p.name, description: p.description,
           icon_type: p.icon_type, icon_value: p.icon_value, color: p.color,
@@ -176,7 +197,8 @@ module Api
           owner: p.creator&.name,
           role: role == :unset ? p.project_memberships.find_by(user_id: current_user.id)&.role : role,
           member_count: member_count || p.project_memberships.count,
-          meeting_count: meeting_count || p.meetings.count
+          meeting_count: meeting_count || p.meetings.count,
+          favorite: favorite == :unset ? ProjectFavorite.exists?(user_id: current_user.id, project_id: p.id) : favorite
         }
       end
 

@@ -79,7 +79,7 @@ function makeMeeting(overrides: Partial<Meeting> = {}): Meeting {
 function makeProject(o: Partial<Project> = {}): Project {
   return {
     id: 7, name: 'P', description: null, icon_type: null, icon_value: null,
-    color: null, personal: false, role: 'member', member_count: 2, meeting_count: 0, owner: null, ...o,
+    color: null, personal: false, role: 'member', member_count: 2, meeting_count: 0, owner: null, favorite: false, ...o,
   }
 }
 

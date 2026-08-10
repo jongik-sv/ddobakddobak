@@ -180,6 +180,7 @@ Rails.application.routes.draw do
           post :export_summaries, to: "project_transfers#export_summaries"
           get  :domain_files
           put  :domain_files, to: "projects#update_domain_files"
+          put  :favorite
         end
         resources :invites, only: %i[index create destroy], controller: "project_invites"
         resources :chat_messages, only: %i[index create],
