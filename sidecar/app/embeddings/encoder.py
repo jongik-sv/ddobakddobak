@@ -128,7 +128,10 @@ class KureEncoder:
     # ── 상태 조회 / 루프 진입점 ──────────────────────────────────────
     @property
     def gpu_resident(self) -> bool:
-        return self._idle.gpu_resident
+        # self._idle.gpu_resident를 그대로 반환하면 EMBED_DEVICE=cpu일 때도 True가
+        # 나올 수 있다(mark_loaded()가 무조건 GPU로 세팅). resident_state의 CPU 보정
+        # 로직을 재사용해 실제 디바이스를 반영한다.
+        return self.resident_state == ResidentState.GPU.value
 
     @property
     def resident_state(self) -> str:

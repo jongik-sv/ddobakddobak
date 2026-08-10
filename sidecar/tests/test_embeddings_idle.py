@@ -202,6 +202,41 @@ async def test_resident_state_cpu_device_unloaded_after_full_offload(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_gpu_resident_true_for_cuda_device(monkeypatch):
+    """CUDA 디바이스로 로드되면 gpu_resident는 True여야 한다."""
+    enc = _make_encoder(monkeypatch, device="cuda")
+    await enc.encode_async(["안녕"])
+    assert enc.gpu_resident is True
+
+
+@pytest.mark.asyncio
+async def test_gpu_resident_false_for_cpu_device(monkeypatch):
+    """IdleOffloadController.mark_loaded()는 무조건 GPU로 세팅하지만,
+    EMBED_DEVICE=cpu로 로드된 인코더는 gpu_resident가 False여야 한다
+    (resident_state의 CPU 보정을 재사용해 거짓 True를 막는다)."""
+    enc = _make_encoder(monkeypatch, device="cpu")
+    await enc.encode_async(["안녕"])
+    assert enc.resident_state == "cpu"
+    assert enc.gpu_resident is False
+
+
+@pytest.mark.asyncio
+async def test_gpu_resident_false_after_full_offload(monkeypatch):
+    """완전 해제(unloaded) 상태에서는 디바이스와 무관하게 gpu_resident가 False여야 한다."""
+    enc = _make_encoder(monkeypatch, device="cuda")
+    await enc.encode_async(["안녕"])
+    assert enc.gpu_resident is True
+
+    enc._idle.last_used -= 700
+    await enc.maybe_offload(600, 3600)
+    enc._idle.last_used -= 4000
+    await enc.maybe_offload(600, 3600)
+
+    assert enc.resident_state == "unloaded"
+    assert enc.gpu_resident is False
+
+
+@pytest.mark.asyncio
 async def test_reload_failure_propagates_and_releases_lock(monkeypatch):
     """재로드가 실패해도 락이 풀려 다음 요청이 재시도할 수 있어야 한다 (영구 고장 방지)."""
     enc = _make_encoder(monkeypatch)
