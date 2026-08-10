@@ -21,7 +21,12 @@ from fastapi.testclient import TestClient
 class _StubEncoder:
     model_version = "kure-v1"
     dim = 4
-    def encode(self, texts):
+
+    def __init__(self):
+        self.calls = 0
+
+    async def encode_async(self, texts):
+        self.calls += 1
         return [[1.0, 0.0, 0.0, 0.0] for _ in texts]
 
 
@@ -47,3 +52,9 @@ def test_embed_empty_texts(client):
     r = client.post("/embed", json={"texts": []})
     assert r.status_code == 200
     assert r.json()["embeddings"] == []
+
+
+def test_embed_empty_texts_does_not_wake_model(client):
+    """빈 요청은 인코더를 건드리지 않는다 — 언로드 상태를 유지해야 한다."""
+    client.post("/embed", json={"texts": []})
+    assert client.app.state.embedder.calls == 0

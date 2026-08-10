@@ -109,6 +109,7 @@ class IdleOffloadController:
         stage2_offload: _AsyncCallback | None = None,
         reload_from_unloaded: _AsyncCallback | None = None,
         clock: Callable[[], float] = time.monotonic,
+        initial_state: ResidentState = ResidentState.GPU,
     ):
         self.name = name
         self._stage1_offload = stage1_offload
@@ -121,7 +122,8 @@ class IdleOffloadController:
         # 어댑터는 생성 시점엔 아직 load_model()을 안 거쳤을 수도 있지만, 기존 테스트들이
         # load_model() 없이 _model/_is_loaded를 직접 세팅하는 패턴을 쓰므로 기본값은 GPU로 둔다
         # (실질적 부작용 없음 — offload는 어차피 마지막 사용 후 TTL이 지나야 발동).
-        self.state: ResidentState = ResidentState.GPU
+        # lazy load 모델(KURE 임베딩)은 첫 호출 전까지 메모리에 없으므로 UNLOADED를 주입한다.
+        self.state: ResidentState = initial_state
         self.last_used: float = clock()
         self.lock = asyncio.Lock()
 

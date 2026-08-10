@@ -20,8 +20,26 @@ from app.stt.factory import create_stt_adapter
 _IDLE_OFFLOAD_INTERVAL_SEC = 60.0
 
 
+def _collect_idle_targets(app: FastAPI) -> list:
+    """유휴 오프로드 점검 대상을 현재 app.state에서 수집한다.
+
+    매 틱 새로 수집하므로 STT 엔진이 런타임에 교체돼도 항상 최신 어댑터를 점검한다.
+    GPU 상주 모델이 늘면 여기에 추가한다.
+    """
+    candidates = [
+        getattr(app.state, "stt_adapter", None),
+        getattr(app.state, "embedder", None),
+    ]
+    # None이거나 maybe_offload 코루틴이 없는 대상은 걸러낸다.
+    # (엔진 교체 도중 stt_adapter가 일시적으로 None인 창이 있음)
+    return [c for c in candidates if c is not None and callable(getattr(c, "maybe_offload", None))]
+
+
 async def _idle_offload_loop(app: FastAPI, interval_sec: float = _IDLE_OFFLOAD_INTERVAL_SEC) -> None:
-    """주기적으로 STT 어댑터의 유휴 시간을 점검해 GPU 오프로드를 수행한다."""
+    """주기적으로 유휴 관리 대상(STT 어댑터·임베딩 인코더)의 GPU 오프로드를 점검한다.
+
+    대상별로 예외를 격리해 한 대상의 실패가 다른 대상 점검을 막지 않게 한다.
+    """
     from app.config import settings
     from app.stt.idle_offload import resolve_idle_thresholds
 
@@ -38,13 +56,14 @@ async def _idle_offload_loop(app: FastAPI, interval_sec: float = _IDLE_OFFLOAD_I
     )
     while True:
         await asyncio.sleep(interval_sec)
-        adapter = getattr(app.state, "stt_adapter", None)
-        if adapter is None:
-            continue
-        try:
-            await adapter.maybe_offload(idle_unload_sec, idle_full_unload_sec)
-        except Exception:
-            logger.exception("[idle-offload] 오프로드 점검 실패 (다음 주기에 재시도)")
+        for target in _collect_idle_targets(app):
+            try:
+                await target.maybe_offload(idle_unload_sec, idle_full_unload_sec)
+            except Exception:
+                logger.exception(
+                    "[idle-offload] %s 오프로드 점검 실패 (다음 주기에 재시도)",
+                    type(target).__name__,
+                )
 
 
 @asynccontextmanager
@@ -59,7 +78,6 @@ async def lifespan(app: FastAPI):
     from app.embeddings.encoder import KureEncoder
     from app.config import settings as _settings
     app.state.embedder = KureEncoder(_settings.EMBED_MODEL, _settings.EMBED_MODEL_VERSION, _settings.EMBED_DEVICE)
-    app.state.embed_lock = asyncio.Lock()
     app.state.idle_offload_task = asyncio.create_task(_idle_offload_loop(app))
 
     yield
