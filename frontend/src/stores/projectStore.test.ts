@@ -105,4 +105,25 @@ describe('projectStore.toggleFavorite', () => {
 
     expect(useProjectStore.getState().projects[0].favorite).toBe(false)
   })
+
+  it('A 토글이 인플라이트 중 B를 토글하면, A 실패 롤백이 B의 변경을 덮어쓰지 않는다', async () => {
+    useProjectStore.setState({
+      projects: [makeProject({ id: 5, favorite: false }), makeProject({ id: 6, favorite: false })],
+    })
+
+    let rejectA!: (err: Error) => void
+    mockToggleProjectFavorite.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => { rejectA = reject }),
+    )
+    const toggleA = useProjectStore.getState().toggleFavorite(5, true)
+    // A가 아직 인플라이트인 상태에서 B를 토글(즉시 성공) — A 이전 스냅샷에는 B가 false로 남아 있음.
+    mockToggleProjectFavorite.mockResolvedValueOnce(true)
+    await useProjectStore.getState().toggleFavorite(6, true)
+
+    rejectA(new Error('boom'))
+    await toggleA // 내부에서 catch하므로 reject되지 않고 정상 resolve됨
+
+    expect(useProjectStore.getState().projects.find((p) => p.id === 5)?.favorite).toBe(false) // A 롤백
+    expect(useProjectStore.getState().projects.find((p) => p.id === 6)?.favorite).toBe(true) // B 변경 보존
+  })
 })

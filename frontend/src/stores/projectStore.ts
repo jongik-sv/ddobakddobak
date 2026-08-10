@@ -77,15 +77,19 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
   },
 
   toggleFavorite: async (id, favorite) => {
-    // 낙관적 갱신: projects 배열의 해당 항목만 즉시 바꾸고, API 실패 시 이전 배열로 복원.
-    const prevProjects = get().projects
-    set({
-      projects: prevProjects.map((p) => (p.id === id ? { ...p, favorite } : p)),
-    })
+    // 낙관적 갱신: projects 배열의 해당 항목만 즉시 바꾸고, API 실패 시 그 항목만 되돌린다.
+    // 배열 전체 스냅샷으로 롤백하면 인플라이트 중 다른 프로젝트를 토글한 변경까지 덮어쓰므로
+    // 항상 최신 state를 기준으로 id 하나만 patch한다.
+    const prevFavorite = get().projects.find((p) => p.id === id)?.favorite
+    set((state) => ({
+      projects: state.projects.map((p) => (p.id === id ? { ...p, favorite } : p)),
+    }))
     try {
       await apiToggleFavorite(id, favorite)
     } catch {
-      set({ projects: prevProjects })
+      set((state) => ({
+        projects: state.projects.map((p) => (p.id === id ? { ...p, favorite: prevFavorite ?? p.favorite } : p)),
+      }))
     }
   },
 
