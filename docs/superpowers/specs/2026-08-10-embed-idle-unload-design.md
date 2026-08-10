@@ -89,19 +89,33 @@ async def encode_async(self, texts: list[str]) -> list[list[float]]:
 
 부수 효과로 백필 잡이 도는 동안 실시간 전사 요청이 이벤트 루프에서 대기하던 문제도 해소된다.
 
-### 5. 점검 대상 리스트화
+### 5. 점검 대상 매 틱 동적 수집
 
-`main.py` lifespan에서 유휴 관리 대상을 리스트로 등록한다.
+> **구현 갱신(2026-08-10)**: 최초 설계는 lifespan에서 `app.state.idle_managed = [app.state.stt_adapter, app.state.embedder]`로 고정 리스트를 한 번 등록하는 방식이었다. 그러나 `app/routers/health.py`의 STT 엔진 런타임 교체(`PUT /settings/stt-engine`)가 `app.state.stt_adapter`를 새 어댑터 인스턴스로 교체하는데, 고정 리스트는 옛 어댑터 참조를 그대로 들고 있어 교체 후 새 어댑터가 영영 오프로드 점검 대상에서 빠지는 갭이 있었다. 이를 막기 위해 실제 구현은 아래처럼 **매 틱 동적 수집**으로 바뀌었다.
+
+`main.py`에 헬퍼 `_collect_idle_targets(app)`를 두고, `_idle_offload_loop`가 매 틱 이 헬퍼를 호출해 그 시점의 `app.state`에서 대상을 새로 모은다.
 
 ```python
-app.state.idle_managed = [app.state.stt_adapter, app.state.embedder]
+def _collect_idle_targets(app: FastAPI) -> list:
+    """유휴 오프로드 점검 대상을 현재 app.state에서 수집한다.
+
+    매 틱 새로 수집하므로 STT 엔진이 런타임에 교체돼도 항상 최신 어댑터를 점검한다.
+    GPU 상주 모델이 늘면 여기에 추가한다.
+    """
+    candidates = [
+        getattr(app.state, "stt_adapter", None),
+        getattr(app.state, "embedder", None),
+    ]
+    # None이거나 maybe_offload 코루틴이 없는 대상은 걸러낸다.
+    # (엔진 교체 도중 stt_adapter가 일시적으로 None인 창이 있음)
+    return [c for c in candidates if c is not None and callable(getattr(c, "maybe_offload", None))]
 ```
 
-`_idle_offload_loop`는 `app.state.stt_adapter` 단일 참조 대신 이 목록을 순회하며 `maybe_offload(idle_unload_sec, idle_full_unload_sec)`를 호출한다. 대상별로 예외를 격리해 한 대상의 실패가 다른 대상 점검을 막지 않게 한다.
+`_idle_offload_loop`는 이 목록을 순회하며 `maybe_offload(idle_unload_sec, idle_full_unload_sec)`를 호출한다. 대상별로 예외를 격리해 한 대상의 실패가 다른 대상 점검을 막지 않게 한다.
 
-`app.state.stt_adapter`는 다른 코드가 참조하므로 유지한다. 목록은 추가 참조일 뿐이다.
+고정 리스트(`app.state.idle_managed`)는 사용하지 않는다 — `app.state.stt_adapter`·`app.state.embedder`를 매번 `getattr`로 직접 읽으므로 별도 등록·종료 시 비우기 절차가 필요 없다.
 
-앞으로 GPU 상주 모델이 늘면 목록에만 추가한다.
+앞으로 GPU 상주 모델이 늘면 `_collect_idle_targets`의 candidates 목록에만 추가한다.
 
 ### 6. 관측
 

@@ -661,13 +661,25 @@ git commit -m "refactor(sidecar): /embed를 encode_async로 전환 — 이중 �
 
 ### Task 4: 유휴 점검 루프 다중 대상화
 
+> **구현 갱신(2026-08-10)**: 아래 Step들은 최초 계획대로 `app.state.idle_managed` 고정
+> 리스트를 lifespan에서 한 번 등록하는 안을 그대로 남긴 기록이다. 실제 구현은 이
+> 안 대신 `_collect_idle_targets(app)` 헬퍼로 **매 틱 동적 수집**하는 방식을 썼다
+> (`sidecar/app/main.py` 참조, 최종 코드는 고정 리스트를 만들지 않는다). 이유:
+> `app/routers/health.py`의 STT 엔진 런타임 교체(`PUT /settings/stt-engine`)가
+> `app.state.stt_adapter`를 새 어댑터로 교체하는데, 고정 리스트는 옛 참조를 들고
+> 있어 교체 후 새 어댑터가 영영 점검 대상에서 빠지는 갭이 있었기 때문이다. 회귀
+> 테스트 `test_loop_picks_up_stt_adapter_swapped_at_runtime`이 이 갭을 검증한다.
+> 아래 Step 3의 구현 스니펫과 `app.state.idle_managed` 등록/종료 정리 부분은
+> 고정 리스트 안에 해당하므로 실제 코드와 다르다 — 최종 동작은 위 갱신 설명과
+> `sidecar/app/main.py`를 기준으로 삼는다.
+
 **Files:**
 - Modify: `sidecar/app/main.py:23-47` (`_idle_offload_loop`), lifespan
 - Test: `sidecar/tests/test_main_idle_offload.py`
 
 **Interfaces:**
 - Consumes: Task 2의 `KureEncoder.maybe_offload(...)`
-- Produces: `app.state.idle_managed: list` — `maybe_offload(idle_unload_sec, idle_full_unload_sec)` 코루틴을 가진 객체들의 목록. 루프가 이 목록을 순회한다.
+- Produces (최초 계획, 이후 동적 수집 방식으로 대체됨): `app.state.idle_managed: list` — `maybe_offload(idle_unload_sec, idle_full_unload_sec)` 코루틴을 가진 객체들의 목록. 루프가 이 목록을 순회한다.
 
 - [ ] **Step 1: Update and extend the tests**
 
