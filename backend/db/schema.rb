@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_07_210000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_10_070524) do
   create_table "blocks", force: :cascade do |t|
     t.string "block_type", default: "text", null: false
     t.text "content"
@@ -271,6 +271,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_07_210000) do
     t.check_constraint "summary_verbosity IN ('very_concise','concise','standard','detailed','very_detailed')", name: "chk_meetings_summary_verbosity"
   end
 
+  create_table "project_favorites", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "project_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["project_id"], name: "index_project_favorites_on_project_id"
+    t.index ["user_id", "project_id"], name: "index_project_favorites_on_user_id_and_project_id", unique: true
+    t.index ["user_id"], name: "index_project_favorites_on_user_id"
+  end
+
   create_table "project_invites", force: :cascade do |t|
     t.string "code", null: false
     t.datetime "created_at", null: false
@@ -434,6 +444,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_07_210000) do
   add_foreign_key "meetings", "meetings", column: "previous_meeting_id", on_delete: :nullify
   add_foreign_key "meetings", "projects", on_delete: :cascade
   add_foreign_key "meetings", "users", column: "created_by_id"
+  add_foreign_key "project_favorites", "projects", on_delete: :cascade
+  add_foreign_key "project_favorites", "users", on_delete: :cascade
   add_foreign_key "project_invites", "projects", on_delete: :cascade
   add_foreign_key "project_memberships", "projects", on_delete: :cascade
   add_foreign_key "project_memberships", "users", on_delete: :cascade
