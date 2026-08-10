@@ -32,10 +32,11 @@ class _StubEncoder:
 
 @pytest.fixture()
 def client():
+    # lifespan 없이 생성 — 실제 KURE/STT 모델 로드를 우회하고 스텁만 주입한다.
     from app.main import app
-    with TestClient(app) as c:
-        c.app.state.embedder = _StubEncoder()  # 실제 KURE 로드 우회
-        yield c
+    c = TestClient(app)
+    c.app.state.embedder = _StubEncoder()  # 실제 KURE 로드 우회
+    return c
 
 
 def test_embed_returns_vectors(client):

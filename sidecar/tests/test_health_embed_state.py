@@ -13,9 +13,10 @@ class _StubEncoder:
 
 @pytest.fixture()
 def client():
+    # lifespan을 실행하지 않는다 — 이 테스트들은 app.state.embedder에 스텁을 직접
+    # 주입하므로 실제 STT 모델 로드(수 초)가 필요 없다.
     from app.main import app
-    with TestClient(app) as c:
-        yield c
+    return TestClient(app)
 
 
 def test_health_reports_unloaded_embedder(client):
