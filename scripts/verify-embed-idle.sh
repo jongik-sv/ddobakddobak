@@ -14,6 +14,12 @@
 #     최악의 경우 1단계가 최대 약 90초, 2단계(cpu->unloaded)가 최대 약 150초까지
 #     걸릴 수 있다. 이 스크립트의 대기 타임아웃은 그 여유를 감안해 넉넉히 잡는다.
 #
+# !! 검증 후 원복 필수 !!
+#   위 전제조건에서 30/60으로 낮춘 값은 검증 전용이다. 검증이 끝나면 반드시
+#   settings.yaml을 stt.idle_unload_sec: 600, stt.idle_full_unload_sec: 3600 으로
+#   되돌리고 sidecar(ddobak-stt)를 재시작해야 한다. 되돌리지 않으면 프로덕션
+#   STT 모델이 30초 유휴마다 오프로드/복귀를 반복해 회의 중 체감 지연이 생긴다.
+#
 # 사용법:
 #   ./scripts/verify-embed-idle.sh
 #
@@ -240,12 +246,16 @@ wait_for_state() {
 }
 
 # /embed 호출. 성공 시 LAST_EMBED_HTTP_CODE/LAST_EMBED_BODY 전역에 결과 저장.
+# max_time(초, 기본 30): 재로드 확인 단계(완전 해제 후 첫 호출)는 콜드 재로드(약 8초)
+# + 추론 시간까지 감안해야 빠듯하지 않으므로, 호출부에서 백엔드 /embed 타임아웃과
+# 맞춘 120을 명시적으로 넘긴다.
 LAST_EMBED_HTTP_CODE=""
 LAST_EMBED_BODY=""
 call_embed() {
+    local max_time="${1:-30}"
     local tmp
     tmp="$(mktemp)"
-    LAST_EMBED_HTTP_CODE=$(curl -s -o "$tmp" -w '%{http_code}' --max-time 30 \
+    LAST_EMBED_HTTP_CODE=$(curl -s -o "$tmp" -w '%{http_code}' --max-time "$max_time" \
         -X POST "$EMBED_URL" \
         -H 'Content-Type: application/json' \
         -d '{"texts":["또박또박 유휴 언로드 검증용 테스트 문장"]}' 2>/dev/null || echo "000")
@@ -319,7 +329,7 @@ main() {
 
     # 7) 재로드 확인 --------------------------------------------------------
     log "[7/7] 재로드 확인 — POST /embed 재호출"
-    call_embed
+    call_embed 120  # 콜드 재로드(약 8초) + 추론 감안, 백엔드 /embed 타임아웃과 동일
     if [ "$LAST_EMBED_HTTP_CODE" != "200" ]; then
         log "[검증 실패] 재로드 후 /embed 재호출 실패 — HTTP ${LAST_EMBED_HTTP_CODE}, body: ${LAST_EMBED_BODY}"
         CHECKS+=("FAIL | 재로드 후 /embed 재호출 | HTTP=${LAST_EMBED_HTTP_CODE}")
@@ -381,6 +391,12 @@ print_summary() {
             "${SNAP_TS[$label]:-?}" "$desc" "$state" "$gpu_total" "$gpu_vmwp" "$rss_mb" "$rss_delta"
     done
     echo
+
+    echo
+    log "!! 검증 종료 후 원복 필수 !!"
+    log "  settings.yaml을 stt.idle_unload_sec: 600, stt.idle_full_unload_sec: 3600 으로"
+    log "  되돌리고 sidecar(ddobak-stt)를 재시작하세요. 되돌리지 않으면 프로덕션 STT"
+    log "  모델이 30초 유휴마다 오프로드/복귀를 반복해 회의 중 체감 지연이 생깁니다."
 
     if [ "$OVERALL_FAIL" -ne 0 ]; then
         log "===== 최종 결과: 실패(FAIL) — 위 표에서 FAIL 항목을 확인하세요 ====="
