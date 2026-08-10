@@ -14,9 +14,8 @@ router = APIRouter()
 async def embed(request: EmbedRequest, http_request: Request) -> EmbedResponse:
     encoder = http_request.app.state.embedder
     if not request.texts:
+        # 모델을 깨우지 않는다 — 유휴 언로드 상태를 유지한다.
         return EmbedResponse(embeddings=[], model=encoder.model_version, dim=encoder.dim or 0)
-    # GPU/모델 동시 접근 직렬화 (STT Metal 충돌·스레드 안전)
-    lock = http_request.app.state.embed_lock
-    async with lock:
-        vectors = encoder.encode(request.texts)
+    # 동시 호출 직렬화·GPU 복귀·유휴 시각 갱신은 인코더의 IdleOffloadController가 담당한다.
+    vectors = await encoder.encode_async(request.texts)
     return EmbedResponse(embeddings=vectors, model=encoder.model_version, dim=encoder.dim or len(vectors[0]))

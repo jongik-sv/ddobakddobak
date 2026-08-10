@@ -16,6 +16,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _embed_state(request: Request) -> str:
+    """임베딩 인코더의 상주 상태. 미생성·미로드면 "unloaded"."""
+    encoder = getattr(request.app.state, "embedder", None)
+    return getattr(encoder, "resident_state", "unloaded") if encoder is not None else "unloaded"
+
+
 @router.post("/warmup")
 async def warmup(request: Request) -> dict:
     """예약 회의 1분 전 호출. 2초 무음으로 STT 어댑터를 1회 추론해
@@ -48,6 +54,7 @@ async def health(request: Request) -> HealthResponse:
         model_loaded=adapter.is_loaded if adapter is not None else False,
         gpu_resident=adapter.gpu_resident if adapter is not None else False,
         model_state=adapter.resident_state if adapter is not None else "unloaded",
+        embed_state=_embed_state(request),
     )
 
 
@@ -91,6 +98,7 @@ async def update_stt_engine(request: UpdateSttEngineRequest, http_request: Reque
                 model_loaded=adapter.is_loaded,
                 gpu_resident=adapter.gpu_resident,
                 model_state=adapter.resident_state,
+                embed_state=_embed_state(http_request),
             )
         # 이전 모델을 먼저 해제하여 Metal GPU 컨텍스트 충돌 방지
         # (pywhispercpp + mlx-audio 동시 Metal 사용 시 크래시 발생)
@@ -115,4 +123,5 @@ async def update_stt_engine(request: UpdateSttEngineRequest, http_request: Reque
             model_loaded=new_adapter.is_loaded,
             gpu_resident=new_adapter.gpu_resident,
             model_state=new_adapter.resident_state,
+            embed_state=_embed_state(http_request),
         )

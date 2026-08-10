@@ -13,6 +13,7 @@ class HealthResponse(BaseModel):
     model_loaded: bool
     gpu_resident: bool = True  # STT 모델이 현재 GPU에 상주 중인지 (유휴 오프로드 상태 반영)
     model_state: str = "gpu"  # "gpu" | "cpu" | "unloaded"
+    embed_state: str = "unloaded"  # KURE 임베딩 인코더 상주 상태 (lazy load라 기본은 unloaded)
 
 
 class UpdateSttEngineRequest(BaseModel):

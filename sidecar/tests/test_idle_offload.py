@@ -478,4 +478,40 @@ def test_resolve_idle_thresholds_stage1_disabled_passthrough():
 def test_resolve_idle_thresholds_warns_on_invalid_config(caplog):
     with caplog.at_level("WARNING"):
         resolve_idle_thresholds(600, 600)
+
     assert any("idle_full_unload_sec" in rec.message for rec in caplog.records)
+
+
+# ── initial_state 주입 (lazy load 모델용) ────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_initial_state_can_start_unloaded():
+    """lazy load 모델용 — UNLOADED로 시작하면 1단계 오프로드가 발동하지 않는다."""
+    clock = FakeClock()
+    stage1_calls = []
+
+    async def _stage1():
+        stage1_calls.append(1)
+
+    ctl = IdleOffloadController(
+        name="lazy",
+        stage1_offload=_stage1,
+        clock=clock,
+        initial_state=ResidentState.UNLOADED,
+    )
+
+    assert ctl.state == ResidentState.UNLOADED
+    assert ctl.gpu_resident is False
+
+    clock.advance(10_000)
+    await ctl.maybe_offload(600, 3600)
+
+    assert stage1_calls == []          # 이미 최소 상태 — 오프로드 시도 없음
+    assert ctl.state == ResidentState.UNLOADED
+
+
+@pytest.mark.asyncio
+async def test_initial_state_defaults_to_gpu():
+    """기본값은 현행과 동일한 GPU — STT 어댑터 회귀 방지."""
+    ctl = IdleOffloadController(name="default")
+    assert ctl.state == ResidentState.GPU
