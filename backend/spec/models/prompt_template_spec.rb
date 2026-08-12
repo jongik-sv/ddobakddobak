@@ -107,4 +107,16 @@ RSpec.describe PromptTemplate, type: :model do
       end
     end
   end
+
+  describe ".ordered" do
+    it "기본 유형은 DEFAULT_TEMPLATES(config.yaml) 정의 순서, 커스텀 유형은 그 뒤 생성순으로 정렬한다" do
+      # 생성(id) 순서를 config 정의 순서와 어긋나게 만들어 id 순 정렬이 아님을 검증
+      PromptTemplate.create!(meeting_type: "custom_b", label: "커스텀B", sections_prompt: "p", is_default: false)
+      PromptTemplate.create!(meeting_type: "training", label: "교육", sections_prompt: "p", is_default: true)
+      PromptTemplate.create!(meeting_type: "custom_a", label: "커스텀A", sections_prompt: "p", is_default: false)
+      PromptTemplate.create!(meeting_type: "general", label: "일반", sections_prompt: "p", is_default: true)
+
+      expect(PromptTemplate.ordered.map(&:meeting_type)).to eq(%w[general training custom_b custom_a])
+    end
+  end
 end

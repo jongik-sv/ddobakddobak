@@ -4,7 +4,12 @@ class PromptTemplate < ApplicationRecord
   validates :label, presence: true
   validates :sections_prompt, presence: true
 
-  scope :ordered, -> { order(is_default: :desc, id: :asc) }
+  # 기본 유형은 config.yaml(meeting_types) 정의 순서를 따르고, 커스텀 유형은 그 뒤 생성순.
+  # id 순 정렬은 나중에 추가된 기본 유형(dev_progress 등)을 항상 목록 끝으로 밀어낸다.
+  def self.ordered
+    config_order = DEFAULT_TEMPLATES.keys
+    all.sort_by { |t| [config_order.index(t.meeting_type) || config_order.size, t.id] }
+  end
 
   CONFIG_PATH = Rails.root.join("..", "config.yaml").to_s.freeze
 
