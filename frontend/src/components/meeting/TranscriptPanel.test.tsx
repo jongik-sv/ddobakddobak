@@ -5,7 +5,7 @@ import { useTranscriptStore } from '../../stores/transcriptStore'
 
 vi.mock('../../api/meetings', async (orig) => {
   const actual = await (orig() as Promise<Record<string, unknown>>)
-  return { ...actual, splitTranscript: vi.fn() }
+  return { ...actual, splitTranscript: vi.fn(), updateTranscriptSpeaker: vi.fn() }
 })
 
 vi.mock('../../api/speakers', async (orig) => {
@@ -19,7 +19,7 @@ vi.mock('../../api/speakers', async (orig) => {
   }
 })
 
-import { splitTranscript } from '../../api/meetings'
+import { splitTranscript, updateTranscriptSpeaker } from '../../api/meetings'
 import { getSpeakers } from '../../api/speakers'
 
 const mockTranscripts = [
@@ -366,10 +366,11 @@ describe('TranscriptPanel 분할(split) 통합', () => {
       />
     )
 
-    const splitButtons = screen.getAllByLabelText('발언 분할')
+    const splitButtons = screen.getAllByLabelText('화자변경/발언분할')
     fireEvent.click(splitButtons[1])
 
     await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('tab', { name: '발언 분할' }))
     fireEvent.click(screen.getByLabelText('분할 지점: "두" 뒤'))
     fireEvent.change(screen.getByPlaceholderText('mm:ss.mmm'), { target: { value: '00:04.000' } })
     fireEvent.click(screen.getByRole('button', { name: '분할 저장' }))
@@ -390,7 +391,7 @@ describe('TranscriptPanel 분할(split) 통합', () => {
         readOnly
       />
     )
-    expect(screen.queryAllByLabelText('발언 분할')).toHaveLength(0)
+    expect(screen.queryAllByLabelText('화자변경/발언분할')).toHaveLength(0)
   })
 
   it('store override(인라인 편집 등)가 stale한 prop content보다 우선 — expected_content로 override 값이 전송된다', async () => {
@@ -415,8 +416,9 @@ describe('TranscriptPanel 분할(split) 통합', () => {
       <TranscriptPanel meetingId={1} transcripts={mockTranscripts} currentTimeMs={0} onSeek={vi.fn()} />
     )
 
-    fireEvent.click(screen.getAllByLabelText('발언 분할')[1])
+    fireEvent.click(screen.getAllByLabelText('화자변경/발언분할')[1])
     await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('tab', { name: '발언 분할' }))
     // 다이얼로그가 stale prop("두 번째 발화입니다.")이 아니라 store override로 열렸다면
     // "수정됨"이 단어 토큰으로 보여야 한다.
     expect(screen.getByText('수정됨')).toBeInTheDocument()
@@ -431,5 +433,99 @@ describe('TranscriptPanel 분할(split) 통합', () => {
       2,
       expect.objectContaining({ expected_content: '두 번째 발화입니다 수정됨' }),
     )
+  })
+})
+
+describe('TranscriptPanel 화자변경(분할 없음) 통합', () => {
+  beforeEach(() => {
+    useTranscriptStore.getState().reset()
+    useTranscriptStore.getState().loadFinals(
+      mockTranscripts.map((t) => ({
+        id: t.id,
+        content: t.content,
+        speaker_label: t.speaker_label,
+        speaker_name: null,
+        started_at_ms: t.started_at_ms,
+        ended_at_ms: t.ended_at_ms,
+        sequence_number: t.sequence_number,
+        applied: false,
+      }))
+    )
+    vi.clearAllMocks()
+    ;(getSpeakers as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'SPEAKER_00', name: 'SPEAKER_00' },
+      { id: 'SPEAKER_01', name: 'SPEAKER_01' },
+    ])
+  })
+
+  afterEach(() => {
+    useTranscriptStore.getState().reset()
+  })
+
+  it('다이얼로그를 열면 기본값이 "화자만 변경" 모드다(분할 UI 미노출)', async () => {
+    render(
+      <TranscriptPanel meetingId={1} transcripts={mockTranscripts} currentTimeMs={0} onSeek={vi.fn()} />
+    )
+
+    fireEvent.click(screen.getAllByLabelText('화자변경/발언분할')[1])
+    await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+
+    expect(screen.getByRole('tab', { name: '화자만 변경' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: '발언 분할' })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.queryByPlaceholderText('mm:ss.mmm')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '변경 저장' })).toBeInTheDocument()
+  })
+
+  it('화자 변경 저장 시 updateTranscriptSpeaker가 올바른 페이로드로 호출되고 onSpeakerUpdated가 호출된다', async () => {
+    const updatedJson = {
+      id: 2, speaker_label: 'SPEAKER_00', speaker_name: '앨리스',
+      content: '두 번째 발화입니다.', started_at_ms: 3000, ended_at_ms: 6000, sequence_number: 2, applied_to_minutes: false,
+    }
+    ;(updateTranscriptSpeaker as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(updatedJson)
+
+    const onSpeakerUpdated = vi.fn()
+    render(
+      <TranscriptPanel
+        meetingId={1}
+        transcripts={mockTranscripts}
+        currentTimeMs={0}
+        onSeek={vi.fn()}
+        onSpeakerUpdated={onSpeakerUpdated}
+      />
+    )
+
+    fireEvent.click(screen.getAllByLabelText('화자변경/발언분할')[1])
+    await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+
+    // 화자 select를 SPEAKER_00으로 변경
+    fireEvent.change(screen.getByDisplayValue('SPEAKER_01'), { target: { value: 'SPEAKER_00' } })
+    fireEvent.click(screen.getByRole('button', { name: '변경 저장' }))
+
+    await waitFor(() => expect(updateTranscriptSpeaker).toHaveBeenCalled())
+    expect(updateTranscriptSpeaker).toHaveBeenCalledWith(1, 2, {
+      speaker_label: 'SPEAKER_00',
+      speaker_name: null,
+      client_id: useTranscriptStore.getState().clientId,
+    })
+    await waitFor(() => expect(onSpeakerUpdated).toHaveBeenCalledWith(updatedJson))
+
+    const changed = useTranscriptStore.getState().finals.find((f) => f.id === 2)
+    expect(changed?.speaker_label).toBe('SPEAKER_00')
+    expect(changed?.speaker_name).toBe('앨리스')
+  })
+
+  it('"발언 분할" 탭으로 전환하면 기존 분할 UI가 노출된다', async () => {
+    render(
+      <TranscriptPanel meetingId={1} transcripts={mockTranscripts} currentTimeMs={0} onSeek={vi.fn()} />
+    )
+
+    fireEvent.click(screen.getAllByLabelText('화자변경/발언분할')[1])
+    await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByRole('tab', { name: '발언 분할' }))
+
+    expect(screen.getByText('텍스트 분할 지점')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('mm:ss.mmm')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '분할 저장' })).toBeInTheDocument()
   })
 })

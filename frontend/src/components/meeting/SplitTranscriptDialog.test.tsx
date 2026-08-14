@@ -9,6 +9,7 @@ vi.mock('../../api/meetings', async (orig) => {
   return {
     ...actual,
     splitTranscript: vi.fn(),
+    updateTranscriptSpeaker: vi.fn(),
     getTranscripts: vi.fn(async () => [] as Transcript[]),
   }
 })
@@ -24,7 +25,7 @@ vi.mock('../../api/speakers', async (orig) => {
   }
 })
 
-import { splitTranscript, getTranscripts } from '../../api/meetings'
+import { splitTranscript, updateTranscriptSpeaker, getTranscripts } from '../../api/meetings'
 import { getSpeakers } from '../../api/speakers'
 
 function makeHttpError(status: number, body: unknown): HTTPError {
@@ -48,6 +49,7 @@ const baseTranscript: Transcript = {
 function renderDialog(overrides: Partial<Transcript> = {}, currentTimeMs = 0) {
   const onClose = vi.fn()
   const onSplit = vi.fn()
+  const onSpeakerUpdated = vi.fn()
   render(
     <SplitTranscriptDialog
       meetingId={5}
@@ -56,13 +58,16 @@ function renderDialog(overrides: Partial<Transcript> = {}, currentTimeMs = 0) {
       clientId="client-1"
       onClose={onClose}
       onSplit={onSplit}
+      onSpeakerUpdated={onSpeakerUpdated}
     />,
   )
-  return { onClose, onSplit }
+  return { onClose, onSplit, onSpeakerUpdated }
 }
 
+/** 기본 모드("화자만 변경")에서 "발언 분할" 탭으로 전환한 뒤 첫 단어 경계를 고른다. */
 async function selectFirstBoundary() {
   await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+  fireEvent.click(screen.getByRole('tab', { name: '발언 분할' }))
   const boundary = screen.getByLabelText('분할 지점: "안녕하세요" 뒤')
   fireEvent.click(boundary)
   return boundary
@@ -110,6 +115,7 @@ describe('SplitTranscriptDialog', () => {
   it('"현재 재생 위치 사용" 클릭 시 currentTimeMs를 채택한다', async () => {
     renderDialog({}, 1500)
     await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('tab', { name: '발언 분할' }))
     fireEvent.click(screen.getByRole('button', { name: '현재 재생 위치 사용' }))
     expect(screen.getByPlaceholderText('mm:ss.mmm')).toHaveValue('00:01.500')
   })
@@ -183,6 +189,7 @@ describe('SplitTranscriptDialog', () => {
     })
     renderDialog({ content: '가나😀 다라', ended_at_ms: 2000 })
     await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('tab', { name: '발언 분할' }))
     fireEvent.click(screen.getByLabelText('분할 지점: "가나😀" 뒤'))
     setMsText('00:01.000')
     fireEvent.click(screen.getByRole('button', { name: '분할 저장' }))
@@ -230,6 +237,70 @@ describe('SplitTranscriptDialog', () => {
       expect(screen.getByText('최신 내용을 불러오지 못했습니다. 창을 닫고 다시 열어주세요.')).toBeInTheDocument(),
     )
     expect(screen.getByRole('button', { name: '분할 저장' })).toBeDisabled()
+  })
+})
+
+describe('SplitTranscriptDialog 화자만 변경 모드', () => {
+  it('기본 모드는 "화자만 변경"이며 분할 UI는 보이지 않는다', async () => {
+    renderDialog()
+    await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+
+    expect(screen.getByRole('tab', { name: '화자만 변경' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByPlaceholderText('mm:ss.mmm')).not.toBeInTheDocument()
+    expect(screen.queryByText('텍스트 분할 지점')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '변경 저장' })).toBeInTheDocument()
+  })
+
+  it('화자를 바꾸고 저장하면 updateTranscriptSpeaker가 호출되고 onSpeakerUpdated가 결과로 호출된다', async () => {
+    const updated = { ...baseTranscript, speaker_label: 'B', speaker_name: null }
+    ;(updateTranscriptSpeaker as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(updated)
+
+    const { onSpeakerUpdated, onSplit } = renderDialog()
+    await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+
+    fireEvent.change(screen.getByDisplayValue('A'), { target: { value: 'B' } })
+    const saveButton = screen.getByRole('button', { name: '변경 저장' })
+    expect(saveButton).not.toBeDisabled()
+    fireEvent.click(saveButton)
+
+    await waitFor(() => expect(updateTranscriptSpeaker).toHaveBeenCalled())
+    expect(updateTranscriptSpeaker).toHaveBeenCalledWith(5, 1, {
+      speaker_label: 'B',
+      speaker_name: null,
+      client_id: 'client-1',
+    })
+    await waitFor(() => expect(onSpeakerUpdated).toHaveBeenCalledWith(updated))
+    expect(onSplit).not.toHaveBeenCalled()
+  })
+
+  it('공백 화자 라벨은 저장을 비활성화한다', async () => {
+    renderDialog()
+    await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+
+    fireEvent.change(screen.getByDisplayValue('A'), { target: { value: '__custom__' } })
+    fireEvent.change(screen.getByPlaceholderText('화자 ID (예: SPEAKER_02)'), { target: { value: '   ' } })
+
+    expect(screen.getByRole('button', { name: '변경 저장' })).toBeDisabled()
+  })
+
+  it('서버 오류(422 등)는 메시지를 그대로 보여준다', async () => {
+    ;(updateTranscriptSpeaker as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+      makeHttpError(422, { error: 'speaker_label을 입력하세요' }),
+    )
+    renderDialog()
+    await waitFor(() => expect(getSpeakers).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByRole('button', { name: '변경 저장' }))
+
+    await waitFor(() => expect(screen.getByText('speaker_label을 입력하세요')).toBeInTheDocument())
+  })
+
+  it('"발언 분할" 탭으로 전환하면 기존 분할 UI가 그대로 노출된다', async () => {
+    renderDialog()
+    await selectFirstBoundary()
+
+    expect(screen.getByText('텍스트 분할 지점')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '분할 저장' })).toBeInTheDocument()
   })
 })
 

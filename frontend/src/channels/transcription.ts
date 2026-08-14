@@ -61,6 +61,9 @@ type BackendMessage = {
   // transcript_split: 원행(조각1, 갱신)과 신규행(조각2, 삽입) — transcript_json 그대로.
   updated?: Transcript
   inserted?: Transcript
+  // transcript_speaker_updated: 화자변경(분할 없음) 대상 행 id + 새 화자.
+  // speaker_label은 위에 이미 선언됨(partial/final과 공유).
+  speaker_name?: string | null
   // summarization progress
   summary_type?: 'realtime' | 'final'
   ok?: boolean
@@ -164,6 +167,24 @@ export function createTranscriptionChannel(
               // 행이 화면에 안 나타난다 — MeetingPage가 자신의 배열을 재조회하도록 신호를 올린다.
               // 로컬 split(SplitTranscriptDialog가 이 채널을 거치지 않고 store.applySplit을 직접
               // 호출하는 경로)은 여기를 타지 않으므로 카운터가 증가하지 않는다.
+              store.markRemoteStructureChange()
+            }
+            break
+          }
+          case 'transcript_speaker_updated': {
+            // Echo 가드: 내 화자변경 요청 응답으로 이미 store가 갱신됨 (SplitTranscriptDialog가 직접 반영)
+            if (raw.client_id && raw.client_id === store.clientId) {
+              break
+            }
+            // Reset 가드: 최근 reset 직후의 잔여 broadcast 무시
+            if (Date.now() - store.lastResetAt < 5000) {
+              break
+            }
+            if (typeof raw.id === 'number' && typeof raw.speaker_label === 'string') {
+              store.applySpeakerChange(raw.id, raw.speaker_label, raw.speaker_name ?? null)
+              // TranscriptPanel의 그룹 경계·테두리 색은 prop(transcripts)의 speaker_label을 직접
+              // 읽는다(split과 동일한 이유) — store만 갱신해선 원격에서 바뀐 화자가 화면에 반영되지
+              // 않으므로 페이지가 재조회하도록 신호를 올린다.
               store.markRemoteStructureChange()
             }
             break

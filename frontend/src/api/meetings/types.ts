@@ -254,6 +254,14 @@ export interface SplitTranscriptResponse {
   inserted: Transcript
 }
 
+/** PATCH transcripts/:id/update_speaker 요청 바디. speaker_name이 공백이거나 speaker_label과
+ *  같으면 서버가 nil로 저장한다. */
+export interface UpdateTranscriptSpeakerParams {
+  speaker_label: string
+  speaker_name?: string | null
+  client_id?: string
+}
+
 /** 서버가 확정한 절단 구간(이웃 gap 중간점으로 클램프·병합된 값). 요청의 행 ms 와 다를 수 있다. */
 export interface RedactedRange {
   start_ms: number

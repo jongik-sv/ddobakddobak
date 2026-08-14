@@ -88,6 +88,7 @@ Rails.application.routes.draw do
         resources :transcripts, only: [] do
           member do
             patch :update_content
+            patch :update_speaker
             post :split
           end
           collection do

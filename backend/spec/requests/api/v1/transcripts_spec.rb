@@ -194,6 +194,203 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
   end
 
   # ─────────────────────────────────────────────────────────
+  # PATCH /api/v1/meetings/:meeting_id/transcripts/:id/update_speaker
+  # ─────────────────────────────────────────────────────────
+  describe "PATCH /api/v1/meetings/:meeting_id/transcripts/:id/update_speaker" do
+    include ActiveJob::TestHelper
+
+    let!(:transcript) do
+      create(:transcript, meeting: meeting, sequence_number: 1,
+             content: "원본 텍스트", speaker_label: "SPEAKER_00", speaker_name: "김철수",
+             started_at_ms: 0, ended_at_ms: 3000)
+    end
+
+    context "정상 요청" do
+      it "200 OK, speaker_label·speaker_name 갱신" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+              params: { speaker_label: "SPEAKER_01", speaker_name: "이영희", client_id: "abc-123" }
+
+        expect(response).to have_http_status(:ok)
+        json = response.parsed_body
+        expect(json["transcript"]["speaker_label"]).to eq("SPEAKER_01")
+        expect(json["transcript"]["speaker_name"]).to eq("이영희")
+        expect(transcript.reload.speaker_label).to eq("SPEAKER_01")
+        expect(transcript.reload.speaker_name).to eq("이영희")
+      end
+
+      it "content는 변경하지 않는다" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+              params: { speaker_label: "SPEAKER_01" }
+
+        expect(transcript.reload.content).to eq("원본 텍스트")
+      end
+
+      it "meeting.last_user_edit_at 갱신" do
+        freeze_time = Time.zone.parse("2026-08-14 10:00:00")
+        travel_to(freeze_time) do
+          patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+                params: { speaker_label: "SPEAKER_01", client_id: "c1" }
+        end
+        expect(meeting.reload.last_user_edit_at).to be_within(1.second).of(freeze_time)
+      end
+
+      it "ActionCable broadcast 발행" do
+        expect(ActionCable.server).to receive(:broadcast).with(
+          meeting.transcription_stream,
+          hash_including(
+            type: "transcript_speaker_updated",
+            id: transcript.id,
+            speaker_label: "SPEAKER_01",
+            speaker_name: "이영희",
+            client_id: "c1"
+          )
+        )
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+              params: { speaker_label: "SPEAKER_01", speaker_name: "이영희", client_id: "c1" }
+      end
+
+      it "content 변경이 없으므로 EmbedBackfillJob을 enqueue하지 않는다" do
+        expect {
+          patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+                params: { speaker_label: "SPEAKER_01", speaker_name: "이영희" }
+        }.not_to have_enqueued_job(EmbedBackfillJob)
+      end
+
+      it "FTS 인덱스에도 새 화자 라벨이 반영된다" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+              params: { speaker_label: "SPEAKER_고유99", speaker_name: "이영희" }
+
+        conn = ActiveRecord::Base.connection
+        rows = conn.execute(ActiveRecord::Base.sanitize_sql_array(
+          [ "SELECT speaker_label FROM transcripts_fts WHERE source_id = ?", transcript.id ]
+        ))
+        row = rows.to_a.first
+        label = row.is_a?(Hash) ? row["speaker_label"] : row&.first
+        expect(label).to eq("SPEAKER_고유99")
+      end
+    end
+
+    context "speaker_name 생략 또는 공백" do
+      it "speaker_name을 생략하면 nil로 저장된다" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+              params: { speaker_label: "SPEAKER_01" }
+
+        expect(response).to have_http_status(:ok)
+        expect(transcript.reload.speaker_name).to be_nil
+      end
+
+      it "speaker_name이 공백 문자열이면 nil로 저장된다" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+              params: { speaker_label: "SPEAKER_01", speaker_name: "   " }
+
+        expect(response).to have_http_status(:ok)
+        expect(transcript.reload.speaker_name).to be_nil
+      end
+
+      it "speaker_name이 null로 명시되면 nil로 저장된다" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+              params: { speaker_label: "SPEAKER_01", speaker_name: nil }, as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(transcript.reload.speaker_name).to be_nil
+      end
+    end
+
+    context "speaker_name이 speaker_label과 동일 문자열" do
+      it "speaker_name을 nil로 저장한다(사이드카 '이름 미설정' 규약)" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+              params: { speaker_label: "SPEAKER_01", speaker_name: "SPEAKER_01" }
+
+        expect(response).to have_http_status(:ok)
+        json = response.parsed_body
+        expect(json["transcript"]["speaker_name"]).to be_nil
+        expect(transcript.reload.speaker_name).to be_nil
+      end
+    end
+
+    context "speaker_label 공백" do
+      it "422 반환, 변경되지 않는다" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+              params: { speaker_label: "   " }
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body["error"]).to eq("speaker_label blank")
+        expect(transcript.reload.speaker_label).to eq("SPEAKER_00")
+      end
+
+      it "speaker_label 누락 시 422" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+              params: {}
+
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+    end
+
+    context "다른 회의의 transcript id" do
+      let(:other_meeting) { create(:meeting, project: project, creator: user) }
+      let!(:other_transcript) do
+        create(:transcript, meeting: other_meeting, sequence_number: 1,
+               content: "다른 회의", speaker_label: "SPEAKER_00",
+               started_at_ms: 0, ended_at_ms: 1000)
+      end
+
+      it "404 Not Found" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{other_transcript.id}/update_speaker",
+              params: { speaker_label: "SPEAKER_01" }
+
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    context "존재하지 않는 transcript" do
+      it "404 Not Found" do
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/999999/update_speaker",
+              params: { speaker_label: "SPEAKER_01" }
+
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    context "잠금" do
+      it "잠긴 회의는 403" do
+        meeting.update!(locked_at: Time.current)
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+              params: { speaker_label: "SPEAKER_01" }
+
+        expect(response).to have_http_status(:forbidden)
+        expect(transcript.reload.speaker_label).to eq("SPEAKER_00")
+      end
+    end
+
+    context "권한" do
+      it "공유 가시성 멤버(비협업자·비소유자)는 403" do
+        meeting.update!(shared: true)
+        create(:project_membership, project: project, user: other_user)
+        login_as(other_user)
+
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+              params: { speaker_label: "SPEAKER_01" }
+
+        expect(response).to have_http_status(:forbidden)
+        expect(transcript.reload.speaker_label).to eq("SPEAKER_00")
+      end
+
+      it "협업자는 화자 변경 가능(control 티어)" do
+        collaborator = create(:user)
+        create(:project_membership, project: project, user: collaborator)
+        MeetingCollaborator.create!(meeting: meeting, user: collaborator)
+        login_as(collaborator)
+
+        patch "/api/v1/meetings/#{meeting.id}/transcripts/#{transcript.id}/update_speaker",
+              params: { speaker_label: "SPEAKER_01" }
+
+        expect(response).to have_http_status(:ok)
+        expect(transcript.reload.speaker_label).to eq("SPEAKER_01")
+      end
+    end
+  end
+
+  # ─────────────────────────────────────────────────────────
   # POST /api/v1/meetings/:meeting_id/transcripts/:id/split
   # 설계: docs/superpowers/specs/2026-07-30-transcript-split-design.md
   # ─────────────────────────────────────────────────────────

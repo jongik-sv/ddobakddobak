@@ -48,6 +48,8 @@ interface BuildMeetingDetailTabsArgs {
   seekTick?: number
   /** 전사 분할 성공 시 호출 — 페이지가 자신의 transcripts 배열을 갱신하도록 전달. */
   onSplit?: (updated: Transcript, inserted: Transcript) => void
+  /** 화자변경(분할 없음) 성공 시 호출 — 페이지가 자신의 transcripts 배열의 해당 행을 교체하도록 전달. */
+  onSpeakerUpdated?: (updated: Transcript) => void
   /** owner/admin 이고 미잠금일 때만 TranscriptPanel 에 기밀 구간 절단 UI 를 노출한다. */
   canRedact?: boolean
   /** D'Flow 전송 이력 여부(확인 다이얼로그 경고 게이팅). */
@@ -82,6 +84,7 @@ export function buildMeetingDetailTabs({
   belowSummary,
   seekTick,
   onSplit,
+  onSpeakerUpdated,
   canRedact,
   dflowSynced,
   onRedacted,
@@ -117,6 +120,7 @@ export function buildMeetingDetailTabs({
               readOnly={locked || !canEdit}
               seekTick={seekTick}
               onSplit={onSplit}
+              onSpeakerUpdated={onSpeakerUpdated}
               canRedact={canRedact}
               dflowSynced={dflowSynced}
               onRedacted={onRedacted}

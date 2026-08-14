@@ -46,6 +46,9 @@ interface TranscriptState {
   /** split 반영: updated.id인 기존 항목을 응답값으로 갱신하고 그 바로 뒤에 inserted를 끼운다.
    *  updated.id를 못 찾으면(아직 로드 전 등) no-op. */
   applySplit: (updated: Transcript, inserted: Transcript) => void
+  /** 화자변경(분할 없음) 반영: id 행의 speaker_label/speaker_name을 갱신한다. 행 수·순서는
+   *  그대로라 applySplit과 달리 sequence_number 재번호가 필요 없다. id를 못 찾으면 no-op. */
+  applySpeakerChange: (id: number, speakerLabel: string, speakerName: string | null) => void
   /** 원격 구조 변경(split·redact) 수신을 표시(카운터 증가). 채널 코드에서만 호출할 것. */
   markRemoteStructureChange: () => void
   /** 오디오 파일 교체를 표시(카운터 증가). 원격 수신(채널, 에코 아님) 또는 로컬 절단 성공
@@ -202,6 +205,19 @@ export const useTranscriptStore = create<TranscriptState>()((set) => ({
       if (updatedFinal.applied) appliedIds.add(updatedFinal.id)
       if (insertedFinal.applied) appliedIds.add(insertedFinal.id)
       return { finals, appliedIds }
+    }),
+
+  applySpeakerChange: (id, speakerLabel, speakerName) =>
+    set((state) => {
+      const idx = state.finals.findIndex((f) => f.id === id)
+      if (idx === -1) return state
+      const existing = state.finals[idx]
+      if (existing.speaker_label === speakerLabel && (existing.speaker_name ?? null) === speakerName) {
+        return state
+      }
+      const updated = [...state.finals]
+      updated[idx] = { ...existing, speaker_label: speakerLabel, speaker_name: speakerName }
+      return { finals: updated }
     }),
 
   markRemoteStructureChange: () => set((state) => ({ remoteStructureRevision: state.remoteStructureRevision + 1 })),
