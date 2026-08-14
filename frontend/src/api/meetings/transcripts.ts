@@ -4,6 +4,7 @@ import type {
   BulkTranscriptItem,
   SplitTranscriptParams,
   SplitTranscriptResponse,
+  UpdateTranscriptSpeakerParams,
   RedactTranscriptsParams,
   RedactTranscriptsResponse,
 } from './types'
@@ -34,6 +35,18 @@ export async function redactTranscripts(
   return apiClient
     .post(`meetings/${meetingId}/transcripts/redact`, { json: params })
     .json<RedactTranscriptsResponse>()
+}
+
+/** 전사 한 행의 화자만 바꾼다(분할 없음). 404/422는 호출부가 HTTPError로 받는다. */
+export async function updateTranscriptSpeaker(
+  meetingId: number,
+  transcriptId: number,
+  params: UpdateTranscriptSpeakerParams,
+): Promise<Transcript> {
+  const res = await apiClient
+    .patch(`meetings/${meetingId}/transcripts/${transcriptId}/update_speaker`, { json: params })
+    .json<{ transcript: Transcript }>()
+  return res.transcript
 }
 
 export async function updateTranscript(

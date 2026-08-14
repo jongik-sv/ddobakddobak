@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
-import { Scissors } from 'lucide-react'
+import { UserPen } from 'lucide-react'
 import type { Transcript, RedactTranscriptsResponse, TranscriptBounds } from '../../api/meetings'
 import { redactTranscripts } from '../../api/meetings'
 import { renameSpeaker } from '../../api/speakers'
@@ -34,6 +34,10 @@ interface TranscriptPanelProps {
   /** 분할 성공 시 호출 — 부모(MeetingPage)가 자신이 들고 있는 transcripts 배열에 inserted를
    *  끼워 넣는 등 구조적 갱신을 하도록 알린다. store 반영은 이 컴포넌트가 이미 수행한다. */
   onSplit?: (updated: Transcript, inserted: Transcript) => void
+  /** 화자변경(분할 없음) 성공 시 호출 — 부모가 자신이 들고 있는 transcripts 배열의 해당 행을
+   *  교체하도록 알린다(구조 변경 없이 speaker_label/speaker_name만 바뀜). store 반영은 이
+   *  컴포넌트가 이미 수행한다. */
+  onSpeakerUpdated?: (updated: Transcript) => void
   /** owner/admin 이고 잠기지 않았을 때만 다중 선택 + 기밀 구간 절단 UI 를 노출한다. 기본 false.
    *  서버(authorize_meeting_admin!)의 403 과 이중 방어 — 여기서 숨기는 건 어포던스일 뿐이다. */
   canRedact?: boolean
@@ -140,13 +144,13 @@ const TranscriptRow = memo(function TranscriptRow({
             e.stopPropagation()
             onOpenSplit(transcript)
           }}
-          aria-label="발언 분할"
-          title="분할"
+          aria-label="화자변경/발언분할"
+          title="화자변경/발언분할"
           // 터치 기기는 hover가 없어 opacity-0 그룹호버로 숨기면 진입점이 아예 안 보인다 —
           // 항상 은은하게 보이고 호버/포커스 시에만 강조한다.
           className="shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground hover:bg-muted-foreground/10 focus:text-foreground focus:opacity-100 transition-colors"
         >
-          <Scissors size={14} />
+          <UserPen size={14} />
         </button>
       )}
     </div>
@@ -164,6 +168,7 @@ export function TranscriptPanel({
   readOnly = false,
   seekTick,
   onSplit,
+  onSpeakerUpdated,
   canRedact = false,
   dflowSynced,
   onRedacted,
@@ -183,6 +188,7 @@ export function TranscriptPanel({
   const storeFinals = useTranscriptStore((s) => s.finals)
   const setSpeakerName = useTranscriptStore((s) => s.setSpeakerName)
   const applySplitInStore = useTranscriptStore((s) => s.applySplit)
+  const applySpeakerChangeInStore = useTranscriptStore((s) => s.applySpeakerChange)
   const clientId = useTranscriptStore((s) => s.clientId)
   const contentOverrides = useMemo(() => {
     const map = new Map<number, string>()
@@ -356,6 +362,12 @@ export function TranscriptPanel({
     onSplit?.(updated, inserted)
   }
 
+  function handleSpeakerUpdateSuccess(updated: Transcript) {
+    applySpeakerChangeInStore(updated.id, updated.speaker_label, updated.speaker_name ?? null)
+    setSplittingTranscript(null)
+    onSpeakerUpdated?.(updated)
+  }
+
   // suppressAutoScroll은 ref로 읽는다 — deps에 넣으면 검색 종료(해제) 시점에
   // 오디오 위치로 뷰포트가 튀는 스크롤이 발화한다. 인덱스가 실제로 바뀔 때만 스크롤.
   const suppressRef = useRef(suppressAutoScroll)
@@ -454,6 +466,7 @@ export function TranscriptPanel({
           clientId={clientId}
           onClose={() => setSplittingTranscript(null)}
           onSplit={handleSplitSuccess}
+          onSpeakerUpdated={handleSpeakerUpdateSuccess}
         />
       )}
     </div>

@@ -19,8 +19,9 @@ SIDECAR_PORT="${SIDECAR_PORT:-13324}"
 FRONTEND_PORT="${FRONTEND_PORT:-13325}"
 CADDY_PORT="${CADDY_PORT:-443}"
 
-# 1024 미만 포트(443 등)는 바인딩에 root 권한 필요 → caddy만 sudo로 기동한다.
-if [ "$CADDY_PORT" -lt 1024 ]; then CADDY_PRIV=1; else CADDY_PRIV=0; fi
+# macOS 10.14+는 비루트도 1024 미만 포트(443 포함) 바인딩 가능 — sudo 불필요.
+# (과거 sudo nohup 백그라운드 기동은 부모 셸 정리 시 root caddy까지 SIGTERM으로
+#  따라 죽는 사고가 반복돼 tmux 창 방식으로 일원화했다.)
 # URL 표시용 포트 접미사: 443이면 생략(프로덕션처럼 포트 없는 주소).
 if [ "$CADDY_PORT" = "443" ]; then PORT_SFX=""; else PORT_SFX=":${CADDY_PORT}"; fi
 
@@ -152,22 +153,9 @@ start_backend() {
   tmux new-window -t "$SESSION" -n sidecar -c "$PROJECT_ROOT/sidecar"
   tmux send-keys -t "$SESSION:sidecar" "$SIDECAR_CMD" Enter
 
-  if [ "$CADDY_PRIV" = "1" ]; then
-    # 443 등 1024 미만 포트는 root 필요 → caddy만 sudo 백그라운드로 기동(로그: .caddy.log).
-    # sudo -v를 현재 터미널에서 먼저 받아 캐시 → 이어지는 sudo가 재프롬프트 없이 실행된다.
-    caddy stop >/dev/null 2>&1 || true   # 잔여 caddy 정리(포트 중복 바인딩 방지)
-    echo "[info] caddy가 :${CADDY_PORT} 바인딩에 관리자 권한 필요 — sudo 인증"
-    if ! sudo -v; then
-      echo "[error] sudo 인증 실패 → caddy 미기동. rails/sidecar는 실행 중." >&2
-    else
-      sudo nohup caddy run --config "$CADDY_LOCAL" --adapter caddyfile \
-        > "$PROJECT_ROOT/.caddy.log" 2>&1 &
-      echo "[info] caddy(sudo) 백그라운드 기동 → 로그: tail -f $PROJECT_ROOT/.caddy.log"
-    fi
-  else
-    tmux new-window -t "$SESSION" -n caddy -c "$PROJECT_ROOT"
-    tmux send-keys -t "$SESSION:caddy" "$CADDY_CMD" Enter
-  fi
+  caddy stop >/dev/null 2>&1 || true   # 잔여 caddy 정리(포트 중복 바인딩 방지)
+  tmux new-window -t "$SESSION" -n caddy -c "$PROJECT_ROOT"
+  tmux send-keys -t "$SESSION:caddy" "$CADDY_CMD" Enter
 
   echo "[info]   - rails   : http://localhost:${RAILS_PORT}"
   echo "[info]   - sidecar : http://localhost:${SIDECAR_PORT}"

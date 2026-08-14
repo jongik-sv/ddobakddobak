@@ -370,6 +370,20 @@ export default function MeetingPage() {
     })
   }
 
+  // 화자변경(분할 없음): 행 수·순서는 그대로라 split과 달리 sequence_number 재번호가 필요 없다.
+  // TranscriptPanel의 그룹 경계·테두리 색은 이 배열의 speaker_label을 직접 읽으므로(store override는
+  // speaker_name만 감쌈) 여기서도 행을 교체해야 화면에 반영된다. store 쪽 반영(applySpeakerChange)은
+  // TranscriptPanel이 이미 수행했다.
+  function handleTranscriptSpeakerUpdate(updated: Transcript) {
+    setTranscripts((prev) => {
+      const idx = prev.findIndex((t) => t.id === updated.id)
+      if (idx === -1) return prev
+      const next = [...prev]
+      next[idx] = updated
+      return next
+    })
+  }
+
   // 전사 절단 로컬 반영 — 본체는 applyLocalRedaction(lib/applyLocalRedaction.ts)에 있고
   // 여기서는 클로저 값만 주입하는 얇은 래퍼다. 본체를 이 안에 두면 markAudioChanged·
   // clearMeetingNotes 호출을 자동 검증할 방법이 없는데, 그건 절단한 본인 화면이 옛 오디오
@@ -543,6 +557,7 @@ export default function MeetingPage() {
     belowSummary: typoSectionsMobile,
     seekTick,
     onSplit: handleTranscriptSplit,
+    onSpeakerUpdated: handleTranscriptSpeakerUpdate,
     canRedact: canRedactMeeting(meeting, me) && !locked,
     dflowSynced: !!meeting?.dflow_synced_at,
     onRedacted: handleTranscriptRedact,
@@ -709,6 +724,7 @@ export default function MeetingPage() {
                   readOnly={locked || !canEdit}
                   seekTick={seekTick}
                   onSplit={handleTranscriptSplit}
+                  onSpeakerUpdated={handleTranscriptSpeakerUpdate}
                   canRedact={canRedactMeeting(meeting, me) && !locked}
                   dflowSynced={!!meeting?.dflow_synced_at}
                   onRedacted={handleTranscriptRedact}

@@ -1,22 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
 import { HTTPError } from 'ky'
 import { Dialog } from '../ui/Dialog'
-import { splitTranscript, getTranscripts } from '../../api/meetings'
+import { splitTranscript, updateTranscriptSpeaker, getTranscripts } from '../../api/meetings'
 import type { Transcript } from '../../api/meetings'
 import { getSpeakers } from '../../api/speakers'
 import type { Speaker } from '../../api/speakers'
 
 interface SplitTranscriptDialogProps {
   meetingId: number
-  /** 분할 대상 원행. content/speaker_name은 호출부가 store override를 우선 반영한 최신값을 넘겨야 한다. */
+  /** 대상 원행. content/speaker_name은 호출부가 store override를 우선 반영한 최신값을 넘겨야 한다. */
   transcript: Transcript
   /** 오디오 플레이어 현재 재생 위치(ms) — "현재 재생 위치 사용" 버튼이 채택한다. */
   currentTimeMs: number
-  /** transcript_updated/split 브로드캐스트 echo 가드용 클라이언트 id (store.clientId). */
+  /** transcript_updated/split/speaker_updated 브로드캐스트 echo 가드용 클라이언트 id (store.clientId). */
   clientId: string
   onClose: () => void
   onSplit: (updated: Transcript, inserted: Transcript) => void
+  /** "화자만 변경" 모드 저장 성공 시 호출. */
+  onSpeakerUpdated: (updated: Transcript) => void
 }
+
+type DialogMode = 'speaker' | 'split'
 
 const CUSTOM_SPEAKER_VALUE = '__custom__'
 
@@ -155,7 +159,8 @@ function SpeakerSideFields({
 }
 
 /**
- * 전사 한 행을 분할하는 모달. 텍스트 분할점은 단어 경계 클릭으로만 고른다(캐럿 미사용 —
+ * 전사 한 행의 화자변경(분할 없음) 또는 발언 분할을 수행하는 모달. 기본 모드는 화자만 변경.
+ * 분할 모드의 텍스트 분할점은 단어 경계 클릭으로만 고른다(캐럿 미사용 —
  * 모바일/Tauri WebView에서 readOnly textarea의 selectionStart가 플랫폼 의존적이기 때문.
  * 설계: docs/superpowers/specs/2026-07-30-transcript-split-design.md).
  */
@@ -166,12 +171,17 @@ export function SplitTranscriptDialog({
   clientId,
   onClose,
   onSplit,
+  onSpeakerUpdated,
 }: SplitTranscriptDialogProps) {
+  // 기본값은 "화자만 변경" — 분할보다 훨씬 흔한 조작이라 진입 클릭 한 번으로 끝나야 한다.
+  const [mode, setMode] = useState<DialogMode>('speaker')
+
   // expected_content로 보낼 원문. 409로 어긋났음이 확인되면 최신값으로 리셋한다.
   const [workingContent, setWorkingContent] = useState(transcript.content)
   const [selectedEnd, setSelectedEnd] = useState<number | null>(null)
 
   const [speakers, setSpeakers] = useState<Speaker[]>([])
+  const [speakerOnly, setSpeakerOnly] = useState<SpeakerSide>(() => initialSide(transcript))
   const [first, setFirst] = useState<SpeakerSide>(() => initialSide(transcript))
   const [second, setSecond] = useState<SpeakerSide>(() => initialSide(transcript))
 
@@ -199,7 +209,10 @@ export function SplitTranscriptDialog({
   const firstLabel = effectiveLabel(first)
   const secondLabel = effectiveLabel(second)
   const speakersValid = firstLabel.length > 0 && secondLabel.length > 0
-  const canSave = msValid && indexValid && speakersValid && !saving && !refetchFailed
+  const canSaveSplit = msValid && indexValid && speakersValid && !saving && !refetchFailed
+
+  const speakerOnlyLabel = effectiveLabel(speakerOnly)
+  const canSaveSpeaker = speakerOnlyLabel.length > 0 && !saving
 
   function handleBoundaryClick(end: number) {
     setSelectedEnd(end)
@@ -216,8 +229,32 @@ export function SplitTranscriptDialog({
     setSplitMs(parseMsPrecise(text))
   }
 
-  async function handleSave() {
-    if (!canSave || selectedEnd == null || splitMs == null) return
+  async function handleSpeakerSave() {
+    if (!canSaveSpeaker) return
+    setSaving(true)
+    setError(null)
+    try {
+      const name = speakerOnly.name.trim()
+      const result = await updateTranscriptSpeaker(meetingId, transcript.id, {
+        speaker_label: speakerOnlyLabel,
+        speaker_name: name ? name : null,
+        client_id: clientId,
+      })
+      onSpeakerUpdated(result)
+    } catch (err) {
+      if (err instanceof HTTPError) {
+        const body = (await err.response.json().catch(() => ({}))) as { error?: string }
+        setError(body.error ?? '화자 변경 중 오류가 발생했습니다.')
+      } else {
+        setError('화자 변경 중 오류가 발생했습니다.')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleSplitSave() {
+    if (!canSaveSplit || selectedEnd == null || splitMs == null) return
     setSaving(true)
     setError(null)
     try {
@@ -261,89 +298,126 @@ export function SplitTranscriptDialog({
   }
 
   return (
-    <Dialog onClose={onClose} ariaLabel="발언 분할" className="w-full max-w-lg rounded-xl bg-card p-6 shadow-2xl border border-border max-h-[90vh] overflow-y-auto">
-      <h2 className="text-base font-semibold text-foreground mb-1">발언 분할</h2>
+    <Dialog onClose={onClose} ariaLabel="화자변경/발언분할" className="w-full max-w-lg rounded-xl bg-card p-6 shadow-2xl border border-border max-h-[90vh] overflow-y-auto">
+      <h2 className="text-base font-semibold text-foreground mb-1">화자변경/발언분할</h2>
       <p className="text-xs text-muted-foreground mb-4">
-        한 행에 섞인 두 사람의 발언을 나눌 지점을 단어 사이에서 고르세요.
+        {mode === 'speaker'
+          ? '이 행의 화자만 바꿉니다. 텍스트는 그대로 유지됩니다.'
+          : '한 행에 섞인 두 사람의 발언을 나눌 지점을 단어 사이에서 고르세요.'}
       </p>
 
-      <div className="mb-4">
-        <span className="block text-xs font-medium text-muted-foreground mb-1">텍스트 분할 지점</span>
-        <div className="rounded-md border border-border bg-muted/30 p-3 text-sm leading-relaxed whitespace-pre-wrap">
-          {tokens.length === 0 && (
-            <span className="text-muted-foreground">분할 가능한 지점이 없습니다 (단어가 하나뿐입니다).</span>
-          )}
-          {tokens.map((tok, i) => (
-            <span key={i}>
-              {workingContent.slice(i === 0 ? 0 : tokens[i - 1].end, tok.start)}
-              <span>{tok.text}</span>
-              {i < tokens.length - 1 && (
-                <button
-                  type="button"
-                  onClick={() => handleBoundaryClick(tok.end)}
-                  aria-label={`분할 지점: "${tok.text}" 뒤`}
-                  aria-pressed={selectedEnd === tok.end}
-                  className={`inline-block w-2 mx-0.5 rounded-sm align-middle ${
-                    selectedEnd === tok.end
-                      ? 'bg-blue-500'
-                      : 'bg-border hover:bg-blue-300'
-                  }`}
-                  style={{ height: '1em' }}
-                />
-              )}
-            </span>
-          ))}
-        </div>
+      <div role="tablist" className="mb-4 inline-flex rounded-md border border-border p-0.5 bg-muted/30">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'speaker'}
+          onClick={() => setMode('speaker')}
+          className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+            mode === 'speaker' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          화자만 변경
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'split'}
+          onClick={() => setMode('split')}
+          className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+            mode === 'split' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          발언 분할
+        </button>
       </div>
 
-      <div className="mb-4">
-        <span className="block text-xs font-medium text-muted-foreground mb-1">오디오 분할 위치</span>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleUseCurrentPosition}
-            className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors shrink-0"
-          >
-            현재 재생 위치 사용
-          </button>
-          <input
-            type="text"
-            value={splitMsText}
-            onChange={(e) => handleMsTextChange(e.target.value)}
-            placeholder="mm:ss.mmm"
-            className="flex-1 rounded-md border border-border px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
-        </div>
-        {splitMsText && !msValid && (
-          <p className="mt-1 text-xs text-red-500">
-            {formatMsPrecise(transcript.started_at_ms)} ~ {formatMsPrecise(transcript.ended_at_ms)} 범위(양 끝 제외) 안이어야 합니다.
-          </p>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <SpeakerSideFields title="첫 번째 조각 화자" speakers={speakers} side={first} onChange={setFirst} />
-        <SpeakerSideFields title="두 번째 조각 화자" speakers={speakers} side={second} onChange={setSecond} />
-      </div>
-
-      {indexValid && msValid && (
+      {mode === 'speaker' && (
         <div className="mb-4">
-          <span className="block text-xs font-medium text-muted-foreground mb-1">미리보기</span>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-md border border-border p-2">
-              <div className="text-muted-foreground mb-1">
-                {formatMsPrecise(transcript.started_at_ms)} ~ {formatMsPrecise(splitMs ?? 0)}
-              </div>
-              <div className="text-foreground whitespace-pre-wrap">{prefixText}</div>
-            </div>
-            <div className="rounded-md border border-border p-2">
-              <div className="text-muted-foreground mb-1">
-                {formatMsPrecise(splitMs ?? 0)} ~ {formatMsPrecise(transcript.ended_at_ms)}
-              </div>
-              <div className="text-foreground whitespace-pre-wrap">{suffixText}</div>
+          <SpeakerSideFields title="화자" speakers={speakers} side={speakerOnly} onChange={setSpeakerOnly} />
+        </div>
+      )}
+
+      {mode === 'split' && (
+        <>
+          <div className="mb-4">
+            <span className="block text-xs font-medium text-muted-foreground mb-1">텍스트 분할 지점</span>
+            <div className="rounded-md border border-border bg-muted/30 p-3 text-sm leading-relaxed whitespace-pre-wrap">
+              {tokens.length === 0 && (
+                <span className="text-muted-foreground">분할 가능한 지점이 없습니다 (단어가 하나뿐입니다).</span>
+              )}
+              {tokens.map((tok, i) => (
+                <span key={i}>
+                  {workingContent.slice(i === 0 ? 0 : tokens[i - 1].end, tok.start)}
+                  <span>{tok.text}</span>
+                  {i < tokens.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleBoundaryClick(tok.end)}
+                      aria-label={`분할 지점: "${tok.text}" 뒤`}
+                      aria-pressed={selectedEnd === tok.end}
+                      className={`inline-block w-2 mx-0.5 rounded-sm align-middle ${
+                        selectedEnd === tok.end
+                          ? 'bg-blue-500'
+                          : 'bg-border hover:bg-blue-300'
+                      }`}
+                      style={{ height: '1em' }}
+                    />
+                  )}
+                </span>
+              ))}
             </div>
           </div>
-        </div>
+
+          <div className="mb-4">
+            <span className="block text-xs font-medium text-muted-foreground mb-1">오디오 분할 위치</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleUseCurrentPosition}
+                className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors shrink-0"
+              >
+                현재 재생 위치 사용
+              </button>
+              <input
+                type="text"
+                value={splitMsText}
+                onChange={(e) => handleMsTextChange(e.target.value)}
+                placeholder="mm:ss.mmm"
+                className="flex-1 rounded-md border border-border px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            {splitMsText && !msValid && (
+              <p className="mt-1 text-xs text-red-500">
+                {formatMsPrecise(transcript.started_at_ms)} ~ {formatMsPrecise(transcript.ended_at_ms)} 범위(양 끝 제외) 안이어야 합니다.
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <SpeakerSideFields title="첫 번째 조각 화자" speakers={speakers} side={first} onChange={setFirst} />
+            <SpeakerSideFields title="두 번째 조각 화자" speakers={speakers} side={second} onChange={setSecond} />
+          </div>
+
+          {indexValid && msValid && (
+            <div className="mb-4">
+              <span className="block text-xs font-medium text-muted-foreground mb-1">미리보기</span>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-md border border-border p-2">
+                  <div className="text-muted-foreground mb-1">
+                    {formatMsPrecise(transcript.started_at_ms)} ~ {formatMsPrecise(splitMs ?? 0)}
+                  </div>
+                  <div className="text-foreground whitespace-pre-wrap">{prefixText}</div>
+                </div>
+                <div className="rounded-md border border-border p-2">
+                  <div className="text-muted-foreground mb-1">
+                    {formatMsPrecise(splitMs ?? 0)} ~ {formatMsPrecise(transcript.ended_at_ms)}
+                  </div>
+                  <div className="text-foreground whitespace-pre-wrap">{suffixText}</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
@@ -357,14 +431,25 @@ export function SplitTranscriptDialog({
         >
           취소
         </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!canSave}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors disabled:opacity-50"
-        >
-          {saving ? '저장 중...' : '분할 저장'}
-        </button>
+        {mode === 'speaker' ? (
+          <button
+            type="button"
+            onClick={handleSpeakerSave}
+            disabled={!canSaveSpeaker}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {saving ? '저장 중...' : '변경 저장'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleSplitSave}
+            disabled={!canSaveSplit}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {saving ? '저장 중...' : '분할 저장'}
+          </button>
+        )}
       </div>
     </Dialog>
   )

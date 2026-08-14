@@ -7,16 +7,16 @@ module Api
 
       before_action :authenticate_user!
       before_action :set_meeting
-      before_action :authorize_meeting_control!, only: %i[destroy_batch bulk_create update_content split]
+      before_action :authorize_meeting_control!, only: %i[destroy_batch bulk_create update_content update_speaker split]
       # 절단은 복구 불가한 기밀 파기 + 오디오 재인코딩을 동반하므로 협업자를 제외한다
-      # (idea 44: 관리 액션 = owner/admin). split 은 "편집"이라 control 티어를 유지한다.
+      # (idea 44: 관리 액션 = owner/admin). split·update_speaker 는 "편집"이라 control 티어를 유지한다.
       before_action :authorize_meeting_admin!, only: %i[redact]
       # 절단된 회의에는 전사를 **되돌릴 수 있는** bulk_create 만 막는다. redact(재절단)·
-      # destroy_batch·update_content·split 은 콘텐츠를 복원하지 않으므로 통과시킨다 —
+      # destroy_batch·update_content·update_speaker·split 은 콘텐츠를 복원하지 않으므로 통과시킨다 —
       # 특히 redact 를 막으면 잔존 기밀 행을 마저 지울 경로가 사라진다.
       # 인가 뒤 / reject_if_locked! 앞 배치 이유는 meeting_write_guard.rb 주석 참조.
       before_action :reject_if_redacted!, only: %i[bulk_create]
-      before_action :reject_if_locked!, only: %i[bulk_create update_content destroy_batch split redact]
+      before_action :reject_if_locked!, only: %i[bulk_create update_content update_speaker destroy_batch split redact]
 
       def index
         transcripts = @meeting.transcripts.order(:sequence_number)
@@ -115,6 +115,42 @@ module Api
             type: "transcript_updated",
             id: transcript.id,
             content: transcript.content,
+            client_id: params[:client_id]
+          }
+        )
+
+        render json: { transcript: transcript_json(transcript) }
+      end
+
+      # PATCH /api/v1/meetings/:meeting_id/transcripts/:id/update_speaker
+      # 전사 한 행의 화자만 변경한다(내용은 그대로). content_column을 건드리지 않으므로
+      # Embeddable#invalidate_embedding이 트리거되지 않고(after_update_commit이 saved_change_to
+      # ?(:content)만 검사), FTS는 speaker_label/speaker_name도 색인 컬럼이라 after_save :fts_upsert가
+      # 자동 갱신한다 — 별도 reconcile_embeddings! 호출이 불필요하다.
+      def update_speaker
+        label = params[:speaker_label].to_s.strip
+        if label.empty?
+          return render json: { error: "speaker_label blank" }, status: :unprocessable_entity
+        end
+
+        transcript = @meeting.transcripts.find_by(id: params[:id])
+        return render json: { error: "Transcript not found" }, status: :not_found unless transcript
+
+        # speakers_controller#update와 동일 규칙: name이 label과 같으면(사이드카 "이름 미설정" 규약)
+        # 비정규화 사본도 null로 둔다.
+        name = params[:speaker_name].presence
+        name = nil if name == label
+
+        transcript.update!(speaker_label: label, speaker_name: name)
+        @meeting.update!(last_user_edit_at: Time.current)
+
+        ActionCable.server.broadcast(
+          @meeting.transcription_stream,
+          {
+            type: "transcript_speaker_updated",
+            id: transcript.id,
+            speaker_label: transcript.speaker_label,
+            speaker_name: transcript.speaker_name,
             client_id: params[:client_id]
           }
         )
