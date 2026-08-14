@@ -209,7 +209,7 @@ class LlmService
 
   # 외부 LLM용 프롬프트 조립 (LLM 호출 없음). 압축율 분량 지시 포함(통짜 생성 = final 캡).
   # 증분(restructure=false) 회의는 시간 흐름 요약 지시를 포함 — 주제별 재구성 금지.
-  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil, attendees: nil, verbosity: "standard", restructure: true, agenda_reference: nil, domain_reference: nil, custom_prompt: nil)
+  def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil, attendees: nil, verbosity: "standard", restructure: true, agenda_reference: nil, domain_reference: nil, custom_prompt: nil, speaker_display: :label)
     system_prompt = if sections_prompt.present?
       REFINE_NOTES_SYSTEM_PROMPT.sub(DEFAULT_SECTION_STRUCTURE, sections_prompt)
     else
@@ -219,7 +219,7 @@ class LlmService
     system_prompt = apply_verbosity(system_prompt, verbosity, context: :final)
     system_prompt = apply_custom_prompt(system_prompt, custom_prompt)
 
-    transcript_text = TextFormatter.format_transcripts(transcripts)
+    transcript_text = TextFormatter.format_transcripts(transcripts, speaker_display: speaker_display)
     parts = build_context_parts(meeting_title: meeting_title, attendees: attendees,
                                  agenda_reference: agenda_reference, domain_reference: domain_reference)
     parts << (current_notes.present? ? "현재 회의록:\n#{current_notes}" : "현재 회의록: (아직 없음 — 새로 작성해주세요)")

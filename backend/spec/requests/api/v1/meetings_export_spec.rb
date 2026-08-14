@@ -81,4 +81,21 @@ RSpec.describe "GET /api/v1/meetings/:id/export_prompt", type: :request do
     expect(response).to have_http_status(:ok)
     expect(response.body).to include("CTQ: Critical To Quality")
   end
+
+  # export_prompt는 외부 LLM에 그대로 붙여넣는 결과물이므로 내부 요약 경로와 달리
+  # 화자 실명(speaker_name)을 노출해야 한다 (라벨만 노출하는 회귀 방지).
+  context "speaker_name이 있는 트랜스크립트" do
+    before do
+      create(:transcript, meeting: meeting, speaker_label: "화자2", speaker_name: "김정진",
+             content: "실명 발언", started_at_ms: 1000, sequence_number: 2)
+    end
+
+    it "라벨(화자 N) 대신 실명을 프롬프트 본문에 노출한다" do
+      get "/api/v1/meetings/#{meeting.id}/export_prompt"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("김정진] 실명 발언")
+      expect(response.body).not_to include("화자2] 실명 발언")
+    end
+  end
 end

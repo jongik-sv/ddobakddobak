@@ -11,7 +11,14 @@ class LlmService
       text.length > max_chars ? text[0, max_chars] : text
     end
 
-    def format_transcripts(transcripts)
+    # speaker_display:
+    #   :label (기본) — 화자 라벨(화자 N)만 마커 근거로 유지. 실명(speaker)·roster·"이름: " 접두사는
+    #     요약 본문에 화자 귀속이 새어나가므로 넣지 않는다. label 없을 때만 name 폴백.
+    #     내부 요약 경로(refine_notes/append_notes 등)는 항상 이 기본값을 써야 한다.
+    #   :name — 실명 우선(label 없을 때만 label 폴백). export_prompt(외부 LLM 붙여넣기용)
+    #     처럼 사용자가 직접 보는 결과물에서만 사용 — 요약 본문에는 화자 귀속을 노출하지 않는다는
+    #     설계를 우회하므로 다른 경로로 확산 금지.
+    def format_transcripts(transcripts, speaker_display: :label)
       return "" if transcripts.blank?
       lines = transcripts.map { |t|
         label = (t["speaker_label"] || t[:speaker_label]).to_s
@@ -19,9 +26,11 @@ class LlmService
         text = t["text"] || t[:text] || ""
         ms = (t["started_at_ms"] || t[:started_at_ms] || 0).to_i
         clock = format("%02d:%02d", ms / 60000, (ms / 1000) % 60)
-        # 화자 라벨(화자 N)만 마커 근거로 유지. 실명(speaker)·roster·"이름: " 접두사는
-        # 요약 본문에 화자 귀속이 새어나가므로 넣지 않는다. label 없을 때만 name 폴백.
-        bracket = label.empty? ? (name.empty? ? "알 수 없음" : name) : label
+        bracket = if speaker_display == :name
+          name.presence || label.presence || "알 수 없음"
+        else
+          label.empty? ? (name.empty? ? "알 수 없음" : name) : label
+        end
         "[#{clock}|#{ms}ms #{bracket}] #{text}"
       }
       lines.join("\n")

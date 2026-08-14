@@ -139,6 +139,18 @@ RSpec.describe LlmService, "ok signalling" do
       result = service.build_prompt("기존", [{ "speaker" => "A", "text" => "내용" }], restructure: true)
       expect(result["prompt"]).not_to include("시간 흐름")
     end
+
+    it "defaults to label display (기존 회귀 없음)" do
+      result = service.build_prompt("기존", [{ "speaker_label" => "화자 1", "speaker" => "장종익", "text" => "내용" }])
+      expect(result["prompt"]).to include("화자 1] 내용")
+      expect(result["prompt"]).not_to include("장종익] 내용")
+    end
+
+    it "speaker_display: :name 전달 시 실명을 노출한다 (export_prompt 전용 경로)" do
+      result = service.build_prompt("기존", [{ "speaker_label" => "화자 1", "speaker" => "장종익", "text" => "내용" }], speaker_display: :name)
+      expect(result["prompt"]).to include("장종익] 내용")
+      expect(result["prompt"]).not_to include("화자 1] 내용")
+    end
   end
 
   describe "#refine_notes chronological" do
@@ -203,6 +215,32 @@ RSpec.describe LlmService, "ok signalling" do
       svc = LlmService.allocate
       out = svc.send(:format_transcripts, [{ "speaker_label" => "화자 3", "speaker" => "장종익", "text" => "제안", "started_at_ms" => 53000 }])
       expect(out).to eq("[00:53|53000ms 화자 3] 제안")
+    end
+  end
+
+  # export_prompt(외부 LLM 붙여넣기용)만 speaker_display: :name으로 실명을 노출한다.
+  # 내부 요약 경로(기본값)는 위 테스트대로 라벨 유지가 회귀 없이 그대로여야 한다.
+  describe "#format_transcripts speaker_display: :name" do
+    it "라벨과 이름이 둘 다 있으면 대괄호에 실명을 노출한다" do
+      svc = LlmService.allocate
+      out = svc.send(:format_transcripts,
+        [{ "speaker_label" => "화자 3", "speaker" => "장종익", "text" => "제안", "started_at_ms" => 53000 }],
+        speaker_display: :name)
+      expect(out).to eq("[00:53|53000ms 장종익] 제안")
+    end
+
+    it "이름이 없으면 라벨로 폴백한다" do
+      svc = LlmService.allocate
+      out = svc.send(:format_transcripts,
+        [{ "speaker_label" => "화자 1", "text" => "내용", "started_at_ms" => 0 }],
+        speaker_display: :name)
+      expect(out).to eq("[00:00|0ms 화자 1] 내용")
+    end
+
+    it "라벨도 이름도 없으면 '알 수 없음'으로 폴백한다" do
+      svc = LlmService.allocate
+      out = svc.send(:format_transcripts, [{ "text" => "내용", "started_at_ms" => 0 }], speaker_display: :name)
+      expect(out).to eq("[00:00|0ms 알 수 없음] 내용")
     end
   end
 

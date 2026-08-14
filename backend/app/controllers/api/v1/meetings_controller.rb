@@ -757,7 +757,8 @@ module Api
           verbosity: @meeting.summary_verbosity,
           restructure: @meeting.summary_restructure,
           domain_reference: DomainReferenceBuilder.build(@meeting),
-          custom_prompt: @meeting.summary_custom_prompt
+          custom_prompt: @meeting.summary_custom_prompt,
+          speaker_display: :name
         )
 
         filename = "prompt_#{@meeting.id}_#{Date.today}.txt"
