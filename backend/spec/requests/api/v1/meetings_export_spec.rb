@@ -81,4 +81,16 @@ RSpec.describe "GET /api/v1/meetings/:id/export_prompt", type: :request do
     expect(response).to have_http_status(:ok)
     expect(response.body).to include("CTQ: Critical To Quality")
   end
+
+  # build_prompt 호출부는 agenda_reference 는 전달하면서 stakeholder_reference 를 누락했었다
+  # (다른 호출부인 refine_notes/append_notes 는 전부 전달). 이해관계자 압축 캐시가 있으면
+  # 프롬프트 export 에도 동일하게 실려야 한다.
+  it "회의의 stakeholder_reference(이해관계자 압축 캐시)를 프롬프트에 포함한다" do
+    meeting.update_columns(stakeholder_reference: "김철수 팀장 — 프로젝트 총괄")
+
+    get "/api/v1/meetings/#{meeting.id}/export_prompt"
+
+    expect(response).to have_http_status(:ok)
+    expect(response.body).to include("김철수 팀장 — 프로젝트 총괄")
+  end
 end

@@ -55,6 +55,7 @@ function sniffSignature(bytes: Uint8Array): { ext: string; mime: string } | null
 const CATEGORIES: { value: AttachmentCategory; label: string }[] = [
   { value: 'agenda', label: '안건' },
   { value: 'reference', label: '참고자료' },
+  { value: 'stakeholder', label: '이해관계자' },
   { value: 'business_card', label: '명함' },
 ]
 

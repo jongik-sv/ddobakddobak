@@ -7,30 +7,39 @@ import MeetingPage from './MeetingPage'
 // Mocks
 // ──────────────────────────────────────────────
 
-const { mockMeetingBase } = vi.hoisted(() => ({
-  mockMeetingBase: {
-    id: 1,
-    title: '테스트 회의',
-    status: 'completed' as const,
-    meeting_type: 'general',
-    created_by: { id: 1, name: '테스터' },
-    brief_summary: null,
-    audio_duration_ms: 0,
-    last_transcript_end_ms: 0,
-    last_sequence_number: 0,
-    memo: null,
-    attendees: null,
-    folder_id: null,
-    shared: true,
-    locked: false,
-    locked_at: null,
-    important: false,
-    editable: true,
-    started_at: '2026-03-25T10:00:00Z',
-    ended_at: '2026-03-25T11:00:00Z',
-    created_at: '2026-03-25T10:00:00Z',
-  },
-}))
+const { mockMeetingBase, mockAudioFileA, mockAudioFileB, mockOtherFileA, mockOtherFileB } = vi.hoisted(() => {
+  function makeDropFile(name: string, type: string) {
+    return new File([new Uint8Array(4)], name, { type })
+  }
+  return {
+    mockAudioFileA: makeDropFile('audio-a.mp3', 'audio/mpeg'),
+    mockAudioFileB: makeDropFile('audio-b.mp3', 'audio/mpeg'),
+    mockOtherFileA: makeDropFile('other-a.pdf', 'application/pdf'),
+    mockOtherFileB: makeDropFile('other-b.pdf', 'application/pdf'),
+    mockMeetingBase: {
+      id: 1,
+      title: '테스트 회의',
+      status: 'completed' as const,
+      meeting_type: 'general',
+      created_by: { id: 1, name: '테스터' },
+      brief_summary: null,
+      audio_duration_ms: 0,
+      last_transcript_end_ms: 0,
+      last_sequence_number: 0,
+      memo: null,
+      attendees: null,
+      folder_id: null,
+      shared: true,
+      locked: false,
+      locked_at: null,
+      important: false,
+      editable: true,
+      started_at: '2026-03-25T10:00:00Z',
+      ended_at: '2026-03-25T11:00:00Z',
+      created_at: '2026-03-25T10:00:00Z',
+    },
+  }
+})
 
 vi.mock('../api/meetings', async () => ({
   ...(await vi.importActual<typeof import('../api/meetings')>('../api/meetings')),
@@ -174,6 +183,68 @@ vi.mock('../components/meeting/AiSummaryPanel', () => ({
 
 vi.mock('../components/meeting/AttachmentSection', () => ({
   AttachmentSection: () => <div data-testid="attachment-section" />,
+}))
+
+// ── 파일 드롭 트리아지 관련 컴포넌트 mock (findings #4·#5·#6 회귀 테스트용) ──────────
+// 실제 드래그 이벤트/모달 UI 대신 버튼으로 각 콜백을 직접 트리거해 MeetingPage의 배선
+// (병합 시맨틱·오버레이 disabled·지연 navigate)만 검증한다.
+vi.mock('../components/meeting/MeetingFileDropOverlay', () => ({
+  MeetingFileDropOverlay: (props: { disabled?: boolean; onFilesDropped: (files: File[]) => void }) => (
+    <div data-testid="drop-overlay" data-disabled={String(!!props.disabled)}>
+      <button onClick={() => props.onFilesDropped([mockOtherFileA])}>drop-other-1</button>
+      <button onClick={() => props.onFilesDropped([mockOtherFileB])}>drop-other-2</button>
+      <button onClick={() => props.onFilesDropped([mockAudioFileA])}>drop-audio-1</button>
+      <button onClick={() => props.onFilesDropped([mockAudioFileA, mockOtherFileA])}>drop-mixed-1</button>
+      <button onClick={() => props.onFilesDropped([mockAudioFileB, mockOtherFileB])}>drop-mixed-2</button>
+    </div>
+  ),
+}))
+
+vi.mock('../components/meeting/AttachmentTriageDialog', () => ({
+  AttachmentTriageDialog: (props: { open: boolean; files: File[]; onClose: () => void; onUploaded?: () => void }) => (
+    <div data-testid="triage-dialog" data-open={String(props.open)} data-files={props.files.map((f) => f.name).join(',')}>
+      <button onClick={props.onClose}>triage-close</button>
+      {/* 실제 다이얼로그가 업로드 전부 완료 시 onUploaded 후 onClose를 호출하며 자동으로
+          닫히는 경로를 흉내낸다 — MeetingPage의 files=[] 리셋이 이 경로에서도 동작하는지 검증. */}
+      <button
+        onClick={() => {
+          props.onUploaded?.()
+          props.onClose()
+        }}
+      >
+        triage-complete
+      </button>
+    </div>
+  ),
+}))
+
+vi.mock('../components/meeting/AudioAppendChoiceDialog', () => ({
+  AudioAppendChoiceDialog: (props: { fileCount: number; onAppend: () => void; onNewMeeting: () => void; onCancel: () => void }) => (
+    <div data-testid="audio-choice-dialog" data-file-count={props.fileCount}>
+      <button onClick={props.onAppend}>choice-append</button>
+      <button onClick={props.onNewMeeting}>choice-new-meeting</button>
+      <button onClick={props.onCancel}>choice-cancel</button>
+    </div>
+  ),
+}))
+
+vi.mock('../components/meeting/AudioAppendFlowDialog', () => ({
+  AudioAppendFlowDialog: (props: { open: boolean; onClose: () => void; onMergeStarted?: () => void }) =>
+    props.open ? (
+      <div data-testid="audio-append-flow">
+        <button onClick={() => props.onMergeStarted?.()}>flow-merge-started</button>
+        <button onClick={props.onClose}>flow-close</button>
+      </div>
+    ) : null,
+}))
+
+vi.mock('../components/meeting/UploadAudioModal', () => ({
+  UploadAudioModal: (props: { onCreated: (m: { id: number }) => void; onClose: () => void }) => (
+    <div data-testid="upload-audio-modal">
+      <button onClick={() => props.onCreated({ id: 999 })}>upload-modal-created</button>
+      <button onClick={props.onClose}>upload-modal-close</button>
+    </div>
+  ),
 }))
 
 // GlossaryPanel(useGlossary)·RightTabsPanel 내 AiChatPanel(chatStore)이 실제 API를 호출해
@@ -766,6 +837,133 @@ describe('MeetingPage', () => {
         [2, 2],
         [3, 3],
       ])
+    })
+  })
+
+  // 파일 드롭 트리아지 findings #4·#5·#6 회귀 테스트
+  describe('파일 드롭 트리아지', () => {
+    // findings #4: 이미 열린 첨부 triage에 또 드롭하면 기존 목록에 병합돼야 한다(교체 금지).
+    it('첨부 triage가 열려 있는 상태에서 다시 드롭하면 기존 파일 목록에 병합된다', async () => {
+      mockMeetingWithId(350)
+      renderPage('350')
+      await waitFor(() => expect(screen.getByTestId('drop-overlay')).toBeInTheDocument())
+
+      fireEvent.click(screen.getByText('drop-other-1'))
+      await waitFor(() => expect(screen.getByTestId('triage-dialog')).toHaveAttribute('data-open', 'true'))
+      expect(screen.getByTestId('triage-dialog')).toHaveAttribute('data-files', 'other-a.pdf')
+
+      fireEvent.click(screen.getByText('drop-other-2'))
+      await waitFor(() =>
+        expect(screen.getByTestId('triage-dialog')).toHaveAttribute('data-files', 'other-a.pdf,other-b.pdf'),
+      )
+    })
+
+    // findings #4: pendingOthersRef.current = others 덮어씀 버그 — 오디오 플로우 진행 중
+    // 기타 파일이 포함된 드롭이 두 번 발생하면 첫 번째 분의 기타 파일이 유실되면 안 된다.
+    it('오디오 선택 다이얼로그가 열린 동안 기타 파일이 섞인 드롭이 두 번 발생해도 보류된 기타 파일이 누적된다', async () => {
+      mockMeetingWithId(351, { has_audio_file: true })
+      renderPage('351')
+      await waitFor(() => expect(screen.getByTestId('drop-overlay')).toBeInTheDocument())
+
+      fireEvent.click(screen.getByText('drop-mixed-1'))
+      await waitFor(() => expect(screen.getByTestId('audio-choice-dialog')).toBeInTheDocument())
+
+      fireEvent.click(screen.getByText('drop-mixed-2'))
+
+      // 오디오 선택을 취소하면 보류된 기타 파일들이 triage로 flush된다.
+      fireEvent.click(screen.getByText('choice-cancel'))
+      await waitFor(() => expect(screen.getByTestId('triage-dialog')).toHaveAttribute('data-open', 'true'))
+      expect(screen.getByTestId('triage-dialog')).toHaveAttribute('data-files', 'other-a.pdf,other-b.pdf')
+    })
+
+    // findings #4 후속: 업로드가 전부 완료되어 다이얼로그가 자동으로 닫힌 뒤, 다시 드롭하면
+    // 이전 세션의 파일 목록이 남아있어 새 드롭이 "이미 아는 파일"로 오인돼 조용히 씹히면 안 된다.
+    it('업로드 완료로 triage가 자동 종료된 뒤 다시 드롭하면 새 세션으로 정상 접수된다', async () => {
+      mockMeetingWithId(355)
+      renderPage('355')
+      await waitFor(() => expect(screen.getByTestId('drop-overlay')).toBeInTheDocument())
+
+      fireEvent.click(screen.getByText('drop-other-1'))
+      await waitFor(() => expect(screen.getByTestId('triage-dialog')).toHaveAttribute('data-open', 'true'))
+      expect(screen.getByTestId('triage-dialog')).toHaveAttribute('data-files', 'other-a.pdf')
+
+      // 업로드 전부 완료 → 자동 종료
+      fireEvent.click(screen.getByText('triage-complete'))
+      await waitFor(() => expect(screen.getByTestId('triage-dialog')).toHaveAttribute('data-open', 'false'))
+
+      // 새 세션에서 다시 드롭 — other-b.pdf만 보여야 한다(other-a.pdf 잔류·중복 없음).
+      fireEvent.click(screen.getByText('drop-other-2'))
+      await waitFor(() => expect(screen.getByTestId('triage-dialog')).toHaveAttribute('data-open', 'true'))
+      expect(screen.getByTestId('triage-dialog')).toHaveAttribute('data-files', 'other-b.pdf')
+    })
+
+    // findings #5: 오디오 선택/연결/새회의 플로우가 열린 동안은 드롭 오버레이가 비활성화돼야 한다.
+    // 첨부 triage만 열려 있을 때는 계속 드롭을 허용한다.
+    it('오디오 관련 다이얼로그가 열려 있는 동안 드롭 오버레이가 비활성화되고, 첨부 triage만 열려 있을 때는 허용된다', async () => {
+      mockMeetingWithId(352, { has_audio_file: true })
+      renderPage('352')
+      await waitFor(() => expect(screen.getByTestId('drop-overlay')).toHaveAttribute('data-disabled', 'false'))
+
+      // 첨부 triage만 열림 → 여전히 허용
+      fireEvent.click(screen.getByText('drop-other-1'))
+      await waitFor(() => expect(screen.getByTestId('triage-dialog')).toHaveAttribute('data-open', 'true'))
+      expect(screen.getByTestId('drop-overlay')).toHaveAttribute('data-disabled', 'false')
+
+      // 오디오 선택 다이얼로그가 열림 → 비활성화
+      fireEvent.click(screen.getByText('drop-audio-1'))
+      await waitFor(() => expect(screen.getByTestId('audio-choice-dialog')).toBeInTheDocument())
+      expect(screen.getByTestId('drop-overlay')).toHaveAttribute('data-disabled', 'true')
+
+      // "기존 녹음 뒤에 연결" 선택 → AudioAppendFlowDialog가 열림 → 계속 비활성화
+      fireEvent.click(screen.getByText('choice-append'))
+      await waitFor(() => expect(screen.getByTestId('audio-append-flow')).toBeInTheDocument())
+      expect(screen.getByTestId('drop-overlay')).toHaveAttribute('data-disabled', 'true')
+
+      // 플로우 종료 → 다시 활성화
+      fireEvent.click(screen.getByText('flow-close'))
+      await waitFor(() => expect(screen.getByTestId('drop-overlay')).toHaveAttribute('data-disabled', 'false'))
+    })
+
+    // findings #6: 새 회의 생성 후, 현재 회의의 첨부 triage가 아직 열려 있으면(업로드 미완료
+    // 가능성) 즉시 navigate하지 않고 triage가 닫힐 때까지 보류한다.
+    it('첨부 triage가 열려 있는 동안 새 회의가 생성되면 navigate를 보류했다가 triage가 닫힐 때 이동한다', async () => {
+      mockMeetingWithId(353, { has_audio_file: true })
+      renderPage('353')
+      await waitFor(() => expect(screen.getByTestId('drop-overlay')).toBeInTheDocument())
+
+      // 첨부 triage를 먼저 연다.
+      fireEvent.click(screen.getByText('drop-other-1'))
+      await waitFor(() => expect(screen.getByTestId('triage-dialog')).toHaveAttribute('data-open', 'true'))
+
+      // 오디오 드롭 → 선택 다이얼로그 → 새 회의로 생성
+      fireEvent.click(screen.getByText('drop-audio-1'))
+      await waitFor(() => expect(screen.getByTestId('audio-choice-dialog')).toBeInTheDocument())
+      fireEvent.click(screen.getByText('choice-new-meeting'))
+      await waitFor(() => expect(screen.getByTestId('upload-audio-modal')).toBeInTheDocument())
+
+      fireEvent.click(screen.getByText('upload-modal-created'))
+
+      // triage가 아직 열려 있으므로 아직 navigate하면 안 된다.
+      expect(mockNavigate).not.toHaveBeenCalledWith('/meetings/999')
+
+      // triage를 닫으면 그제서야 navigate한다.
+      fireEvent.click(screen.getByText('triage-close'))
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/meetings/999'))
+    })
+
+    // 기존 동작 회귀 방지: 첨부 triage가 열려 있지 않으면 새 회의 생성 즉시 navigate한다.
+    it('첨부 triage가 열려 있지 않으면 새 회의 생성 시 즉시 navigate한다', async () => {
+      mockMeetingWithId(354, { has_audio_file: true })
+      renderPage('354')
+      await waitFor(() => expect(screen.getByTestId('drop-overlay')).toBeInTheDocument())
+
+      fireEvent.click(screen.getByText('drop-audio-1'))
+      await waitFor(() => expect(screen.getByTestId('audio-choice-dialog')).toBeInTheDocument())
+      fireEvent.click(screen.getByText('choice-new-meeting'))
+      await waitFor(() => expect(screen.getByTestId('upload-audio-modal')).toBeInTheDocument())
+
+      fireEvent.click(screen.getByText('upload-modal-created'))
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/meetings/999'))
     })
   })
 })

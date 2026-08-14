@@ -1,7 +1,7 @@
 import apiClient from './client'
 import { getApiBaseUrl } from '../config'
 
-export type AttachmentCategory = 'agenda' | 'reference' | 'minutes' | 'business_card'
+export type AttachmentCategory = 'agenda' | 'reference' | 'stakeholder' | 'minutes' | 'business_card'
 export type AttachmentKind = 'file' | 'link'
 
 export interface MeetingAttachment {
