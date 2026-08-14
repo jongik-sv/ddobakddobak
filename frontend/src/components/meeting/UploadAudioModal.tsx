@@ -5,9 +5,11 @@ import { useProjectStore } from '../../stores/projectStore'
 import { IS_TAURI, IS_MOBILE } from '../../config'
 import { errorToMessage } from '../../lib/errors'
 import { formatSize } from '../../lib/formatBytes'
+import { sortAudioFilesByName, mergeAudioFiles } from '../../lib/audioMerge'
 import { Dialog } from '../ui/Dialog'
 import { MeetingTypeSelector } from './MeetingListUI'
 import { VERBOSITY_OPTIONS } from './SummaryOptionsControl'
+import { AudioFileOrderList } from './AudioFileOrderList'
 
 const ACCEPTED_AUDIO_TYPES = '.mp3,.wav,.m4a,.webm,.ogg,.flac,.aac,.mp4'
 
@@ -16,18 +18,32 @@ interface UploadAudioModalProps {
   meetingTypeList: { value: string; label: string }[]
   onClose: () => void
   onCreated: (meeting: Meeting) => void
+  /** 있으면 정렬해 초기 파일 목록으로 사용 (마운트 시 1회만 적용). 2개 이상이면 순서선택 리스트가 바로 보인다. */
+  initialFiles?: File[]
 }
 
-export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated }: UploadAudioModalProps) {
-  const [title, setTitle] = useState('')
+function fileKey(f: File): string {
+  return `${f.name}:${f.size}`
+}
+
+export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated, initialFiles }: UploadAudioModalProps) {
+  const [title, setTitle] = useState(() => {
+    if (initialFiles && initialFiles.length > 0) {
+      const sorted = sortAudioFilesByName(initialFiles)
+      return sorted[0].name.replace(/\.[^.]+$/, '')
+    }
+    return ''
+  })
   const [meetingType, setMeetingType] = useState('general')
   // '' = 직전 회의 설정 승계 (파라미터 미전송 → 서버가 결정)
   const [verbosity, setVerbosity] = useState<SummaryVerbosity | ''>('')
   const [restructure, setRestructure] = useState<'' | 'true' | 'false'>('')
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<File[]>(() => (initialFiles ? sortAudioFilesByName(initialFiles) : []))
   const [previousMeetingId, setPreviousMeetingId] = useState('')
   const [recentMeetings, setRecentMeetings] = useState<Meeting[]>([])
   const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [mergeProgress, setMergeProgress] = useState<{ done: number; total: number } | null>(null)
   const [error, setError] = useState('')
   const [dragOver, setDragOver] = useState(false)
 
@@ -40,37 +56,60 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
       .catch(() => {})
   }, [folderId])
 
-  const handleFile = (f: File) => {
-    setFile(f)
-    if (!title.trim()) {
-      const name = f.name.replace(/\.[^.]+$/, '')
+  /** 새로 선택/드롭된 파일들을 기존 목록에 반영한다.
+   * 목록이 비어있던 최초 배치만 자연 정렬하고, 이미 파일이 있으면 (사용자가 조정했을 수 있는)
+   * 기존 순서를 보존한 채 새 파일을 정렬된 상태로 뒤에 append한다. 이름+크기 중복은 스킵.
+   */
+  const addFiles = (newFiles: File[]) => {
+    if (newFiles.length === 0) return
+    const wasEmpty = files.length === 0
+    setFiles((prev) => {
+      if (prev.length === 0) {
+        return sortAudioFilesByName(newFiles)
+      }
+      const existingKeys = new Set(prev.map(fileKey))
+      const deduped = sortAudioFilesByName(newFiles).filter((f) => !existingKeys.has(fileKey(f)))
+      return [...prev, ...deduped]
+    })
+    if (wasEmpty && !title.trim()) {
+      const sorted = sortAudioFilesByName(newFiles)
+      const name = sorted[0].name.replace(/\.[^.]+$/, '')
       setTitle(name)
     }
+  }
+
+  const handleRemoveFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
   const handleTauriFileSelect = async () => {
     const { open } = await import('@tauri-apps/plugin-dialog')
     const selected = await open({
-      multiple: false,
+      multiple: true,
       filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'webm', 'ogg', 'flac', 'aac', 'mp4'] }],
     })
-    if (!selected || typeof selected !== 'string') return
-    const filePath = selected
+    if (!selected) return
+    const paths = Array.isArray(selected) ? selected : [selected]
+    if (paths.length === 0) return
     const { readFile } = await import('@tauri-apps/plugin-fs')
-    const bytes = await readFile(filePath)
-    const name = filePath.split('/').pop() ?? 'audio'
-    const ext = name.split('.').pop()?.toLowerCase() ?? 'webm'
     const mimeMap: Record<string, string> = {
       mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4',
       webm: 'audio/webm', ogg: 'audio/ogg', flac: 'audio/flac',
       aac: 'audio/aac', mp4: 'audio/mp4',
     }
-    const blob = new Blob([bytes], { type: mimeMap[ext] ?? 'audio/webm' })
-    const nativeFile = new File([blob], name, { type: blob.type })
-    handleFile(nativeFile)
+    const nativeFiles: File[] = []
+    for (const filePath of paths) {
+      const bytes = await readFile(filePath)
+      const name = filePath.split('/').pop() ?? 'audio'
+      const ext = name.split('.').pop()?.toLowerCase() ?? 'webm'
+      const blob = new Blob([bytes], { type: mimeMap[ext] ?? 'audio/webm' })
+      nativeFiles.push(new File([blob], name, { type: blob.type }))
+    }
+    addFiles(nativeFiles)
   }
 
   const handleDropZoneClick = () => {
+    if (loading) return
     // 데스크탑 Tauri만 네이티브 picker 사용. 모바일(Tauri 안드로이드 포함)은
     // 웹뷰 file input 사용 — content:// URI readFile 위험 회피, 시스템 선택기 신뢰.
     if (IS_TAURI && !IS_MOBILE) {
@@ -82,21 +121,49 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
+    e.stopPropagation() // 래퍼의 handleWrapperDrop과 중복 처리 방지
     setDragOver(false)
-    const f = e.dataTransfer.files[0]
-    if (f) handleFile(f)
+    if (loading) return
+    const dropped = Array.from(e.dataTransfer.files)
+    addFiles(dropped)
+  }
+
+  // 순서 리스트(AudioFileOrderList) 영역 등 드롭존 밖에 파일을 놓쳐도 브라우저 기본 동작(파일 열기)
+  // 대신 추가로 흡수한다. 리스트 항목 재정렬 드래그는 dataTransfer.files가 비어있어 무시된다.
+  const handleWrapperDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    if (loading) return
+    if (e.dataTransfer.files.length === 0) return
+    addFiles(Array.from(e.dataTransfer.files))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!file || !title.trim()) return
+    if (files.length === 0 || !title.trim()) return
     setLoading(true)
     setError('')
+    setMergeProgress(null)
+    setUploading(false)
+    let mergeFailed = false
     try {
+      let audioFile: File
+      if (files.length >= 2) {
+        try {
+          audioFile = await mergeAudioFiles(files, {
+            onProgress: (done, total) => setMergeProgress({ done, total }),
+          })
+        } catch (err) {
+          mergeFailed = true
+          throw err
+        }
+      } else {
+        audioFile = files[0]
+      }
+      setUploading(true)
       const meeting = await uploadAudioFile({
         title: title.trim(),
         meeting_type: meetingType,
-        audio: file,
+        audio: audioFile,
         project_id: useProjectStore.getState().currentProjectId,
         folder_id: folderId,
         ...(previousMeetingId ? { previous_meeting_id: Number(previousMeetingId) } : {}),
@@ -106,10 +173,21 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
       onCreated(meeting)
       onClose()
     } catch (err: unknown) {
-      setError(await errorToMessage(err, '업로드에 실패했습니다.'))
+      setError(await errorToMessage(err, mergeFailed ? '오디오 병합에 실패했습니다.' : '업로드에 실패했습니다.'))
     } finally {
       setLoading(false)
+      setUploading(false)
+      setMergeProgress(null)
     }
+  }
+
+  const totalSize = files.reduce((sum, f) => sum + f.size, 0)
+
+  let submitLabel = files.length >= 2 ? '병합 후 업로드' : '업로드 및 변환'
+  if (mergeProgress && mergeProgress.done < mergeProgress.total) {
+    submitLabel = `병합 중... (${mergeProgress.done}/${mergeProgress.total})`
+  } else if (uploading) {
+    submitLabel = '업로드 중...'
   }
 
   return (
@@ -123,49 +201,80 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* 파일 드롭존 */}
+        {/* 드롭존 + 순서 리스트를 감싸는 래퍼: 리스트 영역에 파일을 놓쳐도 브라우저 기본 동작(파일 열기)
+            대신 추가로 흡수한다 (파일 없는 drop, 즉 리스트 내부 재정렬 드래그는 무시). */}
         <div
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-            dragOver ? 'border-blue-500 bg-blue-50' : 'border-border hover:border-muted-foreground'
-          }`}
-          onClick={handleDropZoneClick}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleWrapperDrop}
+          className="space-y-4"
         >
-          <input
-            id="audio-file-input"
-            type="file"
-            accept={ACCEPTED_AUDIO_TYPES}
-            onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]) }}
-            className="hidden"
-          />
-          {file ? (
-            <div className="flex items-center justify-center gap-2">
-              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-              </svg>
-              <div className="text-left">
-                <p className="text-sm font-medium text-foreground truncate max-w-[250px]">{file.name}</p>
-                <p className="text-xs text-muted-foreground">{formatSize(file.size)}</p>
-              </div>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setFile(null) }}
-                className="ml-2 text-muted-foreground hover:text-foreground"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          {/* 파일 드롭존 */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); if (!loading) setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            className={`border-2 border-dashed rounded-lg text-center transition-colors ${
+              files.length >= 2 ? 'p-3' : 'p-6'
+            } ${loading ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} ${
+              dragOver ? 'border-blue-500 bg-blue-50' : 'border-border hover:border-muted-foreground'
+            }`}
+            onClick={handleDropZoneClick}
+          >
+            <input
+              id="audio-file-input"
+              type="file"
+              multiple
+              accept={ACCEPTED_AUDIO_TYPES}
+              disabled={loading}
+              onChange={(e) => {
+                const selected = e.target.files ? Array.from(e.target.files) : []
+                addFiles(selected)
+                e.target.value = ''
+              }}
+              className="hidden"
+            />
+            {files.length === 0 && (
+              <div>
+                <svg className="w-8 h-8 mx-auto text-muted-foreground mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-              </button>
-            </div>
-          ) : (
+                <p className="text-sm text-muted-foreground">오디오 파일을 드래그하거나 클릭하여 선택 (다중 선택 가능)</p>
+                <p className="text-xs text-muted-foreground mt-1">MP3, WAV, M4A, WebM, OGG, FLAC</p>
+              </div>
+            )}
+            {files.length === 1 && (
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                </svg>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-foreground truncate max-w-[250px]">{files[0].name}</p>
+                  <p className="text-xs text-muted-foreground">{formatSize(files[0].size)}</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={(e) => { e.stopPropagation(); setFiles([]) }}
+                  className="ml-2 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
+            {files.length >= 2 && (
+              <p className="text-xs text-muted-foreground">파일을 더 드래그하거나 클릭하여 추가</p>
+            )}
+          </div>
+
+          {/* 다중 파일: 병합 순서 리스트 */}
+          {files.length >= 2 && (
             <div>
-              <svg className="w-8 h-8 mx-auto text-muted-foreground mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-              <p className="text-sm text-muted-foreground">오디오 파일을 드래그하거나 클릭하여 선택</p>
-              <p className="text-xs text-muted-foreground mt-1">MP3, WAV, M4A, WebM, OGG, FLAC</p>
+              <p className="mb-2 text-xs text-muted-foreground">
+                위에서부터 순서대로 하나의 오디오로 병합됩니다 (파일 사이 3초 무음 삽입) · 총 {files.length}개 · {formatSize(totalSize)}
+              </p>
+              <AudioFileOrderList files={files} onReorder={setFiles} onRemove={handleRemoveFile} disabled={loading} />
             </div>
           )}
         </div>
@@ -254,10 +363,10 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
           </button>
           <button
             type="submit"
-            disabled={loading || !file || !title.trim()}
+            disabled={loading || files.length === 0 || !title.trim()}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
-            {loading ? '업로드 중...' : '업로드 및 변환'}
+            {submitLabel}
           </button>
         </div>
       </form>
