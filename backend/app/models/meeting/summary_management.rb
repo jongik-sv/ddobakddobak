@@ -86,7 +86,18 @@ module Meeting::SummaryManagement
     transcripts.destroy_all
     summaries.destroy_all
     blocks.destroy_all
-    meeting_attachments.destroy_all if include_attachments
+    if include_attachments
+      meeting_attachments.destroy_all
+      # 첨부가 통째로 사라지므로 그 첨부에서 파생된 안건/이해관계자 압축 캐시와
+      # "realtime 에 이미 1회 주입했다"는 applied_at 플래그도 함께 고아 상태로 남기면 안 된다.
+      # 남으면 재업로드 후에도(재계산 잡이 아직 안 돌았거나 재업로드 자체가 없는 경우) 플래그가
+      # 이미 present 라 realtime 1회 주입이 다시 일어나지 않는다. AgendaReferenceJob/
+      # StakeholderReferenceJob 이 "첨부 없음" 시 취하는 것과 동일한 nil 상태로 되돌린다.
+      update_columns(
+        agenda_reference: nil, agenda_reference_applied_at: nil,
+        stakeholder_reference: nil, stakeholder_reference_applied_at: nil
+      )
+    end
     # 콘텐츠 초기화(reset_content·재전사) 시 이전 요약 실패 기록도 함께 클리어 —
     # 잔존하면 초기화된 회의에 오탐 실패 배지가 영구 노출된다.
     clear_summary_error!

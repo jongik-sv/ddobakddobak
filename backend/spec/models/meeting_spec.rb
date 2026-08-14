@@ -258,6 +258,48 @@ RSpec.describe Meeting, type: :model do
         expect(meeting.reload.summary_error_message).to be_nil
         expect(meeting.summary_error_at).to be_nil
       end
+
+      # include_attachments: true 는 meeting_attachments 를 통째로 지운다 — agenda/stakeholder
+      # 첨부도 함께 사라지므로, 그 첨부에서 파생된 압축 캐시(agenda_reference/stakeholder_reference)와
+      # "이미 realtime 에 1회 주입했다"는 applied_at 플래그도 고아 상태로 남기면 안 된다. 남으면
+      # 재업로드 후에도 (재계산 잡이 아직 안 돌았거나 재업로드 자체가 없는 경우) 플래그가 이미
+      # present 라 realtime 1회 주입이 다시 일어나지 않는다.
+      it "include_attachments: true 면 agenda/stakeholder 참고자료와 applied_at 플래그를 함께 nil 로 클리어한다" do
+        meeting.update_columns(
+          agenda_reference: "옛 안건 요약",
+          agenda_reference_applied_at: Time.current,
+          stakeholder_reference: "옛 이해관계자 요약",
+          stakeholder_reference_applied_at: Time.current
+        )
+
+        meeting.purge_transcription_content!(include_attachments: true)
+
+        meeting.reload
+        expect(meeting.agenda_reference).to be_nil
+        expect(meeting.agenda_reference_applied_at).to be_nil
+        expect(meeting.stakeholder_reference).to be_nil
+        expect(meeting.stakeholder_reference_applied_at).to be_nil
+      end
+
+      # include_attachments 가 false(기본값)인 호출부(regenerate_stt)는 meeting_attachments 를
+      # 건드리지 않으므로, agenda/stakeholder 참고자료는 여전히 유효하다 — 지우면 안 된다.
+      it "include_attachments: false(기본값) 면 agenda/stakeholder 참고자료를 그대로 둔다" do
+        applied_at = Time.current
+        meeting.update_columns(
+          agenda_reference: "옛 안건 요약",
+          agenda_reference_applied_at: applied_at,
+          stakeholder_reference: "옛 이해관계자 요약",
+          stakeholder_reference_applied_at: applied_at
+        )
+
+        meeting.purge_transcription_content!
+
+        meeting.reload
+        expect(meeting.agenda_reference).to eq("옛 안건 요약")
+        expect(meeting.agenda_reference_applied_at).to be_present
+        expect(meeting.stakeholder_reference).to eq("옛 이해관계자 요약")
+        expect(meeting.stakeholder_reference_applied_at).to be_present
+      end
     end
   end
 

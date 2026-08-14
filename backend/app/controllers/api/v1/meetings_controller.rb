@@ -757,6 +757,7 @@ module Api
           verbosity: @meeting.summary_verbosity,
           restructure: @meeting.summary_restructure,
           domain_reference: DomainReferenceBuilder.build(@meeting),
+          stakeholder_reference: @meeting.stakeholder_reference.presence,
           custom_prompt: @meeting.summary_custom_prompt,
           speaker_display: :name
         )

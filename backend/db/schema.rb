@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_10_070524) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_14_120001) do
   create_table "blocks", force: :cascade do |t|
     t.string "block_type", default: "text", null: false
     t.text "content"
@@ -142,7 +142,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_10_070524) do
     t.string "url"
     t.index ["meeting_id", "category", "position"], name: "idx_attachments_meeting_cat_pos"
     t.index ["uploaded_by_id"], name: "index_meeting_attachments_on_uploaded_by_id"
-    t.check_constraint "category IN ('agenda','reference','minutes','business_card')", name: "chk_meeting_attachments_category"
+    t.check_constraint "category IN ('agenda','reference','minutes','business_card','stakeholder')", name: "chk_meeting_attachments_category"
     t.check_constraint "kind IN ('file','link')", name: "chk_meeting_attachments_kind"
   end
 
@@ -240,6 +240,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_10_070524) do
     t.datetime "scheduled_start_time"
     t.boolean "shared", default: true, null: false
     t.string "source", default: "live", null: false
+    t.text "stakeholder_reference"
+    t.datetime "stakeholder_reference_applied_at"
     t.datetime "started_at"
     t.string "status", default: "pending", null: false
     t.string "stt_engine"

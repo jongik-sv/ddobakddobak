@@ -10,9 +10,10 @@ import { useFileTranscriptionProgress } from '../hooks/useFileTranscriptionProgr
 import { useMemoEditor } from '../hooks/useMemoEditor'
 import { useRightPanelCollapse } from '../hooks/useRightPanelCollapse'
 import { useConsumeSearchParamOnce } from '../hooks/useConsumeSearchParamOnce'
-import type { Transcript } from '../api/meetings'
+import type { Transcript, Meeting } from '../api/meetings'
 import { getTranscripts, reopenMeeting, updateNotes, canEditMeeting, canRedactMeeting } from '../api/meetings'
 import type { RedactTranscriptsResponse } from '../api/meetings'
+import { splitDroppedFiles } from '../lib/fileTriage'
 import { useToastStore } from '../stores/toastStore'
 import { applyLocalRedaction } from '../lib/applyLocalRedaction'
 import { messageDialog } from '../lib/messageDialog'
@@ -31,6 +32,11 @@ import { useUiStore } from '../stores/uiStore'
 import EditMeetingDialog from '../components/meeting/EditMeetingDialog'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { AttachmentSection } from '../components/meeting/AttachmentSection'
+import { AttachmentTriageDialog } from '../components/meeting/AttachmentTriageDialog'
+import { MeetingFileDropOverlay } from '../components/meeting/MeetingFileDropOverlay'
+import { AudioAppendChoiceDialog } from '../components/meeting/AudioAppendChoiceDialog'
+import { AudioAppendFlowDialog } from '../components/meeting/AudioAppendFlowDialog'
+import { UploadAudioModal } from '../components/meeting/UploadAudioModal'
 import { useMediaQuery, BREAKPOINTS } from '../hooks/useMediaQuery'
 import MobileTabLayout from '../components/layout/MobileTabLayout'
 import { BookmarkList } from '../components/meeting/BookmarkList'
@@ -217,6 +223,133 @@ export default function MeetingPage() {
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [showFullPlayer, setShowFullPlayer] = useState(false)
   const [transcripts, setTranscripts] = useState<Transcript[]>([])
+
+  // ── 회의 페이지 파일 드롭 트리아지 (오디오/기타) ──────────────────────
+  // 오디오: 기존 오디오 있는 회의 → 선택 다이얼로그(연결/새회의/취소). 없으면 바로 연결 플로우.
+  // 기타: 오디오 플로우가 없으면 즉시, 있으면 그 플로우가 진행(onMergeStarted)되거나
+  // 취소/새회의모달 오픈되는 시점에 첨부 분류 다이얼로그를 연다 — pendingOthersRef에 보관.
+  const [audioChoiceFiles, setAudioChoiceFiles] = useState<File[] | null>(null)
+  const [audioAppendFiles, setAudioAppendFiles] = useState<File[] | null>(null)
+  const [newMeetingAudioFiles, setNewMeetingAudioFiles] = useState<File[] | null>(null)
+  const [attachmentTriageOpen, setAttachmentTriageOpen] = useState(false)
+  const [attachmentTriageFiles, setAttachmentTriageFiles] = useState<File[]>([])
+  // AttachmentSection은 내부 useAttachments 훅이 자체 캐시를 들고 있어 외부에서 refetch를 걸 수
+  // 없다 — 이 key를 올려 강제 리마운트시키면 마운트 시 최신 첨부 목록을 다시 조회한다.
+  const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0)
+  const pendingOthersRef = useRef<File[]>([])
+  // 새 회의(오디오 드롭→새 회의 생성) 완료 후 navigate를 보류해야 할 때(findings #6) 대상 id를
+  // 담아둔다 — 첨부 triage가 열려 있으면(업로드가 진행 중일 수 있음) 즉시 이동하지 않는다.
+  const pendingNavigateMeetingIdRef = useRef<number | null>(null)
+
+  const flushPendingOthers = useCallback(() => {
+    if (pendingOthersRef.current.length > 0) {
+      const pending = pendingOthersRef.current
+      pendingOthersRef.current = []
+      // 병합 시맨틱(findings #4) — triage가 이미 열려 있고 업로드/재시도 대기 중인 항목이 있어도
+      // 그 항목들을 밀어내지 않고 새 파일만 덧붙인다.
+      setAttachmentTriageFiles((prev) => [...prev, ...pending])
+      setAttachmentTriageOpen(true)
+    }
+  }, [])
+
+  const handleFilesDropped = useCallback(
+    (files: File[]) => {
+      if (!meeting) return
+      const { audio, others } = splitDroppedFiles(files)
+
+      const statusBlocksAudio = meeting.status === 'recording' || meeting.status === 'transcribing'
+      let audioFlowPending = false
+
+      if (audio.length > 0) {
+        if (statusBlocksAudio) {
+          useToastStore.getState().showStatus('녹음/전사 중인 회의에는 오디오를 추가할 수 없습니다.')
+        } else if (meeting.has_audio_file) {
+          setAudioChoiceFiles(audio)
+          audioFlowPending = true
+        } else {
+          setAudioAppendFiles(audio)
+          audioFlowPending = true
+        }
+      }
+
+      if (others.length > 0) {
+        if (audioFlowPending) {
+          // 덮어쓰기 금지(findings #4) — 오디오 플로우가 진행되는 동안 기타 파일이 포함된 드롭이
+          // 여러 번 발생할 수 있고, 이전 분이 아직 flush되지 않았다면 누적해야 한다.
+          pendingOthersRef.current = [...pendingOthersRef.current, ...others]
+        } else {
+          // 첨부 triage가 이미 열려 있는 상태에서 다시 드롭한 경우도 병합한다(findings #4).
+          setAttachmentTriageFiles((prev) => [...prev, ...others])
+          setAttachmentTriageOpen(true)
+        }
+      }
+    },
+    [meeting]
+  )
+
+  // 아래 두 핸들러는 audioChoiceFiles를 직접 클로저로 읽는다 — 이 값이 null이 아닐 때만
+  // AudioAppendChoiceDialog가 렌더되고 그 안에서만 호출되므로 항상 최신 값이다.
+  const handleAudioChoiceAppend = () => {
+    setAudioAppendFiles(audioChoiceFiles)
+    setAudioChoiceFiles(null)
+  }
+
+  const handleAudioChoiceNewMeeting = () => {
+    setNewMeetingAudioFiles(audioChoiceFiles)
+    setAudioChoiceFiles(null)
+    flushPendingOthers()
+  }
+
+  const handleAudioChoiceCancel = useCallback(() => {
+    setAudioChoiceFiles(null)
+    flushPendingOthers()
+  }, [flushPendingOthers])
+
+  const handleAudioAppendClose = useCallback(() => {
+    setAudioAppendFiles(null)
+    // 병합 시작 전 취소한 경우 대비 — 시작 후엔 onMergeStarted에서 이미 flush돼 no-op이다.
+    flushPendingOthers()
+  }, [flushPendingOthers])
+
+  const handleAudioAppendCompleted = useCallback(() => {
+    // 서버 오디오 파일이 교체됐다 — 캐시된 옛 오디오를 버리고 meeting(has_audio_file 등) 재조회.
+    markAudioChanged()
+    refetch()
+  }, [markAudioChanged, refetch])
+
+  const handleNewMeetingAudioClose = useCallback(() => {
+    setNewMeetingAudioFiles(null)
+  }, [])
+
+  const handleNewMeetingAudioCreated = useCallback(
+    (created: Meeting) => {
+      setNewMeetingAudioFiles(null)
+      // findings #6: 현재 회의의 첨부 triage가 아직 열려 있으면(업로드가 진행 중일 수 있음)
+      // 즉시 navigate로 이 페이지를 언마운트하지 않는다 — triage가 닫힐 때(모두 완료 후) 이동한다.
+      if (attachmentTriageOpen) {
+        pendingNavigateMeetingIdRef.current = created.id
+      } else {
+        navigate(`/meetings/${created.id}`)
+      }
+    },
+    [navigate, attachmentTriageOpen]
+  )
+
+  const handleAttachmentTriageClose = useCallback(() => {
+    setAttachmentTriageOpen(false)
+    // 세션 종료 신호 — 다음 드롭이 병합을 새로 시작하도록 비운다(다이얼로그 내부 items도
+    // files=[] 전이를 신호로 리셋한다, findings #4).
+    setAttachmentTriageFiles([])
+    if (pendingNavigateMeetingIdRef.current !== null) {
+      const id = pendingNavigateMeetingIdRef.current
+      pendingNavigateMeetingIdRef.current = null
+      navigate(`/meetings/${id}`)
+    }
+  }, [navigate])
+
+  const handleAttachmentTriageUploaded = useCallback(() => {
+    setAttachmentRefreshKey((k) => k + 1)
+  }, [])
 
   // god 분해: 오타수정 / 회의록 재생성 / 북마크 로직을 전용 훅으로 분리 (동작 무변경)
   const {
@@ -700,7 +833,9 @@ export default function MeetingPage() {
       )}
 
       {/* 첨부 파일/링크 섹션 (명함 탭 선택 시 참석자 패널은 섹션 내부에서 표시) */}
-      {attachmentsVisible && <AttachmentSection meetingId={meetingId} readOnly={locked} />}
+      {attachmentsVisible && (
+        <AttachmentSection key={attachmentRefreshKey} meetingId={meetingId} readOnly={locked} />
+      )}
 
       {/* 패널 레이아웃: 데스크톱(PanelGroup) / 모바일(MobileTabLayout) */}
       {isDesktop ? (
@@ -858,6 +993,59 @@ export default function MeetingPage() {
           onLabelChange={setBookmarkLabel}
           onSave={handleSaveBookmark}
           onClose={() => setShowBookmarkPopover(false)}
+        />
+      )}
+
+      {/* 회의 페이지 전체 드롭존 — 드롭된 파일을 오디오/기타로 분류(triage)한다.
+          오디오 선택/연결/새회의 플로우가 열려 있는 동안은 중복 플로우 진입을 막기 위해
+          비활성화한다(findings #5). 첨부 triage만 열려 있을 때는 계속 드롭을 허용한다
+          (findings #4의 병합 시맨틱과 맞물림). */}
+      <MeetingFileDropOverlay
+        disabled={!meeting || audioChoiceFiles !== null || audioAppendFiles !== null || newMeetingAudioFiles !== null}
+        onFilesDropped={handleFilesDropped}
+      />
+
+      {/* 오디오 처리 방식 선택 (이미 오디오가 있는 회의에 오디오 파일을 드롭한 경우) */}
+      {audioChoiceFiles && (
+        <AudioAppendChoiceDialog
+          fileCount={audioChoiceFiles.length}
+          onAppend={handleAudioChoiceAppend}
+          onNewMeeting={handleAudioChoiceNewMeeting}
+          onCancel={handleAudioChoiceCancel}
+        />
+      )}
+
+      {/* 오디오 병합 + 기존 회의 뒤에 연결 플로우 */}
+      {meeting && (
+        <AudioAppendFlowDialog
+          open={audioAppendFiles !== null}
+          meetingId={meeting.id}
+          files={audioAppendFiles ?? []}
+          onClose={handleAudioAppendClose}
+          onMergeStarted={flushPendingOthers}
+          onCompleted={handleAudioAppendCompleted}
+        />
+      )}
+
+      {/* 오디오 드롭 → 새 회의로 생성 (기존 UploadAudioModal을 initialFiles로 재사용) */}
+      {newMeetingAudioFiles && (
+        <UploadAudioModal
+          folderId={meeting?.folder_id ?? null}
+          meetingTypeList={meetingTypeList}
+          initialFiles={newMeetingAudioFiles}
+          onClose={handleNewMeetingAudioClose}
+          onCreated={handleNewMeetingAudioCreated}
+        />
+      )}
+
+      {/* 기타 파일 드롭 → 첨부 분류 다이얼로그 (항상 현재 회의에 등록) */}
+      {meeting && (
+        <AttachmentTriageDialog
+          open={attachmentTriageOpen}
+          meetingId={meeting.id}
+          files={attachmentTriageFiles}
+          onClose={handleAttachmentTriageClose}
+          onUploaded={handleAttachmentTriageUploaded}
         />
       )}
     </div>

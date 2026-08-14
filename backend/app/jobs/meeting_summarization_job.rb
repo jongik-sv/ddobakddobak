@@ -69,6 +69,13 @@ class MeetingSummarizationJob < ApplicationJob
     meeting.agenda_reference.presence
   end
 
+  # realtime/타이머 경로의 이해관계자 주입값: 업로드 후 아직 한 번도 주입 안 됐을 때만
+  # (applied_at nil) 압축 이해관계자 정보를 반환한다. realtime_agenda_reference 미러.
+  def realtime_stakeholder_reference(meeting)
+    return nil if meeting.stakeholder_reference_applied_at.present?
+    meeting.stakeholder_reference.presence
+  end
+
   # 사용자 편집/초기화가 이 잡의 enqueue 이후에 일어났으면 잡을 폐기한다.
   # - 사용자가 회의록을 직접 수정한 경우, 우리가 LLM으로 덮어쓰면 안 됨.
   # - 회의가 reset_content로 :pending이 되었으면 잔여 잡은 무시.
@@ -176,6 +183,8 @@ class MeetingSummarizationJob < ApplicationJob
     # 안건 자료 1회 주입: 업로드 후 첫 요약(applied_at nil)에만 주입한다. 성공 시 플래그를 채워
     # 이후 매분 cron 틱마다 재주입(비용 폭증)을 막는다.
     agenda_ref = realtime_agenda_reference(meeting)
+    # 이해관계자 정보도 안건과 동일하게 1회만 주입(agenda_ref 미러).
+    stakeholder_ref = realtime_stakeholder_reference(meeting)
     # 도메인 파일(용어집)은 안건과 달리 매 틱 주입 — 회의 중 선택이 바뀔 수 있어 1회주입 플래그 없음.
     domain_ref = DomainReferenceBuilder.build(meeting)
 
@@ -198,13 +207,15 @@ class MeetingSummarizationJob < ApplicationJob
     # 코드 레벨로 분리돼 있으므로, 본문(body_notes)은 비연결 회의와 동일하게 처리하면 된다.
     if meeting.summary_restructure?
       result = call_refine_notes(meeting, body_notes, payload,
-                                  agenda_reference: agenda_ref, domain_reference: domain_ref,
+                                  agenda_reference: agenda_ref, stakeholder_reference: stakeholder_ref,
+                                  domain_reference: domain_ref,
                                   pinned_top: pinned_top, verbosity_context: :realtime)
       body_result = result["notes_markdown"]
     else
       # 증분 모드: 새 자막만 시간대별 블록으로 요약해 본문(body_notes) 뒤에 덧붙인다(앞 내용 불변).
       result = call_append_notes(meeting, body_notes, payload,
-                                  agenda_reference: agenda_ref, domain_reference: domain_ref,
+                                  agenda_reference: agenda_ref, stakeholder_reference: stakeholder_ref,
+                                  domain_reference: domain_ref,
                                   pinned_top: pinned_top)
       # 시간 라벨은 소비셋(applied_ids) 스냅샷으로 계산 — 릴레이션 재질의는 LLM 호출(수십 초) 중
       # 도착한 자막까지 집계해 시간대가 과대/중첩된다.
@@ -277,6 +288,10 @@ class MeetingSummarizationJob < ApplicationJob
     # 실패(ok:false) 시엔 플래그를 두지 않아 다음 틱이 다시 주입한다.
     if agenda_ref.present? && result["ok"]
       meeting.update_column(:agenda_reference_applied_at, Time.current)
+    end
+    # 이해관계자 정보도 동일 규칙(agenda_ref 블록 미러).
+    if stakeholder_ref.present? && result["ok"]
+      meeting.update_column(:stakeholder_reference_applied_at, Time.current)
     end
     # 기존엔 무조건 ok=true 로 transient 실패도 성공으로 broadcast 됐다 — result["ok"] 를 그대로 반영.
     ok = result["ok"] ? true : false
@@ -377,9 +392,10 @@ class MeetingSummarizationJob < ApplicationJob
     if meeting.summary_restructure?
       pinned_top, refine_body = split_pinned_notes(meeting.current_notes_markdown, meeting)
       payload = Transcript.to_sidecar_payload(transcripts)
-      # final(종료·재생성)은 1회주입 플래그와 무관하게 항상 안건 전체를 주입한다.
+      # final(종료·재생성)은 1회주입 플래그와 무관하게 항상 안건·이해관계자 전체를 주입한다.
       result = call_refine_notes(meeting, refine_body, payload,
                                   agenda_reference: meeting.agenda_reference.presence,
+                                  stakeholder_reference: meeting.stakeholder_reference.presence,
                                   domain_reference: domain_ref, pinned_top: pinned_top,
                                   chronological: false)
       body_result = result["notes_markdown"]
@@ -390,6 +406,7 @@ class MeetingSummarizationJob < ApplicationJob
         payload = Transcript.to_sidecar_payload(transcripts)
         result = call_refine_notes(meeting, "", payload,
                                     agenda_reference: meeting.agenda_reference.presence,
+                                    stakeholder_reference: meeting.stakeholder_reference.presence,
                                     domain_reference: domain_ref, pinned_top: pinned_top,
                                     chronological: true)
         body_result = result["notes_markdown"]
@@ -401,6 +418,7 @@ class MeetingSummarizationJob < ApplicationJob
           payload = Transcript.to_sidecar_payload(remaining)
           result = call_append_notes(meeting, latest_body, payload,
                                       agenda_reference: meeting.agenda_reference.presence,
+                                      stakeholder_reference: meeting.stakeholder_reference.presence,
                                       domain_reference: domain_ref, pinned_top: pinned_top)
           body_result = compose_appended_notes(latest_body, result["block_markdown"], remaining)
         else
@@ -505,7 +523,7 @@ class MeetingSummarizationJob < ApplicationJob
   # verbosity_context)의 동작이 바뀌지 않게 한다. agenda_reference/domain_reference/pinned_top
   # 은 호출부마다 다르므로(1회주입 여부·현재 vs base 문서 등) 그대로 인자로 받는다.
   def call_refine_notes(meeting, body, payload, agenda_reference:, domain_reference:, pinned_top:,
-                         verbosity_context: :final, chronological: false)
+                         stakeholder_reference: nil, verbosity_context: :final, chronological: false)
     llm_service_for(meeting).refine_notes(
       body, payload,
       meeting_title: meeting.title,
@@ -516,22 +534,24 @@ class MeetingSummarizationJob < ApplicationJob
       verbosity_context: verbosity_context,
       chronological: chronological,
       agenda_reference: agenda_reference,
+      stakeholder_reference: stakeholder_reference,
       domain_reference: domain_reference,
       custom_prompt: meeting.summary_custom_prompt,
       pinned_context: pinned_top
     )
   end
 
-  # realtime/final 공통: append_notes 호출부 조립. agenda_reference/domain_reference/pinned_top
-  # 은 호출부마다 다르므로 그대로 인자로 받는다(결과의 시간대 블록 조립(compose_appended_notes)은
-  # 호출부 책임 — 소비 자막 스냅샷 시점이 realtime/final 서로 다르다).
-  def call_append_notes(meeting, body, payload, agenda_reference:, domain_reference:, pinned_top:)
+  # realtime/final 공통: append_notes 호출부 조립. agenda_reference/stakeholder_reference/
+  # domain_reference/pinned_top 은 호출부마다 다르므로 그대로 인자로 받는다(결과의 시간대 블록
+  # 조립(compose_appended_notes)은 호출부 책임 — 소비 자막 스냅샷 시점이 realtime/final 서로 다르다).
+  def call_append_notes(meeting, body, payload, agenda_reference:, domain_reference:, pinned_top:, stakeholder_reference: nil)
     llm_service_for(meeting).append_notes(
       body, payload,
       meeting_title: meeting.title,
       attendees: meeting.attendees,
       verbosity: meeting.summary_verbosity,
       agenda_reference: agenda_reference,
+      stakeholder_reference: stakeholder_reference,
       domain_reference: domain_reference,
       custom_prompt: meeting.summary_custom_prompt,
       pinned_context: pinned_top

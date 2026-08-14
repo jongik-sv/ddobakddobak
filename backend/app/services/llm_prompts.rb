@@ -13,4 +13,5 @@ module LlmPrompts
   include NotesPrompts
   include ChatPrompts
   include AgendaPrompts
+  include StakeholderPrompts
 end

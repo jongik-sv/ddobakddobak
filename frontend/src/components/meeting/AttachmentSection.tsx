@@ -16,6 +16,7 @@ interface AttachmentSectionProps {
 const CATEGORIES: { value: AttachmentCategory; label: string }[] = [
   { value: 'agenda', label: '안건' },
   { value: 'reference', label: '참고자료' },
+  { value: 'stakeholder', label: '이해관계자' },
   { value: 'business_card', label: '명함' },
 ]
 
@@ -26,7 +27,7 @@ export function AttachmentSection({ meetingId, readOnly = false }: AttachmentSec
   const [showLinkDialog, setShowLinkDialog] = useState(false)
 
   const countByCategory = useMemo(() => {
-    const counts: Record<AttachmentCategory, number> = { agenda: 0, reference: 0, minutes: 0, business_card: 0 }
+    const counts: Record<AttachmentCategory, number> = { agenda: 0, reference: 0, stakeholder: 0, minutes: 0, business_card: 0 }
     for (const a of attachments) {
       if (a.category in counts) counts[a.category]++
     }
