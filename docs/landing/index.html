@@ -38,7 +38,7 @@
   }
 
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; -webkit-text-size-adjust: 100%; }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 
   body {
@@ -158,7 +158,10 @@
     margin-left: 10px; flex: 1; height: 22px; border-radius: 7px; background: #fff; border: 1px solid var(--line);
     font-family: var(--mono); font-size: .68rem; color: var(--muted); display: flex; align-items: center; padding: 0 10px;
   }
-  .frame img { width: 100%; height: auto; }
+  .frame img { width: 100%; height: auto; aspect-ratio: 1568 / 770; object-fit: cover; object-position: top; background: #f6f6fa; cursor: zoom-in; }
+  .lightbox { border: none; padding: 0; background: transparent; max-width: none; max-height: none; }
+  .lightbox::backdrop { background: rgba(23, 21, 31, .78); backdrop-filter: blur(6px); }
+  .lightbox img { max-width: 94vw; max-height: 92vh; width: auto; height: auto; border-radius: 12px; box-shadow: var(--shadow-lg); cursor: zoom-out; }
   .hero__fig { position: relative; }
   .hero__fig .badge {
     position: absolute; left: -16px; bottom: 26px; z-index: 3;
@@ -172,7 +175,9 @@
   /* ---------- Waveform timeline divider ---------- */
   .timeline { padding: 30px 0 8px; }
   .wave { display: flex; align-items: flex-end; gap: 3px; height: 46px; opacity: .55; }
-  .wave .bar { flex: 1; min-width: 2px; border-radius: 2px; background: linear-gradient(180deg, #8a83f3, #4f46e5); }
+  .wave .bar { flex: 1; min-width: 2px; border-radius: 2px; background: linear-gradient(180deg, #8a83f3, #4f46e5); transform-origin: bottom; animation: eq var(--eq-dur, 2.8s) ease-in-out var(--eq-delay, 0s) infinite; }
+  @keyframes eq { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(.55); } }
+  @media (prefers-reduced-motion: reduce) { .wave .bar { animation: none; } }
   .ticks { display: flex; justify-content: space-between; margin-top: 10px; font-family: var(--mono); font-size: .68rem; color: var(--muted); letter-spacing: .06em; }
 
   /* ---------- Values ---------- */
@@ -239,6 +244,8 @@
 
   /* ---------- Differentiator ---------- */
   .diff { display: grid; grid-template-columns: 1.05fr .95fr; gap: 52px; align-items: center; }
+  .diff__txt h2 { font-size: clamp(1.75rem, 3.5vw, 2.6rem); line-height: 1.16; letter-spacing: -.03em; font-weight: 800; margin: 14px 0 0; }
+  .diff__txt > p { color: var(--ink-soft); font-size: 1.05rem; margin: 14px 0 0; }
   .diff__list { display: grid; gap: 18px; margin-top: 30px; }
   .df { display: flex; gap: 16px; }
   .df__n { font-family: var(--mono); font-size: .8rem; font-weight: 700; color: var(--indigo); padding-top: 3px; flex: none; width: 30px; }
@@ -319,11 +326,11 @@
       <a class="lnk" href="#features">기능</a>
       <a class="lnk" href="#showcase">화면</a>
       <a class="lnk" href="#why">차별점</a>
-      <a class="lnk" href="../기능-인벤토리.md">기능 인벤토리</a>
+      <a class="lnk" href="https://github.com/jongik-sv/ddobakddobak/blob/main/docs/기능-인벤토리.md">기능 인벤토리</a>
     </nav>
     <div class="nav__cta">
-      <a class="btn btn--ghost" href="../../README.md">소개 문서</a>
-      <a class="btn btn--primary" href="../../배포가이드.md">설치 가이드</a>
+      <a class="btn btn--ghost" href="https://github.com/jongik-sv/ddobakddobak" target="_blank" rel="noopener"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a>
+      <a class="btn btn--primary" href="https://github.com/jongik-sv/ddobakddobak/blob/main/배포가이드.md">설치 가이드</a>
     </div>
     <button class="burger" id="burger" aria-label="메뉴 열기" aria-expanded="false">
       <span></span><span></span><span></span>
@@ -334,8 +341,9 @@
   <a href="#features">기능</a>
   <a href="#showcase">화면</a>
   <a href="#why">차별점</a>
-  <a href="../기능-인벤토리.md">기능 인벤토리</a>
-  <a class="btn btn--primary" href="../../배포가이드.md">설치 가이드</a>
+  <a href="https://github.com/jongik-sv/ddobakddobak/blob/main/docs/기능-인벤토리.md">기능 인벤토리</a>
+  <a href="https://github.com/jongik-sv/ddobakddobak" target="_blank" rel="noopener">GitHub</a>
+  <a class="btn btn--primary" href="https://github.com/jongik-sv/ddobakddobak/blob/main/배포가이드.md">설치 가이드</a>
 </div>
 
 <main id="top">
@@ -348,7 +356,7 @@
         <h1>회의에 집중하세요.<br />기록은 <span class="accent">또박또박</span>이 합니다.</h1>
         <p class="hero__sub">회의 음성을 실시간으로 받아쓰고, AI가 핵심 요약·결정사항·할 일까지 정리합니다. 음성도 회의록도 우리 서버 안에만 머뭅니다.</p>
         <div class="hero__cta">
-          <a class="btn btn--primary" href="../../배포가이드.md">설치 가이드 보기</a>
+          <a class="btn btn--primary" href="https://github.com/jongik-sv/ddobakddobak/blob/main/배포가이드.md">설치 가이드 보기</a>
           <a class="btn btn--ghost" href="#features">주요 기능 둘러보기</a>
         </div>
         <div class="hero__meta">
@@ -361,7 +369,7 @@
       <div class="hero__fig reveal">
         <div class="frame">
           <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 회의 상세 · AI 회의록</span></div>
-          <img src="assets/05-meeting-detail.png" alt="회의 상세 화면: 왼쪽 화자별 전사, 오른쪽 AI가 작성한 핵심 요약과 논의 사항" loading="eager" />
+          <img src="assets/05-meeting-detail.png" alt="회의 상세 화면: 화자별 전사, AI가 작성한 핵심 요약과 인용 마커, AI 챗" loading="eager" />
         </div>
         <div class="badge">
           <span class="ic" aria-hidden="true">
@@ -400,7 +408,7 @@
       <div class="vcard reveal">
         <div class="vi" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 16 11"/></svg></div>
         <h3>팀 단위로 쌓는 회의록</h3>
-        <p>개인 도구와 달리 프로젝트·폴더로 회의록을 함께 모으고, 공유 코드로 실시간으로 같이 봅니다.</p>
+        <p>개인 도구와 달리 프로젝트·폴더로 회의록을 함께 모으고, 멤버 초대와 협업자 권한으로 같이 봅니다.</p>
       </div>
     </div>
   </section>
@@ -424,12 +432,12 @@
           <span class="step__tc">진행 중 · AI</span>
           <span class="ln" aria-hidden="true"></span>
           <h3>AI가 정리합니다</h3>
-          <p>약 1분 주기로 핵심 요약·논의·결정·할 일을 구조화합니다. 스탠드업·인터뷰 등 회의 유형별 양식을 따릅니다.</p>
+          <p>설정한 주기로 핵심 요약·논의·결정·할 일을 구조화합니다. 개발진행·스탠드업·인터뷰 등 회의 유형별 양식을 따릅니다.</p>
         </div>
         <div class="step">
           <span class="step__tc done">회의 후 · 활용</span>
           <h3>검색하고 공유합니다</h3>
-          <p>전사·요약을 전역에서 찾고, 회의에 직접 질문하고, 공유 코드와 내보내기로 팀과 나눕니다.</p>
+          <p>전사·요약을 전역에서 찾고, 회의에 직접 질문하고, 내보내기와 D'Flow 연동으로 팀과 나눕니다.</p>
         </div>
       </div>
     </div>
@@ -449,10 +457,10 @@
         <div class="show__txt">
           <span class="eyebrow"><span class="dot"></span>실시간</span>
           <h3>말하는 동안 회의록이 완성됩니다</h3>
-          <p class="lead">왼쪽에 실시간 자막과 화자, 가운데에 AI 회의록, 오른쪽에 메모. 회의를 멈추지 않고도 기록이 채워집니다.</p>
+          <p class="lead">왼쪽에 실시간 자막과 화자, 가운데에 AI 회의록, 오른쪽에 AI 챗과 메모. 회의를 멈추지 않고도 기록이 채워집니다.</p>
           <ul class="flist">
             <li>실시간 자막과 화자 구분을 한 화면에서</li>
-            <li>약 1분 주기로 핵심 요약·논의·결정 자동 갱신</li>
+            <li>설정한 주기로 핵심 요약·논의·결정 자동 갱신</li>
             <li>메모와 AI 피드백으로 즉석에서 다듬기</li>
           </ul>
         </div>
@@ -460,7 +468,7 @@
           <span class="tag">MeetingLive</span>
           <div class="frame">
             <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 라이브 녹음</span></div>
-            <img src="assets/08-meeting-live.png" alt="라이브 녹음 화면: 실시간 자막, AI 회의록, 메모 패널이 3단으로 배치" loading="lazy" />
+            <img src="assets/08-meeting-live.png" alt="라이브 화면: 화자별 전체 기록, AI 회의록, AI 챗 패널이 3단으로 배치" loading="lazy" />
           </div>
         </div>
       </div>
@@ -474,14 +482,14 @@
           <ul class="flist">
             <li>요약·답변 문장마다 발화 시각·화자 인용</li>
             <li>인용 클릭 시 원본 오디오의 해당 지점으로 점프</li>
-            <li>잘못 들은 고유명사는 폴더별 오타사전으로 일괄 교정</li>
+            <li>잘못 들은 용어는 오타 수정·교정 규칙으로 일괄 교정</li>
           </ul>
         </div>
         <div class="show__fig">
           <span class="tag">Meeting</span>
           <div class="frame">
             <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 회의 상세</span></div>
-            <img src="assets/07-meeting-recording.png" alt="회의 상세 화면: 파형 플레이어와 화자별 전사, AI 회의록" loading="lazy" />
+            <img src="assets/07-meeting-recording.png" alt="회의 상세 화면: 오디오 플레이어, 북마크·화자별 전사, AI 회의록과 AI 챗" loading="lazy" />
           </div>
         </div>
       </div>
@@ -514,8 +522,8 @@
           <h3>프로젝트와 폴더로 회의를 자산화</h3>
           <p class="lead">흩어진 녹음이 아니라 검색 가능한 팀 기록으로. 카드와 리스트, 태그와 폴더로 차곡차곡 정리됩니다.</p>
           <ul class="flist">
-            <li>카드/리스트 뷰, 태그·날짜·상태로 필터와 검색</li>
-            <li>폴더·프로젝트 단위 공유와 비공개 전환</li>
+            <li>카드/리스트 뷰, 상태·날짜·최근 3일 퀵필터와 검색</li>
+            <li>프로젝트 즐겨찾기와 멤버 초대, 폴더 가시성 관리</li>
             <li>회의·폴더·프로젝트를 통째로 내보내고 가져오기</li>
           </ul>
         </div>
@@ -541,31 +549,31 @@
       <div class="fgrid">
         <div class="fg reveal">
           <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></svg></span><h3>녹음 · STT</h3></div>
-          <ul><li>실시간 음성 인식, VAD 무음 스킵</li><li>오디오 파일 업로드 전사</li><li>9개 언어 · 시스템 오디오 캡처</li><li>환경별 STT 엔진 자동 선택</li></ul>
+          <ul><li>실시간 음성 인식, VAD 무음 스킵</li><li>오디오 업로드 · 다중 파일 병합 전사</li><li>페이지 전체 드래그앤드롭 업로드</li><li>9개 언어 · 시스템 오디오 캡처</li></ul>
         </div>
         <div class="fg reveal">
           <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></span><h3>AI 회의록 · 요약</h3></div>
-          <ul><li>핵심·논의·결정·할 일 구조화</li><li>회의 유형별 양식, 압축율 5단계</li><li>자연어 피드백으로 수정</li><li>Mermaid 다이어그램 자동 생성</li></ul>
+          <ul><li>핵심·논의·결정·할 일 구조화</li><li>회의 유형별 양식, 압축율 5단계</li><li>연결회의: 이전 요약 상단 고정</li><li>자연어 피드백 · Mermaid 다이어그램</li></ul>
         </div>
         <div class="fg reveal">
           <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20v-1a5 5 0 0 1 9-3M14 20v-.5a4 4 0 0 1 7-2.5"/></svg></span><h3>화자 분리</h3></div>
-          <ul><li>발화자 자동 구분, 회의별 화자 인식</li><li>화자 이름 인라인 편집</li><li>배지 클릭으로 발화 따라가기</li><li>화자분리만 다시 실행</li></ul>
+          <ul><li>발화자 자동 구분, 회의별 화자 인식</li><li>화자 이름 인라인 편집</li><li>행 단위 화자변경 · 발언 분할</li><li>화자분리만 다시 실행</li></ul>
         </div>
         <div class="fg reveal">
           <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg></span><h3>AI 챗</h3></div>
-          <ul><li>회의에 질문, 실시간 스트리밍 답변</li><li>회의/폴더/프로젝트 범위 전환</li><li>여러 회의 교차 Q&amp;A</li><li>답변마다 회의로 인용 점프</li></ul>
+          <ul><li>회의에 질문, 실시간 스트리밍 답변</li><li>회의/폴더/프로젝트 범위 전환</li><li>답변마다 회의로 인용 점프</li><li>답변 확대보기 · Markdown 저장</li></ul>
         </div>
         <div class="fg reveal">
           <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span><h3>검색</h3></div>
           <ul><li>전사·요약 전역 검색과 하이라이트</li><li>화자·날짜·상태 필터</li><li>회의 안에서 본문 검색</li><li>의미 검색(임베딩) 기반 발췌</li></ul>
         </div>
         <div class="fg reveal">
-          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8"/><path d="M16 6l-4-4-4 4M12 2v14"/></svg></span><h3>공유 · 권한</h3></div>
-          <ul><li>6자리 코드로 실시간 공유(최대 20명)</li><li>읽기전용 뷰어 모드</li><li>호스트 위임·자동 승계</li><li>회의 잠금, 폴더 가시성 상속</li></ul>
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8"/><path d="M16 6l-4-4-4 4M12 2v14"/></svg></span><h3>권한 · 보안</h3></div>
+          <ul><li>회의 협업자 초대 — 비소유자는 읽기 전용</li><li>회의 잠금 · 중요 표시</li><li>단일 녹음 기기 잠금, 다른 기기는 뷰어</li><li>기밀 구간 절단(비가역 파기)</li></ul>
         </div>
         <div class="fg reveal">
           <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h8M16 3h5v5M21 3l-9 9"/></svg></span><h3>내보내기 · 가져오기</h3></div>
-          <ul><li>MD·PDF·DOCX·외부 LLM 프롬프트</li><li>회의·폴더 아카이브(.tgz) 이관</li><li>프로젝트 통째로 백업·복원</li><li>인용 제거·할 일 체크박스화</li></ul>
+          <ul><li>MD·PDF·DOCX·외부 LLM 프롬프트(화자 실명)</li><li>폴더·프로젝트 요약 zip 일괄 내보내기</li><li>회의·폴더·프로젝트 .tgz 이관·백업</li><li>D'Flow 연동 — 전송 배지·회의 연결</li></ul>
         </div>
         <div class="fg reveal">
           <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01"/></svg></span><h3>예약 · 자동화</h3></div>
@@ -573,7 +581,7 @@
         </div>
         <div class="fg reveal">
           <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 2.6 14H2.5a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4 7.6l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 4.6h.1A1.6 1.6 0 0 0 10 2.5a2 2 0 1 1 4 0v.1A1.6 1.6 0 0 0 17 4.6a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a2 2 0 1 1 0 4h-.1z"/></svg></span><h3>설정 · 모델</h3></div>
-          <ul><li>요약·챗 LLM을 직접 선택·테스트</li><li>로컬 LLM(Ollama 등)으로 오프라인</li><li>회의 언어·STT·화자분리 조정</li><li>회의 템플릿·요약 양식 관리</li></ul>
+          <ul><li>요약·챗 LLM 직접 선택 · 연결 테스트</li><li>서버 LLM 프리셋 프로필 전환</li><li>로컬 LLM(Ollama·LM Studio)으로 오프라인</li><li>STT 엔진 · 화자분리 · 회의 언어 조정</li></ul>
         </div>
         <div class="fg reveal">
           <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span><h3>데스크톱 · 모바일</h3></div>
@@ -581,11 +589,11 @@
         </div>
         <div class="fg reveal">
           <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg></span><h3>할 일 · 결정</h3></div>
-          <ul><li>할 일을 담당·기한과 함께 추출·관리</li><li>결정사항 로그(맥락·상태)</li><li>타임스탬프 북마크</li><li>명함 OCR로 참석자 자동 등록</li></ul>
+          <ul><li>Action Items 표(담당·기한)를 회의록에 자동 포함</li><li>결정사항 표로 회의 결론 정리</li><li>타임스탬프 북마크</li><li>명함 OCR로 참석자 자동 등록</li></ul>
         </div>
         <div class="fg reveal">
           <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><h3>폴더 · 프로젝트</h3></div>
-          <ul><li>프로젝트별 작업 공간과 멤버 초대</li><li>폴더 트리로 회의 분류·이동</li><li>경로 브레드크럼 네비게이션</li><li>휴지통 소프트삭제·복구</li></ul>
+          <ul><li>프로젝트별 작업 공간과 멤버 초대</li><li>프로젝트 즐겨찾기 별 토글 · 필터</li><li>도메인 파일(용어집) 공유 · 용어 교정 규칙</li><li>폴더 트리 분류 · 브레드크럼</li><li>휴지통 소프트삭제 · 복구</li></ul>
         </div>
       </div>
     </div>
@@ -596,8 +604,8 @@
     <div class="wrap diff">
       <div class="diff__txt reveal">
         <span class="eyebrow">왜 또박또박인가</span>
-        <h2 style="font-size:clamp(1.75rem,3.5vw,2.6rem);line-height:1.16;letter-spacing:-.03em;font-weight:800;margin:14px 0 0;">클라우드 회의록이 못 주는 네 가지.</h2>
-        <p style="color:var(--ink-soft);font-size:1.05rem;margin:14px 0 0;">받아쓰기 정확도는 어디나 비슷해집니다. 차이는 데이터가 어디에 있고, 회의록을 얼마나 믿을 수 있고, 팀이 함께 쓸 수 있느냐에서 납니다.</p>
+        <h2>클라우드 회의록이 못 주는 네 가지.</h2>
+        <p>받아쓰기 정확도는 어디나 비슷해집니다. 차이는 데이터가 어디에 있고, 회의록을 얼마나 믿을 수 있고, 팀이 함께 쓸 수 있느냐에서 납니다.</p>
         <div class="diff__list">
           <div class="df"><span class="df__n">01</span><div><h4>데이터 주권</h4><p>음성·전사·요약이 우리 인프라 밖으로 나가지 않습니다. 민감한 사내 회의를 그대로 맡길 수 있습니다.</p></div></div>
           <div class="df"><span class="df__n">02</span><div><h4>근거 기반</h4><p>모든 요약과 답변이 발화 시각·화자로 검증됩니다. AI 환각을 한 번의 클릭으로 확인합니다.</p></div></div>
@@ -606,13 +614,13 @@
         </div>
       </div>
       <div class="diff__fig reveal">
-        <span class="show__fig" style="display:block;position:relative;">
-          <span class="tag" style="position:absolute;z-index:3;top:-14px;right:18px;font-family:var(--mono);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;background:var(--ink);color:#fff;padding:6px 11px;border-radius:8px;box-shadow:var(--shadow-md);">Settings</span>
-          <span class="frame" style="display:block;">
-            <span class="frame__bar" style="display:flex;"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 음성·인식 설정</span></span>
-            <img src="assets/12-settings-audio.png" alt="설정 화면: STT 엔진·화자분리·LLM 모델 선택 옵션" loading="lazy" />
-          </span>
-        </span>
+        <div class="show__fig">
+          <span class="tag">Settings</span>
+          <div class="frame">
+            <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 음성·인식 설정</span></div>
+            <img src="assets/12-settings-audio.png" alt="설정 화면: STT 엔진·배치 STT 모델 등 음성·인식 옵션" loading="lazy" />
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -625,8 +633,9 @@
         <h2>회의록 쓰는 시간, 또박또박에 맡기세요.</h2>
         <p>데스크톱 앱을 설치하거나 팀 서버에 올리면 끝. 첫 회의부터 받아쓰기와 AI 회의록이 함께 시작됩니다.</p>
         <div class="ctaband__row">
-          <a class="btn btn--light" href="../../배포가이드.md">설치 가이드 보기</a>
-          <a class="btn btn--outline" href="../기능-인벤토리.md">기능 인벤토리</a>
+          <a class="btn btn--light" href="https://github.com/jongik-sv/ddobakddobak/blob/main/배포가이드.md">설치 가이드 보기</a>
+          <a class="btn btn--outline" href="https://github.com/jongik-sv/ddobakddobak/blob/main/docs/기능-인벤토리.md">기능 인벤토리</a>
+          <a class="btn btn--outline" href="https://github.com/jongik-sv/ddobakddobak" target="_blank" rel="noopener">GitHub</a>
         </div>
       </div>
     </div>
@@ -651,9 +660,10 @@
         </div>
         <div class="foot__col">
           <h5>문서</h5>
-          <a href="../../README.md">소개(README)</a>
-          <a href="../../배포가이드.md">설치 가이드</a>
-          <a href="../기능-인벤토리.md">기능 인벤토리</a>
+          <a href="https://github.com/jongik-sv/ddobakddobak#readme">소개(README)</a>
+          <a href="https://github.com/jongik-sv/ddobakddobak/blob/main/배포가이드.md">설치 가이드</a>
+          <a href="https://github.com/jongik-sv/ddobakddobak/blob/main/docs/기능-인벤토리.md">기능 인벤토리</a>
+          <a href="https://github.com/jongik-sv/ddobakddobak" target="_blank" rel="noopener">GitHub 저장소</a>
         </div>
       </div>
     </div>
@@ -663,6 +673,8 @@
     </div>
   </div>
 </footer>
+
+<dialog class="lightbox" id="lightbox" aria-label="스크린샷 크게 보기"><img src="" alt="" /></dialog>
 
 <script>
   document.documentElement.classList.add('js');
@@ -697,10 +709,12 @@
                 9,7,13,19,26,31,24,16,10,7,5,8,12,18,25,32,27,19,13,9,6,10,15,21,28,34,26,18,11,8,5,7,11,16,22,29,23,15,10,6];
     var max = 36;
     var frag = document.createDocumentFragment();
-    seed.forEach(function (v) {
+    seed.forEach(function (v, i) {
       var b = document.createElement('span');
       b.className = 'bar';
       b.style.height = Math.max(8, (v / max) * 100) + '%';
+      b.style.setProperty('--eq-dur', (2.2 + (v % 5) * 0.35) + 's');
+      b.style.setProperty('--eq-delay', (-(i % 9) * 0.4) + 's');
       frag.appendChild(b);
     });
     el.appendChild(frag);
@@ -723,6 +737,21 @@
   }
   // reveal everything before printing
   window.addEventListener('beforeprint', function () { reveals.forEach(function (r) { r.classList.add('in'); }); });
+
+  // screenshot lightbox
+  var lb = document.getElementById('lightbox');
+  var lbImg = lb ? lb.querySelector('img') : null;
+  if (lb && lbImg && typeof lb.showModal === 'function') {
+    document.querySelectorAll('.frame img').forEach(function (img) {
+      img.addEventListener('click', function () {
+        lbImg.src = img.currentSrc || img.src;
+        lbImg.alt = img.alt;
+        lb.showModal();
+      });
+    });
+    lb.addEventListener('click', function () { lb.close(); });
+    lb.addEventListener('close', function () { lbImg.src = ''; });
+  }
 </script>
 </body>
 </html>
