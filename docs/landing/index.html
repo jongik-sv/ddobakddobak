@@ -230,6 +230,18 @@
     background: var(--ink); color: #fff; padding: 6px 11px; border-radius: 8px; box-shadow: var(--shadow-md);
   }
 
+  /* ---------- AI Chat / RAG ---------- */
+  .ragrow { display: grid; grid-template-columns: 1fr 1.18fr; gap: 56px; align-items: center; }
+  .scopes { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+  .scope {
+    font-family: var(--mono); font-size: .78rem; font-weight: 500; letter-spacing: .02em;
+    padding: 7px 13px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--lav-deep); color: var(--indigo-ink);
+  }
+  .scope--max { background: var(--indigo); border-color: var(--indigo); color: #fff; box-shadow: 0 6px 18px rgba(79, 70, 229, .28); }
+  .scope__arr { color: var(--muted); font-size: .8rem; }
+  .ragrow .flist li b { color: var(--ink); }
+
   /* ---------- Feature grid ---------- */
   .fgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   .fg {
@@ -286,7 +298,7 @@
 
   /* ---------- Responsive ---------- */
   @media (max-width: 960px) {
-    .hero__in, .show, .show--rev .show__txt, .show--rev .show__fig, .diff { grid-template-columns: 1fr; gap: 36px; }
+    .hero__in, .show, .show--rev .show__txt, .show--rev .show__fig, .diff, .ragrow { grid-template-columns: 1fr; gap: 36px; }
     .show--rev .show__txt, .show--rev .show__fig { order: 0; }
     .hero { padding-top: 40px; }
     .hero__fig { max-width: 620px; }
@@ -327,6 +339,7 @@
     <nav class="nav" aria-label="주요 메뉴">
       <a class="lnk" href="#features">기능</a>
       <a class="lnk" href="#showcase">화면</a>
+      <a class="lnk" href="#ai-chat">AI 챗</a>
       <a class="lnk" href="#why">차별점</a>
       <a class="lnk" href="https://github.com/jongik-sv/ddobakddobak/blob/main/docs/기능-인벤토리.md">기능 인벤토리</a>
     </nav>
@@ -342,6 +355,7 @@
 <div class="mmenu" id="mmenu">
   <a href="#features">기능</a>
   <a href="#showcase">화면</a>
+  <a href="#ai-chat">AI 챗</a>
   <a href="#why">차별점</a>
   <a href="https://github.com/jongik-sv/ddobakddobak/blob/main/docs/기능-인벤토리.md">기능 인벤토리</a>
   <a href="https://github.com/jongik-sv/ddobakddobak" target="_blank" rel="noopener">GitHub</a>
@@ -534,6 +548,41 @@
           <div class="frame">
             <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 회의 목록</span></div>
             <img src="assets/04-meetings-list.png" alt="회의 목록 화면: 폴더 탐색과 회의 카드 목록" loading="lazy" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== AI Chat / RAG ========== -->
+  <section class="sec" id="ai-chat">
+    <div class="wrap">
+      <div class="sechead reveal">
+        <span class="eyebrow">AI 챗 · RAG</span>
+        <h2>다시 듣지 말고, 회의록에 물어보세요.</h2>
+        <p>모든 전사와 요약은 저장되는 순간 한국어 특화 임베딩(KURE)으로 벡터화됩니다. 정확한 단어가 기억나지 않아도 의미로 찾아내고, AI가 근거를 붙여 답합니다 — 전부 우리 서버 안에서.</p>
+      </div>
+      <div class="ragrow">
+        <div class="ragrow__txt reveal">
+          <div class="scopes" role="img" aria-label="질문 범위: 이 회의, 폴더 전체, 프로젝트 전체로 확장">
+            <span class="scope">이 회의</span>
+            <span class="scope__arr" aria-hidden="true">→</span>
+            <span class="scope">폴더 전체</span>
+            <span class="scope__arr" aria-hidden="true">→</span>
+            <span class="scope scope--max">프로젝트 전체</span>
+          </div>
+          <ul class="flist">
+            <li><b>의미로 찾습니다.</b> 키워드 검색과 벡터 의미검색을 함께 쓰고, LLM이 질문을 여러 검색어로 확장해 놓친 발화까지 끌어옵니다.</li>
+            <li><b>범위를 골라 묻습니다.</b> 한 회의부터 폴더·프로젝트 전체까지. "DB는 왜 바꿨지?" 한 줄이면 여러 회의를 가로질러 답이 옵니다.</li>
+            <li><b>답변마다 근거가 붙습니다.</b> 발화 시각·화자 인용을 누르면 그 순간으로, 다른 회의 인용은 그 회의로 이동합니다.</li>
+            <li><b>대화가 이어집니다.</b> 후속 질문 제안, 답변 확대보기와 Markdown 저장까지.</li>
+          </ul>
+        </div>
+        <div class="show__fig reveal">
+          <span class="tag">AI Chat</span>
+          <div class="frame">
+            <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 프로젝트 전체에 질문</span></div>
+            <img src="assets/06-ai-chat.png" alt="AI 챗 화면: 프로젝트 전체 범위로 질문하자 여러 회의의 발화 시각·회의 인용이 붙은 답변과 후속 질문 제안이 표시됨" loading="lazy" style="aspect-ratio: 1400 / 878;" />
           </div>
         </div>
       </div>
