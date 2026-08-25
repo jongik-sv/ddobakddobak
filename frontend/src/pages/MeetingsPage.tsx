@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { LayoutGrid, List, Plus, Eye, EyeOff } from 'lucide-react'
+import { LayoutGrid, List, Plus, Eye, EyeOff, Clock } from 'lucide-react'
 import { Tooltip } from '../components/ui/Tooltip'
 import { deleteMeeting, stopMeeting, updateMeeting, setMeetingImportant } from '../api/meetings'
 import { getDflowSettings } from '../api/dflow'
@@ -32,6 +32,16 @@ import { folderName } from '../lib/meetingFormat'
 import { useUiStore } from '../stores/uiStore'
 import { VIEW_MODE_KEY, getStoredViewMode, type ViewMode, type SortField, type SortDirection } from './meetings/types'
 import { DflowFilterSelect } from '../components/meeting/DflowFilterSelect'
+
+// 로컬 날짜(YYYY-MM-DD) 기준 N일 전 — toISOString은 UTC라 타임존에 따라 날짜가 밀린다.
+function recentDateFrom(days: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - days)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 
 export default function MeetingsPage() {
   const navigate = useNavigate()
@@ -243,6 +253,19 @@ export default function MeetingsPage() {
     fetchMeetings(1)
   }, [toggleShowAll, fetchMeetings])
 
+  // "최근 3일" 퀵필터 — 데스크톱/모바일 공용. 활성 중 재클릭이면 초기화.
+  const recent3d = recentDateFrom(3)
+  const isRecentActive = dateFrom === recent3d && !dateTo
+  const handleToggleRecent = () => {
+    if (isRecentActive) {
+      setDateFrom('')
+      setDateTo('')
+    } else {
+      setDateFrom(recent3d)
+      setDateTo('')
+    }
+  }
+
   const totalPages = meta ? Math.ceil(meta.total / meta.per) : 0
 
   return (
@@ -369,6 +392,19 @@ export default function MeetingsPage() {
               className="rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
+          <button
+            type="button"
+            onClick={handleToggleRecent}
+            aria-pressed={isRecentActive}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+              isRecentActive
+                ? 'bg-primary/10 text-primary border-primary/40'
+                : 'bg-card text-foreground border-border hover:bg-muted'
+            }`}
+          >
+            <Clock className="w-4 h-4" />
+            최근 3일
+          </button>
           {(dateFrom || dateTo) && (
             <button
               onClick={() => { setDateFrom(''); setDateTo('') }}
@@ -428,6 +464,19 @@ export default function MeetingsPage() {
                   className="flex-1 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
+              <button
+                type="button"
+                onClick={handleToggleRecent}
+                aria-pressed={isRecentActive}
+                className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  isRecentActive
+                    ? 'bg-primary/10 text-primary border-primary/40'
+                    : 'bg-card text-foreground border-border hover:bg-muted'
+                }`}
+              >
+                <Clock className="w-4 h-4" />
+                최근 3일
+              </button>
             </div>
 
             {/* D'Flow 전송 상태 필터 — 연동 비활성이면 숨김 */}
