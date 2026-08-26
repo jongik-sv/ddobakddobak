@@ -23,8 +23,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      # docs/ 안 심볼릭 링크(PRD.md 등)가 upload-pages-artifact의 tar를 깨뜨림
+      # → 링크를 실파일로 해소한 사본을 업로드
+      - run: cp -RL docs _site
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
