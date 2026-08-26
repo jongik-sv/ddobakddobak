@@ -7,7 +7,9 @@
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png" />
 <link rel="icon" type="image/png" sizes="128x128" href="assets/favicon-128.png" />
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-<meta name="description" content="또박또박은 회의 음성을 실시간으로 받아쓰고 AI가 요약·결정사항·할 일까지 정리하는 셀프호스트 팀 회의 어시스턴트입니다. 음성도 회의록도 외부로 나가지 않습니다." />
+<meta name="description" content="또박또박은 회의 음성을 실시간으로 받아쓰고 AI가 요약·결정사항·할 일까지 정리하는 셀프호스트 팀 회의 어시스턴트입니다. 음성 인식부터 요약까지 사내 서버·개인 기기 안에서 완결되고, 기밀 구간은 비가역 파기, 데이터는 언제든 통째로 이관해 벤더에 갇히지 않습니다." />
+<meta name="theme-color" content="#fafafb" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#121017" media="(prefers-color-scheme: dark)" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -94,10 +96,9 @@
   .hd__in { display: flex; align-items: center; justify-content: space-between; height: 66px; }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.12rem; letter-spacing: -.02em; }
   .brand .mark {
-    display: grid; place-items: center;
+    display: block;
     width: 30px; height: 30px; border-radius: 9px;
-    background: linear-gradient(150deg, var(--indigo), #6b62f5);
-    color: #fff; font-size: .8rem; box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-sm);
   }
   .nav { display: flex; align-items: center; gap: 30px; }
   .nav a.lnk { font-size: .92rem; color: var(--ink-soft); font-weight: 500; transition: color .18s; }
@@ -117,25 +118,36 @@
   .burger { display: none; width: 42px; height: 38px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; }
   .burger span { display: block; width: 18px; height: 2px; background: var(--ink); margin: 3px auto; border-radius: 2px; }
 
-  /* ---------- Hero ---------- */
-  .hero { position: relative; padding: 64px 0 32px; }
-  .hero::before {
-    content: ""; position: absolute; inset: -10% -20% auto -20%; height: 620px; z-index: 0;
+  /* ---------- Hero (v2: dark vault panel, full-bleed) ---------- */
+  .hero {
+    position: relative; overflow: hidden;
     background:
-      radial-gradient(60% 60% at 20% 18%, rgba(99, 91, 245, .14), transparent 70%),
-      radial-gradient(55% 55% at 88% 8%, rgba(251, 91, 91, .08), transparent 70%);
-    pointer-events: none;
+      repeating-linear-gradient(90deg, rgba(138, 131, 243, .09) 0 1px, transparent 1px 16px),
+      radial-gradient(120% 140% at 12% 0%, #241f38 0%, #17151f 55%, #100e16 100%);
   }
-  .hero__in { position: relative; z-index: 1; display: grid; grid-template-columns: 1.02fr 1.12fr; gap: 56px; align-items: center; }
+  .hero__in {
+    position: relative; z-index: 1; display: grid;
+    grid-template-columns: minmax(0, 520px) 1fr; align-items: center; gap: 0 44px;
+  }
+  .hero__txt { padding: 108px 0 72px; }
   .hero h1 {
-    font-size: clamp(2.4rem, 5.4vw, 4rem); line-height: 1.08; letter-spacing: -.035em;
-    font-weight: 800; margin: 20px 0 0;
+    font-size: clamp(2.1rem, 3.6vw, 3.1rem); line-height: 1.2; letter-spacing: -.03em;
+    font-weight: 800; margin: 22px 0 0; color: #fff;
+    word-break: keep-all; overflow-wrap: normal;
   }
-  .hero h1 .accent { color: var(--indigo); }
-  .hero__sub { font-size: clamp(1.02rem, 1.6vw, 1.18rem); color: var(--ink-soft); margin: 22px 0 0; max-width: 36ch; }
+  .hero h1 .accent { color: #a29bfa; }
+  .hero__sub { font-size: clamp(1rem, 1.5vw, 1.12rem); color: rgba(240, 238, 246, .78); margin: 22px 0 0; max-width: 42ch; }
   .hero__cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
   .hero__cta .btn { padding: 13px 22px; font-size: .98rem; }
-  .hero__meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 26px; }
+  .hero .btn--ghost { background: rgba(255, 255, 255, .08); color: #fff; border-color: rgba(255, 255, 255, .32); box-shadow: none; }
+  .hero .btn--ghost:hover { background: rgba(255, 255, 255, .16); border-color: rgba(255, 255, 255, .5); }
+  .hero__meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 28px; }
+  .hero .eyebrow { color: #a29bfa; }
+  .hero .chip { color: rgba(240, 238, 246, .68); }
+  .hero .chip i { background: #a29bfa; }
+  .hero .chip.mint i { background: #34d399; }
+  .hero .chip.amber i { background: #f5a524; }
+  .hero .chip.live i { background: var(--live); }
   .chip {
     font-family: var(--mono); font-size: .76rem; color: var(--ink-soft);
     display: inline-flex; align-items: center; gap: .5em;
@@ -164,15 +176,31 @@
   .lightbox { border: none; padding: 0; background: transparent; max-width: none; max-height: none; }
   .lightbox::backdrop { background: rgba(23, 21, 31, .78); backdrop-filter: blur(6px); }
   .lightbox img { max-width: 94vw; max-height: 92vh; width: auto; height: auto; border-radius: 12px; box-shadow: var(--shadow-lg); cursor: zoom-out; }
-  .hero__fig { position: relative; }
+  .hero__fig {
+    position: relative; align-self: stretch; display: flex; align-items: center; padding: 32px 0;
+    margin-right: calc(-1 * max(24px, (100vw - var(--maxw)) / 2 + 24px));
+  }
+  .hero__fig .frame { width: 100%; max-width: 860px; margin-left: auto; border-radius: 18px 0 0 18px; border-right: none; }
   .hero__fig .badge {
     position: absolute; left: -16px; bottom: 26px; z-index: 3;
     background: var(--surface); border: 1px solid var(--line); border-radius: 13px;
     box-shadow: var(--shadow-md); padding: 11px 14px; display: flex; align-items: center; gap: 10px;
   }
-  .hero__fig .badge .ic { width: 32px; height: 32px; border-radius: 9px; background: var(--lav); display: grid; place-items: center; color: var(--indigo); }
   .hero__fig .badge b { font-size: .86rem; }
   .hero__fig .badge small { display: block; color: var(--muted); font-size: .72rem; font-family: var(--mono); }
+  .badge__live { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 34px; flex: none; }
+  .badge__eq { display: flex; align-items: flex-end; justify-content: center; gap: 2px; height: 18px; width: 100%; }
+  .badge__eq i {
+    display: block; width: 3px; border-radius: 1px; background: linear-gradient(180deg, #8a83f3, #4f46e5);
+    transform-origin: bottom; animation: eq var(--eq-dur, 2.2s) ease-in-out var(--eq-delay, 0s) infinite;
+  }
+  .badge__eq i:nth-child(1) { height: 45%; }
+  .badge__eq i:nth-child(2) { height: 80%; }
+  .badge__eq i:nth-child(3) { height: 60%; }
+  .badge__eq i:nth-child(4) { height: 100%; }
+  .badge__eq i:nth-child(5) { height: 65%; }
+  .badge__tc { font-family: var(--mono); font-size: .62rem; font-weight: 700; color: var(--indigo); letter-spacing: .02em; }
+  @media (prefers-reduced-motion: reduce) { .badge__eq i { animation: none; } }
 
   /* ---------- Waveform timeline divider ---------- */
   .timeline { padding: 30px 0 8px; }
@@ -180,7 +208,10 @@
   .wave .bar { flex: 1; min-width: 2px; border-radius: 2px; background: linear-gradient(180deg, #8a83f3, #4f46e5); transform-origin: bottom; animation: eq var(--eq-dur, 2.8s) ease-in-out var(--eq-delay, 0s) infinite; }
   @keyframes eq { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(.55); } }
   @media (prefers-reduced-motion: reduce) { .wave .bar { animation: none; } }
-  .ticks { display: flex; justify-content: space-between; margin-top: 10px; font-family: var(--mono); font-size: .68rem; color: var(--muted); letter-spacing: .06em; }
+  .ticks { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-top: 10px; font-family: var(--mono); font-size: .68rem; letter-spacing: .06em; }
+  .ticks a { white-space: nowrap; }
+  .ticks a { color: var(--muted); transition: color .18s ease; }
+  .ticks a:hover, .ticks a:focus-visible { color: var(--indigo); }
 
   /* ---------- Values ---------- */
   .values { padding: 40px 0 12px; }
@@ -193,7 +224,12 @@
 
   /* ---------- Section heads ---------- */
   .sec { padding: 88px 0; }
-  .sec--tint { background: linear-gradient(180deg, #fff, #f7f7fc); border-block: 1px solid var(--line-soft); }
+  .sec--tint {
+    background:
+      repeating-linear-gradient(90deg, rgba(79, 70, 229, .035) 0 1px, transparent 1px 24px),
+      linear-gradient(180deg, #fff, #f7f7fc);
+    border-block: 1px solid var(--line-soft);
+  }
   .sechead { max-width: 60ch; margin-bottom: 46px; }
   .sechead h2 { font-size: clamp(1.75rem, 3.5vw, 2.6rem); line-height: 1.16; letter-spacing: -.03em; font-weight: 800; margin: 14px 0 0; }
   .sechead p { color: var(--ink-soft); font-size: 1.05rem; margin: 14px 0 0; }
@@ -208,6 +244,32 @@
   .step h3 { font-size: 1.18rem; margin: 14px 0 8px; letter-spacing: -.01em; }
   .step p { color: var(--muted); font-size: .94rem; margin: 0; }
   .step .ln { position: absolute; left: 28px; top: 64px; right: 28px; height: 2px; background: repeating-linear-gradient(90deg, var(--lav-deep) 0 6px, transparent 6px 12px); }
+  .step__top { display: flex; align-items: center; gap: 18px; }
+  .step__ic { width: 64px; height: 64px; border-radius: 16px; display: grid; place-items: center; background: var(--lav); color: var(--indigo); flex: none; }
+  .step__ic--live { background: rgba(251, 91, 91, .14); color: var(--live); }
+  .step__ic--done { background: rgba(15, 168, 119, .14); color: var(--mint); }
+  .step__ic svg { width: 28px; height: 28px; }
+  .step__body { display: flex; flex-direction: column; min-width: 0; }
+  .step__body h3 { margin: 4px 0 6px; }
+
+  /* ---------- Steps, timeline variant (vertical rail replaces the 3-col grid) ---------- */
+  .steps--timeline { display: block; position: relative; border: none; border-radius: 0; background: none; box-shadow: none; padding-left: 56px; }
+  .steps--timeline::before {
+    content: ""; position: absolute; left: 19px; top: 10px; bottom: 10px; width: 2px;
+    background: repeating-linear-gradient(180deg, var(--lav-deep) 0 6px, transparent 6px 12px);
+  }
+  .steps--timeline .step {
+    border: 1px solid var(--line); border-radius: var(--r); background: var(--surface);
+    box-shadow: var(--shadow-sm); padding: 26px 28px; margin-bottom: 18px;
+  }
+  .steps--timeline .step:last-child { margin-bottom: 0; }
+  .steps--timeline .step::before {
+    content: ""; position: absolute; left: -46px; top: 33px; width: 13px; height: 13px; border-radius: 50%;
+    background: var(--indigo); border: 3px solid var(--paper); box-shadow: 0 0 0 2px var(--lav-deep);
+  }
+  .steps--timeline .step:nth-child(1)::before { background: var(--live); }
+  .steps--timeline .step:nth-child(3)::before { background: var(--mint); }
+  .steps--timeline .step .ln { display: none; }
 
   /* ---------- Showcase ---------- */
   .show { display: grid; grid-template-columns: 1fr 1.18fr; gap: 56px; align-items: center; }
@@ -223,7 +285,13 @@
     background: var(--lav); border: 1px solid var(--lav-deep);
   }
   .flist li::after { content: ""; position: absolute; left: 5px; top: .72em; width: 6px; height: 6px; border-radius: 2px; background: var(--indigo); }
+  #showcase .wrap { counter-reset: show; }
+  #showcase .show { counter-increment: show; }
   .show__fig { position: relative; }
+  #showcase .show__fig::before {
+    content: counter(show, decimal-leading-zero); position: absolute; top: -30px; left: 0; z-index: 2;
+    font-family: var(--mono); font-weight: 700; font-size: .72rem; letter-spacing: .1em; color: var(--muted);
+  }
   .show__fig .tag {
     position: absolute; z-index: 3; top: -14px; right: 18px;
     font-family: var(--mono); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase;
@@ -242,6 +310,17 @@
   .scope__arr { color: var(--muted); font-size: .8rem; }
   .ragrow .flist li b { color: var(--ink); }
 
+  /* ---------- Trust (organizational advantage) ---------- */
+  .trust__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .fg p { font-size: .87rem; color: var(--muted); margin: 0; line-height: 1.6; }
+  .fg p + p.fg__sub { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: .82rem; }
+  .trust__note { margin-top: 28px; color: var(--muted); font-size: .92rem; max-width: 68ch; }
+
+  /* ---------- Audience split ---------- */
+  .audience { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; padding: 6px 0 4px; }
+  .audience .btn { flex: 1 1 260px; justify-content: center; text-align: center; }
+  .audience .btn .arr { color: var(--indigo); margin-left: .3em; }
+
   /* ---------- Feature grid ---------- */
   .fgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   .fg {
@@ -256,6 +335,14 @@
   .fg li { font-size: .87rem; color: var(--muted); padding: 3px 0 3px 14px; position: relative; }
   .fg li::before { content: "·"; position: absolute; left: 2px; color: var(--indigo); font-weight: 700; }
 
+  /* feature grid cards read as log lines: mono category tag instead of an icon tile (#features only — #trust keeps .fg__ic) */
+  #features .fg__top { align-items: baseline; gap: 12px; }
+  #features .fg__tag {
+    display: inline-block; font-family: var(--mono); font-size: .7rem; font-weight: 700; letter-spacing: .02em;
+    color: var(--indigo); background: var(--lav); border: 1px solid var(--lav-deep);
+    border-radius: 6px; padding: 3px 8px; flex: none; line-height: 1.3;
+  }
+
   /* ---------- Differentiator ---------- */
   .diff { display: grid; grid-template-columns: 1.05fr .95fr; gap: 52px; align-items: center; }
   .diff__txt h2 { font-size: clamp(1.75rem, 3.5vw, 2.6rem); line-height: 1.16; letter-spacing: -.03em; font-weight: 800; margin: 14px 0 0; }
@@ -266,18 +353,37 @@
   .df h4 { margin: 0 0 4px; font-size: 1.06rem; letter-spacing: -.01em; }
   .df p { margin: 0; color: var(--ink-soft); font-size: .94rem; }
 
+  /* ---------- Transcript excerpt (editorial) ---------- */
+  .excerpt {
+    font-family: var(--mono); background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--r); padding: 22px 26px; margin-bottom: 40px; box-shadow: var(--shadow-sm);
+  }
+  .excerpt__line { margin: 0; font-size: .92rem; color: var(--ink-soft); line-height: 1.7; }
+  .excerpt__line .tc { color: var(--indigo); font-weight: 700; margin-right: .35em; }
+  .excerpt__arrow {
+    margin: 12px 0 0; padding-top: 12px; border-top: 1px dashed var(--line);
+    font-size: .84rem; color: var(--muted);
+  }
+  .excerpt__arrow .tc { color: var(--indigo); font-weight: 700; margin-left: .35em; }
+  .excerpt__arrow b { color: var(--ink); }
+
   /* ---------- CTA band ---------- */
   .ctaband { position: relative; overflow: hidden; border-radius: 26px; padding: 64px 48px; color: #fff; text-align: center;
-    background: radial-gradient(120% 140% at 18% 0%, #6b62f5 0%, #4f46e5 42%, #3a31bf 100%); box-shadow: var(--shadow-lg); }
-  .ctaband::after { content: ""; position: absolute; inset: 0; background: radial-gradient(60% 80% at 85% 110%, rgba(255, 255, 255, .16), transparent 60%); pointer-events: none; }
+    background:
+      repeating-linear-gradient(90deg, rgba(138, 131, 243, .10) 0 1px, transparent 1px 16px),
+      radial-gradient(120% 140% at 18% 0%, #241f38 0%, #17151f 55%, #100e16 100%);
+    box-shadow: var(--shadow-lg); }
+  .ctaband::after { content: ""; position: absolute; inset: 0; background: radial-gradient(60% 80% at 85% 110%, rgba(138, 131, 243, .18), transparent 60%); pointer-events: none; }
   .ctaband .eyebrow { color: rgba(255, 255, 255, .85); position: relative; z-index: 1; }
   .ctaband h2 { font-size: clamp(1.8rem, 4vw, 2.7rem); letter-spacing: -.03em; line-height: 1.16; margin: 14px 0 0; position: relative; z-index: 1; }
   .ctaband p { color: rgba(255, 255, 255, .86); font-size: 1.05rem; margin: 16px auto 0; max-width: 52ch; position: relative; z-index: 1; }
-  .ctaband__row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 30px; position: relative; z-index: 1; }
+  .ctaband__row { display: flex; gap: 14px; justify-content: center; align-items: flex-end; flex-wrap: wrap; margin-top: 30px; position: relative; z-index: 1; }
   .btn--light { background: #fff; color: var(--indigo-ink); }
-  .btn--light:hover { transform: translateY(-1px); box-shadow: 0 14px 30px rgba(0, 0, 0, .2); }
-  .btn--outline { background: rgba(255, 255, 255, .08); color: #fff; border-color: rgba(255, 255, 255, .4); }
-  .btn--outline:hover { background: rgba(255, 255, 255, .16); transform: translateY(-1px); }
+  .btn--light:hover { transform: translateY(-1px); box-shadow: 0 14px 30px rgba(0, 0, 0, .4); }
+  .btn--outline { background: rgba(255, 255, 255, .1); color: #fff; border-color: rgba(255, 255, 255, .5); }
+  .btn--outline:hover { background: rgba(255, 255, 255, .18); transform: translateY(-1px); }
+  .ctaband__item { display: flex; flex-direction: column; align-items: center; gap: 9px; }
+  .ctaband__tag { font-family: var(--mono); font-size: .7rem; letter-spacing: .01em; color: rgba(255, 255, 255, .74); max-width: 22ch; line-height: 1.4; }
 
   /* ---------- Footer ---------- */
   .foot { padding: 56px 0 48px; border-top: 1px solid var(--line); margin-top: 90px; }
@@ -298,25 +404,38 @@
 
   /* ---------- Responsive ---------- */
   @media (max-width: 960px) {
-    .hero__in, .show, .show--rev .show__txt, .show--rev .show__fig, .diff, .ragrow { grid-template-columns: 1fr; gap: 36px; }
+    .show, .show--rev .show__txt, .show--rev .show__fig, .diff, .ragrow { grid-template-columns: 1fr; gap: 36px; }
     .show--rev .show__txt, .show--rev .show__fig { order: 0; }
-    .hero { padding-top: 40px; }
-    .hero__fig { max-width: 620px; }
+    .hero__in { grid-template-columns: 1fr; gap: 36px; }
+    .hero__txt { padding: 48px 0 8px; }
+    .hero__fig { max-width: 620px; padding: 8px 0 48px; margin-inline: auto; margin-right: auto; }
+    .hero__fig .frame { border-radius: 16px; border-right: 1px solid var(--line); margin-inline: auto; }
     .values__grid { grid-template-columns: repeat(2, 1fr); }
     .steps { grid-template-columns: 1fr; }
     .step { border-right: none; border-bottom: 1px solid var(--line); }
     .step:last-child { border-bottom: none; }
     .step .ln { display: none; }
-    .fgrid { grid-template-columns: repeat(2, 1fr); }
+    .fgrid, .trust__grid { grid-template-columns: repeat(2, 1fr); }
     .nav { display: none; }
     .burger { display: block; }
     .sec { padding: 64px 0; }
     .show + .show { margin-top: 64px; }
   }
   @media (max-width: 560px) {
-    .values__grid, .fgrid { grid-template-columns: 1fr; }
+    .values__grid, .fgrid, .trust__grid { grid-template-columns: 1fr; }
+    .step__top { gap: 12px; }
+    .step__ic { width: 46px; height: 46px; border-radius: 12px; }
+    .step__ic svg { width: 22px; height: 22px; }
+    .steps--timeline { padding-left: 40px; }
+    .steps--timeline::before { left: 12px; }
+    .steps--timeline .step::before { left: -30px; }
+    .audience { flex-direction: column; }
+    .audience .btn { flex: 1 1 auto; }
     .ctaband { padding: 44px 24px; border-radius: 20px; }
     .wrap { padding-inline: 18px; }
+    .excerpt { padding: 18px 18px; margin-bottom: 28px; }
+    .excerpt__line { font-size: .84rem; }
+    .excerpt__arrow { font-size: .78rem; }
   }
 
   /* mobile menu */
@@ -326,6 +445,64 @@
   .mmenu .btn { width: 100%; justify-content: center; margin-top: 18px; }
 
   :focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; border-radius: 4px; }
+
+  /* ---------- Dark mode (system setting only, no toggle) ---------- */
+  /* 다크모드 임시 비활성 — 재활성: " and (prefers-color-scheme: light)" 제거 */
+  @media (prefers-color-scheme: dark) and (prefers-color-scheme: light) {
+    :root {
+      --ink: #f0eef6;
+      --ink-soft: #c9c5d6;
+      --muted: #9b96ab;
+      --line: #2d2940;
+      --line-soft: #211d2e;
+      --paper: #121017;
+      --surface: #1b1824;
+      --lav: #262047;
+      --lav-deep: #3b3570;
+      --indigo: #7b73f7;
+      --mint: #34d399;
+      --amber: #f5a524;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 16px rgba(0, 0, 0, .3);
+      --shadow-md: 0 12px 40px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
+      --shadow-lg: 0 30px 70px rgba(0, 0, 0, .6), 0 6px 16px rgba(0, 0, 0, .4);
+    }
+
+    .hd { background: rgba(18, 16, 23, .82); }
+    .hd.scrolled { background: rgba(27, 24, 36, .9); }
+
+    /* --indigo is brightened above for text/icon contrast on dark backgrounds; solid
+       fills that carry white text (button, max-scope chip) need a slightly
+       deeper indigo so the white text itself still clears 4.5:1 */
+
+    .btn--primary { background: #5c52ee; box-shadow: 0 6px 18px rgba(92, 82, 238, .45); }
+    .btn--primary:hover { background: #6a60f2; box-shadow: 0 10px 24px rgba(92, 82, 238, .55); }
+
+    .scope--max { background: #5c52ee; border-color: #5c52ee; box-shadow: 0 6px 18px rgba(92, 82, 238, .45); }
+
+    .sec--tint {
+      background:
+        repeating-linear-gradient(90deg, rgba(138, 131, 243, .06) 0 1px, transparent 1px 24px),
+        linear-gradient(180deg, #15121c, #1a1726);
+    }
+
+    .wave .bar, .badge__eq i { background: linear-gradient(180deg, #a29bfa, #6b62f5); }
+
+    .show__fig .tag { background: #2c2740; }
+
+    .scope { color: #b7b0fa; }
+
+    /* base .fg__tag (indigo on lav) drops to 4.09:1 on dark lav — below WCAG AA 4.5:1 */
+    #features .fg__tag { color: #b7b0fa; }
+
+    .mmenu.open { background: rgba(18, 16, 23, .98); }
+
+    /* screenshots were captured in light UI: keep the browser frame's chrome light,
+       only the outer border adapts to sit on a dark page */
+    .frame { background: #fff; border-color: rgba(255, 255, 255, .14); }
+    .frame__bar { background: #f6f6fa; border-bottom-color: #e8e7ef; }
+    .frame__bar .u { background: #fff; border-color: #e8e7ef; color: #6f6c7d; }
+    .frame img { background: #f6f6fa; }
+  }
 </style>
 </head>
 <body>
@@ -334,12 +511,13 @@
 <header class="hd" id="hd">
   <div class="wrap hd__in">
     <a class="brand" href="#top" aria-label="또박또박 홈">
-      <span class="mark">또</span><span>또박또박</span>
+      <img class="mark" src="assets/favicon-128.png" alt="" width="30" height="30" /><span>또박또박</span>
     </a>
     <nav class="nav" aria-label="주요 메뉴">
       <a class="lnk" href="#features">기능</a>
       <a class="lnk" href="#showcase">화면</a>
       <a class="lnk" href="#ai-chat">AI 챗</a>
+      <a class="lnk" href="#trust">신뢰</a>
       <a class="lnk" href="#why">차별점</a>
       <a class="lnk" href="https://github.com/jongik-sv/ddobakddobak/blob/main/docs/기능-인벤토리.md">기능 인벤토리</a>
     </nav>
@@ -356,6 +534,7 @@
   <a href="#features">기능</a>
   <a href="#showcase">화면</a>
   <a href="#ai-chat">AI 챗</a>
+  <a href="#trust">신뢰</a>
   <a href="#why">차별점</a>
   <a href="https://github.com/jongik-sv/ddobakddobak/blob/main/docs/기능-인벤토리.md">기능 인벤토리</a>
   <a href="https://github.com/jongik-sv/ddobakddobak" target="_blank" rel="noopener">GitHub</a>
@@ -370,7 +549,7 @@
       <div class="hero__txt">
         <span class="eyebrow"><span class="dot"></span>실시간 AI 회의록 · 셀프호스트</span>
         <h1>회의에 집중하세요.<br />기록은 <span class="accent">또박또박</span>이 합니다.</h1>
-        <p class="hero__sub">회의 음성을 실시간으로 받아쓰고, AI가 핵심 요약·결정사항·할 일까지 정리합니다. 음성도 회의록도 우리 서버 안에만 머뭅니다.</p>
+        <p class="hero__sub">회의는 늘고, 정확한 기록을 클라우드에 맡기기는 불안합니다. 또박또박은 우리 서버 안에서 끝냅니다. 회의 음성을 실시간으로 받아쓰고, AI가 핵심 요약·결정사항·할 일까지 정리합니다.</p>
         <div class="hero__cta">
           <a class="btn btn--primary" href="https://github.com/jongik-sv/ddobakddobak/blob/main/배포가이드.md">설치 가이드 보기</a>
           <a class="btn btn--ghost" href="#features">주요 기능 둘러보기</a>
@@ -388,19 +567,22 @@
           <img src="assets/05-meeting-detail.png" alt="회의 상세 화면: 화자별 전사, AI가 작성한 핵심 요약과 인용 마커, AI 챗" loading="eager" />
         </div>
         <div class="badge">
-          <span class="ic" aria-hidden="true">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>
-          </span>
+          <div class="badge__live" aria-hidden="true">
+            <span class="badge__eq"><i style="--eq-dur:2.1s;--eq-delay:-.2s"></i><i style="--eq-dur:2.6s;--eq-delay:-.9s"></i><i style="--eq-dur:1.9s;--eq-delay:-.5s"></i><i style="--eq-dur:2.4s;--eq-delay:-1.3s"></i><i style="--eq-dur:2.2s;--eq-delay:-.7s"></i></span>
+            <span class="badge__tc" id="badgeTc">00:00</span>
+          </div>
           <div><b>핵심 요약 자동 완성</b><small>00:00 – 1:22:57 · AI 회의록</small></div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ========== Waveform timeline divider ========== -->
-  <div class="wrap timeline" aria-hidden="true">
-    <div class="wave" id="wave"></div>
-    <div class="ticks"><span>00:00 녹음 시작</span><span>02:30 실시간 요약</span><span>05:00 결정·할 일</span><span>07:14 회의 종료</span></div>
+  <!-- ========== Waveform timeline divider (also serves as in-page nav) ========== -->
+  <div class="wrap timeline">
+    <div class="wave" id="wave" aria-hidden="true"></div>
+    <nav class="ticks" aria-label="이 페이지 훑어보기">
+      <a href="#top">00:00 녹음 시작</a><a href="#how">02:30 실시간 요약</a><a href="#showcase">05:00 결정·할 일</a><a href="#why">07:14 회의 종료</a>
+    </nav>
   </div>
 
   <!-- ========== Values ========== -->
@@ -429,6 +611,13 @@
     </div>
   </section>
 
+  <!-- ========== Audience split ========== -->
+  <div class="wrap audience reveal">
+    <a class="btn btn--ghost" href="#trust">보안이 걱정이신가요<span class="arr">→</span> 신뢰</a>
+    <a class="btn btn--ghost" href="#ai-chat">회의가 너무 많으신가요<span class="arr">→</span> AI 챗</a>
+    <a class="btn btn--ghost" href="#why">직접 골라 쓰고 싶으신가요<span class="arr">→</span> 차별점</a>
+  </div>
+
   <!-- ========== How it works (timecode steps) ========== -->
   <section class="sec" id="how">
     <div class="wrap">
@@ -437,23 +626,38 @@
         <h2>녹음 버튼 하나로, 회의록까지.</h2>
         <p>한 번의 녹음이 자막에서 구조화된 회의록으로, 그리고 검색 가능한 팀 자산으로 이어집니다.</p>
       </div>
-      <div class="steps reveal">
+      <div class="steps steps--timeline reveal">
         <div class="step">
-          <span class="step__tc live">00:00 · 녹음</span>
+          <div class="step__top">
+            <span class="step__ic step__ic--live" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
+            <div class="step__body">
+              <span class="step__tc live">00:00 · 녹음</span>
+              <h3>말하면 자막이 됩니다</h3>
+              <p>마이크와 시스템 오디오를 함께 받아 실시간으로 받아씁니다. 9개 언어를 인식하고 화자를 자동으로 구분합니다.</p>
+            </div>
+          </div>
           <span class="ln" aria-hidden="true"></span>
-          <h3>말하면 자막이 됩니다</h3>
-          <p>마이크와 시스템 오디오를 함께 받아 실시간으로 받아씁니다. 9개 언어를 인식하고 화자를 자동으로 구분합니다.</p>
         </div>
         <div class="step">
-          <span class="step__tc">진행 중 · AI</span>
+          <div class="step__top">
+            <span class="step__ic" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+            <div class="step__body">
+              <span class="step__tc">진행 중 · AI</span>
+              <h3>AI가 정리합니다</h3>
+              <p>설정한 주기로 핵심 요약·논의·결정·할 일을 구조화합니다. 개발진행·스탠드업·인터뷰 등 회의 유형별 양식을 따릅니다.</p>
+            </div>
+          </div>
           <span class="ln" aria-hidden="true"></span>
-          <h3>AI가 정리합니다</h3>
-          <p>설정한 주기로 핵심 요약·논의·결정·할 일을 구조화합니다. 개발진행·스탠드업·인터뷰 등 회의 유형별 양식을 따릅니다.</p>
         </div>
         <div class="step">
-          <span class="step__tc done">회의 후 · 활용</span>
-          <h3>검색하고 공유합니다</h3>
-          <p>전사·요약을 전역에서 찾고, 회의에 직접 질문하고, 내보내기와 D'Flow 연동으로 팀과 나눕니다.</p>
+          <div class="step__top">
+            <span class="step__ic step__ic--done" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+            <div class="step__body">
+              <span class="step__tc done">회의 후 · 활용</span>
+              <h3>검색하고 공유합니다</h3>
+              <p>전사·요약을 전역에서 찾고, 회의에 직접 질문하고, 내보내기와 D'Flow 연동으로 팀과 나눕니다.</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -499,6 +703,7 @@
             <li>요약·답변 문장마다 발화 시각·화자 인용</li>
             <li>인용 클릭 시 원본 오디오의 해당 지점으로 점프</li>
             <li>잘못 들은 용어는 오타 수정·교정 규칙으로 일괄 교정</li>
+            <li>화자분리가 틀려도 행 단위로 직접 되돌립니다</li>
           </ul>
         </div>
         <div class="show__fig">
@@ -540,7 +745,7 @@
           <ul class="flist">
             <li>카드/리스트 뷰, 상태·날짜·최근 3일 퀵필터와 검색</li>
             <li>프로젝트 즐겨찾기와 멤버 초대, 폴더 가시성 관리</li>
-            <li>회의·폴더·프로젝트를 통째로 내보내고 가져오기</li>
+            <li>회의·폴더·프로젝트를 통째로 내보내고 가져오기 — 데이터가 특정 벤더에 갇히지 않습니다</li>
           </ul>
         </div>
         <div class="show__fig">
@@ -611,6 +816,37 @@
     </div>
   </section>
 
+  <!-- ========== Trust (organizational advantage) ========== -->
+  <section class="sec sec--tint" id="trust">
+    <div class="wrap">
+      <div class="sechead reveal">
+        <span class="eyebrow">조직을 위한 이유</span>
+        <h2>조직이 안심하는 네 가지 이유.</h2>
+        <p>보안 심사, 데이터 삭제 요구, 벤더 종속, AI 공급사 리스크 — IT 의사결정자가 묻는 질문에 구조로 답합니다.</p>
+      </div>
+      <div class="trust__grid">
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg></span><h3>보안 심사, 구조로 통과</h3></div>
+          <p>음성 인식부터 요약까지 사내 서버·개인 기기 안에서 완결됩니다. 인터넷이 끊겨도 로컬 LLM과 온디바이스 STT(Android)로 계속 동작합니다.</p>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/><path d="M10 11v6M14 11v6"/></svg></span><h3>기밀 발언의 비가역 파기</h3></div>
+          <p>실수로 녹음된 민감 발언은 전사뿐 아니라 원본 오디오까지 되돌릴 수 없게 파기합니다. "삭제 요구에 대응 가능한가"에 실증으로 답합니다.</p>
+          <p class="fg__sub">협업자는 읽기 전용으로 제한하고, 회의 잠금·단일 기기 잠금으로 접근을 통제합니다.</p>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg></span><h3>락인 없는 데이터</h3></div>
+          <p>회의·폴더·프로젝트를 통째로 .tgz로 백업·이관하고, 요약은 zip으로 일괄 내보냅니다. 데이터가 특정 벤더에 갇히지 않습니다.</p>
+        </div>
+        <div class="fg reveal">
+          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 12v-2a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 12v2a4 4 0 0 1-4 4H3"/></svg></span><h3>AI 공급사에 휘둘리지 않는 LLM</h3></div>
+          <p>프리셋 여러 개를 등록해 전환하고, API 키 없이 CLI로 돌리거나, 완전 내부망 로컬 LLM으로 바꿉니다. 가격·정책 변화에 조직이 종속되지 않습니다.</p>
+        </div>
+      </div>
+      <p class="trust__note reveal">별도 DB 서버·GPU 증설 없이 SQLite와 데스크톱 앱만으로, GPU 없는 PC에서도 CPU 엔진으로 오늘 바로 파일럿을 시작할 수 있습니다.</p>
+    </div>
+  </section>
+
   <!-- ========== Feature grid ========== -->
   <section class="sec" id="features">
     <div class="wrap">
@@ -621,52 +857,52 @@
       </div>
       <div class="fgrid">
         <div class="fg reveal">
-          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></svg></span><h3>녹음 · STT</h3></div>
-          <ul><li>실시간 음성 인식, VAD 무음 스킵</li><li>오디오 업로드 · 다중 파일 병합 전사</li><li>페이지 전체 드래그앤드롭 업로드</li><li>9개 언어 · 시스템 오디오 캡처</li></ul>
+          <div class="fg__top"><span class="fg__tag" aria-hidden="true">rec</span><h3>녹음 · STT</h3></div>
+          <ul><li>실시간 음성 인식, VAD 무음 스킵</li><li>끊긴 여러 녹음을 무음 간격으로 이어 하나의 회의록으로</li><li>화상회의 상대방 목소리까지 함께 녹음(macOS/Windows 네이티브 시스템 오디오)</li><li>페이지 전체 드래그앤드롭 업로드 · 9개 언어 인식</li></ul>
         </div>
         <div class="fg reveal">
-          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></span><h3>AI 회의록 · 요약</h3></div>
+          <div class="fg__top"><span class="fg__tag" aria-hidden="true">notes</span><h3>AI 회의록 · 요약</h3></div>
           <ul><li>핵심·논의·결정·할 일 구조화</li><li>회의 유형별 양식, 압축율 5단계</li><li>연결회의: 이전 요약 상단 고정</li><li>결정·할 일 표 + Mermaid 자동 도식화</li><li>자연어 피드백으로 회의록 수정</li></ul>
         </div>
         <div class="fg reveal">
-          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20v-1a5 5 0 0 1 9-3M14 20v-.5a4 4 0 0 1 7-2.5"/></svg></span><h3>화자 분리</h3></div>
+          <div class="fg__top"><span class="fg__tag" aria-hidden="true">speak</span><h3>화자 분리</h3></div>
           <ul><li>발화자 자동 구분, 회의별 화자 인식</li><li>화자 이름 인라인 편집</li><li>행 단위 화자변경 · 발언 분할</li><li>화자분리만 다시 실행</li></ul>
         </div>
         <div class="fg reveal">
-          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg></span><h3>AI 챗</h3></div>
+          <div class="fg__top"><span class="fg__tag" aria-hidden="true">chat</span><h3>AI 챗</h3></div>
           <ul><li>회의에 질문, 실시간 스트리밍 답변</li><li>회의/폴더/프로젝트 범위 전환</li><li>답변마다 회의로 인용 점프</li><li>답변 확대보기 · Markdown 저장</li></ul>
         </div>
         <div class="fg reveal">
-          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span><h3>검색</h3></div>
+          <div class="fg__top"><span class="fg__tag" aria-hidden="true">search</span><h3>검색</h3></div>
           <ul><li>전사·요약 전역 검색과 하이라이트</li><li>화자·날짜·상태 필터</li><li>회의 안에서 본문 검색</li><li>의미 검색(임베딩) 기반 발췌</li></ul>
         </div>
         <div class="fg reveal">
-          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8"/><path d="M16 6l-4-4-4 4M12 2v14"/></svg></span><h3>권한 · 보안</h3></div>
+          <div class="fg__top"><span class="fg__tag" aria-hidden="true">access</span><h3>권한 · 보안</h3></div>
           <ul><li>회의 협업자 초대 — 비소유자는 읽기 전용</li><li>회의 잠금 · 중요 표시</li><li>단일 녹음 기기 잠금, 다른 기기는 뷰어</li><li>기밀 구간 절단(비가역 파기)</li></ul>
         </div>
         <div class="fg reveal">
-          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h8M16 3h5v5M21 3l-9 9"/></svg></span><h3>내보내기 · 가져오기</h3></div>
+          <div class="fg__top"><span class="fg__tag" aria-hidden="true">export</span><h3>내보내기 · 가져오기</h3></div>
           <ul><li>MD·PDF·DOCX·외부 LLM 프롬프트(화자 실명)</li><li>폴더·프로젝트 요약 zip 일괄 내보내기</li><li>회의·폴더·프로젝트 .tgz 이관·백업</li><li>D'Flow 연동 — 전송 배지·회의 연결</li></ul>
         </div>
         <div class="fg reveal">
-          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01"/></svg></span><h3>예약 · 자동화</h3></div>
+          <div class="fg__top"><span class="fg__tag" aria-hidden="true">sched</span><h3>예약 · 자동화</h3></div>
           <ul><li>예약 회의 자동/수동 시작</li><li>주간·일간 반복 자동 생성</li><li>다가오는·놓친 예약 알림</li><li>데스크톱 백그라운드·트레이</li></ul>
         </div>
         <div class="fg reveal">
-          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 2.6 14H2.5a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4 7.6l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 4.6h.1A1.6 1.6 0 0 0 10 2.5a2 2 0 1 1 4 0v.1A1.6 1.6 0 0 0 17 4.6a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a2 2 0 1 1 0 4h-.1z"/></svg></span><h3>설정 · 모델</h3></div>
+          <div class="fg__top"><span class="fg__tag" aria-hidden="true">model</span><h3>설정 · 모델</h3></div>
           <ul><li>요약·챗 LLM 직접 선택 · 연결 테스트</li><li>서버 LLM 프리셋 프로필 전환</li><li>로컬 LLM(Ollama·LM Studio)으로 오프라인</li><li>STT 엔진 · 화자분리 · 회의 언어 조정</li></ul>
         </div>
         <div class="fg reveal">
-          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span><h3>데스크톱 · 모바일</h3></div>
+          <div class="fg__top"><span class="fg__tag" aria-hidden="true">device</span><h3>데스크톱 · 모바일</h3></div>
           <ul><li>macOS·Windows·Linux 데스크톱 앱</li><li>모바일 잠금화면 백그라운드 녹음</li><li>완전 오프라인 온디바이스 전사</li><li>로컬/서버 모드 선택</li></ul>
         </div>
         <div class="fg reveal">
-          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg></span><h3>할 일 · 결정</h3></div>
-          <ul><li>Action Items 표(담당·기한)를 회의록에 자동 포함</li><li>결정사항 표로 회의 결론 정리</li><li>타임스탬프 북마크</li><li>명함 OCR로 참석자 자동 등록</li></ul>
+          <div class="fg__top"><span class="fg__tag" aria-hidden="true">tasks</span><h3>할 일 · 결정</h3></div>
+          <ul><li>Action Items 표(담당·기한)를 회의록에 자동 포함</li><li>결정사항 표로 회의 결론 정리</li><li>타임스탬프 북마크</li><li>명함 OCR로 참석자 자동 등록 — 한국 사내 회의 특화</li></ul>
         </div>
         <div class="fg reveal">
-          <div class="fg__top"><span class="fg__ic" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><h3>폴더 · 프로젝트</h3></div>
-          <ul><li>프로젝트별 작업 공간과 멤버 초대</li><li>프로젝트 즐겨찾기 별 토글 · 필터</li><li>도메인 파일(용어집) 공유 · 용어 교정 규칙</li><li>폴더 트리 분류 · 브레드크럼</li><li>휴지통 소프트삭제 · 복구</li></ul>
+          <div class="fg__top"><span class="fg__tag" aria-hidden="true">space</span><h3>폴더 · 프로젝트</h3></div>
+          <ul><li>프로젝트별 작업 공간과 멤버 초대</li><li>프로젝트 즐겨찾기 별 토글 · 필터</li><li>폴더별 용어사전으로 전사·회의록 자동 일괄 교정 — 고유명사 많은 한국어 사내 회의 특화</li><li>폴더 트리 분류 · 브레드크럼</li><li>휴지통 소프트삭제 · 복구</li></ul>
         </div>
       </div>
     </div>
@@ -674,6 +910,12 @@
 
   <!-- ========== Why / differentiator ========== -->
   <section class="sec sec--tint" id="why">
+    <div class="wrap">
+      <div class="excerpt reveal">
+        <p class="excerpt__line"><span class="tc">[02:41]</span> 김 팀장 — "이번 분기 배포는 금요일로 확정합시다."</p>
+        <p class="excerpt__arrow">↳ AI 요약 · <b>결정사항</b> — 배포 일정을 금요일로 확정<span class="tc">[02:41] 인용</span></p>
+      </div>
+    </div>
     <div class="wrap diff">
       <div class="diff__txt reveal">
         <span class="eyebrow">왜 또박또박인가</span>
@@ -683,7 +925,7 @@
           <div class="df"><span class="df__n">01</span><div><h4>데이터 주권</h4><p>음성·전사·요약이 우리 인프라 밖으로 나가지 않습니다. 민감한 사내 회의를 그대로 맡길 수 있습니다.</p></div></div>
           <div class="df"><span class="df__n">02</span><div><h4>근거 기반</h4><p>모든 요약과 답변이 발화 시각·화자로 검증됩니다. AI 환각을 한 번의 클릭으로 확인합니다.</p></div></div>
           <div class="df"><span class="df__n">03</span><div><h4>교차 회의</h4><p>한 회의가 아니라 폴더·프로젝트 전체에 질문합니다. 쌓일수록 더 똑똑해지는 팀 지식이 됩니다.</p></div></div>
-          <div class="df"><span class="df__n">04</span><div><h4>모델 자유</h4><p>요약·챗 모델을 직접 고릅니다. Anthropic·OpenAI·로컬 Ollama까지, 인터넷 없이도 동작합니다.</p></div></div>
+          <div class="df"><span class="df__n">04</span><div><h4>모델 자유</h4><p>STT 엔진 8종·LLM 프로바이더 5종, 설정 파일 한 줄로 전환합니다. Claude·Gemini·Codex CLI를 그대로 붙이면 API 키 발급 없이도 요약·챗이 돌아가고, 완전히 인터넷 없이도 동작합니다.</p></div></div>
         </div>
       </div>
       <div class="diff__fig reveal">
@@ -702,13 +944,22 @@
   <section class="sec" style="padding-bottom:0;">
     <div class="wrap">
       <div class="ctaband reveal">
-        <span class="eyebrow">셀프호스트 · 무료로 시작</span>
+        <span class="eyebrow">셀프호스트 · 오늘 바로 시작</span>
         <h2>회의록 쓰는 시간, 또박또박에 맡기세요.</h2>
         <p>데스크톱 앱을 설치하거나 팀 서버에 올리면 끝. 첫 회의부터 받아쓰기와 AI 회의록이 함께 시작됩니다.</p>
         <div class="ctaband__row">
-          <a class="btn btn--light" href="https://github.com/jongik-sv/ddobakddobak/blob/main/배포가이드.md">설치 가이드 보기</a>
-          <a class="btn btn--outline" href="https://github.com/jongik-sv/ddobakddobak/blob/main/docs/기능-인벤토리.md">기능 인벤토리</a>
-          <a class="btn btn--outline" href="https://github.com/jongik-sv/ddobakddobak" target="_blank" rel="noopener">GitHub</a>
+          <div class="ctaband__item">
+            <span class="ctaband__tag">개발자·파일럿 시작</span>
+            <a class="btn btn--light" href="https://github.com/jongik-sv/ddobakddobak/blob/main/배포가이드.md">설치 가이드 보기</a>
+          </div>
+          <div class="ctaband__item">
+            <span class="ctaband__tag">IT 검토용 전체 기능 목록(권한·보안 포함)</span>
+            <a class="btn btn--outline" href="https://github.com/jongik-sv/ddobakddobak/blob/main/docs/기능-인벤토리.md">기능 인벤토리</a>
+          </div>
+          <div class="ctaband__item">
+            <span class="ctaband__tag">코드 직접 확인</span>
+            <a class="btn btn--outline" href="https://github.com/jongik-sv/ddobakddobak" target="_blank" rel="noopener">GitHub</a>
+          </div>
         </div>
       </div>
     </div>
@@ -721,8 +972,9 @@
   <div class="wrap">
     <div class="foot__in">
       <div class="foot__brand">
-        <a class="brand" href="#top"><span class="mark">또</span><span>또박또박</span></a>
+        <a class="brand" href="#top"><img class="mark" src="assets/favicon-128.png" alt="" width="30" height="30" /><span>또박또박</span></a>
         <p>회의 음성을 실시간으로 받아쓰고 AI가 정리하는 셀프호스트 회의 어시스턴트. 회의에 집중하세요, 기록은 또박또박이 합니다.</p>
+        <p>블랙박스가 아닙니다 — Rails+React+Python 구조 그대로, 코드는 GitHub에서 확인하세요.</p>
       </div>
       <div class="foot__links">
         <div class="foot__col">
@@ -751,6 +1003,7 @@
 
 <script>
   document.documentElement.classList.add('js');
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // header shadow on scroll
   var hd = document.getElementById('hd');
@@ -793,8 +1046,20 @@
     el.appendChild(frag);
   })();
 
+  // hero badge live timecode (frozen at 00:00 when reduced-motion is requested)
+  (function () {
+    var tc = document.getElementById('badgeTc');
+    if (!tc || reduce) return;
+    var s = 0;
+    setInterval(function () {
+      s++;
+      var m = Math.floor(s / 60);
+      var sec = s % 60;
+      tc.textContent = (m < 10 ? '0' + m : m) + ':' + (sec < 10 ? '0' + sec : sec);
+    }, 1000);
+  })();
+
   // scroll reveal
-  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var reveals = document.querySelectorAll('.reveal');
   if (reduce || !('IntersectionObserver' in window)) {
     reveals.forEach(function (r) { r.classList.add('in'); });
