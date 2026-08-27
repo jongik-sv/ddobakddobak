@@ -254,23 +254,82 @@
   .step__body h3 { margin: 4px 0 6px; }
 
   /* ---------- Steps, timeline variant (vertical rail replaces the 3-col grid) ---------- */
-  .steps--timeline { display: block; position: relative; border: none; border-radius: 0; background: none; box-shadow: none; padding-left: 56px; }
+  .steps--timeline { display: block; position: relative; border: none; border-radius: 0; background: none; box-shadow: none; padding-left: 80px; }
   .steps--timeline::before {
-    content: ""; position: absolute; left: 19px; top: 10px; bottom: 10px; width: 2px;
-    background: repeating-linear-gradient(180deg, var(--lav-deep) 0 6px, transparent 6px 12px);
+    content: ""; position: absolute; left: 21px; top: var(--railTop, 46px); height: var(--railH, auto); width: 2px;
+    background: var(--line-soft); border-radius: 2px;
   }
+  .steps--timeline .rail__fill {
+    position: absolute; left: 21px; top: var(--railTop, 46px); width: 2px; height: 0;
+    background: linear-gradient(180deg, var(--live), var(--indigo), var(--mint));
+    border-radius: 2px; z-index: 1;
+  }
+  html.js .steps--timeline .rail__fill { transition: height .55s cubic-bezier(.2, .7, .2, 1); }
   .steps--timeline .step {
     border: 1px solid var(--line); border-radius: var(--r); background: var(--surface);
     box-shadow: var(--shadow-sm); padding: 26px 28px; margin-bottom: 18px;
+    transition: transform .5s cubic-bezier(.2, .7, .2, 1),
+      box-shadow .5s cubic-bezier(.2, .7, .2, 1), border-color .5s cubic-bezier(.2, .7, .2, 1);
   }
   .steps--timeline .step:last-child { margin-bottom: 0; }
-  .steps--timeline .step::before {
-    content: ""; position: absolute; left: -46px; top: 33px; width: 13px; height: 13px; border-radius: 50%;
-    background: var(--indigo); border: 3px solid var(--paper); box-shadow: 0 0 0 2px var(--lav-deep);
-  }
-  .steps--timeline .step:nth-child(1)::before { background: var(--live); }
-  .steps--timeline .step:nth-child(3)::before { background: var(--mint); }
   .steps--timeline .step .ln { display: none; }
+  .steps--timeline .step:nth-of-type(1) { --stepc: var(--live); --steprgb: 251, 91, 91; }
+  .steps--timeline .step:nth-of-type(2) { --stepc: var(--indigo); --steprgb: 79, 70, 229; }
+  .steps--timeline .step:nth-of-type(3) { --stepc: var(--mint); --steprgb: 15, 168, 119; }
+
+  /* rail dot marking each step (no numerals — pure color-coded dot) */
+  .steps--timeline .step__num {
+    position: absolute; left: -69px; top: 35px; width: 20px; height: 20px; border-radius: 50%;
+    z-index: 2;
+    border: 3px solid var(--paper);
+    box-shadow: 0 0 0 4px rgba(var(--steprgb, 148, 148, 160), .14), 0 3px 10px rgba(23, 21, 31, .16);
+  }
+  .steps--timeline .step:nth-of-type(1) .step__num { background: linear-gradient(135deg, var(--live), #ff8a76); }
+  .steps--timeline .step:nth-of-type(2) .step__num { background: linear-gradient(135deg, var(--indigo), var(--indigo-700)); }
+  .steps--timeline .step:nth-of-type(3) .step__num { background: linear-gradient(135deg, var(--mint), #0c8a63); }
+
+  /* JS-driven sequential selection: dim everything until scrolled into view, then reveal in order.
+     The dot (.step__num) is never opacity/filter-dimmed — it must stay fully opaque so it always
+     fully covers the rail line beneath it (no dim-then-pop flicker). Only its fill color changes:
+     solid neutral while dimmed, per-step gradient once selected/done. Text and icon dim instead. */
+  html.js .steps--timeline .step__body { opacity: .55; transition: opacity .5s cubic-bezier(.2, .7, .2, 1); }
+  html.js .steps--timeline .step__ic { filter: grayscale(1) opacity(.55); transition: filter .5s cubic-bezier(.2, .7, .2, 1); }
+  html.js .steps--timeline .step__num { transition: background .5s cubic-bezier(.2, .7, .2, 1); }
+  html.js .steps--timeline .step:not(.is-selected):not(.is-done) .step__num { background: #cdcbd8; }
+  html.js .steps--timeline .step.is-selected .step__body,
+  html.js .steps--timeline .step.is-done .step__body { opacity: 1; }
+  html.js .steps--timeline .step.is-selected .step__ic,
+  html.js .steps--timeline .step.is-done .step__ic { filter: none; }
+  html.js .steps--timeline .step.is-selected {
+    transform: translateY(-2px);
+    border-color: var(--stepc);
+    box-shadow: 0 16px 36px rgba(var(--steprgb), .16), var(--shadow-sm);
+  }
+  html.js .steps--timeline .step.is-selected .step__num {
+    animation: stepNumPop .5s cubic-bezier(.2, .7, .2, 1), stepRingPulse .7s ease-out;
+  }
+  @keyframes stepNumPop {
+    0% { transform: scale(1); }
+    45% { transform: scale(1.12); }
+    100% { transform: scale(1); }
+  }
+  @keyframes stepRingPulse {
+    0% { box-shadow: 0 0 0 0 rgba(var(--steprgb), .45), 0 3px 10px rgba(23, 21, 31, .16); }
+    100% { box-shadow: 0 0 0 10px rgba(var(--steprgb), 0), 0 3px 10px rgba(23, 21, 31, .16); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html.js .steps--timeline .step__body,
+    html.js .steps--timeline .step__ic { opacity: 1 !important; filter: none !important; }
+    html.js .steps--timeline .step:nth-of-type(1) .step__num { background: linear-gradient(135deg, var(--live), #ff8a76) !important; }
+    html.js .steps--timeline .step:nth-of-type(2) .step__num { background: linear-gradient(135deg, var(--indigo), var(--indigo-700)) !important; }
+    html.js .steps--timeline .step:nth-of-type(3) .step__num { background: linear-gradient(135deg, var(--mint), #0c8a63) !important; }
+    html.js .steps--timeline .rail__fill,
+    html.js .steps--timeline .step,
+    html.js .steps--timeline .step__body,
+    html.js .steps--timeline .step__num,
+    html.js .steps--timeline .step__ic { transition: none !important; animation: none !important; }
+    html.js .steps--timeline .step.is-selected { transform: none !important; }
+  }
 
   /* ---------- Showcase ---------- */
   .show { display: grid; grid-template-columns: 1fr 1.18fr; gap: 56px; align-items: center; }
@@ -427,9 +486,10 @@
     .step__top { gap: 12px; }
     .step__ic { width: 46px; height: 46px; border-radius: 12px; }
     .step__ic svg { width: 22px; height: 22px; }
-    .steps--timeline { padding-left: 40px; }
-    .steps--timeline::before { left: 12px; }
-    .steps--timeline .step::before { left: -30px; }
+    .steps--timeline { padding-left: 60px; }
+    .steps--timeline::before,
+    .steps--timeline .rail__fill { left: 17px; }
+    .steps--timeline .step__num { left: -51px; top: 31px; width: 16px; height: 16px; border-width: 2px; }
     .audience { flex-direction: column; }
     .audience .btn { flex: 1 1 auto; }
     .ctaband { padding: 44px 24px; border-radius: 20px; }
@@ -628,7 +688,9 @@
         <p>한 번의 녹음이 자막이 되고, 구조화된 회의록을 거쳐, 검색되는 팀 자산으로 남습니다.</p>
       </div>
       <div class="steps steps--timeline reveal">
+        <span class="rail__fill" aria-hidden="true"></span>
         <div class="step">
+          <span class="step__num" aria-hidden="true"></span>
           <div class="step__top">
             <span class="step__ic step__ic--live" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
             <div class="step__body">
@@ -640,6 +702,7 @@
           <span class="ln" aria-hidden="true"></span>
         </div>
         <div class="step">
+          <span class="step__num" aria-hidden="true"></span>
           <div class="step__top">
             <span class="step__ic" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
             <div class="step__body">
@@ -651,6 +714,7 @@
           <span class="ln" aria-hidden="true"></span>
         </div>
         <div class="step">
+          <span class="step__num" aria-hidden="true"></span>
           <div class="step__top">
             <span class="step__ic step__ic--done" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
             <div class="step__body">
@@ -1076,6 +1140,113 @@
   }
   // reveal everything before printing
   window.addEventListener('beforeprint', function () { reveals.forEach(function (r) { r.classList.add('in'); }); });
+
+  // "how it works" timeline: steps select in order as the rail fills, once scrolled into view
+  (function () {
+    var tl = document.querySelector('.steps--timeline');
+    if (!tl) return;
+    var steps = tl.querySelectorAll('.step');
+    var fill = tl.querySelector('.rail__fill');
+    var nums = tl.querySelectorAll('.step__num');
+    if (!steps.length || !fill || !nums.length) return;
+
+    // centers[i] = distance from the timeline container's top edge to the
+    // vertical center of dot i, in px. Recomputed on init + debounced resize
+    // (not per animation tick) so the track/fill line up with the actual
+    // rendered dot positions instead of a hardcoded guess.
+    var centers = [];
+
+    function measure() {
+      var cr = tl.getBoundingClientRect();
+      var next = [];
+      nums.forEach(function (n) {
+        var r = n.getBoundingClientRect();
+        next.push((r.top - cr.top) + r.height / 2);
+      });
+      centers = next;
+      var top = centers.length ? centers[0] : 46;
+      var h = centers.length ? Math.max(0, centers[centers.length - 1] - top) : 0;
+      tl.style.setProperty('--railTop', top + 'px');
+      tl.style.setProperty('--railH', h + 'px');
+      syncFillToState();
+    }
+
+    function fillHeightFor(i) {
+      if (!centers.length) return 0;
+      return Math.max(0, centers[i] - centers[0]);
+    }
+
+    // after a re-measure (e.g. viewport resize mid-sequence), snap the fill
+    // back to whatever step is currently active instead of leaving it stale.
+    function syncFillToState() {
+      var idx = -1;
+      steps.forEach(function (s, i) { if (s.classList.contains('is-selected') || s.classList.contains('is-done')) idx = i; });
+      fill.style.height = (idx < 0 ? 0 : fillHeightFor(idx)) + 'px';
+    }
+
+    measure();
+    var resizeT;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeT);
+      resizeT = setTimeout(measure, 150);
+    });
+
+    var started = false;
+    var settled = false;
+
+    function finish() {
+      if (settled) return;
+      settled = true;
+      steps.forEach(function (s) { s.classList.remove('is-selected'); s.classList.add('is-done'); });
+      fill.style.height = fillHeightFor(steps.length - 1) + 'px';
+    }
+
+    function run() {
+      if (started || settled) return;
+      started = true;
+      var HOLD = 1000;
+      steps.forEach(function (s, i) {
+        setTimeout(function () {
+          if (settled) return;
+          if (i > 0) { steps[i - 1].classList.remove('is-selected'); steps[i - 1].classList.add('is-done'); }
+          fill.style.height = fillHeightFor(i) + 'px';
+          s.classList.add('is-selected');
+        }, i * HOLD);
+      });
+      setTimeout(finish, steps.length * HOLD);
+    }
+
+    if (reduce || !('IntersectionObserver' in window)) { finish(); return; }
+
+    // once the section is (or becomes) visible, run the sequence and — no
+    // matter what happens to it — guarantee a fully-colored end state a few
+    // seconds later. This is the safety net for any timing hiccup (a
+    // throttled background tab, a layout race, etc.) that might otherwise
+    // strand a step mid-sequence looking permanently dimmed.
+    function onEnterView() {
+      run();
+      setTimeout(function () { if (!settled) finish(); }, 4000);
+    }
+
+    var tlIo = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { onEnterView(); tlIo.unobserve(e.target); }
+      });
+    }, { threshold: 0.35 });
+    tlIo.observe(tl);
+
+    // fallback: the section can already satisfy the threshold at the moment
+    // observe() is called — e.g. the page was loaded directly at the #how
+    // anchor, or the user landed mid-scroll — and some browsers don't
+    // reliably deliver a fresh IntersectionObserver callback for content
+    // that's already in view when observation starts. Check synchronously
+    // right after registering so the sequence isn't silently skipped.
+    var rect = tl.getBoundingClientRect();
+    var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    var visible = Math.max(0, Math.min(rect.bottom, vh) - Math.max(rect.top, 0));
+    var ratio = rect.height ? visible / rect.height : 0;
+    if (ratio >= 0.35) { tlIo.unobserve(tl); onEnterView(); }
+  })();
 
   // screenshot lightbox
   var lb = document.getElementById('lightbox');
