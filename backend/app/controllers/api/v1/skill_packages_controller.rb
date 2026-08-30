@@ -9,8 +9,14 @@ module Api
 
       SOURCE_DIR = Rails.root.join("..", "ext_skill").expand_path.freeze
 
-      # GET /api/ext/v1/skill_package (라우트는 Task A가 추가 예정)
+      # GET /api/v1/skill_package (Task A가 routes.rb에 추가 — Api::V1 네임스페이스,
+      # 계약표의 /api/ext/v1/* PAT 엔드포인트와는 별도 라우트).
       def show
+        unless SOURCE_DIR.directory?
+          return render json: { error: { code: "skill_package_missing", message: "ext_skill/ 디렉토리를 찾을 수 없습니다" } },
+            status: :internal_server_error
+        end
+
         buffer = Zip::OutputStream.write_buffer do |zos|
           source_files.each do |path|
             entry_name = path.relative_path_from(SOURCE_DIR).to_s
@@ -30,11 +36,14 @@ module Api
 
       private
 
-      # ext_skill/ 하위 전체 파일(디렉토리 제외)을 재귀 수집.
+      # ext_skill/ 하위 전체 파일(디렉토리·__pycache__·*.pyc 제외)을 재귀 수집.
       def source_files
         return [] unless SOURCE_DIR.directory?
 
-        Dir.glob(SOURCE_DIR.join("**", "*")).map { |p| Pathname.new(p) }.select(&:file?)
+        Dir.glob(SOURCE_DIR.join("**", "*"))
+          .map { |p| Pathname.new(p) }
+          .select(&:file?)
+          .reject { |p| p.to_s.include?("__pycache__") || p.extname == ".pyc" }
       end
     end
   end
