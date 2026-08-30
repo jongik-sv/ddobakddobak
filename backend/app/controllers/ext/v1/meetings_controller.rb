@@ -73,6 +73,13 @@ class Ext::V1::MeetingsController < Ext::V1::BaseController
     folder = Folder.kept.find_by(id: params[:folder_id])
     return relation.none unless folder
 
+    # FoldersController#set_project와 동일한 토큰 project_ids 제한 — 필터로 지정한 폴더가
+    # 토큰이 허용한 프로젝트 밖이면 존재하지 않는 폴더와 동일하게(빈 결과) 처리한다. scoped_meetings
+    # 자체가 이미 project_id로 교집합하므로 실제 유출은 없었지만, 폴더 단위 인가 검사가 빠져 있었다.
+    if api_token.project_ids.present? && api_token.project_ids.exclude?(folder.project_id)
+      return relation.none
+    end
+
     relation.where(folder_id: folder.subtree_ids)
   end
 

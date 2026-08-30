@@ -219,6 +219,28 @@ RSpec.describe "Ext::V1::Meetings", type: :request do
       expect(ids).to include(recent_meeting.id)
       expect(ids).not_to include(old_meeting.id)
     end
+
+    it "토큰 project_ids 제한 밖 폴더를 folder_id로 지정하면 빈 결과" do
+      other_project = create(:project)
+      other_folder = create(:folder, project: other_project)
+      create(:meeting, project: project, creator: owner)
+
+      _t, plaintext = issue_token(user: owner, project_ids: [ project.id ])
+      get "/api/ext/v1/meetings", params: { folder_id: other_folder.id }, headers: auth_header(plaintext)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["meetings"]).to eq([])
+    end
+
+    it "존재하지 않는 folder_id는 빈 결과(에러 아님)" do
+      create(:meeting, project: project, creator: owner)
+      _t, plaintext = issue_token(user: owner)
+
+      get "/api/ext/v1/meetings", params: { folder_id: 999_999 }, headers: auth_header(plaintext)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["meetings"]).to eq([])
+    end
   end
 
   describe "GET /meetings/:id" do
