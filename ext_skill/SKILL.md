@@ -44,7 +44,7 @@ python3 scripts/ddobak_api.py me
 | `transcript <id>` | 전사 전체 — `[mm:ss] 화자: 내용` 형식으로 출력 |
 | `summary <id>` | 최종 요약(핵심 요약/결정 사항/상세) |
 | `search <q> [--project N] [--limit N]` | 하이브리드 검색(발췌 + 회의 참조) |
-| `create --title T --project N [--folder N] --transcript-file F` | 텍스트 전사로 회의 생성(F는 JSON 파일) |
+| `create --title T --project N [--folder N] [--transcript-file F]` | 텍스트 전사로 회의 생성(F는 JSON 파일). 생략 시 빈 배열 — 오디오 업로드용 회의 생성(아래 워크플로 참고) |
 | `note <id> [--content C]` | `--content` 없으면 노트 조회, 있으면 추가 |
 | `summarize <id>` | 요약 재생성 트리거 |
 | `upload-audio <id> <file>` | 오디오 업로드 → STT 큐 |
@@ -87,6 +87,21 @@ python3 scripts/ddobak_api.py dump <meeting_id> --out ./notes
 python3 scripts/ddobak_api.py note <meeting_id> --content "다음 회의 전까지 확인할 것: ..."
 ```
 
+**오디오 파일을 회의로 올리기**
+
+이 API에 오디오를 직접 올리는 단일 엔드포인트는 없다 — `create`로 빈 회의를
+먼저 만들고 그 회의에 오디오를 붙이는 두 단계가 유일한 경로다(`--transcript-file`을
+생략하면 빈 배열이 자동 전송된다).
+
+```bash
+python3 scripts/ddobak_api.py create --title "주간 스탠드업" --project 12 --json
+# 응답의 meeting.id를 받아 오디오를 붙인다.
+python3 scripts/ddobak_api.py upload-audio <meeting_id> ./recording.m4a
+```
+
+이미 전사가 있거나 녹음·전사 진행 중인 회의에 오디오를 올리면 `422`(재시도 불가)로
+거부된다 — 코드·세부 조건은 `AGENT.md`의 "오디오 업로드 워크플로" 참고.
+
 ## 페이지네이션
 
 `meetings`는 응답에 `meta`(page/total_pages 등)를 포함한다. 다음 페이지가 있으면
@@ -106,3 +121,8 @@ exit code 1로 종료하므로, 반복 호출이 필요한 배치 작업에서�
 서버 오류(`{error:{code,message}}`)는 `오류: <message>`로 stderr에 출력되고
 exit code 1로 끝난다. 401/403이면 토큰 재발급이나 스코프 확인이 필요하고,
 404면 대상 프로젝트·회의·폴더 ID를 다시 확인해야 한다.
+
+**422는 재시도로 낫지 않는다.** 요청 내용 자체가 잘못됐다는 뜻이므로, 대기 후
+재시도하지 말고 파라미터·바디를 고쳐서 다시 보내야 한다(예: `query_required`·
+`invalid_title`·`invalid_folder`·`invalid_transcripts`·`file_required`·
+`invalid_state`·`not_started`). 코드별 의미는 `AGENT.md`의 오류 코드 표를 참고.

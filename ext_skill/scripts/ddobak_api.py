@@ -227,8 +227,13 @@ def cmd_search(args):
 
 
 def cmd_create(args):
-    with open(args.transcript_file, "r", encoding="utf-8") as f:
-        transcripts = json.load(f)
+    # --transcript-file 생략 시 빈 배열 — 텍스트 전사 없이 회의만 먼저 만들고 이어서
+    # upload-audio로 오디오를 붙이는 경로(AGENT.md "오디오 업로드 워크플로" 참고)에 대응한다.
+    if args.transcript_file:
+        with open(args.transcript_file, "r", encoding="utf-8") as f:
+            transcripts = json.load(f)
+    else:
+        transcripts = []
     body = {
         "title": args.title,
         "project_id": args.project,
@@ -378,7 +383,7 @@ def build_parser():
     p.add_argument("--title", required=True)
     p.add_argument("--project", type=int, required=True)
     p.add_argument("--folder", type=int)
-    p.add_argument("--transcript-file", required=True, help="[{speaker_name, content, started_at_ms?, ended_at_ms?}] JSON 파일")
+    p.add_argument("--transcript-file", help="[{speaker_name, content, started_at_ms?, ended_at_ms?}] JSON 파일. 생략 시 빈 배열(오디오 업로드용 회의 생성)")
     p.set_defaults(func=cmd_create)
 
     p = add("note", "노트 조회(기본) 또는 추가(--content)")

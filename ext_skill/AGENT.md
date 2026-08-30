@@ -24,8 +24,8 @@ Base URL: 환경변수 `DDOBAK_API_URL` (예: `https://10.110.2.175`)
 | `GET /api/ext/v1/meetings/:id/transcripts` | `transcripts:read` | 전사 전체(화자·ms) |
 | `GET /api/ext/v1/meetings/:id/summary` | `summaries:read` | final 요약(`key_points`/`decisions`/`notes_markdown`) |
 | `GET /api/ext/v1/search?q=&project_id=&folder_id=&limit=` | `search:read` | 하이브리드 검색(발췌 + 회의 참조) |
-| `POST /api/ext/v1/meetings` | `meetings:write` | 텍스트 전사 임포트 회의 생성 |
-| `POST /api/ext/v1/meetings/:id/audio` | `meetings:write` | 오디오 업로드(multipart `file`) → STT 큐 |
+| `POST /api/ext/v1/meetings` | `meetings:write` | 텍스트 전사 임포트 회의 생성(오디오 업로드 경로의 첫 단계이기도 하다 — 아래 "오디오 업로드 워크플로" 참고) |
+| `POST /api/ext/v1/meetings/:id/audio` | `meetings:write` | 오디오 업로드(multipart `file`) → STT 큐. 아래 제약 참고 |
 | `POST /api/ext/v1/meetings/:id/notes` | `meetings:write` | 에이전트 노트 append |
 | `GET /api/ext/v1/meetings/:id/notes` | `meetings:read` | API로 남긴 노트 조회 |
 | `POST /api/ext/v1/meetings/:id/summarize` | `meetings:write` | 요약 재생성 트리거(실행 중이면 409) |
@@ -56,11 +56,47 @@ Base URL: 환경변수 `DDOBAK_API_URL` (예: `https://10.110.2.175`)
 { "content": "다음 회의 전까지 견적서 확정 필요" }
 ```
 
+## 오디오 업로드 워크플로
+
+이 API에 "녹음하며 실시간으로 붙이는" 오디오 경로는 없다 — **회의를 먼저 만들고
+그 회의에 오디오 파일을 붙이는 두 단계**가 유일한 경로다.
+
+1. `POST /api/ext/v1/meetings`를 `transcripts: []`(빈 배열)로 호출해 전사 없는 회의를
+   만든다. `scripts/ddobak_api.py`를 쓴다면 `create` 서브커맨드에서 `--transcript-file`을
+   생략하면 자동으로 빈 배열이 전송된다.
+2. 응답으로 받은 `meeting.id`로 `POST /api/ext/v1/meetings/:id/audio`(multipart `file`)를
+   호출한다.
+
+`audio` 액션은 다음 두 조건에서 `422`로 거부한다(재시도가 아니라 요청 자체를
+바꿔야 하는 상태 오류 — 아래 "오류 응답" 참고):
+
+- 회의가 이미 녹음·전사 진행 중(`recording`/`transcribing` 상태)일 때 — 오디오
+  채널이 이미 점유돼 있다.
+- 회의에 이미 전사(transcript)가 있을 때 — 텍스트 임포트로 만든 회의 등 전사가
+  하나라도 있으면 오디오를 추가로 붙일 수 없다(재전사는 이 API 범위 밖).
+
+즉 오디오를 붙이려는 회의는 1단계에서 `transcripts: []`로 만든, 아직 전사가 없는
+회의여야 한다.
+
 ### 오류 응답
 
 모든 오류는 `{"error": {"code": "...", "message": "..."}}` 형식이며, HTTP 상태 코드는
 `401`(미인증) / `403`(스코프 부족) / `404`(대상 없음) / `409`(충돌, 예: 요약 재생성
-중복 실행) / `429`(rate limit — `Retry-After` 헤더 참고) 중 하나다.
+중복 실행) / `422`(요청 내용 자체가 잘못됨 — 아래 참고) / `429`(rate limit —
+`Retry-After` 헤더 참고) 중 하나다.
+
+**`422`는 재시도로 낫지 않는다** — 서버 상태가 바뀌길 기다리지 말고 `error.code`를
+보고 요청 파라미터·바디를 고쳐서 다시 보내야 한다. 현재 정의된 코드:
+
+| code | 발생 액션 | 의미 |
+|---|---|---|
+| `query_required` | `search` | 검색어(`q`)가 비어 있다 |
+| `invalid_title` | `create` | `title`이 비어 있다 |
+| `invalid_folder` | `create` | `folder_id`가 존재하지 않거나 다른 프로젝트 소속이다 |
+| `invalid_transcripts` | `create` | `transcripts`가 배열이 아니거나 항목이 올바르지 않다 |
+| `file_required` | `audio` | multipart `file` 파트가 없다 |
+| `invalid_state` | `audio` | 회의가 녹음·전사 진행 중이거나, 이미 전사가 있다(위 워크플로 참고) |
+| `not_started` | `summarize` | 회의가 아직 시작되지 않았다(`pending` 상태) |
 
 ## curl 예시
 
