@@ -243,6 +243,100 @@ RSpec.describe "Api::V1::Search", type: :request do
       end
     end
 
+    context "인가 스코프 (Meeting.accessible_by) — 남의 회의 미노출 회귀 방지" do
+      let(:other_user) { create(:user) }
+      let(:other_project) { create(:project, creator: other_user) }
+      let!(:other_membership) { create(:project_membership, user: other_user, project: other_project, role: "admin") }
+      let!(:other_meeting) { create(:meeting, project: other_project, creator: other_user, title: "타인 회의") }
+
+      before do
+        create(:transcript, meeting: other_meeting, content: "인가스코프매칭 비공개 전사", speaker_label: "SPEAKER_00")
+        create(:summary, meeting: other_meeting, notes_markdown: "인가스코프매칭 비공개 요약")
+      end
+
+      it "다른 프로젝트 비멤버는 남의 회의 전사·요약을 검색 결과로 볼 수 없다" do
+        get "/api/v1/search", params: { q: "인가스코프매칭" }
+        expect(response).to have_http_status(:ok)
+
+        json = response.parsed_body
+        expect(json["total"]).to eq(0)
+      end
+
+      context "같은 프로젝트 멤버(비소유자)" do
+        let(:member) { create(:user) }
+        let!(:member_membership) { create(:project_membership, user: member, project: other_project, role: "member") }
+
+        before { login_as(member) }
+
+        it "shared: false 회의는 결과에 나오지 않는다" do
+          other_meeting.update!(shared: false)
+
+          get "/api/v1/search", params: { q: "인가스코프매칭" }
+          expect(response).to have_http_status(:ok)
+
+          json = response.parsed_body
+          expect(json["total"]).to eq(0)
+        end
+
+        it "shared: true(폴더 없음) 회의는 결과에 나온다" do
+          other_meeting.update!(shared: true, folder_id: nil)
+
+          get "/api/v1/search", params: { q: "인가스코프매칭" }
+          expect(response).to have_http_status(:ok)
+
+          json = response.parsed_body
+          meeting_ids = json["results"].map { |r| r["meeting_id"] }
+          expect(meeting_ids).to include(other_meeting.id)
+        end
+
+        it "shared: true + 공유 폴더 소속 회의는 결과에 나온다 (Folder.visible_folder_ids 경유)" do
+          shared_folder = create(:folder, project: other_project, shared: true)
+          other_meeting.update!(shared: true, folder: shared_folder)
+
+          get "/api/v1/search", params: { q: "인가스코프매칭" }
+          expect(response).to have_http_status(:ok)
+
+          json = response.parsed_body
+          meeting_ids = json["results"].map { |r| r["meeting_id"] }
+          expect(meeting_ids).to include(other_meeting.id)
+        end
+
+        it "shared: true여도 비공개 폴더 소속 회의는 결과에 나오지 않는다 (폴더 우선 상속)" do
+          private_folder = create(:folder, project: other_project, shared: false)
+          other_meeting.update!(shared: true, folder: private_folder)
+
+          get "/api/v1/search", params: { q: "인가스코프매칭" }
+          expect(response).to have_http_status(:ok)
+
+          json = response.parsed_body
+          expect(json["total"]).to eq(0)
+        end
+      end
+
+      it "소유자 본인은 자신의 회의를 검색 결과로 볼 수 있다" do
+        login_as(other_user)
+
+        get "/api/v1/search", params: { q: "인가스코프매칭" }
+        expect(response).to have_http_status(:ok)
+
+        json = response.parsed_body
+        meeting_ids = json["results"].map { |r| r["meeting_id"] }
+        expect(meeting_ids).to include(other_meeting.id)
+      end
+
+      it "admin은 소속 프로젝트가 아니어도 모든 회의를 검색 결과로 볼 수 있다" do
+        admin = create(:user, :admin)
+        login_as(admin)
+
+        get "/api/v1/search", params: { q: "인가스코프매칭" }
+        expect(response).to have_http_status(:ok)
+
+        json = response.parsed_body
+        meeting_ids = json["results"].map { |r| r["meeting_id"] }
+        expect(meeting_ids).to include(other_meeting.id)
+      end
+    end
+
     context "응답 형식" do
       before do
         create(:transcript, meeting: meeting, content: "응답 형식 테스트 내용", speaker_label: "SPEAKER_00")

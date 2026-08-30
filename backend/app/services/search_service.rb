@@ -27,13 +27,14 @@ class SearchService
 
   private
 
-  # 필터(폴더/상태/기간)만 반영한 접근가능 회의 스코프. 실제 id를 Ruby 배열로 뽑아 거대 IN(?,?,…)에
-  # 박아넣지 않고, FTS 쿼리 안에 그대로 서브쿼리로 내려보낸다(select(:id).to_sql로 아래 재사용) —
-  # 무필터(전건) 검색 시 SQLite 바인드 변수 상한을 넘길 위험과 id 전건을 Ruby 힙에 올리는 비용을
-  # 없앤다. Meeting.kept와 각 where 절은 기존과 동일한 필터 조합을 그대로 유지한다.
+  # Meeting.accessible_by(user)(회의 목록과 동일 인가 스코프: admin은 kept 전체, 그 외는 프로젝트
+  # 멤버십 내 본인 소유 + 유효 공유 회의 — 두 분기 모두 kept를 통과하므로 kept 중복 적용 불필요)에
+  # 필터(폴더/상태/기간)만 얹는다. 실제 id를 Ruby 배열로 뽑아 거대 IN(?,?,…)에 박아넣지 않고,
+  # FTS 쿼리 안에 그대로 서브쿼리로 내려보낸다(select(:id).to_sql로 아래 재사용) — 무필터(전건)
+  # 검색 시 SQLite 바인드 변수 상한을 넘길 위험과 id 전건을 Ruby 힙에 올리는 비용을 없앤다.
   def accessible_meeting_scope
     @accessible_meeting_scope ||= begin
-      scope = Meeting.kept
+      scope = Meeting.accessible_by(@user)
       scope = scope.where(folder_id: @filters[:folder_id])         if @filters[:folder_id].present?
       scope = scope.where(status: @filters[:status])               if @filters[:status].present?
       scope = scope.where("meetings.created_at >= ?", @filters[:date_from]) if @filters[:date_from].present?
