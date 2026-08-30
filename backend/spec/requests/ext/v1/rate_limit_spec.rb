@@ -29,6 +29,8 @@ RSpec.describe "rack-attack /api/ext 스로틀", type: :request do
     get "/api/ext/v1/me", headers: headers
     expect(response).to have_http_status(:too_many_requests)
     expect(response.parsed_body["error"]["code"]).to eq("rate_limited")
+    # AGENT.md·SKILL.md·CLI(_request의 429 자동 재시도)가 이 헤더의 존재를 전제한다.
+    expect(response.headers["Retry-After"].to_i).to be_between(1, 60)
   end
 
   it "/api/ext/ 바깥 경로는 스로틀 대상이 아니다" do

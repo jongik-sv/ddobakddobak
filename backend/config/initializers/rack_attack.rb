@@ -38,10 +38,22 @@ class Rack::Attack
     req.ip if ext_api_request?(req)
   end
 
-  self.throttled_responder = lambda do |_req|
+  # Retry-After(초): 매치된 throttle의 period에서 현재 윈도우 경과분을 뺀 잔여 시간.
+  # match_data가 없으면(이론상 발생하지 않음 — throttled_responder는 매치된 요청에만 호출됨)
+  # 안전한 폴백으로 60초를 쓴다. AGENT.md·SKILL.md·CLI(_request의 429 재시도)가 이 헤더의
+  # 존재를 전제하므로 반드시 채워야 한다.
+  self.throttled_responder = lambda do |req|
+    match_data = req.env["rack.attack.match_data"]
+    retry_after = if match_data
+      elapsed = Time.now.to_i - match_data[:epoch_time].to_i
+      [ match_data[:period].to_i - elapsed, 1 ].max
+    else
+      60
+    end
+
     [
       429,
-      { "Content-Type" => "application/json" },
+      { "Content-Type" => "application/json", "Retry-After" => retry_after.to_s },
       [ { error: { code: "rate_limited", message: "요청 한도를 초과했습니다. 잠시 후 다시 시도하세요." } }.to_json ]
     ]
   end
