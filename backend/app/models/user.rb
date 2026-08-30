@@ -11,6 +11,7 @@ class User < ApplicationRecord
   has_many :created_projects, class_name: "Project", foreign_key: :created_by_id, inverse_of: :creator
   has_many :chat_messages, dependent: :destroy
   has_many :llm_profiles, dependent: :destroy
+  has_many :api_tokens, dependent: :destroy
   belongs_to :llm_profile, class_name: "LlmProfile", optional: true
   belongs_to :chat_llm_profile, class_name: "LlmProfile", optional: true
 

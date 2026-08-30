@@ -204,6 +204,11 @@ Rails.application.routes.draw do
       # LLM 프로필 (서버 풀 scope=server / 개인 풀 scope=personal)
       resources :llm_profiles, only: %i[index create update destroy]
 
+      # 세컨드 브레인 외부 API(PAT) 발급·조회·폐기(웹 UI용, 기존 JWT 인증)
+      resources :api_tokens, only: %i[index create destroy]
+      # skill_packages#show — Task F 소유, 컨트롤러는 아직 없음(라우트만 선언)
+      get :skill_package, to: "skill_packages#show"
+
       # User-scoped settings
       namespace :user do
         resource :llm_settings, only: [ :show, :update ] do
@@ -233,6 +238,36 @@ Rails.application.routes.draw do
       # D'Flow 조회 프록시(시크릿을 프런트에 보내지 않기 위함). 인증: 로그인 사용자면 허용.
       get "dflow/minutes", to: "meeting_dflow#minutes"
       get "dflow/meta",    to: "meeting_dflow#meta"
+    end
+  end
+
+  # ── 세컨드 브레인 외부 공개 API (PAT 인증, api/v1과 별도 인증·인가 경로) ──
+  # /api/ext/v1/... 경로가 정본(§40·rack-attack initializer의 /api/ext/ prefix와 일치)이므로
+  # 경로에만 /api 접두사를 붙이고, 컨트롤러 모듈은 Ext::V1::(namespace :api로 감싸면
+  # Api::Ext::V1::... 을 찾게 되어 어긋난다) 그대로 두기 위해 scope를 쓴다.
+  scope "/api" do
+    namespace :ext do
+      namespace :v1 do
+        get :me, to: "me#show"
+        get :search, to: "search#index" # Task C 소유, 컨트롤러 미구현(라우트만 선언)
+        resources :projects, only: %i[index] do # Task B 소유, 컨트롤러 미구현(라우트만 선언)
+          resources :folders, only: %i[index] # Task B 소유, 컨트롤러 미구현(라우트만 선언)
+        end
+        # 읽기 전용 — Task B 소유, 컨트롤러 미구현(라우트만 선언)
+        resources :meetings, only: %i[index show] do
+          member do
+            get :transcripts
+            get :summary
+          end
+        end
+        # 쓰기는 별도 컨트롤러로 분리(오케스트레이터 보정, 브리프 §7보다 우선) — 병렬 태스크 간
+        # 같은 컨트롤러 파일 동시 편집 충돌을 피하기 위함. 컨트롤러는 Task D 소유, 미구현(라우트만 선언)
+        post "meetings",               to: "meeting_writes#create"
+        post "meetings/:id/audio",     to: "meeting_writes#audio"
+        post "meetings/:id/summarize", to: "meeting_writes#summarize"
+        get  "meetings/:id/notes",     to: "meeting_notes#index"
+        post "meetings/:id/notes",     to: "meeting_notes#create"
+      end
     end
   end
 end

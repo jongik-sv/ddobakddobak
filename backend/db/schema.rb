@@ -10,7 +10,35 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_14_120001) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_30_020703) do
+  create_table "api_token_audit_logs", force: :cascade do |t|
+    t.string "action", null: false
+    t.integer "api_token_id", null: false
+    t.datetime "created_at", null: false
+    t.string "ip"
+    t.integer "meeting_id"
+    t.string "path"
+    t.index ["api_token_id", "created_at"], name: "index_api_token_audit_logs_on_api_token_id_and_created_at"
+    t.index ["api_token_id"], name: "index_api_token_audit_logs_on_api_token_id"
+  end
+
+  create_table "api_tokens", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.text "folder_ids"
+    t.datetime "last_used_at"
+    t.string "name", null: false
+    t.text "project_ids"
+    t.datetime "revoked_at"
+    t.text "scopes", default: "[]", null: false
+    t.string "token_digest", null: false
+    t.string "token_prefix", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["token_digest"], name: "index_api_tokens_on_token_digest", unique: true
+    t.index ["user_id"], name: "index_api_tokens_on_user_id"
+  end
+
   create_table "blocks", force: :cascade do |t|
     t.string "block_type", default: "text", null: false
     t.text "content"
@@ -18,6 +46,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_14_120001) do
     t.integer "meeting_id", null: false
     t.integer "parent_block_id"
     t.float "position", null: false
+    t.string "source", default: "user", null: false
     t.datetime "updated_at", null: false
     t.index ["meeting_id", "position"], name: "index_blocks_on_meeting_id_and_position"
     t.check_constraint "block_type IN ('text','heading1','heading2','heading3','bullet_list','numbered_list','checkbox','quote','divider')", name: "chk_blocks_block_type"
@@ -427,6 +456,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_14_120001) do
     t.check_constraint "role IN ('admin','manager','member')", name: "chk_users_role"
   end
 
+  add_foreign_key "api_token_audit_logs", "api_tokens"
+  add_foreign_key "api_tokens", "users"
   add_foreign_key "chat_messages", "meetings", on_delete: :cascade
   add_foreign_key "chat_messages", "users"
   add_foreign_key "domain_file_links", "domain_files", on_delete: :cascade

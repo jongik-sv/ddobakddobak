@@ -83,6 +83,26 @@ class Folder < ApplicationRecord
     FolderCollaborator.where(folder_id: [ id ] + ancestor_records.map(&:id), user_id: user.id).exists?
   end
 
+  # 세컨드 브레인 외부 API(Meeting.ext_accessible_by)용: user가 FolderCollaborator로 지정된
+  # 폴더와 그 모든 하위 폴더 id(collaborator?의 역방향 — 조상이 아닌 자손으로 상속).
+  # 전 폴더를 1번만 로드해 in-memory BFS로 계산(폴더당 쿼리 N+1 회피, visible_folder_ids와 동형).
+  def self.collaborator_inherited_folder_ids(user)
+    return [] unless user
+
+    base_ids = FolderCollaborator.where(user_id: user.id).pluck(:folder_id)
+    return [] if base_ids.empty?
+
+    children_by_parent = kept.to_a.group_by(&:parent_id)
+    seen = Set.new
+    queue = base_ids.dup
+    until queue.empty?
+      fid = queue.shift
+      next unless seen.add?(fid) # 이미 방문 → 스킵(사이클 가드)
+      (children_by_parent[fid] || []).each { |child| queue << child.id }
+    end
+    seen.to_a
+  end
+
   # 타인에게 보이는(자신+모든 조상 공유) 폴더 id 배열. accessible_by/tree 공용.
   # 전 폴더를 1번만 로드해 in-memory로 조상 체인 평가(폴더당 쿼리 N+1 회피).
   def self.visible_folder_ids

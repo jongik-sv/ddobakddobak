@@ -40,6 +40,9 @@ gem "image_processing", "~> 1.2"
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 gem "rack-cors"
 
+# 외부 공개 API(/api/ext) rate limit
+gem "rack-attack"
+
 # JSON Serializer
 gem "alba"
 
