@@ -206,7 +206,6 @@ Rails.application.routes.draw do
 
       # 세컨드 브레인 외부 API(PAT) 발급·조회·폐기(웹 UI용, 기존 JWT 인증)
       resources :api_tokens, only: %i[index create destroy]
-      # skill_packages#show — Task F 소유, 컨트롤러는 아직 없음(라우트만 선언)
       get :skill_package, to: "skill_packages#show"
 
       # User-scoped settings
@@ -249,19 +248,18 @@ Rails.application.routes.draw do
     namespace :ext do
       namespace :v1 do
         get :me, to: "me#show"
-        get :search, to: "search#index" # Task C 소유, 컨트롤러 미구현(라우트만 선언)
-        resources :projects, only: %i[index] do # Task B 소유, 컨트롤러 미구현(라우트만 선언)
-          resources :folders, only: %i[index] # Task B 소유, 컨트롤러 미구현(라우트만 선언)
+        get :search, to: "search#index"
+        resources :projects, only: %i[index] do
+          resources :folders, only: %i[index]
         end
-        # 읽기 전용 — Task B 소유, 컨트롤러 미구현(라우트만 선언)
+        # 읽기 전용(index/show/transcripts/summary) — Ext::V1::MeetingsController.
         resources :meetings, only: %i[index show] do
           member do
             get :transcripts
             get :summary
           end
         end
-        # 쓰기는 별도 컨트롤러로 분리(오케스트레이터 보정, 브리프 §7보다 우선) — 병렬 태스크 간
-        # 같은 컨트롤러 파일 동시 편집 충돌을 피하기 위함. 컨트롤러는 Task D 소유, 미구현(라우트만 선언)
+        # 쓰기는 별도 컨트롤러로 분리 — Ext::V1::MeetingWritesController·MeetingNotesController.
         post "meetings",               to: "meeting_writes#create"
         post "meetings/:id/audio",     to: "meeting_writes#audio"
         post "meetings/:id/summarize", to: "meeting_writes#summarize"
