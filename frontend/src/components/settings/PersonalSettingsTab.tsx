@@ -3,6 +3,7 @@ import UserLlmSettings from './UserLlmSettings'
 import UserLanguageSettings from './UserLanguageSettings'
 import UserSttSettings from './UserSttSettings'
 import PasswordChangeSection from './PasswordChangeSection'
+import ApiTokensPanel from './ApiTokensPanel'
 
 interface Props {
   showPasswordSection: boolean
@@ -71,6 +72,9 @@ export default function PersonalSettingsTab({ showPasswordSection }: Props) {
 
       {/* 내 LLM 설정 (사용자 개인) */}
       <UserLlmSettings />
+
+      {/* API 토큰 (사용자 개인 — 외부 도구·에이전트 연동용 PAT) */}
+      <ApiTokensPanel />
 
       {/* STT 전사 위치 (per-device 로컬 설정 — Android/Tauri 모바일에서만 노출) */}
       <UserSttSettings />
