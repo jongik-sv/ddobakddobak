@@ -158,21 +158,29 @@ class Ext::V1::MeetingWritesController < Ext::V1::BaseController
     (user.respond_to?(:admin?) && user.admin? && !project.blocks_admin_override?(user)) || project.member?(user)
   end
 
-  # folder_id 검증: (a) 프로젝트 소속이어야(아니면 422 — meetings_controller.rb#folder_in_project?와
-  # 동일 정책이되, 존재하지 않는 folder_id는 여기서도 통과시켜 이후 belongs_to에 맡긴다),
-  # (b) 토큰이 folder_ids로 제한돼 있으면 그 서브트리 안이어야(아니면 403 — scoped_meetings와
+  # folder_id 검증: (a) 존재해야(아니면 422 — meetings_controller.rb#folder_in_project?는 "존재하지
+  # 않으면 belongs_to에 맡긴다"지만, 여기서는 folder&.id로 이미 nil 정규화해 넘기므로 belongs_to가
+  # 검증할 기회 자체가 없다 — 검증하지 않으면 존재하지 않는 folder_id가 조용히 폐기되고 폴더 없이
+  # 201이 나간다. 그래서 존재 여부를 이 메서드가 직접 422로 거부한다),
+  # (b) 프로젝트 소속이어야(아니면 422 — 다른 프로젝트 폴더 지정 차단),
+  # (c) 토큰이 folder_ids로 제한돼 있으면 그 서브트리 안이어야(아니면 403 — scoped_meetings와
   # 동일 확장 규칙. 벗어난 폴더로 만들면 만든 본인 토큰으로도 그 회의를 다시 조회할 수 없다).
-  # @return [Array(Folder|nil, Boolean)] [폴더(없으면 nil), 이미 render했는가]
+  # @return [Array(Folder|nil, Boolean)] [폴더, 이미 render했는가]
   def resolve_create_folder(project)
     return [ nil, false ] if params[:folder_id].blank?
 
     folder = Folder.find_by(id: params[:folder_id])
-    if folder && folder.project_id != project.id
+    unless folder
+      render_error(:unprocessable_entity, "invalid_folder", "존재하지 않는 folder_id입니다")
+      return [ nil, true ]
+    end
+
+    if folder.project_id != project.id
       render_error(:unprocessable_entity, "invalid_folder", "다른 프로젝트의 폴더로는 지정할 수 없습니다")
       return [ nil, true ]
     end
 
-    if folder && api_token.folder_ids.present?
+    if api_token.folder_ids.present?
       allowed = Folder.where(id: api_token.folder_ids).flat_map(&:subtree_ids).uniq
       unless allowed.include?(folder.id)
         render_error(:forbidden, "forbidden", "이 토큰은 이 폴더에 접근할 수 없습니다")

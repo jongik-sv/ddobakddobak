@@ -91,10 +91,48 @@ RSpec.describe "Ext::V1::MeetingWrites", type: :request do
       expect(response).to have_http_status(:unprocessable_entity)
     end
 
+    # Important #1(리뷰): 존재하지 않는 folder_id가 조용히 폐기되어 폴더 없이 201이 나가면 안 된다.
+    it "존재하지 않는 folder_id면 422이고 회의가 생성되지 않는다" do
+      _token, plaintext = issue_token(owner)
+
+      expect {
+        post "/api/ext/v1/meetings", params: create_params(folder_id: 999_999), headers: auth(plaintext), as: :json
+      }.not_to change(Meeting, :count)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body["error"]["code"]).to eq("invalid_folder")
+    end
+
     it "meetings:write 스코프가 없으면 403" do
       _token, plaintext = issue_token(owner, scopes: %w[meetings:read])
       post "/api/ext/v1/meetings", params: create_params, headers: auth(plaintext), as: :json
       expect(response).to have_http_status(:forbidden)
+    end
+
+    # Important #2(리뷰): 토큰 folder_ids 서브트리 제한의 create 403 분기가 무검증이었다.
+    context "토큰 folder_ids 제한" do
+      let(:root)  { create(:folder, project: project) }
+      let(:leaf)  { create(:folder, project: project, parent: root) }
+      let(:other) { create(:folder, project: project) }
+
+      it "제한 서브트리 안의 폴더로는 생성에 성공한다" do
+        _token, plaintext = issue_token(owner, folder_ids: [ root.id ])
+
+        post "/api/ext/v1/meetings", params: create_params(folder_id: leaf.id), headers: auth(plaintext), as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(response.parsed_body["meeting"]["folder_id"]).to eq(leaf.id)
+      end
+
+      it "제한 서브트리 밖의 폴더로는 403이고 회의가 생성되지 않는다" do
+        _token, plaintext = issue_token(owner, folder_ids: [ root.id ])
+
+        expect {
+          post "/api/ext/v1/meetings", params: create_params(folder_id: other.id), headers: auth(plaintext), as: :json
+        }.not_to change(Meeting, :count)
+
+        expect(response).to have_http_status(:forbidden)
+      end
     end
   end
 
