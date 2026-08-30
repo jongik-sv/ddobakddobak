@@ -370,6 +370,17 @@
   .scope__arr { color: var(--muted); font-size: .8rem; }
   .ragrow .flist li b { color: var(--ink); }
 
+  /* ---------- Agent API (terminal mock) ---------- */
+  #agent-api .flist code {
+    font-family: var(--mono); font-size: .85em; background: var(--lav); color: var(--indigo-ink);
+    padding: .1em .4em; border-radius: 5px;
+  }
+  #agent-api pre {
+    margin: 0; padding: 18px 20px; overflow-x: auto; white-space: pre;
+    background: #17151f; color: #d8d6e6;
+    font-family: var(--mono); font-size: .8rem; line-height: 1.7;
+  }
+
   /* ---------- Trust (organizational advantage) ---------- */
   .trust__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
   .fg p { font-size: .87rem; color: var(--muted); margin: 0; line-height: 1.6; }
@@ -578,6 +589,7 @@
       <a class="lnk" href="#features">기능</a>
       <a class="lnk" href="#showcase">화면</a>
       <a class="lnk" href="#ai-chat">AI 챗</a>
+      <a class="lnk" href="#agent-api">AI 연동</a>
       <a class="lnk" href="#trust">신뢰</a>
       <a class="lnk" href="#why">차별점</a>
       <a class="lnk" href="https://github.com/jongik-sv/ddobakddobak/blob/main/docs/기능-인벤토리.md">기능 인벤토리</a>
@@ -595,6 +607,7 @@
   <a href="#features">기능</a>
   <a href="#showcase">화면</a>
   <a href="#ai-chat">AI 챗</a>
+  <a href="#agent-api">AI 연동</a>
   <a href="#trust">신뢰</a>
   <a href="#why">차별점</a>
   <a href="https://github.com/jongik-sv/ddobakddobak/blob/main/docs/기능-인벤토리.md">기능 인벤토리</a>
@@ -881,8 +894,45 @@
     </div>
   </section>
 
+  <!-- ========== Agent API (external integration) ========== -->
+  <section class="sec sec--tint" id="agent-api">
+    <div class="wrap">
+      <div class="sechead reveal">
+        <span class="eyebrow">외부 API · 에이전트 연동</span>
+        <h2>우리 회의가, 내 AI 에이전트의 지식이 됩니다.</h2>
+        <p>설정에서 토큰을 하나 발급하면 끝입니다. Claude Code 같은 에이전트에 스킬을 설치해 맡기거나, REST API로 직접 붙여서 회의 기록을 조회·검색하게 할 수 있습니다.</p>
+      </div>
+      <div class="ragrow">
+        <div class="ragrow__txt reveal">
+          <ul class="flist">
+            <li><b>토큰 하나로 권한을 좁힙니다.</b> 설정에서 개인 액세스 토큰(<code>ddbk_</code> 접두)을 발급하고, 회의·전사·요약 읽기·검색·제한적 쓰기 5종 스코프와 프로젝트·폴더 범위로 좁힙니다. 만료일은 필수이고, 즉시 폐기할 수 있습니다.</li>
+            <li><b>REST API로 회의록에 접근합니다.</b> <code>/api/ext/v1</code>로 회의 목록·상세·전사·요약을 조회하고, 키워드+의미 하이브리드로 검색합니다. 회의 메모 추가, 요약 재생성, 회의 생성과 오디오 업로드까지 됩니다.</li>
+            <li><b>스킬 하나면 에이전트가 스스로 찾습니다.</b> 사용 설명서와 파이썬 CLI로 된 스킬을 서버에서 zip으로 내려받아 설치하면, "지난 회의에서 뭐라고 했지?"에 에이전트가 직접 조회·검색하고 근거를 인용합니다. 표준 라이브러리만 써서 특정 벤더에 매이지 않습니다.</li>
+            <li><b>감사 로그와 기밀 절단을 그대로 존중합니다.</b> 토큰별 호출 이력이 남고, 기밀 구간을 절단한 회의는 절단 이후 데이터만 API로도 노출됩니다.</li>
+          </ul>
+        </div>
+        <div class="show__fig reveal">
+          <span class="tag">CLI</span>
+          <div class="frame">
+            <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 에이전트 스킬 · ddobak_api.py</span></div>
+            <pre>$ python3 ddobak_api.py search "지난 분기 결정사항"
+
+[2026-04-30] 3월 실적 리뷰
+  결정사항 — 신규 캠페인 예산 20% 증액 (박서연, 03:12)
+
+[2026-05-12] 마케팅 전략 회의
+  "다음 분기는 재구매 유도로 방향을 바꾸자" (김도현, 11:47)
+
+$ python3 ddobak_api.py dump 482 --out ./notes
+회의록·전사·요약을 마크다운 한 파일로 저장했습니다.</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ========== Trust (organizational advantage) ========== -->
-  <section class="sec sec--tint" id="trust">
+  <section class="sec" id="trust">
     <div class="wrap">
       <div class="sechead reveal">
         <span class="eyebrow">도입 검토</span>
@@ -913,7 +963,7 @@
   </section>
 
   <!-- ========== Feature grid ========== -->
-  <section class="sec" id="features">
+  <section class="sec sec--tint" id="features">
     <div class="wrap">
       <div class="sechead reveal">
         <span class="eyebrow">전체 기능</span>
@@ -946,6 +996,10 @@
           <ul><li>회의 협업자 초대 — 비소유자는 읽기 전용</li><li>회의 잠금 · 중요 표시</li><li>녹음은 한 기기에서만, 다른 기기는 뷰어로</li><li>기밀 구간 절단(비가역 파기)</li></ul>
         </div>
         <div class="fg reveal">
+          <div class="fg__top"><span class="fg__tag" aria-hidden="true">api</span><h3>외부 API · 에이전트 연동</h3></div>
+          <ul><li>개인 액세스 토큰 발급 — 스코프 5종으로 권한 축소</li><li>REST API로 회의 조회·검색·메모·재요약</li><li>LLM 에이전트용 스킬 zip 다운로드(Claude Code 등)</li><li>토큰별 사용 감사 로그</li></ul>
+        </div>
+        <div class="fg reveal">
           <div class="fg__top"><span class="fg__tag" aria-hidden="true">export</span><h3>내보내기 · 가져오기</h3></div>
           <ul><li>MD·PDF·DOCX·외부 LLM 프롬프트(화자 실명)</li><li>폴더·프로젝트 요약 zip 일괄 내보내기</li><li>회의·폴더·프로젝트 .tgz 이관·백업</li><li>D'Flow 연동 — 전송 배지·회의 연결</li></ul>
         </div>
@@ -974,7 +1028,7 @@
   </section>
 
   <!-- ========== Why / differentiator ========== -->
-  <section class="sec sec--tint" id="why">
+  <section class="sec" id="why">
     <div class="wrap">
       <div class="excerpt reveal">
         <p class="excerpt__line"><span class="tc">[02:41]</span> 김 팀장 — "이번 분기 배포는 금요일로 확정합시다."</p>
@@ -1046,6 +1100,7 @@
           <h5>제품</h5>
           <a href="#features">기능</a>
           <a href="#showcase">화면</a>
+          <a href="#agent-api">AI 연동</a>
           <a href="#why">차별점</a>
         </div>
         <div class="foot__col">
