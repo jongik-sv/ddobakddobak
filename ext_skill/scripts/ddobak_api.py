@@ -14,6 +14,7 @@
 
 import argparse
 import json
+import mimetypes
 import os
 import ssl
 import sys
@@ -244,6 +245,7 @@ def cmd_summarize(args):
 def cmd_upload_audio(args):
     boundary = uuid.uuid4().hex
     filename = os.path.basename(args.file)
+    file_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
     with open(args.file, "rb") as f:
         file_bytes = f.read()
 
@@ -252,7 +254,7 @@ def cmd_upload_audio(args):
     parts.append(
         f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode()
     )
-    parts.append(b"Content-Type: application/octet-stream\r\n\r\n")
+    parts.append(f"Content-Type: {file_type}\r\n\r\n".encode())
     parts.append(file_bytes)
     parts.append(f"\r\n--{boundary}--\r\n".encode())
     body = b"".join(parts)
