@@ -55,8 +55,28 @@ RSpec.describe Meeting, ".ext_accessible_by" do
     expect(Meeting.ext_accessible_by(outsider)).not_to include(m)
   end
 
-  it "admin은 accessible_by와 동일하게 전체를 본다" do
+  it "admin은 accessible_by와 동일하게 (남의 personal 프로젝트 제외) 전체를 본다" do
     m = create(:meeting, project: project, creator: owner, shared: false)
+    expect(Meeting.ext_accessible_by(admin)).to include(m)
+  end
+
+  it "admin은 blocks_admin_override?와 동치로 남의 personal 프로젝트 회의를 못 본다" do
+    other_personal_project = create(:project, personal: true, creator: owner)
+    create(:project_membership, user: owner, project: other_personal_project, role: "member")
+    m = create(:meeting, project: other_personal_project, creator: owner, shared: false)
+    expect(Meeting.ext_accessible_by(admin)).not_to include(m)
+  end
+
+  it "admin 본인의 personal 프로젝트 회의는 본다" do
+    admin_personal_project = create(:project, personal: true, creator: admin)
+    create(:project_membership, user: admin, project: admin_personal_project, role: "member")
+    m = create(:meeting, project: admin_personal_project, creator: admin, shared: false)
+    expect(Meeting.ext_accessible_by(admin)).to include(m)
+  end
+
+  it "admin은 타인의 팀(non-personal) 프로젝트 회의는 본다" do
+    m = create(:meeting, project: project, creator: owner, shared: false)
+    expect(project.personal).to be false
     expect(Meeting.ext_accessible_by(admin)).to include(m)
   end
 end

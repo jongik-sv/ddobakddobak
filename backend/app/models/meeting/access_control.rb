@@ -29,12 +29,17 @@ module Meeting::AccessControl
     # 세컨드 브레인 외부 API(Ext::V1::BaseController#scoped_meetings)용 열람 범위.
     # = accessible_by(user) ∪ 직접 협업(meeting_collaborators) ∪ 폴더 상속 협업(folder_collaborators,
     #   조상 체인 상속 — Folder#collaborator?의 라이브 평가와 동치를 Folder.collaborator_inherited_folder_ids
-    #   의 사전계산 집합으로 표현). admin은 accessible_by와 동일하게 전체(kept).
+    #   의 사전계산 집합으로 표현). admin은 accessible_by와 동일하게 전체를 보되, 단건 인가
+    #   (MeetingLookup#meeting_admin!, Ext::V1::MeetingWriteAuthorization#ext_meeting_admin?)와
+    #   동치가 되도록 Project#blocks_admin_override?(남의 personal 프로젝트) 소속 회의는 제외한다.
     # .or 는 구조 호환 relation끼리만 결합 가능하므로 각 분기를 전부 "join 없는 where(id: 서브쿼리)"
     # 형태로 정규화한다. accessible_by 자체는 양쪽 분기 모두 kept를 통과하지만, 여기 추가하는
     # 협업 분기는 그렇지 않으므로 최종 relation에 kept를 다시 얹어 휴지통 회의 노출을 막는다.
     scope :ext_accessible_by, ->(user) {
-      next kept if user.admin?
+      if user.admin?
+        blocked_project_ids = Project.where(personal: true).where.not(created_by_id: user.id).select(:id)
+        next kept.where.not(project_id: blocked_project_ids)
+      end
 
       own_or_shared_ids = accessible_by(user).select(:id)
       direct_collaborator_ids = MeetingCollaborator.where(user_id: user.id).select(:meeting_id)
