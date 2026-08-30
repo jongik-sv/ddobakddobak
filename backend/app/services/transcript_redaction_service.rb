@@ -178,6 +178,12 @@ class TranscriptRedactionService
         # Summary 도 FtsIndexable(summaries_fts) 라 같은 best-effort 문제를 안는다.
         verify_fts_purged!("summaries_fts", summary_ids)
 
+        # 세컨드 브레인 외부 API(ext_api)가 남긴 노트(Block source: "ext_api")도 같은 단계에서
+        # 지운다 — 위 Summary와 동일하게, 회의록에 없더라도 에이전트 노트에 기밀 발췌가 그대로
+        # 남아 있으면 절단의 의미가 없다(Task D §5). Block은 FtsIndexable이 아니라 verify_fts_purged!
+        # 대상이 아니다.
+        @meeting.blocks.where(source: "ext_api").destroy_all
+
         # brief_summary 는 명시적 nil. refresh_brief_summary! 가 `if text.present?`(meeting.rb:615)라
         # 재생성 결과가 빈 값이면 옛 발췌가 남고, 이 컬럼은 LIKE 검색 대상이다(meeting.rb:151).
         @meeting.update_column(:brief_summary, nil)
