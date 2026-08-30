@@ -4,7 +4,9 @@
 class Ext::V1::MeetingNotesController < Ext::V1::BaseController
   include Ext::V1::MeetingWriteAuthorization
 
-  EXT_NOTE_SOURCE = "ext_api".freeze
+  # 소유자는 Block::EXT_API_SOURCE(app/models/block.rb) — transcript_redaction_service.rb도
+  # 동일 상수를 참조해 리터럴 드리프트를 막는다.
+  EXT_NOTE_SOURCE = Block::EXT_API_SOURCE
 
   before_action -> { require_scope!("meetings:read") }, only: %i[index]
   before_action -> { require_scope!("meetings:write") }, only: %i[create]

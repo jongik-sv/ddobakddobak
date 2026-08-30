@@ -1353,11 +1353,12 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
       end
 
       # Task D §5: 세컨드 브레인 외부 API(Ext::V1::MeetingNotesController)가 남긴 노트는
-      # Block(source: "ext_api")로 저장된다 — 회의록(Summary)과 마찬가지로 기밀 발췌를 안고
-      # 있을 수 있어 절단 시 함께 지워야 한다. 일반 사용자 블록(source: "user")은 그대로 둔다.
+      # Block(source: Block::EXT_API_SOURCE)로 저장된다 — 회의록(Summary)과 마찬가지로 기밀
+      # 발췌를 안고 있을 수 있어 절단 시 함께 지워야 한다. 일반 사용자 블록(source: "user")은
+      # 그대로 둔다.
       it "ext_api 노트(Block)는 삭제되고 user 블록은 남는다" do
         ext_note = meeting.blocks.create!(
-          block_type: "text", content: "기밀토큰AAA 요약", source: "ext_api",
+          block_type: "text", content: "기밀토큰AAA 요약", source: Block::EXT_API_SOURCE,
           position: FractionalIndexing.position_for(nil, nil, meeting)
         )
         user_block = meeting.blocks.create!(
