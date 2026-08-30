@@ -153,7 +153,7 @@ def cmd_meetings(args):
 
     def fmt(d):
         for m in d.get("meetings", []):
-            print(f"{m.get('id')}\t{m.get('title')}\t{m.get('started_at', '')}")
+            print(f"{m.get('id')}\t{m.get('title')}\t{m.get('created_at', '')}")
         meta = d.get("meta", {})
         if meta:
             page = meta.get("page")
@@ -165,10 +165,11 @@ def cmd_meetings(args):
 
 def cmd_meeting(args):
     def fmt(d):
-        print(f"제목: {d.get('title')}")
-        print(f"ID: {d.get('id')}")
-        print(f"시작: {d.get('started_at')}")
-        print(f"상태: {d.get('status')}")
+        m = d.get("meeting", d)
+        print(f"제목: {m.get('title')}")
+        print(f"ID: {m.get('id')}")
+        print(f"상태: {m.get('status')}")
+        print(f"생성: {m.get('created_at')}")
     _out(_request("GET", f"/api/ext/v1/meetings/{args.id}"), args, fmt)
 
 
@@ -183,17 +184,18 @@ def cmd_transcript(args):
 
 def cmd_summary(args):
     def fmt(d):
-        kp = d.get("key_points") or []
+        s = d.get("summary", d)
+        kp = s.get("key_points") or []
         if kp:
             print("## 핵심 요약")
             for line in kp:
                 print(f"- {line}")
-        dec = d.get("decisions") or []
+        dec = s.get("decisions") or []
         if dec:
             print("\n## 결정 사항")
             for line in dec:
                 print(f"- {line}")
-        notes = d.get("notes_markdown")
+        notes = s.get("notes_markdown")
         if notes:
             print("\n## 상세")
             print(notes)
@@ -204,12 +206,23 @@ def cmd_search(args):
     params = {"q": args.query, "project_id": args.project, "limit": args.limit}
 
     def fmt(d):
-        for r in d.get("results", []):
-            meeting = r.get("meeting", {})
-            print(f"[{meeting.get('id')}] {meeting.get('title')}")
-            excerpt = r.get("excerpt")
-            if excerpt:
-                print(f"    {excerpt}")
+        results = d.get("results", {})
+        transcripts = results.get("transcripts", [])
+        summaries = results.get("summaries", [])
+        if transcripts:
+            print("## 전사 매치")
+            for r in transcripts:
+                print(f"[{r.get('meeting_id')}] {r.get('meeting_title')}")
+                snippet = r.get("snippet")
+                if snippet:
+                    print(f"    {snippet}")
+        if summaries:
+            print("## 요약 매치")
+            for r in summaries:
+                print(f"[{r.get('meeting_id')}] {r.get('meeting_title')}")
+                snippet = r.get("snippet")
+                if snippet:
+                    print(f"    {snippet}")
     _out(_request("GET", "/api/ext/v1/search", params=params), args, fmt)
 
 
@@ -223,7 +236,7 @@ def cmd_create(args):
         "transcripts": transcripts,
     }
     _out(_request("POST", "/api/ext/v1/meetings", json_body=body), args,
-         lambda d: print(f"생성됨: {d.get('id')}"))
+         lambda d: print(f"생성됨: {d.get('meeting', d).get('id')}"))
 
 
 def cmd_note(args):
@@ -238,8 +251,13 @@ def cmd_note(args):
 
 
 def cmd_summarize(args):
-    _out(_request("POST", f"/api/ext/v1/meetings/{args.id}/summarize"), args,
-         lambda d: print("요약 재생성이 시작되었습니다."))
+    def fmt(d):
+        skipped = d.get("skipped")
+        if skipped:
+            print(f"건너뜀: {skipped}")
+        else:
+            print("요약 재생성이 시작되었습니다.")
+    _out(_request("POST", f"/api/ext/v1/meetings/{args.id}/summarize"), args, fmt)
 
 
 def cmd_upload_audio(args):
@@ -269,10 +287,10 @@ def cmd_upload_audio(args):
 
 
 def cmd_dump(args):
-    meeting = _request("GET", f"/api/ext/v1/meetings/{args.id}")
-    transcripts = _request("GET", f"/api/ext/v1/meetings/{args.id}/transcripts")
+    meeting = _request("GET", f"/api/ext/v1/meetings/{args.id}").get("meeting", {})
+    transcripts = _request("GET", f"/api/ext/v1/meetings/{args.id}/transcripts").get("transcripts", [])
     try:
-        summary = _request("GET", f"/api/ext/v1/meetings/{args.id}/summary")
+        summary = _request("GET", f"/api/ext/v1/meetings/{args.id}/summary").get("summary")
     except ApiError:
         summary = None
 
@@ -282,7 +300,7 @@ def cmd_dump(args):
     safe_title = "".join(c for c in title if c not in '/\\:*?"<>|').strip() or f"meeting-{args.id}"
     path = os.path.join(out_dir, f"{safe_title}.md")
 
-    lines = [f"# {title}", "", f"- ID: {meeting.get('id')}", f"- 시작: {meeting.get('started_at')}", ""]
+    lines = [f"# {title}", "", f"- ID: {meeting.get('id')}", f"- 생성: {meeting.get('created_at')}", ""]
     if summary:
         kp = summary.get("key_points") or []
         if kp:
@@ -300,7 +318,7 @@ def cmd_dump(args):
             lines.append("")
 
     lines.append("## 전사")
-    for seg in transcripts.get("transcripts", []):
+    for seg in transcripts:
         ts = _fmt_ms(seg.get("started_at_ms"))
         lines.append(f"[{ts}] {seg.get('speaker_name', '?')}: {seg.get('content', '')}")
 

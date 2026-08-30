@@ -59,11 +59,12 @@ python3 scripts/ddobak_api.py me
 
 ```bash
 python3 scripts/ddobak_api.py search "X" --json
-# 결과의 meeting.id 중 가장 관련 있는 회의를 골라 전사로 들어가 인용한다.
+# 결과(results.transcripts[]/results.summaries[])의 meeting_id 중 가장 관련 있는
+# 회의를 골라 전사로 들어가 인용한다.
 python3 scripts/ddobak_api.py transcript <meeting_id>
 ```
 
-검색 결과의 발췌(excerpt)만으로 답할 수 있으면 전사 전체를 조회하지 않는다.
+검색 결과의 발췌(snippet)만으로 답할 수 있으면 전사 전체를 조회하지 않는다.
 발췌가 문맥을 충분히 담지 못할 때만 `transcript`로 들어가 앞뒤 발언을 확인한다.
 
 **"이 회의 요약해줘"**
