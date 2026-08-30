@@ -47,6 +47,17 @@ RSpec.describe ApiToken do
       expect(token.reload.project_ids).to eq([ 1, 2 ])
       expect(token.reload.folder_ids).to eq([ 3 ])
     end
+
+    # 오케스트레이터 판단(수정 라운드 1): []는 "회의 0건으로 제한"이 아니라 nil과 동일하게
+    # "제한 없음"으로 취급한다.
+    it "project_ids/folder_ids가 []이면 nil(제한 없음)로 정규화된다" do
+      token, = ApiToken.issue!(
+        user: user, name: "x", scopes: %w[meetings:read], expires_at: 1.day.from_now,
+        project_ids: [], folder_ids: []
+      )
+      expect(token.reload.project_ids).to be_nil
+      expect(token.reload.folder_ids).to be_nil
+    end
   end
 
   describe ".authenticate" do

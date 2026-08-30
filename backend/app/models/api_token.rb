@@ -99,8 +99,10 @@ class ApiToken < ApplicationRecord
 
   private
 
-  # project_ids/folder_ids는 미지정(제한 없음)을 nil로 표현한다. 빈 배열과는 의미가 다르므로
-  # nil은 nil 그대로 왕복시킨다.
+  # project_ids/folder_ids는 미지정(제한 없음)을 nil로 표현한다.
+  # 오케스트레이터 판단: 빈 배열([])도 "제한 없음"과 동일하게 취급한다(회의 0건으로 좁혀지는
+  # 게 아니라 무제한) — serialize_id_array에서 []를 nil로 정규화해 저장하므로, 읽는 쪽은
+  # 항상 nil 아니면 비어있지 않은 배열만 보게 된다.
   def parse_id_array(raw)
     return nil if raw.nil?
 
@@ -113,7 +115,8 @@ class ApiToken < ApplicationRecord
   def serialize_id_array(value)
     return nil if value.nil?
 
-    Array(value).map(&:to_i).to_json
+    ids = Array(value).map(&:to_i)
+    ids.empty? ? nil : ids.to_json
   end
 
   def scopes_present_and_valid
