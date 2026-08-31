@@ -34,6 +34,10 @@ function makeToken(o: Partial<ApiToken> = {}): ApiToken {
 describe('ApiTokensPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    })
   })
 
   it('빈 목록이면 안내 문구를 표시한다', async () => {
@@ -82,6 +86,49 @@ describe('ApiTokensPanel', () => {
     fireEvent.click(screen.getByText('LLM 스킬 다운로드'))
 
     await waitFor(() => expect(downloadSkillPackage).toHaveBeenCalled())
+  })
+
+  it('다운로드 성공 후 설치 프롬프트 안내 박스가 표시된다 — 복사 및 닫기 가능', async () => {
+    vi.mocked(listApiTokens).mockResolvedValue([])
+    vi.mocked(downloadSkillPackage).mockResolvedValue(undefined)
+
+    render(<ApiTokensPanel />)
+    await screen.findByText('발급된 토큰이 없습니다.')
+
+    expect(screen.queryByText('프롬프트 복사')).toBeNull()
+
+    fireEvent.click(screen.getByText('LLM 스킬 다운로드'))
+    await waitFor(() => expect(downloadSkillPackage).toHaveBeenCalled())
+
+    expect(
+      await screen.findByText(/받은 zip을 직접 풀 필요 없이, 아래 프롬프트를 Claude Code 같은 에이전트에/),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/방금 다운로드한 또박또박 회의 스킬\(ddobak-skill\.zip\)을 설치해줘\./)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('프롬프트 복사'))
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled())
+    const copiedText = vi.mocked(navigator.clipboard.writeText).mock.calls[0][0]
+    expect(copiedText).toContain('방금 다운로드한 또박또박 회의 스킬(ddobak-skill.zip)을 설치해줘.')
+    expect(copiedText).toContain('1. 다운로드 폴더의 ddobak-skill.zip을 스킬 폴더에 풀어줘')
+    expect(copiedText).toContain('2. 이미 설치되어 있으면 설정 파일(.env.ddobak 또는 env.ddobak)은 보존하고')
+    expect(copiedText).toContain('3. 설치 후 스킬 폴더에서 `python3 scripts/ddobak_api.py me`를 실행해 연결을 확인해줘')
+    expect(copiedText).toContain('설정 파일이 없다고 나오면')
+    expect(await screen.findByText('복사됨')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('설치 안내 닫기'))
+    await waitFor(() => expect(screen.queryByText('프롬프트 복사')).toBeNull())
+  })
+
+  it('다운로드 실패 시 설치 프롬프트 안내 박스를 표시하지 않는다', async () => {
+    vi.mocked(listApiTokens).mockResolvedValue([])
+    vi.mocked(downloadSkillPackage).mockRejectedValue(new Error('network error'))
+
+    render(<ApiTokensPanel />)
+    await screen.findByText('발급된 토큰이 없습니다.')
+    fireEvent.click(screen.getByText('LLM 스킬 다운로드'))
+
+    await screen.findByText('LLM 스킬 패키지를 내려받지 못했습니다.')
+    expect(screen.queryByText('프롬프트 복사')).toBeNull()
   })
 
   it('토큰 발급 버튼 → 발급 모달이 열린다', async () => {

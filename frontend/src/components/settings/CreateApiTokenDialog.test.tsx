@@ -102,7 +102,7 @@ describe('CreateApiTokenDialog', () => {
     expect(await screen.findByText('복사됨')).toBeInTheDocument()
   })
 
-  it('평문 화면에 .env.ddobak 다운로드 버튼과 OS별 설치 경로 안내가 표시된다', async () => {
+  it('평문 화면에 .env.ddobak 다운로드 버튼과 설치 프롬프트 블록이 표시된다', async () => {
     vi.mocked(createApiToken).mockResolvedValue({
       token: {
         id: 1, name: 'T', token_prefix: 'ddbk_ab12', scopes: ['meetings:read'],
@@ -118,18 +118,42 @@ describe('CreateApiTokenDialog', () => {
     await screen.findByText('토큰이 발급되었습니다')
 
     expect(screen.getByText('설정 파일(.env.ddobak) 다운로드')).toBeInTheDocument()
-    expect(screen.getByText('~/.claude/skills/ddobak-meetings/.env.ddobak')).toBeInTheDocument()
-    expect(screen.getByText('%USERPROFILE%\\.claude\\skills\\ddobak-meetings\\.env.ddobak')).toBeInTheDocument()
-
-    // 점 없는 파일명(env.ddobak)으로 저장돼도 그대로 동작한다는 안내 — <code>가 섞여
-    // 텍스트 노드가 분리되므로 textContent 기반 커스텀 매처로 확인한다.
     expect(
-      screen.getByText((_, element) => {
-        if (element?.tagName.toLowerCase() !== 'p') return false
-        const text = element.textContent ?? ''
-        return text.includes('env.ddobak') && text.includes('점 없음') && text.includes('이름을 바꾸지 않아도 그대로 동작합니다')
-      }),
+      screen.getByText(/아래 프롬프트를 Claude Code 같은 에이전트에 붙여넣으면/),
     ).toBeInTheDocument()
+    expect(screen.getByText('프롬프트 복사')).toBeInTheDocument()
+    expect(screen.getByText(/방금 다운로드한 또박또박 설정 파일을 회의 스킬 폴더에 설치해줘\./)).toBeInTheDocument()
+    expect(screen.getByText(/ddobak-meetings/)).toBeInTheDocument()
+  })
+
+  it('설치 프롬프트 복사 버튼 클릭 시 프롬프트 전문을 클립보드에 기록하고, 토큰 평문은 포함하지 않는다', async () => {
+    vi.mocked(createApiToken).mockResolvedValue({
+      token: {
+        id: 1, name: 'T', token_prefix: 'ddbk_ab12', scopes: ['meetings:read'],
+        project_ids: null, folder_ids: null, expires_at: null, revoked_at: null,
+        last_used_at: null, created_at: '2026-08-01T00:00:00Z',
+      },
+      plaintext: 'ddbk_secretplaintextvalue',
+    })
+
+    render(<CreateApiTokenDialog onClose={() => {}} onCreated={() => {}} />)
+    fireEvent.change(screen.getByLabelText('이름'), { target: { value: 'T' } })
+    fireEvent.click(screen.getByText('발급'))
+    await screen.findByText('토큰이 발급되었습니다')
+
+    fireEvent.click(screen.getByText('프롬프트 복사'))
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled())
+
+    const copiedText = vi.mocked(navigator.clipboard.writeText).mock.calls[0][0]
+    expect(copiedText).toContain('방금 다운로드한 또박또박 설정 파일을 회의 스킬 폴더에 설치해줘.')
+    expect(copiedText).toContain('1. 다운로드 폴더에서 .env.ddobak 파일을 찾아줘')
+    expect(copiedText).toContain('~/.claude/skills/ddobak-meetings/')
+    expect(copiedText).toContain('%USERPROFILE%\\.claude\\skills\\ddobak-meetings\\')
+    expect(copiedText).toContain('3. 복사 후 스킬 폴더에서 `python3 scripts/ddobak_api.py me`를 실행해 연결을 확인해줘')
+    expect(copiedText).toContain('4. 확인이 끝나면 다운로드 폴더의 원본 파일은 삭제해줘')
+    expect(copiedText).not.toContain('ddbk_secretplaintextvalue')
+
+    expect(await screen.findByText('복사됨')).toBeInTheDocument()
   })
 
   it('.env.ddobak 다운로드 버튼 클릭 시 getApiOrigin()·토큰이 채워진 내용으로 downloadText를 호출한다(Tauri에서도 실제 서버 origin을 쓴다)', async () => {

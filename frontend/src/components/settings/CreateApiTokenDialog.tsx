@@ -11,6 +11,14 @@ import { confirmDialog } from '../../lib/confirmDialog'
 import { errorToMessage } from '../../lib/errors'
 import { downloadText } from '../../lib/download'
 import { getApiOrigin } from '../../config'
+import { InstallPromptBlock } from './InstallPromptBlock'
+
+const INSTALL_PROMPT = `방금 다운로드한 또박또박 설정 파일을 회의 스킬 폴더에 설치해줘.
+
+1. 다운로드 폴더에서 .env.ddobak 파일을 찾아줘 (브라우저에 따라 env.ddobak으로 저장되는데, 파일명은 바꾸지 않아도 동작해)
+2. 스킬 폴더로 복사해줘 — macOS/Linux: ~/.claude/skills/ddobak-meetings/ , Windows: %USERPROFILE%\\.claude\\skills\\ddobak-meetings\\
+3. 복사 후 스킬 폴더에서 \`python3 scripts/ddobak_api.py me\`를 실행해 연결을 확인해줘 (Windows는 python)
+4. 확인이 끝나면 다운로드 폴더의 원본 파일은 삭제해줘 (토큰이 평문으로 들어 있어)`
 
 const SCOPE_LABELS: Record<ApiTokenScope, string> = {
   'meetings:read': '회의 조회',
@@ -104,7 +112,7 @@ export function CreateApiTokenDialog({
   if (result) {
     return (
       <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
-        <div className="w-full max-w-md rounded-xl bg-card shadow-2xl border border-border p-6 mx-4">
+        <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl bg-card shadow-2xl border border-border p-6 mx-4">
           <h3 className="text-lg font-semibold mb-2">토큰이 발급되었습니다</h3>
           <p className="text-sm text-muted-foreground mb-3">
             이 토큰 값은 지금만 표시됩니다. 창을 닫으면 다시 볼 수 없으니 안전한 곳에 복사해 두세요.
@@ -130,20 +138,13 @@ export function CreateApiTokenDialog({
             >
               설정 파일(.env.ddobak) 다운로드
             </button>
-            <p className="mt-2 text-xs text-muted-foreground">
-              압축을 푼 스킬 폴더 루트(SKILL.md와 같은 위치)에 넣으세요. Claude Code 기본
-              설치 경로 예시:
+            <p className="mt-2 text-xs text-muted-foreground min-w-0 break-words">
+              파일을 받은 뒤, 아래 프롬프트를 Claude Code 같은 에이전트에 붙여넣으면
+              설치까지 알아서 해줍니다.
             </p>
-            <code className="mt-1 block rounded-md bg-muted px-3 py-2 text-xs font-mono break-all">
-              ~/.claude/skills/ddobak-meetings/.env.ddobak
-            </code>
-            <code className="mt-1 block rounded-md bg-muted px-3 py-2 text-xs font-mono break-all">
-              %USERPROFILE%\.claude\skills\ddobak-meetings\.env.ddobak
-            </code>
-            <p className="mt-2 text-xs text-muted-foreground">
-              브라우저에 따라 <code className="font-mono">env.ddobak</code>(점 없음)으로
-              저장될 수 있는데, 이름을 바꾸지 않아도 그대로 동작합니다.
-            </p>
+            <div className="mt-2">
+              <InstallPromptBlock prompt={INSTALL_PROMPT} />
+            </div>
           </div>
 
           <div className="flex justify-end">

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Download } from 'lucide-react'
+import { Plus, Trash2, Download, X } from 'lucide-react'
 import { listApiTokens, deleteApiToken, downloadSkillPackage, type ApiToken, type ApiTokenScope } from '../../api/apiTokens'
 import { confirmDialog } from '../../lib/confirmDialog'
 import { errorToMessage } from '../../lib/errors'
 import { formatDate } from '../../lib/meetingFormat'
 import { CreateApiTokenDialog } from './CreateApiTokenDialog'
+import { InstallPromptBlock } from './InstallPromptBlock'
 
 const SCOPE_LABELS: Record<ApiTokenScope, string> = {
   'meetings:read': '회의 조회',
@@ -14,6 +15,12 @@ const SCOPE_LABELS: Record<ApiTokenScope, string> = {
   'meetings:write': '회의 쓰기',
 }
 
+const SKILL_INSTALL_PROMPT = `방금 다운로드한 또박또박 회의 스킬(ddobak-skill.zip)을 설치해줘.
+
+1. 다운로드 폴더의 ddobak-skill.zip을 스킬 폴더에 풀어줘 — macOS/Linux: ~/.claude/skills/ddobak-meetings/ , Windows: %USERPROFILE%\\.claude\\skills\\ddobak-meetings\\
+2. 이미 설치되어 있으면 설정 파일(.env.ddobak 또는 env.ddobak)은 보존하고 나머지 파일만 교체해줘
+3. 설치 후 스킬 폴더에서 \`python3 scripts/ddobak_api.py me\`를 실행해 연결을 확인해줘 (Windows는 python). 설정 파일이 없다고 나오면, 또박또박 설정 → API 토큰에서 토큰을 발급하고 .env.ddobak을 받아야 한다고 알려줘`
+
 /** 설정 화면 "API 토큰" 섹션. PAT 발급·목록·폐기 + LLM 스킬 패키지 다운로드. */
 export default function ApiTokensPanel() {
   const [tokens, setTokens] = useState<ApiToken[]>([])
@@ -21,6 +28,7 @@ export default function ApiTokensPanel() {
   const [error, setError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false)
 
   const loadTokens = async () => {
     setLoading(true)
@@ -53,6 +61,7 @@ export default function ApiTokensPanel() {
     setError(null)
     try {
       await downloadSkillPackage()
+      setShowInstallPrompt(true)
     } catch {
       setError('LLM 스킬 패키지를 내려받지 못했습니다.')
     } finally {
@@ -89,6 +98,27 @@ export default function ApiTokensPanel() {
           </button>
         </div>
       </div>
+
+      {showInstallPrompt && (
+        <div className="mb-4 rounded-md border border-border bg-muted/40 p-4">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <p className="text-sm text-muted-foreground min-w-0 break-words flex-1">
+              받은 zip을 직접 풀 필요 없이, 아래 프롬프트를 Claude Code 같은 에이전트에
+              붙여넣으면 설치까지 알아서 해줍니다.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowInstallPrompt(false)}
+              aria-label="설치 안내 닫기"
+              title="닫기"
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <InstallPromptBlock prompt={SKILL_INSTALL_PROMPT} />
+        </div>
+      )}
 
       {loading && <p className="text-sm text-muted-foreground py-8 text-center">불러오는 중...</p>}
 
