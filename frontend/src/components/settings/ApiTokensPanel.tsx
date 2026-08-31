@@ -62,8 +62,8 @@ export default function ApiTokensPanel() {
 
   return (
     <div className="rounded-lg border bg-card p-6">
-      <div className="flex items-center justify-between mb-4 gap-4">
-        <div>
+      <div className="flex flex-wrap items-center justify-between mb-4 gap-x-4 gap-y-3">
+        <div className="min-w-[14rem] flex-1">
           <h2 className="text-lg font-semibold">API 토큰</h2>
           <p className="text-sm text-muted-foreground">
             외부 도구·에이전트가 내 회의 데이터에 접근할 때 쓸 개인 액세스 토큰을 발급·관리합니다.
@@ -102,7 +102,7 @@ export default function ApiTokensPanel() {
 
       {!loading && tokens.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[560px] text-sm">
             <thead>
               <tr className="border-b text-left text-muted-foreground">
                 <th className="pb-2 font-medium">이름</th>

@@ -58,14 +58,14 @@ export default function SettingsContent({ offline = false }: Props = {}) {
 
   return (
     <div className="space-y-6">
-      <div role="tablist" className="flex gap-1 border-b">
+      <div role="tablist" className="flex gap-1 border-b overflow-x-auto">
         {TABS.map((t) => (
           <button
             key={t.id}
             role="tab"
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               tab === t.id
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
