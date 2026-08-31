@@ -8,6 +8,19 @@ vi.mock('../../api/apiTokens', async () => {
 })
 vi.mock('../../lib/confirmDialog', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
 
+const downloadText = vi.fn().mockResolvedValue(undefined)
+vi.mock('../../lib/download', () => ({
+  downloadText: (...a: unknown[]) => downloadText(...a),
+}))
+
+// Tauri 데스크톱 앱에서는 window.location.origin이 http://tauri.localhost로 고정되므로
+// (실제 API 서버 주소가 아님) getApiOrigin()을 목킹해 그 값이 쓰이는지 검증한다.
+const getApiOrigin = vi.fn().mockReturnValue('http://127.0.0.1:13323')
+vi.mock('../../config', async () => {
+  const actual = await vi.importActual<typeof import('../../config')>('../../config')
+  return { ...actual, getApiOrigin: () => getApiOrigin() }
+})
+
 import { createApiToken } from '../../api/apiTokens'
 import { confirmDialog } from '../../lib/confirmDialog'
 
@@ -87,6 +100,79 @@ describe('CreateApiTokenDialog', () => {
     fireEvent.click(screen.getByText('복사'))
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('ddbk_secretplaintextvalue'))
     expect(await screen.findByText('복사됨')).toBeInTheDocument()
+  })
+
+  it('평문 화면에 .env.ddobak 다운로드 버튼과 OS별 설치 경로 안내가 표시된다', async () => {
+    vi.mocked(createApiToken).mockResolvedValue({
+      token: {
+        id: 1, name: 'T', token_prefix: 'ddbk_ab12', scopes: ['meetings:read'],
+        project_ids: null, folder_ids: null, expires_at: null, revoked_at: null,
+        last_used_at: null, created_at: '2026-08-01T00:00:00Z',
+      },
+      plaintext: 'ddbk_secretplaintextvalue',
+    })
+
+    render(<CreateApiTokenDialog onClose={() => {}} onCreated={() => {}} />)
+    fireEvent.change(screen.getByLabelText('이름'), { target: { value: 'T' } })
+    fireEvent.click(screen.getByText('발급'))
+    await screen.findByText('토큰이 발급되었습니다')
+
+    expect(screen.getByText('설정 파일(.env.ddobak) 다운로드')).toBeInTheDocument()
+    expect(screen.getByText('~/.claude/skills/ddobak-meetings/.env.ddobak')).toBeInTheDocument()
+    expect(screen.getByText('%USERPROFILE%\\.claude\\skills\\ddobak-meetings\\.env.ddobak')).toBeInTheDocument()
+  })
+
+  it('.env.ddobak 다운로드 버튼 클릭 시 getApiOrigin()·토큰이 채워진 내용으로 downloadText를 호출한다(Tauri에서도 실제 서버 origin을 쓴다)', async () => {
+    vi.mocked(createApiToken).mockResolvedValue({
+      token: {
+        id: 1, name: 'T', token_prefix: 'ddbk_ab12', scopes: ['meetings:read'],
+        project_ids: null, folder_ids: null, expires_at: null, revoked_at: null,
+        last_used_at: null, created_at: '2026-08-01T00:00:00Z',
+      },
+      plaintext: 'ddbk_secretplaintextvalue',
+    })
+
+    render(<CreateApiTokenDialog onClose={() => {}} onCreated={() => {}} />)
+    fireEvent.change(screen.getByLabelText('이름'), { target: { value: 'T' } })
+    fireEvent.click(screen.getByText('발급'))
+    await screen.findByText('토큰이 발급되었습니다')
+
+    fireEvent.click(screen.getByText('설정 파일(.env.ddobak) 다운로드'))
+    await waitFor(() => expect(downloadText).toHaveBeenCalledTimes(1))
+
+    const [content, filename, mime] = downloadText.mock.calls[0]
+    expect(filename).toBe('.env.ddobak')
+    expect(mime).toBe('text/plain;charset=utf-8')
+    // window.location.origin(테스트 환경의 jsdom 기본 origin)이 아니라
+    // getApiOrigin()의 목킹된 반환값이 쓰였는지 확인 — Tauri에서 tauri.localhost가
+    // 새어나가지 않는다는 회귀 방지.
+    expect(content).toContain('DDOBAK_API_URL=http://127.0.0.1:13323')
+    expect(content).not.toContain(window.location.origin)
+    expect(content).toContain('DDOBAK_API_TOKEN=ddbk_secretplaintextvalue')
+    expect(content).toContain('# DDOBAK_API_INSECURE=1')
+  })
+
+  it('getApiOrigin()이 빈 문자열이면(모바일 브릿지 포트 미준비) window.location.origin으로 폴백한다', async () => {
+    getApiOrigin.mockReturnValueOnce('')
+    vi.mocked(createApiToken).mockResolvedValue({
+      token: {
+        id: 1, name: 'T', token_prefix: 'ddbk_ab12', scopes: ['meetings:read'],
+        project_ids: null, folder_ids: null, expires_at: null, revoked_at: null,
+        last_used_at: null, created_at: '2026-08-01T00:00:00Z',
+      },
+      plaintext: 'ddbk_secretplaintextvalue',
+    })
+
+    render(<CreateApiTokenDialog onClose={() => {}} onCreated={() => {}} />)
+    fireEvent.change(screen.getByLabelText('이름'), { target: { value: 'T' } })
+    fireEvent.click(screen.getByText('발급'))
+    await screen.findByText('토큰이 발급되었습니다')
+
+    fireEvent.click(screen.getByText('설정 파일(.env.ddobak) 다운로드'))
+    await waitFor(() => expect(downloadText).toHaveBeenCalledTimes(1))
+
+    const [content] = downloadText.mock.calls[0]
+    expect(content).toContain(`DDOBAK_API_URL=${window.location.origin}`)
   })
 
   it('평문 화면 닫기 → confirmDialog로 확인 후 onClose 호출', async () => {

@@ -14,15 +14,30 @@ description: >-
 
 ## 설정
 
-두 환경변수가 필요하다. 없으면 스크립트가 즉시 오류 메시지와 함께 종료한다.
+가장 쉬운 방법: 또박또박 웹앱 **설정 → API 토큰**에서 토큰을 발급하면 화면에
+**`.env.ddobak` 다운로드** 버튼이 뜬다. 받은 파일을 스킬 폴더 루트(`SKILL.md`와
+같은 위치)에 넣으면 설정 끝이다. Claude Code 기본 설치 경로 예시:
 
-```bash
-export DDOBAK_API_URL="https://10.110.2.175"       # 또박또박 서버 주소
-export DDOBAK_API_TOKEN="ddbk_xxxxxxxxxxxx"         # 설정 → API 토큰에서 발급
-```
+- macOS/Linux: `~/.claude/skills/ddobak-meetings/.env.ddobak`
+- Windows: `%USERPROFILE%\.claude\skills\ddobak-meetings\.env.ddobak`
+
+설정 소스 우선순위: **실제 환경변수 > 패키지 루트의 `.env.ddobak` > 현재 작업
+디렉토리(cwd)의 `.env.ddobak`.** 환경변수가 있으면 파일 값은 무시된다(기존
+환경변수 사용자와 호환). `DDOBAK_API_URL`·`DDOBAK_API_TOKEN`이 어느 경로로도
+채워지지 않으면 스크립트가 즉시 오류 메시지와 함께 종료한다.
+
+파일 대신 환경변수를 직접 써도 된다:
+
+| 항목 | macOS / Linux | Windows (PowerShell) |
+|---|---|---|
+| URL | `export DDOBAK_API_URL="https://10.110.2.175"` | `$env:DDOBAK_API_URL="https://10.110.2.175"` |
+| 토큰 | `export DDOBAK_API_TOKEN="ddbk_xxxxxxxxxxxx"` | `$env:DDOBAK_API_TOKEN="ddbk_xxxxxxxxxxxx"` |
 
 사설 인증서 환경(자체 서명 HTTPS)에서 TLS 오류가 나면 `DDOBAK_API_INSECURE=1`을
-추가로 설정한다(검증 생략).
+추가로 설정한다(검증 생략, `.env.ddobak` 파일에서는 해당 줄의 `#`을 지운다).
+
+토큰이 담긴 `.env.ddobak`은 비밀 파일이다 — 공유·커밋 금지. POSIX 환경에서는
+`chmod 600 .env.ddobak`을 권장한다.
 
 ## 첫 호출로 토큰 확인
 
@@ -31,6 +46,9 @@ export DDOBAK_API_TOKEN="ddbk_xxxxxxxxxxxx"         # 설정 → API 토큰에�
 ```bash
 python3 scripts/ddobak_api.py me
 ```
+
+Windows에서 `python3`이 없으면 `python` 또는 `py`로 대신 실행한다(이하 모든
+`python3 scripts/ddobak_api.py ...` 예시 동일).
 
 ## 서브커맨드
 

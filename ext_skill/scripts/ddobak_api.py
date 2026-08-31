@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """또박또박(ddobak) 회의 API CLI — 파이썬 표준 라이브러리만 사용.
 
-환경변수:
+설정 (아래 순서로 값을 찾고, 먼저 찾은 값이 이긴다):
+  1. 실제 환경변수(DDOBAK_API_URL/DDOBAK_API_TOKEN/DDOBAK_API_INSECURE)
+  2. 이 스크립트가 속한 패키지 루트(scripts/의 상위 폴더)의 .env.ddobak
+  3. 현재 작업 디렉토리(cwd)의 .env.ddobak
+
   DDOBAK_API_URL       API 베이스 URL (예: https://10.110.2.175)
   DDOBAK_API_TOKEN     Bearer 토큰 (형식: ddbk_...)
   DDOBAK_API_INSECURE  1이면 TLS 인증서 검증을 생략(사설 인증서 환경)
@@ -23,6 +27,61 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+
+# Windows 콘솔(cp949 등)에서도 한글·이모지 출력이 깨지지 않도록 UTF-8로 강제한다.
+# 파이프로 연결되거나 reconfigure를 지원하지 않는 스트림(일부 테스트 하네스)은 건너뛴다.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+
+def _parse_dotenv(path):
+    """단순 dotenv 파서. KEY=VALUE 줄만 인식하고, 앞뒤 공백은 무시하며, 값을 감싼
+    홑따옴표/쌍따옴표를 한 겹 제거한다. '#'로 시작하는 줄과 빈 줄, 'export ' 접두는
+    허용한다. 파일을 읽을 수 없으면 빈 dict를 반환한다(오류로 취급하지 않음)."""
+    result = {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return result
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        if key:
+            result[key] = value
+    return result
+
+
+def _load_dotenv_files():
+    """.env.ddobak 파일을 찾아 os.environ에 채운다. 이미 설정된 환경변수는 절대
+    덮어쓰지 않는다(os.environ.setdefault) — 그래서 실제 환경변수가 항상 최우선이고,
+    패키지 루트 파일이 cwd 파일보다 우선한다(먼저 setdefault를 호출하므로)."""
+    package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candidates = [
+        os.path.join(package_root, ".env.ddobak"),
+        os.path.join(os.getcwd(), ".env.ddobak"),
+    ]
+    for path in candidates:
+        if not os.path.isfile(path):
+            continue
+        for key, value in _parse_dotenv(path).items():
+            os.environ.setdefault(key, value)
+
+
+_load_dotenv_files()
 
 
 class ApiError(Exception):
@@ -291,6 +350,25 @@ def cmd_upload_audio(args):
     _out(result, args, lambda d: print("업로드되었습니다. STT 큐에 등록됨."))
 
 
+_WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
+def _safe_filename_stem(title, fallback):
+    """파일명(확장자 앞부분)으로 쓸 안전한 문자열을 만든다. 금지 문자 제거, 끝의
+    마침표·공백 제거(Windows는 이를 자동으로 잘라내며 예약어 충돌을 유발할 수
+    있음), Windows 예약어(CON/PRN/AUX/NUL/COM1-9/LPT1-9, 대소문자 무시)와 충돌하면
+    fallback을 반환한다."""
+    stem = "".join(c for c in title if c not in '/\\:*?"<>|').strip()
+    stem = stem.rstrip(" .")
+    if not stem or stem.upper() in _WINDOWS_RESERVED_NAMES:
+        return fallback
+    return stem
+
+
 def cmd_dump(args):
     meeting = _request("GET", f"/api/ext/v1/meetings/{args.id}").get("meeting", {})
     transcripts = _request("GET", f"/api/ext/v1/meetings/{args.id}/transcripts").get("transcripts", [])
@@ -302,7 +380,7 @@ def cmd_dump(args):
     out_dir = args.out or "."
     os.makedirs(out_dir, exist_ok=True)
     title = meeting.get("title", f"meeting-{args.id}")
-    safe_title = "".join(c for c in title if c not in '/\\:*?"<>|').strip() or f"meeting-{args.id}"
+    safe_title = _safe_filename_stem(title, f"meeting-{args.id}")
     path = os.path.join(out_dir, f"{safe_title}.md")
 
     lines = [f"# {title}", "", f"- ID: {meeting.get('id')}", f"- 생성: {meeting.get('created_at')}", ""]

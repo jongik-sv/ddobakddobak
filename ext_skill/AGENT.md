@@ -7,10 +7,22 @@
 
 ## 인증
 
-Base URL: 환경변수 `DDOBAK_API_URL` (예: `https://10.110.2.175`)
+Base URL: `DDOBAK_API_URL` (예: `https://10.110.2.175`)
 
 모든 요청에 `Authorization: Bearer <DDOBAK_API_TOKEN>` 헤더를 붙인다. 토큰 형식은
 `ddbk_...`이며 또박또박 웹앱의 "설정 → API 토큰"에서 발급한다.
+
+`scripts/ddobak_api.py`를 쓴다면 `DDOBAK_API_URL`/`DDOBAK_API_TOKEN`/
+`DDOBAK_API_INSECURE`를 값으로 채워 넣는 방법이 두 가지다(우선순위 순):
+
+1. **실제 환경변수** — 항상 최우선.
+2. **`.env.ddobak` 파일**(dotenv 형식, `KEY=VALUE`) — 스킬 폴더 루트(패키지 루트) 또는
+   현재 작업 디렉토리(cwd)에 두면 스크립트가 자동으로 읽는다(패키지 루트가 cwd보다
+   우선). 토큰 발급 화면에서 이 파일을 통째로 내려받을 수 있다. 비밀 파일이므로
+   공유·커밋 금지, POSIX에서는 `chmod 600` 권장.
+
+직접 HTTP 요청을 구성하는 에이전트(셸 실행 불가 환경)라면 이 파일 읽기 로직 없이
+값을 그대로 헤더에 채우면 된다.
 
 ## API 계약
 
@@ -137,6 +149,11 @@ curl -sS -X POST "$DDOBAK_API_URL/api/ext/v1/meetings/456/summarize" \
 
 ## CLI 예시(`scripts/ddobak_api.py`)
 
+설정은 환경변수 대신 `.env.ddobak` 파일(스킬 폴더 루트 또는 cwd)로 대신할 수
+있다 — 위 "인증" 절 참고. 아래는 환경변수로 설정하는 경우의 예시다.
+
+macOS / Linux:
+
 ```bash
 export DDOBAK_API_URL="https://10.110.2.175"
 export DDOBAK_API_TOKEN="ddbk_xxxxxxxxxxxx"
@@ -154,6 +171,18 @@ python3 scripts/ddobak_api.py note 456 --content "다음 회의 전까지 견적
 python3 scripts/ddobak_api.py summarize 456
 python3 scripts/ddobak_api.py upload-audio 456 ./recording.m4a
 python3 scripts/ddobak_api.py dump 456 --out ./notes
+```
+
+Windows (PowerShell — `python3`이 없으면 `python` 또는 `py`):
+
+```powershell
+$env:DDOBAK_API_URL = "https://10.110.2.175"
+$env:DDOBAK_API_TOKEN = "ddbk_xxxxxxxxxxxx"
+
+python scripts\ddobak_api.py me
+python scripts\ddobak_api.py meetings --project 12 --from 2026-08-01 --to 2026-08-30
+python scripts\ddobak_api.py search "예산" --project 12 --limit 5
+python scripts\ddobak_api.py dump 456 --out .\notes
 ```
 
 모든 서브커맨드는 `--json`을 붙이면 가공 없는 원본 JSON을 출력한다. 서버 오류는

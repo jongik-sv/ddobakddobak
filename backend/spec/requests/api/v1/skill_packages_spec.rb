@@ -47,7 +47,7 @@ RSpec.describe "Api::V1::SkillPackages", type: :request do
       expect(response.headers["Content-Disposition"]).to include("ddobak-skill.zip")
     end
 
-    it "zip 엔트리에 SKILL.md와 config.json이 포함된다", skip: skip_reason do
+    it "zip 엔트리에 SKILL.md와 .env.ddobak이 포함된다", skip: skip_reason do
       get path
 
       entries = nil
@@ -58,23 +58,25 @@ RSpec.describe "Api::V1::SkillPackages", type: :request do
         entries = Zip::File.open(tf.path) { |zf| zf.entries.map(&:name) }
       end
 
-      expect(entries).to include("SKILL.md", "AGENT.md", "README.md", "scripts/ddobak_api.py", "config.json")
+      expect(entries).to include("SKILL.md", "AGENT.md", "README.md", "scripts/ddobak_api.py", ".env.ddobak")
     end
 
-    it "config.json에 api_url이 request.base_url로 채워진다", skip: skip_reason do
+    it ".env.ddobak에 DDOBAK_API_URL이 request.base_url로 채워지고 토큰 줄은 주석 처리된다", skip: skip_reason do
       get path
 
-      config_content = nil
+      env_content = nil
       Tempfile.create([ "skill", ".zip" ]) do |tf|
         tf.binmode
         tf.write(response.body)
         tf.flush
         Zip::File.open(tf.path) do |zf|
-          config_content = zf.read("config.json")
+          env_content = zf.read(".env.ddobak")
         end
       end
 
-      expect(JSON.parse(config_content)["api_url"]).to be_present
+      expect(env_content).to match(/^DDOBAK_API_URL=https?:\/\/.+$/)
+      expect(env_content).to include("# DDOBAK_API_TOKEN=")
+      expect(env_content).to include("# DDOBAK_API_INSECURE=1")
     end
   end
 end
