@@ -4,7 +4,10 @@
 설정 (아래 순서로 값을 찾고, 먼저 찾은 값이 이긴다):
   1. 실제 환경변수(DDOBAK_API_URL/DDOBAK_API_TOKEN/DDOBAK_API_INSECURE)
   2. 이 스크립트가 속한 패키지 루트(scripts/의 상위 폴더)의 .env.ddobak
-  3. 현재 작업 디렉토리(cwd)의 .env.ddobak
+  3. 같은 패키지 루트의 env.ddobak (점 없음 — 브라우저가 다운로드 시 선행 점을
+     제거하는 경우가 있어 폴백으로 인식한다)
+  4. 현재 작업 디렉토리(cwd)의 .env.ddobak
+  5. 현재 작업 디렉토리(cwd)의 env.ddobak (점 없음, 위와 동일한 이유)
 
   DDOBAK_API_URL       API 베이스 URL (예: https://10.110.2.175)
   DDOBAK_API_TOKEN     Bearer 토큰 (형식: ddbk_...)
@@ -66,13 +69,23 @@ def _parse_dotenv(path):
 
 
 def _load_dotenv_files():
-    """.env.ddobak 파일을 찾아 os.environ에 채운다. 이미 설정된 환경변수는 절대
-    덮어쓰지 않는다(os.environ.setdefault) — 그래서 실제 환경변수가 항상 최우선이고,
-    패키지 루트 파일이 cwd 파일보다 우선한다(먼저 setdefault를 호출하므로)."""
+    """.env.ddobak(또는 폴백으로 env.ddobak) 파일을 찾아 os.environ에 채운다. 이미
+    설정된 환경변수는 절대 덮어쓰지 않는다(os.environ.setdefault) — 그래서 실제
+    환경변수가 항상 최우선이다. 후보 순서(먼저 채운 값이 이김):
+      1. 패키지 루트의 .env.ddobak
+      2. 패키지 루트의 env.ddobak (점 없음 — 브라우저 다운로드가 선행 점을
+         제거해 저장하는 경우의 폴백. 같은 위치에 둘 다 있으면 점 있는 쪽만
+         읽힌다 — setdefault가 이미 채운 키는 건드리지 않으므로.)
+      3. cwd의 .env.ddobak
+      4. cwd의 env.ddobak (점 없음, 위와 동일한 이유의 폴백)
+    """
     package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cwd = os.getcwd()
     candidates = [
         os.path.join(package_root, ".env.ddobak"),
-        os.path.join(os.getcwd(), ".env.ddobak"),
+        os.path.join(package_root, "env.ddobak"),
+        os.path.join(cwd, ".env.ddobak"),
+        os.path.join(cwd, "env.ddobak"),
     ]
     for path in candidates:
         if not os.path.isfile(path):

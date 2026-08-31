@@ -140,6 +140,10 @@ export function CreateApiTokenDialog({
             <code className="mt-1 block rounded-md bg-muted px-3 py-2 text-xs font-mono break-all">
               %USERPROFILE%\.claude\skills\ddobak-meetings\.env.ddobak
             </code>
+            <p className="mt-2 text-xs text-muted-foreground">
+              브라우저에 따라 <code className="font-mono">env.ddobak</code>(점 없음)으로
+              저장될 수 있는데, 이름을 바꾸지 않아도 그대로 동작합니다.
+            </p>
           </div>
 
           <div className="flex justify-end">

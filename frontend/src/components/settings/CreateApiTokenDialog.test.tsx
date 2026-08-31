@@ -120,6 +120,16 @@ describe('CreateApiTokenDialog', () => {
     expect(screen.getByText('설정 파일(.env.ddobak) 다운로드')).toBeInTheDocument()
     expect(screen.getByText('~/.claude/skills/ddobak-meetings/.env.ddobak')).toBeInTheDocument()
     expect(screen.getByText('%USERPROFILE%\\.claude\\skills\\ddobak-meetings\\.env.ddobak')).toBeInTheDocument()
+
+    // 점 없는 파일명(env.ddobak)으로 저장돼도 그대로 동작한다는 안내 — <code>가 섞여
+    // 텍스트 노드가 분리되므로 textContent 기반 커스텀 매처로 확인한다.
+    expect(
+      screen.getByText((_, element) => {
+        if (element?.tagName.toLowerCase() !== 'p') return false
+        const text = element.textContent ?? ''
+        return text.includes('env.ddobak') && text.includes('점 없음') && text.includes('이름을 바꾸지 않아도 그대로 동작합니다')
+      }),
+    ).toBeInTheDocument()
   })
 
   it('.env.ddobak 다운로드 버튼 클릭 시 getApiOrigin()·토큰이 채워진 내용으로 downloadText를 호출한다(Tauri에서도 실제 서버 origin을 쓴다)', async () => {

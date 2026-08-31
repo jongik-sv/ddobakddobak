@@ -26,6 +26,9 @@ description: >-
 환경변수 사용자와 호환). `DDOBAK_API_URL`·`DDOBAK_API_TOKEN`이 어느 경로로도
 채워지지 않으면 스크립트가 즉시 오류 메시지와 함께 종료한다.
 
+브라우저가 다운로드하며 선행 점을 제거해 `env.ddobak`(점 없음)으로 저장되는
+경우도 각 위치(패키지 루트/cwd)에서 폴백으로 인식한다 — 파일명을 고칠 필요 없다.
+
 파일 대신 환경변수를 직접 써도 된다:
 
 | 항목 | macOS / Linux | Windows (PowerShell) |
