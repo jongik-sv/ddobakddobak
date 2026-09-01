@@ -54,9 +54,11 @@ class Ext::V1::MeetingsController < Ext::V1::BaseController
     audit!("meetings.summary", meeting_id: @meeting.id)
 
     final_summary = @meeting.summaries.where(summary_type: "final").order(generated_at: :desc, id: :desc).first
-    return render_error(:not_found, "summary_not_found", "최종 요약이 없습니다") unless final_summary
+    # 진행중 회의(recording/transcribing)는 final이 아직 없다 — realtime(매분 갱신되는 회의록)으로 폴백한다.
+    summary = final_summary || @meeting.summaries.where(summary_type: "realtime").order(generated_at: :desc, id: :desc).first
+    return render_error(:not_found, "summary_not_found", "요약이 없습니다") unless summary
 
-    render json: { summary: serialize_ext_summary(final_summary) }
+    render json: { summary: serialize_ext_summary(summary) }
   end
 
   private

@@ -257,6 +257,8 @@ def cmd_transcript(args):
 def cmd_summary(args):
     def fmt(d):
         s = d.get("summary", d)
+        if s.get("summary_type") == "realtime":
+            print("[진행중] 실시간 회의록입니다 — 회의가 끝나면 최종 요약으로 대체됩니다.\n")
         kp = s.get("key_points") or []
         if kp:
             print("## 핵심 요약")

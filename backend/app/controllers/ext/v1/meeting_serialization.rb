@@ -45,6 +45,7 @@ module Ext::V1::MeetingSerialization
 
   def serialize_ext_summary(summary)
     {
+      summary_type: summary.summary_type,
       key_points: parse_json_array_field(summary.key_points),
       decisions: parse_json_array_field(summary.decisions),
       discussion_details: parse_json_array_field(summary.discussion_details),

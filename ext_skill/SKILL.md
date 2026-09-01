@@ -64,7 +64,7 @@ Windows에서 `python3`이 없으면 `python` 또는 `py`로 대신 실행한다
 | `meetings [--project N] [--folder N] [--from D] [--to D] [--status S] [--page N] [--per-page N]` | 회의 목록 |
 | `meeting <id>` | 회의 상세 |
 | `transcript <id>` | 전사 전체 — `[mm:ss] 화자: 내용` 형식으로 출력 |
-| `summary <id>` | 최종 요약(핵심 요약/결정 사항/상세) |
+| `summary <id>` | 요약 — 완료 회의는 최종 요약, 진행중 회의는 실시간 회의록(응답 summary_type으로 구분) |
 | `search <q> [--project N] [--limit N]` | 하이브리드 검색(발췌 + 회의 참조) |
 | `create --title T --project N [--folder N] [--transcript-file F]` | 텍스트 전사로 회의 생성(F는 JSON 파일). 생략 시 빈 배열 — 오디오 업로드용 회의 생성(아래 워크플로 참고) |
 | `note <id> [--content C]` | `--content` 없으면 노트 조회, 있으면 추가 |
@@ -118,6 +118,8 @@ python3 scripts/ddobak_api.py summary <meeting_id>
 # 아직 요약이 없거나 최신화가 필요하면:
 python3 scripts/ddobak_api.py summarize <meeting_id>
 ```
+
+진행중인 회의(status recording/transcribing)도 `summary`로 실시간 회의록을, `transcript`로 지금까지의 전사를 바로 조회할 수 있다.
 
 **"회의 내용 정리해서 로컬에 저장해줘"**
 

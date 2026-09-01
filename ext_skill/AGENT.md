@@ -34,7 +34,7 @@ Base URL: `DDOBAK_API_URL` (예: `https://10.110.2.175`)
 | `GET /api/ext/v1/meetings?project_id=&folder_id=&from=&to=&status=&page=&per_page=` | `meetings:read` | 회의 목록(페이지네이션 `meta` 포함) |
 | `GET /api/ext/v1/meetings/:id` | `meetings:read` | 회의 상세 |
 | `GET /api/ext/v1/meetings/:id/transcripts` | `transcripts:read` | 전사 전체(화자·ms) |
-| `GET /api/ext/v1/meetings/:id/summary` | `summaries:read` | final 요약(`key_points`/`decisions`/`notes_markdown`) |
+| `GET /api/ext/v1/meetings/:id/summary` | `summaries:read` | final 요약(`key_points`/`decisions`/`notes_markdown`). final이 없으면(진행중 회의) summary_type "realtime"으로 폴백하며, 응답의 `summary_type`으로 어느 쪽인지 구분한다. 둘 다 없으면 404 `summary_not_found` |
 | `GET /api/ext/v1/search?q=&project_id=&folder_id=&limit=` | `search:read` | 하이브리드 검색(발췌 + 회의 참조) |
 | `POST /api/ext/v1/meetings` | `meetings:write` | 텍스트 전사 임포트 회의 생성(오디오 업로드 경로의 첫 단계이기도 하다 — 아래 "오디오 업로드 워크플로" 참고) |
 | `POST /api/ext/v1/meetings/:id/audio` | `meetings:write` | 오디오 업로드(multipart `file`) → STT 큐. 아래 제약 참고 |

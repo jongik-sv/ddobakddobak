@@ -284,11 +284,24 @@ RSpec.describe "Ext::V1::Meetings", type: :request do
       get "/api/ext/v1/meetings/#{meeting.id}/summary", headers: auth_header(plaintext)
       expect(response).to have_http_status(:ok)
       body = response.parsed_body["summary"]
+      expect(body["summary_type"]).to eq("final")
       expect(body["notes_markdown"]).to eq("최종본")
       expect(body["key_points"]).to eq(%w[a b])
     end
 
-    it "final 요약이 없으면 404 summary_not_found" do
+    it "final이 없으면 realtime 회의록으로 폴백한다" do
+      meeting = create(:meeting, project: project, creator: owner, status: "recording")
+      create(:summary, meeting: meeting, summary_type: "realtime", notes_markdown: "진행중 회의록")
+      _t, plaintext = issue_token(user: owner)
+
+      get "/api/ext/v1/meetings/#{meeting.id}/summary", headers: auth_header(plaintext)
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body["summary"]
+      expect(body["summary_type"]).to eq("realtime")
+      expect(body["notes_markdown"]).to eq("진행중 회의록")
+    end
+
+    it "요약이 하나도 없으면 404 summary_not_found" do
       meeting = create(:meeting, project: project, creator: owner)
       _t, plaintext = issue_token(user: owner)
 
