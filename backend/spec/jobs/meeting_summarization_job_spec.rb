@@ -641,4 +641,39 @@ RSpec.describe MeetingSummarizationJob do
       expect(meeting.summaries.find_by(summary_type: "final").notes_markdown).to eq("## 정상 종료 회의록")
     end
   end
+
+  # 물결(~) 범위 표기가 마크다운 취소선(~~)으로 오인되는 문제 방지 — 저장 직전 방어 치환.
+  describe "range tilde normalization (~ → -, 취소선 오인 방지)" do
+    it "#normalize_range_tildes replaces half-width and full-width tildes with hyphens" do
+      job = described_class.new
+      result = job.send(:normalize_range_tildes, "10:00~11:00과 14:00～15:00")
+
+      expect(result).to eq("10:00-11:00과 14:00-15:00")
+    end
+
+    it "strips ~ from the saved realtime notes_markdown when the LLM result contains range tildes" do
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "## 회의록\n- 회의 10:00~11:00, 참석 3~5명", "ok" => true })
+
+      described_class.perform_now(meeting.id, type: "realtime")
+
+      notes = meeting.summaries.find_by(summary_type: "realtime").notes_markdown
+      expect(notes).to include("10:00-11:00")
+      expect(notes).to include("3-5명")
+      expect(notes).not_to include("~")
+    end
+
+    it "strips ~ from the saved final notes_markdown when the LLM result contains range tildes" do
+      final_meeting = create(:meeting, project: project, creator: user, status: "completed")
+      create(:transcript, meeting: final_meeting, sequence_number: 1, content: "발화")
+      allow_any_instance_of(LlmService).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "## 회의록\n- 예정 10:00~11:00", "ok" => true })
+
+      described_class.perform_now(final_meeting.id, type: "final")
+
+      notes = final_meeting.summaries.find_by(summary_type: "final").notes_markdown
+      expect(notes).to include("10:00-11:00")
+      expect(notes).not_to include("~")
+    end
+  end
 end

@@ -229,6 +229,8 @@ class MeetingSummarizationJob < ApplicationJob
     # 제목과 정확히 일치할 때만 지우는 strip_matching_h1 을 쓴다 — 사용자가 본문 첫 줄에 직접 쓴
     # 커스텀 H1(회의 제목과 다른 텍스트)은 보존한다. (append 모드 결과는 H1 로 시작하지 않아 no-op.)
     body_result = strip_pinned_h1(body_result, pinned_top, meeting)
+    # 마크다운 취소선(~~) 오인 방지 — 저장 직전 범위 표기 ~를 -로 강제(프롬프트 지시의 방어선).
+    body_result = normalize_range_tildes(body_result)
     # 저장 직전 재조립: pinned_top + 절취선 + body_result. pinned_top 없으면(비연결) 절취선 없이
     # body_result 그대로(join 이 처리) — 기존 단일 notes_markdown 계약과 동일하게 유지.
     notes_markdown = PreviousMeetingNotes.join(pinned_top, body_result)
@@ -462,6 +464,8 @@ class MeetingSummarizationJob < ApplicationJob
       return
     end
 
+    # 마크다운 취소선(~~) 오인 방지 — 저장 직전 범위 표기 ~를 -로 강제(프롬프트 지시의 방어선).
+    body_result = normalize_range_tildes(body_result)
     # 저장 직전 재조립: pinned_top + 절취선 + body_result.
     notes_markdown = PreviousMeetingNotes.join(pinned_top, body_result)
 
@@ -563,6 +567,11 @@ class MeetingSummarizationJob < ApplicationJob
   def strip_pinned_h1(body_result, pinned_top, meeting)
     return body_result unless pinned_top.present?
     PreviousMeetingNotes.strip_matching_h1(body_result, meeting.title)
+  end
+
+  # 마크다운 취소선(~~) 오인 방지 — 범위 표기 ~를 -로 강제. 프롬프트 지시의 방어선.
+  def normalize_range_tildes(text)
+    text.to_s.tr("~～", "--")
   end
 
   # 증분 블록을 시간대 헤딩과 함께 기존 회의록 뒤에 덧붙인 전체 노트 반환. 블록 없으면 기존 그대로.

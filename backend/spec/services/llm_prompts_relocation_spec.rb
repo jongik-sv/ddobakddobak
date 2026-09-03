@@ -18,13 +18,16 @@ require "digest"
 # (1) 연결 회의 시드 마커 각인(⟦m:<id>/t:..⟧) 도입에 맞춰 "[최우선] 보존" 지시에 ⟦m:..⟧ 도 명시.
 # (2) 인용 마커 정규화 패스 도입(LlmService 출력에 CitationMarkers.normalize 적용)에 맞춰
 #     "마커는 원형 그대로 복사" 지시 1줄 추가. 두 변경 합산 1013→1145바이트.
+# REFINE_NOTES_SYSTEM_PROMPT·APPEND_NOTES_SYSTEM_PROMPT 는 물결(~) 범위 표기가 마크다운
+# 취소선(~~)으로 오인되는 문제 방지 — "범위는 하이픈(-) 표기" 규칙 1줄씩 추가로 내용이
+# 의도적으로 바뀌었다 — baseline 갱신 (REFINE 3745→3947, APPEND 1498→1680바이트).
 RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
   # 이동 전 baseline: name => [sha256(value), bytesize]. String 상수만.
   BASELINE_SHA = {
     "DEFAULT_SECTION_STRUCTURE" => ["ab9c42efa9aa05c4e1066cb7e5c3fd17500f5942f7a2f98134d2b044aa806496", 480],
-    "REFINE_NOTES_SYSTEM_PROMPT" => ["d42eb70cd740b535c9e1200070f541b927ab35f76633281d84164554d38a373f", 3745],
+    "REFINE_NOTES_SYSTEM_PROMPT" => ["36c4f81df3f3ba1773f322d7c933c19a33265e60b71c0d12698ed6a21031cdb7", 3947],
     "CHRONOLOGICAL_NOTES_INSTRUCTION" => ["0d277c0663e0ad4acb93ff74051cf41caa6a8fd342ddbe52fa388592da5fc5bc", 419],
-    "APPEND_NOTES_SYSTEM_PROMPT" => ["b12b3b501a1df5c88bfd0549b7cf6e257058a79a76d7bedbc74f8e5ba8f0018a", 1498],
+    "APPEND_NOTES_SYSTEM_PROMPT" => ["dc748ec42389aa7f89982c1cdbf2c76407d16eca28f524edb311dcb55f32f2da", 1680],
     "COMPRESS_AGENDA_SYSTEM_PROMPT" => ["2f5a182f91fab66712c614028079a9553da55088587634f549dfad895118481d", 505],
     "CITATION_MARKER_INSTRUCTION" => ["884de17289ede921311d0a21b4614e421f4617b20bdae43a752927d70e992e26", 1145],
     "FOLDER_CHAT_CITATION_INSTRUCTION" => ["589520d25880ece86e92a1510ad3c447ec8081b912aa9ad8d27bd997a7b734d5", 573],
