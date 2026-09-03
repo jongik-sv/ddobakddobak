@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import MeetingsPage from './MeetingsPage'
 import { useMeetingStore } from '../stores/meetingStore'
 import { useAuthStore } from '../stores/authStore'
+import { useToastStore } from '../stores/toastStore'
 
 const {
   mockGetMeetings,
@@ -977,5 +978,72 @@ describe('MeetingsPage 회의 삭제 확인(confirmDialog)', () => {
     await waitFor(() => {
       expect(mockDeleteMeeting).toHaveBeenCalledWith(1)
     })
+  })
+})
+
+/* ─── 페이지 전역 오디오 드롭 (오디오 파일 전역 드래그앤드롭 — 회의 목록 페이지) ─── */
+describe('MeetingsPage 페이지 전역 오디오 드롭', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsDesktop = true
+    useAuthStore.setState({ user: { id: 1, email: 'me@x.com', name: '사용자1', role: 'member' } })
+    useMeetingStore.getState().reset()
+    mockGetMeetings.mockResolvedValue({ meetings, meta: { total: 3, page: 1, per: 20 } })
+    useMeetingStore.setState({ meetings, meta: { total: 3, page: 1, per: 20 }, isLoading: false })
+    useToastStore.getState().clear()
+  })
+
+  function dragEvent(type: string, target: EventTarget, dataTransfer: Record<string, unknown>) {
+    const event = new Event(type, { bubbles: true, cancelable: true }) as DragEvent
+    Object.defineProperty(event, 'dataTransfer', { value: dataTransfer, configurable: true })
+    act(() => {
+      target.dispatchEvent(event)
+    })
+  }
+
+  function makeFile(name: string, type = 'audio/mpeg'): File {
+    return new File([new Uint8Array(4)], name, { type })
+  }
+
+  it('페이지 어디에 오디오 파일을 드롭해도 업로드 모달이 initialFiles(제목 자동 채움)로 열린다', async () => {
+    renderPage()
+    await screen.findByText('첫 번째 회의')
+
+    dragEvent('dragenter', document, { types: ['Files'] })
+    dragEvent('drop', document, { types: ['Files'], files: [makeFile('meeting.mp3')] })
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+    // initialFiles가 마운트 시 1회 적용되며 제목을 파일명(확장자 제외)으로 자동 채운다.
+    expect(screen.getByDisplayValue('meeting')).toBeInTheDocument()
+  })
+
+  it('비오디오 파일만 드롭하면 모달을 열지 않고 화면에 보이는 로컬 토스트로 안내한다', async () => {
+    renderPage()
+    await screen.findByText('첫 번째 회의')
+
+    dragEvent('dragenter', document, { types: ['Files'] })
+    dragEvent('drop', document, { types: ['Files'], files: [makeFile('doc.pdf', 'application/pdf')] })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    // 실제로 화면에 보이는 안내(LocalToast).
+    expect(screen.getByRole('status')).toHaveTextContent('오디오 파일만')
+    // 기존 전역 상태 관례도 함께 기록됨을 확인.
+    expect(useToastStore.getState().message).toMatch(/오디오 파일만/)
+  })
+
+  it('업로드 모달이 이미 열려 있는 동안은 페이지 드롭 오버레이가 비활성화된다 (이중 처리 방지)', async () => {
+    renderPage()
+    await screen.findByText('첫 번째 회의')
+
+    await userEvent.click(screen.getByRole('button', { name: /오디오 업로드/i }))
+    await waitFor(() => screen.getByRole('dialog'))
+
+    dragEvent('dragenter', document, { types: ['Files'] })
+    dragEvent('drop', document, { types: ['Files'], files: [makeFile('other.mp3')] })
+
+    // 오버레이가 disabled면 리스너 자체를 구독하지 않으므로 두 번째 다이얼로그가 뜨지 않는다.
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
   })
 })

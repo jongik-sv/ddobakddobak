@@ -11,7 +11,18 @@ import { MeetingTypeSelector } from './MeetingListUI'
 import { VERBOSITY_OPTIONS } from './SummaryOptionsControl'
 import { AudioFileOrderList } from './AudioFileOrderList'
 
-const ACCEPTED_AUDIO_TYPES = '.mp3,.wav,.m4a,.webm,.ogg,.flac,.aac,.mp4'
+/** 이 모달이 허용하는 오디오 확장자. 전역 드래그앤드롭(GlobalAudioDropHandler)·회의 목록
+ *  드롭존 등 이 모달을 여는 다른 진입점에서도 동일 기준으로 필터링하도록 export한다.
+ *  회의 상세의 fileTriage.isAudioFile(첨부 triage용, MIME 포함 더 넓은 판별)과는 별개 —
+ *  이 모달로 들어오는 파일만 걸러내는 용도라 목적이 다르다. */
+export const ACCEPTED_AUDIO_EXTENSIONS = ['mp3', 'wav', 'm4a', 'webm', 'ogg', 'flac', 'aac', 'mp4']
+const ACCEPTED_AUDIO_TYPES = ACCEPTED_AUDIO_EXTENSIONS.map((ext) => `.${ext}`).join(',')
+
+/** 파일명 확장자가 ACCEPTED_AUDIO_EXTENSIONS에 속하는지 판정한다. */
+export function isAcceptedAudioFile(file: File): boolean {
+  const ext = file.name.split('.').pop()?.toLowerCase()
+  return !!ext && ACCEPTED_AUDIO_EXTENSIONS.includes(ext)
+}
 
 interface UploadAudioModalProps {
   folderId: number | null
@@ -86,7 +97,7 @@ export function UploadAudioModal({ folderId, meetingTypeList, onClose, onCreated
     const { open } = await import('@tauri-apps/plugin-dialog')
     const selected = await open({
       multiple: true,
-      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'webm', 'ogg', 'flac', 'aac', 'mp4'] }],
+      filters: [{ name: 'Audio', extensions: ACCEPTED_AUDIO_EXTENSIONS }],
     })
     if (!selected) return
     const paths = Array.isArray(selected) ? selected : [selected]

@@ -14,6 +14,7 @@ import { useRecordingRecovery } from './hooks/useRecordingRecovery'
 import { ScheduledMeetingWatcher } from './components/ScheduledMeetingWatcher'
 import { ClosePrompt } from './components/ClosePrompt'
 import { RecordingLayer } from './components/recording/RecordingLayer'
+import { GlobalAudioDropHandler } from './components/GlobalAudioDropHandler'
 
 // 무거운/비랜딩 페이지는 지연 로드해 초기 App 청크에서 분리한다(@blocknote·lamejs 등).
 // 랜딩(/meetings = MeetingsPage)은 eager 유지 — 첫 페인트 경로는 그대로.
@@ -245,6 +246,8 @@ function GatedApp() {
     {/* 폴더/프로젝트 챗 드로어 — Routes와 형제인 글로벌 영역에 단일 마운트.
         회의 상세(/meetings/:id)로 이동해도 드로어가 언마운트되지 않는다(idea.md #35 2단계). */}
     <FolderChatDrawer />
+    {/* 전역 오디오 파일 드래그앤드롭 — 회의 목록/상세는 자체 드롭 처리가 있어 내부에서 비활성화된다. */}
+    <GlobalAudioDropHandler />
     </AuthGuard>
     </SetupGate>
   )

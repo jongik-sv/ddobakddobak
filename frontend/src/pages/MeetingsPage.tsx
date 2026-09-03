@@ -22,7 +22,11 @@ import EditMeetingDialog, { type EditMeetingData } from '../components/meeting/E
 import ExportMeetingDialog from '../components/meeting/ExportMeetingDialog'
 import { MeetingsGridSkeleton } from '../components/ui/Skeleton'
 import { CreateMeetingModal } from '../components/meeting/CreateMeetingModal'
-import { UploadAudioModal } from '../components/meeting/UploadAudioModal'
+import { UploadAudioModal, isAcceptedAudioFile } from '../components/meeting/UploadAudioModal'
+import { MeetingFileDropOverlay } from '../components/meeting/MeetingFileDropOverlay'
+import { LocalToast } from '../components/ui/LocalToast'
+import { useLocalToast } from '../hooks/useLocalToast'
+import { useToastStore } from '../stores/toastStore'
 import { StatusFilterTabs } from '../components/meeting/MeetingListUI'
 import { MeetingCardGrid } from '../components/meeting/MeetingCardGrid'
 import { MeetingListTable } from '../components/meeting/MeetingListTable'
@@ -77,6 +81,14 @@ export default function MeetingsPage() {
 
   const [showModal, setShowModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
+  // 페이지 전역 드롭으로 들어온 오디오 파일 — 있으면 업로드 모달을 initialFiles와 함께 연다.
+  // showUploadModal(버튼으로 연 경우)과 별개 트리거이지만 같은 모달 인스턴스를 공유한다.
+  const [droppedAudioFiles, setDroppedAudioFiles] = useState<File[] | null>(null)
+  const isUploadModalOpen = showUploadModal || droppedAudioFiles !== null
+  const closeUploadModal = () => {
+    setShowUploadModal(false)
+    setDroppedAudioFiles(null)
+  }
   const [searchExpanded, setSearchExpanded] = useState(false)
   const [filterSheetOpen, setFilterSheetOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -245,6 +257,20 @@ export default function MeetingsPage() {
     }
     fetchMeetings(currentPage)
   }, [fetchMeetings, currentPage])
+
+  // 페이지 전역 드롭 — 오디오만 걸러 업로드 모달을 initialFiles와 함께 연다.
+  // 오디오가 하나도 없으면 모달을 열지 않고 화면에 보이는 로컬 토스트로 안내한다.
+  const { message: dropToastMessage, show: showDropToast } = useLocalToast()
+  const handleAudioFilesDropped = useCallback((files: File[]) => {
+    const audioFiles = files.filter(isAcceptedAudioFile)
+    if (audioFiles.length === 0) {
+      const notice = '오디오 파일만 업로드할 수 있습니다.'
+      useToastStore.getState().showStatus(notice) // 기존 전역 상태 관례도 함께 기록
+      showDropToast(notice)
+      return
+    }
+    setDroppedAudioFiles(audioFiles)
+  }, [showDropToast])
 
   // 전체 보기 토글: showAll 켜면 important=false 회의도 노출 → 1페이지부터 재조회.
   const handleToggleShowAll = useCallback(() => {
@@ -610,18 +636,26 @@ export default function MeetingsPage() {
         />
       )}
 
-      {/* 오디오 파일 업로드 모달 */}
-      {showUploadModal && (
+      {/* 오디오 파일 업로드 모달 — 버튼 클릭(showUploadModal) 또는 페이지 전역 드롭(droppedAudioFiles)
+          두 진입점이 같은 모달 인스턴스를 공유한다. */}
+      {isUploadModalOpen && (
         <UploadAudioModal
           folderId={currentFolderId}
           meetingTypeList={meetingTypeList}
-          onClose={() => setShowUploadModal(false)}
+          initialFiles={droppedAudioFiles ?? undefined}
+          onClose={closeUploadModal}
           onCreated={(meeting) => {
             addMeeting(meeting)
+            // UploadAudioModal이 onCreated 직후 자체적으로 onClose(=closeUploadModal)를 호출한다.
             navigate(`/meetings/${meeting.id}`)
           }}
         />
       )}
+
+      {/* 페이지 전역 드롭존 — 어디에 드롭해도 오디오 파일이면 업로드 모달을 연다.
+          모달이 이미 열려 있는 동안은 비활성화(모달 내부 드롭존이 이어서 처리). */}
+      <MeetingFileDropOverlay disabled={isUploadModalOpen} onFilesDropped={handleAudioFilesDropped} />
+      <LocalToast message={dropToastMessage} />
 
       {/* 폴더 이동 다이얼로그 */}
       {movingMeeting && (
