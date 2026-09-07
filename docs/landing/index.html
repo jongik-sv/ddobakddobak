@@ -265,6 +265,21 @@
     border-radius: 2px; z-index: 1;
   }
   html.js .steps--timeline .rail__fill { transition: height .55s cubic-bezier(.2, .7, .2, 1); }
+
+  /* rail light sweep: a bright band layered above the base rail + scroll fill,
+     travelling the full --railTop/--railH span once per 5.6s (never replaces
+     the scroll-progress fill beneath it — purely decorative overlay). */
+  .steps--timeline::after {
+    content: ""; position: absolute; left: 21px; top: var(--railTop, 46px); height: var(--railH, auto); width: 2px;
+    background: linear-gradient(180deg, transparent 0%, rgba(255, 255, 255, .9) 45%, transparent 62%);
+    background-size: 100% 300%; background-repeat: no-repeat;
+    border-radius: 2px; z-index: 1; pointer-events: none;
+    animation: railGlowSweep 5.6s linear infinite;
+  }
+  @keyframes railGlowSweep {
+    0% { background-position: 0 0%; }
+    100% { background-position: 0 100%; }
+  }
   .steps--timeline .step {
     border: 1px solid var(--line); border-radius: var(--r); background: var(--surface);
     box-shadow: var(--shadow-sm); padding: 26px 28px; margin-bottom: 18px;
@@ -273,9 +288,9 @@
   }
   .steps--timeline .step:last-child { margin-bottom: 0; }
   .steps--timeline .step .ln { display: none; }
-  .steps--timeline .step:nth-of-type(1) { --stepc: var(--live); --steprgb: 251, 91, 91; }
-  .steps--timeline .step:nth-of-type(2) { --stepc: var(--indigo); --steprgb: 79, 70, 229; }
-  .steps--timeline .step:nth-of-type(3) { --stepc: var(--mint); --steprgb: 15, 168, 119; }
+  .steps--timeline .step:nth-of-type(1) { --stepc: var(--live); --steprgb: 251, 91, 91; --glowDelay: .2s; }
+  .steps--timeline .step:nth-of-type(2) { --stepc: var(--indigo); --steprgb: 79, 70, 229; --glowDelay: 1.5s; }
+  .steps--timeline .step:nth-of-type(3) { --stepc: var(--mint); --steprgb: 15, 168, 119; --glowDelay: 2.8s; }
 
   /* rail dot marking each step (no numerals — pure color-coded dot) */
   .steps--timeline .step__num {
@@ -287,6 +302,20 @@
   .steps--timeline .step:nth-of-type(1) .step__num { background: linear-gradient(135deg, var(--live), #ff8a76); }
   .steps--timeline .step:nth-of-type(2) .step__num { background: linear-gradient(135deg, var(--indigo), var(--indigo-700)); }
   .steps--timeline .step:nth-of-type(3) .step__num { background: linear-gradient(135deg, var(--mint), #0c8a63); }
+
+  /* sequential glow synced with the rail light sweep — same 5.6s cycle, each
+     dot's delay (--glowDelay, set per-step above alongside --steprgb) timed
+     roughly to when the sweep passes it. Only the box-shadow spread (per-step
+     --steprgb) and a sub-1.06x scale animate; the dot's own background/opacity
+     are untouched, so it never dims. Kept as a named animation + a shared
+     --glowDelay custom property (rather than folded into one shorthand) so the
+     is-selected rule below can layer its own animations on top via the same
+     shorthand slot without resetting this delay to 0. */
+  .steps--timeline .step__num { animation: stepGlowPulse 5.6s ease var(--glowDelay, 0s) infinite; }
+  @keyframes stepGlowPulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(var(--steprgb, 148, 148, 160), .14), 0 3px 10px rgba(23, 21, 31, .16); transform: scale(1); }
+    50% { box-shadow: 0 0 0 4px rgba(var(--steprgb, 148, 148, 160), .14), 0 0 14px 5px rgba(var(--steprgb, 148, 148, 160), .5), 0 3px 10px rgba(23, 21, 31, .16); transform: scale(1.05); }
+  }
 
   /* JS-driven sequential selection: dim everything until scrolled into view, then reveal in order.
      The dot (.step__num) is never opacity/filter-dimmed — it must stay fully opaque so it always
@@ -306,7 +335,10 @@
     box-shadow: 0 16px 36px rgba(var(--steprgb), .16), var(--shadow-sm);
   }
   html.js .steps--timeline .step.is-selected .step__num {
-    animation: stepNumPop .5s cubic-bezier(.2, .7, .2, 1), stepRingPulse .7s ease-out;
+    /* layered onto (not replacing) the ambient stepGlowPulse — same duration/
+       timing-function/delay as the base rule via the shared --glowDelay, so
+       the selected step keeps glowing instead of going dark during selection */
+    animation: stepNumPop .5s cubic-bezier(.2, .7, .2, 1), stepRingPulse .7s ease-out, stepGlowPulse 5.6s ease var(--glowDelay, 0s) infinite;
   }
   @keyframes stepNumPop {
     0% { transform: scale(1); }
@@ -329,6 +361,10 @@
     html.js .steps--timeline .step__num,
     html.js .steps--timeline .step__ic { transition: none !important; animation: none !important; }
     html.js .steps--timeline .step.is-selected { transform: none !important; }
+    /* new rail sweep + dot glow are plain CSS loops (not html.js-gated), so
+       stop them unconditionally here too */
+    .steps--timeline::after,
+    .steps--timeline .step__num { animation: none !important; }
   }
 
   /* ---------- Showcase ---------- */
@@ -380,6 +416,8 @@
     background: #17151f; color: #d8d6e6;
     font-family: var(--mono); font-size: .8rem; line-height: 1.7;
   }
+  #agent-api pre .ask { color: #a29bfa; font-weight: 700; }
+  #agent-api .show__fig { min-width: 0; }
 
   /* ---------- Trust (organizational advantage) ---------- */
   .trust__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
@@ -499,6 +537,7 @@
     .step__ic svg { width: 22px; height: 22px; }
     .steps--timeline { padding-left: 60px; }
     .steps--timeline::before,
+    .steps--timeline::after,
     .steps--timeline .rail__fill { left: 17px; }
     .steps--timeline .step__num { left: -51px; top: 31px; width: 16px; height: 16px; border-width: 2px; }
     .audience { flex-direction: column; }
@@ -907,24 +946,29 @@
           <ul class="flist">
             <li><b>토큰 하나로 권한을 좁힙니다.</b> 설정에서 개인 액세스 토큰(<code>ddbk_</code> 접두)을 발급하고, 회의·전사·요약 읽기·검색·제한적 쓰기 5종 스코프와 프로젝트·폴더 범위로 좁힙니다. 만료일은 필수이고, 즉시 폐기할 수 있습니다.</li>
             <li><b>REST API로 회의록에 접근합니다.</b> <code>/api/ext/v1</code>로 회의 목록·상세·전사·요약을 조회하고, 키워드+의미 하이브리드로 검색합니다. 회의 메모 추가, 요약 재생성, 회의 생성과 오디오 업로드까지 됩니다.</li>
-            <li><b>스킬 하나면 에이전트가 스스로 찾습니다.</b> 사용 설명서와 파이썬 CLI로 된 스킬을 서버에서 zip으로 내려받아 설치하면, "지난 회의에서 뭐라고 했지?"에 에이전트가 직접 조회·검색하고 근거를 인용합니다. 표준 라이브러리만 써서 특정 벤더에 매이지 않습니다.</li>
+            <li><b>스킬 하나면 에이전트가 스스로 찾습니다.</b> 명령어를 외울 필요 없이 평소 말투로 물어보면 되는 스킬을 서버에서 zip으로 내려받아 설치하면, "지난 회의에서 뭐라고 했지?"에 에이전트가 직접 조회·검색하고 근거를 인용합니다. 표준 라이브러리만 써서 특정 벤더에 매이지 않습니다.</li>
             <li><b>감사 로그와 기밀 절단을 그대로 존중합니다.</b> 토큰별 호출 이력이 남고, 기밀 구간을 절단한 회의는 절단 이후 데이터만 API로도 노출됩니다.</li>
           </ul>
         </div>
         <div class="show__fig reveal">
-          <span class="tag">CLI</span>
+          <span class="tag">Claude Code</span>
           <div class="frame">
-            <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — 에이전트 스킬 · ddobak_api.py</span></div>
-            <pre>$ python3 ddobak_api.py search "지난 분기 결정사항"
+            <div class="frame__bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">또박또박 — Claude Code · ddobak-meetings 스킬</span></div>
+            <pre><span class="ask">&gt; 지난 분기 결정사항 정리해줘</span>
 
-[2026-04-30] 3월 실적 리뷰
-  결정사항 — 신규 캠페인 예산 20% 증액 (박서연, 03:12)
+  ddobak-meetings 스킬로 회의를 검색합니다…
 
-[2026-05-12] 마케팅 전략 회의
-  "다음 분기는 재구매 유도로 방향을 바꾸자" (김도현, 11:47)
+  [2026-04-30] 3월 실적 리뷰
+    신규 캠페인 예산 20% 증액 (박서연, 03:12)
+  [2026-05-12] 마케팅 전략 회의
+    "다음 분기는 재구매 유도로 방향을 바꾸자" (김도현, 11:47)
 
-$ python3 ddobak_api.py dump 482 --out ./notes
-회의록·전사·요약을 마크다운 한 파일로 저장했습니다.</pre>
+  두 회의 모두 재구매 중심 전환으로 수렴합니다. 근거 발언에
+  회의·타임코드를 붙여 정리했습니다.
+
+<span class="ask">&gt; 482번 회의 내용을 노트로 저장해줘</span>
+
+  회의록·전사·요약을 ./notes/482.md 한 파일로 저장했습니다.</pre>
           </div>
         </div>
       </div>
@@ -1317,6 +1361,44 @@ $ python3 ddobak_api.py dump 482 --out ./notes
     lb.addEventListener('click', function () { lb.close(); });
     lb.addEventListener('close', function () { lbImg.src = ''; });
   }
+
+  // visit counter (Vercel endpoint) — owner sees a badge, regular visitors send one hit per session
+  (function () {
+    // Vercel 배포 후 확정된 도메인을 여기에 적는다. 비어 있으면 아무 동작도 하지 않는다.
+    const COUNTER_ORIGIN = 'https://ddobak-landing-counter.vercel.app';
+    if (!COUNTER_ORIGIN) return;
+
+    var KEY = 'ddobakStatsKey';
+    var m = /^#stats=(.+)$/.exec(location.hash);
+    if (m) {
+      try { localStorage.setItem(KEY, decodeURIComponent(m[1])); } catch (e) {}
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+
+    var ownerKey = null;
+    try { ownerKey = localStorage.getItem(KEY); } catch (e) {}
+
+    if (!ownerKey) {
+      var HIT_FLAG = 'ddobakHitSent';
+      var alreadySent = false;
+      try { alreadySent = sessionStorage.getItem(HIT_FLAG) === '1'; } catch (e) {}
+      if (!alreadySent) {
+        try { sessionStorage.setItem(HIT_FLAG, '1'); } catch (e) {}
+        fetch(COUNTER_ORIGIN + '/api/hit', { method: 'POST', keepalive: true, mode: 'cors' }).catch(function () {});
+      }
+      return;
+    }
+
+    fetch(COUNTER_ORIGIN + '/api/stats', { headers: { 'x-stats-key': ownerKey }, mode: 'cors' })
+      .then(function (res) { if (!res.ok) throw new Error('stats unavailable'); return res.json(); })
+      .then(function (data) {
+        var badge = document.createElement('div');
+        badge.textContent = '총 ' + Number(data.total || 0).toLocaleString('ko-KR') + ' · 오늘 ' + Number(data.today || 0).toLocaleString('ko-KR');
+        badge.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:20;font-family:var(--mono);font-size:.72rem;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 12px;box-shadow:var(--shadow-sm);pointer-events:none;';
+        document.body.appendChild(badge);
+      })
+      .catch(function () {});
+  })();
 </script>
 </body>
 </html>
