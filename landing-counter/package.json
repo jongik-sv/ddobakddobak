@@ -1,0 +1,18 @@
+{
+  "name": "landing-counter",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.34.3",
+    "@upstash/ratelimit": "^2.0.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "@types/node": "^20.16.11",
+    "@vercel/node": "^3.2.24"
+  }
+}

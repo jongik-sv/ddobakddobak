@@ -1,0 +1,8 @@
+node_modules
+.vercel
+.env*
+
+# Upstash 마켓플레이스 연동이 설치하는 벤더 스킬 문서 (재생성 가능)
+.agents/
+.claude/
+skills-lock.json
