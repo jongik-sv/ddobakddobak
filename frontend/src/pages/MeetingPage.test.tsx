@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import MeetingPage from './MeetingPage'
@@ -964,6 +964,168 @@ describe('MeetingPage', () => {
 
       fireEvent.click(screen.getByText('upload-modal-created'))
       await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/meetings/999'))
+    })
+  })
+
+  // fix/stt-regen-buttons-after-recording: 녹음 종료 시 useLiveRecording.performStop이 오디오
+  // 업로드 완료를 기다리지 않고 stopMeeting()을 호출한다 — 서버 회의는 곧바로 status:'completed'가
+  // 되지만 has_audio_file은 업로드가 끝나야 true가 된다. 그 과도기 구간(completed + has_audio_file
+  // false)에는 기존 isTranscribing 폴링이 동작하지 않아 화면을 다시 불러올 트리거가 없었다.
+  // 아래는 그 구간을 커버하는 신규 폴링(3초 간격, ended_at 기준 5분 창을 매 틱 재평가해서
+  // 스스로 멈춤 — 횟수 상한 없음)의 회귀 테스트.
+  describe('폴링 - 녹음 종료 직후 오디오 업로드 대기', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-03-25T11:10:00Z'))
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('status=completed·has_audio_file=false·ended_at이 5분 이내면 3초 간격으로 refetch(getMeeting)가 호출된다', async () => {
+      mockMeetingWithId(500, {
+        status: 'completed',
+        has_audio_file: false,
+        ended_at: '2026-03-25T11:07:00Z', // "지금"(11:10) 기준 3분 전 — 5분 이내
+      })
+      renderPage('500')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(screen.getByText('테스트 회의')).toBeInTheDocument()
+
+      const callsBefore = vi.mocked(meetingsApi.getMeeting).mock.calls.length
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+      // 정확히 3초 간격으로 한 틱씩만 늘어야 한다(간격이 더 짧거나 이중 인터벌이면 실패).
+      expect(vi.mocked(meetingsApi.getMeeting).mock.calls.length).toBe(callsBefore + 1)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+      expect(vi.mocked(meetingsApi.getMeeting).mock.calls.length).toBe(callsBefore + 2)
+    })
+
+    it('폴링 중 refetch 결과 has_audio_file이 true가 되면 즉시 폴링을 멈춘다', async () => {
+      vi.mocked(meetingsApi.getMeeting)
+        .mockResolvedValueOnce({
+          ...mockMeetingBase,
+          id: 501,
+          status: 'completed',
+          has_audio_file: false,
+          ended_at: '2026-03-25T11:07:00Z',
+        })
+        .mockResolvedValue({
+          ...mockMeetingBase,
+          id: 501,
+          status: 'completed',
+          has_audio_file: true,
+          ended_at: '2026-03-25T11:07:00Z',
+        })
+      renderPage('501')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(screen.getByText('테스트 회의')).toBeInTheDocument()
+
+      // 첫 tick — 응답이 has_audio_file:true로 바뀌어 폴링 조건이 깨진다.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+      const callsAfterFirstTick = vi.mocked(meetingsApi.getMeeting).mock.calls.length
+
+      // 이후 여러 tick(3초 간격 3회분)이 더 지나도 추가 호출이 없어야 한다.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(9000)
+      })
+      expect(vi.mocked(meetingsApi.getMeeting).mock.calls.length).toBe(callsAfterFirstTick)
+    })
+
+    // 회귀 테스트: 예전 구현은 3초 간격 20회(≈60초)에서 스스로 멈췄다. 업로드가 60초보다
+    // 오래 걸리는 경우(긴 회의의 대용량 오디오) 매 응답이 has_audio_file:false이면 effect의
+    // 의존성이 하나도 바뀌지 않아 재실행되지 않으므로, 60초에서 멈추면 창(5분) 안인데도
+    // 관찰자가 영구히 사라진다. 지금은 횟수 상한이 없으므로 60초를 넘겨도(창 안이라면)
+    // 계속 폴링해야 한다.
+    it('60초를 넘겨도 창(5분) 안이면 폴링이 계속된다(횟수 상한 없음)', async () => {
+      mockMeetingWithId(502, {
+        status: 'completed',
+        has_audio_file: false,
+        ended_at: '2026-03-25T11:10:00Z', // "지금"(11:10)과 동일 — 창(5분)이 막 시작
+      })
+      renderPage('502')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(screen.getByText('테스트 회의')).toBeInTheDocument()
+
+      const callsBefore = vi.mocked(meetingsApi.getMeeting).mock.calls.length
+
+      // 90초(30틱) 진행 — 예전 상한(20회 ≈ 60초)을 넘긴다. 틱 사이 렌더 커밋이 실제로
+      // 일어나도록(=refetch 각각이 getMeeting 호출로 이어지도록) 한 번의 큰 점프 대신
+      // 개별 act()로 3초씩 나눠 진행한다.
+      for (let i = 0; i < 30; i += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(3000)
+        })
+      }
+      // 30틱 모두 호출되어야 한다(20회에서 멈추지 않음).
+      expect(vi.mocked(meetingsApi.getMeeting).mock.calls.length).toBe(callsBefore + 30)
+    })
+
+    it('창(5분)을 넘기면 폴링을 스스로 멈춘다', async () => {
+      mockMeetingWithId(504, {
+        status: 'completed',
+        has_audio_file: false,
+        // "지금"(11:10) 기준 4분 전 — 창(5분)이 닫히는 시각(ended_at+5분=11:11:00Z)까지
+        // 남은 시간은 60초(20틱)뿐이라 짧게 검증할 수 있다.
+        ended_at: '2026-03-25T11:06:00Z',
+      })
+      renderPage('504')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(screen.getByText('테스트 회의')).toBeInTheDocument()
+
+      const callsBefore = vi.mocked(meetingsApi.getMeeting).mock.calls.length
+
+      // 창이 닫히는 시각까지 정확히 20틱(60초) 진행 — 틱 사이 렌더 커밋이 실제로 일어나도록
+      // 개별 act()로 나눠 진행한다. 마지막 유효 틱(t=60000ms, 누적 경과 300000ms)까지는
+      // 호출되고, 그다음 틱(t=63000ms, 창 밖)에서 clearInterval로 멈춰야 한다.
+      for (let i = 0; i < 20; i += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(3000)
+        })
+      }
+      expect(vi.mocked(meetingsApi.getMeeting).mock.calls.length).toBe(callsBefore + 20)
+
+      // 창 종료 후 추가로 시간이 흘러도(3틱분) 더 이상 호출되지 않아야 한다.
+      for (let i = 0; i < 3; i += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(3000)
+        })
+      }
+      expect(vi.mocked(meetingsApi.getMeeting).mock.calls.length).toBe(callsBefore + 20)
+    })
+
+    it('ended_at이 5분보다 오래 전이면 폴링을 시작하지 않는다', async () => {
+      mockMeetingWithId(503, {
+        status: 'completed',
+        has_audio_file: false,
+        ended_at: '2026-03-25T10:30:00Z', // "지금"(11:10) 기준 40분 전 — 5분 초과
+      })
+      renderPage('503')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(screen.getByText('테스트 회의')).toBeInTheDocument()
+
+      const callsBefore = vi.mocked(meetingsApi.getMeeting).mock.calls.length
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10000)
+      })
+      expect(vi.mocked(meetingsApi.getMeeting).mock.calls.length).toBe(callsBefore)
     })
   })
 })
