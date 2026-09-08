@@ -133,6 +133,39 @@ export default function MeetingPage() {
     return () => clearInterval(id)
   }, [isTranscribing, refetch])
 
+  // 폴링 fallback #2: 녹음 종료 시 useLiveRecording.performStop이 오디오 업로드 완료를
+  // 기다리지 않고 stopMeeting()을 호출한다 — 서버 회의는 곧바로 status:'completed'가 되지만
+  // audio_file_path는 업로드 요청이 끝나야(동기 set_audio_file!) 채워진다. 그 사이 이 화면에
+  // 진입하면 has_audio_file=false인데, 위 isTranscribing 폴링은 상태가 'transcribing'일 때만
+  // 동작하므로 이 과도기 구간(completed + !has_audio_file)에는 화면을 다시 불러올 트리거가
+  // 전혀 없다 — 업로드가 백그라운드에서 끝나도 새로고침 전까지 STT재생성/화자분리 버튼이
+  // 나타나지 않는다(MeetingActions.tsx의 has_audio_file 조건).
+  //
+  // 오디오가 영구히 없는 회의(텍스트 임포트 등)에서 무한 폴링하지 않도록 시간 창(5분)으로
+  // 제한한다: ended_at이 최근(5분 이내)일 때만 시작한다. 횟수 상한은 두지 않는다 — 업로드가
+  // 60초를 넘겨 끝나는 경우(긴 회의의 대용량 오디오)에도 매 응답이 has_audio_file:false이면
+  // effect의 의존성이 하나도 바뀌지 않아 effect가 재실행되지 않으므로, 횟수로 멈추면 창 안에서도
+  // 관찰자가 영구히 사라진다. 대신 interval 콜백 안에서 매 틱마다 Date.now() - endedAtMs를
+  // 다시 계산해 창(5분)을 넘긴 시점에 스스로 멈춘다. has_audio_file이 true가 되면(=refetch로
+  // 갱신) 조건이 깨져 effect가 재실행되며 새 interval을 세우지 않는다.
+  useEffect(() => {
+    if (!meeting) return
+    if (meeting.status !== 'completed' || meeting.has_audio_file) return
+    if (!meeting.ended_at) return
+    const endedAtMs = new Date(meeting.ended_at).getTime()
+    const POLL_WINDOW_MS = 5 * 60 * 1000
+    if (Number.isNaN(endedAtMs) || Date.now() - endedAtMs > POLL_WINDOW_MS) return
+
+    const id = setInterval(() => {
+      if (Date.now() - endedAtMs > POLL_WINDOW_MS) {
+        clearInterval(id)
+        return
+      }
+      refetch()
+    }, 3000)
+    return () => clearInterval(id)
+  }, [meeting?.status, meeting?.has_audio_file, meeting?.ended_at, refetch])
+
   // 기존 AI 회의록을 transcriptStore에 로드 (AiSummaryPanel이 읽음)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const resetTranscriptStore = useTranscriptStore((s) => s.reset)
