@@ -61,6 +61,24 @@ vi.mock('../api/settings', () => ({
   getSttSettings: vi.fn().mockResolvedValue({ stt_engine: 'whisper' }),
 }))
 
+// GlossaryPanel(useGlossary)이 실제 API를 호출해 미mock fetch가 실백엔드로 나가는 것을 막는다
+// (MeetingPage.test.tsx와 동일 패턴 — 오타수정 영역이 AI 회의록 아래로 내려오며 GlossaryPanel이
+// 항상 마운트되므로 이 mock이 필요해졌다).
+vi.mock('../api/glossary', () => ({
+  getGlossary: vi.fn().mockResolvedValue({
+    meeting: { entries: [] },
+    folder: null,
+    ancestors: [],
+    resolved: [],
+  }),
+  createMeetingGlossaryEntry: vi.fn(),
+  createFolderGlossaryEntry: vi.fn(),
+  updateGlossaryEntry: vi.fn(),
+  deleteGlossaryEntry: vi.fn(),
+  reapplyGlossary: vi.fn(),
+  applyGlossaryEntry: vi.fn(),
+}))
+
 // ──────────────────────────────────────────────
 
 import * as meetingsApi from '../api/meetings'
@@ -128,10 +146,10 @@ describe('MeetingLivePage 제어 게이팅 (canEditMeeting)', () => {
     expect(screen.getByRole('button', { name: /회의 초기화/i })).toBeInTheDocument()
   })
 
-  // idea 44: 오타수정 탭은 canEdit(=editable)이 false면 아예 노출되지 않아야 한다
-  // (비협업자에게 편집 UI가 열려 있다가 서버 403으로만 막히던 원래 버그 증상 재발 방지).
-  it('editable=false 회의면 데스크톱 오타수정 탭이 노출되지 않는다', async () => {
-    vi.mocked(meetingsApi.getMeeting).mockResolvedValue(makeMeeting({ editable: false }) as never)
+  // 레이아웃 변경: 오타수정 UI는 더 이상 우측 탭이 아니라 회의 상세 화면과 동일하게
+  // AI 회의록(summary) 패널 아래에 배치된다 — 탭 버튼은 canEdit 여부와 무관하게 항상 사라져야 한다.
+  it('오타수정은 더 이상 우측 탭 버튼으로 노출되지 않는다', async () => {
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue(makeMeeting({ editable: true }) as never)
     renderPage()
     await waitFor(() => {
       expect(screen.getByText('남의 회의')).toBeInTheDocument()
@@ -139,12 +157,26 @@ describe('MeetingLivePage 제어 게이팅 (canEditMeeting)', () => {
     expect(screen.queryByRole('button', { name: '오타수정' })).not.toBeInTheDocument()
   })
 
-  it('editable=true 회의면 데스크톱 오타수정 탭이 노출된다', async () => {
-    vi.mocked(meetingsApi.getMeeting).mockResolvedValue(makeMeeting({ editable: true }) as never)
+  // idea 44: 오타수정·오타사전은 canEdit(=editable)이 false면 아예 노출되지 않아야 한다
+  // (비협업자에게 편집 UI가 열려 있다가 서버 403으로만 막히던 원래 버그 증상 재발 방지).
+  it('editable=false 회의면 AI 회의록 아래 오타수정 영역이 노출되지 않는다', async () => {
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue(makeMeeting({ editable: false }) as never)
     renderPage()
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '오타수정' })).toBeInTheDocument()
+      expect(screen.getByText('남의 회의')).toBeInTheDocument()
     })
+    expect(screen.queryByText('오타 수정')).not.toBeInTheDocument()
+    expect(screen.queryByText('오타 사전')).not.toBeInTheDocument()
+  })
+
+  it('editable=true 회의면 AI 회의록 아래에 오타수정·오타사전 영역이 노출된다', async () => {
+    vi.mocked(meetingsApi.getMeeting).mockResolvedValue(makeMeeting({ editable: true }) as never)
+    renderPage()
+    const minutes = await screen.findByTestId('ai-minutes')
+    await waitFor(() => {
+      expect(within(minutes).getByText('오타 수정')).toBeInTheDocument()
+    })
+    expect(within(minutes).getByText('오타 사전')).toBeInTheDocument()
   })
 
   it('editable=false 모바일에서도 회의 시작 버튼과 더보기 시트의 회의 초기화가 숨겨진다', async () => {

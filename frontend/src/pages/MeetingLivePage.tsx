@@ -36,7 +36,8 @@ import { useMeetingAccess } from '../hooks/useMeetingAccess'
 import { MeetingAccessFallback } from '../components/meeting/MeetingAccessFallback'
 import MobileTabLayout from '../components/layout/MobileTabLayout'
 import { MobileRecordControls } from '../components/meeting/MobileRecordControls'
-import { CorrectionsSection } from '../components/meeting/CorrectionsSection'
+import { TermCorrectionDetails } from '../components/meeting/TermCorrectionDetails'
+import { GlossaryPanel } from '../components/meeting/GlossaryPanel'
 import { MemoHeader } from '../components/meeting/MemoHeader'
 import { RightTabsPanel } from '../components/meeting/RightTabsPanel'
 import { BookmarkPopover } from '../components/meeting/BookmarkPopover'
@@ -395,13 +396,30 @@ export default function MeetingLivePage() {
               data-testid="ai-minutes"
               className="h-full border-r overflow-hidden flex flex-col"
             >
-              <AiSummaryPanel
-                meetingId={meetingId}
-                isRecording={isActive}
-                editable={canEdit}
-                onNotesChange={handleNotesChange}
-                headerExtra={summaryOptionsControl}
-              />
+              <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                <AiSummaryPanel
+                  meetingId={meetingId}
+                  isRecording={isActive}
+                  editable={canEdit}
+                  onNotesChange={handleNotesChange}
+                  headerExtra={summaryOptionsControl}
+                />
+              </div>
+              {/* 오타수정·오타사전 — AI 회의록 아래(상세 화면과 동일 배치). idea 44: canEdit=false면 숨김. */}
+              {canEdit && (
+                <div className="shrink-0 max-h-[45%] overflow-y-auto">
+                  <TermCorrectionDetails
+                    corrections={corrections}
+                    status=""
+                    isApplying={isApplyingCorrections}
+                    onUpdate={updateCorrection}
+                    onAdd={addCorrectionRow}
+                    onRemove={removeCorrectionRow}
+                    onApply={handleApplyCorrections}
+                  />
+                  <GlossaryPanel meetingId={meetingId} />
+                </div>
+              )}
             </section>
           </Panel>
 
@@ -412,8 +430,8 @@ export default function MeetingLivePage() {
             className={`w-1 bg-border hover:bg-blue-400 transition-colors cursor-col-resize ${memoVisible ? '' : 'invisible pointer-events-none'}`}
           />
 
-          {/* 메모 + 오타수정 + AI 챗 탭 — 나머지 30%. 토글은 이 패널만 collapse(0)/expand하며,
-              해제된 폭은 항상 AI 회의록(가운데) 패널이 흡수한다 — 기록 패널 폭 고정. */}
+          {/* 메모 + AI 챗 탭 — 나머지 30%(오타수정·오타사전은 AI 회의록 패널 아래로 이동됨).
+              토글은 이 패널만 collapse(0)/expand하며, 해제된 폭은 항상 AI 회의록(가운데) 패널이 흡수한다 — 기록 패널 폭 고정. */}
           <Panel id="right-tabs" defaultSize={30} minSize={15} collapsible collapsedSize={0} panelRef={rightPanelRef}>
             {memoVisible && (
               <RightTabsPanel
@@ -428,23 +446,6 @@ export default function MeetingLivePage() {
                       <MeetingEditor editorRef={memoEditorRef} editable={canEdit} />
                     </div>
                   </section>
-                }
-                corrections={
-                  // idea 44: canEdit=false(비소유자·비협업자)면 오타수정 탭 자체를 숨긴다 —
-                  // 서버 authorize_meeting_control!이 최종 방어선이지만, UI도 편집 불가능한
-                  // 사람에게는 열지 않는다(잠금과 무관하게 readOnly 배선).
-                  canEdit ? (
-                    <div className="h-full flex flex-col overflow-hidden">
-                      <CorrectionsSection
-                        corrections={corrections}
-                        isApplyingCorrections={isApplyingCorrections}
-                        onUpdate={updateCorrection}
-                        onAdd={addCorrectionRow}
-                        onRemove={removeCorrectionRow}
-                        onApply={handleApplyCorrections}
-                      />
-                    </div>
-                  ) : undefined
                 }
                 onCollapse={toggleMemo}
               />
