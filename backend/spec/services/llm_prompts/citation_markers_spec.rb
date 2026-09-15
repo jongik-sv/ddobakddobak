@@ -161,6 +161,92 @@ RSpec.describe LlmPrompts::CitationMarkers do
       end
     end
 
+    # 실서버 chat_messages.content 전수 스캔 실증 6종(비정상 106건의 실제 유형). 요약 경로만
+    # normalize를 타서 챗은 이 유형들이 그대로 방치돼 있었다(잡 배선은 meeting_chat_job_spec/
+    # folder_chat_job_spec 에서 별도 검증).
+    describe "실서버 실증: chat_messages.content 비정상 마커 6종" do
+      it "밀리초 접미사(다수) ⟦t:175000ms/s:화자 1⟧ → ⟦t:175000/s:화자 1⟧" do
+        expect(described_class.normalize("⟦t:175000ms/s:화자 1⟧")).to eq("⟦t:175000/s:화자 1⟧")
+      end
+
+      it "밀리초 접미사(폴더 스코프) ⟦m:91/t:1674670ms/s:화자 3⟧ → ⟦m:91/t:1674670/s:화자 3⟧" do
+        expect(described_class.normalize("⟦m:91/t:1674670ms/s:화자 3⟧")).to eq("⟦m:91/t:1674670/s:화자 3⟧")
+      end
+
+      it "밀리초 접미사 + 구분자 소실 ⟦t:3062540ms:화자 1⟧ → ⟦t:3062540|s:화자 1⟧" do
+        expect(described_class.normalize("⟦t:3062540ms:화자 1⟧")).to eq("⟦t:3062540|s:화자 1⟧")
+      end
+
+      it "t:·s: 전부 소실 ⟦m:122⟧ → 복구 근거가 없어 삭제(+로깅)" do
+        allow(Rails.logger).to receive(:info)
+        expect(described_class.normalize("⟦m:122⟧")).to eq("")
+        expect(Rails.logger).to have_received(:info).with(/unrepairable/)
+      end
+
+      it "환각(목차) ⟦m:137 목차⟧ → 삭제(+로깅)" do
+        allow(Rails.logger).to receive(:info)
+        expect(described_class.normalize("⟦m:137 목차⟧")).to eq("")
+        expect(Rails.logger).to have_received(:info).with(/unrepairable/)
+      end
+
+      it "환각(목차, t: 접두 있음) ⟦m:112/t:회의목차⟧ → 시간부에 숫자가 하나도 없어 복구 불가, 삭제(+로깅)" do
+        allow(Rails.logger).to receive(:info)
+        expect(described_class.normalize("⟦m:112/t:회의목차⟧")).to eq("")
+        expect(Rails.logger).to have_received(:info).with(/unrepairable/)
+      end
+    end
+
+    describe "신규 교정: 시간부 비숫자 오염 복구" do
+      it "⟦t:1056임가공/s:화자 5⟧ → ⟦t:1056/s:화자 5⟧ (오염 문자 제거, 숫자만 이어붙임)" do
+        expect(described_class.normalize("⟦t:1056임가공/s:화자 5⟧")).to eq("⟦t:1056/s:화자 5⟧")
+      end
+
+      it "⟦t:2임가공050/s:화자⟧ → ⟦t:2050/s:화자⟧ (오염 문자가 숫자 사이에 껴도 순서대로 이어붙임)" do
+        expect(described_class.normalize("⟦t:2임가공050/s:화자⟧")).to eq("⟦t:2050/s:화자⟧")
+      end
+
+      it "폴더 스코프에서도 동일 적용: ⟦m:7/t:900오염/s:화자 1⟧ → ⟦m:7/t:900/s:화자 1⟧" do
+        expect(described_class.normalize("⟦m:7/t:900오염/s:화자 1⟧")).to eq("⟦m:7/t:900/s:화자 1⟧")
+      end
+
+      it "화자부는 절대 건드리지 않는다 — 화자명에 숫자가 섞여 있어도 바이트 그대로 보존" do
+        expect(described_class.normalize("⟦t:1056임가공/s:화자 12⟧")).to eq("⟦t:1056/s:화자 12⟧")
+      end
+
+      it "시간부가 통째로 비숫자(오염 아닌 환각)면 무변형 — 이후 삭제 단계로 넘긴다" do
+        # repair_time_part_contamination 단독 동작 확인: 구분자·s:는 정상이라 6단계 대상이지만
+        # 숫자가 하나도 안 남아 무변형 반환 → 8단계(삭제)가 처리해야 함(위 "환각" 테스트가 종단 검증).
+        allow(Rails.logger).to receive(:info)
+        expect(described_class.normalize("⟦t:회의목차/s:화자 1⟧")).to eq("")
+      end
+
+      it "오염 + 구분자/s: 라벨까지 함께 소실되면 복구하지 않고 삭제로 흘려보낸다(정본 형식 미달)" do
+        allow(Rails.logger).to receive(:info)
+        # t: 뒤 시간부가 오염됐는데 그 뒤 [|/]s: 구조 자체가 없다(bare colon도 아님) — 6단계가
+        # 다루는 전제(구분자·라벨은 정상)를 벗어나므로 그대로 두고 8단계가 삭제한다.
+        expect(described_class.normalize("⟦t:1056임가공:화자 5⟧")).to eq("")
+      end
+    end
+
+    describe "신규 교정: 콜론 시간 필드 sanity 검사" do
+      it "⟦t:172250:0/s:화자 1⟧ → ⟦t:1722500/s:화자 1⟧ (초 필드가 2자리 zero-pad 위반 — 콜론 제거 후 순수 ms 재해석)" do
+        expect(described_class.normalize("⟦t:172250:0/s:화자 1⟧")).to eq("⟦t:1722500/s:화자 1⟧")
+      end
+
+      it "폴더 스코프에서도 동일 적용: ⟦m:5/t:172250:0/s:화자 1⟧ → ⟦m:5/t:1722500/s:화자 1⟧" do
+        expect(described_class.normalize("⟦m:5/t:172250:0/s:화자 1⟧")).to eq("⟦m:5/t:1722500/s:화자 1⟧")
+      end
+
+      it "분 필드가 60 이상이면(2자리라도) 오염으로 본다: ⟦t:1:99:05/s:화자⟧ → ⟦t:19905/s:화자⟧" do
+        expect(described_class.normalize("⟦t:1:99:05/s:화자⟧")).to eq("⟦t:19905/s:화자⟧")
+      end
+
+      it "장시간 회의의 정상 mm:ss(75분 30초)는 분 필드가 60 이상이어도 오탐하지 않는다: ⟦t:75:30/s:화자 1⟧ 무변형" do
+        text = "⟦t:75:30/s:화자 1⟧"
+        expect(described_class.normalize(text)).to eq(text)
+      end
+    end
+
     describe "멱등성 (normalize(normalize(x)) == normalize(x))" do
       [
         "⟦t:846000ms|s:화자 2⟧",
@@ -171,7 +257,18 @@ RSpec.describe LlmPrompts::CitationMarkers do
         "⟦t:100~200|s:화자⟧",
         "⟦t:100|s:화자⟧~⟦t:200|s:화자⟧",
         "정상: ⟦t:125000|s:화자 1⟧",
-        "⟦m:142/t:125000|s:화자 1⟧"
+        "⟦m:142/t:125000|s:화자 1⟧",
+        "⟦t:175000ms/s:화자 1⟧",
+        "⟦m:91/t:1674670ms/s:화자 3⟧",
+        "⟦m:122⟧",
+        "⟦m:137 목차⟧",
+        "⟦m:112/t:회의목차⟧",
+        "⟦t:1056임가공/s:화자 5⟧",
+        "⟦t:2임가공050/s:화자⟧",
+        "⟦t:172250:0/s:화자 1⟧",
+        "⟦m:5/t:172250:0/s:화자 1⟧",
+        "⟦t:75:30/s:화자 1⟧",
+        "⟦t:1056임가공:화자 5⟧"
       ].each do |raw|
         it "#{raw.inspect} 는 재적용해도 더 이상 변하지 않는다" do
           once = described_class.normalize(raw)

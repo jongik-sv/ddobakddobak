@@ -21,6 +21,22 @@ require "digest"
 # REFINE_NOTES_SYSTEM_PROMPT·APPEND_NOTES_SYSTEM_PROMPT 는 물결(~) 범위 표기가 마크다운
 # 취소선(~~)으로 오인되는 문제 방지 — "범위는 하이픈(-) 표기" 규칙 1줄씩 추가로 내용이
 # 의도적으로 바뀌었다 — baseline 갱신 (REFINE 3745→3947, APPEND 1498→1680바이트).
+#
+# 실서버 챗 마커 하드닝(2026-09): 회의 챗(MEETING_CHAT_SYSTEM_PROMPT)이 CITATION_MARKER_
+# INSTRUCTION 을 쓰지 않고 자기 인라인 축약본을 쓰고, 폴더 챗(FOLDER_CHAT_CITATION_INSTRUCTION)도
+# 또 다른 사본을 써서 "단위 접미사 금지" 등 하드닝 규칙이 세 프롬프트 중 한 곳에만 있던 게
+# 실서버 챗 마커 106건 방치의 원인 중 하나였다. CitationPrompts::CITATION_MARKER_HARDENING
+# 상수를 신설해 세 프롬프트가 보간하도록 통합했다(신설 상수라 BASELINE_SHA 대상 아님, 문자열
+# drift는 그 상수를 보간하는 4개 상수의 바이트 변경으로 간접 검증됨). 중복 제거를 위해
+# CITATION_MARKER_INSTRUCTION 의 "마커는 원형 그대로 복사한다 — ms 등 단위 추가..." 줄에서
+# 단위 추가 금지 부분을 HARDENING 으로 넘기고 "'~' 범위 병합... 금지"만 남겨 [최우선] 보존
+# 지시 문장에 합쳤다. 세 상수의 "불명확하면 (마커) 생략" 문구도 HARDENING 의 "값이 불확실하면
+# 마커 자체를 쓰지 않는다"와 중복이라 제거했다. FOLDER_CHAT_CITATION_INSTRUCTION 에는 폴더 챗
+# 전용 규칙("회의ID만 있고 시간·화자가 빠진 마커 금지")도 추가됐다.
+# baseline 갱신: CITATION_MARKER_INSTRUCTION 1145→1403, FOLDER_CHAT_CITATION_INSTRUCTION
+# 573→1006, MEETING_CHAT_SYSTEM_PROMPT 4498→4797, FOLDER_CHAT_SYSTEM_PROMPT 4074→4507바이트
+# (뒤 둘은 위 두 상수를 보간하므로 연쇄 변경). 4개 값 전부 RAILS_ENV=test bundle exec rails
+# runner 로 LlmPrompts 상수에서 직접 재계산했다(손으로 옮겨 적지 않음).
 RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
   # 이동 전 baseline: name => [sha256(value), bytesize]. String 상수만.
   BASELINE_SHA = {
@@ -29,11 +45,11 @@ RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
     "CHRONOLOGICAL_NOTES_INSTRUCTION" => ["0d277c0663e0ad4acb93ff74051cf41caa6a8fd342ddbe52fa388592da5fc5bc", 419],
     "APPEND_NOTES_SYSTEM_PROMPT" => ["dc748ec42389aa7f89982c1cdbf2c76407d16eca28f524edb311dcb55f32f2da", 1680],
     "COMPRESS_AGENDA_SYSTEM_PROMPT" => ["2f5a182f91fab66712c614028079a9553da55088587634f549dfad895118481d", 505],
-    "CITATION_MARKER_INSTRUCTION" => ["884de17289ede921311d0a21b4614e421f4617b20bdae43a752927d70e992e26", 1145],
-    "FOLDER_CHAT_CITATION_INSTRUCTION" => ["589520d25880ece86e92a1510ad3c447ec8081b912aa9ad8d27bd997a7b734d5", 573],
-    "MEETING_CHAT_SYSTEM_PROMPT" => ["db664f098abb908032280fc22c70460e6d825f82727dce785eb24b7912206192", 4498],
+    "CITATION_MARKER_INSTRUCTION" => ["1b70f39c473b8d34155cf492dccb02f6a0e2c427a170c24632d876bd422cbfc4", 1403],
+    "FOLDER_CHAT_CITATION_INSTRUCTION" => ["b00d99f6ed2bea2c7cfed57a0ec73e28a1b9db5156372c1aaa81f581e14dee29", 1006],
+    "MEETING_CHAT_SYSTEM_PROMPT" => ["9f6e8ea97f8b5a9343a0517b024b1e35e2eef79916a300289f640b125e9fbea1", 4797],
     "FOLDER_CHAT_EXPANSION_PROMPT" => ["c8a9ad72d07a4f00efcd3e113c2b81421f87334ecb800d0bfbec3e348457a5fc", 778],
-    "FOLDER_CHAT_SYSTEM_PROMPT" => ["d3351a4a18decd41d541cbe1e5797df66a798ef379ad66586680b74fe4feae82", 4074]
+    "FOLDER_CHAT_SYSTEM_PROMPT" => ["3c9efcab2fa130502200e2caffdb36a91829b92c5848d8b19094dd7a31fc7474", 4507]
   }.freeze
 
   describe "상수 바이트 동일성 (이동 전 == 이동 후)" do
@@ -70,6 +86,18 @@ RSpec.describe "LlmPrompts 분할 (behavior-change-0)" do
 
     it "REFINE_NOTES_SYSTEM_PROMPT 가 DEFAULT_SECTION_STRUCTURE 를 .sub 대상으로 포함한다(llm_service .sub 의 전제)" do
       expect(LlmPrompts::REFINE_NOTES_SYSTEM_PROMPT).to include(LlmPrompts::DEFAULT_SECTION_STRUCTURE)
+    end
+
+    # 실서버 챗 마커 하드닝(2026-09)의 핵심 의도 — "세 프롬프트가 규칙을 공유한다" — 는
+    # BASELINE_SHA 바이트 스냅샷만으로는 보장되지 않는다(예: 누군가 나중에 HARDENING 보간 줄을
+    # 지우고 baseline만 재계산하면 바이트 동일성 검사는 통과해버린다). 공유 관계 자체를 직접 단언.
+    it "세 프롬프트(회의 요약/회의 챗/폴더 챗)가 CITATION_MARKER_HARDENING 을 공유 보간한다" do
+      hardening = LlmPrompts::CitationPrompts::CITATION_MARKER_HARDENING.strip
+      expect(LlmPrompts::CITATION_MARKER_INSTRUCTION).to include(hardening)
+      expect(LlmPrompts::FOLDER_CHAT_CITATION_INSTRUCTION).to include(hardening)
+      expect(LlmPrompts::MEETING_CHAT_SYSTEM_PROMPT).to include(hardening)
+      # FOLDER_CHAT_SYSTEM_PROMPT 는 FOLDER_CHAT_CITATION_INSTRUCTION 을 보간해 간접 포함.
+      expect(LlmPrompts::FOLDER_CHAT_SYSTEM_PROMPT).to include(hardening)
     end
   end
 

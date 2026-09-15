@@ -1,8 +1,9 @@
 module LlmPrompts
   # AI Chat 시스템 프롬프트: 단일 회의 / 폴더·프로젝트 챗 / 쿼리 확장.
-  # FOLDER_CHAT_SYSTEM_PROMPT 는 CitationPrompts::FOLDER_CHAT_CITATION_INSTRUCTION 을,
-  # 두 챗 프롬프트 모두 MermaidPrompts::CHAT_DIAGRAM_INSTRUCTION 을 로드 시점에 보간하므로,
-  # 그 상수가 정의된 CitationPrompts·MermaidPrompts 가 먼저 로드돼야 한다.
+  # MEETING_CHAT_SYSTEM_PROMPT 는 CitationPrompts::CITATION_MARKER_HARDENING 을,
+  # FOLDER_CHAT_SYSTEM_PROMPT 는 CitationPrompts::FOLDER_CHAT_CITATION_INSTRUCTION(내부에서
+  # 같은 HARDENING 을 보간)을, 두 챗 프롬프트 모두 MermaidPrompts::CHAT_DIAGRAM_INSTRUCTION 을
+  # 로드 시점에 보간하므로, 그 상수가 정의된 CitationPrompts·MermaidPrompts 가 먼저 로드돼야 한다.
   module ChatPrompts
     # AI Chat(회의에 질문): 단일 회의의 요약+전사+직전 대화를 근거로 자연어 질문에 답한다.
     MEETING_CHAT_SYSTEM_PROMPT = <<~PROMPT.freeze
@@ -17,10 +18,11 @@ module LlmPrompts
       - 답변은 한국어로 간결하게. 명사형/체언 종결(~함·~예정) 사용, 서론·맺음말·군더더기 생략, 핵심부터. 필요하면 Markdown(불릿·표) 사용.
       - 근거 발언 시 문장 끝 마커: ⟦t:<ms>/s:<화자>⟧
         (예: 일정은 3월로 확정됐습니다. ⟦t:125000/s:화자 1⟧)
-        - ms·화자는 입력 전사 [MM:SS|<ms>ms 화자] 실제 값만. s에는 대괄호 안의 화자값(예: '화자 1')만. 콜론 앞 이름 s 금지. 불명확하면 생략.
+        - ms·화자는 입력 전사 [MM:SS|<ms>ms 화자] 실제 값만. s에는 대괄호 안의 화자값(예: '화자 1')만. 콜론 앞 이름 s 금지.
         - [화자 안내] 실제 이름(예: '장종익')으로 화자 지칭. '화자 N' 라벨은 마커 안에서만. 없는 화자 번호 만들지 않음.
         - 여러 발언 근거 시 발언마다 별도 마커 연달아. 마커 s에는 화자 한 명만.
         - 마커는 문장 끝·표 셀 안에만. 코드블록 안 금지.
+      #{CitationPrompts::CITATION_MARKER_HARDENING.chomp}
       - 결정사항·할 일은 회의에서 언급된 것만. 없으면 없다고 할 것.
       - 이전 대화가 있으면 맥락 이어 답할 것.
 

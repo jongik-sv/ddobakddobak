@@ -48,5 +48,46 @@ RSpec.describe MeetingGlossaryApplier do
       MeetingGlossaryApplier.new(meeting, entries).apply_all!
       expect(summary.reload.generated_at).to be > old
     end
+
+    context "인용 마커 보호" do
+      # 실서버 실증 사고 재현: {from: "250", to: "임가공"} 사전이 요약 컬럼의 인용 마커
+      # 내부 숫자를 오염시켰다. apply_all! 경로(=실제 오타 재적용 진입점)로 그대로 검증한다.
+      let(:marker_entries) { [{ from: "250", to: "임가공", match_type: "literal" }] }
+
+      it "summary 4컬럼의 마커는 보호되고, 마커 밖 텍스트는 정상 교정된다" do
+        summary = meeting.summaries.first
+        summary.update!(
+          notes_markdown: "⟦t:1056250/s:화자 5⟧ 250번째 안건",
+          key_points: "⟦t:2250050/s:화자 1⟧",
+          decisions: "⟦t:2182500/s:화자 1⟧",
+          discussion_details: "마커 없는 250 텍스트"
+        )
+
+        MeetingGlossaryApplier.new(meeting, marker_entries).apply_all!
+        summary.reload
+
+        expect(summary.notes_markdown).to eq("⟦t:1056250/s:화자 5⟧ 임가공번째 안건")
+        expect(summary.key_points).to eq("⟦t:2250050/s:화자 1⟧")
+        expect(summary.decisions).to eq("⟦t:2182500/s:화자 1⟧")
+        expect(summary.discussion_details).to eq("마커 없는 임가공 텍스트")
+      end
+
+      it "blocks.content 의 마커도 보호된다" do
+        create(:block, meeting: meeting, content: "⟦t:1056250/s:화자 5⟧ 250 논의")
+
+        MeetingGlossaryApplier.new(meeting, marker_entries).apply_all!
+
+        expect(meeting.blocks.first.reload.content).to eq("⟦t:1056250/s:화자 5⟧ 임가공 논의")
+      end
+
+      it "transcripts.content 경로는 마커 형태 텍스트라도 보호되지 않는다(전사 교정은 계속 동작)" do
+        transcript = meeting.transcripts.first
+        transcript.update!(content: "⟦t:1056250/s:화자 5⟧ 발언")
+
+        MeetingGlossaryApplier.new(meeting, marker_entries).apply_all!
+
+        expect(transcript.reload.content).to eq("⟦t:1056임가공/s:화자 5⟧ 발언")
+      end
+    end
   end
 end
