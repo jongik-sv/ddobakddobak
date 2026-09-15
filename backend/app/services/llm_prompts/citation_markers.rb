@@ -61,11 +61,21 @@ module LlmPrompts
     #   3) 시간부 단위 접미사(ms/s) 제거 — t: 숫자(콜론 시간 포함) 직후에 붙은 것만
     #   4) 구분자 소실 케이스: bare colon(t:100:화자) → |s: 복원
     #   5) 구분자는 있으나 's:' 라벨만 소실(t:100|화자) → 's:' 삽입
-    #   6) 위 교정으로도 정본 형식과 여전히 불일치하는 완결(⟦...⟧) 마커스러운 조각 삭제(+로깅)
-    #   7) 닫힘 ⟧ 없이 잘린 마커스러운 조각 삭제(+로깅)
+    #   6) 시간부에 섞인 비숫자 오염 복구(t:1056임가공 → t:1056) — 실서버 챗 마커 106건 조사에서
+    #      추가로 발견된 실측 패턴. 1~5단계는 시간부가 `\d+(?::\d+)*` 순수 숫자(·콜론)일 때만
+    #      매치하므로, 문자가 섞이면 그 단계들을 전부 통과하지 못하고 8단계(삭제)로 직행해버렸다.
+    #      이 단계는 [|/]s: 구분자·라벨이 이미 정상인(= 시간부만 오염된) 마커만 대상으로 해
+    #      구분자·라벨까지 함께 깨진 마커(예: 4단계가 다루는 bare colon)와 겹치지 않는다.
+    #   7) 콜론 시간(mm:ss/hh:mm:ss) sanity 검사 — t:172250:0 처럼 분리 구분자가 아예 없는데
+    #      숫자 뒤에 콜론이 잘못 끼어든 경우, marker_time_to_ms가 콜론 있음만 보고 mm:ss로
+    #      해석해 수천 시간대로 폭주한다. 6단계까지 거쳐 이미 순수 숫자·콜론 형태가 된 뒤에만
+    #      의미가 있어 여기 위치한다.
+    #   8) 위 교정으로도 정본 형식과 여전히 불일치하는 완결(⟦...⟧) 마커스러운 조각 삭제(+로깅)
+    #   9) 닫힘 ⟧ 없이 잘린 마커스러운 조각 삭제(+로깅)
     #
     # 정상 마커는 어느 단계에도 매치되지 않아 바이트 그대로 보존된다. nil/blank 안전,
-    # normalize(normalize(x)) == normalize(x) (멱등 — 6·7단계 삭제 후 잔재가 없어 재실행해도
+    # normalize(normalize(x)) == normalize(x) (멱등 — 8·9단계 삭제 후 잔재가 없고, 6·7단계도
+    # 결과가 이미 정본 숫자·콜론 형태라 재실행 시 자기 자신에 대해 무변형이므로 재실행해도
     # 추가 변경이 없다).
     def normalize(text)
       return text if text.to_s.strip.empty?
@@ -76,6 +86,8 @@ module LlmPrompts
       result = strip_time_unit(result)
       result = repair_bare_colon_separator(result)
       result = repair_missing_speaker_label(result)
+      result = repair_time_part_contamination(result)
+      result = sanitize_colon_time_overflow(result)
       result = drop_unrepairable_closed_fragments(result)
       drop_unclosed_fragments(result)
     end
@@ -108,6 +120,54 @@ module LlmPrompts
     # 이미 's:'가 있으면 negative lookahead로 건너뛴다(정상 마커 무변형).
     def repair_missing_speaker_label(text)
       text.gsub(/t:(\d+(?::\d+)*)([|\/])(?!s:)([^⟧]+)⟧/) { "t:#{$1}#{$2}s:#{$3}⟧" }
+    end
+
+    # 시간부 비숫자 오염 복구: ⟦[m:<id>/]t:<시간부>[|/]s:<화자>⟧ 형태(구분자·s: 라벨은 이미
+    # 정상)에서만, 시간부에 숫자·콜론이 아닌 문자가 섞였으면 그 문자를 버리고 남은 숫자·콜론만
+    # 그대로 이어붙여 복구한다(t:1056임가공 → t:1056, t:2임가공050 → t:2050 — 오염 문자가 원래
+    # 어느 자리에 있었는지는 따지지 않고 순서대로 이어붙이기만 한다).
+    # ⚠️ 정책 결정: "검증 없이 최대한 복구"(사용자 지시). 복구된 값이 실제 발언 시각과 다를 수
+    # 있다 — 오염 위치·양에 따라 원래 자릿수가 그대로 안 남을 수 있기 때문(예: "10임56"→"1056").
+    # 필터링 후 숫자가 하나도 안 남으면(예: ⟦m:112/t:회의목차⟧ 같은 환각 케이스는 시간부 전체가
+    # 비숫자라 복구할 근거 자체가 없음) 원문을 그대로 두어 8·9단계(삭제+로깅)로 흘려보낸다.
+    # 구분자([|/]s:...⟧) 뒤 화자부는 tail 그룹으로 통째로 캡처해 그대로 재삽입하므로 바이트 단위
+    # 보존된다 — 이 정규식은 절대 화자부(한글·공백 포함)를 건드리지 않는다.
+    def repair_time_part_contamination(text)
+      text.gsub(/⟦((?:m:\d+\/)?)t:([^⟧|\/\n]*)([|\/]s:[^⟧\n]*)⟧/) do |whole|
+        prefix, raw, tail = $1, $2, $3
+        if raw.match?(/\A[0-9:]*\z/)
+          whole # 이미 순수 숫자·콜론(정상) — 무변형
+        else
+          cleaned = raw.gsub(/[^0-9:]/, "")
+          cleaned.match?(/\d/) ? "⟦#{prefix}t:#{cleaned}#{tail}⟧" : whole
+        end
+      end
+    end
+
+    # 콜론 시간(mm:ss/hh:mm:ss) sanity 검사: marker_time_to_ms는 콜론이 있으면 무조건
+    # mm:ss/hh:mm:ss로 해석하는데, t:172250:0 처럼 원래 구분자([|/]s:)가 아예 빠진 채 숫자
+    # 뒤에 콜론이 잘못 붙은 값도 정본 정규식(\d+(?::\d+)*)을 그대로 통과해 172250분(약 2,870
+    # 시간)으로 폭주한다.
+    # app/services/llm_service/text_formatter.rb:28 의 실제 포맷(`%02d:%02d`, 분은 ms/60000
+    # 그대로라 60 이상이어도 정상 — 예: 75분짜리 회의는 "75:30")과
+    # format_marker_time(콜론 있으면 초는 항상 `%02d`)을 근거로, "맨 앞(가장 큰 단위: mm:ss의
+    # 분, hh:mm:ss의 시) 필드만 제외한 나머지 필드"가 2자리 zero-pad가 아니거나 60 이상이면
+    # 오염으로 본다 — 앞 필드(분/시)는 60 제한이 없다(장시간 회의에서 자연스레 60을 넘는다).
+    # "172250:0"은 마지막(초) 필드 "0"이 1자리(2자리 zero-pad 위반)라 이 규칙에 걸린다.
+    # "75:30"(정상, 75분 30초)은 마지막 필드 "30"이 2자리·60 미만이라 무변형 — 오탐 없음.
+    # 오염으로 판정되면 콜론 표기가 아니라 순수 밀리초에 콜론이 잘못 끼어든 것으로 보고, 콜론만
+    # 제거해 자릿수를 그대로 이어붙여 재해석한다(172250:0 → 1722500).
+    # 프론트 frontend/src/lib/citationMarkers.ts 의 markerTimeToMs는 이 sanity 검사가 없어
+    # 동일 입력에 동일하게 폭주할 수 있다 — 저장 전 이 단계로 이미 교정되므로 프론트가 오염된
+    # 마커를 볼 일은 없지만, 프론트 자체에는 이 가드가 없다는 사실은 보고 대상이다(프론트 수정 안 함).
+    def sanitize_colon_time_overflow(text)
+      text.gsub(/t:(\d+(?::\d+)+)(?=[|\/⟧])/) do |whole|
+        raw = $1
+        fields = raw.split(":")
+        trailing = fields[1..] # 맨 앞(분/시) 필드 제외 — 그 뒤(초, hh:mm:ss면 분도 포함) 필드만 검사
+        corrupt = trailing.any? { |f| f.size != 2 || f.to_i >= 60 }
+        corrupt ? "t:#{fields.join}" : whole
+      end
     end
 
     # 닫힘(⟧)은 있으나 위 교정을 거치고도 정본 형식과 불일치하는 마커스러운(m:/t: 로 시작)

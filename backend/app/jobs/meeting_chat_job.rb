@@ -23,6 +23,16 @@ class MeetingChatJob < ApplicationJob
     raw = stream_answer(answer, config, ctx[:system_prompt], ctx[:user_content], model_name)
     content, suggestions = split_followups(raw)
     content = LlmService::TextFormatter.fix_mermaid_quotes(content)
+    # 챗 저장 경로에도 인용 마커 정규화를 적용한다 — 요약 저장(LlmService#refine_notes)만
+    # normalize를 타고 챗은 안 타서 실서버 챗 마커 106건(밀리초 접미사·구분자 소실 등)이 방치된
+    # 결함 수정. 스트리밍 중 부분 저장(ChatStreaming#stream_answer 의 update_column)은 이 최종
+    # update! 이전 별도 경로라 여기 정규화를 거치지 않는다 — 아직 닫히지 않은 마커 델타를
+    # 성급히 지우는 사고 없이, 완결된 답변 전체에 대해서만 1회 적용된다.
+    content = LlmPrompts::CitationMarkers.normalize(content)
+    # suggestions(후속 질문)는 시스템 프롬프트가 마커 삽입을 지시하지 않는 순수 질문 문장이라
+    # 위험은 낮지만, LLM이 답변 본문의 마커 습관을 후속 질문에도 새어들일 가능성을 방어한다.
+    # normalize는 '⟦'가 없는 일반 텍스트에는 무변형이라 비용이 없다.
+    suggestions = suggestions.map { |s| LlmPrompts::CitationMarkers.normalize(s) }
     answer.update!(content: content, suggestions: suggestions, model_name: model_name, status: "complete")
   rescue => e
     answer&.update(status: "error", error_message: e.message)

@@ -75,6 +75,38 @@ RSpec.describe FolderChatJob, type: :job do
     FolderChatJob.perform_now(answer.id)
   end
 
+  # 챗 저장 경로 인용 마커 정규화 배선 회귀(실서버 chat_messages.content 비정상 마커 106건 원인).
+  # 폴더 챗은 ⟦m:<회의id>/t:..⟧ 형태를 쓰므로 FOLDER_CITATION_FULL_RE 경로 복구를 확인한다.
+  context "인용 마커 정규화" do
+    it "저장 직전 content에 CitationMarkers.normalize를 적용한다(폴더 스코프, 밀리초 접미사 교정)" do
+      fake = instance_double(LlmService, answer_question: "예산 확정. ⟦m:91/t:1674670ms/s:화자 3⟧")
+      allow(LlmService).to receive(:new).and_return(fake)
+
+      FolderChatJob.perform_now(answer.id)
+      answer.reload
+      expect(answer.content).to eq("예산 확정. ⟦m:91/t:1674670/s:화자 3⟧")
+    end
+
+    it "복구 불가능한 마커스러운 조각은 삭제한다(t:·s: 전부 소실)" do
+      fake = instance_double(LlmService, answer_question: "메모 ⟦m:122⟧ 끝")
+      allow(LlmService).to receive(:new).and_return(fake)
+
+      FolderChatJob.perform_now(answer.id)
+      answer.reload
+      expect(answer.content).to eq("메모  끝")
+    end
+
+    it "suggestions(후속 질문)에도 방어적으로 normalize를 적용한다" do
+      raw = "본문\n<<<FOLLOWUPS>>>[\"⟦m:91/t:1674670ms/s:화자 3⟧ 관련?\",\"q2\",\"q3\"]"
+      fake = instance_double(LlmService, answer_question: raw)
+      allow(LlmService).to receive(:new).and_return(fake)
+
+      FolderChatJob.perform_now(answer.id)
+      answer.reload
+      expect(answer.suggestions.first).to eq("⟦m:91/t:1674670/s:화자 3⟧ 관련?")
+    end
+  end
+
   it "스트리밍으로 답변을 누적하고 complete 시 model_name 을 저장한다" do
     user.update!(
       llm_provider: "anthropic",
