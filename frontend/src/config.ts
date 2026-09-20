@@ -235,3 +235,6 @@ export const BREAKPOINTS = {
   lg: '(min-width: 1024px)',
   xl: '(min-width: 1280px)',
 } as const
+
+// ── 소개 랜딩 페이지 ─────────────────────────────
+export const LANDING_URL = 'https://jongik-sv.github.io/ddobakddobak/landing/'

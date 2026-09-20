@@ -1,13 +1,14 @@
 import { useCallback } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Mic, Search, Settings, Users, PanelLeftClose, LogOut, WifiOff, Trash2 } from 'lucide-react'
+import { LayoutDashboard, Mic, Search, Settings, Users, PanelLeftClose, LogOut, WifiOff, Trash2, HelpCircle } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
 import { useAuth } from '../../hooks/useAuth'
-import { getMode, IS_MOBILE, IS_TAURI } from '../../config'
+import { getMode, IS_MOBILE, IS_TAURI, LANDING_URL } from '../../config'
 import FolderTree from '../folder/FolderTree'
 import ProjectSwitcher from '../project/ProjectSwitcher'
 import ThemeToggle from './ThemeToggle'
 import { folderPath } from '../../lib/folderNav'
+import { openExternal } from '../../lib/openExternal'
 
 function navLinkClass({ isActive }: { isActive: boolean }) {
   const base = 'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors'
@@ -121,6 +122,14 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
           <Trash2 className="w-4 h-4" />
           휴지통
         </NavLink>
+        {/* 소개 랜딩 페이지: Tauri에서 target="_blank"가 동작하지 않으므로 openExternal 경유 */}
+        <button
+          onClick={() => { openExternal(LANDING_URL); closeIfMobile() }}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
+        >
+          <HelpCircle className="w-4 h-4" />
+          또박또박 소개
+        </button>
         <button
           onClick={() => { openSettings(); closeIfMobile() }}
           className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
