@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import { useUiStore } from '../../stores/uiStore'
+import { openExternal } from '../../lib/openExternal'
+import { LANDING_URL } from '../../config'
 
 // Mock FolderTree to avoid its dependencies
 vi.mock('../folder/FolderTree', () => ({
   default: () => <div data-testid="folder-tree" />,
 }))
+
+vi.mock('../../lib/openExternal', () => ({ openExternal: vi.fn() }))
 
 // 오프라인 회의 진입은 Android(Tauri 모바일)에서만 노출 — 테스트는 모바일 환경으로 강제.
 vi.mock('../../config', async (importOriginal) => ({
@@ -77,6 +81,16 @@ describe('Sidebar', () => {
     )
     const link = screen.getByRole('link', { name: /오프라인 회의/i })
     expect(link).toHaveAttribute('href', '/local-meetings')
+  })
+
+  it('"또박또박 소개" 버튼 클릭 시 openExternal(LANDING_URL) 호출', () => {
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>
+    )
+    fireEvent.click(screen.getByRole('button', { name: /또박또박 소개/i }))
+    expect(vi.mocked(openExternal)).toHaveBeenCalledWith(LANDING_URL)
   })
 
   it('sidebarOpen=false일 때 사이드바가 렌더링되지 않음', () => {

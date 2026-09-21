@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { LogIn } from 'lucide-react'
+import { LogIn, ExternalLink } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import { getApiOrigin, IS_MOBILE, IS_TAURI } from '../../config'
+import { getApiOrigin, IS_MOBILE, IS_TAURI, LANDING_URL } from '../../config'
 import { PasswordInput } from '../ui/PasswordInput'
+import { openExternal } from '../../lib/openExternal'
 
 export function LoginPage() {
   const { login, loginDirect } = useAuth()
@@ -115,6 +116,16 @@ export function LoginPage() {
           className="w-full mt-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           서버 주소 변경
+        </button>
+
+        {/* 소개 랜딩 페이지: Tauri에서 target="_blank"가 동작하지 않으므로 openExternal 경유 */}
+        <button
+          type="button"
+          onClick={() => openExternal(LANDING_URL)}
+          className="w-full mt-2 py-2 flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          또박또박은 어떤 서비스인가요?
+          <ExternalLink className="w-3.5 h-3.5" />
         </button>
 
         {/* 완전 오프라인 탈출구: 로그인 없이 온디바이스 회의로(Android만). */}

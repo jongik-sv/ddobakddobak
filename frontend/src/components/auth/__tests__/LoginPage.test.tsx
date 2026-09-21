@@ -11,7 +11,11 @@ vi.mock('../../../hooks/useAuth', () => ({
   useAuth: mockUseAuth,
 }))
 
+vi.mock('../../../lib/openExternal', () => ({ openExternal: vi.fn() }))
+
 import { LoginPage } from '../LoginPage'
+import { openExternal } from '../../../lib/openExternal'
+import { LANDING_URL } from '../../../config'
 
 describe('LoginPage', () => {
   beforeEach(() => {
@@ -49,5 +53,15 @@ describe('LoginPage', () => {
     })
 
     expect(mockLogin).toHaveBeenCalledTimes(1)
+  })
+
+  it('"또박또박은 어떤 서비스인가요?" 클릭 시 openExternal(LANDING_URL) 호출', () => {
+    render(<LoginPage />)
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /또박또박은 어떤 서비스인가요\?/ }),
+    )
+
+    expect(openExternal).toHaveBeenCalledWith(LANDING_URL)
   })
 })
