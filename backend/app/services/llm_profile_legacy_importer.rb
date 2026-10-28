@@ -94,6 +94,6 @@ class LlmProfileLegacyImporter
     end
 
     LlmProfileYamlSync.apply!(cfg)
-    File.write(AppSettings::SETTINGS_PATH, YAML.dump(cfg.deep_stringify_keys))
+    AppSettings.save!(cfg)
   end
 end

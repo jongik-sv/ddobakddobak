@@ -141,4 +141,191 @@ RSpec.describe AppSettings do
       expect(ENV["STT_ENGINE"]).to eq("whisper_cpp")
     end
   end
+
+  # 잡 워커는 puma 에서 fork 된 별도 프로세스라 컨트롤러의 ENV 갱신이 전달되지 않는다.
+  # 잡 시작 시 settings.yaml 변경(mtime/size)을 감지해 ENV 를 재동기화한다.
+  describe "settings.yaml 변경 감지 재동기화 (refresh_env_if_changed!)" do
+    ENV_KEYS = %w[
+      LLM_PROVIDER LLM_MODEL LLM_MAX_INPUT_TOKENS LLM_MAX_OUTPUT_TOKENS
+      CHAT_LLM_PROVIDER CHAT_LLM_AUTH_TOKEN CHAT_LLM_MODEL CHAT_LLM_BASE_URL
+      ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL OPENAI_API_KEY OPENAI_BASE_URL
+      STT_ENGINE HF_TOKEN SUMMARY_INTERVAL_SEC
+    ].freeze
+
+    let(:dir) { Dir.mktmpdir }
+    let(:path) { File.join(dir, "settings.yaml") }
+
+    def cfg_for(model, chat_model = nil)
+      llm = { "active_preset" => "p", "presets" => { "p" => { "provider" => "anthropic", "model" => model, "auth_token" => "tok" } } }
+      llm["chat_model"] = chat_model if chat_model
+      { "llm" => llm }
+    end
+
+    def write_cfg(cfg, mtime: nil)
+      File.write(path, YAML.dump(cfg))
+      File.utime(mtime, mtime, path) if mtime
+    end
+
+    around do |example|
+      prev = ENV_KEYS.index_with { |k| ENV[k] }
+      ENV_KEYS.each { |k| ENV.delete(k) }
+      example.run
+      ENV_KEYS.each { |k| prev[k].nil? ? ENV.delete(k) : ENV[k] = prev[k] }
+    ensure
+      FileUtils.remove_entry(dir) if File.exist?(dir)
+    end
+
+    before do
+      stub_const("AppSettings::SETTINGS_PATH", path)
+      described_class.reset_env_sync_state!
+    end
+
+    after { described_class.reset_env_sync_state! }
+
+    it "mtime 이 그대로면 미리 넣어 둔 ENV 를 유지한다" do
+      t = Time.at(1_700_000_000)
+      write_cfg(cfg_for("m1", "c1"), mtime: t)
+      described_class.mark_env_synced!
+      ENV["LLM_MODEL"] = "injected"
+      ENV["CHAT_LLM_MODEL"] = "injected-chat"
+
+      described_class.refresh_env_if_changed!
+
+      expect(ENV["LLM_MODEL"]).to eq("injected")
+      expect(ENV["CHAT_LLM_MODEL"]).to eq("injected-chat")
+    end
+
+    it "파일 내용과 mtime 이 바뀌면 LLM_MODEL·CHAT_LLM_MODEL 을 갱신한다" do
+      write_cfg(cfg_for("m1", "c1"), mtime: Time.at(1_700_000_000))
+      described_class.mark_env_synced!
+      write_cfg(cfg_for("m2", "c2"), mtime: Time.at(1_700_000_100))
+
+      described_class.refresh_env_if_changed!
+
+      expect(ENV["LLM_MODEL"]).to eq("m2")
+      expect(ENV["CHAT_LLM_MODEL"]).to eq("c2")
+    end
+
+    it "한 번 동기화한 뒤 같은 파일이면 다시 동기화하지 않는다" do
+      write_cfg(cfg_for("m1"), mtime: Time.at(1_700_000_000))
+      described_class.mark_env_synced!
+      write_cfg(cfg_for("m2"), mtime: Time.at(1_700_000_100))
+      described_class.refresh_env_if_changed!
+      ENV["LLM_MODEL"] = "after"
+
+      described_class.refresh_env_if_changed!
+
+      expect(ENV["LLM_MODEL"]).to eq("after")
+    end
+
+    it "부팅 때 파일이 없었으면(기준값 nil) 파일이 생긴 뒤 첫 호출에서 동기화한다" do
+      described_class.mark_env_synced! # 파일 없음 → nil
+      write_cfg(cfg_for("late"))
+
+      described_class.refresh_env_if_changed!
+
+      expect(ENV["LLM_MODEL"]).to eq("late")
+    end
+
+    it "기준값이 nil 이고 파일도 없으면 ENV 를 건드리지 않는다" do
+      ENV["LLM_MODEL"] = "injected"
+      described_class.refresh_env_if_changed!
+      expect(ENV["LLM_MODEL"]).to eq("injected")
+    end
+
+    it "컨트롤러가 sync_env_from! 을 직접 호출하면 기준값이 갱신돼 중복 동기화하지 않는다" do
+      write_cfg(cfg_for("m1"), mtime: Time.at(1_700_000_000))
+      described_class.mark_env_synced!
+      write_cfg(cfg_for("m2"), mtime: Time.at(1_700_000_100))
+      described_class.sync_env_from!(described_class.load)
+      ENV["LLM_MODEL"] = "after"
+
+      described_class.refresh_env_if_changed!
+
+      expect(ENV["LLM_MODEL"]).to eq("after")
+    end
+
+    context "안전장치 — 동기화하지 않고 기준값도 갱신하지 않는다" do
+      before do
+        write_cfg(cfg_for("m1"), mtime: Time.at(1_700_000_000))
+        described_class.mark_env_synced!
+        ENV["LLM_MODEL"] = "keep"
+      end
+
+      def expect_untouched_then_recovers
+        described_class.refresh_env_if_changed!
+        expect(ENV["LLM_MODEL"]).to eq("keep")
+        write_cfg(cfg_for("good"), mtime: Time.at(1_700_000_300))
+        described_class.refresh_env_if_changed!
+        expect(ENV["LLM_MODEL"]).to eq("good")
+      end
+
+      it "파일이 없을 때" do
+        File.delete(path)
+        expect_untouched_then_recovers
+      end
+
+      it "YAML 이 깨졌을 때" do
+        File.write(path, "llm: [unclosed\n  : : :")
+        File.utime(Time.at(1_700_000_200), Time.at(1_700_000_200), path)
+        expect_untouched_then_recovers
+      end
+
+      it "llm 키가 없을 때" do
+        write_cfg({ "stt" => { "engine" => "x" } }, mtime: Time.at(1_700_000_200))
+        expect_untouched_then_recovers
+      end
+
+      it "llm 이 Hash 가 아닐 때" do
+        write_cfg({ "llm" => "oops" }, mtime: Time.at(1_700_000_200))
+        expect_untouched_then_recovers
+      end
+    end
+
+    it "동기화 중 예외가 나도 raise 하지 않는다" do
+      write_cfg(cfg_for("m1"), mtime: Time.at(1_700_000_000))
+      described_class.mark_env_synced!
+      write_cfg(cfg_for("m2"), mtime: Time.at(1_700_000_100))
+      allow(described_class).to receive(:sync_env_from!).and_raise("boom")
+      expect { described_class.refresh_env_if_changed! }.not_to raise_error
+    end
+  end
+
+  describe ".save! (원자적 쓰기)" do
+    let(:dir) { Dir.mktmpdir }
+    let(:path) { File.join(dir, "settings.yaml") }
+
+    before { stub_const("AppSettings::SETTINGS_PATH", path) }
+    after { FileUtils.remove_entry(dir) }
+
+    it "tmp 파일에 쓴 뒤 rename 하고, 재로드하면 같은 cfg 가 나온다" do
+      cfg = { llm: { "active_preset" => "p", "presets" => { "p" => { "model" => "한글" } } }, "stt" => { "engine" => "x" } }
+      expect(File).to receive(:rename).and_wrap_original do |orig, from, to|
+        expect(File.dirname(from)).to eq(dir)
+        expect(from).not_to eq(path)
+        expect(to).to eq(path)
+        orig.call(from, to)
+      end
+
+      described_class.save!(cfg)
+
+      expect(described_class.load).to eq(cfg.deep_stringify_keys)
+      expect(Dir.children(dir)).to eq([ "settings.yaml" ]) # tmp 잔류 없음
+    end
+
+    it "기존 파일을 덮어쓴다" do
+      File.write(path, "old: 1\n")
+      described_class.save!({ "new" => 2 })
+      expect(described_class.load).to eq({ "new" => 2 })
+    end
+  end
+
+  describe "ApplicationJob before_perform" do
+    it "상속한 잡을 perform_now 하면 refresh_env_if_changed! 가 호출된다" do
+      job_class = Class.new(ApplicationJob) { def perform; end }
+      stub_const("DummyEnvRefreshJob", job_class)
+      expect(described_class).to receive(:refresh_env_if_changed!).once
+      DummyEnvRefreshJob.perform_now
+    end
+  end
 end

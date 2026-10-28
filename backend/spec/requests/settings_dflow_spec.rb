@@ -16,7 +16,7 @@ RSpec.describe "Api::V1::Settings dflow", type: :request do
       }
     }))
     allow(File).to receive(:write).and_call_original
-    allow(File).to receive(:write).with(Api::V1::SettingsController::SETTINGS_PATH, anything).and_return(true)
+    allow(AppSettings).to receive(:save!).and_return(true)
   end
 
   # ============================================================
@@ -55,8 +55,8 @@ RSpec.describe "Api::V1::Settings dflow", type: :request do
 
     it "PUT /api/v1/settings/dflow updates enabled/base_url/api_secret" do
       written = nil
-      allow(File).to receive(:write)
-        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_p, content|
+      allow(AppSettings).to receive(:save!) do |cfg|
+          content = YAML.dump(cfg.deep_stringify_keys)
           written = YAML.safe_load(content)
           allow(File).to receive(:read).with(Api::V1::SettingsController::SETTINGS_PATH).and_return(content)
           true
@@ -80,8 +80,8 @@ RSpec.describe "Api::V1::Settings dflow", type: :request do
 
     it "PUT with blank api_secret keeps the existing stored value (present-only update)" do
       written = nil
-      allow(File).to receive(:write)
-        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_p, content|
+      allow(AppSettings).to receive(:save!) do |cfg|
+          content = YAML.dump(cfg.deep_stringify_keys)
           written = YAML.safe_load(content)
           true
         end

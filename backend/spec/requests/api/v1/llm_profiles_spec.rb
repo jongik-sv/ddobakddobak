@@ -54,7 +54,7 @@ RSpec.describe "Api::V1::LlmProfiles", type: :request do
       allow(File).to receive(:exist?).and_call_original
       allow(File).to receive(:exist?).with(AppSettings::SETTINGS_PATH).and_return(false)
       allow(File).to receive(:write).and_call_original
-      allow(File).to receive(:write).with(AppSettings::SETTINGS_PATH, anything).and_return(true)
+      allow(AppSettings).to receive(:save!).and_return(true)
     end
 
     it "admin은 CRUD 가능, 풀은 user_id nil로 저장" do
@@ -111,7 +111,7 @@ RSpec.describe "Api::V1::LlmProfiles", type: :request do
       allow(File).to receive(:exist?).with(AppSettings::SETTINGS_PATH).and_return(true)
       allow(File).to receive(:read).with(AppSettings::SETTINGS_PATH).and_return(YAML.dump(disk))
       written = nil
-      allow(File).to receive(:write).with(AppSettings::SETTINGS_PATH, anything) { |_, body| written = body; true }
+      allow(AppSettings).to receive(:save!) { |cfg| written = YAML.dump(cfg.deep_stringify_keys); true }
 
       delete "/api/v1/llm_profiles/#{sp.id}"
       expect(response).to have_http_status(:no_content)
@@ -143,7 +143,7 @@ RSpec.describe "Api::V1::LlmProfiles", type: :request do
       allow(File).to receive(:exist?).with(AppSettings::SETTINGS_PATH).and_return(true)
       allow(File).to receive(:read).with(AppSettings::SETTINGS_PATH).and_return(YAML.dump(disk))
       written = nil
-      allow(File).to receive(:write).with(AppSettings::SETTINGS_PATH, anything) { |_, body| written = body; true }
+      allow(AppSettings).to receive(:save!) { |cfg| written = YAML.dump(cfg.deep_stringify_keys); true }
 
       delete "/api/v1/llm_profiles/#{cp.id}"
       expect(response).to have_http_status(:no_content)
@@ -170,7 +170,7 @@ RSpec.describe "Api::V1::LlmProfiles", type: :request do
       allow(File).to receive(:exist?).with(AppSettings::SETTINGS_PATH).and_return(true)
       allow(File).to receive(:read).with(AppSettings::SETTINGS_PATH).and_return(YAML.dump({ "llm" => { "active_profile_id" => sp.id } }))
       written = nil
-      allow(File).to receive(:write).with(AppSettings::SETTINGS_PATH, anything) { |_, body| written = body; true }
+      allow(AppSettings).to receive(:save!) { |cfg| written = YAML.dump(cfg.deep_stringify_keys); true }
       patch "/api/v1/llm_profiles/#{sp.id}", params: { profile: { model: "gpt-4o" } }, as: :json
       expect(response).to have_http_status(:ok)
       expect(YAML.safe_load(written)["llm"]["presets"]["openai"]["model"]).to eq("gpt-4o")

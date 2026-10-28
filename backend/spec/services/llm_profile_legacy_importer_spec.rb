@@ -5,7 +5,7 @@ RSpec.describe LlmProfileLegacyImporter do
     allow(File).to receive(:exist?).and_call_original
     allow(File).to receive(:exist?).with(AppSettings::SETTINGS_PATH).and_return(true)
     allow(File).to receive(:read).with(AppSettings::SETTINGS_PATH).and_return(YAML.dump(yaml))
-    allow(File).to receive(:write).with(AppSettings::SETTINGS_PATH, anything).and_return(true)
+    allow(AppSettings).to receive(:save!).and_return(true)
   end
   let(:yaml) { {} }
 
@@ -72,7 +72,7 @@ RSpec.describe LlmProfileLegacyImporter do
 
     it "API 프리셋만 서버 풀 프로필화, active/chat 참조 세팅, CLI 프리셋은 프로필 미생성" do
       written = nil
-      allow(File).to receive(:write).with(AppSettings::SETTINGS_PATH, anything) { |_, body| written = body; true }
+      allow(AppSettings).to receive(:save!) { |cfg| written = YAML.dump(cfg.deep_stringify_keys); true }
 
       described_class.run!
 
@@ -102,7 +102,7 @@ RSpec.describe LlmProfileLegacyImporter do
 
     it "프리셋을 그대로 재사용하지 않고 챗 전용 '(챗)' 프로필을 별도 생성해 챗 모델을 보존한다" do
       written = nil
-      allow(File).to receive(:write).with(AppSettings::SETTINGS_PATH, anything) { |_, body| written = body; true }
+      allow(AppSettings).to receive(:save!) { |cfg| written = YAML.dump(cfg.deep_stringify_keys); true }
 
       described_class.run!
 

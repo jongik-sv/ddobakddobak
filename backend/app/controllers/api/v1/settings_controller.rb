@@ -341,7 +341,7 @@ module Api
       end
 
       def save_settings(cfg)
-        File.write(SETTINGS_PATH, YAML.dump(cfg.deep_stringify_keys))
+        AppSettings.save!(cfg)
       end
 
       def read_setting(*keys)
