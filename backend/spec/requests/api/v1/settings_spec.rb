@@ -27,7 +27,7 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
       "hf" => { "token" => "hf_test" }
     }))
     allow(File).to receive(:write).and_call_original
-    allow(File).to receive(:write).with(Api::V1::SettingsController::SETTINGS_PATH, anything).and_return(true)
+    allow(AppSettings).to receive(:save!).and_return(true)
   end
 
   # ============================================================
@@ -91,7 +91,8 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
         profile = LlmProfile.create!(user_id: nil, name: "SP", preset_id: "openai", provider: "openai",
                                      model: "gpt-4o-mini", auth_token: "sk-xxxx-12345678")
         written = nil
-        allow(File).to receive(:write).with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_, body|
+        allow(AppSettings).to receive(:save!) do |cfg|
+          body = YAML.dump(cfg.deep_stringify_keys)
           written = body
           allow(File).to receive(:read).with(Api::V1::SettingsController::SETTINGS_PATH).and_return(body)
           true
@@ -185,8 +186,8 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
 
     it "PUT /api/v1/settings/llm with chat_model persists it under llm.chat_model" do
       written = nil
-      allow(File).to receive(:write)
-        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_path, content|
+      allow(AppSettings).to receive(:save!) do |cfg|
+          content = YAML.dump(cfg.deep_stringify_keys)
           written = YAML.safe_load(content)
           true
         end
@@ -200,8 +201,8 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
     it "PUT /api/v1/settings/llm sets ENV[\"CHAT_LLM_MODEL\"] from chat_model" do
       # write→read 라운드트립 시뮬레이션: 저장된 내용이 이후 load_settings 재읽기에 보인다.
       # (sync_active_llm_to_env 가 저장 직후 파일을 다시 읽어 ENV 를 갱신하기 때문)
-      allow(File).to receive(:write)
-        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_path, content|
+      allow(AppSettings).to receive(:save!) do |cfg|
+          content = YAML.dump(cfg.deep_stringify_keys)
           allow(File).to receive(:read).with(Api::V1::SettingsController::SETTINGS_PATH).and_return(content)
           true
         end
@@ -233,8 +234,8 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
     it "PUT /api/v1/settings/llm with empty chat_model clears it (nil) and deletes ENV" do
       ENV["CHAT_LLM_MODEL"] = "stale-model"
       written = nil
-      allow(File).to receive(:write)
-        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_path, content|
+      allow(AppSettings).to receive(:save!) do |cfg|
+          content = YAML.dump(cfg.deep_stringify_keys)
           written = YAML.safe_load(content)
           allow(File).to receive(:read).with(Api::V1::SettingsController::SETTINGS_PATH).and_return(content)
           true
@@ -267,8 +268,8 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
 
     it "persists chat sub-hash under llm.chat" do
       written = nil
-      allow(File).to receive(:write)
-        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_p, content|
+      allow(AppSettings).to receive(:save!) do |cfg|
+          content = YAML.dump(cfg.deep_stringify_keys)
           written = YAML.safe_load(content)
           allow(File).to receive(:read).with(Api::V1::SettingsController::SETTINGS_PATH).and_return(content)
           true
@@ -295,8 +296,8 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
                    "chat" => { "provider" => "openai", "auth_token" => "existing-key", "model" => "m1" } }
       }))
       written = nil
-      allow(File).to receive(:write)
-        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_p, content|
+      allow(AppSettings).to receive(:save!) do |cfg|
+          content = YAML.dump(cfg.deep_stringify_keys)
           written = YAML.safe_load(content); true
         end
 
@@ -315,8 +316,8 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
                    "chat" => { "provider" => "openai", "auth_token" => "k", "model" => "m" } }
       }))
       written = nil
-      allow(File).to receive(:write)
-        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_p, content|
+      allow(AppSettings).to receive(:save!) do |cfg|
+          content = YAML.dump(cfg.deep_stringify_keys)
           written = YAML.safe_load(content); true
         end
 
@@ -345,8 +346,8 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
     end
 
     it "emits CHAT_LLM_* ENV from llm.chat on save" do
-      allow(File).to receive(:write)
-        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_p, content|
+      allow(AppSettings).to receive(:save!) do |cfg|
+          content = YAML.dump(cfg.deep_stringify_keys)
           allow(File).to receive(:read).with(Api::V1::SettingsController::SETTINGS_PATH).and_return(content)
           true
         end
@@ -371,8 +372,8 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
                    "presets" => { "anthropic" => { "provider" => "anthropic", "auth_token" => "sk-test" } },
                    "chat" => { "provider" => "openai", "auth_token" => "old", "model" => "m" } }
       }))
-      allow(File).to receive(:write)
-        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_p, content|
+      allow(AppSettings).to receive(:save!) do |cfg|
+          content = YAML.dump(cfg.deep_stringify_keys)
           allow(File).to receive(:read).with(Api::V1::SettingsController::SETTINGS_PATH).and_return(content)
           true
         end
@@ -405,8 +406,8 @@ RSpec.describe "Api::V1::Settings admin authorization", type: :request do
 
     it "active_preset:none + active_profile_id:null 저장 → ENV 반영 + GET 응답 roundtrip" do
       ENV["LLM_MODEL"] = "stale-model"
-      allow(File).to receive(:write)
-        .with(Api::V1::SettingsController::SETTINGS_PATH, anything) do |_p, content|
+      allow(AppSettings).to receive(:save!) do |cfg|
+          content = YAML.dump(cfg.deep_stringify_keys)
           allow(File).to receive(:read).with(Api::V1::SettingsController::SETTINGS_PATH).and_return(content)
           true
         end

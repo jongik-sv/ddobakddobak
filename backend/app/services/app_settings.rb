@@ -29,6 +29,71 @@ class AppSettings
     {}
   end
 
+  # settings.yaml 원자적 저장. 같은 디렉터리의 tmp 파일에 쓴 뒤 rename 한다(같은 FS 라 원자적).
+  # 잡 워커(별도 프로세스)가 쓰기 도중의 반쪽 파일을 읽어 load 가 {} 를 돌려주는 일을 막는다.
+  # 직렬화 형식은 기존 호출부와 동일(YAML.dump(cfg.deep_stringify_keys)).
+  def self.save!(cfg)
+    tmp = "#{SETTINGS_PATH}.tmp.#{Process.pid}.#{SecureRandom.hex(4)}"
+    begin
+      File.write(tmp, YAML.dump(cfg.deep_stringify_keys))
+      # 토큰이 들어 있는 파일이라 기존 권한을 보존한다(없으면 기본 umask).
+      File.chmod(File.stat(SETTINGS_PATH).mode & 0o7777, tmp) if File.exist?(SETTINGS_PATH)
+      File.rename(tmp, SETTINGS_PATH)
+    ensure
+      File.delete(tmp) if File.exist?(tmp)
+    end
+  end
+
+  # ── 워커 프로세스 ENV 재동기화 ──
+  # SOLID_QUEUE_IN_PUMA=1 이면 잡 워커는 부팅 때 puma 에서 fork 된 별도 프로세스라,
+  # 컨트롤러의 sync_env_from!(puma ENV 갱신)이 워커에 전달되지 않는다.
+  # 잡 시작 시(ApplicationJob before_perform) settings.yaml 의 (mtime, size) 가 기준값과
+  # 다르면 ENV 를 다시 동기화한다. 확인+동기화는 스레드 안전(Monitor — 재진입 가능한 뮤텍스).
+  ENV_SYNC_MONITOR = Monitor.new
+  @env_stamp = nil
+
+  # settings.yaml 의 현재 (mtime, size). 파일이 없거나 stat 실패면 nil.
+  def self.settings_stamp
+    st = File.stat(SETTINGS_PATH)
+    [ st.mtime.to_r, st.size ]
+  rescue SystemCallError
+    nil
+  end
+
+  # 현재 파일 상태를 "ENV 에 반영됨" 기준값으로 기록한다.
+  # load_env.rb 가 부팅 시점(워커 fork 전)에 호출한다 — 기준값이 fork 되어 워커로 상속되므로,
+  # 첫 잡이 무조건 재동기화(= 로 Tauri 등 외부 주입 ENV 를 덮어씀)하는 일이 없다.
+  def self.mark_env_synced!
+    ENV_SYNC_MONITOR.synchronize { @env_stamp = settings_stamp }
+  end
+
+  # 테스트용 — 기준값 초기화.
+  def self.reset_env_sync_state!
+    ENV_SYNC_MONITOR.synchronize { @env_stamp = nil }
+  end
+
+  # settings.yaml 이 기준값과 달라졌을 때만 sync_env_from! 으로 ENV 를 갱신한다.
+  # 안전장치: 파일 없음 / load 가 {}(파싱 실패 포함) / llm 이 Hash 아님 → 동기화·기준값 갱신 모두 안 함
+  #   (반쪽·깨진 파일 때문에 정상 ENV 가 날아가지 않게 하고, 정상 파일이 되면 그때 동기화).
+  # 기준값 nil(부팅 때 파일 없음)이어도 현재 파일이 존재하면 동기화한다 — 외부 주입 ENV 가
+  #   보존 대상이던 부팅 로드가 일어난 적이 없으므로 덮어써도 잃을 것이 없다.
+  # 예외는 로그만 남기고 삼킨다(잡을 실패시키지 않음).
+  def self.refresh_env_if_changed!
+    ENV_SYNC_MONITOR.synchronize do
+      stamp = settings_stamp
+      next if stamp.nil? || stamp == @env_stamp
+
+      cfg = load
+      next if cfg.blank? || !cfg["llm"].is_a?(Hash)
+
+      sync_env_from!(cfg)
+      @env_stamp = stamp # sync_env_from! 이 갱신한 값보다 load 이전에 잰 stamp 가 안전(그 사이 변경 시 재동기화)
+      Rails.logger.info "[AppSettings] settings.yaml 변경 감지 — ENV 재동기화"
+    end
+  rescue => e
+    Rails.logger.error "[AppSettings] ENV 재동기화 실패: #{e.class}: #{e.message}"
+  end
+
   # 전역 AI Chat 설정을 CHAT_LLM_* ENV 페어(Hash)로 변환한다.
   # 두 호출부가 공유한다 — 갈라지면 부팅 후 챗 설정이 ENV에서 누락되는 버그가 재발한다:
   #   - config/initializers/load_env.rb (부팅, ||= 로 적용 — 미리 주입된 ENV 보존)
@@ -131,6 +196,9 @@ class AppSettings
         ENV["AUDIO_#{k.upcase}"] = audio[k].to_s if audio[k]
       end
     end
+
+    # 같은 프로세스(컨트롤러)가 직접 동기화했으므로 기준값을 갱신해 잡의 중복 동기화를 피한다.
+    mark_env_synced!
   end
 
   def self.diarization_config

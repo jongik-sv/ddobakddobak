@@ -8,6 +8,9 @@ require Rails.root.join("app/services/app_settings").to_s
 settings_path = Rails.root.join("..", "settings.yaml")
 
 if File.exist?(settings_path)
+  # 부팅 시점(워커 fork 전)에 settings.yaml 상태를 기준값으로 기록 — 이후 잡 워커가
+  # 파일 변경 여부를 판단하는 기준(AppSettings.refresh_env_if_changed!). 읽기 전에 재서 안전 방향.
+  AppSettings.mark_env_synced!
   begin
     cfg = YAML.safe_load(File.read(settings_path)) || {}
 

@@ -79,7 +79,7 @@ module Api
         cfg = AppSettings.load
         LlmProfileYamlSync.detach_profile!(cfg, profile) if destroyed
         LlmProfileYamlSync.apply!(cfg)
-        File.write(AppSettings::SETTINGS_PATH, YAML.dump(cfg.deep_stringify_keys))
+        AppSettings.save!(cfg)
         AppSettings.sync_env_from!(cfg)
       end
     end
