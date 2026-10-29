@@ -575,3 +575,186 @@ RSpec.describe LlmService, "missing-CLI 서버기본 폴백 (A안)" do
     expect(svc.answer_question("sys", "user")).to eq("정상")
   end
 end
+
+# Sonnet/Haiku/Opus 5.5 는 adaptive thinking 기본 ON → 응답 content 첫 블록이 ThinkingBlock 이다.
+# call_anthropic 은 type 이 text 인 블록만 골라 이어 붙여야 한다.
+RSpec.describe LlmService, "call_anthropic 블록 처리 (thinking 블록 혼재)" do
+  def block(type, text = nil)
+    b = double("Block(#{type})", type: type)
+    allow(b).to receive(:text).and_return(text) if text
+    b
+  end
+
+  def response(blocks, stop_reason: :end_turn)
+    double("Message", content: blocks, stop_reason: stop_reason)
+  end
+
+  def svc_with(resp)
+    s = LlmService.new(llm_config: { provider: "anthropic", auth_token: "k", model: "claude-sonnet-5-5" })
+    client = instance_double("Anthropic::Client")
+    messages = instance_double("Anthropic::Resources::Messages")
+    allow(client).to receive(:messages).and_return(messages)
+    allow(messages).to receive(:create).and_return(resp)
+    s.instance_variable_set(:@client, client)
+    s
+  end
+
+  def call(svc) = svc.send(:call_anthropic, "sys", "user", 100)
+
+  it "ThinkingBlock 이 먼저 와도 TextBlock 텍스트만 반환한다" do
+    svc = svc_with(response([ block(:thinking), block(:text, "본문") ]))
+    expect(call(svc)).to eq("본문")
+  end
+
+  it "TextBlock 이 여러 개면 순서대로 이어 붙인다" do
+    svc = svc_with(response([ block(:text, "가"), block(:thinking), block(:text, "나"), block("text", "다") ]))
+    expect(call(svc)).to eq("가나다")
+  end
+
+  it "텍스트 블록이 없으면 예외 없이 빈 문자열을 반환한다" do
+    svc = svc_with(response([ block(:thinking) ]))
+    expect(call(svc)).to eq("")
+  end
+
+  it "stop_reason 이 max_tokens 면 모델명과 함께 warn 로그를 남긴다" do
+    svc = svc_with(response([ block(:text, "잘림") ], stop_reason: :max_tokens))
+    allow(Rails.logger).to receive(:warn)
+    expect(call(svc)).to eq("잘림")
+    expect(Rails.logger).to have_received(:warn).with(/claude-sonnet-5-5.*잘렸/)
+  end
+
+  it "stop_reason 이 refusal 이면 LlmError 를 raise 한다" do
+    svc = svc_with(response([ block(:text, "x") ], stop_reason: :refusal))
+    expect { call(svc) }.to raise_error(LlmService::LlmError, /거부/)
+  end
+
+  it "test_connection 은 thinking 블록만 있는 응답에서도 success: true 를 돌려준다" do
+    svc = svc_with(response([ block(:thinking) ], stop_reason: :max_tokens))
+    allow(Rails.logger).to receive(:warn)
+    expect(svc.test_connection).to include("success" => true)
+  end
+end
+
+# 요약 호출(refine/append/condense)만 effort low 적용. 챗·test_connection 등은 기본값 유지.
+RSpec.describe LlmService, "요약 effort (output_config)" do
+  TRANSCRIPTS = [ { "speaker" => "A", "text" => "새 내용" } ].freeze
+
+  def text_resp
+    blk = double("Block", type: :text, text: "결과")
+    double("Message", content: [ blk ], stop_reason: :end_turn)
+  end
+
+  # create/stream 에 넘어간 kwargs 를 캡처하는 서비스를 만든다.
+  def build(model: "claude-sonnet-5-5", base_url: nil)
+    cfg = { provider: "anthropic", auth_token: "k", model: model }
+    cfg[:base_url] = base_url if base_url
+    s = LlmService.new(llm_config: cfg)
+    @captured = []
+    captured = @captured
+    messages = instance_double("Anthropic::Resources::Messages")
+    allow(messages).to receive(:create) { |**kw| captured << kw; text_resp }
+    stream = Struct.new(:deltas) { def text = deltas }.new([ "델타" ])
+    allow(messages).to receive(:stream) { |**kw| captured << kw; stream }
+    client = instance_double("Anthropic::Client", messages: messages)
+    s.instance_variable_set(:@client, client)
+    s
+  end
+
+  around do |ex|
+    prev = ENV["LLM_SUMMARY_EFFORT"]
+    ENV.delete("LLM_SUMMARY_EFFORT")
+    ex.run
+  ensure
+    prev ? ENV["LLM_SUMMARY_EFFORT"] = prev : ENV.delete("LLM_SUMMARY_EFFORT")
+  end
+
+  it "요약 3종은 claude-sonnet-5-5 에서 output_config effort low 를 넘긴다" do
+    [ :refine_notes, :append_notes, :condense_previous_notes ].each do |m|
+      svc = build
+      case m
+      when :condense_previous_notes then svc.public_send(m, "이전 회의록")
+      else svc.public_send(m, "기존", TRANSCRIPTS)
+      end
+      expect(@captured.last[:output_config]).to eq({ effort: :low }), "#{m} 에 effort 누락"
+    end
+  end
+
+  it "answer_question 과 test_connection 은 output_config 를 넘기지 않는다" do
+    svc = build
+    svc.answer_question("sys", "user")
+    svc.test_connection
+    expect(@captured.size).to eq(2)
+    expect(@captured).to all(satisfy { |kw| !kw.key?(:output_config) })
+  end
+
+  it "effort 미지원 모델(claude-haiku-4-5)이면 넘기지 않는다" do
+    svc = build(model: "claude-haiku-4-5")
+    svc.refine_notes("기존", TRANSCRIPTS)
+    expect(@captured.last).not_to have_key(:output_config)
+  end
+
+  it "base_url 이 z.ai 같은 호환 서버면 넘기지 않는다" do
+    svc = build(base_url: "https://api.z.ai/api/anthropic")
+    svc.refine_notes("기존", TRANSCRIPTS)
+    expect(@captured.last).not_to have_key(:output_config)
+  end
+
+  it "base_url 호스트가 api.anthropic.com 이면 넘긴다" do
+    svc = build(base_url: "https://api.anthropic.com")
+    svc.refine_notes("기존", TRANSCRIPTS)
+    expect(@captured.last[:output_config]).to eq({ effort: :low })
+  end
+
+  it "스트리밍 경로도 같은 조건으로 effort 를 넘긴다(effort 지정 시) / 지원 안 하면 안 넘긴다" do
+    svc = build
+    svc.send(:call_llm_raw, "sys", "user", effort: "low") { |_d| }
+    expect(@captured.last[:output_config]).to eq({ effort: :low })
+
+    svc2 = build(model: "claude-sonnet-4-5")
+    svc2.send(:call_llm_raw, "sys", "user", effort: "low") { |_d| }
+    expect(@captured.last).not_to have_key(:output_config)
+  end
+
+  it "LLM_SUMMARY_EFFORT=none 이면 어떤 경로에도 effort 를 보내지 않는다" do
+    ENV["LLM_SUMMARY_EFFORT"] = "none"
+    svc = build
+    svc.refine_notes("기존", TRANSCRIPTS)
+    expect(@captured.last).not_to have_key(:output_config)
+
+    cli = LlmService.new(llm_config: { provider: "claude_cli", model: "m" })
+    allow(cli).to receive(:cli_available?).and_return(true)
+    cmds = []
+    allow(cli).to receive(:run_cli) { |cmd, _s, &_b| cmds << cmd; "결과" }
+    cli.refine_notes("기존", TRANSCRIPTS)
+    expect(cmds.last).not_to include("--effort")
+  end
+
+  it "LLM_SUMMARY_EFFORT=medium 으로 덮어쓸 수 있다" do
+    ENV["LLM_SUMMARY_EFFORT"] = "medium"
+    svc = build
+    svc.refine_notes("기존", TRANSCRIPTS)
+    expect(@captured.last[:output_config]).to eq({ effort: :medium })
+  end
+
+  describe "claude_cli" do
+    def cli_svc
+      s = LlmService.new(llm_config: { provider: "claude_cli", model: "claude-sonnet-5-5" })
+      allow(s).to receive(:cli_available?).and_return(true)
+      @cmds = []
+      cmds = @cmds
+      allow(s).to receive(:run_cli) { |cmd, _stdin, &_b| cmds << cmd; "결과" }
+      s
+    end
+
+    it "요약 호출 cmd 에는 --effort low 가 들어간다" do
+      cli_svc.refine_notes("기존", TRANSCRIPTS)
+      cmd = @cmds.last
+      expect(cmd.each_cons(2).to_a).to include([ "--effort", "low" ])
+    end
+
+    it "챗 호출 cmd 에는 --effort 가 없다" do
+      cli_svc.answer_question("sys", "user")
+      expect(@cmds.last).not_to include("--effort")
+    end
+  end
+end
