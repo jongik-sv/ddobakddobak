@@ -14,15 +14,15 @@ module ChatStreaming
     full = LlmService.new(llm_config: config).answer_question(system_prompt, user_content) do |delta|
       buffer << delta
       if (now_ms - last_flush) >= THROTTLE_MS || (buffer.length - last_len) >= THROTTLE_CHARS
-        answer.update_column(:content, buffer)
-        answer.status = "streaming"
+        # status 도 DB에 저장 — 폴링 재조회가 pending 으로 되돌려 보이는 깜빡임 방지
+        answer.update_columns(content: buffer, status: "streaming")
         broadcast_chat(answer, model_name: model_name)
         last_flush = now_ms
         last_len = buffer.length
       end
     end
     # 마지막 미플러시 델타가 있으면 최종 DB 반영
-    answer.update_column(:content, buffer) if buffer.length > last_len
+    answer.update_columns(content: buffer, status: "streaming") if buffer.length > last_len
     full.to_s
   end
 

@@ -288,3 +288,54 @@ describe('AiChatPanel 웹소켓 폴백 폴링', () => {
     expect(getScopedChatMessages).not.toHaveBeenCalled()
   })
 })
+
+describe('AiChatPanel 스트리밍 자동 스크롤', () => {
+  const streamingMsgs = (content: string) => [
+    { id: 1, role: 'user', content: 'q', status: 'complete', created_at: '' },
+    { id: 2, role: 'assistant', content, status: 'streaming', created_at: '' },
+  ]
+
+  beforeEach(() => {
+    window.HTMLElement.prototype.scrollIntoView = vi.fn()
+    useChatStore.setState({ scopes: {} })
+  })
+
+  function mountWithScroller(initial: any[]) {
+    setScopeMessages('meeting', 7, initial)
+    const { container } = render(<AiChatPanel scopeId={7} />)
+    const el = container.querySelector('.overflow-y-auto') as HTMLDivElement
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, value: 1000 })
+    Object.defineProperty(el, 'clientHeight', { configurable: true, value: 400 })
+    return el
+  }
+
+  it('하단 근처면 본문이 길어질 때 맨 아래로 따라간다', () => {
+    const el = mountWithScroller(streamingMsgs('a'))
+    el.scrollTop = 560 // 하단까지 40px
+    fireEvent.scroll(el)
+    el.scrollTop = 560
+    act(() => setScopeMessages('meeting', 7, streamingMsgs('a'.repeat(50))))
+    expect(el.scrollTop).toBe(1000)
+  })
+
+  it('위로 스크롤해 읽는 중이면 강제로 내리지 않는다', () => {
+    const el = mountWithScroller(streamingMsgs('a'))
+    el.scrollTop = 100
+    fireEvent.scroll(el)
+    act(() => setScopeMessages('meeting', 7, streamingMsgs('a'.repeat(50))))
+    expect(el.scrollTop).toBe(100)
+  })
+
+  it('메시지가 추가되면 위로 스크롤해 있어도 맨 아래로 간다', () => {
+    const el = mountWithScroller(streamingMsgs('a'))
+    el.scrollTop = 100
+    fireEvent.scroll(el)
+    act(() =>
+      setScopeMessages('meeting', 7, [
+        ...streamingMsgs('a'),
+        { id: 3, role: 'user', content: '새 질문', status: 'complete', created_at: '' },
+      ]),
+    )
+    expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled()
+  })
+})
