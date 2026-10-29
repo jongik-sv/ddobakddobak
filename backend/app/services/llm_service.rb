@@ -88,6 +88,12 @@ class LlmService
 
   CLI_PROVIDERS = %w[claude_cli gemini_cli codex_cli].freeze
 
+  # 회의록 요약 호출(refine/append/condense)의 effort 기본값. 요약은 깊은 추론이 불필요해 low 로 낮춰
+  # 속도·토큰을 아낀다. ENV LLM_SUMMARY_EFFORT 로 덮어쓰며(런타임 조회), 빈 값/"none" 이면 effort 를 보내지 않는다.
+  SUMMARY_EFFORT = "low"
+  # effort(output_config) 를 지원하는 Anthropic 모델. haiku-4-5/sonnet-4-5 는 보내면 오류라 제외.
+  EFFORT_MODEL_PATTERN = /\Aclaude-(?:(?:opus|sonnet|haiku|fable|mythos)-5|opus-4-[5-9]|sonnet-4-6)/
+
   # @param llm_config [Hash, nil] 사용자별 LLM 설정 override
   #   { provider:, auth_token:, model:, base_url: }
   def initialize(llm_config: nil)
@@ -128,7 +134,7 @@ class LlmService
     system_prompt = system_prompt + "\n\n" + LlmPrompts::CITATION_MARKER_INSTRUCTION
     system_prompt = apply_custom_prompt(system_prompt, custom_prompt)
 
-    result = call_llm_raw(system_prompt, user_content, max_tokens: max_tokens)
+    result = call_llm_raw(system_prompt, user_content, max_tokens: max_tokens, effort: summary_effort)
     notes = LlmPrompts::CitationMarkers.normalize(TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(result)))
     # thinking 누출 방어(solo 2026-07 commit 6209fad 이식, 회의38: 8k자→727자 추론쓰레기로
     # 누적 노트가 통째 소실된 사고): refine 출력이 기존 노트를 대량 유실하면 오염으로 간주,
@@ -165,7 +171,7 @@ class LlmService
     system_prompt = apply_verbosity(APPEND_NOTES_SYSTEM_PROMPT, verbosity, context: :append)
     system_prompt = apply_custom_prompt(system_prompt, custom_prompt)
 
-    raw = call_llm_raw(system_prompt, user_content, max_tokens: max_output_tokens)
+    raw = call_llm_raw(system_prompt, user_content, max_tokens: max_output_tokens, effort: summary_effort)
     block = LlmPrompts::CitationMarkers.normalize(TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(raw)))
     { "block_markdown" => block, "ok" => true }
   rescue => e
@@ -189,7 +195,7 @@ class LlmService
     parts << "회의록:\n#{notes}"
     user_content = parts.join("\n\n")
 
-    result = call_llm_raw(CONDENSE_PREVIOUS_NOTES_SYSTEM_PROMPT, user_content, max_tokens: max_output_tokens)
+    result = call_llm_raw(CONDENSE_PREVIOUS_NOTES_SYSTEM_PROMPT, user_content, max_tokens: max_output_tokens, effort: summary_effort)
     plain = TextFormatter.fix_mermaid_quotes(TextFormatter.strip_markdown_fence(result))
     condensed = LlmPrompts::CitationMarkers.strip_all(plain).strip
     condensed.presence
@@ -365,7 +371,26 @@ class LlmService
 
   # ── LLM 호출 ──
 
-  def call_llm_raw(system, user_content, max_tokens: max_output_tokens, &block)
+  # 요약 호출용 effort. 빈 값/"none" 이면 nil(= effort 미전송).
+  def summary_effort
+    v = ENV.fetch("LLM_SUMMARY_EFFORT", SUMMARY_EFFORT).to_s.strip.downcase
+    v.empty? || v == "none" ? nil : v
+  end
+
+  # Anthropic API 에 넘길 output_config. 공식 API(base_url 없음/api.anthropic.com)이고 effort 지원 모델일
+  # 때만 반환한다 — Z.AI 등 호환 서버는 모르는 파라미터를 거부할 수 있다. 아니면 빈 해시(미전송).
+  def anthropic_effort_param(effort)
+    return {} if effort.blank?
+    return {} unless @config[:model].to_s.match?(EFFORT_MODEL_PATTERN)
+    base = @config[:base_url].to_s.strip
+    if base.present?
+      host = (URI.parse(base).host rescue nil)
+      return {} unless host == "api.anthropic.com"
+    end
+    { output_config: { effort: effort.to_sym } }
+  end
+
+  def call_llm_raw(system, user_content, max_tokens: max_output_tokens, effort: nil, &block)
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
     # A안(실행시점 폴백): 개인 CLI provider 인데 그 바이너리가 이 머신에 없으면(원격 서버 등)
@@ -382,37 +407,48 @@ class LlmService
     when "openai"
       block ? call_openai_stream(system, user_content, max_tokens, &block) : call_openai(system, user_content, max_tokens)
     when "claude_cli"
-      call_claude_cli(system, user_content, &block)
+      call_claude_cli(system, user_content, effort: effort, &block)
     when "gemini_cli"
       call_gemini_cli(system, user_content, &block)
     when "codex_cli"
       call_codex_cli(system, user_content, &block)
     else
-      block ? call_anthropic_stream(system, user_content, max_tokens, &block) : call_anthropic(system, user_content, max_tokens)
+      block ? call_anthropic_stream(system, user_content, max_tokens, effort: effort, &block) : call_anthropic(system, user_content, max_tokens, effort: effort)
     end
 
     result = strip_think(result) # 새는 <think> 블록 제거(안전망)
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
-    Rails.logger.info "[LlmService] #{@config[:provider]}/#{@config[:model]} #{elapsed.round(1)}s | input=#{system.length + user_content.length}자 output=#{result.length}자"
+    Rails.logger.info "[LlmService] #{@config[:provider]}/#{@config[:model]} #{elapsed.round(1)}s | input=#{system.length + user_content.length}자 output=#{result.length}자#{effort ? " effort=#{effort}" : ""}"
     result
   end
 
-  def call_anthropic(system, user_content, max_tokens)
+  def call_anthropic(system, user_content, max_tokens, effort: nil)
     response = @client.messages.create(
       model: @config[:model],
       max_tokens: max_tokens,
       system: system,
-      messages: [ { role: "user", content: user_content } ]
+      messages: [ { role: "user", content: user_content } ],
+      **anthropic_effort_param(effort)
     )
-    response.content.first.text
+    # Sonnet/Haiku/Opus 5.5 는 adaptive thinking 이 기본 ON 이라 content 첫 블록이 ThinkingBlock 일 수 있다.
+    # (ThinkingBlock 은 #text 가 없음) → type 이 text 인 블록만 순서대로 이어 붙인다. type 은 Symbol/String 양쪽 안전 비교.
+    stop_reason = response.stop_reason.to_s
+    if stop_reason == "max_tokens"
+      # thinking 이 출력 토큰 예산(max_tokens)을 함께 쓰므로 요약이 잘리는 경우를 진단하기 위한 경고.
+      Rails.logger.warn "[LlmService] #{@config[:model]} 출력이 max_tokens(#{max_tokens})에서 잘렸을 수 있습니다 (thinking 이 토큰 예산을 함께 사용)"
+    elsif stop_reason == "refusal"
+      raise LlmError, "모델이 응답을 거부했습니다"
+    end
+    Array(response.content).select { |b| b.type.to_s == "text" }.map(&:text).join
   end
 
-  def call_anthropic_stream(system, user_content, max_tokens, &block)
+  def call_anthropic_stream(system, user_content, max_tokens, effort: nil, &block)
     stream = @client.messages.stream(
       model: @config[:model],
       max_tokens: max_tokens,
       system: system,
-      messages: [ { role: "user", content: user_content } ]
+      messages: [ { role: "user", content: user_content } ],
+      **anthropic_effort_param(effort)
     )
     full = +""
     stream.text.each do |delta|
@@ -473,7 +509,7 @@ class LlmService
 
   # ── 로컬 CLI 실행 (Claude Code / Gemini / Codex) ──
 
-  def call_claude_cli(system, user_content, &block)
+  def call_claude_cli(system, user_content, effort: nil, &block)
     cli = cli_binary_for("claude_cli")
     ensure_cli!(cli, "Claude Code CLI", "npm install -g @anthropic-ai/claude-code")
     # 요약은 순수 텍스트 생성 — 툴/플러그인/스킬/MCP/훅 전부 불필요.
@@ -485,6 +521,7 @@ class LlmService
     cmd = [ cli, "-p", "--output-format", "text", "--system-prompt", system,
             "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands" ]
     cmd.push("--model", @config[:model].to_s) if @config[:model].present?
+    cmd.push("--effort", effort.to_s) if effort.present? # 요약 호출만 effort 낮춤(챗 등은 CLI 기본값)
     run_cli(cmd, user_content, &block)
   end
 
