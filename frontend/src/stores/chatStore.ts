@@ -39,6 +39,28 @@ export function emptyScope(): ChatScopeState {
   }
 }
 
+// 메시지 진행 순위 — pending < streaming < complete/error.
+const STATUS_RANK: Record<ChatMessage['status'], number> = { pending: 0, streaming: 1, complete: 2, error: 2 }
+
+/**
+ * 서버 목록과 로컬 메시지 병합(폴링 refresh용). 웹소켓으로 이미 더 진행된 로컬 상태를
+ * 느리게 도착한 폴링 응답(DB는 pending/짧은 본문)이 되돌리지 않게 한다.
+ * 로컬 순위가 더 높으면 로컬 유지, 둘 다 streaming이면 content가 긴 쪽, 그 외엔 서버 값.
+ * 목록 구성·순서는 서버를 따른다.
+ */
+function mergeServerMessages(local: ChatMessage[], server: ChatMessage[]): ChatMessage[] {
+  const localById = new Map(local.map((m) => [m.id, m]))
+  return server.map((srv) => {
+    const loc = localById.get(srv.id)
+    if (!loc) return srv
+    const lr = STATUS_RANK[loc.status] ?? 0
+    const sr = STATUS_RANK[srv.status] ?? 0
+    if (lr > sr) return loc
+    if (lr === sr && loc.status === 'streaming' && loc.content.length > srv.content.length) return loc
+    return srv
+  })
+}
+
 interface ChatState {
   scopes: Record<string, ChatScopeState>
   /** 읽기 전용 접근자 — 없으면 빈 스코프 반환(새 참조이므로 셀렉터엔 사용 금지, 명령형 읽기 전용). */
@@ -107,12 +129,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   refresh: async (scopeType, scopeId) => {
     const key = scopeKey(scopeType, scopeId)
     const messages = await getScopedChatMessages(scopeType, scopeId)
-    set((s) => ({
-      scopes: {
-        ...s.scopes,
-        [key]: { ...(s.scopes[key] ?? emptyScope()), messages },
-      },
-    }))
+    // 응답 대기 중 웹소켓 갱신이 반영됐을 수 있으므로 set 시점의 최신 로컬과 병합한다.
+    set((s) => {
+      const prev = s.scopes[key] ?? emptyScope()
+      return { scopes: { ...s.scopes, [key]: { ...prev, messages: mergeServerMessages(prev.messages, messages) } } }
+    })
   },
 
   send: async (scopeType, scopeId, content) => {

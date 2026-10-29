@@ -3,9 +3,10 @@ class ChatMessage < ApplicationRecord
   belongs_to :user
 
   ROLES = %w[user assistant].freeze
-  # "streaming" 은 일시적 브로드캐스트 전용 상태(stream_answer 내부에서 update_column + 인메모리 status= 으로
-  # 와이어 페이로드만 설정)이며 DB에 저장되지 않으므로 STATUSES에 포함하지 않는다.
-  STATUSES = %w[pending complete error].freeze
+  # "streaming" 은 stream_answer 가 델타 플러시마다 DB에도 저장한다(content 와 함께 update_columns).
+  # DB가 pending 으로 남으면 폴링 재조회가 웹소켓으로 받은 streaming 본문을 pending 으로 덮어
+  # "…답변 작성 중" 깜빡임이 생기기 때문. 완료/실패는 잡이 complete/error 로 전환한다.
+  STATUSES = %w[pending streaming complete error].freeze
   SCOPE_TYPES = %w[meeting folder project].freeze
 
   # model_name 은 ActiveRecord 예약 메서드명과 충돌하나, LLM 모델명 저장 컬럼으로 명시 허용한다.

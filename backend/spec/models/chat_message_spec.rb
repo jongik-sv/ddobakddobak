@@ -19,6 +19,10 @@ RSpec.describe ChatMessage, type: :model do
     expect(build(:chat_message, role: "assistant", status: "pending", content: "")).to be_valid
   end
 
+  it "allows streaming status for assistant" do
+    expect(build(:chat_message, role: "assistant", status: "streaming", content: "부분")).to be_valid
+  end
+
   it "for_user scope filters by owner" do
     a = create(:chat_message)
     create(:chat_message)

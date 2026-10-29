@@ -7,6 +7,9 @@ import { ChatExpandDialog } from './ChatExpandDialog'
 import { downloadChatAnswer } from '../../lib/chatExport'
 import type { ChatMessage, ChatScopeType } from '../../api/chat'
 
+// 스트리밍 자동 추종을 유지할 하단 근접 임계값(px).
+const NEAR_BOTTOM_PX = 80
+
 function ModelBadge() {
   return (
     <span
@@ -57,6 +60,10 @@ export function AiChatPanel({
   const prevLenRef = useRef(0)
   // 초기 스크롤 처리(캐시 복원 vs 첫 하단 이동)를 한 번만 수행하는 가드.
   const didInitScrollRef = useRef(false)
+  // 사용자가 하단 근처(NEAR_BOTTOM_PX 이내)에 있는지. onScroll에서 갱신한다.
+  // 본문이 늘어난 뒤에 계산하면 scrollHeight가 이미 커져 "위에 있음"으로 오판하므로,
+  // 갱신이 그려지기 전 위치를 기억해 두었다가 effect에서 사용한다.
+  const nearBottomRef = useRef(true)
 
   useEffect(() => {
     load(scopeType, scopeId)
@@ -101,7 +108,12 @@ export function AiChatPanel({
       return
     }
     if (messages.length > prevLenRef.current) {
+      // 새 질문/답변 슬롯 추가 — 항상 맨 아래로.
       bottomRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
+    } else if (nearBottomRef.current) {
+      // 스트리밍으로 본문만 길어진 경우 — 하단 근처에 있던 사용자만 따라간다.
+      // 매 갱신마다 smooth를 걸면 애니메이션이 겹쳐 떨리므로 즉시 이동.
+      el.scrollTop = el.scrollHeight
     }
     prevLenRef.current = messages.length
   }, [messages, key])
@@ -129,7 +141,11 @@ export function AiChatPanel({
     <div className="flex flex-col h-full bg-card">
       <div
         ref={scrollRef}
-        onScroll={(e) => setScrollTop(scopeType, scopeId, (e.target as HTMLDivElement).scrollTop)}
+        onScroll={(e) => {
+          const el = e.target as HTMLDivElement
+          setScrollTop(scopeType, scopeId, el.scrollTop)
+          nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX
+        }}
         className="flex-1 overflow-y-auto px-4 py-3 space-y-3"
       >
         {messages.length === 0 && (

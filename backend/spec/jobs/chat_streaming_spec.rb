@@ -35,4 +35,33 @@ RSpec.describe ChatStreaming do
     expect(broadcasts.all? { |s, m| s == "streaming" && m == "Claude Sonnet 4" }).to be true
     expect(answer.reload.content).to eq("a" * 200) # 마지막 update_column 까지 반영
   end
+
+  it "플러시 시점에 DB에도 status=streaming 과 부분 본문을 저장한다 (폴링이 pending 으로 덮지 않게)" do
+    job = dummy_class.new("topic_x")
+    config = { provider: "anthropic", auth_token: "k", model: "m" }
+    fake = instance_double(LlmService)
+    allow(LlmService).to receive(:new).and_return(fake)
+    snapshots = []
+    allow(job).to receive(:broadcast_chat) do |a, **|
+      row = ChatMessage.unscoped.find(a.id)
+      snapshots << [row.status, row.content.length]
+    end
+    allow(fake).to receive(:answer_question) do |_s, _u, &blk|
+      ("a" * 100).each_char { |c| blk.call(c) }
+      "a" * 100
+    end
+
+    job.send(:stream_answer, answer, config, "sys", "q", "M")
+    expect(snapshots).not_to be_empty
+    expect(snapshots.all? { |st, len| st == "streaming" && len.positive? }).to be true
+    expect(snapshots.first[1]).to be < 100
+    expect(answer.reload.status).to eq("streaming")
+    expect(answer.content).to eq("a" * 100)
+  end
+
+  it "완료 처리(update!) 후 complete 로 전환된다" do
+    answer.update_columns(content: "부분", status: "streaming")
+    expect(answer.reload.update!(content: "전체", status: "complete")).to be true
+    expect(answer.reload.status).to eq("complete")
+  end
 end
