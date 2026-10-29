@@ -9,7 +9,7 @@ import {
 import { createLlmProfile, updateLlmProfile, type LlmProfile } from '../../api/llmProfiles'
 import { testUserLlmConnection, fetchUserLlmModels, type UserLlmTestResult } from '../../api/userLlmSettings'
 import { openExternal } from '../../lib/openExternal'
-import { PasswordInput } from '../ui/PasswordInput'
+import { PasswordInput, SECRET_INPUT_PROPS } from '../ui/PasswordInput'
 
 export interface LlmProfileFormProps {
   scope: 'personal' | 'server'
@@ -91,7 +91,10 @@ export function LlmProfileForm({ scope, initial, onSaved, onCancel }: LlmProfile
     const gen = ++loadGenRef.current
     setCloudLoading(true); setCloudError(null)
     try {
-      const models = await fetchUserLlmModels({ provider: p.provider, base_url: form.base_url, api_key: form.auth_token })
+      const models = await fetchUserLlmModels({ provider: p.provider, base_url: form.base_url, api_key: form.auth_token,
+        // 편집 중 키 미입력(마스킹)이면 profile_id로 저장된 프로필 키를 서버가 폴백한다.
+        ...(!form.auth_token && initial ? { profile_id: initial.id } : {}),
+      })
       if (gen !== loadGenRef.current) return
       setCloudModels(models)
       if (models.length > 0 && !modelRef.current) setForm((f) => ({ ...f, model: models[0] }))
@@ -100,7 +103,7 @@ export function LlmProfileForm({ scope, initial, onSaved, onCancel }: LlmProfile
       setCloudError('모델 목록을 불러올 수 없습니다. API 키·Base URL을 확인하세요.')
       setCloudModels([])
     } finally { if (gen === loadGenRef.current) setCloudLoading(false) }
-  }, [presetId, form.base_url, form.auth_token])
+  }, [presetId, form.base_url, form.auth_token, initial])
 
   // 프리셋이 바뀌면 이전 클라우드 목록/에러를 비운다(자동 재조회 없음 — 버튼으로만).
   useEffect(() => { setCloudModels([]); setCloudError(null) }, [presetId])
@@ -183,7 +186,7 @@ export function LlmProfileForm({ scope, initial, onSaved, onCancel }: LlmProfile
 
       <div>
         <label htmlFor="profile-base" className="block text-sm font-medium mb-1">API Base URL</label>
-        <input id="profile-base" type="text" value={form.base_url}
+        <input id="profile-base" type="text" autoComplete="off" value={form.base_url}
           onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
           placeholder={preset?.defaultBaseUrl || 'https://api.anthropic.com'}
           className={inputCls} />
@@ -200,7 +203,7 @@ export function LlmProfileForm({ scope, initial, onSaved, onCancel }: LlmProfile
               </button>
             )}
           </div>
-          <PasswordInput id="profile-key" value={form.auth_token}
+          <PasswordInput id="profile-key" {...SECRET_INPUT_PROPS} value={form.auth_token}
             onChange={(e) => setForm((f) => ({ ...f, auth_token: e.target.value }))}
             placeholder={initial?.auth_token_masked ?? '토큰을 입력하세요'}
             className={inputCls} />
@@ -236,7 +239,7 @@ export function LlmProfileForm({ scope, initial, onSaved, onCancel }: LlmProfile
             ))}
           </select>
         ) : (
-          <input id="profile-model" type="text" value={form.model} onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
+          <input id="profile-model" type="text" autoComplete="off" value={form.model} onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
             placeholder="모델명을 입력하세요" className={inputCls} />
         )}
         {canRefresh && listError && <p className="text-xs text-yellow-600 mt-1">{listError}</p>}
@@ -267,7 +270,7 @@ export function LlmProfileForm({ scope, initial, onSaved, onCancel }: LlmProfile
 
       <div>
         <label htmlFor="profile-name" className="block text-sm font-medium mb-1">프로필 이름</label>
-        <input id="profile-name" type="text" value={form.name}
+        <input id="profile-name" type="text" autoComplete="off" value={form.name}
           onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
           placeholder={autoName()}
           className={inputCls} />

@@ -580,6 +580,60 @@ RSpec.describe "Api::V1::User::LlmSettings", type: :request do
   # POST /api/v1/user/llm_settings/models  (클라우드 모델 목록 프록시 조회)
   # ============================================================
   describe "POST /api/v1/user/llm_settings/models" do
+    context "profile_id 토큰 폴백" do
+      let(:other) { create(:user) }
+      let(:own_profile) do
+        LlmProfile.create!(user: user, name: "own", preset_id: "anthropic", provider: "anthropic",
+                           model: "claude-sonnet-5", auth_token: "sk-own-profile")
+      end
+      let(:pool_profile) do
+        LlmProfile.create!(user: nil, name: "pool", preset_id: "anthropic", provider: "anthropic",
+                           model: "claude-sonnet-5", auth_token: "sk-pool-profile")
+      end
+      let(:foreign_profile) do
+        LlmProfile.create!(user: other, name: "foreign", preset_id: "anthropic", provider: "anthropic",
+                           model: "claude-sonnet-5", auth_token: "sk-foreign-profile")
+      end
+
+      def post_models(extra = {})
+        post "/api/v1/user/llm_settings/models", params: { provider: "anthropic" }.merge(extra), as: :json
+      end
+
+      it "본인 프로필 profile_id 면 프로필 토큰을 쓴다" do
+        expect(LlmService).to receive(:list_models).with(hash_including(api_key: "sk-own-profile")).and_return([])
+        post_models(profile_id: own_profile.id)
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "서버 풀 프로필 + admin 이면 프로필 토큰을 쓴다" do
+        admin = create(:user, :admin)
+        login_as(admin)
+        expect(LlmService).to receive(:list_models).with(hash_including(api_key: "sk-pool-profile")).and_return([])
+        post_models(profile_id: pool_profile.id)
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "서버 풀 프로필 + 비admin 이면 프로필 토큰을 쓰지 않고 저장 키로 폴백한다" do
+        user.update!(llm_provider: "anthropic", llm_api_key: "sk-saved-key")
+        expect(LlmService).to receive(:list_models).with(hash_including(api_key: "sk-saved-key")).and_return([])
+        post_models(profile_id: pool_profile.id)
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "타인 프로필이면 프로필 토큰을 쓰지 않는다" do
+        user.update!(llm_provider: "anthropic", llm_api_key: "sk-saved-key")
+        expect(LlmService).to receive(:list_models).with(hash_including(api_key: "sk-saved-key")).and_return([])
+        post_models(profile_id: foreign_profile.id)
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "요청 api_key 가 프로필 토큰보다 우선한다" do
+        expect(LlmService).to receive(:list_models).with(hash_including(api_key: "sk-typed")).and_return([])
+        post_models(profile_id: own_profile.id, api_key: "sk-typed")
+        expect(response).to have_http_status(:ok)
+      end
+    end
+
     it "클라우드 provider 의 모델 목록을 반환한다" do
       allow(LlmService).to receive(:list_models).and_return(%w[claude-sonnet-5 claude-opus-4-8])
 

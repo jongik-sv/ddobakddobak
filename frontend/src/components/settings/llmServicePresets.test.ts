@@ -8,6 +8,11 @@ describe('llmServicePresets', () => {
     expect(SERVICE_PRESETS.find((p) => p.id === 'zai')!.suggestedModels).toContain('glm-5.2')
     expect(SERVICE_PRESETS.find((p) => p.id === 'zai')!.provider).toBe('anthropic')
   })
+  it('anthropic 추천 모델 — 5.5 계열이 앞, 기존 모델 유지', () => {
+    const a = SERVICE_PRESETS.find((p) => p.id === 'anthropic')!
+    expect(a.suggestedModels.slice(0, 4)).toEqual(['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'])
+    expect(a.suggestedModels).toEqual(expect.arrayContaining(['claude-sonnet-5', 'claude-haiku-4-5']))
+  })
   it('gemini 프리셋 — OpenAI 호환·키 필요·발급 링크', () => {
     const g = SERVICE_PRESETS.find((p) => p.id === 'gemini')!
     expect(g.provider).toBe('openai')

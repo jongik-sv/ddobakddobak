@@ -120,13 +120,7 @@ module Api
           end
 
           model = params.require(:model)
-          api_key = params[:api_key].presence
-          if api_key.blank? && params[:profile_id].present?
-            profile = LlmProfile.find_by(id: params[:profile_id])
-            if profile && (profile.user_id == current_user.id || (profile.user_id.nil? && current_user&.admin?))
-              api_key = profile.auth_token
-            end
-          end
+          api_key = params[:api_key].presence || authorized_profile_token(params[:profile_id])
           api_key ||= saved_api_key_for(provider)
           base_url = params[:base_url].presence || current_user.llm_base_url
 
@@ -154,7 +148,7 @@ module Api
           return render json: { models: [] } unless %w[anthropic openai].include?(provider)
 
           base_url = params[:base_url].presence
-          api_key  = params[:api_key].presence || saved_api_key_for(provider)
+          api_key  = params[:api_key].presence || authorized_profile_token(params[:profile_id]) || saved_api_key_for(provider)
           list = LlmService.list_models(provider: provider, api_key: api_key, base_url: base_url)
           render json: { models: list }
         rescue ActionController::ParameterMissing => e
@@ -165,6 +159,16 @@ module Api
         end
 
         private
+
+        # profile_id 로 지정된 프로필의 토큰. 본인 소유이거나, 서버 풀 프로필(user_id nil)이면서
+        # admin 일 때만 허용한다. 그 외(미인가·없는 id·blank)는 조용히 nil.
+        def authorized_profile_token(profile_id)
+          return nil if profile_id.blank?
+          profile = LlmProfile.find_by(id: profile_id)
+          return nil unless profile
+          return nil unless profile.user_id == current_user.id || (profile.user_id.nil? && current_user&.admin?)
+          profile.auth_token.presence
+        end
 
         # 본인 소유 개인 프로필만 참조 가능. 그 외(타인·서버풀·없는 id)는 422 렌더.
         # blank(명시적 해제)는 nil 반환. 렌더 여부는 호출부에서 performed?로 판단.

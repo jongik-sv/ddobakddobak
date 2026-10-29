@@ -10,6 +10,17 @@ type PasswordInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'typ
   toggleLabel?: string
 }
 
+/**
+ * 로그인 비밀번호가 아닌 API 키·토큰 입력란용 속성. Chrome 은 password 칸의 autoComplete="off" 를 무시하므로
+ * new-password 로 저장된 로그인 비밀번호 자동 채움을 막고, 비밀번호 관리자 확장도 건너뛰게 한다.
+ */
+export const SECRET_INPUT_PROPS = {
+  autoComplete: 'new-password',
+  'data-1p-ignore': true,
+  'data-lpignore': 'true',
+  'data-bwignore': true,
+} as const
+
 /** 비밀번호 입력 필드 — 보기/숨기기(눈) 토글 내장. 스타일은 className으로 그대로 전달받는다. */
 export function PasswordInput({ className, toggleLabel = '비밀번호', ...rest }: PasswordInputProps) {
   const [visible, setVisible] = useState(false)

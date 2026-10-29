@@ -86,6 +86,7 @@ export async function fetchUserLlmModels(params: {
   provider: string
   base_url?: string | null
   api_key?: string
+  profile_id?: number
 }): Promise<string[]> {
   const res = await apiClient
     .post('user/llm_settings/models', { json: params })

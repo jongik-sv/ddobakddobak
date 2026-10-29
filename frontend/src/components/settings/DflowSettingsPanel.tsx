@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { HTTPError } from 'ky'
 import { getDflowSettings, updateDflowSettings, getDflowMeta } from '../../api/dflow'
 import type { DflowSettings, DflowMeta } from '../../api/dflow'
-import { PasswordInput } from '../ui/PasswordInput'
+import { PasswordInput, SECRET_INPUT_PROPS } from '../ui/PasswordInput'
 
 /** D'Flow(회의록 아카이브) 연동 설정 카드: 활성화 · 서버 주소 · 시크릿 · 연결 테스트. */
 export function DflowSettingsPanel() {
@@ -138,6 +138,7 @@ export function DflowSettingsPanel() {
             <label htmlFor="dflow-api-secret" className="block text-sm font-medium mb-1">API 시크릿</label>
             <PasswordInput
               id="dflow-api-secret"
+              {...SECRET_INPUT_PROPS}
               value={apiSecret}
               onChange={(e) => setApiSecret(e.target.value)}
               placeholder={settings?.api_secret_masked || '시크릿을 입력하세요'}
