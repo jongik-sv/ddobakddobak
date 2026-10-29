@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getHfSettings, updateHfToken } from '../../api/settings'
 import type { HfSettings } from '../../api/settings'
-import { PasswordInput } from '../ui/PasswordInput'
+import { PasswordInput, SECRET_INPUT_PROPS } from '../ui/PasswordInput'
 
 /** HuggingFace 토큰(화자 분리 모델 다운로드용) 설정 카드. */
 export function HuggingFacePanel() {
@@ -43,6 +43,7 @@ export function HuggingFacePanel() {
         <div>
           <label className="block text-sm font-medium mb-1">HF Token</label>
           <PasswordInput
+            {...SECRET_INPUT_PROPS}
             value={hfToken}
             onChange={(e) => setHfToken(e.target.value)}
             placeholder={hfSettings?.hf_token_masked || 'hf_...'}
