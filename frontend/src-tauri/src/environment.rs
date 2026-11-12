@@ -71,12 +71,26 @@ fn build_path(seed: String) -> String {
     ];
     for p in priority_paths.iter().rev() {
         if !p.is_empty() {
-            let mut paths: Vec<&str> = base_path.split(':').filter(|s| *s != p).collect();
-            paths.insert(0, p);
-            base_path = paths.join(":");
+            base_path = prepend_path(&base_path, p);
         }
     }
     base_path
+}
+
+/// `dir`을 PATH 맨 앞에 두고 기존 중복 항목을 제거한다 (OS 구분자 처리).
+fn prepend_path(base: &str, dir: &str) -> String {
+    let target = std::path::PathBuf::from(dir);
+    let mut paths: Vec<std::path::PathBuf> =
+        std::env::split_paths(base).filter(|s| *s != target).collect();
+    paths.insert(0, target);
+    match std::env::join_paths(paths) {
+        Ok(j) => j.to_string_lossy().to_string(),
+        Err(_) => {
+            let sep = if cfg!(windows) { ";" } else { ":" };
+            let rest: Vec<&str> = base.split(sep).filter(|s| *s != dir).collect();
+            std::iter::once(dir).chain(rest).collect::<Vec<_>>().join(sep)
+        }
+    }
 }
 
 // ── Helpers ─────────────────────────────────────────
@@ -298,4 +312,16 @@ pub fn check_environment(app: AppHandle) -> EnvironmentStatus {
 
     let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
     EnvironmentStatus { ruby: ruby_ver, uv: uv_ver, ffmpeg: ffmpeg_ver, platform, all_ready }
+}
+
+#[cfg(all(test, unix))]
+mod path_tests {
+    use super::prepend_path;
+
+    #[test]
+    fn prepend_moves_to_front_and_dedups() {
+        assert_eq!(prepend_path("/a:/b:/c", "/b"), "/b:/a:/c");
+        assert_eq!(prepend_path("/a:/c", "/x"), "/x:/a:/c");
+        assert_eq!(prepend_path("", "/x"), "/x:");
+    }
 }

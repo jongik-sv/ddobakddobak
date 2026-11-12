@@ -6,7 +6,7 @@ module Api
       include TokenMasking
 
       before_action :authenticate_user!
-      before_action :require_admin!, only: %i[update_stt update_stt_file update_llm test_llm update_hf update_dflow]
+      before_action :require_admin!, only: %i[update_stt update_stt_file update_llm test_llm update_hf update_dflow update_whiteboard]
 
       SETTINGS_PATH = AppSettings::SETTINGS_PATH
 
@@ -264,6 +264,27 @@ module Api
         dflow
       end
 
+      # ── 화이트보드 내보내기 ──
+
+      WHITEBOARD_WEB_MODES = %w[copy server_claude].freeze
+
+      def whiteboard
+        render json: whiteboard_payload
+      end
+
+      def update_whiteboard
+        mode = params[:web_mode].to_s
+        unless WHITEBOARD_WEB_MODES.include?(mode)
+          return render json: { error: "web_mode must be one of: #{WHITEBOARD_WEB_MODES.join(', ')}" },
+                        status: :unprocessable_entity
+        end
+        cfg = load_settings
+        cfg["whiteboard"] = {} unless cfg["whiteboard"].is_a?(Hash)
+        cfg["whiteboard"]["web_mode"] = mode
+        save_settings(cfg)
+        render json: whiteboard_payload
+      end
+
       # ── 앱 설정 (오디오/화자분리/요약 주기/언어) ──
 
       def app_settings
@@ -333,6 +354,11 @@ module Api
       end
 
       private
+
+      def whiteboard_payload
+        mode = AppSettings.whiteboard_web_mode(load_settings)
+        { web_mode: mode, server_claude_available: LlmService.claude_cli_available? }
+      end
 
       # ── YAML 읽기/쓰기 ──
 

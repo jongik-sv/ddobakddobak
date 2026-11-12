@@ -166,3 +166,17 @@ export async function getAppSettings(): Promise<AppSettings> {
 export async function updateAppSettings(settings: Partial<AppSettings>): Promise<AppSettings> {
   return apiClient.put('settings/app', { json: settings }).json()
 }
+
+// 화이트보드 내보내기 설정 (웹 환경의 생성 방식)
+export interface WhiteboardSettings {
+  web_mode: 'copy' | 'server_claude'
+  server_claude_available: boolean
+}
+
+export async function getWhiteboardSettings(): Promise<WhiteboardSettings> {
+  return apiClient.get('settings/whiteboard').json()
+}
+
+export async function updateWhiteboardSettings(webMode: WhiteboardSettings['web_mode']): Promise<WhiteboardSettings> {
+  return apiClient.put('settings/whiteboard', { json: { web_mode: webMode } }).json()
+}

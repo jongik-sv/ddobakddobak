@@ -758,3 +758,73 @@ RSpec.describe LlmService, "요약 effort (output_config)" do
     end
   end
 end
+
+RSpec.describe LlmService, ".run_claude_whiteboard" do
+  it "화이트보드 전용 플래그 배열로 run_cli 를 호출한다 (--bare/--model 없음, 폴백 미호출, 임시파일 삭제)" do
+    captured = nil
+    prompt_path = nil
+    prompt_body = nil
+    allow_any_instance_of(LlmService).to receive(:run_cli) do |_svc, cmd, stdin, **kw|
+      captured = [ cmd, stdin, kw ]
+      prompt_path = cmd[cmd.index("--system-prompt-file") + 1]
+      prompt_body = File.read(prompt_path)
+      expect(Dir.exist?(kw[:chdir])).to eq(true)
+      expect(Dir.children(kw[:chdir])).to be_empty
+      "OUT"
+    end
+    expect_any_instance_of(LlmService).not_to receive(:maybe_fallback_from_missing_cli!)
+
+    out = described_class.run_claude_whiteboard(system_prompt: "SYS", user_content: "USER", timeout: 42)
+
+    cmd, stdin, kw = captured
+    expect(out).to eq("OUT")
+    expect(cmd).to eq([ ENV.fetch("CLAUDE_CLI_PATH", "claude"), "-p", "--output-format", "text",
+                        "--system-prompt-file", prompt_path, "--setting-sources", "",
+                        "--strict-mcp-config", "--disable-slash-commands", "--tools", "",
+                        "--no-session-persistence" ])
+    expect(cmd).not_to include("--bare")
+    expect(cmd).not_to include("--model")
+    expect(stdin).to eq("USER")
+    expect(kw.keys).to contain_exactly(:timeout, :chdir)
+    expect(kw[:timeout]).to eq(42)
+    expect(Dir.exist?(kw[:chdir])).to eq(false) # 실행 후 임시 cwd 정리됨
+    expect(kw[:chdir]).not_to start_with(Rails.root.to_s)
+    expect(prompt_body).to eq("SYS")
+    expect(File.exist?(prompt_path)).to eq(false)
+  end
+
+  it "run_cli 의 timeout 키워드를 쓰고 CliTimeoutError 를 낸다" do
+    expect {
+      described_class.allocate.send(:run_cli, [ "/bin/sh", "-c", "sleep 5" ], "", timeout: 1)
+    }.to raise_error(LlmService::CliTimeoutError)
+  end
+
+  it "run_cli 의 chdir 키워드로 해당 디렉터리에서 실행한다" do
+    Dir.mktmpdir do |d|
+      out = described_class.allocate.send(:run_cli, [ "/bin/sh", "-c", "pwd" ], "", chdir: d)
+      expect(File.realpath(out)).to eq(File.realpath(d))
+    end
+  end
+
+  it "CliError 는 stdout 끝 2000자를 stdout_tail 로 들고 메시지에는 넣지 않는다" do
+    cmd = [ "/bin/sh", "-c", "printf 'Please run /login %s' \"$(head -c 3000 /dev/zero | tr '\\0' x)\"; exit 1" ]
+    expect { described_class.allocate.send(:run_cli, cmd, "") }.to raise_error(LlmService::CliError) { |e|
+      expect(e.stdout_tail.length).to eq(2000)
+      expect(e.stdout_tail).to end_with("x")
+      expect(e.message).not_to include("login")
+    }
+    short = [ "/bin/sh", "-c", "echo 'Please run /login'; exit 1" ]
+    expect { described_class.allocate.send(:run_cli, short, "") }.to raise_error(LlmService::CliError) { |e|
+      expect(e.stdout_tail).to include("/login")
+    }
+  end
+
+  it "실패 시 CliError 가 stderr 를 속성으로 들고 메시지에는 넣지 않는다" do
+    expect {
+      described_class.allocate.send(:run_cli, [ "/bin/sh", "-c", "echo secret >&2; exit 3" ], "")
+    }.to raise_error(LlmService::CliError) { |e|
+      expect(e.stderr).to include("secret")
+      expect(e.message).not_to include("secret")
+    }
+  end
+end

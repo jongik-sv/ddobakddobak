@@ -13,6 +13,9 @@ mod scheduler;
 #[cfg(desktop)]
 mod assertion;
 
+#[cfg(desktop)]
+mod whiteboard;
+
 mod bridge;
 mod mdns;
 
@@ -96,6 +99,7 @@ pub fn run() {
             .manage(audio::AudioCaptureState::default())
             .manage(audio::RecorderState::default())
             .manage(assertion::AssertionState::default())
+            .manage(whiteboard::WhiteboardState::default())
             .invoke_handler(tauri::generate_handler![
                 environment::check_environment,
                 services::install_dependencies,
@@ -119,6 +123,8 @@ pub fn run() {
                 window_cmd::quit_app,
                 window_cmd::show_main_window,
                 assertion::set_recording,
+                whiteboard::detect_claude,
+                whiteboard::run_claude_whiteboard,
             ])
             .on_window_event(|window, event| match event {
                 // 닫기(빨간 X): 파괴도 숨김도 하지 않는다 — prevent_close로 OS 종료만 막고,
@@ -133,6 +139,7 @@ pub fn run() {
                     kill_child(&state.backend_process);
                     kill_child(&state.sidecar_process);
                     window.state::<assertion::AssertionState>().force_release();
+                    window.state::<whiteboard::WhiteboardState>().kill_all();
                 }
                 _ => {}
             })

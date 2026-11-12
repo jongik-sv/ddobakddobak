@@ -12,6 +12,23 @@ class LlmService
 
   class LlmError < StandardError; end
 
+  # CLI 가 0 이 아닌 코드로 끝난 경우. 사용자 노출 메시지(message)에는 stderr 를 넣지 않고,
+  # 호출부(화이트보드 실패 분류 등)가 내부에서만 쓰도록 stderr 를 별도 속성으로 들고 간다.
+  class CliError < LlmError
+    attr_reader :stderr, :stdout_tail
+
+    def initialize(message, stderr: nil, stdout_tail: nil)
+      super(message)
+      @stderr = stderr.to_s
+      # 일부 CLI 는 로그인/한도 안내를 stdout 으로 내보낸다. 분류용으로만 마지막 2000자를 보관(사용자 노출 금지).
+      tail = stdout_tail.to_s.dup.force_encoding(Encoding::UTF_8).scrub("")
+      @stdout_tail = tail.length > 2000 ? tail[-2000..] : tail
+    end
+  end
+
+  # CLI 실행 제한 시간 초과.
+  class CliTimeoutError < LlmError; end
+
   # 서버 LLM 모델이 "선택 안함"(settings.yaml llm.active_preset == "none") 상태일 때 전용 예외.
   # LlmError 서브클래스라 user_facing_error_message allowlist(원문 통과, truncate 만)를 그대로 탄다.
   # ClientFactory.resolve_config 단일 choke point 에서만 raise 한다(idea.md 37).
@@ -55,6 +72,58 @@ class LlmService
       extract_model_ids(data)
     else
       []
+    end
+  end
+
+  # claude CLI 가 이 머신에서 실행 가능한지(화이트보드 서버 모드 노출 판단 등 외부 공개용).
+  def self.claude_cli_available?
+    cli_available?(cli_binary_for("claude_cli"))
+  end
+
+  # CLI 바이너리 실행 가능 여부(절대경로면 executable, 아니면 PATH 탐색). 인스턴스 메서드가 위임한다.
+  def self.cli_available?(cli)
+    cli = cli.to_s
+    return false if cli.empty?
+    return true if cli.include?("/") && File.executable?(cli)
+    system_which(cli)
+  end
+
+  def self.system_which(bin)
+    ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).any? do |dir|
+      path = File.join(dir, bin)
+      File.executable?(path) && !File.directory?(path)
+    end
+  end
+
+  # CLI provider 별 바이너리 경로 해석(단일 출처). CLI 가 아니면 nil.
+  def self.cli_binary_for(provider)
+    case provider
+    when "claude_cli" then ENV.fetch("CLAUDE_CLI_PATH", "claude")
+    when "gemini_cli" then ENV["AGY_CLI_PATH"].presence || ENV.fetch("GEMINI_CLI_PATH", "agy")
+    when "codex_cli"  then ENV.fetch("CODEX_CLI_PATH", "codex")
+    end
+  end
+
+  # 화이트보드 서버 모드 전용 claude CLI 호출(design §11.4). 사용자 LLM 설정/폴백과 무관하게
+  # claude 바이너리를 직접 쓴다 — resolve_config·maybe_fallback_from_missing_cli! 를 타지 않는다.
+  # 시스템 프롬프트는 임시 파일(--system-prompt-file)로 전달하고 끝나면 지운다.
+  # --bare 는 구독 인증(OAuth/keychain)을 깨므로 금지, --model 도 지정하지 않는다(CLI 기본값).
+  # 실패 시 CliError(stderr 보유)/CliTimeoutError/Errno::ENOENT 를 그대로 올린다.
+  def self.run_claude_whiteboard(system_prompt:, user_content:, timeout: 180)
+    require "tempfile"
+    require "tmpdir"
+    cli = cli_binary_for("claude_cli")
+    Tempfile.create([ "whiteboard-system", ".txt" ]) do |f|
+      f.write(system_prompt)
+      f.flush
+      cmd = [ cli, "-p", "--output-format", "text", "--system-prompt-file", f.path,
+              "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands",
+              "--tools", "", "--no-session-persistence" ]
+      # Rails 루트의 CLAUDE.md 자동 로드·세션 기록 오염을 막기 위해 빈 임시 디렉터리에서 실행한다.
+      # 인스턴스 설정(resolve_config)이 필요 없는 run_cli 만 쓰므로 allocate 로 우회한다.
+      Dir.mktmpdir("whiteboard-run") do |dir|
+        allocate.send(:run_cli, cmd, user_content, timeout: timeout, chdir: dir)
+      end
     end
   end
 
@@ -561,20 +630,13 @@ class LlmService
   # CLI 바이너리가 이 머신에서 실행 가능한지. ensure_cli! 와 선제 폴백(maybe_fallback_from_missing_cli!)이
   # 동일 판정을 공유하도록 단일 출처로 추출(절대경로면 executable, 아니면 PATH 탐색).
   def cli_available?(cli)
-    cli = cli.to_s
-    return false if cli.empty?
-    return true if cli.include?("/") && File.executable?(cli)
-    system_which(cli)
+    self.class.cli_available?(cli)
   end
 
   # CLI provider 별 바이너리 경로 해석 — 각 call_*_cli 의 cli 결정 로직과 동일(단일 출처).
   # 선제 폴백 판정이 디스패치 전에 존재 여부를 보기 위해 분리. CLI 가 아니면 nil.
   def cli_binary_for(provider)
-    case provider
-    when "claude_cli" then ENV.fetch("CLAUDE_CLI_PATH", "claude")
-    when "gemini_cli" then ENV["AGY_CLI_PATH"].presence || ENV.fetch("GEMINI_CLI_PATH", "agy")
-    when "codex_cli"  then ENV.fetch("CODEX_CLI_PATH", "codex")
-    end
+    self.class.cli_binary_for(provider)
   end
 
   # A안: CLI provider 로 추론하려는데 그 바이너리가 이 머신에 없으면, 부분 작업 후 예외 대신
@@ -599,13 +661,10 @@ class LlmService
   end
 
   def system_which(bin)
-    ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).any? do |dir|
-      path = File.join(dir, bin)
-      File.executable?(path) && !File.directory?(path)
-    end
+    self.class.system_which(bin)
   end
 
-  def run_cli(cmd, stdin_text, &block)
+  def run_cli(cmd, stdin_text, timeout: CLI_TIMEOUT, chdir: nil, &block)
     require "open3"
     Rails.logger.info "[LlmService] CLI exec: #{cmd.first} (#{stdin_text.length}자 stdin)"
 
@@ -613,7 +672,8 @@ class LlmService
     stderr_str = nil
     status = nil
 
-    Open3.popen3(*cmd) do |stdin, stdout, stderr, wait_thr|
+    popen_opts = chdir ? { chdir: chdir } : {}
+    Open3.popen3(*cmd, **popen_opts) do |stdin, stdout, stderr, wait_thr|
       stdin.write(stdin_text) unless stdin_text.to_s.empty?
       stdin.close
 
@@ -623,7 +683,7 @@ class LlmService
         # 잘릴 수 있다. pending 에 모아 유효 UTF-8 접두부만 떼어 방출하고(미완 바이트는 보류),
         # 누적본(stdout_str)은 마지막에 UTF-8 로 재해석한다. 이렇게 하지 않으면 BINARY 문자열이
         # strip_think 의 UTF-8 정규식 gsub 에서 Encoding::CompatibilityError 를 낸다.
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + CLI_TIMEOUT
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
         pending = (+"").force_encoding(Encoding::BINARY)
         begin
           loop do
@@ -632,7 +692,7 @@ class LlmService
               Process.kill("KILL", wait_thr.pid) rescue nil
               wait_thr.join
               # basename 만 노출 — 절대 경로(ENV 설정)가 참가자에게 새지 않게 한다.
-              raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{File.basename(cmd.first.to_s)}"
+              raise CliTimeoutError, "CLI 응답 시간이 초과되었습니다 (#{timeout}초): #{File.basename(cmd.first.to_s)}"
             end
             chunk = stdout.readpartial(4096)
             stdout_str << chunk
@@ -653,11 +713,11 @@ class LlmService
         stderr_str = stderr.read.to_s
         status = wait_thr.value
       else
-        unless wait_thr.join(CLI_TIMEOUT)
+        unless wait_thr.join(timeout)
           Process.kill("KILL", wait_thr.pid) rescue nil
           wait_thr.join
           # basename 만 노출 — 절대 경로(ENV 설정)가 참가자에게 새지 않게 한다.
-          raise LlmError, "CLI 응답 시간이 초과되었습니다 (#{CLI_TIMEOUT}초): #{File.basename(cmd.first.to_s)}"
+          raise CliTimeoutError, "CLI 응답 시간이 초과되었습니다 (#{timeout}초): #{File.basename(cmd.first.to_s)}"
         end
         stdout_str = stdout.read.to_s
         stderr_str = stderr.read.to_s
@@ -670,7 +730,7 @@ class LlmService
       # stderr 원문은 내부 경로·계정 정보가 섞일 수 있어 로그에만 남긴다 —
       # LlmError 메시지는 allowlist 로 사용자에게 그대로 노출되므로 코드만 포함.
       Rails.logger.error "[LlmService] CLI 실패 (코드 #{status&.exitstatus}): #{err.presence || '원인 불명'}"
-      raise LlmError, "CLI 실행이 실패했습니다 (코드 #{status&.exitstatus})"
+      raise CliError.new("CLI 실행이 실패했습니다 (코드 #{status&.exitstatus})", stderr: err, stdout_tail: stdout_str.to_s)
     end
     # 스트리밍 경로는 위에서 UTF-8 로 재해석했으나, 강제로 한 번 더 보정(킬/절단 대비).
     stdout_str.dup.force_encoding(Encoding::UTF_8).scrub("").strip

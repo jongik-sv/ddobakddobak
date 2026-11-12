@@ -3,6 +3,7 @@ import { uint8ArrayToBase64 } from '../lib/audioUtils'
 import { useTranscriptStore } from '../stores/transcriptStore'
 import { useRecordingSignalsStore } from '../stores/recordingSignalsStore'
 import { useToastStore } from '../stores/toastStore'
+import { useWhiteboardStore } from '../stores/whiteboardStore'
 import type { Transcript } from '../api/meetings/types'
 
 /**
@@ -70,6 +71,10 @@ type BackendMessage = {
   error?: string
   // recording signals
   meeting_id?: number
+  // whiteboard_ready / whiteboard_failed
+  digest?: string
+  error_kind?: string
+  message?: string
 }
 
 export function createTranscriptionChannel(
@@ -237,6 +242,17 @@ export function createTranscriptionChannel(
               // 성공(ok !== false) — 실패 스트릭 종료, 상태 클리어
               store.setSummaryError(null)
             }
+            break
+          case 'whiteboard_ready':
+          case 'whiteboard_failed':
+            // 서버 모드 화이트보드 생성 결과 — 내가 서버로 만들던 회의일 때만 스토어가 처리한다.
+            useWhiteboardStore.getState().onCableEvent({
+              type: raw.type,
+              meeting_id: raw.meeting_id ?? meetingId,
+              digest: raw.digest,
+              error_kind: raw.error_kind,
+              message: raw.message,
+            })
             break
           case 'recording_stopped':
             useRecordingSignalsStore.getState().setRecordingStopped(true)
