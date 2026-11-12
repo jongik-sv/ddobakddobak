@@ -1,0 +1,477 @@
+<title>화이트보드 내보내기 시안</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: 한 줄 문서 흐름(사실 → 실행 경로 → 패널·설정 시안 → 구현 범위 → 결정). 목업만 앱 화면 질감. */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --fg: #1b1f27;
+  --muted: #5d6573;
+  --line: #dde1e8;
+  --accent: #2563eb;
+  --accent-soft: #e6eeff;
+  --ok: #0f7b4b; --ok-soft: #e3f4ec;
+  --warn: #9a5b00; --warn-soft: #fdf0d9;
+  --bad: #b42318; --bad-soft: #fde8e6;
+  --sticky: #fff6c7; --sticky-line: #ead98a;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12151b; --surface: #1a1e26; --fg: #e7eaf0; --muted: #9aa3b2; --line: #2c3240;
+  --accent: #5b8cff; --accent-soft: #1d2a47;
+  --ok: #4cc58d; --ok-soft: #13301f; --warn: #f0b25a; --warn-soft: #36290f; --bad: #ff7a6b; --bad-soft: #3a1714;
+  --sticky: #3a3518; --sticky-line: #5a5225; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12151b; --surface: #1a1e26; --fg: #e7eaf0; --muted: #9aa3b2; --line: #2c3240;
+  --accent: #5b8cff; --accent-soft: #1d2a47;
+  --ok: #4cc58d; --ok-soft: #13301f; --warn: #f0b25a; --warn-soft: #36290f; --bad: #ff7a6b; --bad-soft: #3a1714;
+  --sticky: #3a3518; --sticky-line: #5a5225; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.65 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px; }
+.wrap { max-width: 920px; margin: 0 auto; display: grid; gap: 40px; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.3; margin: 0; }
+h1 { font-size: 1.75rem; font-weight: 700; }
+h2 { font-size: 1.25rem; font-weight: 700; }
+h3 { font-size: 1rem; font-weight: 600; }
+p { margin: 0; }
+.eyebrow { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.lead { color: var(--muted); max-width: 65ch; }
+section { display: grid; gap: 16px; min-width: 0; }
+code, .mono { font-family: var(--font-mono); font-size: .86em; }
+code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header.top { display: grid; gap: 10px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font-size: .78rem; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); }
+.chip.new { border-color: var(--accent); color: var(--accent); }
+
+.callout { border: 1px solid var(--warn); background: var(--warn-soft); border-radius: 8px; padding: 14px 16px; display: grid; gap: 6px; }
+.callout strong { color: var(--warn); }
+.callout .note { color: inherit; }
+
+/* 표 */
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 600px; font-size: .9rem; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+th { font-weight: 600; color: var(--muted); font-size: .8rem; }
+tr:last-child td { border-bottom: 0; }
+.pick { color: var(--ok); font-weight: 600; }
+.acct { display: inline-block; font-size: .74rem; font-weight: 600; padding: 1px 7px; border-radius: 4px; white-space: nowrap; }
+.acct.me { color: var(--ok); background: var(--ok-soft); }
+.acct.srv { color: var(--warn); background: var(--warn-soft); }
+
+/* 흐름 */
+.flows { display: grid; gap: 14px; }
+.flow-title { font-size: .85rem; font-weight: 600; }
+.flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.step { flex: 1 1 140px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; align-content: start; }
+.step .n { font: 600 .72rem var(--font-mono); color: var(--accent); }
+.step .t { font-weight: 600; font-size: .9rem; }
+.step .d { font-size: .79rem; color: var(--muted); }
+.step.llm { border-color: var(--accent); }
+
+/* 목업 공통 */
+.mock-grid { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 720px) { .mock-grid { grid-template-columns: minmax(0, 1fr); } }
+.states { display: flex; flex-wrap: wrap; gap: 6px; }
+.states .grp-label { width: 100%; font-size: .72rem; color: var(--muted); letter-spacing: .04em; margin-top: 4px; }
+.states button { font: 500 .82rem var(--font-body); padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
+.states button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.app-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px 10px 0 0; }
+.env { font-size: .72rem; color: var(--muted); }
+.trigger { display: inline-flex; gap: 6px; align-items: center; font-size: .85rem; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); }
+.panel { width: 100%; max-width: 340px; background: var(--surface); border: 1px solid var(--line); border-radius: 0 0 10px 10px; border-top: 0; padding: 16px; display: grid; gap: 12px; box-shadow: 0 10px 24px rgba(15, 23, 42, .08); }
+.panel .ttl { font-size: .9rem; font-weight: 600; }
+.fmt { display: grid; gap: 6px; }
+.fmt .row { display: grid; gap: 6px; }
+.fmt .row.r3 { grid-template-columns: repeat(3, 1fr); }
+.fmt .row.r2 { grid-template-columns: 2fr 1fr; }
+.fmt .grp { font-size: .7rem; color: var(--muted); letter-spacing: .04em; }
+.f { min-height: 44px; font: 500 .78rem var(--font-body); border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); display: grid; place-items: center; text-align: center; line-height: 1.25; padding: 4px; }
+.f.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.f.off { opacity: .45; border-style: dashed; }
+.f small { display: block; font-size: .68rem; opacity: .85; }
+.chk { display: flex; gap: 8px; align-items: center; font-size: .85rem; min-height: 32px; }
+.chk .box { width: 15px; height: 15px; border: 1.5px solid var(--muted); border-radius: 3px; display: inline-grid; place-items: center; font-size: 10px; }
+.note { font-size: .78rem; color: var(--muted); line-height: 1.55; }
+.btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.b { min-height: 44px; border-radius: 6px; font: 500 .85rem var(--font-body); border: 1px solid var(--line); background: var(--surface); color: var(--muted); display: grid; place-items: center; text-align: center; padding: 0 6px; }
+.b.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.b.dim { opacity: .55; }
+.prog { height: 4px; background: var(--accent-soft); border-radius: 2px; overflow: hidden; }
+.prog i { display: block; height: 100%; width: 40%; background: var(--accent); border-radius: 2px; animation: slide 1.6s ease-in-out infinite; }
+@keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .prog i { animation: none; width: 60%; } }
+.okline { font-size: .8rem; color: var(--ok); background: var(--ok-soft); border-radius: 6px; padding: 8px 10px; }
+.errline { font-size: .8rem; color: var(--bad); background: var(--bad-soft); border-radius: 6px; padding: 8px 10px; }
+.warnline { font-size: .8rem; color: var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 8px 10px; }
+.tip { font-size: .74rem; background: var(--fg); color: var(--bg); padding: 6px 9px; border-radius: 6px; justify-self: start; }
+.clip { font: .72rem/1.5 var(--font-mono); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; max-height: 96px; overflow: hidden; color: var(--muted); white-space: pre-wrap; }
+.explain { display: grid; gap: 10px; min-width: 0; }
+.explain ul { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
+
+/* 관리자 설정 목업 */
+.settings { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px 0; border-bottom: 1px solid var(--line); }
+.tabs span { font-size: .82rem; padding: 7px 12px; color: var(--muted); border-bottom: 2px solid transparent; }
+.tabs span.cur { color: var(--fg); border-color: var(--accent); font-weight: 600; }
+.set-body { padding: 18px; display: grid; gap: 14px; }
+.set-sec { display: grid; gap: 10px; max-width: 560px; }
+.radio { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; align-items: start; }
+.radio.sel { border-color: var(--accent); background: var(--accent-soft); }
+.radio.dis { opacity: .5; }
+.dot { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--muted); margin-top: 3px; display: grid; place-items: center; }
+.radio.sel .dot { border-color: var(--accent); }
+.radio.sel .dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.radio b { font-weight: 600; font-size: .92rem; }
+.radio p { font-size: .82rem; color: var(--muted); }
+.status { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: .82rem; }
+.pill { font-size: .74rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+.pill.ok { color: var(--ok); background: var(--ok-soft); }
+.pill.no { color: var(--bad); background: var(--bad-soft); }
+
+/* 출력 샘플 */
+.mini { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; }
+.mini-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline; }
+.zones { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.zone { border: 1.5px dashed var(--line); border-radius: 8px; padding: 10px; display: grid; gap: 8px; align-content: start; }
+.zone h4 { margin: 0; font-size: .82rem; }
+.st { background: var(--sticky); border: 1px solid var(--sticky-line); border-radius: 4px; padding: 7px 8px; font-size: .78rem; line-height: 1.45; display: grid; gap: 4px; }
+.tag { justify-self: start; font-size: .66rem; font-weight: 600; padding: 0 6px; border-radius: 3px; }
+.tag.ok { color: var(--ok); background: var(--ok-soft); }
+.tag.wa { color: var(--warn); background: var(--warn-soft); }
+.tag.ba { color: var(--bad); background: var(--bad-soft); }
+
+pre { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; font: .8rem/1.6 var(--font-mono); }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.two > div { display: grid; gap: 8px; min-width: 0; align-content: start; }
+
+.files { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.files > div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 6px; min-width: 0; align-content: start; }
+.files ul { margin: 0; padding-left: 1.1em; font-size: .85rem; display: grid; gap: 4px; }
+.files li code { word-break: break-all; }
+
+.risks { display: grid; gap: 10px; }
+.risk { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.lv { font-size: .72rem; font-weight: 600; border-radius: 4px; padding: 2px 6px; justify-self: start; align-self: start; }
+.lv.h { color: var(--bad); background: var(--bad-soft); }
+.lv.m { color: var(--warn); background: var(--warn-soft); }
+.lv.l { color: var(--ok); background: var(--ok-soft); }
+.risk p { font-size: .9rem; }
+.risk p + p { color: var(--muted); font-size: .84rem; margin-top: 2px; }
+
+.decided { display: grid; gap: 6px; background: var(--ok-soft); border: 1px solid var(--ok); border-radius: 8px; padding: 12px 16px; }
+.decided ul { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; font-size: .9rem; }
+.decided strong { color: var(--ok); }
+ol.q { margin: 0; padding-left: 1.3em; display: grid; gap: 12px; }
+ol.q li { padding-left: 4px; }
+ol.q .opt { color: var(--muted); font-size: .88rem; display: block; margin-top: 2px; }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">또박또박 · 신규 기능 검토 · 2차 시안</p>
+  <h1>회의록 내보내기에 화이트보드(.html) 추가</h1>
+  <p class="lead">내보내기 패널에서 .docx 다음에 화이트보드 항목을 둡니다. 데스크톱 앱은 그 PC에 설치된 Claude Code를 사용자 본인 계정으로 실행해 보드를 만들고, 완성되면 바로 저장합니다. 웹은 기본적으로 지시문을 복사해 사용자가 자기 Claude에 붙여 넣게 하고, 관리자가 허용하면 서버 PC의 Claude Code로 만들 수 있습니다.</p>
+  <div class="meta">
+    <span class="chip">상태: 검토·시안 (구현 미착수)</span>
+    <span class="chip">입력: AI 회의록(최종 요약)만</span>
+    <span class="chip new">2차: 개인 계정 우선 · 웹 지시문 복사 · 관리자 설정</span>
+  </div>
+</header>
+
+<section aria-labelledby="s-decided">
+  <div class="decided">
+    <p><strong>정해진 것 (11월 12일)</strong></p>
+    <ul>
+      <li>데스크톱 앱은 사용자 PC의 Claude Code를 직접 실행합니다. 서버 계정을 쓰지 않습니다.</li>
+      <li>웹은 지시문 복사가 기본입니다.</li>
+      <li>웹에서도 Claude Code로 바로 만들지는 관리자 설정에서 고릅니다.</li>
+    </ul>
+  </div>
+  <div class="callout">
+    <p><strong>화이트보드는 Artifact 타입이 아니라 HTML 파일로 정의했습니다.</strong></p>
+    <p class="note">이 계정에서 확인되는 Artifact 타입은 Data, Design, Design System, Docs, Slides 다섯 가지이고 화이트보드는 없습니다. 그래서 어제 만든 표준관리 회의 보드와 같은 형태로, 파일 하나로 열리는 HTML을 만듭니다.</p>
+  </div>
+</section>
+
+<section aria-labelledby="s-route">
+  <h2 id="s-route">환경별 실행 경로</h2>
+  <p class="lead">패널의 화이트보드 버튼은 어느 환경에서나 같은 자리에 있습니다. 누르면 하는 일만 환경과 관리자 설정에 따라 달라집니다.</p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th style="width:24%">접속 환경</th><th style="width:20%">조건</th><th>버튼을 누르면</th><th style="width:15%">쓰는 계정</th></tr></thead>
+      <tbody>
+        <tr><td>데스크톱 앱</td><td>이 PC에서 <code>claude</code>를 찾음</td><td>앱이 이 PC의 Claude Code를 실행해 보드를 만들고 저장 대화상자를 띄웁니다. 앱이 원격 실서버에 붙어 있어도 실행은 이 PC에서 합니다.</td><td><span class="acct me">사용자 본인</span></td></tr>
+        <tr><td>데스크톱 앱</td><td>이 PC에 <code>claude</code> 없음</td><td>아래 웹 규칙을 그대로 따릅니다.</td><td>웹 규칙과 같음</td></tr>
+        <tr><td>웹 브라우저</td><td>관리자 설정 = 지시문 복사 <span class="pick">기본</span></td><td>회의록과 작성 지시를 담은 지시문을 클립보드에 복사합니다. 사용자가 자기 Claude Code나 claude.ai에 붙여 넣어 보드를 받습니다.</td><td><span class="acct me">사용자 본인</span></td></tr>
+        <tr><td>웹 브라우저</td><td>관리자 설정 = 서버의 Claude Code</td><td>서버 PC에서 Claude Code를 실행해 보드를 만들고 다운로드합니다. 서버와 같은 PC의 브라우저로 접속했다면 그 PC의 Claude Code가 곧 내 Claude Code입니다.</td><td><span class="acct srv">서버 PC에 로그인된 계정</span></td></tr>
+        <tr><td>웹 브라우저</td><td>서버 모드인데 서버에 <code>claude</code> 없음</td><td>지시문 복사로 바뀌어 동작합니다. 관리자 설정 화면에 "서버에서 찾을 수 없음"이 표시됩니다.</td><td><span class="acct me">사용자 본인</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="s-flow">
+  <h2 id="s-flow">동작 흐름</h2>
+  <div class="flows">
+    <div class="flow-title">데스크톱 · 이 PC의 Claude Code</div>
+    <div class="flow">
+      <div class="step"><span class="n">1 · 앱</span><span class="t">AI 회의록 받기</span><span class="d">기존 export API의 요약 데이터</span></div>
+      <div class="step llm"><span class="n">2 · Tauri</span><span class="t">로컬 claude -p 실행</span><span class="d">로그인 셸 PATH로 찾아 실행, 보드 JSON 반환</span></div>
+      <div class="step"><span class="n">3 · 앱</span><span class="t">검증 + 렌더</span><span class="d">스키마 검사 → 앱 안의 템플릿으로 HTML</span></div>
+      <div class="step"><span class="n">4 · 앱</span><span class="t">저장</span><span class="d">Tauri 저장 대화상자</span></div>
+    </div>
+    <div class="flow-title">웹 · 서버의 Claude Code (관리자가 허용한 경우)</div>
+    <div class="flow">
+      <div class="step"><span class="n">1 · 프론트</span><span class="t">생성 요청</span><span class="d">POST /meetings/:id/whiteboard</span></div>
+      <div class="step llm"><span class="n">2 · 서버 잡</span><span class="t">서버 claude -p 실행</span><span class="d">다른 LLM으로 자동 전환하지 않음</span></div>
+      <div class="step"><span class="n">3 · 서버 잡</span><span class="t">검증 + 저장 + 알림</span><span class="d">JSON 저장, whiteboard_ready 브로드캐스트</span></div>
+      <div class="step"><span class="n">4 · 프론트</span><span class="t">렌더 + 다운로드</span><span class="d">데스크톱과 같은 템플릿</span></div>
+    </div>
+    <div class="flow-title">웹 · 지시문 복사 (기본)</div>
+    <div class="flow">
+      <div class="step"><span class="n">1 · 프론트</span><span class="t">지시문 만들기</span><span class="d">작성 지시 + 회의 정보 + AI 회의록</span></div>
+      <div class="step"><span class="n">2 · 프론트</span><span class="t">클립보드 복사</span><span class="d">복사 완료 표시와 붙여 넣을 곳 안내</span></div>
+      <div class="step llm"><span class="n">3 · 사용자</span><span class="t">자기 Claude에 붙여 넣기</span><span class="d">Claude Code 또는 claude.ai</span></div>
+    </div>
+  </div>
+  <p class="note">템플릿은 프론트 한 곳에만 둡니다. 데스크톱 경로와 서버 경로가 같은 JSON을 같은 템플릿으로 그리기 때문에 결과물의 모양이 같습니다. 작성 지시문과 JSON 스키마도 한 곳에서 관리해 세 경로가 같은 지시를 씁니다.</p>
+</section>
+
+<section aria-labelledby="s-mock">
+  <h2 id="s-mock">내보내기 패널 시안</h2>
+  <p class="lead">상태 버튼을 눌러 화면을 바꿔 볼 수 있습니다. 파일 형식과 AI 생성 형식을 두 줄로 나눴고, .docx 바로 뒤가 화이트보드입니다. 화이트보드 버튼 아래의 작은 글씨가 지금 환경에서 무엇을 할지 알려 줍니다.</p>
+  <div class="states" role="group" aria-label="패널 상태">
+    <span class="grp-label">데스크톱 앱 (이 PC에 Claude Code 있음)</span>
+    <button type="button" id="st-d-select" data-s="dSelect" aria-pressed="true">선택</button>
+    <button type="button" id="st-d-busy" data-s="dBusy" aria-pressed="false">생성 중</button>
+    <button type="button" id="st-d-done" data-s="dDone" aria-pressed="false">완료</button>
+    <button type="button" id="st-d-err" data-s="dErr" aria-pressed="false">실패</button>
+    <span class="grp-label">웹 · 지시문 복사 (기본)</span>
+    <button type="button" id="st-w-copy" data-s="wCopy" aria-pressed="false">선택</button>
+    <button type="button" id="st-w-copied" data-s="wCopied" aria-pressed="false">복사 완료</button>
+    <span class="grp-label">웹 · 서버의 Claude Code (관리자 허용)</span>
+    <button type="button" id="st-w-server" data-s="wServer" aria-pressed="false">선택</button>
+    <button type="button" id="st-w-busy" data-s="wBusy" aria-pressed="false">생성 중</button>
+    <span class="grp-label">공통</span>
+    <button type="button" id="st-nosum" data-s="noSum" aria-pressed="false">요약 없음</button>
+  </div>
+  <div class="mock-grid">
+    <div>
+      <div class="app-bar"><span class="env" id="env"></span><span class="trigger" aria-hidden="true">⤓ 내보내기</span></div>
+      <div class="panel" id="panel" aria-live="polite"></div>
+    </div>
+    <div class="explain" id="explain"></div>
+  </div>
+</section>
+
+<section aria-labelledby="s-admin">
+  <h2 id="s-admin">관리자 설정 시안</h2>
+  <p class="lead">관리자만 보는 <b>회의록 설정</b> 탭에 구역 하나를 추가합니다. 값은 다른 서버 설정과 같이 <code>settings.yaml</code>에 저장합니다. 데스크톱 앱에 Claude Code가 있으면 이 설정과 상관없이 그 PC의 Claude Code를 씁니다.</p>
+  <div class="states" role="group" aria-label="서버 Claude Code 상태">
+    <button type="button" id="ad-found" data-a="found" aria-pressed="true">서버에서 claude 확인됨</button>
+    <button type="button" id="ad-missing" data-a="missing" aria-pressed="false">서버에 claude 없음</button>
+  </div>
+  <div class="settings">
+    <div class="tabs" aria-hidden="true"><span>개인설정</span><span>LLM</span><span>음성·인식</span><span class="cur">회의록 설정</span><span>연동</span></div>
+    <div class="set-body" id="admin"></div>
+  </div>
+</section>
+
+<section aria-labelledby="s-out">
+  <h2 id="s-out">결과물</h2>
+  <div class="two">
+    <div>
+      <h3>저장되는 화이트보드 (축소 예시)</h3>
+      <p class="note">어제 만든 <a href="https://claude.ai/artifact/Wc7oGEYZZ7zasmLN1GC1G4" target="_blank" rel="noopener">표준관리 회의 보드</a>가 템플릿의 기준입니다. 내보내기는 회의 하나 단위라 필터는 확정·검토·미결 태그 기준입니다. 항목은 #276 AI 회의록의 실제 내용입니다.</p>
+      <div class="mini" aria-label="화이트보드 축소 예시">
+        <div class="mini-head"><h3>표준관리 시스템-핵심 관리 지표</h3><span class="note">2026-11-11 · 전체 · 확정 · 검토 · 미결</span></div>
+        <div class="zones">
+          <div class="zone"><h4>메이저 4 · 핵심 관리 지표</h4>
+            <div class="st"><span class="tag ba">미결</span>모니터링을 표준관리 시스템 안에 둘지 별도 BI로 만들지</div>
+            <div class="st"><span class="tag wa">검토</span>표준 준수율 100%를 강요하면 비표준 항목을 임의 등록하는 편법이 생길 수 있음</div></div>
+          <div class="zone"><h4>결재는 어디서?</h4>
+            <div class="st"><span class="tag wa">검토</span>아이리스 연계를 우선 검토하고, 결재 공수는 예산·일정에 미리 반영</div></div>
+          <div class="zone"><h4>할 일</h4>
+            <div class="st">메이저 2(품질설계키 제약조건 등) 관리 대상 구체화 · 화자1</div>
+            <div class="st">현장 마스터 코드 정리와 용어 표준화 · 화자3 · 12월 내</div></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <h3>웹에서 복사되는 지시문</h3>
+      <p class="note">Claude Code와 claude.ai 어디에 붙여 넣어도 동작하도록 회의록 본문을 함께 담습니다. 이 경로는 템플릿이 없으므로 Claude가 HTML을 직접 쓰고, 지시문에 보드 규칙을 적어 모양을 최대한 맞춥니다.</p>
+<pre>아래 회의록을 화이트보드 한 장으로 정리해 줘.
+- 결과물: 파일 하나로 열리는 HTML
+  (외부 스크립트·이미지·글꼴 없이)
+- 주제별 구역에 스티커처럼 배치
+- 결정은 확정·검토·미결 태그로 구분
+- 할 일 구역에 담당자·기한 표시
+- 확정·검토·미결 필터 버튼, 다크 모드 지원
+- 회의록에 없는 내용은 만들지 말 것
+- 파일명: 표준관리_시스템-핵심_관리_지표_2026-11-11.html
+
+[회의] 표준관리 시스템-핵심 관리 지표
+[일시] 2026-11-11 09:31
+[AI 회의록]
+## 요약
+… (최종 요약 markdown 전체)</pre>
+    </div>
+  </div>
+  <p class="note">앱과 서버 경로에서 Claude가 돌려주는 JSON의 모양은 다음과 같습니다. 이 스키마를 벗어난 응답은 거부하고 한 번만 다시 요청합니다.</p>
+<pre>{
+  "title": "표준관리 시스템-핵심 관리 지표",
+  "date": "2026-11-11",
+  "headline": "핵심 관리 지표 5종 정의 논의, 결재는 아이리스 연계를 우선 검토",
+  "zones": [
+    { "title": "메이저 4 · 핵심 관리 지표", "kind": "topic",
+      "items": [ { "text": "모니터링을 표준관리 시스템 안에 둘지 별도 BI로 만들지",
+                   "tag": "미결", "who": null, "due": null } ] },
+    { "title": "할 일", "kind": "todo",
+      "items": [ { "text": "현장 마스터 코드 정리와 용어 표준화",
+                   "tag": null, "who": "화자3", "due": "12월 내" } ] }
+  ]
+}
+// kind: topic | decision | issue | todo | schedule
+// tag : 확정 | 검토 | 미결 | null</pre>
+</section>
+
+<section aria-labelledby="s-files">
+  <h2 id="s-files">구현하면 바뀌는 곳</h2>
+  <div class="files">
+    <div><h3>데스크톱 (Tauri)</h3><ul>
+      <li>커맨드 <code>detect_claude</code>: 기존 <code>environment.rs</code>의 로그인 셸 PATH 해석과 <code>which</code>를 재사용</li>
+      <li>커맨드 <code>run_claude_whiteboard</code>: 요약을 stdin으로 넘기고 시간 제한(예: 3분)을 둠. 플래그는 백엔드 호출과 같게 설정·플러그인·MCP를 끈 상태</li>
+      <li>앱을 닫거나 시간이 넘으면 프로세스를 종료</li>
+    </ul></div>
+    <div><h3>프론트</h3><ul>
+      <li><code>ExportButton.tsx</code>: <code>'whiteboard'</code> 형식, 두 줄 버튼, 환경별 동작 분기, 확장자 html</li>
+      <li><code>lib/whiteboard/</code>: 지시문·스키마 정본, JSON 검증, HTML 템플릿 렌더(escape + CSP meta)</li>
+      <li>지시문 복사: 클립보드 실패 시 텍스트를 선택 상태로 보여 주는 대체 화면</li>
+      <li><code>MeetingSettingsTab.tsx</code>: 관리자 설정 구역</li>
+      <li>회의 채널에서 <code>whiteboard_ready</code>·<code>whiteboard_failed</code> 처리(서버 모드)</li>
+    </ul></div>
+    <div><h3>백엔드</h3><ul>
+      <li>설정: <code>settings.yaml</code>의 <code>whiteboard.web_mode</code>(<code>copy</code> | <code>server_claude</code>), 서버 <code>claude</code> 확인 결과를 설정 응답에 포함</li>
+      <li>서버 모드 전용: <code>POST/GET /meetings/:id/whiteboard</code>, <code>WhiteboardExportJob</code>. 설정이 <code>copy</code>면 403</li>
+      <li>서버 모드에서는 다른 LLM으로 자동 전환하지 않게 claude를 직접 지정해 호출</li>
+      <li>결과 JSON과 요약 digest 저장(마이그레이션 1건, 서버 모드만 필요)</li>
+    </ul></div>
+    <div><h3>테스트</h3><ul>
+      <li>vitest: 환경별 분기 5가지, JSON 검증, escape, 파일명, 복사 지시문 내용</li>
+      <li>rspec: 설정 403, 캐시 적중, claude 없음 처리, 권한</li>
+      <li>Tauri 커맨드: 시간 초과 종료, claude 없음</li>
+      <li>CLI 호출은 stub. 러닝 dev 서버나 실제 <code>settings.yaml</code>은 건드리지 않음</li>
+    </ul></div>
+  </div>
+</section>
+
+<section aria-labelledby="s-risk">
+  <h2 id="s-risk">위험 요소</h2>
+  <div class="risks">
+    <div class="risk"><span class="lv m">중간</span><div><p>지시문 복사는 회의록 전문을 클립보드에 담습니다.</p><p>사용자가 claude.ai에 붙여 넣으면 회의 내용이 그 사용자의 claude.ai 계정으로 넘어갑니다. 복사 완료 화면에 이 점을 한 줄로 알립니다. 기밀 구간으로 잘린 내용은 최종 요약에 없으므로 함께 나가지 않습니다.</p></div></div>
+    <div class="risk"><span class="lv m">중간</span><div><p>서버 모드를 켜면 모든 웹 사용자가 서버 PC의 계정 하나를 나눠 씁니다.</p><p>관리자 설정 설명에 그대로 적어 두고, 기본값은 지시문 복사로 둡니다. 실서버에 claude가 설치·로그인돼 있는지는 아직 확인하지 않았습니다.</p></div></div>
+    <div class="risk"><span class="lv m">중간</span><div><p>데스크톱 앱에서 찾은 claude가 로그인되지 않았을 수 있습니다.</p><p>실행 파일 존재만으로는 알 수 없으므로, 실패 출력을 분류해 "터미널에서 claude를 한 번 실행해 로그인해 주세요"처럼 해결 방법을 보여 줍니다.</p></div></div>
+    <div class="risk"><span class="lv l">낮음</span><div><p>회의록 문장이 지시처럼 읽혀 이상한 출력을 낼 수 있습니다.</p><p>앱·서버 경로는 JSON 검증과 escape, 외부 연결을 막는 CSP로 막습니다. 복사 경로는 사용자 본인 Claude가 만든 결과를 사용자가 직접 받으므로 앱 바깥의 일입니다.</p></div></div>
+  </div>
+</section>
+
+<section aria-labelledby="s-q">
+  <h2 id="s-q">남은 결정</h2>
+  <ol class="q">
+    <li>앱·서버 경로의 생성 방식을 B안(Claude는 JSON, 모양은 템플릿)으로 확정할까요?<span class="opt">A안(Claude가 HTML 전체 작성)은 2~4분이 걸리고 회의마다 모양이 달라집니다. 복사 경로는 어느 쪽이든 HTML을 직접 받습니다.</span></li>
+    <li>복사 지시문에 회의록 전문을 넣을까요, ddobak-meetings 스킬용 짧은 명령만 넣을까요?<span class="opt">시안은 전문을 넣는 쪽입니다. 스킬 명령(<code>#276 회의를 화이트보드로 정리해줘</code>)은 짧고 회의 내용이 클립보드에 남지 않지만, 스킬과 API 토큰을 설치한 사람만 쓸 수 있습니다. 둘 다 버튼으로 둘 수도 있습니다.</span></li>
+    <li>서버 모드에 사용량 제한을 둘까요?<span class="opt">예: 같은 요약이면 저장본을 재사용하고, 사용자당 하루 n회로 제한합니다.</span></li>
+  </ol>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var CLIP = '아래 회의록을 화이트보드 한 장으로 정리해 줘.\n- 결과물: 파일 하나로 열리는 HTML\n- 주제별 구역에 스티커처럼 배치\n…\n[회의] 표준관리 시스템-핵심 관리 지표';
+  var S = {
+    dSelect: { env: '데스크톱 앱 · Claude Code 2.x 확인됨', wb: ['on', '.html · 이 PC의 Claude Code'],
+      body: '<p class="note">AI 회의록만 읽고 이 PC의 Claude Code로 만듭니다. 메모와 원본 텍스트는 넣지 않습니다.</p>',
+      btn: '<span class="b">취소</span><span class="b primary">화이트보드 만들기</span>',
+      ex: ['<h3>데스크톱 · 선택</h3>', '<ul><li>버튼 아래 작은 글씨로 "이 PC의 Claude Code"를 알려 사용자가 어느 계정을 쓰는지 알 수 있게 합니다.</li><li>요약·메모·원본 체크박스는 프롬프트 형식처럼 숨깁니다.</li><li>주 버튼은 "다운로드 .html"이 아니라 "화이트보드 만들기"입니다. 생성부터 하기 때문입니다.</li></ul>'] },
+    dBusy: { env: '데스크톱 앱 · Claude Code 2.x 확인됨', wb: ['on', '.html · 이 PC의 Claude Code'],
+      body: '<div class="prog"><i></i></div><p class="note">이 PC의 Claude Code가 화이트보드를 만드는 중입니다. 보통 1분 안에 끝납니다. 패널을 닫아도 계속 만들고, 끝나면 알려 드립니다.</p>',
+      btn: '<span class="b">닫기</span><span class="b primary dim">만드는 중…</span>',
+      ex: ['<h3>데스크톱 · 생성 중</h3>', '<ul><li>실행은 Tauri 커맨드가 맡으므로 패널을 닫아도 멈추지 않습니다. 진행 상태는 회의별 스토어에 둡니다.</li><li>패널을 닫은 뒤 끝나면 회의 화면 하단 토스트의 "저장" 버튼으로 받습니다.</li><li>같은 회의에서 다시 누르면 새로 실행하지 않고 진행 중인 작업을 기다립니다.</li></ul>'] },
+    dDone: { env: '데스크톱 앱 · Claude Code 2.x 확인됨', wb: ['on', '.html · 이 PC의 Claude Code'],
+      body: '<p class="okline">화이트보드를 만들었습니다. 저장할 위치를 골라 주세요.<br><span class="mono">표준관리_시스템-핵심_관리_지표_2026-11-11.html</span></p>',
+      btn: '<span class="b">닫기</span><span class="b primary">다시 저장</span>',
+      ex: ['<h3>데스크톱 · 완료</h3>', '<ul><li>Tauri 저장 대화상자가 바로 뜹니다. 파일명은 기존 규칙(제목_날짜)에 확장자 .html입니다.</li><li>만든 결과는 앱이 켜져 있는 동안 기억해 두고, 요약이 바뀌지 않았다면 "다시 저장"은 다시 만들지 않습니다.</li></ul>'] },
+    dErr: { env: '데스크톱 앱 · Claude Code 2.x 확인됨', wb: ['on', '.html · 이 PC의 Claude Code'],
+      body: '<p class="errline">Claude Code에 로그인되어 있지 않습니다. 터미널에서 <span class="mono">claude</span>를 한 번 실행해 로그인한 뒤 다시 시도해 주세요.</p>',
+      btn: '<span class="b">닫기</span><span class="b primary">다시 시도</span>',
+      ex: ['<h3>데스크톱 · 실패</h3>', '<ul><li>실패 출력을 분류해 해결 방법을 보여 줍니다: 로그인 필요, 사용량 한도, 응답 형식 오류, 시간 초과.</li><li>응답 형식 오류는 이미 한 번 다시 요청한 뒤의 결과입니다.</li></ul>'] },
+    wCopy: { env: '웹 브라우저 · 관리자 설정: 지시문 복사', wb: ['on', '지시문 복사 · 내 Claude에서'],
+      body: '<p class="note">회의록과 작성 지시를 복사합니다. Claude Code나 claude.ai에 붙여 넣으면 화이트보드 HTML을 만들어 줍니다.</p><div class="clip">' + CLIP + '</div>',
+      btn: '<span class="b">취소</span><span class="b primary">지시문 복사</span>',
+      ex: ['<h3>웹 · 지시문 복사</h3>', '<ul><li>서버도 사용자 PC의 프로그램도 실행하지 않습니다. 사용자는 본인 계정으로 만듭니다.</li><li>복사될 내용의 앞부분을 미리 보여 줍니다.</li><li>주 버튼 문구를 "지시문 복사"로 바꿔, 누르면 파일이 받아지는 것이 아님을 분명히 합니다.</li></ul>'] },
+    wCopied: { env: '웹 브라우저 · 관리자 설정: 지시문 복사', wb: ['on', '지시문 복사 · 내 Claude에서'],
+      body: '<p class="okline">지시문을 복사했습니다. Claude Code나 claude.ai에 붙여 넣어 주세요.</p><p class="warnline">claude.ai에 붙여 넣으면 회의 내용이 내 claude.ai 계정으로 전달됩니다.</p>',
+      btn: '<span class="b">닫기</span><span class="b primary">다시 복사</span>',
+      ex: ['<h3>웹 · 복사 완료</h3>', '<ul><li>회의 내용이 외부로 나갈 수 있다는 점을 한 줄로 알립니다.</li><li>클립보드 권한이 막힌 브라우저에서는 지시문 전체를 선택된 상태로 보여 주고 직접 복사하게 합니다.</li></ul>'] },
+    wServer: { env: '웹 브라우저 · 관리자 설정: 서버의 Claude Code', wb: ['on', '.html · 서버의 Claude Code'],
+      body: '<p class="note">AI 회의록만 읽고 서버 PC의 Claude Code로 만듭니다. 서버에 로그인된 계정의 사용량을 씁니다.</p>',
+      btn: '<span class="b">취소</span><span class="b primary">화이트보드 만들기</span>',
+      ex: ['<h3>웹 · 서버의 Claude Code</h3>', '<ul><li>관리자가 허용하고 서버에서 claude를 찾았을 때만 이 화면이 나옵니다.</li><li>버튼 아래 글씨가 "서버의 Claude Code"로 바뀌어 데스크톱 경로와 구분됩니다.</li><li>이 PC에 Claude Code가 없는 데스크톱 앱도 같은 화면을 봅니다.</li></ul>'] },
+    wBusy: { env: '웹 브라우저 · 관리자 설정: 서버의 Claude Code', wb: ['on', '.html · 서버의 Claude Code'],
+      body: '<div class="prog"><i></i></div><p class="note">서버의 Claude Code가 화이트보드를 만드는 중입니다. 다른 화면으로 가도 계속 만들고, 끝나면 알려 드립니다.</p>',
+      btn: '<span class="b">닫기</span><span class="b primary dim">만드는 중…</span>',
+      ex: ['<h3>웹 · 서버 생성 중</h3>', '<ul><li>서버 잡으로 돌고, 끝나면 회의 채널로 알림을 받습니다.</li><li>패널을 닫았다면 토스트의 "다운로드" 버튼으로 받습니다. 사용자가 누르지 않았는데 브라우저가 파일을 저절로 받는 일은 만들지 않습니다.</li></ul>'] },
+    noSum: { env: '모든 환경', wb: ['off', 'AI 회의록이 필요합니다'], sel: 'md',
+      body: '<span class="tip">AI 회의록이 생긴 뒤에 만들 수 있습니다</span>',
+      btn: '<span class="b">취소</span><span class="b primary">다운로드 .md</span>',
+      ex: ['<h3>요약 없음</h3>', '<ul><li>녹음 중이거나 요약이 아직 없는 회의는 재료가 없으므로 버튼을 흐리게 둡니다.</li><li>지시문 복사도 같은 이유로 막습니다.</li></ul>'] }
+  };
+
+  function f(id, label, sel) { return '<span class="' + (sel === id ? 'f on' : 'f') + '">' + label + '</span>'; }
+  function fmtRows(s) {
+    var sel = s.sel || 'wb';
+    var wbCls = s.wb[0] === 'off' ? 'f off' : (sel === 'wb' ? 'f on' : 'f');
+    return '<div class="fmt"><span class="grp">파일</span><div class="row r3">' + f('md', '.md', sel) + f('pdf', '.pdf', sel) + f('docx', '.docx', sel) + '</div>' +
+      '<span class="grp">AI 생성</span><div class="row r2"><span class="' + wbCls + '">화이트보드<small>' + s.wb[1] + '</small></span>' + f('prompt', '프롬프트', sel) + '</div></div>';
+  }
+  var panel = document.getElementById('panel'), explain = document.getElementById('explain'), env = document.getElementById('env');
+  var sBtns = document.querySelectorAll('[data-s]');
+  function render(key) {
+    var s = S[key];
+    var chks = s.sel === 'md' ? '<div class="chk"><span class="box">✓</span>AI 요약 포함</div><div class="chk"><span class="box">✓</span>메모 포함</div><div class="chk"><span class="box"></span>원본 텍스트 포함</div>' : '';
+    env.textContent = s.env;
+    panel.innerHTML = '<p class="ttl">회의록 내보내기</p>' + fmtRows(s) + s.body + chks + '<div class="btns">' + s.btn + '</div>';
+    explain.innerHTML = s.ex.join('');
+    sBtns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.s === key)); });
+  }
+  sBtns.forEach(function (b) { b.addEventListener('click', function () { render(b.dataset.s); }); });
+  render('dSelect');
+
+  var admin = document.getElementById('admin');
+  var aBtns = document.querySelectorAll('[data-a]');
+  function renderAdmin(k) {
+    var found = k === 'found';
+    admin.innerHTML =
+      '<div class="set-sec"><h3>화이트보드 내보내기 · 웹</h3>' +
+      '<p class="note">웹 브라우저에서 화이트보드 버튼을 눌렀을 때의 동작입니다. 데스크톱 앱은 그 PC에 Claude Code가 있으면 이 설정과 상관없이 그 PC의 Claude Code를 씁니다.</p>' +
+      '<div class="radio' + (found ? '' : ' sel') + '"><span class="dot"></span><div><b>지시문 복사 (기본)</b><p>회의록과 작성 지시를 복사합니다. 사용자가 자기 Claude Code나 claude.ai에 붙여 넣어 본인 계정으로 만듭니다.</p></div></div>' +
+      '<div class="radio' + (found ? ' sel' : ' dis') + '"><span class="dot"></span><div><b>서버의 Claude Code로 바로 만들기</b><p>서버 PC에 로그인된 Claude Code 계정 하나로 모든 웹 사용자의 화이트보드를 만듭니다. 사용량도 그 계정 하나에서 나갑니다. 서버와 같은 PC의 브라우저에서 쓴다면 내 Claude Code를 쓰는 것과 같습니다.</p></div></div>' +
+      '<div class="status">서버의 Claude Code: ' + (found ? '<span class="pill ok">확인됨 · claude 2.x</span>' : '<span class="pill no">찾을 수 없음</span><span class="note">서버 PC에 Claude Code를 설치하고 로그인하면 고를 수 있습니다.</span>') + '</div>' +
+      '</div>';
+    aBtns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.a === k)); });
+  }
+  aBtns.forEach(function (b) { b.addEventListener('click', function () { renderAdmin(b.dataset.a); }); });
+  renderAdmin('found');
+})();
+</script>
