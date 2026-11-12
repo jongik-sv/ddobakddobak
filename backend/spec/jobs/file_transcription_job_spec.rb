@@ -148,6 +148,17 @@ RSpec.describe FileTranscriptionJob, type: :job do
       expect(meeting.reload.status).to eq("completed")
     end
 
+    it "force_summary=true 이면 화자분리 ON 이어도 요약을 생성한다" do
+      expect_any_instance_of(described_class).to receive(:generate_summary)
+      described_class.perform_now(meeting.id, true)
+      expect(meeting.reload.status).to eq("completed")
+    end
+
+    it "force_summary=false 이면 기존대로 요약을 호출하지 않는다" do
+      expect_any_instance_of(described_class).not_to receive(:generate_summary)
+      described_class.perform_now(meeting.id, false)
+    end
+
     it "expected_participants가 있으면 diarization_config에 expected_speakers로 넣어 보낸다" do
       meeting.update!(expected_participants: 5)
       expect(sidecar).to receive(:transcribe_file)

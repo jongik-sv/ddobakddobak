@@ -7,7 +7,8 @@ class FileTranscriptionJob < ApplicationJob
   STT_PROGRESS_MAX = 90
   STT_ETA_MIN_PERCENT = 10  # 진행률이 이 % 이상일 때만 완료 추정(잔여) 표기 — 초반 과대추정 회피
 
-  def perform(meeting_id)
+  # force_summary: 화자분리 ON 이어도 요약까지 이어서 생성(STT 재생성 경로).
+  def perform(meeting_id, force_summary = false)
     meeting = Meeting.find_by(id: meeting_id)
     return unless meeting&.transcribing?
 
@@ -44,11 +45,12 @@ class FileTranscriptionJob < ApplicationJob
     apply_glossary_corrections(meeting)
     broadcast_progress(channel, 93, "트랜스크립트 저장 완료")
 
-    if diarization_config["enable"]
+    if diarization_config["enable"] && !force_summary
       # 화자분리 ON: 회의록 자동생성 스킵 — 사용자가 화자 이름 지정 후 수동 생성(regenerate_notes)
       broadcast_progress(channel, 99, "화자 분리 완료 — 화자 이름 지정 후 회의록을 생성하세요")
     else
       # 4. AI 회의록 생성 (final 모드)
+      broadcast_progress(channel, 95, "AI 회의록(요약) 생성 중…")
       generate_summary(meeting)
       broadcast_progress(channel, 99, "AI 회의록 생성 완료")
     end

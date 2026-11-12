@@ -637,6 +637,16 @@ describe('MeetingPage', () => {
     vi.mocked(meetingsApi.getMeeting).mockResolvedValue({ ...mockMeetingBase, id, ...overrides })
   }
 
+  it('STT 재생성 확인 문구에 요약 자동 생성 안내가 포함된다', async () => {
+    mockMeetingWithId(360, { status: 'completed', has_audio_file: true })
+    renderPage('360')
+    await waitFor(() => expect(screen.getByText('테스트 회의')).toBeInTheDocument())
+    fireEvent.click(await screen.findByLabelText('STT 재생성'))
+    expect(
+      screen.getByText(/음성 인식이 끝나면 AI 회의록\(요약\)도 이어서 자동으로 생성합니다/),
+    ).toBeInTheDocument()
+  })
+
   it('크로스 프로젝트 뒤로가기: 회의의 프로젝트로 컨텍스트 동기화 후 폴더로 이동한다', async () => {
     // 전역검색·딥링크로 다른 프로젝트의 회의에 진입한 경우 — 폴더가 현재 프로젝트 밖이면
     // 프로젝트를 먼저 전환해야 빈 회의 목록에 떨어지지 않는다.
