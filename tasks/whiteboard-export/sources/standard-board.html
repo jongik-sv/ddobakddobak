@@ -1,0 +1,417 @@
+<title>표준관리 회의 보드 11·11</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&family=Gowun+Dodum&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: 알루미늄 테두리를 두른 화이트보드 한 장. 마커 손글씨 제목 + 구역별 포스트잇 군집, 두 회의를 오가는 실선 화살표 */
+:root{
+  --room:#dfe4e7; --board:#fbfcfc; --frame:#b8c1c7; --grid:#e9eef1;
+  --ink:#1c262e; --muted:#5d6b75;
+  --blue:#1d58b8; --red:#c33228; --green:#18774a;
+  --sy:#fff1a1; --sp:#ffd7e1; --sm:#cdeedb; --sb:#d6e6ff; --sticky-ink:#26231a;
+  --shadow:0 1px 1px rgba(30,40,50,.12),0 6px 14px -6px rgba(30,40,50,.28);
+  --marker:"Nanum Pen Script","Gowun Dodum",cursive;
+  --body:"Gowun Dodum","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --room:#0f1417; --board:#1a2126; --frame:#3a464e; --grid:#222b31;
+  --ink:#e4eaee; --muted:#9aa8b2;
+  --blue:#7fb0ff; --red:#ff8a7e; --green:#6fd3a0;
+  --sy:#4b4421; --sp:#4d2a33; --sm:#1f4231; --sb:#233a5c; --sticky-ink:#f1ede0;
+  --shadow:0 1px 1px rgba(0,0,0,.4),0 8px 16px -6px rgba(0,0,0,.6);
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --room:#0f1417; --board:#1a2126; --frame:#3a464e; --grid:#222b31;
+  --ink:#e4eaee; --muted:#9aa8b2;
+  --blue:#7fb0ff; --red:#ff8a7e; --green:#6fd3a0;
+  --sy:#4b4421; --sp:#4d2a33; --sm:#1f4231; --sb:#233a5c; --sticky-ink:#f1ede0;
+  --shadow:0 1px 1px rgba(0,0,0,.4),0 8px 16px -6px rgba(0,0,0,.6);
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--room);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px}
+.board{max-width:1240px;margin:0 auto;background:var(--board);border:10px solid var(--frame);border-radius:6px;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:32px 32px;padding:clamp(16px,3vw,36px);display:grid;gap:36px}
+
+.mk{font-family:var(--marker);font-weight:400;line-height:1.1;text-wrap:balance}
+h1.mk{font-size:clamp(40px,6vw,64px);margin:0;color:var(--blue)}
+h2.mk{font-size:clamp(30px,4vw,40px);margin:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}
+h3.mk{font-size:28px;margin:0}
+.u{text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:6px}
+.c-blue{color:var(--blue)} .c-red{color:var(--red)} .c-green{color:var(--green)}
+
+header{display:grid;gap:14px}
+.meetings{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center}
+.mtag{font-family:var(--mono);font-size:13px;border:2px solid currentColor;border-radius:4px;padding:2px 8px;white-space:nowrap}
+.m276{color:var(--blue)} .m278{color:var(--green)}
+.meet{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.meet b{font-weight:400;font-family:var(--marker);font-size:26px}
+.meet small{color:var(--muted);font-family:var(--mono);font-size:12px}
+
+.filter{display:flex;gap:8px;flex-wrap:wrap}
+.filter button{font:inherit;font-size:14px;background:transparent;color:var(--ink);border:2px solid var(--frame);border-radius:999px;padding:3px 14px;cursor:pointer}
+.filter button[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--board)}
+.filter button:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+[data-m]{transition:opacity .2s}
+.board[data-filter="276"] [data-m="278"],.board[data-filter="278"] [data-m="276"]{opacity:.22}
+@media (prefers-reduced-motion:reduce){[data-m]{transition:none}}
+
+.thread{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;font-size:14px;color:var(--muted)}
+.thread .line{flex:1 1 60px;min-width:40px;border-top:3px dashed var(--muted);height:0}
+.thread .t{color:var(--ink)}
+
+.zone{display:grid;gap:16px}
+.zone-head{display:grid;gap:4px}
+.zone-head p{margin:0;color:var(--muted);max-width:65ch}
+
+.notes{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:18px}
+.note{background:var(--sy);color:var(--sticky-ink);padding:14px 14px 16px;box-shadow:var(--shadow);border-radius:2px;min-width:0;display:grid;gap:6px;align-content:start}
+.note:nth-child(3n+1){transform:rotate(-1deg)} .note:nth-child(3n+2){transform:rotate(.8deg)} .note:nth-child(3n){transform:rotate(-.4deg)}
+.note.p{background:var(--sp)} .note.m{background:var(--sm)} .note.b{background:var(--sb)}
+.note h4{margin:0;font-family:var(--marker);font-weight:400;font-size:27px;line-height:1}
+.note p{margin:0;font-size:14px}
+.note .warn{color:var(--red);font-size:13.5px}
+.note .warn::before{content:"⚠ "}
+
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:10px 6px;align-items:center;counter-reset:s}
+.steps li{counter-increment:s;display:flex;align-items:center;gap:6px}
+.steps li span{border:2px solid var(--ink);border-radius:6px;padding:4px 10px;font-size:14px;background:var(--board)}
+.steps li span::before{content:counter(s) ". ";font-family:var(--mono);font-size:12px;color:var(--muted)}
+.steps li:not(:last-child)::after{content:"→";font-size:20px;color:var(--blue)}
+.steps li.hot span{border-color:var(--red);color:var(--red)}
+
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:560px){.vs{grid-template-columns:1fr}}
+.col{border:2px solid var(--ink);border-radius:8px;padding:12px 14px;min-width:0;background:var(--board)}
+.col ul{margin:6px 0 0;padding-left:18px;font-size:14px}
+.col li{margin:3px 0}
+.plus{color:var(--green)} .minus{color:var(--red)}
+.col li.plus::marker{content:"+ "} .col li.minus::marker{content:"− "}
+.verdict{margin-top:8px;font-size:14px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+
+/* 역할 분담 그림 */
+.scroll{overflow-x:auto;padding-bottom:6px}
+.roles{display:grid;grid-template-columns:minmax(220px,1.1fr) 70px minmax(220px,1fr);gap:0;align-items:center;min-width:560px}
+.box{border:3px solid var(--ink);border-radius:10px;padding:12px 14px;background:var(--board);min-width:0}
+.box.main{border-color:var(--blue)}
+.box h4{margin:0 0 4px;font-family:var(--marker);font-weight:400;font-size:28px;line-height:1}
+.box p{margin:0;font-size:13.5px;color:var(--muted)}
+.box ul{margin:6px 0 0;padding-left:18px;font-size:14px}
+.arrows{display:grid;gap:44px;justify-items:center;color:var(--blue);font-size:28px;line-height:1}
+.targets{display:grid;gap:12px}
+.gap-note{margin-top:12px;border-left:4px solid var(--red);padding:6px 12px;font-size:14px;max-width:70ch}
+.out{margin-top:10px;font-size:14px;color:var(--muted)}
+.out s{color:var(--muted)}
+
+/* 라인 → 공정 */
+.compare{display:grid;grid-template-columns:minmax(240px,1fr) 60px minmax(240px,1fr);align-items:stretch;min-width:600px}
+.compare .mid{display:grid;place-items:center;font-family:var(--marker);font-size:40px;color:var(--green)}
+.tree{font-family:var(--mono);font-size:12.5px;line-height:1.75;white-space:pre;margin:8px 0 0;color:var(--ink)}
+.tree .x{color:var(--red)} .tree .g{color:var(--green)}
+
+/* 상태 태그 */
+.tag{font-size:12px;font-family:var(--mono);border-radius:3px;padding:1px 7px;white-space:nowrap;border:1.5px solid currentColor}
+.tag.ok{color:var(--green)} .tag.rv{color:var(--blue)} .tag.op{color:var(--red)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);align-items:center}
+
+.list{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.list li{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:baseline;padding:10px 2px;border-bottom:2px dotted var(--frame);min-width:0}
+.list li:last-child{border-bottom:0}
+.list .what{min-width:0}
+.list .what small{display:block;color:var(--muted);font-size:13px}
+.list .src{font-family:var(--mono);font-size:12px;white-space:nowrap}
+@media (max-width:560px){.list li{grid-template-columns:auto 1fr}.list .src{grid-column:2}}
+
+.who{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.ts{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-left:4px}
+
+.timeline{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:14px}
+.timeline .pt{border:2px solid var(--ink);border-radius:999px;padding:3px 12px;background:var(--board)}
+.timeline .ar{color:var(--blue);font-size:20px}
+
+footer{font-size:12.5px;color:var(--muted);border-top:2px solid var(--frame);padding-top:12px;display:grid;gap:4px}
+</style>
+
+<div class="board" id="board" data-filter="all">
+
+<header>
+  <h1 class="mk">표준관리 시스템 · 11월 11일 회의 보드</h1>
+  <div class="meetings">
+    <div class="meet m276" data-m="276"><span class="mtag">#276</span><b>핵심 관리 지표</b><small>09:31 시작</small></div>
+    <div class="meet m278" data-m="278"><span class="mtag">#278</span><b>BOM 구조 협의</b><small>13:06 시작</small></div>
+  </div>
+  <div class="thread">
+    <span class="mtag m276">#276</span>
+    <span class="t">끝부분에서 ERP 연계용 BOM·자재코드 괴리를 제기했습니다</span>
+    <span class="line" aria-hidden="true"></span>
+    <span class="t">같은 주제를 오후에 본격적으로 논의했습니다</span>
+    <span class="mtag m278">#278</span>
+  </div>
+  <div class="filter" role="group" aria-label="회의별로 강조">
+    <button type="button" id="f-all" data-f="all" aria-pressed="true">두 회의 모두</button>
+    <button type="button" id="f-276" data-f="276" aria-pressed="false">핵심 관리 지표 회의만</button>
+    <button type="button" id="f-278" data-f="278" aria-pressed="false">BOM 구조 협의 회의만</button>
+  </div>
+</header>
+
+<!-- ① 핵심 관리 지표 -->
+<section class="zone" data-m="276">
+  <div class="zone-head">
+    <h2 class="mk"><span class="u c-blue">메이저 4 · 핵심 관리 지표 모니터링</span> <span class="mtag m276">#276</span></h2>
+    <p>항목 등록·데이터 등록·배포까지 시연했습니다. 모니터링 기능은 더 구체화해야 하고, 표준관리 시스템 안에 둘지 별도 BI로 만들지는 정하지 않았습니다.</p>
+  </div>
+  <ol class="steps" aria-label="지표 산출 흐름">
+    <li><span>지표 정의 기준 점검</span></li>
+    <li><span>수식·변수 검증</span></li>
+    <li><span>계산·결과 산출</span></li>
+    <li><span>모니터링 화면</span></li>
+    <li class="hot"><span>목표 미달 → 이슈 등록</span></li>
+    <li><span>워크플로우 조치</span></li>
+  </ol>
+  <div class="notes">
+    <div class="note">
+      <h4>정립률</h4>
+      <p>표준 체계가 어디까지 정립되었는지 나타내는 비율입니다.</p>
+      <p class="warn">'정립 완료' 시점이 모호합니다. 정보처리 의뢰서 등으로 시작·종료 이벤트를 정해야 합니다.</p>
+    </div>
+    <div class="note p">
+      <h4>표준 준수율</h4>
+      <p>검토·승인을 마친 건 중 표준과 일치하는 비율이며, 예외 사유를 반영합니다.</p>
+      <p class="warn">100%를 강요하면 비표준 항목을 임의로 등록하는 편법이 생길 수 있습니다.</p>
+    </div>
+    <div class="note b">
+      <h4>리드타임</h4>
+      <p>요청부터 최종 완료까지 걸린 시간으로, 승인 지연을 확인하려는 지표입니다.</p>
+      <p>최초 요청 접수일을 따로 등록해 기산점으로 삼는 안을 논의했습니다.</p>
+    </div>
+    <div class="note m">
+      <h4>버전 일치율</h4>
+      <p>표준관리 시스템·원장·배포 시스템의 버전이 같은지 봅니다.</p>
+      <p>월별 산출 또는 새벽 자동 배치를 검토합니다.</p>
+    </div>
+    <div class="note">
+      <h4>개선 완료율</h4>
+      <p>모니터링 이슈 중 조치를 마친 비율입니다.</p>
+      <p class="warn">담당자가 완료 요청일을 일부러 늦게 잡을 수 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ② 결재 · 품질설계키 -->
+<section class="two">
+  <div class="zone" data-m="276">
+    <div class="zone-head">
+      <h2 class="mk"><span class="u c-blue">결재는 어디서?</span> <span class="mtag m276">#276</span></h2>
+    </div>
+    <div class="vs">
+      <div class="col">
+        <h3 class="mk">아이리스 연계</h3>
+        <ul>
+          <li class="plus">사용자는 결재 창구가 하나인 쪽을 선호합니다</li>
+          <li class="minus">양식이 복잡하고 다양해 개발 공수가 큽니다</li>
+          <li class="minus">웹 버전 호환 문제로 재구현한 선례가 있습니다</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3 class="mk">자체 구현</h3>
+        <ul>
+          <li class="plus">검토·협의 단계까지 시스템에 담을 수 있습니다</li>
+          <li class="minus">구현 난이도가 높아 우선순위 조정이 필요합니다</li>
+          <li class="minus">결재가 분산되면 이용률이 떨어질 수 있습니다</li>
+        </ul>
+      </div>
+    </div>
+    <div class="verdict"><span class="tag rv">검토</span> 아이리스 연계를 우선 검토하고, 결재 공수는 예산·일정에 미리 반영합니다.</div>
+  </div>
+
+  <div class="zone" data-m="276">
+    <div class="zone-head">
+      <h2 class="mk"><span class="u c-blue">관리 대상 확대 후보</span> <span class="mtag m276">#276</span></h2>
+    </div>
+    <div class="notes">
+      <div class="note b">
+        <h4>품질설계키 제약조건</h4>
+        <p>라인별 생산 가능 두께·폭 같은 설비·품질 제약조건을 관리 대상으로 넣을지 검토합니다. 계획 시뮬레이션과 원가 산정에서도 씁니다.</p>
+        <p><span class="tag op">미결</span></p>
+      </div>
+      <div class="note p">
+        <h4>원장은 MES</h4>
+        <p>MES가 원장을 갖고 표준관리 시스템은 참조용 사본을 관리하는 구조가 제안되었습니다.</p>
+        <p class="warn">라우팅이 지금은 블랙리스트 방식으로 설계키에 들어가 있는데, 이게 맞는지 의문이 제기되었습니다.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ③ 역할 분담 -->
+<section class="zone" data-m="278">
+  <div class="zone-head">
+    <h2 class="mk"><span class="u c-green">원본 하나, 쓰는 곳은 여럿</span> <span class="mtag m278">#278</span></h2>
+    <p>지금은 ERP와 MES가 각자 관리해서 기준이 어긋날 수 있습니다. 표준관리 시스템이 원본을 만들고 나머지가 가져다 쓰는 방향을 잡았습니다.</p>
+  </div>
+  <div class="scroll">
+    <div class="roles">
+      <div class="box main">
+        <h4 class="c-blue">표준관리 시스템</h4>
+        <p>원본(표준) 생성·관리 · 현업 사용자가 관리·승인</p>
+        <ul>
+          <li>사람이 인식하는 수준으로 관리합니다 (예: '핫코일' 하나)</li>
+          <li>트리 뷰에서 원재료·도금·칼라 관점만 골라 봅니다</li>
+          <li>수식·상수·변수를 등록하고 연계 프로그램에 동시에 반영합니다</li>
+        </ul>
+      </div>
+      <div class="arrows" aria-hidden="true"><span>→</span><span>→</span><span>→</span></div>
+      <div class="targets">
+        <div class="box"><h4>ERP (SAP)</h4><p>머티리얼 코드 단위 · 라인별 세부 자재코드 유지</p></div>
+        <div class="box"><h4>MES</h4><p>실적·배분 로직을 따로 적용합니다</p></div>
+        <div class="box"><h4>계획·원가</h4><p>표준원가를 계획 목표로 씁니다 (계산된 목표 방식)</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="gap-note"><b class="c-red">갭:</b> 표준관리 시스템이 보여주는 트리 뷰와 ERP가 받아야 하는 테이블 구조가 다릅니다. 이 변환을 표준관리 시스템이 맡아 ERP에 넘겨야 한다는 의견이 나왔습니다.</div>
+  <div class="out">범위 밖: <s>라인스피드</s> · <s>유틸리티</s>는 ERP·MES가 각자 관리합니다. <span class="tag ok">확정</span></div>
+</section>
+
+<!-- ④ BOM 단순화 -->
+<section class="zone" data-m="278">
+  <div class="zone-head">
+    <h2 class="mk"><span class="u c-green">BOM·라우팅: 라인 단위에서 공정 단위로</span> <span class="mtag m278">#278</span></h2>
+    <p>같은 제품도 라인마다 순아연·조합아연 비율을 따로 설계해서 자재코드가 계속 늘어납니다. 어느 라인이든 최종 성분비는 같아야 합니다.</p>
+  </div>
+  <div class="scroll">
+    <div class="compare">
+      <div class="col">
+        <h3 class="mk c-red">지금</h3>
+<pre class="tree">제품 ─ 포장재
+ └ 반제품 ─ 반제품 ─ … (더블클릭마다 전개)
+     ├ <span class="x">3CGL</span>: 순아연 a% · 조합아연 b%
+     ├ <span class="x">5CGL</span>: 순아연 c% · 조합아연 d%
+     └ 원재료 RH / RM … (폭 등 속성별)
+라우팅: 미니밀·보세 여부별로 따로 정의</pre>
+      </div>
+      <div class="mid" aria-hidden="true">⇒</div>
+      <div class="col">
+        <h3 class="mk c-green">제안</h3>
+<pre class="tree">제품
+ └ <span class="g">GI 공정</span> / <span class="g">GL 공정</span>  (라인 82·84·85 대신)
+     └ <span class="g">가상 아연 반제품</span>
+         비율만 고치면 관련 반제품 전체에 반영
+실적 배분: 표준 BOM과 다른 별도 로직</pre>
+      </div>
+    </div>
+  </div>
+  <div class="verdict"><span class="tag rv">검토</span> 공정 단위 표준 BOM/라우팅과 가상 BOM을 검토합니다. 수율처럼 잘 바뀌지 않는 값에 특히 효과가 있습니다.</div>
+  <div class="notes">
+    <div class="note">
+      <h4>표준 ≠ 실제 원가</h4>
+      <p>단순화하면 실제와 차이가 나지만 "표준은 이렇게만 관리한다"는 전제로 설명할 수 있다는 의견입니다. 현업은 표준원가를 거의 보지 않아 과도한 세분화는 부담만 됩니다.</p>
+    </div>
+    <div class="note p">
+      <h4>자재코드 관리 주체</h4>
+      <p>자재코드는 주문의 생산가부가 확정될 때 새로 생깁니다. 표준관리 시스템은 가상 수준까지만 관리하고 세부 자재코드는 ERP에 두는 방향입니다.</p>
+      <p class="warn">CBO 프로그램(자재코드 생성용 분리 데이터)이 범위에 드는지 다시 확인해야 합니다.</p>
+    </div>
+    <div class="note b">
+      <h4>계산식 가시화</h4>
+      <p>면적계산수식·리게인 등은 ERP 테이블에 있지만 문서화되지 않았습니다. 표준관리 시스템에서 바꾸면 모든 연계 프로그램에 같은 기준으로 반영되어야 합니다.</p>
+    </div>
+    <div class="note m">
+      <h4>용어 혼선</h4>
+      <p>MES의 '작업장'은 공정, '호기'는 라인입니다. 82와 2CGL처럼 코드와 코드명을 섞어 쓰니 코드명 위주로 표기하자는 제안이 있었습니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ⑤ 주변 이슈 (#276) -->
+<section class="zone" data-m="276">
+  <div class="zone-head">
+    <h2 class="mk"><span class="u c-blue">그 밖에 짚은 것</span> <span class="mtag m276">#276</span></h2>
+  </div>
+  <div class="notes">
+    <div class="note m"><h4>온톨로지·그래프</h4><p>지금 수준에서는 필요 없습니다. 나중에 AI를 쓸 때를 대비해 확장 가능한 구조만 마련합니다.</p></div>
+    <div class="note"><h4>가공(아주스틸)</h4><p>MOM 중심 통합을 추진 중이지만 자료 수령이 늦습니다. 샌드위치 판넬은 원판이 아닌 순수 BOM이라 냉연과 다른 설계가 필요합니다.</p><p class="warn">합병·분사 결정 전까지 통합설계가 제약을 받습니다.</p></div>
+    <div class="note b"><h4>계획·원가</h4><p>영업은 3개월, 계획은 1년을 보는 등 판매계획 시계가 맞지 않습니다. 최적화보다 조업 실적·판매계획 데이터 확보가 먼저입니다.</p></div>
+    <div class="note p"><h4>협업 도구</h4><p>동시 편집이 되는 365·구글 계열 도구가 필요하다는 의견과 대면 협의가 낫다는 의견이 함께 나왔습니다.</p></div>
+  </div>
+</section>
+
+<!-- ⑥ 결정·방향 / 미결 -->
+<section class="two">
+  <div class="zone">
+    <div class="zone-head">
+      <h2 class="mk"><span class="u">정해진 것과 방향</span></h2>
+      <div class="legend"><span class="tag ok">확정</span>합의함 <span class="tag rv">검토</span>방향만 잡음</div>
+    </div>
+    <ul class="list">
+      <li data-m="278"><span class="tag ok">확정</span><span class="what">표준은 자재코드가 아닌 사람이 인식하는 수준으로 관리하고, 세부 자재코드는 ERP에 둡니다</span><span class="src m278">#278</span></li>
+      <li data-m="278"><span class="tag ok">확정</span><span class="what">표준관리 시스템이 원본을 만들고 ERP·MES가 가져다 각자 가공합니다</span><span class="src m278">#278</span></li>
+      <li data-m="278"><span class="tag ok">확정</span><span class="what">라인스피드·유틸리티는 범위에서 뺍니다</span><span class="src m278">#278</span></li>
+      <li data-m="276"><span class="tag ok">확정</span><span class="what">온톨로지·그래프 고도화는 보류하고 확장 가능한 구조만 둡니다</span><span class="src m276">#276</span></li>
+      <li data-m="276"><span class="tag ok">확정</span><span class="what">이번 PI는 최적화보다 데이터(조업 실적·판매계획) 확보를 먼저 합니다</span><span class="src m276">#276</span></li>
+      <li data-m="276"><span class="tag rv">검토</span><span class="what">결재는 아이리스 연계를 우선 검토합니다</span><span class="src m276">#276</span></li>
+      <li data-m="278"><span class="tag rv">검토</span><span class="what">표준 BOM/라우팅을 공정 단위(GI/GL)로 구성합니다</span><span class="src m278">#278</span></li>
+      <li data-m="278"><span class="tag rv">검토</span><span class="what">주요 계산식을 표준관리 시스템에 등록해 연계 프로그램에 동시 반영합니다</span><span class="src m278">#278</span></li>
+    </ul>
+  </div>
+  <div class="zone">
+    <div class="zone-head">
+      <h2 class="mk"><span class="u c-red">아직 열려 있는 것</span></h2>
+      <div class="legend"><span class="tag op">미결</span>다음 회의에서 정해야 함</div>
+    </div>
+    <ul class="list">
+      <li data-m="276"><span class="tag op">미결</span><span class="what">모니터링을 시스템 안에 둘지, 별도 BI로 만들지</span><span class="src m276">#276</span></li>
+      <li data-m="276"><span class="tag op">미결</span><span class="what">검토·협의 절차까지 시스템에 담을지<small>지금 정보처리 의뢰서는 오프라인 협의 후 결과만 등록합니다</small></span><span class="src m276">#276</span></li>
+      <li data-m="276"><span class="tag op">미결</span><span class="what">정립 시작·종료 이벤트 기준</span><span class="src m276">#276</span></li>
+      <li data-m="276"><span class="tag op">미결</span><span class="what">품질설계키 제약조건을 관리 대상에 넣을지</span><span class="src m276">#276</span></li>
+      <li data-m="278"><span class="tag op">미결</span><span class="what">자재코드 관리 범위와 CBO 프로그램 포함 여부</span><span class="src m278">#278</span></li>
+      <li data-m="278"><span class="tag op">미결</span><span class="what">ERP용 변환을 표준관리 시스템이 할지, ERP·중간 단계가 할지<small>#276에서 제기, #278에서 표준관리 쪽 변환 의견이 나왔지만 확정하지 않았습니다</small></span><span class="src m278">#276→278</span></li>
+      <li data-m="276"><span class="tag op">미결</span><span class="what">아주스틸 합병·가공 분사</span><span class="src m276">#276</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ⑦ 할 일 -->
+<section class="zone">
+  <div class="zone-head">
+    <h2 class="mk"><span class="u">할 일</span></h2>
+    <p>화자 번호는 회의마다 따로 매겨지므로 회의 번호를 붙여 적었습니다.</p>
+  </div>
+  <ul class="list">
+    <li data-m="278"><span class="src m278">#278</span><span class="what">BOM/라우팅 트리를 공정 단위로 단순화하는 안 구체화 (가상 BOM 포함)</span><span class="who">278·화자4·5</span></li>
+    <li data-m="278"><span class="src m278">#278</span><span class="what">자재코드 관리 범위(표준관리 vs ERP) 명확화, CBO 범위 재확인</span><span class="who">278·화자3·8</span></li>
+    <li data-m="278"><span class="src m278">#278</span><span class="what">면적계산수식 등 계산식 가시화와 등록 방안 수립<small>상수·변수를 바꾸면 연계 프로그램에 동시 반영되는 구조</small></span><span class="who">278·화자4</span></li>
+    <li data-m="278"><span class="src m278">#278</span><span class="what">표준과 실제 원가 차이를 설명하는 기준 문서화</span><span class="who">278·화자5</span></li>
+    <li data-m="276"><span class="src m276">#276</span><span class="what">자재코드·BOM의 ERP 연계 방식 협의</span><span class="who">276·화자2·4</span></li>
+    <li data-m="276"><span class="src m276">#276</span><span class="what">메이저 2(품질설계키 제약조건 등) 관리 대상 구체화</span><span class="who">276·화자1</span></li>
+    <li data-m="276"><span class="src m276">#276</span><span class="what">마스터 데이터 관계 구체화, 구글 시트 기능 정의안 공유<small>작성 276·화자1, 검토는 전체</small></span><span class="who">276·화자1</span></li>
+    <li data-m="276"><span class="src m276">#276</span><span class="what">현장 마스터 코드 정리와 용어 표준화<small>#278의 작업장·호기, 코드·코드명 혼용 정리도 여기에 이어 붙입니다</small></span><span class="who">276·화자3 · 12월 내</span></li>
+  </ul>
+  <div class="timeline" aria-label="일정">
+    <span class="pt">12월 · 용어 확정</span><span class="ar" aria-hidden="true">→</span>
+    <span class="pt">1~3월 · 기본설계 + 테이블 설계</span>
+  </div>
+</section>
+
+<footer>
+  <span>출처: 또박또박 회의 #276 「표준관리 시스템-핵심 관리 지표」(2026.11.11 09:31), #278 「표준관리 시스템-BOM 구조 협의」(2026.11.11 13:06)의 AI 요약.</span>
+  <span>요약에 '결정사항'으로 적힌 항목 중 '검토·지향·확인 필요'로 표현된 것은 확정이 아닌 검토로 분류했습니다.</span>
+</footer>
+</div>
+
+<script>
+(function(){
+  var board=document.getElementById('board');
+  var btns=board.querySelectorAll('.filter button');
+  btns.forEach(function(b){
+    b.addEventListener('click',function(){
+      board.setAttribute('data-filter',b.dataset.f);
+      btns.forEach(function(x){x.setAttribute('aria-pressed',String(x===b));});
+    });
+  });
+})();
+</script>

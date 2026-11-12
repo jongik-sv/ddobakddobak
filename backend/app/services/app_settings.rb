@@ -21,6 +21,18 @@ class AppSettings
     "max_embeddings_per_speaker" => 15
   }.freeze
 
+  WHITEBOARD_WEB_MODES = %w[copy server_claude].freeze
+  WHITEBOARD_DEFAULT_WEB_MODE = "server_claude".freeze
+
+  # 화이트보드 웹 모드. 키가 없거나 값이 올바르지 않으면 기본값(server_claude).
+  # settings_controller#whiteboard_payload 와 meeting_whiteboards#create 가 공유하는 단일 출처.
+  def self.whiteboard_web_mode(cfg = nil)
+    cfg ||= load
+    wb = cfg["whiteboard"]
+    mode = wb.is_a?(Hash) ? wb["web_mode"].to_s : ""
+    WHITEBOARD_WEB_MODES.include?(mode) ? mode : WHITEBOARD_DEFAULT_WEB_MODE
+  end
+
   def self.load
     return {} unless File.exist?(SETTINGS_PATH)
     YAML.safe_load(File.read(SETTINGS_PATH)) || {}

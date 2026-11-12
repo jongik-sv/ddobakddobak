@@ -1,5 +1,6 @@
 class MeetingExportSerializer
   STATUS_LABELS = MarkdownExporter::STATUS_LABELS
+  KST_ZONE = "Asia/Seoul".freeze
 
   # @param meeting [Meeting] ActiveRecord Meeting 인스턴스
   # @param include_summary [Boolean] AI 요약 섹션 포함 여부 (기본: true)
@@ -23,8 +24,9 @@ class MeetingExportSerializer
   private
 
   def build_meeting
-    started = @meeting.started_at
-    ended   = @meeting.ended_at
+    # 내보내기 일시는 한국 시간 기준(dflow_upload_service#kst_date 와 같은 관례).
+    started = @meeting.started_at&.in_time_zone(KST_ZONE)
+    ended   = @meeting.ended_at&.in_time_zone(KST_ZONE)
 
     {
       id:           @meeting.id,

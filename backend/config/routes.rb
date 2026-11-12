@@ -65,6 +65,8 @@ Rails.application.routes.draw do
           get  :peaks, to: "meetings_audio#peaks"
           get  :export
           get  :export_prompt
+          get  :whiteboard, to: "meeting_whiteboards#show"
+          post :whiteboard, to: "meeting_whiteboards#create"
           post :export, to: "meeting_transfers#export", as: :transfer_meeting_export
           get  :summary
           get  :transcripts
@@ -233,6 +235,8 @@ Rails.application.routes.draw do
       put  "settings/app", to: "settings#update_app_settings"
       get  "settings/dflow", to: "settings#dflow"
       put  "settings/dflow", to: "settings#update_dflow"
+      get  "settings/whiteboard", to: "settings#whiteboard"
+      put  "settings/whiteboard", to: "settings#update_whiteboard"
 
       # D'Flow 조회 프록시(시크릿을 프런트에 보내지 않기 위함). 인증: 로그인 사용자면 허용.
       get "dflow/minutes", to: "meeting_dflow#minutes"

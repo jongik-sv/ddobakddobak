@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_30_020703) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_12_000001) do
   create_table "api_token_audit_logs", force: :cascade do |t|
     t.string "action", null: false
     t.integer "api_token_id", null: false
@@ -224,6 +224,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_30_020703) do
     t.json "settings_json", default: {}
     t.datetime "updated_at", null: false
     t.index ["folder_id"], name: "index_meeting_templates_on_folder_id"
+  end
+
+  create_table "meeting_whiteboards", force: :cascade do |t|
+    t.text "board_json"
+    t.datetime "created_at", null: false
+    t.string "digest"
+    t.string "error_kind"
+    t.text "error_message"
+    t.integer "meeting_id", null: false
+    t.string "prompt_version"
+    t.integer "requested_by_id"
+    t.string "run_token"
+    t.string "status", default: "running", null: false
+    t.datetime "updated_at", null: false
+    t.index ["meeting_id"], name: "index_meeting_whiteboards_on_meeting_id", unique: true
+    t.index ["requested_by_id"], name: "index_meeting_whiteboards_on_requested_by_id"
   end
 
   create_table "meetings", force: :cascade do |t|
@@ -473,6 +489,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_30_020703) do
   add_foreign_key "meeting_contacts", "meetings"
   add_foreign_key "meeting_contacts", "users", column: "created_by_id"
   add_foreign_key "meeting_templates", "folders"
+  add_foreign_key "meeting_whiteboards", "meetings"
+  add_foreign_key "meeting_whiteboards", "users", column: "requested_by_id", on_delete: :nullify
   add_foreign_key "meetings", "folders", on_delete: :nullify
   add_foreign_key "meetings", "meetings", column: "previous_meeting_id", on_delete: :nullify
   add_foreign_key "meetings", "projects", on_delete: :cascade

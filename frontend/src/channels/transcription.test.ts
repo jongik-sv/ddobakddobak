@@ -3,6 +3,7 @@ import { useTranscriptStore } from '../stores/transcriptStore'
 import { createTranscriptionChannel } from './transcription'
 import { useRecordingSignalsStore } from '../stores/recordingSignalsStore'
 import { useToastStore } from '../stores/toastStore'
+import { useWhiteboardStore } from '../stores/whiteboardStore'
 
 type ReceivedFn = (raw: Record<string, unknown>) => void
 
@@ -328,5 +329,28 @@ describe('transcript_split 처리 로직', () => {
     received({ type: 'transcript_redacted', deleted_ids: [2], client_id: 'other' })
 
     expect(useTranscriptStore.getState().audioRevision).toBe(1)
+  })
+})
+
+describe('received 라우팅: whiteboard_ready / whiteboard_failed', () => {
+  beforeEach(() => {
+    useWhiteboardStore.setState({ entries: {}, panelOpen: {}, notice: null })
+  })
+
+  it('whiteboard_failed 는 서버로 만들던 회의의 entry 를 error 로 바꾼다', () => {
+    useWhiteboardStore.setState({
+      entries: { 1: { status: 'running', board: null, filename: 'f.html', error: null, digest: '', saveError: null, source: 'server', serverStale: false } },
+    })
+    const received = captureReceived()
+    received({ type: 'whiteboard_failed', meeting_id: 1, error_kind: 'rate_limit', message: 'x' })
+    const e = useWhiteboardStore.getState().entries[1]
+    expect(e.status).toBe('error')
+    expect(e.error).toContain('사용량 한도')
+  })
+
+  it('만들고 있지 않은 회의의 이벤트는 무시한다', () => {
+    const received = captureReceived()
+    received({ type: 'whiteboard_failed', meeting_id: 1, error_kind: 'auth' })
+    expect(useWhiteboardStore.getState().entries[1]).toBeUndefined()
   })
 })

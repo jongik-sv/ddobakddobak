@@ -121,6 +121,17 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
         expect(response).to have_http_status(:no_content)
       end
 
+      it "화이트보드를 요청한 사용자도 삭제된다(requested_by FK nullify)" do
+        local = User.find_or_create_by!(email: User::LOCAL_EMAIL) { |u| u.name = "관리자"; u.role = "admin" }
+        meeting = create(:meeting, creator: local)
+        wb = MeetingWhiteboard.create!(meeting: meeting, status: "done", digest: "d", requested_by_id: member.id)
+
+        expect { delete "/api/v1/admin/users/#{member.id}" }.to change(User, :count).by(-1)
+
+        expect(response).to have_http_status(:no_content)
+        expect(wb.reload.requested_by_id).to be_nil
+      end
+
       it "prevents admin from deleting themselves" do
         delete "/api/v1/admin/users/#{admin.id}"
 
