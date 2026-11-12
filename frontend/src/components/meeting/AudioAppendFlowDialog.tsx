@@ -122,7 +122,7 @@ export function AudioAppendFlowDialog({
 
         {phase === 'ask-retranscribe' && (
           <div>
-            <p className="mb-2 text-xs text-muted-foreground">업로드가 완료됐습니다. 재전사를 실행할까요?</p>
+            <p className="mb-2 text-xs text-muted-foreground">업로드가 완료됐습니다. 재전사를 실행할까요? (음성 인식 후 AI 회의록 요약까지 이어서 생성합니다)</p>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
@@ -142,7 +142,7 @@ export function AudioAppendFlowDialog({
           </div>
         )}
 
-        {phase === 'retranscribing' && <p className="text-xs text-muted-foreground">재전사 요청 중...</p>}
+        {phase === 'retranscribing' && <p className="text-xs text-muted-foreground">재전사 요청 중... (요약까지 이어서 생성)</p>}
 
         {phase === 'error' && (
           <div>

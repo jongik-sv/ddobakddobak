@@ -124,6 +124,12 @@ describe('AudioAppendFlowDialog', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
+  it('재전사 확인 안내에 요약까지 이어서 생성한다는 문구가 있다', async () => {
+    render(<AudioAppendFlowDialog open meetingId={1} files={[makeFile('a.mp3')]} onClose={vi.fn()} />)
+    fireEvent.click(screen.getByText('병합 시작'))
+    await waitFor(() => expect(screen.getByText(/요약까지 이어서 생성/)).toBeInTheDocument())
+  })
+
   it('병합 실패 시 배너에 에러+재시도 버튼을 보여준다', async () => {
     vi.mocked(mergeAudioFiles).mockRejectedValueOnce(new Error('디코딩 실패'))
     render(<AudioAppendFlowDialog open meetingId={1} files={[makeFile('bad.mp3')]} onClose={vi.fn()} />)

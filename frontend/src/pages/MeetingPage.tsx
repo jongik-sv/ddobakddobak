@@ -976,7 +976,7 @@ export default function MeetingPage() {
       {showSttConfirm && (
         <ConfirmDialog
           title="STT 재생성"
-          message="기존 트랜스크립트와 회의록이 모두 삭제되고, 저장된 오디오로 처음부터 다시 생성됩니다. 계속하시겠습니까?"
+          message="기존 트랜스크립트와 회의록이 모두 삭제되고, 저장된 오디오로 처음부터 다시 생성됩니다. 음성 인식이 끝나면 AI 회의록(요약)도 이어서 자동으로 생성합니다. 계속하시겠습니까?"
           confirmLabel="재생성"
           onConfirm={handleRegenerateStt}
           onCancel={() => setShowSttConfirm(false)}
