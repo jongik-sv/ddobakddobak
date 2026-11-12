@@ -1,0 +1,914 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>또박또박 30초 키네틱</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Mono:wght@500;600&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+/* Layout: 무대(16:9 캔버스) 하나 + 아래 트랜스포트 바. 페이지는 콘솔처럼 조용하게, 영상이 주인공. */
+:root {
+  --bg: #f1f0f6;
+  --panel: #ffffff;
+  --fg: #17151f;
+  --muted: #6f6c7d;
+  --line: #e3e2ec;
+  --accent: #4f46e5;
+  --live: #fb5b5b;
+  --track: #e3e2fb;
+  --display: "Black Han Sans", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --sans: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f0e15; --panel: #1a1824; --fg: #f0eef6; --muted: #9b96ab;
+    --line: #2d2940; --accent: #8b84ff; --live: #ff6b6b; --track: #2d2940;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f0e15; --panel: #1a1824; --fg: #f0eef6; --muted: #9b96ab;
+  --line: #2d2940; --accent: #8b84ff; --live: #ff6b6b; --track: #2d2940;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { background: var(--bg); color: var(--fg); }
+body { font-family: var(--sans); padding-inline: 16px; padding-block: 24px 40px; }
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 14px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+h1 { font-family: var(--display); font-weight: 400; font-size: clamp(22px, 3vw, 30px); margin: 0; letter-spacing: .01em; text-wrap: balance; }
+h1 span { color: var(--accent); }
+.meta { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.stage { position: relative; width: 100%; aspect-ratio: 16 / 9; max-width: 100%; border-radius: 14px; overflow: hidden; background: #17151f; box-shadow: 0 24px 60px -30px rgba(23, 21, 31, .55); }
+canvas { display: block; width: 100%; height: 100%; }
+.bigplay { position: absolute; inset: 0; display: grid; place-items: center; background: transparent; border: 0; cursor: pointer; padding: 0; }
+.bigplay span { width: clamp(64px, 9vw, 104px); aspect-ratio: 1; border-radius: 50%; background: rgba(23, 21, 31, .78); display: grid; place-items: center; box-shadow: 0 0 0 6px rgba(255, 255, 255, .14); transition: transform .2s ease; }
+.bigplay:hover span, .bigplay:focus-visible span { transform: scale(1.06); }
+.bigplay:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.bigplay svg { width: 38%; height: 38%; margin-left: 8%; fill: #fff; }
+.recbadge { position: absolute; top: 14px; right: 14px; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: rgba(23, 21, 31, .82); color: #fff; font: 600 12px/1 var(--mono); letter-spacing: .08em; }
+.recbadge i { width: 9px; height: 9px; border-radius: 50%; background: #fb5b5b; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .2; } }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.btn { appearance: none; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font: 600 14px/1 var(--sans); height: 38px; padding: 0 14px; border-radius: 9px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn svg { width: 16px; height: 16px; fill: currentColor; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.rec { color: var(--live); border-color: color-mix(in srgb, var(--live) 45%, var(--line)); }
+.btn.rec .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--live); }
+.btn.rec.on { background: var(--live); color: #fff; border-color: var(--live); }
+.btn.rec.on .dot { background: #fff; border-radius: 2px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.scrub { flex: 1 1 240px; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.scrub input { flex: 1; min-width: 0; accent-color: var(--accent); }
+.time { font: 500 13px/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.status { font-size: 13px; color: var(--muted); min-height: 1.4em; margin: 0; }
+.status b { color: var(--fg); font-weight: 700; }
+.result { display: grid; gap: 10px; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.result video { width: 100%; max-width: 100%; border-radius: 8px; background: #000; }
+.result .info { display: grid; gap: 8px; min-width: 0; font-size: 14px; }
+.result .row { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 640px) { .result { grid-template-columns: 1fr; } .btn .lbl { display: none; } .btn.rec .lbl { display: inline; } }
+@media (prefers-reduced-motion: reduce) { .recbadge i { animation: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>또박또박 <span>30초</span></h1>
+    <div class="meta">Kinetic · 1920×1080 · 30fps · 120 BPM</div>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="cv" width="1920" height="1080" aria-label="또박또박 소개 키네틱 영상"></canvas>
+    <button class="bigplay" id="bigplay" aria-label="재생"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button>
+    <div class="recbadge" id="recbadge" hidden><i></i><span>REC</span></div>
+  </div>
+
+  <div class="bar">
+    <button class="btn primary" id="play" aria-label="재생"><svg id="playIcon" viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg><span class="lbl" id="playLbl">재생</span></button>
+    <button class="btn" id="restart" aria-label="처음부터"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg><span class="lbl">처음부터</span></button>
+    <div class="scrub">
+      <input type="range" id="seek" min="0" max="30" step="0.01" value="0" aria-label="재생 위치">
+      <span class="time" id="time">00.0 / 30.0</span>
+    </div>
+    <button class="btn" id="mute" aria-pressed="false"><svg viewBox="0 0 24 24"><path id="muteIcon" d="M4 9v6h4l5 5V4L8 9H4zm12.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg><span class="lbl" id="muteLbl">소리 켬</span></button>
+    <button class="btn rec" id="rec"><span class="dot"></span><span class="lbl" id="recLbl">녹화</span></button>
+  </div>
+  <p class="status" id="status">글꼴을 불러오는 중입니다…</p>
+
+  <div class="result" id="result" hidden>
+    <video id="out" controls playsinline></video>
+    <div class="info">
+      <div id="resultInfo"></div>
+      <div class="row">
+        <button class="btn primary" id="save"><svg viewBox="0 0 24 24"><path d="M12 3v11l4-4 1.4 1.4L12 17.8 6.6 11.4 8 10l4 4V3h0zM5 19h14v2H5z"/></svg><span>파일로 저장</span></button>
+      </div>
+      <p class="status" id="saveStatus"></p>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+const W = 1920, H = 1080, DUR = 30, BPM = 120, BEAT = 60 / BPM;
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+
+/* ── 팔레트: 또박또박 랜딩 토큰 ─────────────────────────── */
+const C = {
+  ink: "#17151f", ink2: "#46434f", muted: "#6f6c7d", line: "#e8e7ef",
+  paper: "#fafafb", white: "#ffffff", lav: "#eeeefe", lavD: "#e3e2fb",
+  indigo: "#4f46e5", indigoInk: "#2a2380", live: "#fb5b5b", mint: "#0fa877", amber: "#e08a08",
+  night: "#100e18", night2: "#1d1a2b"
+};
+const F = {
+  disp: '"Black Han Sans", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
+  sans: '"Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
+  mono: '"IBM Plex Mono", Menlo, monospace'
+};
+
+/* ── 수학 헬퍼 ──────────────────────────────────────────── */
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, k) => a + (b - a) * k;
+const P = (t, a, b) => clamp((t - a) / (b - a));
+const eOut3 = k => 1 - Math.pow(1 - k, 3);
+const eOut5 = k => 1 - Math.pow(1 - k, 5);
+const eIn3 = k => k * k * k;
+const eIO3 = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const eBack = (k, s = 1.70158) => { const c3 = s + 1; return 1 + c3 * Math.pow(k - 1, 3) + s * Math.pow(k - 1, 2); };
+const eElastic = k => k === 0 || k === 1 ? k : Math.pow(2, -10 * k) * Math.sin((k * 10 - .75) * (2 * Math.PI / 3)) + 1;
+function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+function noise1(x) { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return lerp(hash(i), hash(i + 1), u) * 2 - 1; }
+/* 등장(in)·퇴장(out) 구간을 합친 가시도 */
+const vis = (t, a, b, c, d) => Math.min(P(t, a, b), 1 - P(t, c, d));
+
+/* ── 그리기 헬퍼 ────────────────────────────────────────── */
+function font(w, size, fam = F.sans) { ctx.font = `${w} ${size}px ${fam}`; }
+function txt(s, x, y, o = {}) {
+  ctx.save();
+  ctx.globalAlpha *= o.a ?? 1;
+  ctx.translate(x, y);
+  if (o.rot) ctx.rotate(o.rot);
+  if (o.sx !== undefined || o.sy !== undefined || o.s !== undefined) ctx.scale(o.sx ?? o.s ?? 1, o.sy ?? o.s ?? 1);
+  font(o.w ?? 700, o.size ?? 64, o.fam ?? F.sans);
+  ctx.fillStyle = o.c ?? C.ink;
+  ctx.textAlign = o.align ?? "left";
+  ctx.textBaseline = o.base ?? "alphabetic";
+  if (o.ls) ctx.letterSpacing = o.ls + "px";
+  ctx.fillText(s, 0, 0);
+  ctx.restore();
+}
+function measure(s, w, size, fam = F.sans, ls = 0) { font(w, size, fam); ctx.letterSpacing = ls + "px"; const m = ctx.measureText(s).width; ctx.letterSpacing = "0px"; return m; }
+function rrect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+function fillRR(x, y, w, h, r, c, a = 1) { ctx.save(); ctx.globalAlpha *= a; ctx.fillStyle = c; rrect(x, y, w, h, r); ctx.fill(); ctx.restore(); }
+function circle(x, y, r, c, a = 1) { ctx.save(); ctx.globalAlpha *= a; ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
+function ring(x, y, r, c, lw, a = 1) { ctx.save(); ctx.globalAlpha *= a; ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
+/* 단어 단위 키네틱: 각 단어가 아래에서 튀어오르며 등장 */
+function kineticLine(words, x, y, t0, t, o = {}) {
+  const gap = o.gap ?? 0.09, dur = o.dur ?? 0.45, size = o.size ?? 96, w = o.w ?? 900, fam = o.fam ?? F.sans;
+  const space = measure(" ", w, size, fam);
+  let total = 0; const widths = words.map(s => { const m = measure(s, w, size, fam, o.ls ?? 0); total += m; return m; });
+  total += space * (words.length - 1);
+  let cx = o.align === "center" ? x - total / 2 : o.align === "right" ? x - total : x;
+  words.forEach((s, i) => {
+    const k = P(t, t0 + i * gap, t0 + i * gap + dur);
+    if (k > 0) {
+      const e = eBack(k, 2.2);
+      const col = Array.isArray(o.c) ? o.c[i] : o.c;
+      txt(s, cx + widths[i] / 2, y + (1 - eOut3(k)) * size * 0.7, { c: col, size, w, fam, a: clamp(k * 2.5) * (o.a ?? 1), align: "center", sy: lerp(0.4, 1, e), sx: lerp(1.25, 1, e), ls: o.ls });
+    }
+    cx += widths[i] + space;
+  });
+  return total;
+}
+/* 타이핑: 문자열을 t에 따라 앞에서부터 노출 */
+function typed(s, t, t0, cps) { const n = Math.floor(Math.max(0, t - t0) * cps); return Array.from(s).slice(0, n).join(""); }
+
+/* ── 장면 경계 ──────────────────────────────────────────── */
+const S = { pain: 0, rec: 4.0, stamp: 7.0, live: 9.6, doc: 13.5, chat: 18.5, trust: 23.5, end: 26.5 };
+
+/* ── 배경 ───────────────────────────────────────────────── */
+function bgPaper() { ctx.fillStyle = C.paper; ctx.fillRect(0, 0, W, H); }
+function bgNight(t) {
+  const g = ctx.createRadialGradient(W * .5, H * .45, 80, W * .5, H * .5, W * .75);
+  g.addColorStop(0, C.night2); g.addColorStop(1, C.night);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+function grid(alpha, col = C.indigo) {
+  ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = col; ctx.lineWidth = 1;
+  for (let x = 0; x <= W; x += 80) { ctx.beginPath(); ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, H); ctx.stroke(); }
+  for (let y = 0; y <= H; y += 80) { ctx.beginPath(); ctx.moveTo(0, y + .5); ctx.lineTo(W, y + .5); ctx.stroke(); }
+  ctx.restore();
+}
+/* 상단 타임코드 바: 영상 전체에 흐르는 '녹음 중' 문법 */
+function hud(t, dark) {
+  const recOn = t >= 4.6 && t < S.end;
+  const col = dark ? "rgba(240,238,246,.55)" : C.muted;
+  txt("DDOBAK·DDOBAK", 72, 78, { fam: F.mono, w: 600, size: 22, c: col, ls: 4 });
+  if (recOn) {
+    const el = Math.max(0, t - 4.6) * 38; // 회의 시간 압축 표기
+    const mm = String(Math.floor(el / 60)).padStart(2, "0"), ss = String(Math.floor(el % 60)).padStart(2, "0");
+    const blink = (Math.floor(t * 2) % 2) ? 1 : .35;
+    circle(W - 272, 70, 9, C.live, blink);
+    txt(`REC  00:${mm}:${ss}`, W - 252, 78, { fam: F.mono, w: 600, size: 22, c: dark ? "#f0eef6" : C.ink, ls: 2 });
+  }
+}
+
+/* ── 1. 문제 제기 (0–4s) ───────────────────────────────── */
+function scenePain(t) {
+  bgNight(t);
+  const out = P(t, 3.55, 4.0);
+  ctx.save();
+  ctx.globalAlpha = 1 - out;
+  // 흩어지는 질문 조각
+  const frags = [["결정했나?", 310, 250, -0.08], ["담당자는?", 1500, 300, 0.06], ["마감이 언제였지", 1360, 860, -0.04], ["그 숫자 뭐였더라", 250, 840, 0.05], ["누가 하기로 했지", 760, 175, 0.02]];
+  frags.forEach(([s, x, y, r], i) => {
+    const k = P(t, 1.9 + i * 0.12, 2.5 + i * 0.12);
+    if (k <= 0) return;
+    const drift = noise1(t * .6 + i * 3) * 14;
+    txt(s, x + drift, y + (1 - eOut3(k)) * 30, { fam: F.sans, w: 500, size: 40, c: "#9b96ab", a: eOut3(k) * 0.75, rot: r, align: "center" });
+  });
+  // 메인 카피
+  kineticLine(["회의", "끝나고,"], W / 2, 470, 0.15, t, { size: 120, c: "#f0eef6", align: "center", w: 900 });
+  const shake = t > 2.9 && t < 3.5 ? noise1(t * 40) * 6 : 0;
+  ctx.translate(shake, 0);
+  kineticLine(["누가", "뭐라고", "했더라?"], W / 2, 660, 0.85, t, { size: 150, c: ["#f0eef6", "#f0eef6", C.live], align: "center", w: 900, fam: F.disp, gap: 0.16 });
+  ctx.restore();
+  // 빨간 점이 나타나 화면을 덮으며 전환
+  const d = P(t, 3.35, 4.0);
+  if (d > 0) {
+    const r = eIn3(d) * Math.hypot(W, H) * 0.62 + 14 * eOut3(P(t, 3.35, 3.5));
+    circle(W / 2, H / 2 + 20, r, C.paper);
+    circle(W / 2, H / 2 + 20, Math.min(r, 60 + 30 * eOut3(d)), C.live, 1 - P(t, 3.8, 4.0));
+  }
+  hud(t, true);
+}
+
+/* ── 2. 녹음 버튼 하나로 (4–7s) ────────────────────────── */
+function sceneRec(t) {
+  bgPaper();
+  grid(0.05);
+  const press = 4.6;
+  const bx = 600, by = 560;
+  const appear = eBack(P(t, 4.0, 4.45), 2.4);
+  const dip = t > press && t < press + 0.18 ? 1 - Math.sin(P(t, press, press + .18) * Math.PI) * 0.12 : 1;
+  const leave = eIO3(P(t, 6.65, 7.0));
+  const s = appear * dip * (1 - leave * 0.85);
+  // 파동 링
+  for (let i = 0; i < 4; i++) {
+    const k = P(t, press + i * BEAT, press + i * BEAT + 1.4);
+    if (k > 0 && k < 1) ring(bx, by, 150 + eOut3(k) * 420, C.live, 6 * (1 - k), (1 - k) * 0.7 * (1 - leave));
+  }
+  ctx.save();
+  ctx.translate(lerp(bx, 120, leave), lerp(by, 70, leave));
+  ctx.scale(s, s);
+  circle(0, 0, 170, C.white);
+  ring(0, 0, 170, C.line, 4);
+  const pressed = t > press;
+  circle(0, 0, pressed ? 70 : 110, C.live);
+  ctx.restore();
+  // 카피
+  const a = 1 - P(t, 6.65, 7.0);
+  kineticLine(["녹음", "버튼", "하나로,"], 900, 520, 4.25, t, { size: 104, c: C.ink, w: 900, a });
+  kineticLine(["회의록까지."], 900, 670, 5.3, t, { size: 150, c: C.indigo, fam: F.disp, a });
+  const cap = P(t, 5.4, 5.7);
+  txt("마이크와 시스템 오디오를 동시에 · 9개 언어", 904, 760, { size: 34, w: 500, c: C.muted, a: eOut3(cap) * a });
+  hud(t, false);
+}
+
+/* ── 3. 또·박·또·박 스탬프 (7–9.6s) ─────────────────────── */
+const SYL = ["또", "박", "또", "박"];
+function stampWord(t, cx, cy, size, t0, opt = {}) {
+  const step = opt.step ?? BEAT, spacing = size * 1.08;
+  const x0 = cx - spacing * 1.5;
+  SYL.forEach((ch, i) => {
+    const k = P(t, t0 + i * step, t0 + i * step + 0.32);
+    if (k <= 0) return;
+    const e = eOut5(k);
+    const sc = lerp(2.2, 1, e) * (1 + Math.sin(P(t, t0 + i * step + .1, t0 + i * step + .4) * Math.PI) * 0.04);
+    const rot = (i % 2 ? 1 : -1) * 0.06 * (1 - e) + (i % 2 ? 0.015 : -0.015);
+    const col = opt.c ?? (i % 2 ? C.indigo : C.ink);
+    txt(ch, x0 + i * spacing, cy, { fam: F.disp, size, c: col, align: "center", base: "middle", s: sc, rot, a: clamp(k * 3) * (opt.a ?? 1) });
+  });
+}
+function sceneStamp(t) {
+  bgPaper();
+  // 박자마다 번지는 잉크 원
+  for (let i = 0; i < 4; i++) {
+    const k = P(t, S.stamp + i * BEAT, S.stamp + i * BEAT + 0.9);
+    if (k > 0 && k < 1) circle(W / 2 + (i - 1.5) * 330, 500, eOut3(k) * 260, i % 2 ? C.lavD : C.lav, 1 - k);
+  }
+  const exit = eIO3(P(t, 9.15, 9.6));
+  ctx.save();
+  ctx.translate(0, -exit * 380);
+  const s = 1 - exit * 0.6;
+  ctx.translate(W / 2, 500); ctx.scale(s, s); ctx.translate(-W / 2, -500);
+  stampWord(t, W / 2, 500, 320, S.stamp);
+  ctx.restore();
+  hud(t, false);
+}
+
+/* ── 4. 실시간 전사 + 화자 분리 (9.6–13.5s) ──────────────── */
+const LINES = [
+  { ts: "00:12", who: "화자 A", name: "김 팀장", col: C.indigo, say: "이번 시안은 금요일까지 공유합시다.", t0: 10.15, keys: [["금요일", C.indigo]] },
+  { ts: "00:19", who: "화자 B", name: "박 매니저", col: C.mint, say: "예산은 1,200만 원 안에서 맞출게요.", t0: 11.0, keys: [["1,200만 원", C.mint]] },
+  { ts: "00:27", who: "화자 C", name: "이 디자이너", col: C.amber, say: "그럼 저는 목업부터 정리하겠습니다.", t0: 11.85, keys: [["목업", C.amber]] }
+];
+const TX = { x: 150, y: 400, row: 150 };
+function wave(t, x, y, w, h, col, amp = 1) {
+  const n = 96, bw = w / n;
+  for (let i = 0; i < n; i++) {
+    const v = Math.abs(noise1(i * 0.35 + t * 7)) * 0.7 + Math.abs(Math.sin(i * 0.21 + t * 5)) * 0.3;
+    const env = 0.35 + 0.65 * Math.abs(Math.sin(t * 2.3 + i * 0.05));
+    const bh = Math.max(6, v * env * h * amp);
+    fillRR(x + i * bw + 2, y - bh / 2, bw - 4, bh, 3, col, 0.85);
+  }
+}
+/* 문장을 키워드 기준으로 나눠 그림: keyMode = "ink" | "color" | "hide" */
+function drawSentence(L, sx, y, a, keyMode) {
+  const [kw] = L.keys[0];
+  const idx = L.say.indexOf(kw);
+  const pre = L.say.slice(0, idx), post = L.say.slice(idx + kw.length);
+  const pw = measure(pre, 500, 46), kwW = measure(kw, 500, 46);
+  txt(pre, sx, y, { size: 46, w: 500, c: C.ink, a });
+  if (keyMode !== "hide") txt(kw, sx + pw, y, { size: 46, w: keyMode === "color" ? 700 : 500, c: keyMode === "color" ? L.col : C.ink, a });
+  txt(post, sx + pw + kwW, y, { size: 46, w: 500, c: C.ink, a });
+}
+function transcriptLayout(t, alpha, hl, hideKeys = false) {
+  LINES.forEach((L, i) => {
+    const k = P(t, L.t0 - 0.3, L.t0);
+    if (k <= 0) return;
+    const y = TX.y + i * TX.row + (1 - eOut3(k)) * 40;
+    const a = eOut3(k) * alpha;
+    txt(L.ts, TX.x, y, { fam: F.mono, w: 500, size: 30, c: C.muted, a });
+    // 화자 칩: 처음엔 '화자 A' → 이름으로 교체
+    const named = P(t, L.t0 + 1.0, L.t0 + 1.25);
+    const label = named > 0.5 ? L.name : L.who;
+    const cw = measure(label, 700, 30) + 44;
+    fillRR(TX.x + 120, y - 34, cw, 46, 23, L.col, a * 0.14);
+    circle(TX.x + 142, y - 11, 7, L.col, a);
+    txt(label, TX.x + 158, y, { size: 30, w: 700, c: L.col, a: a * (named > 0.5 ? eOut3((named - .5) * 2) : 1 - named * 2) });
+    const shown = typed(L.say, t, L.t0, 22);
+    const sx = TX.x + 120 + cw + 28;
+    // 하이라이트 마커(키워드)
+    if (hl > 0 && !hideKeys) L.keys.forEach(([kw]) => {
+      const idx = L.say.indexOf(kw);
+      const pre = measure(L.say.slice(0, idx), 500, 46), kwW = measure(kw, 500, 46);
+      fillRR(sx + pre - 6, y - 40, (kwW + 12) * eOut3(hl), 54, 8, L.col, 0.2 * alpha);
+    });
+    if (shown.length >= L.say.length) drawSentence(L, sx, y, a, hideKeys ? "hide" : hl > 0.5 ? "color" : "ink");
+    else txt(shown, sx, y, { size: 46, w: 500, c: C.ink, a });
+    if (shown.length < L.say.length && Math.floor(t * 4) % 2 === 0) {
+      const cwid = measure(shown, 500, 46);
+      fillRR(sx + cwid + 4, y - 40, 4, 50, 2, C.indigo, a);
+    }
+  });
+}
+function keyStartPos(L, kw) {
+  const i = LINES.indexOf(L);
+  const y = TX.y + i * TX.row;
+  const label = L.name;
+  const cw = measure(label, 700, 30) + 44;
+  const sx = TX.x + 120 + cw + 28;
+  const idx = L.say.indexOf(kw);
+  return { x: sx + measure(L.say.slice(0, idx), 500, 46), y, size: 46 };
+}
+function sceneLive(t) {
+  bgPaper();
+  grid(0.04);
+  // 상단 스탬프 잔상(작게 고정된 워드마크)
+  stampWord(t, W / 2, 120, 92, -10, { a: 1 - P(t, 13.1, 13.5) });
+  // 웨이브폼
+  const wa = eOut3(P(t, S.live, S.live + 0.4)) * (1 - P(t, 13.0, 13.5));
+  ctx.save(); ctx.globalAlpha = wa;
+  const active = LINES.findIndex((L, i) => t >= L.t0 && (i === LINES.length - 1 || t < LINES[i + 1].t0));
+  wave(t, TX.x, 265, W - TX.x * 2, 70, active >= 0 ? LINES[active].col : C.indigo, active >= 0 && t < LINES[active].t0 + 0.8 ? 1 : 0.35);
+  ctx.restore();
+  transcriptLayout(t, 1, P(t, 13.0, 13.4));
+  // 라벨
+  const la = eOut3(P(t, 9.9, 10.3)) * (1 - P(t, 13.0, 13.4));
+  txt("실시간 전사 · AI 화자 분리", TX.x, 960, { size: 38, w: 700, c: C.indigo, a: la });
+  txt("화자를 자동으로 구분하고, 이름은 한 번만 바꾸면 됩니다.", TX.x, 1012, { size: 30, w: 400, c: C.muted, a: la });
+  hud(t, false);
+}
+
+/* ── 5. 회의록 조립 (13.5–18.5s) ─────────────────────────── */
+const DOC = { x: 900, y: 200, w: 870, h: 680 };
+const DOC_ROWS = [
+  { t: 14.35, kind: "h", s: "핵심 요약" },
+  { t: 14.5, kind: "p", s: "디자인 시안 일정과 예산 범위를 확정함." },
+  { t: 14.7, kind: "h", s: "결정사항" },
+  { t: 14.85, kind: "row", a: "시안 공유", b: "금요일", key: "금요일", col: C.indigo },
+  { t: 15.0, kind: "row", a: "예산 범위", b: "1,200만 원 이내", key: "1,200만 원", col: C.mint },
+  { t: 15.3, kind: "h", s: "Action Items" },
+  { t: 15.45, kind: "todo", a: "목업 정리", who: "이 디자이너", due: "금", key: "목업", col: C.amber },
+  { t: 15.6, kind: "todo", a: "시안 공유", who: "김 팀장", due: "금", col: C.indigo }
+];
+/* 키워드 비행: 해당 행이 나타나기 0.55초 전에 떠나 0.2초 뒤 도착 */
+const FLY = [[0, "금요일"], [1, "1,200만 원"], [2, "목업"]].map(([li, kw]) => {
+  const row = DOC_ROWS.find(r => r.key === kw);
+  return { L: LINES[li], kw, t0: row.t - 0.55, t1: row.t + 0.2 };
+});
+const arrival = kw => FLY.find(f => f.kw === kw).t1;
+function docRowY(i) { let y = DOC.y + 150; for (let j = 0; j < i; j++) y += DOC_ROWS[j].kind === "h" ? 64 : DOC_ROWS[j + 1] && DOC_ROWS[j + 1].kind === "h" ? 88 : 66; return y; }
+function keyEndPos(kw) {
+  const i = DOC_ROWS.findIndex(r => r.key === kw); const r = DOC_ROWS[i]; const y = docRowY(i);
+  if (r.kind === "row") return { x: DOC.x + 340, y, size: 38 };
+  return { x: DOC.x + 104, y, size: 38 };
+}
+function sceneDoc(t) {
+  bgPaper();
+  grid(0.035);
+  // 전사 잔상: 키워드만 남기고 흐려짐
+  const fade = P(t, 13.5, 14.2);
+  if (fade < 1) transcriptLayout(t, 1 - eOut3(fade), 1, true);
+  // 왼쪽 헤드라인 (잔상이 사라진 뒤)
+  const out = P(t, 18.1, 18.5);
+  kineticLine(["받아쓰기가", "아니라,"], 150, 470, 14.9, t, { size: 84, c: C.ink, w: 900, a: 1 - out });
+  kineticLine(["읽기", "좋은"], 150, 610, 15.3, t, { size: 120, c: C.indigo, fam: F.disp, a: 1 - out });
+  kineticLine(["회의록."], 150, 750, 15.55, t, { size: 120, c: C.indigo, fam: F.disp, a: 1 - out });
+  txt("설정한 주기마다 핵심·논의·결정·할 일로 구조화", 154, 830, { size: 30, w: 500, c: C.muted, a: eOut3(P(t, 16.0, 16.4)) * (1 - out) });
+  // 문서 카드
+  const ck = eOut5(P(t, 13.8, 14.35));
+  if (ck > 0) {
+    ctx.save();
+    ctx.globalAlpha = ck * (1 - out);
+    ctx.translate(DOC.x + DOC.w / 2, DOC.y + DOC.h / 2);
+    ctx.rotate((1 - ck) * 0.05);
+    ctx.translate(-(DOC.x + DOC.w / 2), -(DOC.y + DOC.h / 2) + (1 - ck) * 80);
+    ctx.save(); ctx.shadowColor = "rgba(42,35,128,.18)"; ctx.shadowBlur = 60; ctx.shadowOffsetY = 24;
+    fillRR(DOC.x, DOC.y, DOC.w, DOC.h, 26, C.white); ctx.restore();
+    ctx.strokeStyle = C.line; ctx.lineWidth = 2; rrect(DOC.x, DOC.y, DOC.w, DOC.h, 26); ctx.stroke();
+    txt("AI 회의록", DOC.x + 56, DOC.y + 82, { size: 44, w: 900, c: C.ink });
+    txt("디자인 시안 회의 · 00:00 – 41:08", DOC.x + 260, DOC.y + 80, { fam: F.mono, size: 22, w: 500, c: C.muted });
+    fillRR(DOC.x + 56, DOC.y + 110, DOC.w - 112, 2, 1, C.line);
+    DOC_ROWS.forEach((r, i) => {
+      const k = P(t, r.t, r.t + 0.3); if (k <= 0) return;
+      const y = docRowY(i), a = eOut3(k), dx = (1 - a) * 30;
+      const keyArrived = !r.key || t >= arrival(r.key);
+      if (r.kind === "h") { txt(r.s, DOC.x + 56 + dx, y, { size: 32, w: 900, c: C.indigoInk, a }); fillRR(DOC.x + 56, y + 14, 46 * a, 4, 2, C.indigo, a); }
+      if (r.kind === "p") txt(r.s, DOC.x + 56 + dx, y, { size: 34, w: 500, c: C.ink, a });
+      if (r.kind === "row") {
+        fillRR(DOC.x + 56, y - 42, DOC.w - 112, 58, 10, C.lav, a);
+        txt(r.a, DOC.x + 80 + dx, y, { size: 32, w: 700, c: C.ink, a });
+        if (keyArrived) txt(r.b, DOC.x + 340 + dx, y, { size: 38, w: 900, c: r.col, a });
+      }
+      if (r.kind === "todo") {
+        const ck2 = P(t, r.t + 0.9, r.t + 1.2);
+        ctx.save(); ctx.globalAlpha *= a;
+        ctx.strokeStyle = ck2 > 0 ? C.mint : C.muted; ctx.lineWidth = 4; rrect(DOC.x + 56, y - 36, 36, 36, 8); ctx.stroke();
+        if (ck2 > 0) { fillRR(DOC.x + 56, y - 36, 36, 36, 8, C.mint, eOut3(ck2)); ctx.strokeStyle = C.white; ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(DOC.x + 64, y - 18); ctx.lineTo(DOC.x + 72, y - 10); ctx.lineTo(DOC.x + 86, y - 28); ctx.stroke(); }
+        ctx.restore();
+        if (!r.key || keyArrived) txt(r.a, DOC.x + 104 + dx, y, { size: 38, w: 900, c: r.key ? r.col : C.ink, a });
+        const aw = measure(r.a, 900, 38);
+        txt(`${r.who} · ~${r.due}`, DOC.x + 124 + aw, y, { size: 30, w: 500, c: C.muted, a });
+      }
+    });
+    ctx.restore();
+  }
+  // 키워드 비행: 전사 → 회의록
+  FLY.forEach(({ L, kw, t0, t1 }) => {
+    if (t >= t1) return;
+    const k = P(t, t0, t1);
+    const a = keyStartPos(L, kw), b = keyEndPos(kw), e = eIO3(k);
+    const x = lerp(a.x, b.x, e), y = lerp(a.y, b.y, e) - Math.sin(e * Math.PI) * 160;
+    const size = lerp(a.size, b.size, e);
+    const glow = k > 0 && k < 1 ? Math.sin(k * Math.PI) : 0;
+    if (glow > 0) { ctx.save(); ctx.shadowColor = L.col; ctx.shadowBlur = 30 * glow; txt(kw, x, y, { size, w: 900, c: L.col, rot: glow * -0.08 }); ctx.restore(); }
+    else txt(kw, x, y, { size, w: k > 0 ? 900 : 700, c: L.col });
+  });
+  hud(t, false);
+}
+
+/* ── 6. AI 챗 (18.5–23.5s) ──────────────────────────────── */
+function sceneChat(t) {
+  bgPaper();
+  const wipe = eIO3(P(t, 18.5, 18.95));
+  ctx.fillStyle = C.lav; ctx.fillRect(0, 0, W, H * wipe);
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H * wipe); ctx.clip();
+  const out = P(t, 23.15, 23.5);
+  ctx.globalAlpha = 1 - out;
+  // 헤드라인
+  kineticLine(["다시", "듣지", "말고,"], W / 2, 220, 18.75, t, { size: 82, c: C.ink, align: "center", w: 900 });
+  kineticLine(["회의록에", "물어보세요."], W / 2, 340, 19.1, t, { size: 104, c: C.indigo, align: "center", fam: F.disp });
+  // 질문 버블
+  const q = "예산 얼마로 정했지?";
+  const qk = eBack(P(t, 19.6, 19.95), 2);
+  if (qk > 0) {
+    const qw = measure(q, 700, 44) + 80;
+    ctx.save(); ctx.translate(1500, 500); ctx.scale(qk, qk);
+    fillRR(-qw, -50, qw, 96, 34, C.indigo);
+    txt(typed(q, t, 19.7, 18), -qw + 40, 14, { size: 44, w: 700, c: C.white });
+    ctx.restore();
+  }
+  // 답변 버블
+  const ak = eOut5(P(t, 20.55, 20.9));
+  if (ak > 0) {
+    const ax = 420, ay = 600, aw = 1080, ah = 230;
+    ctx.save(); ctx.globalAlpha *= ak; ctx.translate(0, (1 - ak) * 40);
+    ctx.save(); ctx.shadowColor = "rgba(42,35,128,.14)"; ctx.shadowBlur = 40; ctx.shadowOffsetY = 16;
+    fillRR(ax, ay, aw, ah, 34, C.white); ctx.restore();
+    // AI 마크
+    circle(ax + 70, ay + 70, 30, C.indigo);
+    txt("또", ax + 70, ay + 72, { fam: F.disp, size: 30, c: C.white, align: "center", base: "middle" });
+    const ans = "예산은 1,200만 원 이내로 확정했어요.";
+    const shown = typed(ans, t, 20.9, 24);
+    txt(shown, ax + 130, ay + 86, { size: 46, w: 700, c: C.ink });
+    // 근거 칩
+    const ck = eBack(P(t, 21.85, 22.15), 2.4);
+    if (ck > 0) {
+      ctx.save(); ctx.translate(ax + 130, ay + 120); ctx.scale(ck, ck);
+      const pulse = t > 22.85 ? 1 + Math.sin(P(t, 22.85, 23.15) * Math.PI) * 0.08 : 1;
+      ctx.scale(pulse, pulse);
+      fillRR(0, 0, 330, 64, 32, C.mint, 0.14);
+      txt("▶  00:19 · 박 매니저", 26, 43, { size: 30, w: 700, c: C.mint });
+      ctx.restore();
+      txt("근거를 누르면 그 순간으로 이동", ax + 490, ay + 164, { size: 28, w: 500, c: C.muted, a: eOut3(P(t, 21.95, 22.2)) });
+    }
+    ctx.restore();
+  }
+  // 범위 토글
+  const scopes = ["이 회의", "폴더 전체", "프로젝트 전체"];
+  scopes.forEach((s, i) => {
+    const k = eOut3(P(t, 19.3 + i * 0.1, 19.6 + i * 0.1));
+    const on = i === 0 ? t < 21.6 : i === 1 ? t >= 21.6 && t < 22.1 : t >= 22.1;
+    const x = 420 + i * 230;
+    fillRR(x, 880, 210, 60, 30, on ? C.ink : C.white, k);
+    txt(s, x + 105, 920, { size: 28, w: 700, c: on ? C.white : C.ink2, a: k, align: "center" });
+  });
+  ctx.restore();
+  hud(t, false);
+}
+
+/* ── 7. 신뢰 (23.5–26.5s) ───────────────────────────────── */
+function sceneTrust(t) {
+  bgNight(t);
+  const words = [
+    { s: "음성도,", t0: 23.6 },
+    { s: "전사도,", t0: 23.85 },
+    { s: "요약도.", t0: 24.1 }
+  ];
+  const out = P(t, 26.15, 26.5);
+  ctx.save(); ctx.globalAlpha = 1 - out;
+  words.forEach((w, i) => {
+    const k = P(t, w.t0, w.t0 + 0.35); if (k <= 0) return;
+    const e = eOut5(k);
+    txt(w.s, W / 2 + (i - 1) * 500, 450, { fam: F.disp, size: 136, c: "#f0eef6", a: e, align: "center", sx: lerp(1.6, 1, e), sy: lerp(0.5, 1, e) });
+  });
+  // 서버 박스 안으로 들어가는 선
+  const bk = eOut3(P(t, 24.4, 24.8));
+  if (bk > 0) {
+    ctx.save(); ctx.globalAlpha *= bk;
+    ctx.strokeStyle = "#8b84ff"; ctx.lineWidth = 5; ctx.setLineDash([18, 14]); ctx.lineDashOffset = -t * 60;
+    rrect(200, 230, 1520, 200 + 420 * bk, 36); ctx.stroke(); ctx.setLineDash([]);
+    txt("OUR SERVER", 244, 290, { fam: F.mono, size: 24, w: 600, c: "#8b84ff", ls: 4 });
+    ctx.restore();
+  }
+  kineticLine(["전부", "우리", "서버", "안에서", "끝냅니다."], W / 2, 690, 24.6, t, { size: 96, c: ["#f0eef6", "#8b84ff", "#8b84ff", "#f0eef6", "#f0eef6"], align: "center", w: 900, gap: 0.08 });
+  const ck = eOut3(P(t, 25.0, 25.3));
+  txt("로컬 LLM · 온디바이스 STT · 기밀 구간 비가역 파기", W / 2, 790, { size: 34, w: 500, c: "#9b96ab", align: "center", a: ck });
+  ctx.restore();
+  // 엔딩으로 전환: 인디고 원이 퍼짐
+  const d = P(t, 26.1, 26.5);
+  if (d > 0) circle(W / 2, H / 2, eIn3(d) * Math.hypot(W, H) * 0.6, C.paper);
+  hud(t, true);
+}
+
+/* ── 8. 엔딩 (26.5–30s) ─────────────────────────────────── */
+function sceneEnd(t) {
+  bgPaper();
+  // 동심원 펄스
+  for (let i = 0; i < 3; i++) {
+    const k = P(t, 26.6 + i * 0.4, 28.4 + i * 0.4);
+    if (k > 0 && k < 1) ring(W / 2, 470, 120 + eOut3(k) * 760, C.lavD, 3, 1 - k);
+  }
+  stampWord(t, W / 2, 470, 240, 26.55, { step: 0.18 });
+  // REC 점 → 워드마크 옆 마침표처럼
+  const dk = eBack(P(t, 27.35, 27.6), 3);
+  circle(W / 2 + 240 * 1.08 * 1.5 + 240 * 0.5 + 26, 470 + 88, 22 * dk, C.live);
+  const lk = eOut3(P(t, 27.7, 28.1));
+  txt("회의에 집중하세요.", W / 2, 720, { size: 60, w: 900, c: C.ink, align: "center", a: lk });
+  const lk2 = eOut3(P(t, 28.05, 28.45));
+  txt("기록은 또박또박이 합니다.", W / 2, 810, { size: 60, w: 900, c: C.indigo, align: "center", a: lk2 });
+  const lk3 = eOut3(P(t, 28.6, 29.0));
+  txt("실시간 AI 회의록 · 셀프호스트", W / 2, 920, { fam: F.mono, size: 26, w: 600, c: C.muted, align: "center", a: lk3, ls: 4 });
+}
+
+/* ── 렌더 디스패치 (순수 함수: t → 프레임) ──────────────── */
+function render(t) {
+  t = clamp(t, 0, DUR);
+  ctx.save();
+  ctx.clearRect(0, 0, W, H);
+  if (t < S.rec) scenePain(t);
+  else if (t < S.stamp) sceneRec(t);
+  else if (t < S.live) sceneStamp(t);
+  else if (t < S.doc) sceneLive(t);
+  else if (t < S.chat) sceneDoc(t);
+  else if (t < S.trust) sceneChat(t);
+  else if (t < S.end) sceneTrust(t);
+  else sceneEnd(t);
+  // 진행 바 (하단 2px)
+  ctx.fillStyle = C.indigo; ctx.globalAlpha = 0.85; ctx.fillRect(0, H - 6, W * (t / DUR), 6);
+  ctx.restore();
+}
+window.renderAt = render;
+
+/* ── 사운드트랙: OfflineAudioContext로 30초를 한 번에 합성 ─ */
+let soundBuffer = null;
+function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+async function buildSoundtrack() {
+  const SR = 44100;
+  const oc = new OfflineAudioContext(2, SR * DUR, SR);
+  const master = oc.createGain(); master.gain.value = 0.9;
+  const comp = oc.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
+  master.connect(comp); comp.connect(oc.destination);
+  master.gain.setValueAtTime(0.9, DUR - 1.2); master.gain.linearRampToValueAtTime(0, DUR);
+  const r = rng(7);
+  const noiseBuf = oc.createBuffer(1, SR, SR); const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = r() * 2 - 1;
+
+  const kick = (at, g = 1) => {
+    const o = oc.createOscillator(), v = oc.createGain();
+    o.frequency.setValueAtTime(150, at); o.frequency.exponentialRampToValueAtTime(42, at + 0.14);
+    v.gain.setValueAtTime(0.0001, at); v.gain.exponentialRampToValueAtTime(0.95 * g, at + 0.005); v.gain.exponentialRampToValueAtTime(0.0001, at + 0.42);
+    o.connect(v); v.connect(master); o.start(at); o.stop(at + 0.45);
+  };
+  const noiseHit = (at, dur, g, type, f, q = 1) => {
+    const s = oc.createBufferSource(); s.buffer = noiseBuf;
+    const fl = oc.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+    const v = oc.createGain(); v.gain.setValueAtTime(g, at); v.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    s.connect(fl); fl.connect(v); v.connect(master); s.start(at, r() * 0.5); s.stop(at + dur + 0.02);
+  };
+  const hat = (at, g = 0.12) => noiseHit(at, 0.05, g, "highpass", 8000);
+  const snap = (at, g = 0.35) => noiseHit(at, 0.16, g, "bandpass", 1800, 0.8);
+  const tick = (at, g = 0.05) => noiseHit(at, 0.018, g, "bandpass", 4200, 3);
+  const tone = (at, freq, dur, g, type = "sine", attack = 0.01) => {
+    const o = oc.createOscillator(), v = oc.createGain(); o.type = type; o.frequency.value = freq;
+    v.gain.setValueAtTime(0.0001, at); v.gain.exponentialRampToValueAtTime(g, at + attack); v.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(v); v.connect(master); o.start(at); o.stop(at + dur + 0.05);
+  };
+  const bass = (at, freq, dur, g = 0.22) => {
+    const o = oc.createOscillator(), fl = oc.createBiquadFilter(), v = oc.createGain();
+    o.type = "sawtooth"; o.frequency.value = freq; fl.type = "lowpass"; fl.frequency.setValueAtTime(900, at); fl.frequency.exponentialRampToValueAtTime(180, at + dur);
+    v.gain.setValueAtTime(0.0001, at); v.gain.exponentialRampToValueAtTime(g, at + 0.02); v.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(fl); fl.connect(v); v.connect(master); o.start(at); o.stop(at + dur + 0.05);
+  };
+  const pad = (at, freqs, dur, g = 0.05) => freqs.forEach(f => {
+    [-6, 6].forEach(det => {
+      const o = oc.createOscillator(), fl = oc.createBiquadFilter(), v = oc.createGain();
+      o.type = "sawtooth"; o.frequency.value = f; o.detune.value = det; fl.type = "lowpass"; fl.frequency.value = 1400;
+      v.gain.setValueAtTime(0.0001, at); v.gain.exponentialRampToValueAtTime(g, at + dur * 0.35); v.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o.connect(fl); fl.connect(v); v.connect(master); o.start(at); o.stop(at + dur + 0.05);
+    });
+  });
+  const whoosh = (at, dur = 0.5, g = 0.25) => {
+    const s = oc.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+    const fl = oc.createBiquadFilter(); fl.type = "bandpass"; fl.Q.value = 1.2;
+    fl.frequency.setValueAtTime(300, at); fl.frequency.exponentialRampToValueAtTime(5000, at + dur);
+    const v = oc.createGain(); v.gain.setValueAtTime(0.0001, at); v.gain.exponentialRampToValueAtTime(g, at + dur * 0.8); v.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    s.connect(fl); fl.connect(v); v.connect(master); s.start(at); s.stop(at + dur + 0.05);
+  };
+
+  // 1. 문제 제기: 낮은 드론 + 심장박동
+  pad(0, [110, 164.81], 4.0, 0.035);
+  [0.15, 0.85, 1.35, 1.85, 2.35, 2.85].forEach((at, i) => kick(at, 0.35 + i * 0.05));
+  [0.15, 0.27, 0.85, 1.01, 1.17].forEach(at => tick(at, 0.08));
+  whoosh(3.3, 0.7, 0.3);
+  // 2. 녹음 버튼
+  kick(4.0, 0.8); tone(4.6, 880, 0.25, 0.18, "triangle"); tone(4.6, 1320, 0.35, 0.08); snap(4.6, 0.25);
+  // 3. 또박또박 스탬프
+  [0, 1, 2, 3].forEach(i => { const at = S.stamp + i * BEAT; kick(at, 1); snap(at, 0.42); tone(at, [392, 523.25, 392, 659.25][i], 0.3, 0.12, "square", 0.004); });
+  // 그루브: 7.0 ~ 26.5
+  const prog = [55, 43.65, 65.41, 49]; // A1 F1 C2 G1
+  for (let bar = 0; bar < 10; bar++) {
+    const at = S.stamp + 2.0 + bar * 2.0; if (at >= S.end) break;
+    bass(at, prog[bar % 4], 0.9); bass(at + 1.0, prog[bar % 4], 0.45, 0.16); bass(at + 1.5, prog[bar % 4] * 2, 0.4, 0.12);
+    pad(at, [prog[bar % 4] * 4, prog[bar % 4] * 5, prog[bar % 4] * 6], 2.0, 0.022);
+  }
+  for (let at = S.stamp + 2.0; at < S.end - 0.01; at += BEAT) {
+    const inTrust = at >= S.trust;
+    kick(at, inTrust ? 0.7 : 0.85);
+    hat(at + BEAT / 2, 0.11); hat(at + BEAT / 4, 0.04); hat(at + 3 * BEAT / 4, 0.04);
+    if (Math.round((at - S.stamp) / BEAT) % 2 === 1) snap(at, 0.2);
+  }
+  // 전사 타이핑 틱
+  LINES.forEach(L => { const n = Array.from(L.say).length; for (let i = 0; i < n; i += 2) tick(L.t0 + i / 22, 0.045); });
+  // 화자 이름 확정 '띵'
+  LINES.forEach(L => tone(L.t0 + 1.1, 1567.98, 0.25, 0.06));
+  // 회의록 조립
+  whoosh(13.3, 0.5, 0.22);
+  FLY.forEach(f => { whoosh(f.t0, f.t1 - f.t0, 0.14); tone(f.t1, 987.77, 0.18, 0.08, "triangle"); });
+  DOC_ROWS.filter(r => r.kind === "todo").forEach(r => { const at = r.t + 0.9; tone(at, 1318.5, 0.2, 0.08); tone(at + 0.06, 1975.5, 0.25, 0.05); });
+  // 챗
+  whoosh(18.35, 0.6, 0.25);
+  { const q = "예산 얼마로 정했지?"; for (let i = 0; i < q.length; i++) tick(19.7 + i / 18, 0.05); }
+  { const a = "예산은 1,200만 원 이내로 확정했어요."; for (let i = 0; i < a.length; i += 2) tick(20.9 + i / 24, 0.04); }
+  tone(21.85, 1046.5, 0.3, 0.1, "triangle"); tone(22.85, 1567.98, 0.4, 0.09);
+  // 신뢰
+  whoosh(23.3, 0.5, 0.28);
+  [23.6, 23.85, 24.1].forEach(at => { snap(at, 0.3); tone(at, 220, 0.3, 0.1, "square", 0.004); });
+  // 엔딩
+  whoosh(25.9, 0.6, 0.3);
+  [0, 1, 2, 3].forEach(i => { const at = 26.55 + i * 0.18; kick(at, 0.7); snap(at, 0.3); });
+  [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => { tone(27.35 + i * 0.03, f, 2.5, 0.07); tone(27.35 + i * 0.03, f * 2, 1.2, 0.02); });
+  pad(27.3, [130.81, 196, 261.63, 329.63], 2.7, 0.04);
+  bass(27.35, 32.7, 2.4, 0.24);
+
+  return oc.startRendering();
+}
+
+/* ── 플레이어: 오디오 시계를 영상 시계로 사용 ───────────── */
+const ui = {
+  play: document.getElementById("play"), playLbl: document.getElementById("playLbl"), playIcon: document.getElementById("playIcon"),
+  restart: document.getElementById("restart"), seek: document.getElementById("seek"), time: document.getElementById("time"),
+  mute: document.getElementById("mute"), muteLbl: document.getElementById("muteLbl"), muteIcon: document.getElementById("muteIcon"),
+  rec: document.getElementById("rec"), recLbl: document.getElementById("recLbl"), big: document.getElementById("bigplay"),
+  badge: document.getElementById("recbadge"), status: document.getElementById("status"),
+  result: document.getElementById("result"), out: document.getElementById("out"), resultInfo: document.getElementById("resultInfo"),
+  save: document.getElementById("save"), saveStatus: document.getElementById("saveStatus")
+};
+const PLAY_D = "M6 4l15 8-15 8z", PAUSE_D = "M6 4h4v16H6zM14 4h4v16h-4z";
+const SND_ON = "M4 9v6h4l5 5V4L8 9H4zm12.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z";
+const SND_OFF = "M4 9v6h4l5 5V4L8 9H4zm12.6-.4L15.2 10l2 2-2 2 1.4 1.4 2-2 2 2 1.4-1.4-2-2 2-2-1.4-1.4-2 2z";
+
+let ac = null, outGain = null, recDest = null, src = null;
+let playing = false, startAt = 0, offset = 0, muted = false, fresh = true;
+let soundReady = null, starting = false;
+let recorder = null, chunks = [], recording = false, lastBlob = null, lastExt = "webm";
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function ensureAudio() {
+  if (ac) return;
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  outGain = ac.createGain(); outGain.connect(ac.destination);
+  recDest = ac.createMediaStreamDestination();
+}
+function now() { return playing ? clamp(ac.currentTime - startAt + offset, 0, DUR) : offset; }
+function setPlayUI() {
+  ui.playIcon.firstElementChild.setAttribute("d", playing ? PAUSE_D : PLAY_D);
+  ui.playLbl.textContent = playing ? "일시정지" : "재생";
+  ui.play.setAttribute("aria-label", playing ? "일시정지" : "재생");
+  ui.big.hidden = playing || recording;
+}
+function startSource(at) {
+  stopSource();
+  if (!soundBuffer) return;
+  src = ac.createBufferSource(); src.buffer = soundBuffer;
+  src.connect(outGain); src.connect(recDest);
+  src.start(0, at);
+}
+function stopSource() { if (src) { try { src.stop(); } catch (e) {} src.disconnect(); src = null; } }
+/* 사운드트랙이 아직 합성 중이면 끝날 때까지 기다렸다가 소리와 함께 시작 */
+async function waitSound() {
+  if (soundBuffer || !soundReady) return;
+  ui.status.textContent = "사운드트랙을 준비하는 중입니다… 곧 소리와 함께 시작합니다.";
+  await soundReady;
+  setReadyStatus();
+}
+async function play(from) {
+  if (starting) return;
+  starting = true;
+  try {
+    ensureAudio();
+    if (ac.state === "suspended") await ac.resume();
+    await waitSound();
+    if (from !== undefined) offset = from;
+    if (fresh || offset >= DUR - 0.02) offset = 0;
+    fresh = false;
+    startSource(offset);
+    startAt = ac.currentTime; playing = true; setPlayUI();
+  } finally { starting = false; }
+}
+function pause() { if (!playing) return; offset = now(); playing = false; stopSource(); setPlayUI(); }
+function seekTo(v) { fresh = false; const was = playing; if (was) { pause(); } offset = clamp(v, 0, DUR); render(offset); updateTime(offset); if (was) play(); }
+function updateTime(t) { ui.seek.value = t.toFixed(2); ui.time.textContent = `${t.toFixed(1).padStart(4, "0")} / 30.0`; }
+
+function loop() {
+  const t = now();
+  if (playing) {
+    render(t); updateTime(t);
+    if (t >= DUR) {
+      playing = false; offset = DUR; stopSource(); setPlayUI();
+      if (recording) stopRecording();
+    }
+  }
+  requestAnimationFrame(loop);
+}
+
+/* ── 녹화: canvas 스트림 + 사운드트랙 → MediaRecorder ───── */
+function pickMime() {
+  const c = ["video/mp4;codecs=avc1.42E01E,mp4a.40.2", "video/mp4;codecs=avc1,opus", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
+  return c.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+}
+async function startRecording() {
+  if (!window.MediaRecorder || !cv.captureStream) { ui.status.textContent = "이 브라우저는 캔버스 녹화를 지원하지 않습니다. Chrome·Edge·Safari 최신 버전에서 열어 주세요."; return; }
+  ensureAudio();
+  if (ac.state === "suspended") await ac.resume();
+  pause();
+  await waitSound();
+  offset = 0; render(0);
+  const mime = pickMime();
+  lastExt = mime.startsWith("video/mp4") ? "mp4" : "webm";
+  const stream = new MediaStream([...cv.captureStream(30).getVideoTracks(), ...recDest.stream.getAudioTracks()]);
+  chunks = [];
+  try { recorder = new MediaRecorder(stream, { mimeType: mime || undefined, videoBitsPerSecond: 16_000_000, audioBitsPerSecond: 192_000 }); }
+  catch (e) { recorder = new MediaRecorder(stream); lastExt = (recorder.mimeType || "").includes("mp4") ? "mp4" : "webm"; }
+  recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  recorder.onstop = finishRecording;
+  recording = true;
+  ui.rec.classList.add("on"); ui.recLbl.textContent = "녹화 중지"; ui.badge.hidden = false;
+  ui.play.disabled = ui.restart.disabled = ui.seek.disabled = true;
+  ui.status.innerHTML = "<b>녹화 중입니다.</b> 30초 동안 이 탭을 앞에 띄워 두세요. 끝나면 자동으로 멈춥니다.";
+  recorder.start(250);
+  await play(0);
+}
+function stopRecording() {
+  if (!recording) return;
+  recording = false;
+  pause();
+  if (recorder && recorder.state !== "inactive") recorder.stop();
+  ui.rec.classList.remove("on"); ui.recLbl.textContent = "녹화"; ui.badge.hidden = true;
+  ui.play.disabled = ui.restart.disabled = ui.seek.disabled = false;
+  setPlayUI();
+}
+function finishRecording() {
+  const type = recorder.mimeType || (lastExt === "mp4" ? "video/mp4" : "video/webm");
+  lastBlob = new Blob(chunks, { type });
+  ui.out.src = URL.createObjectURL(lastBlob);
+  const mb = (lastBlob.size / 1048576).toFixed(1);
+  ui.resultInfo.innerHTML = `<b>녹화 완료</b> · ${lastExt.toUpperCase()} · ${mb} MB`;
+  ui.result.hidden = false; ui.saveStatus.textContent = "";
+  ui.status.textContent = "녹화본을 미리 보고, '파일로 저장'을 눌러 내려받으세요.";
+}
+async function saveFile() {
+  if (!lastBlob) return;
+  const filename = `ddobakddobak-30s.${lastExt}`;
+  const cap = window.claude && typeof window.claude.use === "function" ? await window.claude.use("downloads").catch(() => null) : null;
+  if (cap) {
+    try { await cap.save({ filename, data: lastBlob }); ui.saveStatus.textContent = "저장했습니다."; }
+    catch (e) {
+      const code = e && e.code;
+      ui.saveStatus.textContent = code === "declined" ? "저장을 취소했습니다." : code === "rate_limited" ? "이미 저장 창이 열려 있습니다. 잠시 후 다시 눌러 주세요." : "이 화면에서는 저장할 수 없습니다. 페이지를 브라우저에서 직접 열어 녹화해 주세요.";
+    }
+    return;
+  }
+  const a = document.createElement("a"); a.href = ui.out.src; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  ui.saveStatus.textContent = "다운로드를 시작했습니다.";
+}
+
+/* ── 이벤트 ─────────────────────────────────────────────── */
+ui.play.addEventListener("click", () => playing ? pause() : play());
+ui.big.addEventListener("click", () => play());
+ui.restart.addEventListener("click", () => { pause(); play(0); });
+ui.seek.addEventListener("input", e => seekTo(parseFloat(e.target.value)));
+ui.mute.addEventListener("click", () => {
+  muted = !muted; ensureAudio(); outGain.gain.value = muted ? 0 : 1;
+  ui.muteLbl.textContent = muted ? "소리 끔" : "소리 켬"; ui.mute.setAttribute("aria-pressed", String(muted));
+  ui.muteIcon.setAttribute("d", muted ? SND_OFF : SND_ON);
+});
+ui.rec.addEventListener("click", () => recording ? stopRecording() : startRecording());
+ui.save.addEventListener("click", saveFile);
+document.addEventListener("keydown", e => {
+  if (e.code === "Space" && !recording && !/INPUT|BUTTON/.test(document.activeElement.tagName)) { e.preventDefault(); playing ? pause() : play(); }
+});
+
+/* ── 부팅: 한글 웹폰트 서브셋까지 로드한 뒤 포스터 프레임 ── */
+const POSTER = 27.9;
+const ALL_TEXT = [
+  "회의 끝나고, 누가 뭐라고 했더라? 결정했나? 담당자는? 마감이 언제였지 그 숫자 뭐였더라 누가 하기로 했지",
+  "녹음 버튼 하나로, 회의록까지. 마이크와 시스템 오디오를 동시에 · 9개 언어",
+  "또박또박 말하는 그대로, 실시간으로 받아 적습니다.",
+  LINES.map(L => L.ts + L.who + L.name + L.say).join(""),
+  "실시간 전사 · AI 화자 분리 화자를 자동으로 구분하고, 이름은 한 번만 바꾸면 됩니다.",
+  "받아쓰기가 아니라, 읽기 좋은 회의록. 설정한 주기마다 핵심·논의·결정·할 일로 구조화",
+  "AI 회의록 디자인 시안 회의 · 00:00 – 41:08 " + DOC_ROWS.map(r => (r.s || "") + (r.a || "") + (r.b || "") + (r.who || "") + (r.due || "") + "~").join(""),
+  "다시 듣지 말고, 회의록에 물어보세요. 예산 얼마로 정했지? 예산은 1,200만 원 이내로 확정했어요. ▶ 00:19 · 박 매니저 근거를 누르면 그 순간으로 이동 이 회의 폴더 전체 프로젝트 전체",
+  "음성도, 전사도, 요약도. 우리 서버 전부 우리 서버 안에서 끝냅니다. 로컬 LLM · 온디바이스 STT · 기밀 구간 비가역 파기",
+  "회의에 집중하세요. 기록은 또박또박이 합니다. 실시간 AI 회의록 · 셀프호스트 DDOBAK·DDOBAK REC 0123456789:"
+].join(" ");
+function setReadyStatus() {
+  ui.status.innerHTML = soundBuffer
+    ? "준비됐습니다. <b>재생</b>으로 보고, <b>녹화</b>를 누르면 처음부터 30초를 소리와 함께 영상 파일로 담습니다."
+    : "준비됐습니다. 이 브라우저에서는 사운드트랙을 만들지 못해 영상만 재생합니다.";
+}
+async function boot() {
+  render(POSTER); offset = POSTER; updateTime(POSTER);
+  loop();
+  // 사운드트랙 합성은 글꼴 로딩과 동시에 시작
+  soundReady = buildSoundtrack().then(b => { soundBuffer = b; }, () => { soundBuffer = null; });
+  try {
+    const specs = ['400 100px "Black Han Sans"', '400 100px "Noto Sans KR"', '500 100px "Noto Sans KR"', '700 100px "Noto Sans KR"', '900 100px "Noto Sans KR"', '500 100px "IBM Plex Mono"', '600 100px "IBM Plex Mono"'];
+    await Promise.race([Promise.all(specs.map(s => document.fonts.load(s, ALL_TEXT))), new Promise(r => setTimeout(r, 8000))]);
+  } catch (e) {}
+  if (!playing) render(POSTER);
+  if (!soundBuffer && !starting) ui.status.textContent = "사운드트랙을 합성하는 중입니다…";
+  await soundReady;
+  if (!playing && !starting) setReadyStatus();
+}
+boot();
+})();
+</script>
+</html>
