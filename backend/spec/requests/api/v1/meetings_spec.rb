@@ -1129,7 +1129,7 @@ RSpec.describe "Api::V1::Meetings", type: :request do
 
     it "전사 실패로 pending이 된 회의(트랜스크립트 0건)도 재생성할 수 있다" do
       meeting = create(:meeting, project: project, creator: user, status: "pending", audio_file_path: audio_path)
-      expect(FileTranscriptionJob).to receive(:perform_later).with(meeting.id, true)
+      expect(FileTranscriptionJob).to receive(:perform_later).with(meeting.id)
 
       post "/api/v1/meetings/#{meeting.id}/regenerate_stt"
 

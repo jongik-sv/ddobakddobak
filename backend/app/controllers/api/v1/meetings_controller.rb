@@ -486,7 +486,7 @@ module Api
         @meeting.purge_transcription_content!
 
         @meeting.update!(status: :transcribing, transcription_progress: 0, last_refined_seq: 0)
-        FileTranscriptionJob.perform_later(@meeting.id, true)
+        FileTranscriptionJob.perform_later(@meeting.id)
 
         render json: { meeting: meeting_json(@meeting) }
       end

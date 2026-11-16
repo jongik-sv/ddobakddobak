@@ -141,22 +141,17 @@ RSpec.describe FileTranscriptionJob, type: :job do
       allow(AppSettings).to receive(:diarization_config).and_return({ "enable" => true, "clustering_threshold" => 0.6 })
     end
 
-    it "회의록 자동생성을 스킵하고 completed로 만든다" do
-      # 상단 before의 generate_summary allow 스텁을 부정 기대로 대체해 실제 분기를 검증
-      expect_any_instance_of(described_class).not_to receive(:generate_summary)
+    it "화자분리 ON 이어도 요약을 생성하고 completed로 만든다" do
+      expect_any_instance_of(described_class).to receive(:generate_summary)
       described_class.perform_now(meeting.id)
       expect(meeting.reload.status).to eq("completed")
     end
 
-    it "force_summary=true 이면 화자분리 ON 이어도 요약을 생성한다" do
-      expect_any_instance_of(described_class).to receive(:generate_summary)
-      described_class.perform_now(meeting.id, true)
-      expect(meeting.reload.status).to eq("completed")
-    end
-
-    it "force_summary=false 이면 기존대로 요약을 호출하지 않는다" do
-      expect_any_instance_of(described_class).not_to receive(:generate_summary)
-      described_class.perform_now(meeting.id, false)
+    [true, false].each do |legacy_arg|
+      it "구 큐 잡의 force_summary=#{legacy_arg} 인자와 무관하게 요약을 생성한다" do
+        expect_any_instance_of(described_class).to receive(:generate_summary)
+        described_class.perform_now(meeting.id, legacy_arg)
+      end
     end
 
     it "expected_participants가 있으면 diarization_config에 expected_speakers로 넣어 보낸다" do
