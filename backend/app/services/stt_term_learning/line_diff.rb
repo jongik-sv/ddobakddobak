@@ -22,7 +22,8 @@ module SttTermLearning
     end
 
     # 연속된 비-equal op 묶음 -> [{removed: [String], added: [String]}]
-    # 공백만 다른 줄 쌍(removed[i] ↔ added[i])과 빈 줄은 빼고, 남는 줄이 없는 hunk 는 버린다.
+    # 공백만 다른 줄 쌍(removed[i] ↔ added[i])과 빈 줄은 빼고, 남은 결과가 한쪽뿐(추가만·삭제만)이면
+    # 교정 쌍이 될 수 없으므로 hunk 를 버린다.
     def hunks(ops)
       ops.chunk_while { |x, y| x[:op] != "equal" && y[:op] != "equal" }
          .reject { |group| group.first[:op] == "equal" }
@@ -45,7 +46,7 @@ module SttTermLearning
       removed = removed.each_with_index.select { |l, i| keep[i] && l.strip.present? }.map(&:first)
       added = added.each_with_index.select { |l, i| keep[i] && l.strip.present? }.map(&:first)
 
-      return nil if removed.empty? && added.empty?
+      return nil if removed.empty? || added.empty?
       { removed: removed, added: added }
     end
 

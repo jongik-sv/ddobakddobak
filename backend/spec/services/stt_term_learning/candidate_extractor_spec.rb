@@ -41,15 +41,30 @@ RSpec.describe SttTermLearning::CandidateExtractor do
       expect(llm).to have_received(:extract_stt_misrecognitions).with(satisfy { |t| !t.include?("⟦") }, anything)
     end
 
-    it "hunk 텍스트를 MAX_HUNKS_CHARS 에서 자른다" do
-      long_ai = (1..800).map { |i| "우판 압연 #{i}번 줄" }.join("\n")
-      long_human = (1..800).map { |i| "후판 압연 #{i}번 줄" }.join("\n")
+    it "hunk 텍스트는 MAX_HUNKS_CHARS 안에서 hunk 단위로 담는다(줄 중간에서 자르지 않음)" do
+      # equal 줄로 끊어 hunk 를 800개 만든다.
+      long_ai = (1..800).map { |i| "공통 #{i}\n우판 압연 #{i}번 줄" }.join("\n")
+      long_human = (1..800).map { |i| "공통 #{i}\n후판 압연 #{i}번 줄" }.join("\n")
       run.update!(ai_text: long_ai, human_text: long_human)
 
       described_class.new(run).call
 
-      expect(llm).to have_received(:extract_stt_misrecognitions)
-        .with(satisfy { |t| t.length <= described_class::MAX_HUNKS_CHARS }, anything)
+      expect(llm).to have_received(:extract_stt_misrecognitions).with(satisfy { |t|
+        blocks = t.split("\n\n")
+        t.length <= described_class::MAX_HUNKS_CHARS &&
+          blocks.size > 1 &&
+          blocks.each_with_index.all? { |b, i| b == "- 우판 압연 #{i + 1}번 줄\n+ 후판 압연 #{i + 1}번 줄" }
+      }, anything)
+    end
+
+    it "다음 hunk 가 예산을 넘기면 거기서 멈춘다(첫 hunk 가 예산보다 크면 LLM 을 부르지 않는다)" do
+      big = "가" * (described_class::MAX_HUNKS_CHARS + 10)
+      run.update!(ai_text: "x\n우판#{big}\ny", human_text: "x\n후판#{big}\ny")
+
+      result = described_class.new(run).call
+
+      expect(LlmService).not_to have_received(:new)
+      expect(result[:llm_skipped_reason]).to be_nil
     end
 
     it "LLM 결과를 Candidate(source llm_diff) 로 정규화, category 빈값은 STT, definition 60자 컷" do
@@ -137,6 +152,61 @@ RSpec.describe SttTermLearning::CandidateExtractor do
       meeting.glossary_entries.create!(from_text: "씨.엘", to_text: "CGL", match_type: "regex")
 
       expect(described_class.new(run).call[:candidates].select { _1.source == "feedback" }).to eq([])
+    end
+
+    it "llm_model 은 추출 호출 '후'에 읽는다(CLI 폴백으로 config 가 바뀔 수 있음)" do
+      model = "claude-cli"
+      allow(llm).to receive(:model_name) { model }
+      allow(llm).to receive(:extract_stt_misrecognitions) { model = "fallback-model"; [] }
+
+      expect(described_class.new(run).call[:llm_model]).to eq("fallback-model")
+    end
+
+    it "LlmService.new 가 일반 예외를 내면 llm_skipped_reason=llm_failed, feedback 후보는 유지" do
+      allow(LlmService).to receive(:new).and_raise(StandardError, "boom")
+      meeting.glossary_entries.create!(from_text: "씨지엘", to_text: "CGL", match_type: "literal")
+      expect(Rails.logger).to receive(:error).with(/boom/)
+
+      result = described_class.new(run).call
+
+      expect(result[:llm_skipped_reason]).to eq("llm_failed")
+      expect(result[:llm_model]).to be_nil
+      expect(result[:candidates].map { [ _1.wrong, _1.source ] }).to eq([ [ "씨지엘", "feedback" ] ])
+    end
+
+    it "추출 결과가 nil 이면 llm_skipped_reason=llm_failed" do
+      allow(llm).to receive(:extract_stt_misrecognitions).and_return(nil)
+      expect(described_class.new(run).call[:llm_skipped_reason]).to eq("llm_failed")
+    end
+
+    it "추출 결과가 [] 이면 llm_skipped_reason 은 nil" do
+      allow(llm).to receive(:extract_stt_misrecognitions).and_return([])
+      result = described_class.new(run).call
+      expect(result[:llm_skipped_reason]).to be_nil
+      expect(result[:llm_model]).to eq("test-model")
+    end
+
+    it "category 가 문자열이 아니면 STT, 30자로 자른다. wrong/correct 가 문자열이 아니면 버린다" do
+      allow(llm).to receive(:extract_stt_misrecognitions).and_return([
+        { "wrong" => "a1", "correct" => "b1", "category" => { "x" => 1 } },
+        { "wrong" => "a2", "correct" => "b2", "category" => "분" * 40 },
+        { "wrong" => 123, "correct" => "b3" },
+        { "wrong" => "a4", "correct" => [ "b4" ] }
+      ])
+
+      c = described_class.new(run).call[:candidates]
+      expect(c.map(&:wrong)).to eq(%w[a1 a2])
+      expect(c[0].category).to eq("STT")
+      expect(c[1].category).to eq("분" * 30)
+    end
+
+    it "LLM 항목은 100개까지만 본다" do
+      items = (1..120).map { |i| { "wrong" => "w#{i}", "correct" => "c#{i}" } }
+      allow(llm).to receive(:extract_stt_misrecognitions).and_return(items)
+
+      c = described_class.new(run).call[:candidates]
+      expect(c.size).to eq(100)
+      expect(c.last.wrong).to eq("w100")
     end
 
     it "NotConfiguredError 면 llm_skipped_reason=llm_not_configured, feedback 후보는 유지" do

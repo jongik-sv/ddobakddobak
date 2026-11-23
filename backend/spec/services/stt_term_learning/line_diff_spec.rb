@@ -52,6 +52,16 @@ RSpec.describe SttTermLearning::LineDiff do
       expect(described_class.hunks(ops)).to eq([ { removed: [ "우판 압연" ], added: [ "후판 압연" ] } ])
     end
 
+    it "한쪽만 있는 hunk(줄 추가만·삭제만)는 제외한다" do
+      expect(described_class.hunks(described_class.ops("a\nc", "a\n새 줄\nc"))).to eq([])
+      expect(described_class.hunks(described_class.ops("a\n지운 줄\nc", "a\nc"))).to eq([])
+    end
+
+    it "공백만 다른 쌍을 빼고 한쪽만 남는 hunk 도 제외한다" do
+      ops = described_class.ops("a\n다음  줄\nc", "a\n다음 줄\n새 줄\nc")
+      expect(described_class.hunks(ops)).to eq([])
+    end
+
     it "인용 마커만 다른 줄은 hunk 가 없다" do
       ops = described_class.ops("- 우판 ⟦t:1/s:A⟧\n- 둘", "- 우판 ⟦t:9/s:B⟧\n- 둘")
       expect(described_class.hunks(ops)).to eq([])

@@ -8,8 +8,11 @@ module SttTermLearning
   class CandidateExtractor
     MAX_HUNKS_CHARS = 12_000
     HINT_LIMIT = 30
+    LLM_ITEMS_MAX = 100
     DEFINITION_MAX = 60
+    CATEGORY_MAX = 30
     DEFAULT_CATEGORY = "STT".freeze
+    HUNK_SEPARATOR = "\n\n".freeze
 
     def initialize(run)
       @run = run
@@ -17,6 +20,8 @@ module SttTermLearning
     end
 
     # -> { candidates: [Candidate], llm_model: String|nil, llm_skipped_reason: String|nil }
+    # llm_skipped_reason: "llm_not_configured" | "llm_failed" | nil
+    #   (diff 가 없어 LLM 을 부르지 않은 경우와 LLM 이 [] 를 낸 경우는 nil)
     def call
       llm_model = nil
       llm_skipped_reason = nil
@@ -26,10 +31,19 @@ module SttTermLearning
       if hunks_text.present?
         begin
           llm = LlmService.new(llm_config: @meeting.creator&.effective_llm_config)
+          items = llm.extract_stt_misrecognitions(hunks_text, build_hints_text)
+          # 호출 중 CLI 폴백으로 @config 가 바뀔 수 있어 모델명은 호출 뒤에 읽는다.
           llm_model = llm.model_name
-          llm_candidates = normalize_llm(llm.extract_stt_misrecognitions(hunks_text, build_hints_text))
+          if items.nil?
+            llm_skipped_reason = "llm_failed"
+          else
+            llm_candidates = normalize_llm(items)
+          end
         rescue LlmService::NotConfiguredError
           llm_skipped_reason = "llm_not_configured"
+        rescue => e
+          Rails.logger.error "[SttTermLearning::CandidateExtractor] run=#{@run.id} LLM 실패: #{e.class}: #{e.message}"
+          llm_skipped_reason = "llm_failed"
         end
       end
 
@@ -38,14 +52,19 @@ module SttTermLearning
 
     private
 
+    # hunk 를 통째로 MAX_HUNKS_CHARS 안에 담는다. 다음 hunk 가 예산을 넘기면 거기서 멈추고
+    # 줄 중간에서 자르지 않는다(첫 hunk 가 예산보다 크면 빈 문자열 → LLM 호출 안 함).
     def build_hunks_text
       hunks = LineDiff.hunks(LineDiff.ops(@run.ai_text, @run.human_text))
-      return "" if hunks.empty?
 
-      text = hunks.map do |h|
-        (h[:removed].map { "- #{_1}" } + h[:added].map { "+ #{_1}" }).join("\n")
-      end.join("\n\n")
-      text[0, MAX_HUNKS_CHARS]
+      text = +""
+      hunks.each do |h|
+        block = (h[:removed].map { "- #{_1}" } + h[:added].map { "+ #{_1}" }).join("\n")
+        addition = text.empty? ? block : HUNK_SEPARATOR + block
+        break if text.length + addition.length > MAX_HUNKS_CHARS
+        text << addition
+      end
+      text
     end
 
     def build_hints_text
@@ -64,8 +83,9 @@ module SttTermLearning
     end
 
     def normalize_llm(items)
-      Array(items).filter_map do |raw|
+      Array(items).first(LLM_ITEMS_MAX).filter_map do |raw|
         next unless raw.is_a?(Hash)
+        next unless raw["wrong"].is_a?(String) && raw["correct"].is_a?(String)
 
         build(wrong: raw["wrong"], correct: raw["correct"], category: raw["category"],
               definition: raw["definition"], confidence: parse_confidence(raw["confidence"]), source: "llm_diff")
@@ -77,11 +97,12 @@ module SttTermLearning
       correct = correct.to_s.strip
       return nil if wrong.empty? || correct.empty?
 
-      definition = definition.to_s.strip.presence
+      definition = definition.is_a?(String) ? definition.strip.presence : nil
+      category = category.is_a?(String) ? category.strip.presence : nil
       Candidate.new(
         wrong: wrong,
         correct: correct,
-        category: category.to_s.strip.presence || DEFAULT_CATEGORY,
+        category: category ? category[0, CATEGORY_MAX] : DEFAULT_CATEGORY,
         definition: definition && definition[0, DEFINITION_MAX],
         confidence: confidence,
         source: source
