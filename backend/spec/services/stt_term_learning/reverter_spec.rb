@@ -128,6 +128,20 @@ RSpec.describe SttTermLearning::Reverter do
     expect(project_auto.reload.content).to include("**후판**")
   end
 
+  it "나중에 수동 등록한 앞 id 항목이 새 줄에 병합됐어도 쓴 순서의 역순으로 되돌려 전부 지운다" do
+    early = create(:stt_term_learning_item, run: run, wrong: "후반", correct: "후판", wrong_key: "후반", correct_key: "후판",
+                   verdict: "skipped_low_confidence")
+    later, = learn(run, cand("우판", "후판"))
+    expect(early.id).to be < later.id
+    SttTermLearning::ManualRegistration.call(early)
+    expect(early.reload.verdict).to eq("merged_existing")
+    expect(child_auto.().content).to eq("- **후판** [STT] (오인식: 우판, 후반): ")
+
+    expect(described_class.new(run).call).to eq(reverted: 2, skipped_item_ids: [])
+    expect(child_auto.().content).to eq("")
+    expect([ early.reload.revert_result, later.reload.revert_result ]).to eq(%w[reverted reverted])
+  end
+
   it "hit_count 0 이 되면 undecided" do
     items = learn(run, cand("우판", "후판"), cand("코일러", "권취기"), cand("에이피", "API"))
     many, one, excluded = items.map(&:misrecognition)

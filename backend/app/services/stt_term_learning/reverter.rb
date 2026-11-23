@@ -1,5 +1,7 @@
 module SttTermLearning
-  # 회의 단위 되돌리기(스펙 §5.8). done run 의 item 을 id 역순으로 되돌린다. 전체가 트랜잭션 하나다.
+  # 회의 단위 되돌리기(스펙 §5.8). done run 의 item 을 쓴 순서의 역순으로 되돌린다. 전체가 트랜잭션 하나다.
+  #   쓴 순서: 학습 때 만든 item(id 순) → 그 뒤 관리자 수동 등록(ManualRegistration, updated_at 순).
+  #   수동 등록은 item 을 제자리에서 갱신해 id 가 앞일 수 있으므로, 수동 등록분을 최근 것부터 먼저, 나머지를 id 역순으로.
   #   add_line (change "line"):
   #     지금 그 파일의 첫 줄(term_line) == 기록한 줄 → 줄 삭제, "reverted".
   #     이번 되돌리기에서 이미 지운 줄(같은 실행에서 한 줄에 합친 다른 항목) → "already_absent".
@@ -34,7 +36,7 @@ module SttTermLearning
         reset!
         items = @run.items.order(:id).to_a
         @groups = merge_groups(items)
-        items.reverse_each do |item|
+        reverse_write_order(items).each do |item|
           outcome = revert_item(item)
           if outcome
             item.update!(revert_result: outcome)
@@ -56,6 +58,11 @@ module SttTermLearning
       @files = {}        # domain_file_id => DomainFile(트랜잭션 안에서 한 번 읽고 계속 씀)
       @removed = Set.new # [file_id, term_key] 이번 되돌리기에서 지운 새 줄
       @restored = Set.new # 이번 되돌리기에서 before 로 복원한 병합 그룹 key
+    end
+
+    def reverse_write_order(items)
+      manual, learned = items.partition { |i| i.reason == ManualRegistration::MANUAL_REASON }
+      manual.sort_by { |i| [ i.updated_at, i.id ] }.reverse + learned.reverse
     end
 
     def revert_item(item)
