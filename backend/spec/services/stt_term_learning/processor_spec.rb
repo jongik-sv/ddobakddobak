@@ -125,6 +125,32 @@ RSpec.describe SttTermLearning::Processor do
     expect(run.finished_at).to be_present
   end
 
+  it "처리 중 run 이 지워져도 예외 없이 끝난다" do
+    meeting.glossary_entries.create!(from_text: "씨지엘", to_text: "CGL", match_type: "literal")
+    allow_any_instance_of(SttTermLearning::CandidateExtractor).to receive(:call).and_wrap_original do |orig, *args|
+      result = orig.call(*args)
+      SttTermLearningRun.where(id: run.id).delete_all
+      result
+    end
+
+    expect { described_class.new(run).call }.not_to raise_error
+    expect(SttTermLearningRun.exists?(run.id)).to be(false)
+    expect(SttTermLearningItem.count).to eq(0)
+  end
+
+  it "done 기록은 등록과 같은 트랜잭션 — done 저장이 실패하면 도메인 파일도 롤백" do
+    allow_any_instance_of(SttTermLearningRun).to receive(:update!).and_wrap_original do |orig, *args, **kw|
+      raise ActiveRecord::RecordInvalid if (args.first || kw)[:status] == "done"
+      orig.call(*args, **kw)
+    end
+
+    described_class.new(run).call
+
+    expect(human_file.reload.content).to eq("- **후판** [제품]: 두꺼운 강판")
+    expect(run.reload.status).to eq("failed")
+    expect(run.items).to be_empty
+  end
+
   it "추출 단계 예외도 failed 로 남긴다" do
     allow_any_instance_of(SttTermLearning::CandidateExtractor).to receive(:call).and_raise(ArgumentError, "bad")
     described_class.new(run).call

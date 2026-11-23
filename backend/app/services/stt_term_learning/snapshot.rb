@@ -2,9 +2,13 @@ module SttTermLearning
   # 학습 실행(run)의 입력 스냅샷(스펙 §5.1·5.2). AI 원본·사람 최종본·그 시점 전사를 run 에 복사해 둔다.
   # 행을 지우거나 AI 가 덮어쓰기 직전(pre_overwrite), 무편집 대기 후(idle), 관리자 수동(manual) 에서 만든다.
   class Snapshot
-    # 같은 회의의 같은 입력(digest)이 이 상태면 자동 실행을 새로 만들지 않는다.
-    # reverted 포함 — 관리자가 되돌린 용어를 같은 텍스트로 다시 등록하지 않게. failed 는 재시도 허용.
-    DEDUP_STATUSES = %w[queued running done reverted].freeze
+    # 같은 회의의 같은 입력(digest)으로 다음 run 이 있으면 자동 실행을 새로 만들지 않는다.
+    #   - reverted: 항상 — 관리자가 되돌린 용어를 같은 텍스트로 다시 등록하지 않게.
+    #   - done: 항상, 단 llm_skipped_reason "llm_failed" 는 제외(일시적 LLM 실패로 학습을 잃지 않게).
+    #   - queued/running: 생성 후 IN_FLIGHT_WINDOW 안일 때만(멈춘 run 이 영구히 막지 않게).
+    # failed 는 막지 않는다(재시도 허용).
+    IN_FLIGHT_WINDOW = 1.hour
+    LLM_FAILED = "llm_failed".freeze
 
     class << self
       # -> SttTermLearningRun | nil
@@ -18,9 +22,7 @@ module SttTermLearning
 
         meeting = summary.meeting
         digest = Digest::SHA256.hexdigest("#{ai}\u0000#{human}")
-        if !force && meeting.stt_term_learning_runs.where(input_digest: digest, status: DEDUP_STATUSES).exists?
-          return nil
-        end
+        return nil if !force && blocking_run?(meeting, digest)
 
         meeting.stt_term_learning_runs.create!(
           summary: summary,
@@ -51,6 +53,14 @@ module SttTermLearning
       end
 
       private
+
+      def blocking_run?(meeting, digest)
+        runs = meeting.stt_term_learning_runs.where(input_digest: digest)
+        runs.where(status: "reverted")
+            .or(runs.where(status: "done").where("llm_skipped_reason IS NULL OR llm_skipped_reason <> ?", LLM_FAILED))
+            .or(runs.where(status: %w[queued running]).where(created_at: IN_FLIGHT_WINDOW.ago..))
+            .exists?
+      end
 
       def active_final(meeting)
         meeting&.summaries&.find_by(summary_type: "final")

@@ -14,13 +14,18 @@ module SttTermLearning
 
       begin
         extracted = CandidateExtractor.new(@run).call
-        ::ActiveRecord::Base.transaction { apply!(extracted[:candidates]) }
-        @run.update!(status: "done", finished_at: Time.current,
-                     llm_model: extracted[:llm_model], llm_skipped_reason: extracted[:llm_skipped_reason])
+        ::ActiveRecord::Base.transaction do
+          apply!(extracted[:candidates])
+          @run.update!(status: "done", finished_at: Time.current,
+                       llm_model: extracted[:llm_model], llm_skipped_reason: extracted[:llm_skipped_reason])
+        end
       rescue => e
         Rails.logger.error "[SttTermLearning::Processor] run=#{@run.id} 실패: #{e.class}: #{e.message}"
-        @run.reload.update_columns(status: "failed", error: "#{e.class}: #{e.message}".truncate(ERROR_MAX),
-                                   finished_at: Time.current, updated_at: Time.current)
+        # reload 하지 않는다 — 처리 중 run 이 지워졌어도(회의 삭제·절단) 예외 없이 0건 갱신으로 끝난다.
+        now = Time.current
+        ::SttTermLearningRun.where(id: @run.id)
+                            .update_all(status: "failed", error: "#{e.class}: #{e.message}".truncate(ERROR_MAX),
+                                        finished_at: now, updated_at: now)
       end
       @run
     end

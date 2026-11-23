@@ -24,6 +24,7 @@ RSpec.describe SttTermLearningJob, type: :job do
     expect(job.queue_name).to eq("default")
     expect(job.concurrency_key).to eq("SttTermLearningJob/stt_term_learning")
     expect(described_class.concurrency_limit).to eq(1)
+    expect(described_class.concurrency_duration).to eq(15.minutes)
   end
 
   describe "디바운스 (enqueue→perform 왕복)" do
@@ -84,6 +85,14 @@ RSpec.describe SttTermLearningJob, type: :job do
       expect { SttTermLearning::Scheduler.schedule_idle!(summary, iso) }.not_to have_enqueued_job(SttTermLearningJob)
     end
 
+    it "schedule_idle! 는 내부 예외가 나도 raise 하지 않고 로그 후 nil" do
+      iso = summary.mark_human_edited!
+      allow(SttTermLearningJob).to receive(:set).and_raise(StandardError, "queue down")
+      allow(Rails.logger).to receive(:error)
+      expect(SttTermLearning::Scheduler.schedule_idle!(summary, iso)).to be_nil
+      expect(Rails.logger).to have_received(:error).with(include("queue down"))
+    end
+
     it "AI 가 다시 써서 human_edited_at 이 nil 이 됐으면 스킵" do
       iso = summary.mark_human_edited!
       SttTermLearning::Scheduler.schedule_idle!(summary, iso)
@@ -110,12 +119,22 @@ RSpec.describe SttTermLearningJob, type: :job do
     expect(run.reload.status).to eq("done")
   end
 
-  it "설정 off 면 run_id 경로도 아무것도 하지 않는다" do
+  it "설정 off 면 run_id 경로는 처리하지 않고 run 을 failed(learning_disabled) 로 닫는다 → 다시 켜면 같은 텍스트로 capture! 가능" do
     run = SttTermLearning::Snapshot.capture!(summary, trigger: "pre_overwrite")
     described_class.perform_later(run_id: run.id)
     allow(AppSettings).to receive(:stt_term_learning).and_return("enabled" => false, "idle_minutes" => 30, "min_confidence" => 0.6)
     expect(SttTermLearning::Processor).not_to receive(:new)
     perform_enqueued_jobs
-    expect(run.reload.status).to eq("queued")
+    expect(run.reload).to have_attributes(status: "failed", error: "learning_disabled")
+
+    allow(AppSettings).to receive(:stt_term_learning).and_return(AppSettings::STT_TERM_LEARNING_DEFAULTS.dup)
+    expect(SttTermLearning::Snapshot.capture!(summary, trigger: "pre_overwrite")).to be_persisted
+  end
+
+  it "설정 off 여도 queued 가 아닌 run 은 건드리지 않는다" do
+    run = create(:stt_term_learning_run, meeting: meeting, status: "done")
+    allow(AppSettings).to receive(:stt_term_learning).and_return("enabled" => false, "idle_minutes" => 30, "min_confidence" => 0.6)
+    described_class.perform_now(run_id: run.id)
+    expect(run.reload.status).to eq("done")
   end
 end

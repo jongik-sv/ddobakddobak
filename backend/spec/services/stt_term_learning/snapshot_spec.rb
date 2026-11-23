@@ -45,10 +45,30 @@ RSpec.describe SttTermLearning::Snapshot do
       expect(described_class.capture!(summary, trigger: "manual", force: true)).to be_persisted
     end
 
-    it "queued·running run 과 같은 digest 면 nil" do
-      create(:stt_term_learning_run, meeting: meeting, status: "queued", input_digest: digest)
+    it "1시간 안의 queued·running run 과 같은 digest 면 nil" do
+      create(:stt_term_learning_run, meeting: meeting, status: "queued", input_digest: digest, created_at: 50.minutes.ago)
       expect(described_class.capture!(summary, trigger: "idle")).to be_nil
       SttTermLearningRun.update_all(status: "running")
+      expect(described_class.capture!(summary, trigger: "idle")).to be_nil
+    end
+
+    it "오래된(2시간) running·queued run 은 막지 않는다" do
+      stale = create(:stt_term_learning_run, meeting: meeting, status: "running", input_digest: digest, created_at: 2.hours.ago)
+      expect(described_class.capture!(summary, trigger: "idle")).to be_persisted
+
+      SttTermLearningRun.where.not(id: stale.id).delete_all
+      stale.update_columns(status: "queued")
+      expect(described_class.capture!(summary, trigger: "idle")).to be_persisted
+    end
+
+    it "llm_failed 로 끝난 done run 은 막지 않고, 다른 사유·사유 없음 done 은 막는다" do
+      done = create(:stt_term_learning_run, meeting: meeting, status: "done", input_digest: digest, llm_skipped_reason: "llm_failed")
+      expect(described_class.capture!(summary, trigger: "idle")).to be_persisted
+
+      SttTermLearningRun.where.not(id: done.id).delete_all
+      done.update_columns(llm_skipped_reason: "llm_not_configured")
+      expect(described_class.capture!(summary, trigger: "idle")).to be_nil
+      done.update_columns(llm_skipped_reason: nil)
       expect(described_class.capture!(summary, trigger: "idle")).to be_nil
     end
 
