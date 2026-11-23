@@ -55,6 +55,7 @@ Rails.application.routes.draw do
           post :regenerate_notes
           post :feedback
           get  :glossary
+          get  :ai_original
           post :reapply_glossary
           post :apply_glossary_entry
           patch :update_notes
@@ -200,6 +201,25 @@ Rails.application.routes.draw do
           member do
             post :reset_password
           end
+        end
+
+        # STT 용어 자동 학습 관리(컨트롤러 이름에 Admin::SttTermLearning 모듈을 만들지 않는다 — 서비스 상수 충돌 방지)
+        scope "stt_term_learning" do
+          get  "tree", to: "stt_term_learning#tree"
+          get  "terms", to: "stt_term_learning#terms"
+          post "terms/delete", to: "stt_term_learning#delete_terms"
+          post "impact", to: "stt_term_learning#impact"
+          post "moves", to: "stt_term_learning#moves"
+          get  "settings", to: "stt_term_learning#settings"
+          put  "settings", to: "stt_term_learning#update_settings"
+          get  "runs", to: "stt_term_runs#index"
+          get  "runs/:id", to: "stt_term_runs#show"
+          post "runs/:id/revert", to: "stt_term_runs#revert"
+          post "runs/:id/rerun", to: "stt_term_runs#rerun"
+          post "runs/:run_id/items/:id/register", to: "stt_term_runs#register_item"
+          post "meetings/:meeting_id/analyze", to: "stt_term_runs#analyze"
+          get  "misrecognitions", to: "stt_misrecognitions#index"
+          patch "misrecognitions/:id", to: "stt_misrecognitions#update"
         end
       end
 

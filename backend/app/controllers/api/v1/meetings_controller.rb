@@ -11,8 +11,8 @@ module Api
 
       before_action :authenticate_user!
       before_action :require_create_project!, only: %i[create upload_audio]
-      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry lock unlock dismiss_schedule domain_files update_domain_files extract_terms update_owner collaborators add_collaborator remove_collaborator]
-      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary apply_glossary_entry dismiss_schedule update_domain_files extract_terms]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary ai_original reapply_glossary apply_glossary_entry lock unlock dismiss_schedule domain_files update_domain_files extract_terms update_owner collaborators add_collaborator remove_collaborator]
+      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary apply_glossary_entry dismiss_schedule update_domain_files extract_terms ai_original]
       # 협업자 추가/제거 권한: 소유자 + admin만(authorize_meeting_control!보다 좁음 — 협업자 자신은 협업자를 못 늘림).
       before_action :authorize_meeting_collaborator_admin!, only: %i[add_collaborator remove_collaborator]
       before_action :authorize_lock!, only: %i[lock unlock]
@@ -567,6 +567,21 @@ module Api
               entries: f.glossary_entries.order(:id).map { |e| glossary_entry_json(e) } }
           end,
           resolved: GlossaryResolver.for(@meeting)
+        }
+      end
+
+      # GET /api/v1/meetings/:id/ai_original — AI 원본 ↔ 사람 최종본 줄 diff(인용 마커 제거). 활성 요약이 learnable 일 때만.
+      def ai_original
+        summary = @meeting.summaries.find_by(summary_type: "final")
+        unless summary&.learnable?
+          return render json: { available: false, ai_generated_at: nil, human_edited_at: nil, diff: [] }
+        end
+
+        render json: {
+          available: true,
+          ai_generated_at: summary.ai_generated_at,
+          human_edited_at: summary.human_edited_at,
+          diff: ::SttTermLearning::LineDiff.ops(summary.ai_notes_markdown, summary.notes_markdown)
         }
       end
 
