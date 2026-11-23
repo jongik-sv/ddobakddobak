@@ -26,6 +26,30 @@ const VERDICT_LABEL: Record<string, string> = {
   skipped_no_level: '제외(등록할 레벨 없음)',
 }
 
+// 백엔드 ManualRegistration::REGISTRABLE_VERDICTS 와 같아야 한다(나머지는 등록 시도해도 422).
+const REGISTRABLE_VERDICTS = new Set([
+  'skipped_excluded',
+  'skipped_not_in_transcript',
+  'skipped_conflict',
+  'skipped_low_confidence',
+])
+
+// 근거(reason)·LLM 생략 사유·실행 오류에 오는 원시 코드 → 한글. 모르는 값(서술형 근거 등)은 그대로.
+const CODE_LABEL: Record<string, string> = {
+  llm_failed: 'LLM 실패',
+  llm_not_configured: 'LLM 설정 없음',
+  learning_disabled: '학습 꺼짐',
+  file_full: '파일 용량 초과',
+  format_chars: '형식 문자 포함',
+  changed_during_run: '실행 중 변경됨',
+  reverted_pair: '되돌린 쌍',
+  wrong_is_term: '기존 용어',
+}
+
+function codeLabel(code: string): string {
+  return CODE_LABEL[code] ?? VERDICT_LABEL[code] ?? code
+}
+
 const STATUS_LABEL: Record<string, string> = {
   queued: '대기 중',
   running: '진행 중',
@@ -133,7 +157,7 @@ export default function RunHistoryView() {
             <span className="text-xs text-muted-foreground">{runLabel(r)}</span>
             {r.status === 'failed' && (
               <>
-                {r.error && <span className="text-xs text-red-600">{r.error}</span>}
+                {r.error && <span className="text-xs text-red-600" title={r.error}>{codeLabel(r.error)}</span>}
                 <button type="button" onClick={() => rerun(r)} className="rounded border px-2 py-0.5 text-xs hover:bg-muted">
                   다시 실행
                 </button>
@@ -160,7 +184,11 @@ export default function RunHistoryView() {
               )}
             </div>
           </div>
-          {detail.llm_skipped_reason && <p className="text-xs text-muted-foreground">LLM 생략: {detail.llm_skipped_reason}</p>}
+          {detail.llm_skipped_reason && (
+            <p className="text-xs text-muted-foreground" title={detail.llm_skipped_reason}>
+              LLM 생략: {codeLabel(detail.llm_skipped_reason)}
+            </p>
+          )}
           {detail.diff.length > 0 && <LineDiffView ops={detail.diff} collapseEqual />}
           {detail.items.length > 0 && (
             <table className="w-full text-sm">
@@ -175,21 +203,23 @@ export default function RunHistoryView() {
               </thead>
               <tbody>
                 {detail.items.map((it) => {
-                  const skipped = it.verdict.startsWith('skipped_')
+                  const registrable = detail.status === 'done' && REGISTRABLE_VERDICTS.has(it.verdict)
                   const revertSkipped = skippedIds.includes(it.id) || it.revert_result === 'skipped_changed'
                   return (
                     <tr key={it.id} className="border-b">
                       <td className="p-2"><span className="text-red-600">{it.wrong}</span> → <span className="text-green-700">{it.correct}</span></td>
                       <td className="p-2 text-xs">
-                        {VERDICT_LABEL[it.verdict] ?? it.verdict}
-                        {revertSkipped && <span className="ml-1 text-amber-700">사람이 수정해 건너뜀</span>}
+                        <span title={it.verdict}>{VERDICT_LABEL[it.verdict] ?? it.verdict}</span>
+                        {revertSkipped && <span className="ml-1 text-amber-700">변경되어 건너뜀</span>}
                       </td>
-                      <td className="p-2 text-xs text-muted-foreground">{it.reason ?? ''}</td>
+                      <td className="p-2 text-xs text-muted-foreground">
+                        {it.reason ? <span title={it.reason}>{codeLabel(it.reason)}</span> : ''}
+                      </td>
                       <td className="p-2 text-xs text-muted-foreground">
                         {it.domain_file ? `${it.level?.name ?? ''} · ${it.domain_file.name}` : '—'}
                       </td>
                       <td className="p-2">
-                        {skipped && detail.status !== 'reverted' && (
+                        {registrable && (
                           <button
                             type="button"
                             aria-label={`${it.wrong} 등록`}
