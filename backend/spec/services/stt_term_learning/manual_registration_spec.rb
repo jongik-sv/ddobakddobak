@@ -31,7 +31,8 @@ RSpec.describe SttTermLearning::ManualRegistration do
       expect(item.verdict).to eq("registered")
       expect(item.domain_file_id).to eq(file.id)
       expect([ item.level_owner_type, item.level_owner_id ]).to eq([ "Folder", child.id ])
-      expect(item.change_data).to eq("kind" => "add_line", "domain_file_id" => file.id, "term_key" => "후판",
+      expect(item.change_data["manual_at"]).to be_present
+      expect(item.change_data.except("manual_at")).to eq("kind" => "add_line", "domain_file_id" => file.id, "term_key" => "후판",
                                      "line" => "- **후판** [설비] (오인식: 우판): 두꺼운 강판")
       mis = item.misrecognition
       expect([ mis.status, mis.hit_count, mis.project_id ]).to eq([ "confirmed", 1, project.id ])
@@ -107,6 +108,24 @@ RSpec.describe SttTermLearning::ManualRegistration do
       item = skipped_item("skipped_not_in_transcript")
       expect { described_class.call(item) }.to raise_error(SttTermLearning::ManualRegistration::Error)
       expect(DomainFile.stt_auto.count).to eq(0)
+    end
+
+    it "run 이 done 이 아니면(queued·running·failed) Error" do
+      item = skipped_item("skipped_not_in_transcript")
+      %w[queued running failed].each do |status|
+        run.update!(status: status)
+        expect { described_class.call(item) }.to raise_error(SttTermLearning::ManualRegistration::Error, /#{status}/)
+      end
+      expect(item.reload.verdict).to eq("skipped_not_in_transcript")
+      expect(DomainFile.stt_auto.count).to eq(0)
+    end
+
+    it "change 에 manual_at(iso8601 마이크로초)을 남긴다" do
+      item = skipped_item("skipped_not_in_transcript")
+      freeze_time do
+        described_class.call(item)
+        expect(item.reload.change_data["manual_at"]).to eq(Time.current.iso8601(6))
+      end
     end
 
     it "Registrar 가 등록하지 못하면(file_full) Error, 항목·오인식 변경 없음" do

@@ -142,6 +142,22 @@ RSpec.describe SttTermLearning::Reverter do
     expect([ early.reload.revert_result, later.reload.revert_result ]).to eq(%w[reverted reverted])
   end
 
+  it "수동 등록 순서는 manual_at 기준 — 나중에 updated_at 이 바뀌어도 되돌리기 순서가 같다" do
+    original = "- **MES** [시스템명] (발음: 엠에스): 제조실행시스템"
+    human = human_file(original, parent)
+    first, second = %w[엠이에스 엠이에쓰].map do |w|
+      create(:stt_term_learning_item, run: run, wrong: w, correct: "MES", wrong_key: w, correct_key: "mes",
+             verdict: "skipped_low_confidence")
+    end
+    travel_to(2.minutes.ago) { SttTermLearning::ManualRegistration.call(first) }
+    travel_to(1.minute.ago) { SttTermLearning::ManualRegistration.call(second) }
+    expect(human.reload.content).to eq("- **MES** [시스템명] (오인식: 엠에스, 엠이에스, 엠이에쓰): 제조실행시스템")
+    first.touch # updated_at 만 가장 최근으로
+
+    expect(described_class.new(run).call).to eq(reverted: 2, skipped_item_ids: [])
+    expect(human.reload.content).to eq(original)
+  end
+
   it "hit_count 0 이 되면 undecided" do
     items = learn(run, cand("우판", "후판"), cand("코일러", "권취기"), cand("에이피", "API"))
     many, one, excluded = items.map(&:misrecognition)
