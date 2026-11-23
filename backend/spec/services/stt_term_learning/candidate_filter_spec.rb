@@ -119,4 +119,53 @@ RSpec.describe SttTermLearning::CandidateFilter do
     expect(verdict).to eq("skipped_invalid")
     expect(reason).to be_a(String).and be_present
   end
+
+  describe "되돌린 쌍(reverted_pair)" do
+    def reverted_item(run_meeting, verdict: "registered", status: "reverted", wrong: "우판", correct: "후판")
+      run = create(:stt_term_learning_run, meeting: run_meeting, status: status, finished_at: Time.current)
+      create(:stt_term_learning_item, run: run, verdict: verdict, wrong: wrong, correct: correct,
+             wrong_key: DomainFile.normalize_key(wrong), correct_key: DomainFile.normalize_key(correct))
+    end
+
+    it "이 회의의 되돌린 run 에서 적용됐던 쌍 → skipped_excluded / reverted_pair (feedback 도)" do
+      reverted_item(meeting)
+      expect(filter.verdict_for(cand("우판", "후판"))).to eq([ "skipped_excluded", "reverted_pair" ])
+      expect(filter.verdict_for(cand("우판", "후판", source: "feedback"))).to eq([ "skipped_excluded", "reverted_pair" ])
+      # 다른 쌍은 무관
+      expect(filter.verdict_for(cand("엠이에스", "MES"))).to eq([ nil, nil ])
+    end
+
+    it "merged_existing·already_known 적용 항목도 되돌린 쌍" do
+      reverted_item(meeting, verdict: "merged_existing")
+      reverted_item(meeting, verdict: "already_known", wrong: "엠이에스", correct: "MES")
+      expect(filter.verdict_for(cand("우판", "후판")).last).to eq("reverted_pair")
+      expect(filter.verdict_for(cand("엠이에스", "MES")).last).to eq("reverted_pair")
+    end
+
+    it "건너뛴 항목·done run·다른 회의의 되돌린 run 은 막지 않는다" do
+      reverted_item(meeting, verdict: "skipped_low_confidence")
+      reverted_item(meeting, status: "done", wrong: "엠이에스", correct: "MES")
+      reverted_item(create(:meeting, project: project), wrong: "우판", correct: "후판")
+      expect(filter.verdict_for(cand("우판", "후판"))).to eq([ nil, nil ])
+      expect(filter.verdict_for(cand("엠이에스", "MES"))).to eq([ nil, nil ])
+    end
+  end
+
+  describe "wrong 이 이미 용어(wrong_is_term)" do
+    it "wrong 이 실효 세트의 용어 key 면 skipped_conflict / wrong_is_term" do
+      file = create(:domain_file, content: "- **우판** [STT]: 우판 설비\n- **후판**: 두꺼운 강판")
+      DomainFileLink.create!(owner: project, domain_file: file)
+      expect(filter.verdict_for(cand("우판", "후판"))).to eq([ "skipped_conflict", "wrong_is_term" ])
+      expect(filter.verdict_for(cand("우판", "후판", source: "feedback"))).to eq([ "skipped_conflict", "wrong_is_term" ])
+      # correct 가 용어인 것은 정상
+      expect(filter.verdict_for(cand("엠이에스", "후판"))).to eq([ nil, nil ])
+    end
+
+    it "exclude 한 파일의 용어는 보지 않는다" do
+      file = create(:domain_file, content: "- **우판**: 우판 설비")
+      DomainFileLink.create!(owner: project, domain_file: file)
+      DomainFileLink.create!(owner: meeting, domain_file: file, exclude: true)
+      expect(filter.verdict_for(cand("우판", "후판"))).to eq([ nil, nil ])
+    end
+  end
 end
