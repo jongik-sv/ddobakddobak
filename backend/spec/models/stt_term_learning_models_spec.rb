@@ -33,7 +33,7 @@ RSpec.describe "STT term learning models" do
   it "misrecognition (project, wrong_key, correct_key) 유니크" do
     m = create(:stt_misrecognition)
     expect {
-      create(:stt_misrecognition, project: m.project)
+      create(:stt_misrecognition, project: m.project, wrong: m.wrong, correct: m.correct)
     }.to raise_error(ActiveRecord::RecordNotUnique)
   end
 
