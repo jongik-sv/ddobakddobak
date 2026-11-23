@@ -1790,6 +1790,70 @@ RSpec.describe "Api::V1::Transcripts", type: :request do
         expect(json["transcripts_redacted"]).to be true
       end
     end
+
+    context "STT 용어 학습 데이터 정리" do
+      let(:other_meeting) { create(:meeting, project: project, creator: user) }
+      let!(:final) do
+        create(:summary, meeting: meeting, summary_type: "final", notes_markdown: "사람 기밀토큰AAA",
+               ai_notes_markdown: "AI 기밀토큰AAA", generated_at: 1.hour.ago)
+      end
+      let!(:run) do
+        create(:stt_term_learning_run, meeting: meeting, status: "done",
+               ai_text: "AI 기밀토큰AAA", human_text: "사람 기밀토큰AAA", transcript_text: "기밀토큰AAA")
+      end
+      let!(:item) { create(:stt_term_learning_item, run: run) }
+      let!(:other_run) { create(:stt_term_learning_run, meeting: other_meeting, status: "done") }
+      let!(:other_item) { create(:stt_term_learning_item, run: other_run) }
+      let!(:mis_both) do
+        create(:stt_misrecognition, project: project, first_meeting: meeting, last_meeting: meeting, hit_count: 2)
+      end
+      let!(:mis_last) do
+        create(:stt_misrecognition, project: project, first_meeting: other_meeting, last_meeting: meeting)
+      end
+      let!(:mis_other) do
+        create(:stt_misrecognition, project: project, first_meeting: other_meeting, last_meeting: other_meeting)
+      end
+      let!(:domain_file) do
+        create(:domain_file, project: project, content: "- **후판** [STT] (오인식: 우판): 두꺼운 강판")
+      end
+
+      it "절단은 학습 run 을 만들지 않고 기존 run·item 을 삭제, 오인식 기록의 회의 id 는 nil, 도메인 줄은 유지" do
+        expect(SttTermLearning::Snapshot).not_to receive(:capture!)
+
+        expect { do_redact([ t2.id ]) }.not_to have_enqueued_job(SttTermLearningJob)
+
+        expect(response).to have_http_status(:ok)
+        expect(SttTermLearningRun.where(meeting_id: meeting.id)).not_to exist
+        expect(SttTermLearningItem.where(id: item.id)).not_to exist
+        # 다른 회의의 학습 데이터는 그대로
+        expect(other_run.reload).to be_persisted
+        expect(SttTermLearningItem.where(id: other_item.id)).to exist
+
+        expect(mis_both.reload).to have_attributes(first_meeting_id: nil, last_meeting_id: nil, hit_count: 2)
+        expect(mis_last.reload).to have_attributes(first_meeting_id: other_meeting.id, last_meeting_id: nil)
+        expect(mis_other.reload).to have_attributes(first_meeting_id: other_meeting.id,
+                                                    last_meeting_id: other_meeting.id)
+        expect(domain_file.reload.content).to eq("- **후판** [STT] (오인식: 우판): 두꺼운 강판")
+      end
+
+      it "절단이 롤백되면 학습 데이터 정리도 함께 롤백된다" do
+        allow(SttTermLearning::RedactionCleanup).to receive(:call).and_wrap_original do |m, *args|
+          m.call(*args)
+          raise ActiveRecord::StatementInvalid, "boom"
+        end
+
+        # 커밋 전 실패는 서비스가 원본 복구 후 re-raise 한다(앱이 500 으로 렌더하든 예외가 새든 무방).
+        begin
+          do_redact([ t2.id ])
+          expect(response).not_to have_http_status(:ok)
+        rescue ActiveRecord::StatementInvalid
+          nil
+        end
+        expect(Transcript.where(id: t2.id)).to exist
+        expect(SttTermLearningRun.where(id: run.id)).to exist
+        expect(mis_both.reload.first_meeting_id).to eq(meeting.id)
+      end
+    end
   end
 
   # ─────────────────────────────────────────────────────────

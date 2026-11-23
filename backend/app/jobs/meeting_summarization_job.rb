@@ -469,6 +469,7 @@ class MeetingSummarizationJob < ApplicationJob
     # 저장 직전 재조립: pinned_top + 절취선 + body_result.
     notes_markdown = PreviousMeetingNotes.join(pinned_top, body_result)
 
+    stt_learning_snapshot_before_overwrite(meeting)
     summary = meeting.summaries.find_or_initialize_by(summary_type: "final")
     summary.write_ai_final!(notes_markdown)
 
@@ -594,5 +595,14 @@ class MeetingSummarizationJob < ApplicationJob
     h, rem = total.divmod(3600)
     m, s = rem.divmod(60)
     h.positive? ? format("%d:%02d:%02d", h, m, s) : format("%02d:%02d", m, s)
+  end
+
+  # STT 용어 학습(스펙 §5.1): AI final 이 기존 final 행(사람 편집본)을 덮어쓰기 직전 pre_overwrite 스냅샷.
+  # 학습 쪽 실패는 AI 저장을 막지 않는다 — 로그만 남긴다.
+  def stt_learning_snapshot_before_overwrite(meeting)
+    SttTermLearning::Snapshot.before_overwrite!(meeting)
+  rescue => e
+    Rails.logger.error "[MeetingSummarizationJob] STT 학습 스냅샷 실패 meeting=#{meeting&.id}: #{e.class}: #{e.message}"
+    nil
   end
 end

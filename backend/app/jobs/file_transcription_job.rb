@@ -210,6 +210,7 @@ class FileTranscriptionJob < ApplicationJob
     notes_markdown = result["notes_markdown"]
 
     if result["ok"] && notes_markdown.present?
+      stt_learning_snapshot_before_overwrite(meeting)
       summary = meeting.summaries.find_or_initialize_by(summary_type: "final")
       summary.write_ai_final!(notes_markdown)
       # 성공 저장 — 재전사 이전의 실패 기록이 남아 오탐 배지가 되지 않게 클리어
@@ -234,5 +235,14 @@ class FileTranscriptionJob < ApplicationJob
       progress: percent,
       message: message
     })
+  end
+
+  # STT 용어 학습(스펙 §5.1): AI final 이 기존 final 행(사람 편집본)을 덮어쓰기 직전 pre_overwrite 스냅샷.
+  # 학습 쪽 실패는 AI 저장을 막지 않는다 — 로그만 남긴다.
+  def stt_learning_snapshot_before_overwrite(meeting)
+    SttTermLearning::Snapshot.before_overwrite!(meeting)
+  rescue => e
+    Rails.logger.error "[FileTranscriptionJob] STT 학습 스냅샷 실패 meeting=#{meeting&.id}: #{e.class}: #{e.message}"
+    nil
   end
 end

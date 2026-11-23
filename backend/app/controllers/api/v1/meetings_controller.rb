@@ -424,6 +424,7 @@ module Api
       end
 
       def reset_content
+        stt_learning_snapshot_before_overwrite
         @meeting.purge_transcription_content!(include_attachments: true)
 
         FileUtils.rm_f(@meeting.audio_file_path) if @meeting.audio_file_path.present?
@@ -483,6 +484,7 @@ module Api
           return render json: { error: "오디오 파일이 없습니다" }, status: :unprocessable_entity
         end
 
+        stt_learning_snapshot_before_overwrite
         @meeting.purge_transcription_content!
 
         @meeting.update!(status: :transcribing, transcription_progress: 0, last_refined_seq: 0)
@@ -515,6 +517,7 @@ module Api
           return render json: { error: "트랜스크립트가 없습니다" }, status: :unprocessable_entity
         end
 
+        stt_learning_snapshot_before_overwrite
         @meeting.summaries.destroy_all
 
         MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
@@ -541,7 +544,9 @@ module Api
 
         entries = corrections.map { |c| { from: c[:from], to: c[:to], match_type: "literal" } }
         corrected_notes, corrected_count = apply_glossary_entries!(entries)
-        @meeting.active_summary&.mark_human_edited!
+        if (edited = @meeting.active_summary)
+          stt_learning_schedule_idle(edited)
+        end
 
         # D2=A: 적용한 교정을 회의 사전에 자동 영속(upsert). best-effort.
         persist_corrections_to_meeting_glossary(corrections)
@@ -678,7 +683,7 @@ module Api
 
         summary = find_or_create_active_summary
         summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
-        summary.mark_human_edited!
+        stt_learning_schedule_idle(summary)
         @meeting.update!(last_user_edit_at: Time.current)
         @meeting.refresh_brief_summary!(notes_markdown)
 
@@ -1007,6 +1012,25 @@ module Api
 
       def latest_summary_type
         @meeting.completed? ? "final" : "realtime"
+      end
+
+      # STT 용어 학습(스펙 §5.1): 요약 행 삭제·덮어쓰기 직전 pre_overwrite 스냅샷.
+      # 학습 쪽 실패는 원래 동작(재요약·초기화·STT 재생성)을 막지 않는다 — 로그만 남긴다.
+      def stt_learning_snapshot_before_overwrite
+        ::SttTermLearning::Snapshot.before_overwrite!(@meeting)
+      rescue => e
+        Rails.logger.error "[MeetingsController] STT 학습 스냅샷 실패 meeting=#{@meeting.id}: #{e.class}: #{e.message}"
+        nil
+      end
+
+      # STT 용어 학습(스펙 §5.2): 사람 편집 시각을 찍고 무편집 대기(idle) 잡을 예약한다.
+      # 노트 저장 뒤에 호출되므로 여기서 나는 어떤 예외도 응답을 깨지 않게 삼킨다.
+      def stt_learning_schedule_idle(summary)
+        edited_at = summary.mark_human_edited!
+        ::SttTermLearning::Scheduler.schedule_idle!(summary, edited_at)
+      rescue => e
+        Rails.logger.error "[MeetingsController] STT 학습 예약 실패 summary=#{summary&.id}: #{e.class}: #{e.message}"
+        nil
       end
 
       def find_or_create_active_summary
