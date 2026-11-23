@@ -16,6 +16,13 @@ RSpec.describe SttTermLearning::ImpactCounter do
     expect(described_class.count(level.for(child))).to eq(1)
   end
 
+  it "휴지통 하위 폴더 안의 회의는 세지 않는다" do
+    create(:meeting, project: project, folder: parent)
+    create(:meeting, project: project, folder: child)
+    child.update_columns(deleted_at: Time.current)
+    expect(described_class.count(level.for(parent))).to eq(1)
+  end
+
   it "프로젝트는 그 프로젝트 회의 수" do
     create(:meeting, project: project)
     create(:meeting, project: create(:project))

@@ -69,6 +69,72 @@ RSpec.describe SttTermLearning::TermMover do
     expect(t[:mispronunciations]).to match_array(%w[우판 후핀 후파인])
   end
 
+  context "merge_descendants 안전장치" do
+    let(:src) do
+      f = auto.find_or_create_for!(level.for(project), fallback_creator: actor)
+      f.update!(content: "- **후판** (오인식: 우판): 상위")
+      f
+    end
+    let(:child) { create(:folder, project: project, parent: folder) }
+
+    it "사람 작성 하위 파일은 건드리지 않는다" do
+      human = create(:domain_file, project: project, content: "- **후판** (오인식: 후핀): 사람")
+      DomainFileLink.create!(domain_file: human, owner: child)
+      mover.apply!([move(src, ["후판"], level.for(folder), merge_descendants: true)])
+      expect(human.reload.content).to eq("- **후판** (오인식: 후핀): 사람")
+    end
+
+    it "남의 개인 프로젝트 레벨은 건너뛴다" do
+      personal = create(:project, personal: true, created_by_id: create(:user).id)
+      pf = create(:folder, project: personal)
+      pa = auto.find_or_create_for!(level.for(pf), fallback_creator: actor)
+      pa.update!(content: "- **후판** (오인식: 후핀): x")
+      mover.apply!([move(src, ["후판"], level.global, merge_descendants: true)])
+      expect(pa.reload.find_term("후판")).to be_present
+    end
+
+    it "지운 줄을 결과 로그에 기록한다" do
+      ca = auto.find_or_create_for!(level.for(child), fallback_creator: actor)
+      ca.update!(content: "- **후판** (오인식: 후핀): c")
+      mover.apply!([move(src, ["후판"], level.for(folder), merge_descendants: true)])
+      removed = JSON.parse(SttTermMoveLog.last.result)["removed_lines"]
+      expect(removed).to eq([{ "file_id" => ca.id, "line" => "- **후판** (오인식: 후핀): c" }])
+    end
+
+    it "중간 실패 시 전부 롤백" do
+      c1 = auto.find_or_create_for!(level.for(child), fallback_creator: actor)
+      c1.update!(content: "- **후판** (오인식: 후핀): c")
+      allow_any_instance_of(DomainFile).to receive(:remove_term_line!).and_wrap_original do |orig, *args|
+        raise ActiveRecord::ActiveRecordError, "boom" if orig.receiver.id == c1.id
+        orig.call(*args)
+      end
+      expect {
+        mover.apply!([move(src, ["후판"], level.for(folder), merge_descendants: true)])
+      }.to raise_error(described_class::Error)
+      expect(src.reload.find_term("후판")).to be_present
+      expect(c1.reload.find_term("후판")).to be_present
+      expect(auto.find_for(level.for(folder))).to be_nil
+    end
+  end
+
+  it "term_keys nil 이고 중복 key 줄이면 원본에서 전부 제거" do
+    folder_file.update!(content: "- **후판** (오인식: 우판): a\n- **후판** (오인식: 후핀): b")
+    mover.apply!([move(folder_file, nil, level.for(project))])
+    expect(folder_file.reload.find_term("후판")).to be_nil
+    expect(auto.find_for(level.for(project)).find_term("후판")[:mispronunciations]).to match_array(%w[우판 후핀])
+  end
+
+  it "keys 가 비면 자동 파일을 만들지 않는다" do
+    folder_file.update!(content: "메모만")
+    expect(mover.apply!([move(folder_file, nil, level.for(project))])).to eq(moved: 0, merged: 0)
+    expect(auto.find_for(level.for(project))).to be_nil
+  end
+
+  it "copy 문자열 false 는 false" do
+    mover.apply!([move(folder_file, ["후판"], level.for(project), copy: "false")])
+    expect(folder_file.reload.find_term("후판")).to be_nil
+  end
+
   it "term_keys nil 이면 파일의 용어 줄 전부(자유 텍스트는 남김)" do
     folder_file.update!(content: "메모\n- **후판**: a\n- **냉연**: b")
     result = mover.apply!([move(folder_file, nil, level.for(project))])
