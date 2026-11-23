@@ -75,6 +75,7 @@ RSpec.describe SttTermLearning::AutoDomainFile do
 
   it "RecordNotUnique 면 재조회" do
     existing = described_class.find_or_create_for!(level_for.(project), fallback_creator: fallback)
+    existing.update_column(:name, "other")
     calls = 0
     allow(described_class).to receive(:find_for).and_wrap_original do |m, *a|
       calls += 1

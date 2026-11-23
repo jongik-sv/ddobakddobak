@@ -60,4 +60,22 @@ RSpec.describe DomainFile, "학습 줄 조작 헬퍼" do
     expect(g.remove_mispronunciation!("a", "y")).to be false
     expect(g.remove_mispronunciation!("zz", "y")).to be false
   end
+
+  it "중복 key 는 첫 줄 기준(find_term 과 일치)" do
+    g = create(:domain_file, content: "- **MES** [A] (오인식: x): first\n- **MES** [B]: second")
+    expect(g.apply_learning!(merges: { "mes" => ["x"] })).to eq({})
+    g.apply_learning!(merges: { "mes" => ["y"] })
+    expect(g.reload.content).to eq("- **MES** [A] (오인식: x, y): first\n- **MES** [B]: second")
+    expect(g.remove_mispronunciation!("mes", "y")).to be true
+    expect(g.reload.content).to eq("- **MES** [A] (오인식: x): first\n- **MES** [B]: second")
+  end
+
+  it "CRLF 줄 끝 \\r 보존" do
+    g = create(:domain_file, content: "- **A** [B] (오인식: x): d\r\n- **C**: e\r\n")
+    lines = g.apply_learning!(merges: { "a" => ["y"] })
+    expect(lines["a"]).to eq("- **A** [B] (오인식: x, y): d\r")
+    expect(g.reload.content).to eq("- **A** [B] (오인식: x, y): d\r\n- **C**: e\r\n")
+    g.remove_mispronunciation!("a", "x")
+    expect(g.reload.content).to eq("- **A** [B] (오인식: y): d\r\n- **C**: e\r\n")
+  end
 end

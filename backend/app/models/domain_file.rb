@@ -122,7 +122,7 @@ class DomainFile < ApplicationRecord
     index = {}
     lines.each_with_index do |line, idx|
       m = TERM_LINE_REGEX.match(line)
-      index[self.class.normalize_key(m[1])] = idx if m
+      index[self.class.normalize_key(m[1])] ||= idx if m
     end
 
     changed = {}
@@ -134,7 +134,7 @@ class DomainFile < ApplicationRecord
       merged = self.class.merge_mispronunciations(existing, variants)
       next if merged == existing
 
-      lines[idx] = self.class.format_term_line(m[1].to_s.strip, m[2].to_s.strip, m[4].to_s.strip, merged)
+      lines[idx] = self.class.format_term_line(m[1].to_s.strip, m[2].to_s.strip, m[4].to_s.strip, merged) + eol_of(lines[idx])
       changed[key] = lines[idx]
     end
 
@@ -178,10 +178,20 @@ class DomainFile < ApplicationRecord
     remaining = t[:mispronunciations].reject { |v| self.class.normalize_key(v) == vkey }
     return false if remaining.size == t[:mispronunciations].size
     lines = content.to_s.split("\n", -1)
-    lines[t[:line_no]] = self.class.format_term_line(t[:term], t[:category], t[:definition], remaining)
+    old = lines[t[:line_no]]
+    lines[t[:line_no]] = self.class.format_term_line(t[:term], t[:category], t[:definition], remaining) + eol_of(old)
     update!(content: lines.join("\n"))
     true
   end
+
+  private
+
+  # CRLF 파일의 줄 끝 \r 보존용.
+  def eol_of(line)
+    line.to_s.end_with?("\r") ? "\r" : ""
+  end
+
+  public
 
   class << self
     # content(마크다운)에서 용어 라인만 파싱한다. 비매치 라인은 결과에 포함하지 않는다.
