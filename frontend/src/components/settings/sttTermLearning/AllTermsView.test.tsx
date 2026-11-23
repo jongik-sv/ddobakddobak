@@ -5,8 +5,6 @@ import { treeFixture, row } from './fixtures'
 import * as api from '../../../api/sttTermLearning'
 
 vi.mock('../../../api/sttTermLearning')
-const confirmMock = vi.fn()
-vi.mock('../../../lib/confirmDialog', () => ({ confirmDialog: (...a: unknown[]) => confirmMock(...a) }))
 
 const m = vi.mocked(api)
 const proj = { type: 'Project' as const, id: 1, name: 'TF', path: ['TF'] }
@@ -53,6 +51,47 @@ describe('AllTermsView', () => {
     fireEvent.click(screen.getByRole('button', { name: '올릴 후보만' }))
     expect(screen.queryByText('용어2')).not.toBeInTheDocument()
     expect(screen.getAllByText('산세라인')).toHaveLength(2)
+  })
+
+  it('올릴 후보만: merge_target 레벨에 이미 행이 있는 그룹은 중복만에만, 형제뿐인 그룹은 둘 다', async () => {
+    const atTarget = { type: 'Folder' as const, id: 10, name: '생산회의', path: ['TF', '생산회의'] }
+    m.getTerms.mockResolvedValue({
+      terms: [
+        row({ n: 5, term: '후보', key: 'c1', duplicate_group: 'gA', merge_target: atTarget,
+          level: { type: 'Folder', id: 11, name: '주간', path: ['TF', '생산회의', '주간'] } }),
+        row({ n: 6, term: '후보', key: 'c1', duplicate_group: 'gA', merge_target: atTarget,
+          level: { type: 'Folder', id: 12, name: '설비', path: ['TF', '생산회의', '설비'] } }),
+        row({ n: 7, term: '이미상위', key: 'u1', duplicate_group: 'gB', merge_target: atTarget, level: atTarget }),
+        row({ n: 8, term: '이미상위', key: 'u1', duplicate_group: 'gB', merge_target: atTarget,
+          level: { type: 'Folder', id: 11, name: '주간', path: ['TF', '생산회의', '주간'] } }),
+      ],
+    })
+    render(<AllTermsView />)
+    await screen.findAllByText('후보')
+    fireEvent.click(screen.getByRole('button', { name: '중복만' }))
+    expect(screen.getAllByText('후보')).toHaveLength(2)
+    expect(screen.getAllByText('이미상위')).toHaveLength(2)
+    fireEvent.click(screen.getByRole('button', { name: '올릴 후보만' }))
+    expect(screen.getAllByText('후보')).toHaveLength(2)
+    expect(screen.queryByText('이미상위')).not.toBeInTheDocument()
+  })
+
+  it('프로젝트 필터: 선택한 프로젝트 경로의 행만', async () => {
+    m.getTerms.mockResolvedValue({
+      terms: [
+        row({ n: 1 }),
+        row({ n: 2, level: { type: 'Folder', id: 99, name: '다른', path: ['다른프로젝트', '다른'] } }),
+        row({ n: 3, level: { type: 'global', id: null, name: '전역(공용)', path: [] } }),
+      ],
+    })
+    render(<AllTermsView />)
+    await screen.findByText('용어1')
+    fireEvent.click(screen.getByRole('button', { name: 'TF' }))
+    expect(screen.getByText('용어1')).toBeInTheDocument()
+    expect(screen.queryByText('용어2')).not.toBeInTheDocument()
+    expect(screen.queryByText('용어3')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '프로젝트 전체' }))
+    expect(screen.getByText('용어3')).toBeInTheDocument()
   })
 
   it('레벨 칸 클릭 → 트리 선택 → "변경 예정" 배지, 하단 요약', async () => {

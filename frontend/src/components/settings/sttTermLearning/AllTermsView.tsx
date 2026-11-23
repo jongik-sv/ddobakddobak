@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { applyMoves, getImpact, getTerms, getTree, type LevelRef, type TermRow } from '../../../api/sttTermLearning'
 import { buildLevelTree, levelKey, relationTo, type LevelNode } from './levelTree'
 import { stageChange, toMoveRequests, type StagedChange } from './stagedChanges'
@@ -85,6 +85,20 @@ export default function AllTermsView() {
   const stagedBy = useMemo(() => new Map(staged.map((c) => [c.rowId, c])), [staged])
   const dupGroups = new Set(terms.filter((t) => t.duplicate_group).map((t) => t.duplicate_group)).size
 
+  const promoteGroups = useMemo(() => {
+    const byGroup = new Map<string, TermRow[]>()
+    for (const t of terms) {
+      if (t.duplicate_group === null) continue
+      byGroup.set(t.duplicate_group, [...(byGroup.get(t.duplicate_group) ?? []), t])
+    }
+    const set = new Set<string>()
+    for (const [g, rs] of byGroup) {
+      const target = rs.find((x) => x.merge_target)?.merge_target
+      if (target && !rs.some((x) => levelKey(x.level) === levelKey(target))) set.add(g)
+    }
+    return set
+  }, [terms])
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
     return terms.filter((t) => {
@@ -92,17 +106,18 @@ export default function AllTermsView() {
       if (source === 'auto' && t.source !== 'auto' && t.source !== 'feedback') return false
       if (source === 'human' && t.source !== 'human' && t.source !== 'human_merged') return false
       if (dupOnly && t.duplicate_group === null) return false
-      if (promoteOnly && t.duplicate_group === null) return false
+      if (promoteOnly && (t.duplicate_group === null || !promoteGroups.has(t.duplicate_group))) return false
       if (q && !t.term.toLowerCase().includes(q) && !t.mispronunciations.some((w) => w.toLowerCase().includes(q))) return false
       return true
     })
-  }, [terms, project, source, dupOnly, promoteOnly, query])
+  }, [terms, project, source, dupOnly, promoteOnly, promoteGroups, query])
 
   const stage = (r: TermRow, to: LevelRef) => {
     const change: StagedChange = { rowId: r.row_id, domainFileId: r.domain_file.id, termKey: r.key, from: r.level, to }
     setStaged((prev) => stageChange(prev, change))
     setImpacts((prev) => {
-      const { [r.row_id]: _drop, ...rest } = prev
+      const rest = { ...prev }
+      delete rest[r.row_id]
       return rest
     })
     if (levelKey(to) === levelKey(r.level)) return
@@ -208,7 +223,7 @@ export default function AllTermsView() {
               const imp = ch && impacts[r.row_id]?.toKey === levelKey(ch.to) ? impacts[r.row_id] : null
               const dup = r.duplicate_group !== null
               return (
-                <RowFragment key={r.row_id}>
+                <Fragment key={r.row_id}>
                   <tr className={`border-t border-border ${ch ? 'bg-blue-50/50' : dup ? 'bg-red-50/50' : ''}`}>
                     <td className="px-3 py-2 font-medium">{r.term}</td>
                     <td className="px-3 py-2">{r.mispronunciations.join(', ')}</td>
@@ -280,7 +295,7 @@ export default function AllTermsView() {
                       </td>
                     </tr>
                   )}
-                </RowFragment>
+                </Fragment>
               )
             })}
           </tbody>
@@ -311,8 +326,4 @@ export default function AllTermsView() {
       </p>
     </div>
   )
-}
-
-function RowFragment({ children }: { children: React.ReactNode }) {
-  return <>{children}</>
 }
