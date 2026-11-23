@@ -83,3 +83,15 @@ export function relationTo(root: LevelNode, current: LevelRef, candidate: LevelR
   if (candPath.some((n) => levelKey(n.ref) === cur)) return 'down'
   return 'other'
 }
+
+/**
+ * 한 번 클릭 ⬆ 전에 물어야 하면 확인 문구, 아니면 null.
+ * 전역으로 올리면 모든 프로젝트 회의에 퍼지고, 사람 파일 줄은 사람이 쓴 파일에서 빠지므로 묻는다.
+ */
+export function moveUpConfirmMessage(term: string, parent: LevelNode, fromHumanFile: boolean): string | null {
+  const reasons: string[] = []
+  if (parent.ref.type === 'global') reasons.push('전역(모든 프로젝트)으로 올리면 모든 회의 프롬프트에 들어갑니다.')
+  if (fromHumanFile) reasons.push('사람이 작성한 도메인 파일의 용어라 그 파일에서 빠집니다.')
+  if (reasons.length === 0) return null
+  return `'${term}'을(를) '${parent.name}' 레벨로 올릴까요?\n${reasons.join('\n')}`
+}

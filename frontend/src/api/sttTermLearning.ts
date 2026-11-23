@@ -105,7 +105,8 @@ export interface Misrecognition {
   status: string
   hit_count: number
   meeting_ids: number[]
-  registered: { domain_file_id: number; term_key: string; level: LevelInfo } | null
+  /** auto: 등록 위치가 자동 파일인가(false = 사람 파일) */
+  registered: { domain_file_id: number; term_key: string; auto: boolean; level: LevelInfo } | null
   last_seen_at: string | null
 }
 

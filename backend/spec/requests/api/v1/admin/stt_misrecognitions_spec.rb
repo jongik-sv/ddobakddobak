@@ -84,7 +84,7 @@ RSpec.describe "Api::V1::Admin::SttMisrecognitions", type: :request do
         get "/api/v1/admin/stt_term_learning/misrecognitions"
 
         m = json["misrecognitions"].find { |x| x["id"] == record.id }
-        expect(m["registered"]).to eq("domain_file_id" => file.id, "term_key" => "후판",
+        expect(m["registered"]).to eq("domain_file_id" => file.id, "term_key" => "후판", "auto" => true,
                                       "level" => { "type" => "Folder", "id" => folder.id, "name" => folder.name,
                                                    "path" => [ project.name, folder.name ] })
       end
@@ -99,7 +99,7 @@ RSpec.describe "Api::V1::Admin::SttMisrecognitions", type: :request do
         expect(response).to have_http_status(:ok)
         file = SttTermLearning::AutoDomainFile.find_for(level.for(project))
         expect(file.content).to include("**후판**")
-        expected = { "domain_file_id" => file.id, "term_key" => "후판",
+        expected = { "domain_file_id" => file.id, "term_key" => "후판", "auto" => true,
                      "level" => { "type" => "Project", "id" => project.id, "name" => project.name, "path" => [ project.name ] } }
         expect(json["misrecognition"]).to include("id" => record.id, "status" => "confirmed", "registered" => expected)
         expect(record.reload.status).to eq("confirmed")
@@ -179,7 +179,8 @@ RSpec.describe "Api::V1::Admin::SttMisrecognitions", type: :request do
           record = mis("우판", "후판", status: "confirmed", last_meeting: meeting)
 
           get "/api/v1/admin/stt_term_learning/misrecognitions"
-          expect(json["misrecognitions"].find { |x| x["id"] == record.id }["registered"]).to include("domain_file_id" => human.id)
+          expect(json["misrecognitions"].find { |x| x["id"] == record.id }["registered"])
+            .to include("domain_file_id" => human.id, "auto" => false)
 
           patch "/api/v1/admin/stt_term_learning/misrecognitions/#{record.id}", params: { status: "excluded" }, as: :json
 

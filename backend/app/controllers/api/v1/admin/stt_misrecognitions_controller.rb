@@ -157,8 +157,9 @@ module Api
           location(result[:domain_file], ::DomainFile.normalize_key(record.correct), result[:level])
         end
 
+        # auto: 자동 파일인가(사람 파일이면 화면이 ⬆ 전에 확인을 묻는다).
         def location(file, term_key, level)
-          { domain_file_id: file.id, term_key: term_key, level: level_info(level) }
+          { domain_file_id: file.id, term_key: term_key, auto: file.stt_auto?, level: level_info(level) }
         end
 
         # ManualRegistration.register_pair! 와 같은 체인: 같은 프로젝트 last_meeting 이면 그 회의 체인, 아니면 프로젝트 → 전역.

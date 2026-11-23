@@ -7,7 +7,8 @@ import {
   type Misrecognition,
 } from '../../../api/sttTermLearning'
 import { apiErrorMessage } from './apiError'
-import { buildLevelTree, parentOf, type LevelNode } from './levelTree'
+import { confirmDialog } from '../../../lib/confirmDialog'
+import { buildLevelTree, moveUpConfirmMessage, parentOf, type LevelNode } from './levelTree'
 
 const FILTERS = [
   { id: '', label: '전체' },
@@ -68,6 +69,8 @@ export default function MisrecognitionsView() {
     if (!m.registered || !root) return
     const parent = parentOf(root, m.registered.level)
     if (!parent) return
+    const ask = moveUpConfirmMessage(m.correct || m.registered.term_key, parent, m.registered.auto === false)
+    if (ask && !(await confirmDialog(ask, { title: '상위 레벨로', kind: 'warning' }))) return
     try {
       await applyMoves([
         { domain_file_id: m.registered.domain_file_id, term_keys: [m.registered.term_key], target: parent.ref },

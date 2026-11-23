@@ -12,6 +12,7 @@ const m = vi.mocked(api)
 
 beforeEach(() => {
   vi.clearAllMocks()
+  confirmMock.mockReset()
   m.getTree.mockResolvedValue(treeFixture)
   m.getTerms.mockResolvedValue({ terms: [row({ n: 1 }), row({ n: 2 })] })
   m.getImpact.mockResolvedValue([3, 5])
@@ -49,6 +50,45 @@ describe('LevelTreeView', () => {
       ]),
     )
     await waitFor(() => expect(m.getTerms.mock.calls.length).toBeGreaterThan(before))
+  })
+
+  it('⬆ 대상이 전역이면 confirmDialog — 취소면 applyMoves 안 함, 확인이면 호출', async () => {
+    const projectLevel = { type: 'Project' as const, id: 1, name: 'TF', path: ['TF'] }
+    m.getTerms.mockResolvedValue({ terms: [row({ n: 3, level: projectLevel })] })
+    render(<LevelTreeView />)
+    await screen.findByText('용어3')
+    confirmMock.mockResolvedValueOnce(false)
+    fireEvent.click(screen.getByRole('button', { name: '용어3 상위 레벨로' }))
+    await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1))
+    expect(confirmMock.mock.calls[0][0]).toMatch(/전역/)
+    expect(m.applyMoves).not.toHaveBeenCalled()
+    confirmMock.mockResolvedValueOnce(true)
+    fireEvent.click(screen.getByRole('button', { name: '용어3 상위 레벨로' }))
+    await waitFor(() =>
+      expect(m.applyMoves).toHaveBeenCalledWith([{ domain_file_id: 101, term_keys: ['k3'], target: { type: 'global', id: null } }]),
+    )
+  })
+
+  it.each(['human', 'human_merged'] as const)('⬆ 원본이 사람 파일(%s)이면 confirmDialog, 취소면 applyMoves 안 함', async (source) => {
+    m.getTerms.mockResolvedValue({
+      terms: [row({ n: 1, source, domain_file: { id: 101, name: '제강 용어', auto: false } })],
+    })
+    render(<LevelTreeView />)
+    await screen.findByText('용어1')
+    confirmMock.mockResolvedValueOnce(false)
+    fireEvent.click(screen.getByRole('button', { name: '용어1 상위 레벨로' }))
+    await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1))
+    expect(confirmMock.mock.calls[0][0]).toMatch(/사람이 작성한/)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(m.applyMoves).not.toHaveBeenCalled()
+  })
+
+  it('자동 파일 행을 폴더 → 프로젝트로 올릴 때는 묻지 않는다', async () => {
+    render(<LevelTreeView />)
+    await screen.findByText('용어1')
+    fireEvent.click(screen.getByRole('button', { name: '용어1 상위 레벨로' }))
+    await waitFor(() => expect(m.applyMoves).toHaveBeenCalled())
+    expect(confirmMock).not.toHaveBeenCalled()
   })
 
   it('체크 2건 후 "레벨 이동…" → MoveTermsDialog 에 2행', async () => {

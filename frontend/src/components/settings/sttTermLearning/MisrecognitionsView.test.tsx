@@ -2,14 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import MisrecognitionsView from './MisrecognitionsView'
 import { treeFixture } from './fixtures'
-import { mis } from './testHelpers'
+import { mis, lvl } from './testHelpers'
 import * as api from '../../../api/sttTermLearning'
 
 vi.mock('../../../api/sttTermLearning')
+const confirmMock = vi.fn()
+vi.mock('../../../lib/confirmDialog', () => ({ confirmDialog: (...a: unknown[]) => confirmMock(...a) }))
 const m = vi.mocked(api)
 
 beforeEach(() => {
   vi.clearAllMocks()
+  confirmMock.mockReset()
   m.getTree.mockResolvedValue(treeFixture)
   m.getMisrecognitions.mockResolvedValue({
     misrecognitions: [mis(), mis({ id: 2, wrong: '우반', status: 'undecided', registered: null })],
@@ -41,6 +44,44 @@ describe('MisrecognitionsView', () => {
     await waitFor(() =>
       expect(m.applyMoves).toHaveBeenCalledWith([{ domain_file_id: 101, term_keys: ['k1'], target: { type: 'Project', id: 1 } }]),
     )
+  })
+
+  it('⬆ 대상이 전역이면 confirmDialog — 취소면 applyMoves 안 함', async () => {
+    const projectLevel = { type: 'Project' as const, id: 1, name: 'TF', path: ['TF'] }
+    m.getMisrecognitions.mockResolvedValue({
+      misrecognitions: [mis({ registered: { domain_file_id: 101, term_key: 'k1', auto: true, level: projectLevel } })],
+      counts: { total: 1, undecided: 0 },
+    })
+    render(<MisrecognitionsView />)
+    const up = await screen.findByRole('button', { name: '우판 상위 레벨로' })
+    await waitFor(() => expect(up).not.toBeDisabled())
+    confirmMock.mockResolvedValueOnce(false)
+    fireEvent.click(up)
+    await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1))
+    expect(confirmMock.mock.calls[0][0]).toMatch(/전역/)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(m.applyMoves).not.toHaveBeenCalled()
+    confirmMock.mockResolvedValueOnce(true)
+    fireEvent.click(up)
+    await waitFor(() =>
+      expect(m.applyMoves).toHaveBeenCalledWith([{ domain_file_id: 101, term_keys: ['k1'], target: { type: 'global', id: null } }]),
+    )
+  })
+
+  it('⬆ 등록 위치가 사람 파일이면 confirmDialog — 취소면 applyMoves 안 함', async () => {
+    m.getMisrecognitions.mockResolvedValue({
+      misrecognitions: [mis({ registered: { domain_file_id: 101, term_key: 'k1', auto: false, level: lvl } })],
+      counts: { total: 1, undecided: 0 },
+    })
+    render(<MisrecognitionsView />)
+    const up = await screen.findByRole('button', { name: '우판 상위 레벨로' })
+    await waitFor(() => expect(up).not.toBeDisabled())
+    confirmMock.mockResolvedValueOnce(false)
+    fireEvent.click(up)
+    await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1))
+    expect(confirmMock.mock.calls[0][0]).toMatch(/사람이 작성한/)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(m.applyMoves).not.toHaveBeenCalled()
   })
 
   it('늦게 도착한 옛 응답은 최신 목록을 덮어쓰지 않는다', async () => {

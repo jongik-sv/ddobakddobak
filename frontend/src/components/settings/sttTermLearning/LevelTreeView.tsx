@@ -9,7 +9,7 @@ import {
 } from '../../../api/sttTermLearning'
 import { confirmDialog } from '../../../lib/confirmDialog'
 import MoveTermsDialog from './MoveTermsDialog'
-import { buildLevelTree, findPath, levelKey, parentOf, type LevelNode } from './levelTree'
+import { buildLevelTree, findPath, levelKey, moveUpConfirmMessage, parentOf, type LevelNode } from './levelTree'
 
 const SOURCE_LABEL: Record<TermRow['source'], string> = {
   auto: '자동',
@@ -104,6 +104,8 @@ export default function LevelTreeView() {
     if (!root) return
     const parent = parentOf(root, row.level)
     if (!parent) return
+    const ask = moveUpConfirmMessage(row.term, parent, row.source === 'human' || row.source === 'human_merged')
+    if (ask && !(await confirmDialog(ask, { title: '상위 레벨로', kind: 'warning' }))) return
     setError(null)
     try {
       await applyMoves([{ domain_file_id: row.domain_file.id, term_keys: [row.key], target: parent.ref }])

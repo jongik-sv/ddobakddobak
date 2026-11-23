@@ -56,7 +56,7 @@ export function mis(o: Partial<Misrecognition> = {}): Misrecognition {
     status: 'confirmed',
     hit_count: 14,
     meeting_ids: [219, 214, 198],
-    registered: { domain_file_id: 101, term_key: 'k1', level: lvl },
+    registered: { domain_file_id: 101, term_key: 'k1', auto: true, level: lvl },
     last_seen_at: '2026-11-22T00:00:00Z',
     ...o,
   }
