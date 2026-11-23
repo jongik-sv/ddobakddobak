@@ -52,4 +52,18 @@ describe('MoveTermsDialog', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('대상에 같은 키가 있습니다')
     expect(onApplied).not.toHaveBeenCalled()
   })
+
+  it('여러 레벨 행이면 중립 문구·영향 숫자 숨김, 합치기 체크 없음', async () => {
+    const other = row({ n: 2, level: { type: 'Folder', id: 11, name: '주간', path: ['TF', '생산회의', '주간'] } })
+    render(<MoveTermsDialog rows={[row({ n: 1 }), other]} tree={tree} initialTarget={{ type: 'Project', id: 1 }} onClose={vi.fn()} onApplied={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'TF로 옮기기' })).toBeInTheDocument()
+    expect(screen.getByText(/여러 레벨 선택됨/)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/하위 폴더에 있는 같은 용어도/)).toBeNull()
+    expect(m.getImpact).not.toHaveBeenCalled()
+  })
+
+  it('하위(down) 대상이면 합치기 체크박스 숨김', () => {
+    setup({ initialTarget: { type: 'Folder', id: 11 } })
+    expect(screen.queryByLabelText(/하위 폴더에 있는 같은 용어도/)).toBeNull()
+  })
 })

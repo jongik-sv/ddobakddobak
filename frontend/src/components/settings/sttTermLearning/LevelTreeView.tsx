@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyMoves,
   deleteTerms,
@@ -65,12 +65,17 @@ export default function LevelTreeView() {
     }
   }, [])
 
+  const termsReq = useRef(0)
   const loadTerms = useCallback(async () => {
+    const req = ++termsReq.current
     try {
       const res = await getTerms({ level, includeDescendants })
+      if (req !== termsReq.current) return
       setTerms(res.terms)
       setChecked(new Set())
+      setError(null)
     } catch {
+      if (req !== termsReq.current) return
       setError('용어를 불러오지 못했습니다.')
     }
   }, [level, includeDescendants])

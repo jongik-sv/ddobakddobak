@@ -50,13 +50,12 @@ export default function MoveTermsDialog({ rows, tree, initialTarget, onClose, on
 
   const nodes = useMemo(() => flatten(tree), [tree])
   const targetNode = target ? nodes.find((n) => levelKey(n.node.ref) === levelKey(target))?.node : undefined
-  const relation: LevelRelation | null = target ? relationTo(tree, source, target) : null
+  const multiLevel = rows.some((r) => levelKey(r.level) !== levelKey(source))
+  const relation: LevelRelation | null = target ? (multiLevel ? 'other' : relationTo(tree, source, target)) : null
 
   useEffect(() => {
-    if (!target) {
-      setImpact(null)
-      return
-    }
+    setImpact(null)
+    if (!target || multiLevel) return
     let cancelled = false
     getImpact([
       { level: { type: source.type, id: source.id }, domain_file_id: rows[0].domain_file.id },
@@ -65,9 +64,7 @@ export default function MoveTermsDialog({ rows, tree, initialTarget, onClose, on
       .then(([before, after]) => {
         if (!cancelled) setImpact({ before, after })
       })
-      .catch(() => {
-        if (!cancelled) setImpact(null)
-      })
+      .catch(() => {})
     return () => {
       cancelled = true
     }
@@ -91,7 +88,7 @@ export default function MoveTermsDialog({ rows, tree, initialTarget, onClose, on
       term_keys,
       target,
       copy,
-      merge_descendants: mergeDescendants,
+      merge_descendants: relation === 'up' ? mergeDescendants : false,
     }))
     try {
       await applyMoves(moves)
@@ -140,23 +137,27 @@ export default function MoveTermsDialog({ rows, tree, initialTarget, onClose, on
           <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground space-y-0.5">
             <li>대상: <b>{targetNode?.name}</b>의 "STT 오인식(자동)" 파일 (없으면 새로 만들어 연결)</li>
             <li>
-              영향: 적용 회의{' '}
-              {impact ? (
-                <b>{impact.before}건 → {impact.after}건</b>
+              {multiLevel ? (
+                '여러 레벨 선택됨 — 적용 회의 수는 표시하지 않습니다'
               ) : (
-                '집계 중…'
+                <>
+                  영향: 적용 회의{' '}
+                  {impact ? <b>{impact.before}건 → {impact.after}건</b> : '집계 중…'}
+                  의 다음 요약부터 반영
+                </>
               )}
-              의 다음 요약부터 반영
             </li>
             <li>같은 용어가 대상에 이미 있으면 오인식 표기를 합친다</li>
           </ul>
         </div>
       )}
 
-      <label className="mt-3 flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={mergeDescendants} onChange={(e) => setMergeDescendants(e.target.checked)} />
-        하위 폴더에 있는 같은 용어도 함께 올려 합치기
-      </label>
+      {relation === 'up' && (
+        <label className="mt-3 flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={mergeDescendants} onChange={(e) => setMergeDescendants(e.target.checked)} />
+          하위 폴더에 있는 같은 용어도 함께 올려 합치기
+        </label>
+      )}
       <label className="mt-1 flex items-center gap-2 text-sm">
         <input type="checkbox" checked={copy} onChange={(e) => setCopy(e.target.checked)} />
         원래 레벨에도 남겨 두기(복사)

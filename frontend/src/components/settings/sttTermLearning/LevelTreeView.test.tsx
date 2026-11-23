@@ -57,7 +57,24 @@ describe('LevelTreeView', () => {
     fireEvent.click(screen.getByLabelText('용어1 선택'))
     fireEvent.click(screen.getByLabelText('용어2 선택'))
     fireEvent.click(screen.getByRole('button', { name: '레벨 이동…' }))
-    expect(await screen.findByText('용어 2건을 다른 레벨로 이동')).toBeInTheDocument()
+    const dlg = await screen.findByRole('dialog', { name: '레벨 이동' })
+    expect(dlg).toHaveTextContent('용어 2건을 다른 레벨로 이동')
+    expect(dlg).toHaveTextContent('용어1')
+    expect(dlg).toHaveTextContent('용어2')
+  })
+
+  it('늦게 도착한 이전 레벨 응답은 무시', async () => {
+    let resolveFirst: (v: { terms: ReturnType<typeof row>[] }) => void = () => {}
+    m.getTerms.mockReset()
+    m.getTerms
+      .mockImplementationOnce(() => new Promise((r) => { resolveFirst = r }))
+      .mockResolvedValue({ terms: [row({ n: 7 })] })
+    render(<LevelTreeView />)
+    fireEvent.click(await screen.findByRole('button', { name: /생산회의/ }))
+    await screen.findByText('용어7')
+    resolveFirst({ terms: [row({ n: 8 })] })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.queryByText('용어8')).toBeNull()
   })
 
   it('삭제는 confirmDialog 확인 후 deleteTerms, 취소면 호출 안 함', async () => {
