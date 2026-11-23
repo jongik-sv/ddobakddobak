@@ -27,8 +27,12 @@ module SttTermLearning
       llm_skipped_reason = nil
       llm_candidates = []
 
-      hunks_text = build_hunks_text
-      if hunks_text.present?
+      hunks = LineDiff.hunks(LineDiff.ops(@run.ai_text, @run.human_text))
+      hunks_text = build_hunks_text(hunks)
+      if hunks.any? && hunks_text.empty?
+        Rails.logger.warn "[SttTermLearning::CandidateExtractor] run=#{@run.id} hunk #{hunks.size}개가 모두 MAX_HUNKS_CHARS(#{MAX_HUNKS_CHARS}) 예산을 넘어 LLM 추출을 건너뜀"
+        llm_skipped_reason = "llm_failed"
+      elsif hunks_text.present?
         begin
           llm = LlmService.new(llm_config: @meeting.creator&.effective_llm_config)
           items = llm.extract_stt_misrecognitions(hunks_text, build_hints_text)
@@ -52,16 +56,15 @@ module SttTermLearning
 
     private
 
-    # hunk 를 통째로 MAX_HUNKS_CHARS 안에 담는다. 다음 hunk 가 예산을 넘기면 거기서 멈추고
-    # 줄 중간에서 자르지 않는다(첫 hunk 가 예산보다 크면 빈 문자열 → LLM 호출 안 함).
-    def build_hunks_text
-      hunks = LineDiff.hunks(LineDiff.ops(@run.ai_text, @run.human_text))
-
+    # hunk 를 통째로 MAX_HUNKS_CHARS 안에 담는다. 줄 중간에서 자르지 않고, 남은 예산에
+    # 안 들어가는 hunk 는 건너뛴다(큰 hunk 하나가 뒤의 작은 hunk 를 다 버리지 않게).
+    # 전부 안 들어가면 빈 문자열.
+    def build_hunks_text(hunks)
       text = +""
       hunks.each do |h|
         block = (h[:removed].map { "- #{_1}" } + h[:added].map { "+ #{_1}" }).join("\n")
         addition = text.empty? ? block : HUNK_SEPARATOR + block
-        break if text.length + addition.length > MAX_HUNKS_CHARS
+        next if text.length + addition.length > MAX_HUNKS_CHARS
         text << addition
       end
       text

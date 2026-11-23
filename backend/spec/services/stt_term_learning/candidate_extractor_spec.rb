@@ -57,14 +57,28 @@ RSpec.describe SttTermLearning::CandidateExtractor do
       }, anything)
     end
 
-    it "다음 hunk 가 예산을 넘기면 거기서 멈춘다(첫 hunk 가 예산보다 크면 LLM 을 부르지 않는다)" do
+    it "예산에 안 들어가는 hunk 는 건너뛰고 뒤의 작은 hunk 는 보낸다" do
       big = "가" * (described_class::MAX_HUNKS_CHARS + 10)
-      run.update!(ai_text: "x\n우판#{big}\ny", human_text: "x\n후판#{big}\ny")
+      run.update!(ai_text: "x\n우판#{big}\ny\n씨지엘 라인\nz", human_text: "x\n후판#{big}\ny\nCGL 라인\nz")
+
+      result = described_class.new(run).call
+
+      expect(llm).to have_received(:extract_stt_misrecognitions).with("- 씨지엘 라인\n+ CGL 라인", anything)
+      expect(result[:llm_skipped_reason]).to be_nil
+    end
+
+    it "hunk 가 전부 예산을 넘으면 LLM 을 부르지 않고 llm_failed + warn 로그" do
+      big = "가" * (described_class::MAX_HUNKS_CHARS + 10)
+      run.update!(ai_text: "x\n우판#{big}\ny\n씨지엘#{big}\nz", human_text: "x\n후판#{big}\ny\nCGL#{big}\nz")
+      meeting.glossary_entries.create!(from_text: "씨지엘", to_text: "CGL", match_type: "literal")
+      allow(Rails.logger).to receive(:warn)
 
       result = described_class.new(run).call
 
       expect(LlmService).not_to have_received(:new)
-      expect(result[:llm_skipped_reason]).to be_nil
+      expect(result[:llm_skipped_reason]).to eq("llm_failed")
+      expect(result[:candidates].map(&:source)).to eq([ "feedback" ])
+      expect(Rails.logger).to have_received(:warn).with(/MAX_HUNKS_CHARS|예산/)
     end
 
     it "LLM 결과를 Candidate(source llm_diff) 로 정규화, category 빈값은 STT, definition 60자 컷" do
