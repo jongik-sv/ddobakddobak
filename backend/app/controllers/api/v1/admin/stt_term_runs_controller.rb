@@ -51,6 +51,11 @@ module Api
                           status: :unprocessable_entity
           end
 
+          if @run.input_digest.present? &&
+             @run.meeting.stt_term_learning_runs.where(input_digest: @run.input_digest, status: %w[queued running]).exists?
+            return render json: { error: "같은 입력의 실행이 이미 대기·진행 중입니다" }, status: :unprocessable_entity
+          end
+
           run = @run.meeting.stt_term_learning_runs.create!(
             summary_id: @run.summary_id, trigger: @run.trigger, status: "queued",
             ai_text: @run.ai_text, human_text: @run.human_text, transcript_text: @run.transcript_text,

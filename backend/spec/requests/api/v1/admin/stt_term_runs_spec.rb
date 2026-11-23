@@ -42,6 +42,22 @@ RSpec.describe "Api::V1::Admin::SttTermRuns", type: :request do
       post "/api/v1/admin/stt_term_learning/meetings/#{meeting.id}/analyze"
       expect(response).to have_http_status(:forbidden)
     end
+
+    it "비관리자 403 — runs/:id·revert·rerun·item register" do
+      run = run_for(meeting)
+      item = create(:stt_term_learning_item, run: run, verdict: "skipped_not_in_transcript")
+      login_as(member)
+      [
+        -> { get "/api/v1/admin/stt_term_learning/runs/#{run.id}" },
+        -> { post "/api/v1/admin/stt_term_learning/runs/#{run.id}/revert" },
+        -> { post "/api/v1/admin/stt_term_learning/runs/#{run.id}/rerun" },
+        -> { post "/api/v1/admin/stt_term_learning/runs/#{run.id}/items/#{item.id}/register" }
+      ].each do |call|
+        instance_exec(&call)
+        expect(response).to have_http_status(:forbidden)
+      end
+      expect(run.reload.status).to eq("done")
+    end
   end
 
   describe "as admin" do
@@ -179,6 +195,18 @@ RSpec.describe "Api::V1::Admin::SttTermRuns", type: :request do
         expect([ new_run.ai_text, new_run.human_text, new_run.transcript_text, new_run.input_digest, new_run.meeting_id ])
           .to eq([ failed.ai_text, failed.human_text, failed.transcript_text, failed.input_digest, failed.meeting_id ])
         expect(SttTermLearningJob).to have_been_enqueued.with(run_id: new_run.id)
+      end
+
+      it "같은 입력의 queued/running run 이 있으면 422(중복 클릭 방지)" do
+        failed = run_for(meeting, status: "failed")
+        post "/api/v1/admin/stt_term_learning/runs/#{failed.id}/rerun"
+        expect(response).to have_http_status(:accepted)
+
+        expect {
+          post "/api/v1/admin/stt_term_learning/runs/#{failed.id}/rerun"
+        }.not_to change(SttTermLearningRun, :count)
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(json["error"]).to include("대기·진행 중")
       end
 
       it "failed 아닌 run 은 422" do

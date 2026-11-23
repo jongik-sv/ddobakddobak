@@ -27,6 +27,17 @@ module SttTermLearningJson
     scope.where(project_id: nil).or(scope.where(project_id: visible_project_ids))
   end
 
+  # 관리자 화면에 보이는 도메인 파일 id(AdminScope 스냅샷 노드의 링크 파일 — TermIndex 가 보여 주는 집합).
+  def visible_file_ids
+    @visible_file_ids ||= ::SttTermLearning::AdminScope.snapshot(current_user).nodes.flat_map { |n| n.files.map(&:id) }.to_set
+  end
+
+  # 남의 personal 프로젝트(또는 휴지통 프로젝트)에 속한 레벨인지.
+  def hidden_level?(level)
+    pid = level.project_id
+    !pid.nil? && !visible_project_ids.include?(pid)
+  end
+
   # LevelInfo = { type, id, name, path } — path 는 AdminScope 와 같은 규칙(전역 [], 프로젝트 [p], 폴더 [p, 조상…, f]).
   def level_info(level)
     return nil unless level

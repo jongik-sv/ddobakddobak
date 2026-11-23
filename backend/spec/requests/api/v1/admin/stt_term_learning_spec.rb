@@ -29,6 +29,25 @@ RSpec.describe "Api::V1::Admin::SttTermLearning", type: :request do
       get "/api/v1/admin/stt_term_learning/settings"
       expect(response).to have_http_status(:forbidden)
     end
+
+    it "비관리자 403 — impact·terms/delete·PUT settings" do
+      login_as(member)
+      [
+        -> { post "/api/v1/admin/stt_term_learning/impact", params: { targets: [] }, as: :json },
+        -> { post "/api/v1/admin/stt_term_learning/terms/delete", params: { items: [] }, as: :json },
+        -> { put "/api/v1/admin/stt_term_learning/settings", params: { enabled: false }, as: :json }
+      ].each do |call|
+        instance_exec(&call)
+        expect(response).to have_http_status(:forbidden)
+      end
+    end
+  end
+
+  # 남의 personal 프로젝트의 자동 파일.
+  def hidden_auto_file(content)
+    other = create(:user)
+    hp = other.projects.find_by!(personal: true)
+    SttTermLearning::AutoDomainFile.find_or_create_for!(level.for(hp), fallback_creator: other).tap { |f| f.update!(content: content) }
   end
 
   describe "as admin" do
@@ -86,6 +105,13 @@ RSpec.describe "Api::V1::Admin::SttTermLearning", type: :request do
       end
     end
 
+    it "impact: 남의 personal 프로젝트 레벨은 404" do
+      hp = create(:user).projects.find_by!(personal: true)
+      post "/api/v1/admin/stt_term_learning/impact",
+           params: { targets: [ { level: { type: "Project", id: hp.id } } ] }, as: :json
+      expect(response).to have_http_status(:not_found)
+    end
+
     it "impact 은 counts 배열" do
       create(:meeting, project: project, folder: child)
       create(:meeting, project: project)
@@ -136,6 +162,17 @@ RSpec.describe "Api::V1::Admin::SttTermLearning", type: :request do
         expect(json).to have_key("error")
       end
 
+      it "범위 밖(남의 personal) 파일을 원본으로 쓰면 422 + 내용 그대로" do
+        hidden = hidden_auto_file("- **후판**: a")
+        post "/api/v1/admin/stt_term_learning/moves",
+             params: { moves: [ { domain_file_id: hidden.id, term_keys: [ "후판" ], target: { type: "Project", id: project.id } } ] },
+             as: :json
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(json).to eq("error" => "이동할 수 없는 파일입니다")
+        expect(hidden.reload.content).to eq("- **후판**: a")
+        expect(SttTermLearning::AutoDomainFile.find_for(level.for(project))).to be_nil
+      end
+
       it "남의 personal 프로젝트로는 옮기지 않는다(422)" do
         hidden = create(:project, creator: create(:user), personal: true)
         source = auto_file(level.for(child), "- **후판**: a")
@@ -155,6 +192,15 @@ RSpec.describe "Api::V1::Admin::SttTermLearning", type: :request do
         expect(response).to have_http_status(:ok)
         expect(json).to eq("deleted" => 1)
         expect(source.reload.content).to eq("- **냉연**: b")
+      end
+
+      it "범위 밖(남의 personal) 파일은 422 + 내용 그대로" do
+        hidden = hidden_auto_file("- **후판**: a")
+        post "/api/v1/admin/stt_term_learning/terms/delete",
+             params: { items: [ { domain_file_id: hidden.id, term_key: "후판" } ] }, as: :json
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(json).to eq("error" => "이동할 수 없는 파일입니다")
+        expect(hidden.reload.content).to eq("- **후판**: a")
       end
 
       it "없는 용어는 422" do

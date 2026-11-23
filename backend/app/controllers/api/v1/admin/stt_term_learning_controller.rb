@@ -26,7 +26,9 @@ module Api
         # POST /api/v1/admin/stt_term_learning/impact { targets: [{ level: LevelRef, domain_file_id? }] }
         def impact
           counts = Array(params[:targets]).map do |t|
-            ::SttTermLearning::ImpactCounter.count(level_from_ref(t[:level] || {}), domain_file_id: t[:domain_file_id].presence)
+            level = level_from_ref(t[:level] || {})
+            raise ActiveRecord::RecordNotFound, "레벨이 없습니다" if hidden_level?(level) # 숨김 레벨은 없는 것으로(404)
+            ::SttTermLearning::ImpactCounter.count(level, domain_file_id: t[:domain_file_id].presence)
           end
           render json: { counts: counts }
         end
@@ -34,10 +36,9 @@ module Api
         # POST /api/v1/admin/stt_term_learning/moves { moves: [...] } → { moved, merged } / 422 { error }(전부 롤백)
         def moves
           moves = Array(params[:moves]).map do |m|
+            ensure_visible_file!(m[:domain_file_id])
             target = level_from_ref(m[:target] || {})
-            if target.project_id && ::Project.find(target.project_id).blocks_admin_override?(current_user)
-              raise ::SttTermLearning::TermMover::Error, "이동할 수 없는 레벨입니다"
-            end
+            raise ::SttTermLearning::TermMover::Error, "이동할 수 없는 레벨입니다" if hidden_level?(target)
             { domain_file_id: m[:domain_file_id], term_keys: m[:term_keys].nil? ? nil : Array(m[:term_keys]).map(&:to_s),
               target: target, copy: m[:copy], merge_descendants: m[:merge_descendants] }
           end
@@ -50,6 +51,7 @@ module Api
         # POST /api/v1/admin/stt_term_learning/terms/delete { items: [{ domain_file_id, term_key }] } → { deleted }
         def delete_terms
           items = Array(params[:items]).map { |i| { domain_file_id: i[:domain_file_id], term_key: i[:term_key].to_s } }
+          items.each { |i| ensure_visible_file!(i[:domain_file_id]) }
           deleted = ::SttTermLearning::TermMover.new(actor: current_user).delete!(items)
           render json: { deleted: deleted }
         rescue ::SttTermLearning::TermMover::Error, ActiveRecord::RecordNotFound => e
@@ -73,6 +75,14 @@ module Api
             enabled.nil? ? attrs.delete("enabled") : attrs["enabled"] = enabled
           end
           render json: AppSettings.save_stt_term_learning!(attrs)
+        end
+
+        private
+
+        # 관리자 화면 범위 밖(남의 personal 프로젝트 등)의 파일은 원본으로 쓰지 못한다 — TermMover 호출 전에 거른다.
+        def ensure_visible_file!(domain_file_id)
+          return if visible_file_ids.include?(domain_file_id.to_i)
+          raise ::SttTermLearning::TermMover::Error, "이동할 수 없는 파일입니다"
         end
       end
     end

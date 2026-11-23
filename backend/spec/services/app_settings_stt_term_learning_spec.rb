@@ -28,4 +28,11 @@ RSpec.describe AppSettings, "stt_term_learning", stt_settings_io: true do
     expect(YAML.safe_load(File.read(tmp_path))).to include("whiteboard" => { "web_mode" => "copy" },
       "stt_term_learning" => hash_including("idle_minutes" => 45))
   end
+
+  it "save_stt_term_learning! 은 읽기 경로와 같은 정규화(클램프) 값을 저장" do
+    result = AppSettings.save_stt_term_learning!("idle_minutes" => 1, "min_confidence" => 3)
+    expect(result).to eq("enabled" => true, "idle_minutes" => 5, "min_confidence" => 1.0)
+    expect(YAML.safe_load(File.read(tmp_path))["stt_term_learning"])
+      .to eq("enabled" => true, "idle_minutes" => 5, "min_confidence" => 1.0)
+  end
 end

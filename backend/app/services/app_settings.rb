@@ -54,9 +54,11 @@ class AppSettings
   def self.save_stt_term_learning!(attrs)
     cfg = load
     current = cfg["stt_term_learning"].is_a?(Hash) ? cfg["stt_term_learning"] : {}
-    cfg["stt_term_learning"] = current.merge(attrs.to_h.stringify_keys)
+    merged = cfg.merge("stt_term_learning" => current.merge(attrs.to_h.stringify_keys))
+    # 읽기 경로와 같은 정규화(기본값·클램프) 값을 저장한다 — 파일에 범위 밖 값이 남지 않게.
+    cfg["stt_term_learning"] = stt_term_learning(merged)
     save!(cfg)
-    stt_term_learning(cfg)
+    cfg["stt_term_learning"]
   end
 
   def self.load
