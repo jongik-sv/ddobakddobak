@@ -44,6 +44,8 @@ module Api
 
           registered = nil
           ::ActiveRecord::Base.transaction do
+            # 제외: 자동으로 넣었던 변형이 프롬프트에 계속 남지 않게, 바꾸기 전(correct 변경 전) 등록 위치에서 뺀다.
+            exclude_registered_variant!(@record) if status == "excluded"
             if params.key?(:correct)
               correct = params[:correct].to_s.strip
               raise ::SttTermLearning::ManualRegistration::Error, "올바른 용어가 비어 있습니다" if correct.blank?
@@ -106,25 +108,48 @@ module Api
         end
 
         # 지금 그 쌍이 등록된 위치. ⬆/⬇(moves) 버튼이 쓴다.
-        #   1) 최신 적용 item 의 파일에 그 용어 줄이 아직 있으면 거기.
-        #   2) 아니면(register_pair! 등록분은 item 이 없다, 또는 이동됨) register_pair! 가 보는 체인을 따라 용어 줄을 찾는다.
         def registered_location(record)
+          file, level = registered_entry(record)
+          file && location(file, record.correct_key, level)
+        end
+
+        # 지금 그 쌍(용어 줄 + 그 오인식 변형)이 있는 [파일, 레벨] | nil.
+        #   1) 최신 적용 item 의 파일에 그 용어 줄이 있고 변형도 남아 있으면 거기.
+        #   2) 아니면(register_pair! 등록분은 item 이 없다, 또는 이동됨) register_pair! 가 보는 체인을 따라 찾는다.
+        def registered_entry(record)
           item = @latest_items[record.id]
-          if item&.domain_file && item.domain_file.find_term(record.correct_key)
+          if item&.domain_file && variant_in?(item.domain_file, record)
             level = level_from_owner(item.level_owner_type, item.level_owner_id)
-            return location(item.domain_file, record.correct_key, level) if level
+            return [ item.domain_file, level ] if level
           end
           return nil unless item || record.status == "confirmed"
 
           chain_for(record).each do |level|
             level.linked_files.each do |file|
-              entry = file.find_term(record.correct_key)
-              next unless entry
-              next unless entry[:mispronunciations].any? { |m| ::DomainFile.normalize_key(m) == record.wrong_key }
-              return location(file, record.correct_key, level)
+              return [ file, level ] if variant_in?(file, record)
             end
           end
           nil
+        end
+
+        def variant_in?(file, record)
+          entry = file.find_term(record.correct_key)
+          entry && entry[:mispronunciations].any? { |m| ::DomainFile.normalize_key(m) == record.wrong_key }
+        end
+
+        # excluded 로 바꿀 때: 등록 위치(자동·사람 파일)에서 그 변형만 뺀다. 줄은 남긴다.
+        # 단 자동 파일 줄이고 변형이 이것 하나뿐이면(이 쌍 때문에 생긴 새 줄) 줄 전체를 지운다.
+        def exclude_registered_variant!(record)
+          @latest_items = latest_items([ record.id ])
+          file, _level = registered_entry(record)
+          return unless file
+
+          variants = file.find_term(record.correct_key)[:mispronunciations].map { |m| ::DomainFile.normalize_key(m) }.uniq
+          if file.stt_auto? && variants == [ record.wrong_key ]
+            file.remove_term_line!(record.correct_key)
+          else
+            file.remove_mispronunciation!(record.correct_key, record.wrong_key)
+          end
         end
 
         def registered_from_result(result, record)

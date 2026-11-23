@@ -136,6 +136,70 @@ RSpec.describe "Api::V1::Admin::SttMisrecognitions", type: :request do
         expect(SttTermLearning::AutoDomainFile.find_for(level.for(project))).to be_nil
       end
 
+      describe "excluded 로 바꾸면 등록 위치에서 그 변형을 뺀다(I2)" do
+        let(:meeting) { create(:meeting, project: project, folder: folder) }
+
+        def applied_item(file, record)
+          run = create(:stt_term_learning_run, meeting: meeting, status: "done", finished_at: Time.current)
+          create(:stt_term_learning_item, run: run, domain_file: file, misrecognition: record,
+                 level_owner_type: "Folder", level_owner_id: folder.id)
+        end
+
+        it "자동 파일 줄에 다른 변형도 있으면 이 변형만 빼고 줄은 남긴다" do
+          file = SttTermLearning::AutoDomainFile.find_or_create_for!(level.for(folder), fallback_creator: admin)
+          file.update!(content: "- **후판** [STT] (오인식: 우판, 후반): 강판\n- **냉연** [STT] (오인식: 냉현): 냉간")
+          record = mis("우판", "후판", status: "confirmed", last_meeting: meeting)
+          applied_item(file, record)
+
+          patch "/api/v1/admin/stt_term_learning/misrecognitions/#{record.id}", params: { status: "excluded" }, as: :json
+
+          expect(response).to have_http_status(:ok)
+          expect(json["misrecognition"]).to include("status" => "excluded", "registered" => nil)
+          expect(file.reload.content).to eq("- **후판** [STT] (오인식: 후반): 강판\n- **냉연** [STT] (오인식: 냉현): 냉간")
+          get "/api/v1/admin/stt_term_learning/misrecognitions"
+          expect(json["misrecognitions"].find { |x| x["id"] == record.id }["registered"]).to be_nil
+        end
+
+        it "자동 파일의 새 줄이고 변형이 이것 하나면 줄 전체를 지운다" do
+          file = SttTermLearning::AutoDomainFile.find_or_create_for!(level.for(folder), fallback_creator: admin)
+          file.update!(content: "- **냉연** [STT] (오인식: 냉현): 냉간\n- **후판** [STT] (오인식: 우판): 강판")
+          record = mis("우판", "후판", status: "confirmed", last_meeting: meeting)
+          applied_item(file, record)
+
+          patch "/api/v1/admin/stt_term_learning/misrecognitions/#{record.id}", params: { status: "excluded" }, as: :json
+
+          expect(response).to have_http_status(:ok)
+          expect(json["misrecognition"]).to include("status" => "excluded", "registered" => nil)
+          expect(file.reload.content).to eq("- **냉연** [STT] (오인식: 냉현): 냉간")
+        end
+
+        it "사람 파일 줄은 그 변형만 빼고 줄(용어·분류·설명·다른 줄)은 그대로" do
+          human = create(:domain_file, content: "# 제강\n- **후판** [설비] (오인식: 우판): 두꺼운 강판\n- **냉연**: 냉간 압연")
+          DomainFileLink.create!(owner: folder, domain_file: human)
+          record = mis("우판", "후판", status: "confirmed", last_meeting: meeting)
+
+          get "/api/v1/admin/stt_term_learning/misrecognitions"
+          expect(json["misrecognitions"].find { |x| x["id"] == record.id }["registered"]).to include("domain_file_id" => human.id)
+
+          patch "/api/v1/admin/stt_term_learning/misrecognitions/#{record.id}", params: { status: "excluded" }, as: :json
+
+          expect(response).to have_http_status(:ok)
+          expect(json["misrecognition"]).to include("status" => "excluded", "registered" => nil)
+          expect(human.reload.content).to eq("# 제강\n- **후판** [설비]: 두꺼운 강판\n- **냉연**: 냉간 압연")
+        end
+
+        it "등록된 적 없는 미정 기록을 excluded 로 바꿔도 파일은 그대로" do
+          human = create(:domain_file, content: "- **후판** (오인식: 우판): 강판")
+          DomainFileLink.create!(owner: folder, domain_file: human)
+          record = mis("우판", "후판", status: "undecided", last_meeting: meeting)
+
+          patch "/api/v1/admin/stt_term_learning/misrecognitions/#{record.id}", params: { status: "excluded" }, as: :json
+
+          expect(response).to have_http_status(:ok)
+          expect(human.reload.content).to eq("- **후판** (오인식: 우판): 강판")
+        end
+      end
+
       it "잘못된 status 는 422" do
         record = mis("우판", "후판")
         patch "/api/v1/admin/stt_term_learning/misrecognitions/#{record.id}", params: { status: "bogus" }, as: :json
