@@ -51,9 +51,7 @@ module SttTermLearning
     def hidden_meeting_ids(snap, files)
       return Set.new if files.empty?
       run_ids = ::SttTermLearningItem.where(domain_file_id: files.map(&:id)).select(:run_id)
-      mids = ::SttTermLearningRun.where(id: run_ids).select(:meeting_id)
-      visible = snap.nodes.filter_map(&:project_id).uniq
-      ::Meeting.where(id: mids).where.not(project_id: nil).where.not(project_id: visible).pluck(:id).to_set
+      snap.hidden_meeting_ids(::SttTermLearningRun.where(id: run_ids).select(:meeting_id))
     end
 
     def build_row(node, file, key, t, items, count, group, cutoff)

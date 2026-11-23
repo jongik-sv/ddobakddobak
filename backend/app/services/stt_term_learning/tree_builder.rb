@@ -9,7 +9,7 @@ module SttTermLearning
 
     def call
       snap = AdminScope.snapshot(@user)
-      new_by_file = new_counts_by_file
+      new_by_file = new_counts_by_file(snap)
       cand = promote_candidates(snap)
       stat = lambda do |n|
         {
@@ -37,10 +37,13 @@ module SttTermLearning
     end
 
     # 최근 NEW_WINDOW 안에 끝난(reverted 제외) run 에서 registered/merged_existing 된 items (TermIndex 의 is_new 와 같은 기준) 수 — 파일 단위.
-    def new_counts_by_file
-      ::SttTermLearningItem.applied_live.where(verdict: %w[registered merged_existing])
+    # 보이지 않는 프로젝트 회의의 item 은 뺀다(TermIndex 와 같은 숨김 집합).
+    def new_counts_by_file(snap)
+      scope = ::SttTermLearningItem.applied_live.where(verdict: %w[registered merged_existing])
         .where(stt_term_learning_runs: { finished_at: (Time.current - NEW_WINDOW)..})
-        .group(:domain_file_id).count
+      hidden = snap.hidden_meeting_ids(scope.select("stt_term_learning_runs.meeting_id"))
+      scope = scope.where.not(stt_term_learning_runs: { meeting_id: hidden.to_a }) if hidden.any?
+      scope.group(:domain_file_id).count
     end
 
     # 상위로 올릴 후보 = 중복 그룹 중 merge_target 이 있고 그 레벨에 멤버가 없는 것 (TermIndex 와 같은 정의).

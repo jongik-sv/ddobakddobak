@@ -65,6 +65,18 @@ module SttTermLearning
         @nodes.first.children_keys.concat(@nodes.select { |n| n.parent_key == "global" }.map(&:key))
       end
 
+      # 보이는 프로젝트 id(전역 노드 제외).
+      def visible_project_ids
+        @visible_project_ids ||= @nodes.filter_map(&:project_id).uniq
+      end
+
+      # meeting_ids(배열·relation) 중 보이지 않는 프로젝트(남의 personal 등)에 속한 회의 id 집합.
+      # TermIndex(meeting_ids·source)와 TreeBuilder(new_count)가 같은 숨김 기준을 쓴다.
+      def hidden_meeting_ids(meeting_ids)
+        ::Meeting.where(id: meeting_ids).where.not(project_id: nil).where.not(project_id: visible_project_ids)
+                 .pluck(:id).to_set
+      end
+
       def node_for(level)
         @by_key[level.key]
       end

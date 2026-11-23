@@ -70,4 +70,18 @@ RSpec.describe SttTermLearning::TreeBuilder do
     folder = described_class.new(admin).call["projects"].find { |x| x["id"] == project.id }["folders"].find { |x| x["id"] == a.id }
     expect(folder["new_count"]).to eq(2)
   end
+
+  it "new_count: 보이지 않는 프로젝트(남의 personal) 회의의 item 은 세지 않는다(TermIndex 와 같은 숨김)" do
+    f = file_for(level.for(a), "- **후판**: x")
+    owner = create(:user)
+    hidden_project = create(:project, personal: true, creator: owner)
+    hidden_meeting = create(:meeting, project: hidden_project, creator: owner)
+    visible_meeting = create(:meeting, project: project)
+    [ hidden_meeting, visible_meeting ].each do |m|
+      run = create(:stt_term_learning_run, meeting: m, status: "done", finished_at: 1.day.ago)
+      create(:stt_term_learning_item, run: run, domain_file: f, verdict: "registered")
+    end
+    folder = described_class.new(admin).call["projects"].find { |x| x["id"] == project.id }["folders"].find { |x| x["id"] == a.id }
+    expect(folder["new_count"]).to eq(1)
+  end
 end
