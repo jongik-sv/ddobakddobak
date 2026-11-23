@@ -83,6 +83,13 @@ RSpec.describe ProjectImporter do
   describe "#run! 라운드트립" do
     subject(:new_project) { described_class.new(export_io, importer).run! }
 
+    it "요약의 ai_notes_markdown 은 보존하고 human_edited_at(학습 대기 표시)은 버린다" do
+      summary.update_columns(ai_notes_markdown: "AI 원본", human_edited_at: 1.minute.ago)
+      s = new_project.meetings.first.summaries.first
+      expect(s.ai_notes_markdown).to eq("AI 원본")
+      expect(s.human_edited_at).to be_nil
+    end
+
     it "새 Project 를 반환한다" do
       expect(new_project).to be_a(Project)
       expect(new_project.id).not_to eq(project.id)

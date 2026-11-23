@@ -3,11 +3,15 @@ module SttTermLearning
   # 모든 예외는 삼키고 로그만 남긴다(nil 반환).
   # 잡은 실행 시 summary.human_edited_at 이 edited_at_iso 와 같을 때만 진행한다(재편집 시 이전 잡은 스킵).
   class Scheduler
-    def self.schedule_idle!(summary, edited_at_iso)
-      settings = AppSettings.stt_term_learning
-      return unless settings["enabled"] == true && summary&.learnable?
+    # 학습이 켜져 있고 learnable 한 final 인가(편집 시각을 찍을지 호출부가 먼저 묻는다).
+    def self.schedulable?(summary)
+      AppSettings.stt_term_learning["enabled"] == true && summary&.learnable? == true
+    end
 
-      SttTermLearningJob.set(wait: settings["idle_minutes"].to_i.minutes)
+    def self.schedule_idle!(summary, edited_at_iso)
+      return unless schedulable?(summary)
+
+      SttTermLearningJob.set(wait: AppSettings.stt_term_learning["idle_minutes"].to_i.minutes)
                         .perform_later(summary_id: summary.id, edited_at: edited_at_iso)
       nil
     rescue => e

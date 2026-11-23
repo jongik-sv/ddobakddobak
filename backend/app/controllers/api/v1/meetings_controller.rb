@@ -543,8 +543,11 @@ module Api
         return render json: { error: "No valid corrections provided" }, status: :unprocessable_entity if corrections.empty?
 
         entries = corrections.map { |c| { from: c[:from], to: c[:to], match_type: "literal" } }
+        notes_before = @meeting.active_summary&.notes_markdown.to_s
         corrected_notes, corrected_count = apply_glossary_entries!(entries)
-        if (edited = @meeting.active_summary)
+        # 실제로 고친 게 있을 때만(본문 또는 전사) 편집 시각을 찍는다 — 아무것도 안 고친 feedback 이 대기 목록에 남지 않게.
+        edited = @meeting.reload.active_summary
+        if edited && (corrected_count.to_i.positive? || edited.notes_markdown.to_s != notes_before)
           stt_learning_schedule_idle(edited)
         end
 
@@ -697,8 +700,9 @@ module Api
         client_id = params[:client_id].presence
 
         summary = find_or_create_active_summary
+        notes_before = summary.notes_markdown
         summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
-        stt_learning_schedule_idle(summary)
+        stt_learning_schedule_idle(summary) if summary.notes_markdown != notes_before
         @meeting.update!(last_user_edit_at: Time.current)
         @meeting.refresh_brief_summary!(notes_markdown)
 
@@ -1040,7 +1044,9 @@ module Api
 
       # STT 용어 학습(스펙 §5.2): 사람 편집 시각을 찍고 무편집 대기(idle) 잡을 예약한다.
       # 노트 저장 뒤에 호출되므로 여기서 나는 어떤 예외도 응답을 깨지 않게 삼킨다.
+      # 학습이 꺼졌거나 learnable 이 아니면 시각도 찍지 않는다(잡이 없으니 대기 목록에 영영 남는다).
       def stt_learning_schedule_idle(summary)
+        return unless ::SttTermLearning::Scheduler.schedulable?(summary)
         edited_at = summary.mark_human_edited!
         ::SttTermLearning::Scheduler.schedule_idle!(summary, edited_at)
       rescue => e

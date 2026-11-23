@@ -7,6 +7,7 @@ module Api
 
         RUNS_LIMIT = 200
         PENDING_LIMIT = 50
+        PENDING_GRACE = 10.minutes
         NO_AI_ORIGINAL_MESSAGE = "AI 원본이 없는 회의입니다".freeze
 
         before_action :authenticate_user!
@@ -93,14 +94,17 @@ module Api
         end
 
         # 사람 편집 후 아직 run 이 없는 learnable final — 디바운스 대기 중인 학습. eta = 편집 시각 + idle_minutes.
+        # eta 가 PENDING_GRACE 넘게 지난 행은 뺀다(잡이 스킵·중복 방지로 run 을 안 만든 편집이 영영 남지 않게).
         def pending_json
           idle = AppSettings.stt_term_learning["idle_minutes"].to_i.minutes
+          cutoff = Time.current - idle - PENDING_GRACE
           later_run = ::SttTermLearningRun.where("stt_term_learning_runs.meeting_id = summaries.meeting_id")
                                           .where("stt_term_learning_runs.created_at >= summaries.human_edited_at")
           summaries = ::Summary.joins(:meeting)
                                .merge(visible_meetings_scope(::Meeting.kept))
                                .where(summary_type: "final")
                                .where.not(human_edited_at: nil)
+                               .where("summaries.human_edited_at >= ?", cutoff)
                                .where.not(ai_notes_markdown: [ nil, "" ])
                                .where.not(later_run.arel.exists)
                                .includes(meeting: [ :project, :folder ])

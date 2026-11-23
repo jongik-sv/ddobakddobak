@@ -37,6 +37,17 @@ RSpec.describe Transfer::MeetingRestorer do
     )
   end
 
+  describe "요약 복원" do
+    it "ai_notes_markdown 은 보존하고 human_edited_at(학습 대기 표시)은 버린다" do
+      create(:summary, meeting: meeting, summary_type: "final", notes_markdown: "사람", ai_notes_markdown: "AI 원본",
+                       ai_generated_at: 1.hour.ago, human_edited_at: 1.minute.ago)
+      new_meeting = build_restorer(meeting_hash_for(meeting)).restore!
+      s = new_meeting.summaries.first
+      expect(s.ai_notes_markdown).to eq("AI 원본")
+      expect(s.human_edited_at).to be_nil
+    end
+  end
+
   describe "public_uid / dflow_synced_at / dflow_url 왕복 보존" do
     it "로컬에 동일 uid 가 없으면(서버 이동 시나리오) 3필드를 그대로 보존한다" do
       hash = meeting_hash_for(meeting)

@@ -100,7 +100,7 @@ RSpec.describe "Api::V1::Admin::SttTermRuns", type: :request do
       end
 
       it "pending: 사람 편집 후 run 이 없는 learnable final (eta = 편집 + idle_minutes)" do
-        edited = Time.zone.parse("2026-11-23 10:00:00")
+        edited = 5.minutes.ago.change(usec: 0)
         summary = final_summary(meeting, edited: edited)
         done_meeting = create(:meeting, project: project)
         done_summary = final_summary(done_meeting, edited: 1.hour.ago)
@@ -118,6 +118,16 @@ RSpec.describe "Api::V1::Admin::SttTermRuns", type: :request do
         expect(Time.zone.parse(p["human_edited_at"])).to eq(edited)
         expect(Time.zone.parse(p["eta"])).to eq(edited + 30.minutes)
       end
+    end
+
+    it "pending: ETA 가 10분 넘게 지난 행은 뺀다(잡이 스킵돼 run 이 안 생긴 편집)" do
+      fresh = final_summary(meeting, edited: 25.minutes.ago)                           # eta 5분 후
+      grace = final_summary(create(:meeting, project: project), edited: 35.minutes.ago) # eta 5분 지남
+      final_summary(create(:meeting, project: project), edited: 45.minutes.ago)         # eta 15분 지남 → 뺌
+
+      get "/api/v1/admin/stt_term_learning/runs"
+
+      expect(json["pending"].map { |p| p["summary_id"] }).to contain_exactly(fresh.id, grace.id)
     end
 
     it "GET runs/:id 는 diff·items·시각을 준다" do
