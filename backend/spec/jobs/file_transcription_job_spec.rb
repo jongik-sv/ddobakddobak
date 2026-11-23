@@ -188,6 +188,17 @@ RSpec.describe FileTranscriptionJob, type: :job do
       expect(meeting.transcripts.where(applied_to_minutes: false).count).to eq(0)
     end
 
+    it "업로드 final 요약 저장 시 ai_notes_markdown 도 기록" do
+      allow(llm).to receive(:refine_notes)
+        .and_return({ "notes_markdown" => "## AI 원본", "ok" => true })
+
+      described_class.new.send(:generate_summary, meeting)
+
+      s = meeting.summaries.find_by(summary_type: "final")
+      expect(s.ai_notes_markdown).to eq("## AI 원본")
+      expect(s.ai_generated_at).to be_present
+    end
+
     it "실패(ok:false) 시 summary_error 를 영속 기록하고 요약을 저장하지 않는다" do
       allow(llm).to receive(:refine_notes)
         .and_return({ "notes_markdown" => "", "ok" => false, "error" => "요약 생성 중 오류가 발생했습니다" })

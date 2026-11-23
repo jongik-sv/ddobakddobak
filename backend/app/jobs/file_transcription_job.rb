@@ -211,7 +211,7 @@ class FileTranscriptionJob < ApplicationJob
 
     if result["ok"] && notes_markdown.present?
       summary = meeting.summaries.find_or_initialize_by(summary_type: "final")
-      summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
+      summary.write_ai_final!(notes_markdown)
       # 성공 저장 — 재전사 이전의 실패 기록이 남아 오탐 배지가 되지 않게 클리어
       # (MeetingSummarizationJob final 과 동일한 summary_error 라이프사이클).
       meeting.clear_summary_error!

@@ -470,7 +470,7 @@ class MeetingSummarizationJob < ApplicationJob
     notes_markdown = PreviousMeetingNotes.join(pinned_top, body_result)
 
     summary = meeting.summaries.find_or_initialize_by(summary_type: "final")
-    summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
+    summary.write_ai_final!(notes_markdown)
 
     meeting.clear_summary_error!
     meeting.refresh_brief_summary!(body_result)

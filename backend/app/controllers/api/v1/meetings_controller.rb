@@ -541,6 +541,7 @@ module Api
 
         entries = corrections.map { |c| { from: c[:from], to: c[:to], match_type: "literal" } }
         corrected_notes, corrected_count = apply_glossary_entries!(entries)
+        @meeting.active_summary&.mark_human_edited!
 
         # D2=A: 적용한 교정을 회의 사전에 자동 영속(upsert). best-effort.
         persist_corrections_to_meeting_glossary(corrections)
@@ -677,6 +678,7 @@ module Api
 
         summary = find_or_create_active_summary
         summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
+        summary.mark_human_edited!
         @meeting.update!(last_user_edit_at: Time.current)
         @meeting.refresh_brief_summary!(notes_markdown)
 
