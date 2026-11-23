@@ -49,7 +49,16 @@ module SttTermLearning
           new_terms = @pending_new.values.select { |p| p[:file].id == file_id }.map { |p| p[:term] }
           next if merges.empty? && new_terms.empty?
 
-          changed = file.apply_learning!(merges: merges, new_terms: new_terms)
+          begin
+            changed = file.apply_learning!(merges: merges, new_terms: new_terms)
+          rescue ::ActiveRecord::RecordInvalid
+            # register 뒤 다른 쓰기로 파일이 늘어 한도를 넘긴 경우: 이 파일 보류분만 file_full 로 돌리고 계속.
+            # 검증 실패는 SQL 전에 나므로 savepoint 는 그대로 쓸 수 있다.
+            raise unless file.errors.of_kind?(:content, :too_long)
+            file.restore_attributes
+            @results_by_file[file_id].each { |r| r.merge!(verdict: "skipped_invalid", reason: FILE_FULL, change: nil) }
+            next
+          end
           @pending_new.each do |key, p|
             next unless p[:file].id == file_id
             line = changed[key] || file.term_line(key)
@@ -70,6 +79,7 @@ module SttTermLearning
       @order = []       # 저장 순서(처음 보류한 순)
       @extra = Hash.new(0) # file_id => 보류한 쓰기로 늘어날 글자 수
       @line_growth = {} # [file_id, term_key] => 병합으로 늘어난 글자 수(그 줄 누적)
+      @results_by_file = Hash.new { |h, k| h[k] = [] } # file_id => 쓰기를 보류한 결과 Hash 들
     end
 
     # 같은 실행에서 보류한 새 줄 → 체인(가까운 레벨부터, 레벨 안은 링크 id 순, 사람·자동 구분 없음).
@@ -107,8 +117,10 @@ module SttTermLearning
       @line_growth[[ file.id, key ]] = growth
       ((@merges[file.id] ||= {})[key] ||= []) << wrong
       enqueue(file)
-      result("merged_existing", domain_file: file, level: level,
-             change: { "kind" => "add_mispronunciation", "domain_file_id" => file.id, "term_key" => key, "wrong" => wrong })
+      r = result("merged_existing", domain_file: file, level: level,
+                 change: { "kind" => "add_mispronunciation", "domain_file_id" => file.id, "term_key" => key, "wrong" => wrong })
+      @results_by_file[file.id] << r
+      r
     end
 
     def new_line(candidate, key, wrong, level, file)
@@ -148,6 +160,7 @@ module SttTermLearning
       r = result("registered", domain_file: pending[:file], level: pending[:level],
                  change: { "kind" => "add_line", "domain_file_id" => pending[:file].id, "term_key" => key, "line" => nil })
       pending[:results] << r
+      @results_by_file[pending[:file].id] << r
       r
     end
 

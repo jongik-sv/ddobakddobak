@@ -221,6 +221,25 @@ RSpec.describe SttTermLearning::Registrar do
       expect(auto.reload.content.length).to eq(DomainFile::MAX_CONTENT_CHARS)
     end
 
+    it "register 뒤 flush 전에 파일이 늘어 한도를 넘기면 그 파일 보류분만 file_full, 다른 파일은 저장" do
+      a = human_file("- **후판**: 두꺼운 강판", parent)
+      b = human_file("- **MES**: 제조", project)
+      ra1 = registrar.register(cand("우판", "후판"))
+      ra2 = registrar.register(cand("후 반", "후판"))
+      rnew = registrar.register(cand("엠이", "MES"))
+      expect(rnew[:domain_file]).to eq(b)
+      rc = registrar.register(cand("디엠이에스", "DMES"))
+      expect(rc[:domain_file]).to eq(SttTermLearning::AutoDomainFile.find_for(SttTermLearning::Level.for(child)))
+      a.update_column(:content, "- **후판**: 두꺼운 강판\n" + "x" * (DomainFile::MAX_CONTENT_CHARS - 20))
+      expect { registrar.flush! }.not_to raise_error
+      [ ra1, ra2 ].each { |r| expect(r).to include(verdict: "skipped_invalid", reason: "file_full", change: nil) }
+      expect(rnew[:verdict]).to eq("merged_existing")
+      expect(rc[:verdict]).to eq("registered")
+      expect(rc[:change]["line"]).to eq("- **DMES** [STT] (오인식: 디엠이에스): ")
+      expect(a.reload.content).to start_with("- **후판**: 두꺼운 강판\n")
+      expect(b.reload.content).to eq("- **MES** (오인식: 엠이): 제조")
+    end
+
     it "사람 파일 병합도 한도를 넘기면 file_full" do
       human = human_file("- **후판**: 두꺼운 강판\n" + "x" * (DomainFile::MAX_CONTENT_CHARS - 30), parent)
       r = registrar.register(cand("우판우판우판우판", "후판")); registrar.flush!
