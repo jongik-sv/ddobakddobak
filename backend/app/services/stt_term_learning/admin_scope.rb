@@ -3,7 +3,8 @@ module SttTermLearning
   module AdminScope
     module_function
 
-    # 남의 personal 프로젝트(Project#blocks_admin_override?)는 뺀다.
+    # 남의 personal 프로젝트는 뺀다. Project#blocks_admin_override?(user) 의 SQL 등가물이다
+    # (personal && created_by_id != user.id 를 제외) — 한쪽을 바꾸면 spec 이 어긋나게 해 둔다.
     def projects(user)
       ::Project.kept.where(personal: false).or(::Project.kept.where(created_by_id: user&.id))
     end
@@ -92,16 +93,19 @@ module SttTermLearning
       # 같은 프로젝트 안에서 같은 key 가 2개 이상 레벨에 있을 때(전역 제외).
       def groups
         @groups ||= begin
-          acc = Hash.new { |h, k| h[k] = { term: nil, members: [] } }
+          acc = Hash.new { |h, k| h[k] = { term: nil, members: [], file_ids: [] } }
           nodes.each do |n|
             next if n.global?
-            term_map(n).each do |key, t|
-              g = acc["#{n.project_id}:#{key}"]
-              g[:term] ||= t[:term]
-              g[:members] << n
+            n.files.each do |file|
+              terms_in(file).each do |key, t|
+                g = acc["#{n.project_id}:#{key}"]
+                g[:term] ||= t[:term]
+                g[:members] << n unless g[:members].include?(n)
+                g[:file_ids] << file.id
+              end
             end
           end
-          acc.select { |_, g| g[:members].size >= 2 }.each_value do |g|
+          acc.select { |_, g| g[:members].size >= 2 && g[:file_ids].uniq.size >= 2 }.each_value do |g|
             g[:target] = common_ancestor(g[:members])
             g[:promote] = !g[:target].nil? && g[:members].none? { |m| m.key == g[:target].key }
           end

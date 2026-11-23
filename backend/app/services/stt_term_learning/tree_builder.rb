@@ -36,9 +36,9 @@ module SttTermLearning
       snap.node_by_key(node.parent_key)&.folder_id
     end
 
-    # 최근 NEW_WINDOW 안에 끝난(reverted 제외) run 에서 registered 된 items 수 — 파일 단위.
+    # 최근 NEW_WINDOW 안에 끝난(reverted 제외) run 에서 registered/merged_existing 된 items (TermIndex 의 is_new 와 같은 기준) 수 — 파일 단위.
     def new_counts_by_file
-      ::SttTermLearningItem.applied_live.where(verdict: "registered")
+      ::SttTermLearningItem.applied_live.where(verdict: %w[registered merged_existing])
         .where(stt_term_learning_runs: { finished_at: (Time.current - NEW_WINDOW)..})
         .group(:domain_file_id).count
     end

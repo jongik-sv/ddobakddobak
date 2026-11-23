@@ -20,7 +20,7 @@ module SttTermLearning
           next_nodes
         end
       files = selected.flat_map(&:files).uniq
-      applied = applied_items(files)
+      applied = applied_items(files, hidden_meeting_ids(snap, files))
       cutoff = Time.current - TreeBuilder::NEW_WINDOW
 
       selected.flat_map do |node|
@@ -39,10 +39,21 @@ module SttTermLearning
     private
 
     # { [file_id, correct_key] => [item(최신 id 순)] }
-    def applied_items(files)
+    def applied_items(files, hidden)
       return {} if files.empty?
-      ::SttTermLearningItem.applied_live.where(domain_file_id: files.map(&:id))
-        .includes(:run).order(id: :desc).to_a.group_by { |i| [i.domain_file_id, i.correct_key] }
+      items = ::SttTermLearningItem.applied_live.where(domain_file_id: files.map(&:id))
+        .includes(:run).order(id: :desc).to_a
+      items.reject! { |i| hidden.include?(i.run.meeting_id) } if hidden.any?
+      items.group_by { |i| [i.domain_file_id, i.correct_key] }
+    end
+
+    # 보이지 않는 프로젝트(남의 personal 등)에 속한 회의 id — meeting_ids·source 에서 뺀다.
+    def hidden_meeting_ids(snap, files)
+      return Set.new if files.empty?
+      run_ids = ::SttTermLearningItem.where(domain_file_id: files.map(&:id)).select(:run_id)
+      mids = ::SttTermLearningRun.where(id: run_ids).select(:meeting_id)
+      visible = snap.nodes.filter_map(&:project_id).uniq
+      ::Meeting.where(id: mids).where.not(project_id: nil).where.not(project_id: visible).pluck(:id).to_set
     end
 
     def build_row(node, file, key, t, items, count, group, cutoff)
@@ -53,7 +64,7 @@ module SttTermLearning
           items.any? ? "human_merged" : "human"
         end
       {
-        "row_id" => "#{file.id}:#{key}",
+        "row_id" => "#{file.id}:#{key}@#{node.level.key}",
         "term" => t[:term],
         "key" => key,
         "category" => t[:category].presence,

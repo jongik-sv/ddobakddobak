@@ -56,7 +56,7 @@ RSpec.describe SttTermLearning::TreeBuilder do
     expect(p["folders"].find { |f| f["id"] == parent.id }["promote_candidates"]).to eq([])
   end
 
-  it "new_count: 7일 내 끝난 non-reverted run 의 registered 만" do
+  it "new_count: 7일 내 끝난 non-reverted run 의 registered+merged_existing (already_known 제외)" do
     f = file_for(level.for(a), "- **후판**: x")
     mk = lambda do |status, finished, verdict|
       run = create(:stt_term_learning_run, status: status, finished_at: finished)
@@ -64,9 +64,10 @@ RSpec.describe SttTermLearning::TreeBuilder do
     end
     mk.call("done", 1.day.ago, "registered")
     mk.call("done", 1.day.ago, "merged_existing")
+    mk.call("done", 1.day.ago, "already_known")
     mk.call("done", 8.days.ago, "registered")
     mk.call("reverted", 1.day.ago, "registered")
     folder = described_class.new(admin).call["projects"].find { |x| x["id"] == project.id }["folders"].find { |x| x["id"] == a.id }
-    expect(folder["new_count"]).to eq(1)
+    expect(folder["new_count"]).to eq(2)
   end
 end

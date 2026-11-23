@@ -27,7 +27,7 @@ RSpec.describe SttTermLearning::TermIndex do
     item(f1, key: "냉연", source: "llm_diff")
     rows = index.rows(level: level.for(a)).to_h { |r| [r["key"], r] }
     r = rows["후판"]
-    expect(r).to include("row_id" => "#{f1.id}:후판", "term" => "후판", "category" => "STT", "definition" => "두꺼운 강판",
+    expect(r).to include("row_id" => "#{f1.id}:후판@Folder:#{a.id}", "term" => "후판", "category" => "STT", "definition" => "두꺼운 강판",
                          "mispronunciations" => ["우판"], "source" => "feedback", "is_new" => true)
     expect(r["meeting_ids"]).to eq([i1.run.meeting_id])
     expect(r["domain_file"]).to eq("id" => f1.id, "name" => f1.name, "auto" => true)
@@ -108,5 +108,31 @@ RSpec.describe SttTermLearning::TermIndex do
     create(:meeting, project: project, folder: a)
     create(:meeting, project: project, folder: a)
     expect(index.rows(level: level.for(a)).first["applied_meeting_count"]).to eq(SttTermLearning::ImpactCounter.count(level.for(a), domain_file_id: f.id))
+  end
+
+  it "한 사람 파일이 프로젝트·폴더에 링크 → row_id 구분, 중복 그룹·승격 후보 아님" do
+    human = create(:domain_file, project: project, creator: admin, content: "- **MES**: 제조")
+    DomainFileLink.create!(domain_file: human, owner: project)
+    DomainFileLink.create!(domain_file: human, owner: a)
+    rows = index.rows.select { |r| r["key"] == "mes" }
+    expect(rows.map { |r| r["row_id"] }).to contain_exactly("#{human.id}:mes@Project:#{project.id}", "#{human.id}:mes@Folder:#{a.id}")
+    expect(rows.map { |r| r["duplicate_group"] }).to eq([nil, nil])
+    expect(SttTermLearning::AdminScope.snapshot(admin).groups).to be_empty
+  end
+
+  it "서로 다른 파일의 같은 key 는 형제 폴더에서 여전히 그룹" do
+    file_for(level.for(a), "- **후판**: 1")
+    file_for(level.for(b), "- **후판**: 1")
+    expect(SttTermLearning::AdminScope.snapshot(admin).groups.size).to eq(1)
+  end
+
+  it "보이지 않는 프로젝트 회의는 meeting_ids 에서 제외" do
+    f = file_for(level.for(a), "- **후판**: 1")
+    hidden_project = create(:project, personal: true, creator: create(:user))
+    hidden = create(:meeting, project: project)
+    hidden.update_columns(project_id: hidden_project.id)
+    visible = item(f)
+    item(f, meeting: hidden)
+    expect(index.rows(level: level.for(a)).first["meeting_ids"]).to eq([visible.run.meeting_id])
   end
 end
