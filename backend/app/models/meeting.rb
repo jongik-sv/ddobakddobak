@@ -18,6 +18,7 @@ class Meeting < ApplicationRecord
   has_many :glossary_entries, as: :owner, dependent: :destroy
   has_many :transcripts, dependent: :destroy
   has_many :summaries, dependent: :destroy
+  has_many :stt_term_learning_runs, dependent: :delete_all
   has_one :meeting_whiteboard, dependent: :destroy
   has_many :blocks, dependent: :destroy
   has_many :meeting_attachments, dependent: :destroy

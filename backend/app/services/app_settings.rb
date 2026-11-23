@@ -33,6 +33,32 @@ class AppSettings
     WHITEBOARD_WEB_MODES.include?(mode) ? mode : WHITEBOARD_DEFAULT_WEB_MODE
   end
 
+  STT_TERM_LEARNING_DEFAULTS = { "enabled" => true, "idle_minutes" => 30, "min_confidence" => 0.6 }.freeze
+
+  # STT 용어 자동 학습 설정. 키 누락·범위 이탈은 기본값/클램프(idle 5..1440, confidence 0.0..1.0).
+  def self.stt_term_learning(cfg = nil)
+    cfg ||= load
+    raw = cfg["stt_term_learning"]
+    raw = {} unless raw.is_a?(Hash)
+    d = STT_TERM_LEARNING_DEFAULTS
+    enabled = raw.key?("enabled") ? raw["enabled"] != false : d["enabled"]
+    idle = Integer(raw["idle_minutes"], exception: false) || d["idle_minutes"]
+    conf = Float(raw["min_confidence"], exception: false) || d["min_confidence"]
+    {
+      "enabled" => enabled,
+      "idle_minutes" => idle.clamp(5, 1440),
+      "min_confidence" => conf.clamp(0.0, 1.0).to_f
+    }
+  end
+
+  def self.save_stt_term_learning!(attrs)
+    cfg = load
+    current = cfg["stt_term_learning"].is_a?(Hash) ? cfg["stt_term_learning"] : {}
+    cfg["stt_term_learning"] = current.merge(attrs.to_h.stringify_keys)
+    save!(cfg)
+    stt_term_learning(cfg)
+  end
+
   def self.load
     return {} unless File.exist?(SETTINGS_PATH)
     YAML.safe_load(File.read(SETTINGS_PATH)) || {}

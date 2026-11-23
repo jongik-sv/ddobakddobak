@@ -1,5 +1,6 @@
 class DomainFile < ApplicationRecord
   MAX_CONTENT_CHARS = 50_000
+  AUTO_KIND_STT = "stt_auto".freeze
 
   # 용어 라인 규약: "- **용어** [분류] (오인식: 변형1, 변형2): 설명"
   # ([분류]와 (오인식: ...)은 각각 optional, 이 순서 고정. 분류·오인식 모두 없으면 "- **용어**: 설명").
@@ -23,6 +24,18 @@ class DomainFile < ApplicationRecord
     pids = ProjectMembership.where(user_id: user.id).select(:project_id)
     where(project_id: nil).or(where(project_id: pids))
   }
+
+  scope :stt_auto, -> { where(auto_kind: AUTO_KIND_STT) }
+
+  def stt_auto?
+    auto_kind == AUTO_KIND_STT
+  end
+
+  # 전역 자동 파일. 프로젝트 삭제로 project_id 가 nullify 된 프로젝트 레벨 자동 파일은
+  # auto_owner_type 이 남아 있으므로 전역으로 오인하지 않는다.
+  def global_auto?
+    stt_auto? && auto_owner_type.nil? && project_id.nil?
+  end
 
   def editable_by?(user)
     return false unless user
