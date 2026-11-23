@@ -11,6 +11,11 @@ class SttTermLearningItem < ApplicationRecord
   belongs_to :domain_file, optional: true
   belongs_to :misrecognition, class_name: "SttMisrecognition", optional: true
 
+  # 적용된(등록·병합·이미 있음) 항목 중 되돌려지지 않은 run 의 것.
+  scope :applied_live, -> {
+    where(verdict: APPLIED_VERDICTS).joins(:run).where.not(stt_term_learning_runs: { status: "reverted" })
+  }
+
   validates :source, inclusion: { in: SOURCES }
   validates :verdict, inclusion: { in: VERDICTS }
 
