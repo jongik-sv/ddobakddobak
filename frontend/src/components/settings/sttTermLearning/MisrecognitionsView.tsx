@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   applyMoves,
   getMisrecognitions,
@@ -21,21 +21,30 @@ const STATUS_LABEL: Record<string, string> = { confirmed: '확정', undecided: '
 export default function MisrecognitionsView() {
   const [status, setStatus] = useState('')
   const [q, setQ] = useState('')
+  const [debouncedQ, setDebouncedQ] = useState('')
+  const ticket = useRef(0)
   const [list, setList] = useState<Misrecognition[]>([])
   const [counts, setCounts] = useState({ total: 0, undecided: 0 })
   const [root, setRoot] = useState<LevelNode | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
+    const mine = ++ticket.current
     try {
-      const res = await getMisrecognitions({ status: status || undefined, q: q.trim() || undefined })
+      const res = await getMisrecognitions({ status: status || undefined, q: debouncedQ.trim() || undefined })
+      if (mine !== ticket.current) return
       setList(res.misrecognitions)
       setCounts(res.counts)
       setError(null)
     } catch {
-      setError('오인식 기록을 불러오지 못했습니다.')
+      if (mine === ticket.current) setError('오인식 기록을 불러오지 못했습니다.')
     }
-  }, [status, q])
+  }, [status, debouncedQ])
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(q), 300)
+    return () => clearTimeout(t)
+  }, [q])
 
   useEffect(() => {
     void load()

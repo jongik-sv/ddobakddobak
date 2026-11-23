@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   analyzeMeeting,
   getRun,
@@ -49,6 +49,7 @@ export default function RunHistoryView() {
   const [detail, setDetail] = useState<RunDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const openTicket = useRef(0)
   const [skippedIds, setSkippedIds] = useState<number[]>([])
 
   const load = useCallback(async () => {
@@ -69,10 +70,12 @@ export default function RunHistoryView() {
     setError(null)
     setNotice(null)
     setSkippedIds([])
+    const mine = ++openTicket.current
     try {
-      setDetail(await getRun(id))
+      const d = await getRun(id)
+      if (mine === openTicket.current) setDetail(d)
     } catch {
-      setError('처리 내역 상세를 불러오지 못했습니다.')
+      if (mine === openTicket.current) setError('처리 내역 상세를 불러오지 못했습니다.')
     }
   }
 
@@ -186,7 +189,7 @@ export default function RunHistoryView() {
                         {it.domain_file ? `${it.level?.name ?? ''} · ${it.domain_file.name}` : '—'}
                       </td>
                       <td className="p-2">
-                        {skipped && (
+                        {skipped && detail.status !== 'reverted' && (
                           <button
                             type="button"
                             aria-label={`${it.wrong} 등록`}

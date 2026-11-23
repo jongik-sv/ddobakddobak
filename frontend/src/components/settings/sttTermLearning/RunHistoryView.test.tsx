@@ -76,4 +76,25 @@ describe('RunHistoryView', () => {
     fireEvent.click(screen.getByRole('button', { name: '후반 등록' }))
     await waitFor(() => expect(m.registerItem).toHaveBeenCalledWith(1, 12))
   })
+
+  it('늦게 도착한 옛 run 상세는 마지막 클릭한 run 을 덮어쓰지 않는다', async () => {
+    render(<RunHistoryView />)
+    let resolveOld!: (v: ReturnType<typeof runDetail>) => void
+    m.getRun.mockImplementationOnce(() => new Promise((r) => { resolveOld = r }))
+    fireEvent.click(await screen.findByRole('button', { name: /#219 주간 회의/ }))
+    m.getRun.mockResolvedValueOnce(runDetail({ id: 2, meeting: { id: 300, title: '실패 회의', level: lvl } }))
+    fireEvent.click(screen.getByRole('button', { name: /#300 실패 회의/ }))
+    await screen.findByText('지금 다시 분석')
+    resolveOld(runDetail())
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.getAllByText(/#300 실패 회의/).length).toBe(2)
+    expect(screen.getAllByText(/#219 주간 회의/).length).toBe(1)
+  })
+
+  it('reverted run 의 항목에는 등록 버튼이 없다', async () => {
+    m.getRun.mockResolvedValue(runDetail({ status: 'reverted' }))
+    render(<RunHistoryView />)
+    await openFirst()
+    expect(screen.queryByRole('button', { name: '후반 등록' })).toBeNull()
+  })
 })

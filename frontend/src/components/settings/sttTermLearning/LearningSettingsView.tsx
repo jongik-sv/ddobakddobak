@@ -15,6 +15,10 @@ export default function LearningSettingsView() {
   if (loadError) return <p className="text-sm text-red-600">설정을 불러오지 못했습니다.</p>
   if (!form) return <p className="text-sm text-muted-foreground">불러오는 중…</p>
 
+  const minutesOk = Number.isInteger(form.idle_minutes) && form.idle_minutes >= 5 && form.idle_minutes <= 1440
+  const confOk = Number.isFinite(form.min_confidence) && form.min_confidence >= 0 && form.min_confidence <= 1
+  const valid = minutesOk && confOk
+
   const save = async () => {
     setSaving(true)
     setMsg(null)
@@ -52,8 +56,8 @@ export default function LearningSettingsView() {
           aria-label="대기 분"
           min={5}
           max={1440}
-          value={form.idle_minutes}
-          onChange={(e) => setForm({ ...form, idle_minutes: Number(e.target.value) })}
+          value={Number.isNaN(form.idle_minutes) ? '' : form.idle_minutes}
+          onChange={(e) => setForm({ ...form, idle_minutes: e.target.value === '' ? NaN : Number(e.target.value) })}
           className="mt-1 w-28 rounded border px-2 py-1 text-sm"
         />
         <span className="ml-2 text-xs text-muted-foreground">5~1440분. 그 사이 다시 고치면 타이머가 재시작됩니다.</span>
@@ -67,12 +71,18 @@ export default function LearningSettingsView() {
           min={0}
           max={1}
           step={0.05}
-          value={form.min_confidence}
-          onChange={(e) => setForm({ ...form, min_confidence: Number(e.target.value) })}
+          value={Number.isNaN(form.min_confidence) ? '' : form.min_confidence}
+          onChange={(e) => setForm({ ...form, min_confidence: e.target.value === '' ? NaN : Number(e.target.value) })}
           className="mt-1 w-28 rounded border px-2 py-1 text-sm"
         />
         <span className="ml-2 text-xs text-muted-foreground">0.0~1.0. 이보다 낮은 후보는 등록하지 않습니다.</span>
       </label>
+
+      {!valid && (
+        <p role="alert" className="text-sm text-red-600">
+          {!minutesOk ? '대기 분은 5~1440 사이 정수여야 합니다.' : '최소 confidence 는 0.0~1.0 사이여야 합니다.'}
+        </p>
+      )}
 
       <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
         <div><span className="font-medium text-foreground">등록 기본 위치</span> 회의의 가장 가까운 폴더 (폴더가 없으면 프로젝트)</div>
@@ -84,7 +94,7 @@ export default function LearningSettingsView() {
         <button
           type="button"
           onClick={save}
-          disabled={saving}
+          disabled={saving || !valid}
           className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
         >
           저장

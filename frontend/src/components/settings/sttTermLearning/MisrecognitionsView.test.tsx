@@ -42,4 +42,20 @@ describe('MisrecognitionsView', () => {
       expect(m.applyMoves).toHaveBeenCalledWith([{ domain_file_id: 101, term_keys: ['k1'], target: { type: 'Project', id: 1 } }]),
     )
   })
+
+  it('늦게 도착한 옛 응답은 최신 목록을 덮어쓰지 않는다', async () => {
+    render(<MisrecognitionsView />)
+    await screen.findByText('우반')
+    let resolveOld!: (v: Awaited<ReturnType<typeof api.getMisrecognitions>>) => void
+    m.getMisrecognitions.mockImplementationOnce(() => new Promise((r) => { resolveOld = r }))
+    fireEvent.click(screen.getByRole('button', { name: '미정' }))
+    await waitFor(() => expect(m.getMisrecognitions).toHaveBeenCalledTimes(2))
+    m.getMisrecognitions.mockResolvedValueOnce({ misrecognitions: [mis({ id: 3, wrong: '신규표기' })], counts: { total: 1, undecided: 0 } })
+    fireEvent.click(screen.getByRole('button', { name: '확정' }))
+    await screen.findByText('신규표기')
+    resolveOld({ misrecognitions: [mis({ id: 9, wrong: '옛표기' })], counts: { total: 1, undecided: 0 } })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.queryByText('옛표기')).toBeNull()
+    expect(screen.getByText('신규표기')).toBeInTheDocument()
+  })
 })
