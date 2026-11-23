@@ -3,14 +3,11 @@ class SttMisrecognition < ApplicationRecord
 
   # 학습 item verdict → 오인식 기록 상태. :hit_only 는 상태를 건드리지 않고 횟수만 센다.
   # skipped_invalid·skipped_not_in_transcript·skipped_no_level 은 기록하지 않는다(문장 다듬기 오염 방지, 계획 G2).
-  STATUS_BY_VERDICT = {
-    "registered" => "confirmed",
-    "merged_existing" => "confirmed",
-    "already_known" => "confirmed",
+  STATUS_BY_VERDICT = SttTermLearningItem::APPLIED_VERDICTS.index_with("confirmed").merge(
     "skipped_conflict" => "undecided",
     "skipped_low_confidence" => "undecided",
     "skipped_excluded" => :hit_only
-  }.freeze
+  ).freeze
 
   belongs_to :project
   belongs_to :first_meeting, class_name: "Meeting", optional: true

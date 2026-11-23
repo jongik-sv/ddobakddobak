@@ -46,6 +46,19 @@ RSpec.describe SttTermLearning::CandidateFilter do
     expect(filter.verdict_for(cand("가" * 30, "후판", source: "feedback"))).to eq([ nil, nil ])
   end
 
+  it "줄 형식 구분자 ( ) [ ] , * : 개행이 든 wrong/correct → skipped_invalid format_chars" do
+    [ [ "엠이에스(MES)", "MES" ], [ "엠, 이에스", "MES" ], [ "우판", "후[판]" ], [ "우*판", "후판" ],
+      [ "우:판", "후판" ], [ "우\n판", "후판" ], [ "우판", "후\r판" ] ].each do |w, c|
+      expect(filter.verdict_for(cand(w, c, source: "feedback"))).to eq([ "skipped_invalid", "format_chars" ]), "#{w.inspect}→#{c.inspect}"
+    end
+  end
+
+  it "전사 대조는 유니코드 공백(U+3000)·NFD 도 무시" do
+    f = described_class.new(meeting: meeting, transcript_text: "오늘 우\u3000판 그리고 #{'엠이에스'.unicode_normalize(:nfd)}", min_confidence: 0.6)
+    expect(f.verdict_for(cand("우판", "후판"))).to eq([ nil, nil ])
+    expect(f.verdict_for(cand("엠이에스", "MES"))).to eq([ nil, nil ])
+  end
+
   it "LLM 후보 wrong 이 전사에 없으면 skipped_not_in_transcript (공백 무시: '우 판' 전사도 '우판' 일치)" do
     expect(filter.verdict_for(cand("우판", "후판"))).to eq([ nil, nil ])
     expect(filter.verdict_for(cand("엠 이에스", "MES"))).to eq([ nil, nil ])

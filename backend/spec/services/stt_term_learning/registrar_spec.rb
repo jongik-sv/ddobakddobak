@@ -52,7 +52,8 @@ RSpec.describe SttTermLearning::Registrar do
     r = registrar.register(cand("엠이에스", "mes")); registrar.flush!
     expect(r[:verdict]).to eq("merged_existing")
     expect(human.reload.content).to eq("- **MES** [시스템명] (오인식: 엠이에스): 제조실행시스템")
-    expect(r[:change]).to eq("kind" => "add_mispronunciation", "domain_file_id" => human.id, "term_key" => "mes", "wrong" => "엠이에스")
+    expect(r[:change]).to eq("kind" => "add_mispronunciation", "domain_file_id" => human.id, "term_key" => "mes", "wrong" => "엠이에스",
+                             "before" => "- **MES** [시스템명]: 제조실행시스템")
     expect(r[:level]).to eq(SttTermLearning::Level.for(parent))
     expect(r[:domain_file]).to eq(human)
     expect(auto_for.(child)).to be_nil
@@ -185,7 +186,8 @@ RSpec.describe SttTermLearning::Registrar do
     DomainFileLink.where(domain_file: auto).destroy_all
     r = registrar.register(cand("우판", "후판")); registrar.flush!
     expect(r[:verdict]).to eq("merged_existing")
-    expect(r[:change]).to eq("kind" => "add_mispronunciation", "domain_file_id" => auto.id, "term_key" => "후판", "wrong" => "우판")
+    expect(r[:change]).to eq("kind" => "add_mispronunciation", "domain_file_id" => auto.id, "term_key" => "후판", "wrong" => "우판",
+                             "before" => "- **후판** [STT]: 두꺼운 강판")
     expect(auto.reload.content).to eq("- **후판** [STT] (오인식: 우판): 두꺼운 강판")
   end
 
@@ -196,6 +198,73 @@ RSpec.describe SttTermLearning::Registrar do
     r2 = registrar.register(cand("후반", "후판")); registrar.flush!
     expect(r2[:verdict]).to eq("merged_existing")
     expect(auto_for.(child).content).to eq("- **후판** [STT] (오인식: 우판, 후반): ")
+  end
+
+  describe "줄 형식 구분자(format_chars)" do
+    it "괄호 든 wrong 은 사람 줄에 병합하지 않는다(사람 줄은 계속 파싱 가능)" do
+      human = human_file("- **MES** [시스템명]: 제조실행시스템", parent)
+      r = registrar.register(cand("엠이에스(MES)", "MES")); registrar.flush!
+      expect(r).to include(verdict: "skipped_invalid", reason: "format_chars", change: nil)
+      expect(human.reload.content).to eq("- **MES** [시스템명]: 제조실행시스템")
+      expect(human.find_term("mes")).to be_present
+    end
+
+    it "쉼표 든 wrong 은 1자 변형으로 쪼개지지 않게 건너뛴다" do
+      human = human_file("- **MES** [시스템명]: 제조실행시스템", parent)
+      r = registrar.register(cand("엠, 이에스", "MES")); registrar.flush!
+      expect(r).to include(verdict: "skipped_invalid", reason: "format_chars")
+      expect(human.reload.content).to eq("- **MES** [시스템명]: 제조실행시스템")
+    end
+
+    it "같은 실행의 보류 새 줄에 붙는 wrong 도 같은 검사" do
+      registrar.register(cand("우판", "후판"))
+      r = registrar.register(cand("우판)", "후판")); registrar.flush! # "(오인식: 우판, 우판))" 은 줄을 깨뜨린다
+      expect(r).to include(verdict: "skipped_invalid", reason: "format_chars")
+      expect(auto_for.(child).content).to eq("- **후판** [STT] (오인식: 우판): ")
+    end
+
+    it "새 줄 설명·분류의 개행·연속 공백은 한 칸으로, 분류의 [] 는 지운다" do
+      r = registrar.register(cand("우판", "후판", category: "철강\n[제품]", definition: "두꺼운\n  강판\r\n입니다")); registrar.flush!
+      expect(r[:verdict]).to eq("registered")
+      expect(auto_for.(child).content).to eq("- **후판** [철강 제품] (오인식: 우판): 두꺼운 강판 입니다")
+      expect(DomainFile.parse_terms(auto_for.(child).content).size).to eq(1)
+    end
+
+    it "설명의 괄호·콜론은 줄이 그대로 다시 읽히면 유지" do
+      registrar.register(cand("우판", "후판", definition: "두께(6mm 이상): 강판")); registrar.flush!
+      expect(auto_for.(child).content).to eq("- **후판** [STT] (오인식: 우판): 두께(6mm 이상): 강판")
+      expect(auto_for.(child).find_term("후판")).to include(definition: "두께(6mm 이상): 강판", mispronunciations: [ "우판" ])
+    end
+
+    it "round-trip 가드: 만든 줄이 같은 용어·오인식으로 다시 읽히지 않으면 쓰지 않는다(필터를 건너뛴 경우)" do
+      r1 = registrar.register(cand("우판, 후반", "후판")) # 다시 읽으면 변형 2개로 쪼개짐
+      r2 = registrar.register(cand("엠이)에스", "MES")) # 줄 자체가 파싱 불가
+      registrar.flush!
+      [ r1, r2 ].each { |r| expect(r).to include(verdict: "skipped_invalid", reason: "format_chars", change: nil) }
+      expect(auto_for.(child).content).to eq("")
+    end
+  end
+
+  describe "register 와 flush 사이에 줄이 바뀌면(changed_during_run)" do
+    it "병합 대상 줄을 사람이 고쳤으면 그 항목은 skipped_conflict, 사람 수정 유지, 다른 key 는 저장" do
+      human = human_file("- **후판**: 두꺼운 강판\n- **MES**: 제조", parent)
+      r1 = registrar.register(cand("우판", "후판"))
+      r2 = registrar.register(cand("엠이", "MES"))
+      human.update_column(:content, "- **후판**: 사람이 고침\n- **MES**: 제조")
+      registrar.flush!
+      expect(r1).to include(verdict: "skipped_conflict", reason: "changed_during_run", change: nil)
+      expect(r2[:verdict]).to eq("merged_existing")
+      expect(human.reload.content).to eq("- **후판**: 사람이 고침\n- **MES** (오인식: 엠이): 제조")
+    end
+
+    it "새 줄 key 를 그 사이 사람이 추가했으면 새 줄을 쓰지 않는다" do
+      r = registrar.register(cand("우판", "후판"))
+      auto = auto_for.(child)
+      auto.update_column(:content, "- **후판**: 사람이 먼저 추가")
+      registrar.flush!
+      expect(r).to include(verdict: "skipped_conflict", reason: "changed_during_run", change: nil)
+      expect(auto.reload.content).to eq("- **후판**: 사람이 먼저 추가")
+    end
   end
 
   describe "파일 용량(MAX_CONTENT_CHARS) 초과" do

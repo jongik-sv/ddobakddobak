@@ -79,6 +79,11 @@ RSpec.describe SttMisrecognition do
     end
   end
 
+  it "STATUS_BY_VERDICT 는 SttTermLearningItem::APPLIED_VERDICTS 전부를 confirmed 로 덮는다" do
+    expect(SttTermLearningItem::APPLIED_VERDICTS.map { described_class.status_for_verdict(_1) }.uniq).to eq([ "confirmed" ])
+    expect(described_class::STATUS_BY_VERDICT.keys - SttTermLearningItem::VERDICTS).to be_empty
+  end
+
   describe ".record_verdict!" do
     it "APPLIED → confirmed, conflict/low_confidence → undecided" do
       r = described_class.record_verdict!(meeting: m1, wrong: "우판", correct: "후판", verdict: "registered")
