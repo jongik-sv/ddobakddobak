@@ -216,6 +216,48 @@ RSpec.describe "Api::V1 meeting domain files", type: :request do
     end
   end
 
+  describe "전역 자동 파일(STT 오인식 자동 학습, Task 4)" do
+    let!(:global_auto) do
+      create(:domain_file, name: "STT 오인식(자동) · 전역", creator: owner, project: nil,
+             auto_kind: "stt_auto", auto_owner_type: nil, auto_owner_id: nil,
+             content: "- **후판** (오인식: 우판): ")
+    end
+
+    it "GET inherited 에 source global · owner_name '전역(공용)' 으로 노출된다" do
+      login_as(owner)
+      get "/api/v1/meetings/#{meeting.id}/domain_files"
+      expect(response).to have_http_status(:ok)
+
+      entry = response.parsed_body["inherited"].find { |f| f["id"] == global_auto.id }
+      expect(entry).to be_present
+      expect(entry["source"]).to eq("global")
+      expect(entry["owner_name"]).to eq("전역(공용)")
+    end
+
+    it "PUT domain_file_ids 에 전역 자동 파일 id 가 섞여 있으면 조용히 drop 한다" do
+      login_as(owner)
+      put "/api/v1/meetings/#{meeting.id}/domain_files",
+          params: { domain_file_ids: [ file_a.id, global_auto.id ] }
+      expect(response).to have_http_status(:ok)
+
+      body = response.parsed_body
+      expect(body["selected"].map { |f| f["id"] }).to eq([ file_a.id ])
+      expect(body["inherited"].map { |f| f["id"] }).to eq([ global_auto.id ])
+      expect(meeting.reload.domain_files.pluck(:id)).to eq([ file_a.id ])
+    end
+
+    it "PUT excluded_domain_file_ids 로 전역 자동 파일을 제외하면 inherited 에서 빠진다" do
+      login_as(owner)
+      put "/api/v1/meetings/#{meeting.id}/domain_files",
+          params: { domain_file_ids: [], excluded_domain_file_ids: [ global_auto.id ] }
+      expect(response).to have_http_status(:ok)
+
+      body = response.parsed_body
+      expect(body["inherited"]).to be_empty
+      expect(body["excluded"].map { |f| f["id"] }).to eq([ global_auto.id ])
+    end
+  end
+
   describe "POST /api/v1/meetings/:id/extract_terms" do
     it "요약이 없으면 422" do
       login_as(owner)

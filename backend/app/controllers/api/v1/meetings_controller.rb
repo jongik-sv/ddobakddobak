@@ -1033,7 +1033,7 @@ module Api
           next if entry[:source] == "meeting"
           entry[:file].summary_json(current_user).merge(
             source: entry[:source],
-            owner_name: entry[:owner]&.name
+            owner_name: entry[:source] == "global" ? "전역(공용)" : entry[:owner]&.name
           )
         end
       end
@@ -1044,7 +1044,7 @@ module Api
       end
 
       # UX 증분 C: 폴더 조상체인 + 프로젝트에 링크된(= exclude 여부와 무관하게 "상속 대상"인)
-      # 파일 id 전체. update_domain_files 에서 domain_file_ids 중 이미 상속(비제외)된 것을
+      # 파일 id 전체 + 전역 STT 자동 파일 id. update_domain_files 에서 domain_file_ids 중 이미 상속(비제외)된 것을
       # 조용히 걸러내는 데 사용한다.
       def inherited_owner_domain_file_ids(meeting)
         ids = []
@@ -1052,6 +1052,9 @@ module Api
           ([ meeting.folder ] + meeting.folder.ancestor_records).each { |fld| ids.concat(fld.domain_files.pluck(:id)) }
         end
         ids.concat(meeting.project.domain_files.pluck(:id)) if meeting.project
+        # 전역 STT 자동 파일은 링크 없이 모든 회의에 상속되므로 직접 선택(중복 링크)은 조용히 drop.
+        global_id = ::DomainFile.stt_auto.where(auto_owner_type: nil, project_id: nil).pick(:id)
+        ids << global_id if global_id
         ids.uniq
       end
 
