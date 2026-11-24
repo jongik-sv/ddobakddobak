@@ -89,4 +89,11 @@ describe('AiSummaryPanel — 외부발 갱신 시 스크롤 위치 복원 (idea.
     await waitFor(() => expect(replaceBlocksSpy).toHaveBeenCalled())
     await waitFor(() => expect(scrollEl?.scrollTop).toBe(150))
   })
+
+  it('스크롤 컨테이너가 relative라 BlockNote 표 핸들(absolute)이 overflow로 잘린다', () => {
+    render(<AiSummaryPanel meetingId={1} />)
+    const container = screen.getByTestId('blocknote-view').parentElement as HTMLElement
+    expect(container).toHaveClass('overflow-y-auto')
+    expect(container).toHaveClass('relative')
+  })
 })
