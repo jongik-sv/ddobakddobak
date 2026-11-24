@@ -144,7 +144,8 @@ module Transfer
 
     def restore_summaries(meeting)
       (@m["summaries"] || []).each do |s|
-        meeting.summaries.create!(sanitize(Summary, s).merge("meeting_id" => meeting.id))
+        # human_edited_at 은 원 서버의 학습 대기 표시 — 여기선 잡이 없어 대기 목록에 영영 남으므로 버린다(ai 원본은 보존).
+        meeting.summaries.create!(sanitize(Summary, s).except("human_edited_at").merge("meeting_id" => meeting.id))
       end
     end
 

@@ -284,6 +284,24 @@ class LlmService
     nil
   end
 
+  # STT 용어 자동 학습: AI 원본↔사람 최종본 줄 diff(hunks_text)에서 STT 오인식 교정 쌍을 추출.
+  # hints_text: 프로젝트의 확정·제외 쌍("확정: 우판→후판\n제외: ..."). 비면 생략.
+  # 반환: [{"wrong","correct","category","definition","confidence"}, ...] 또는 nil(배열 아님·예외).
+  def extract_stt_misrecognitions(hunks_text, hints_text)
+    parts = [ "회의록 변경 내역:\n#{hunks_text}" ]
+    parts << "참고 쌍:\n#{hints_text}" if hints_text.present?
+    data = call_llm_json(LlmPrompts::SttTermLearningPrompts::SYSTEM_PROMPT, parts.join("\n\n"))
+    data.is_a?(Array) ? data : nil
+  rescue => e
+    Rails.logger.error "[LlmService] extract_stt_misrecognitions failed: #{e.message}"
+    nil
+  end
+
+  # 학습 run 에 남길 모델명.
+  def model_name
+    @config[:model]
+  end
+
   # 외부 LLM용 프롬프트 조립 (LLM 호출 없음). 압축율 분량 지시 포함(통짜 생성 = final 캡).
   # 증분(restructure=false) 회의는 시간 흐름 요약 지시를 포함 — 주제별 재구성 금지.
   def build_prompt(current_notes, transcripts, meeting_title: "", sections_prompt: nil, attendees: nil, verbosity: "standard", restructure: true, agenda_reference: nil, stakeholder_reference: nil, domain_reference: nil, custom_prompt: nil, speaker_display: :label)

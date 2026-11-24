@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_12_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_23_000006) do
   create_table "api_token_audit_logs", force: :cascade do |t|
     t.string "action", null: false
     t.integer "api_token_id", null: false
@@ -84,12 +84,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_000001) do
   end
 
   create_table "domain_files", force: :cascade do |t|
+    t.string "auto_kind"
+    t.bigint "auto_owner_id"
+    t.string "auto_owner_type"
     t.text "content", default: "", null: false
     t.datetime "created_at", null: false
     t.integer "created_by_id", null: false
     t.string "name", null: false
     t.integer "project_id"
     t.datetime "updated_at", null: false
+    t.index ["auto_kind", "auto_owner_type", "auto_owner_id"], name: "idx_domain_files_auto_owner", unique: true, where: "auto_kind IS NOT NULL"
+    t.index ["auto_kind"], name: "idx_domain_files_auto_global", unique: true, where: "auto_kind = 'stt_auto' AND auto_owner_type IS NULL"
     t.index ["created_by_id"], name: "index_domain_files_on_created_by_id"
     t.index ["project_id", "name"], name: "index_domain_files_on_project_id_and_name", unique: true
     t.index ["project_id"], name: "index_domain_files_on_project_id"
@@ -382,11 +387,90 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_000001) do
     t.index ["meeting_type"], name: "index_prompt_templates_on_meeting_type", unique: true
   end
 
+  create_table "stt_misrecognitions", force: :cascade do |t|
+    t.string "correct", null: false
+    t.string "correct_key", null: false
+    t.datetime "created_at", null: false
+    t.integer "first_meeting_id"
+    t.integer "hit_count", default: 0, null: false
+    t.integer "last_meeting_id"
+    t.datetime "last_seen_at"
+    t.integer "project_id", null: false
+    t.string "status", default: "undecided", null: false
+    t.datetime "updated_at", null: false
+    t.string "wrong", null: false
+    t.string "wrong_key", null: false
+    t.index ["first_meeting_id"], name: "index_stt_misrecognitions_on_first_meeting_id"
+    t.index ["last_meeting_id"], name: "index_stt_misrecognitions_on_last_meeting_id"
+    t.index ["project_id", "wrong_key", "correct_key"], name: "idx_stt_misrecognitions_unique_pair", unique: true
+    t.index ["project_id"], name: "index_stt_misrecognitions_on_project_id"
+  end
+
+  create_table "stt_term_learning_items", force: :cascade do |t|
+    t.string "category"
+    t.text "change"
+    t.float "confidence"
+    t.string "correct", null: false
+    t.string "correct_key", null: false
+    t.datetime "created_at", null: false
+    t.string "definition"
+    t.integer "domain_file_id"
+    t.bigint "level_owner_id"
+    t.string "level_owner_type"
+    t.integer "misrecognition_id"
+    t.string "reason"
+    t.string "revert_result"
+    t.integer "run_id", null: false
+    t.string "source", null: false
+    t.datetime "updated_at", null: false
+    t.string "verdict", null: false
+    t.string "wrong", null: false
+    t.string "wrong_key", null: false
+    t.index ["domain_file_id", "correct_key"], name: "idx_on_domain_file_id_correct_key_b6ed42f3bb"
+    t.index ["domain_file_id"], name: "index_stt_term_learning_items_on_domain_file_id"
+    t.index ["misrecognition_id"], name: "index_stt_term_learning_items_on_misrecognition_id"
+    t.index ["run_id"], name: "index_stt_term_learning_items_on_run_id"
+  end
+
+  create_table "stt_term_learning_runs", force: :cascade do |t|
+    t.text "ai_text"
+    t.datetime "created_at", null: false
+    t.text "error"
+    t.datetime "finished_at"
+    t.text "human_text"
+    t.string "input_digest"
+    t.string "llm_model"
+    t.string "llm_skipped_reason"
+    t.integer "meeting_id", null: false
+    t.datetime "started_at"
+    t.string "status", default: "queued", null: false
+    t.integer "summary_id"
+    t.text "transcript_text"
+    t.string "trigger", null: false
+    t.datetime "updated_at", null: false
+    t.index ["meeting_id", "input_digest"], name: "index_stt_term_learning_runs_on_meeting_id_and_input_digest"
+    t.index ["meeting_id"], name: "index_stt_term_learning_runs_on_meeting_id"
+    t.index ["status"], name: "index_stt_term_learning_runs_on_status"
+    t.index ["summary_id"], name: "index_stt_term_learning_runs_on_summary_id"
+  end
+
+  create_table "stt_term_move_logs", force: :cascade do |t|
+    t.integer "actor_id"
+    t.datetime "created_at", null: false
+    t.text "moves"
+    t.text "result"
+    t.datetime "updated_at", null: false
+    t.index ["actor_id"], name: "index_stt_term_move_logs_on_actor_id"
+  end
+
   create_table "summaries", force: :cascade do |t|
+    t.datetime "ai_generated_at"
+    t.text "ai_notes_markdown"
     t.datetime "created_at", null: false
     t.text "decisions"
     t.text "discussion_details"
     t.datetime "generated_at", null: false
+    t.datetime "human_edited_at"
     t.text "key_points"
     t.integer "meeting_id", null: false
     t.text "notes_markdown"
@@ -501,6 +585,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_000001) do
   add_foreign_key "project_memberships", "projects", on_delete: :cascade
   add_foreign_key "project_memberships", "users", on_delete: :cascade
   add_foreign_key "projects", "users", column: "created_by_id"
+  add_foreign_key "stt_misrecognitions", "meetings", column: "first_meeting_id", on_delete: :nullify
+  add_foreign_key "stt_misrecognitions", "meetings", column: "last_meeting_id", on_delete: :nullify
+  add_foreign_key "stt_misrecognitions", "projects", on_delete: :cascade
+  add_foreign_key "stt_term_learning_items", "domain_files", on_delete: :nullify
+  add_foreign_key "stt_term_learning_items", "stt_misrecognitions", column: "misrecognition_id", on_delete: :nullify
+  add_foreign_key "stt_term_learning_items", "stt_term_learning_runs", column: "run_id", on_delete: :cascade
+  add_foreign_key "stt_term_learning_runs", "meetings", on_delete: :cascade
+  add_foreign_key "stt_term_learning_runs", "summaries", on_delete: :nullify
+  add_foreign_key "stt_term_move_logs", "users", column: "actor_id", on_delete: :nullify
   add_foreign_key "summaries", "meetings", on_delete: :cascade
   add_foreign_key "taggings", "tags"
   add_foreign_key "tags", "projects"

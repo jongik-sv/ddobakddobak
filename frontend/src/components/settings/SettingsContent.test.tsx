@@ -38,6 +38,10 @@ vi.mock('./DflowSettingsPanel', () => ({
   DflowSettingsPanel: () => <div data-testid="dflow-tab">dflow</div>,
 }))
 
+vi.mock('./sttTermLearning/SttTermLearningTab', () => ({
+  default: () => <div data-testid="stt-learning-tab">sttLearning</div>,
+}))
+
 describe('SettingsContent tabs', () => {
   beforeEach(() => {
     mockUser = { role: 'member', email: 'm@x.com' }
@@ -58,6 +62,18 @@ describe('SettingsContent tabs', () => {
     expect(screen.getByRole('tab', { name: /음성.*인식/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /회의록 설정/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /연동/ })).toBeInTheDocument()
+  })
+
+  it('admin: STT 용어 학습 탭이 있고 누르면 SttTermLearningTab 렌더', () => {
+    mockUser = { role: 'admin', email: 'a@x.com' }
+    render(<SettingsContent />)
+    fireEvent.click(screen.getByRole('tab', { name: /STT 용어 학습/ }))
+    expect(screen.getByTestId('stt-learning-tab')).toBeInTheDocument()
+  })
+
+  it('member: STT 용어 학습 탭 없음', () => {
+    render(<SettingsContent />)
+    expect(screen.queryByRole('tab', { name: /STT 용어 학습/ })).toBeNull()
   })
 
   it('admin: LLM 탭 클릭 시 LlmSettingsPanel 렌더', () => {

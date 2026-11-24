@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 
 // Mock BlockNote dependencies to avoid browser-only APIs
@@ -39,6 +39,9 @@ vi.mock('./mermaidBlock', () => ({
   mermaidToCodeBlocks: vi.fn((b: unknown[]) => b),
 }))
 
+vi.mock('../../api/sttTermLearning', () => ({ getAiOriginal: vi.fn() }))
+
+import { getAiOriginal } from '../../api/sttTermLearning'
 import { AiSummaryPanel } from './AiSummaryPanel'
 
 describe('AiSummaryPanel', () => {
@@ -108,5 +111,52 @@ describe('AiSummaryPanel', () => {
     expect(badge.className).toContain('max-w-')
     // 전체 사유는 툴팁으로 접근 가능
     expect(badge).toHaveAttribute('title', longMessage)
+  })
+})
+
+describe('AiSummaryPanel AI 원본과 비교', () => {
+  beforeEach(() => {
+    useTranscriptStore.getState().reset()
+    vi.mocked(getAiOriginal).mockReset()
+  })
+
+  it('canCompareAiOriginal 이면 ⋯ 메뉴에 "AI 원본과 비교", 기본(false)·hideExpand 에서는 ⋯ 없음', () => {
+    const { unmount } = render(<AiSummaryPanel meetingId={1} />)
+    expect(screen.queryByLabelText('더보기')).not.toBeInTheDocument()
+    unmount()
+    const r2 = render(<AiSummaryPanel meetingId={1} canCompareAiOriginal hideExpand />)
+    expect(screen.queryByLabelText('더보기')).not.toBeInTheDocument()
+    r2.unmount()
+    render(<AiSummaryPanel meetingId={1} canCompareAiOriginal />)
+    fireEvent.click(screen.getByLabelText('더보기'))
+    expect(screen.getByText('AI 원본과 비교')).toBeInTheDocument()
+  })
+
+  it('메뉴 클릭 → 모달이 getAiOriginal 호출 후 diff와 시각 표시', async () => {
+    vi.mocked(getAiOriginal).mockResolvedValue({
+      available: true,
+      ai_generated_at: '2026-11-20T01:00:00Z',
+      human_edited_at: '2026-11-21T02:00:00Z',
+      diff: [{ op: 'insert', text: '후판' }],
+    })
+    render(<AiSummaryPanel meetingId={5} canCompareAiOriginal />)
+    fireEvent.click(screen.getByLabelText('더보기'))
+    fireEvent.click(screen.getByText('AI 원본과 비교'))
+    expect(await screen.findByText('후판')).toBeInTheDocument()
+    expect(getAiOriginal).toHaveBeenCalledWith(5)
+    expect(screen.getByText(/AI 생성/)).toBeInTheDocument()
+    expect(screen.getByText(/마지막 사람 수정/)).toBeInTheDocument()
+  })
+
+  it('available false 면 안내', async () => {
+    vi.mocked(getAiOriginal).mockResolvedValue({
+      available: false, ai_generated_at: null, human_edited_at: null, diff: [],
+    })
+    render(<AiSummaryPanel meetingId={5} canCompareAiOriginal />)
+    fireEvent.click(screen.getByLabelText('더보기'))
+    fireEvent.click(screen.getByText('AI 원본과 비교'))
+    expect(
+      await screen.findByText('이 회의에는 AI 원본이 없습니다(기능 도입 전 회의 또는 녹음 중)'),
+    ).toBeInTheDocument()
   })
 })

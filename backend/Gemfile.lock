@@ -439,6 +439,7 @@ DEPENDENCIES
   debug
   devise
   devise-jwt
+  diff-lcs (~> 1.6)
   factory_bot_rails
   image_processing (~> 1.2)
   kamal

@@ -153,7 +153,7 @@ RSpec.describe DomainReferenceBuilder do
     end
 
     context "오인식 교정 블록까지 포함해 8000자 캡을 넘으면" do
-      it "파일 블록에서 이미 캡을 다 채웠으면 교정 블록을 아예 붙이지 않는다" do
+      it "사람 파일이 캡을 채워도 선예약된 교정 블록은 붙는다" do
         file_a = create(:domain_file, creator: user, name: "A", content: "가" * 8000)
         file_b = create(:domain_file, creator: user, name: "B", content: "- **CGL** (오인식: 씨지엘): 설명")
         DomainFileLink.create!(owner: meeting, domain_file: file_a)
@@ -161,7 +161,82 @@ RSpec.describe DomainReferenceBuilder do
 
         result = described_class.build(meeting)
 
-        expect(result).not_to include("오인식")
+        expect(result).to include("씨지엘→CGL")
+      end
+    end
+
+    context "STT 자동 학습 파일(auto_kind=stt_auto)이 있으면" do
+      def create_project_auto(content)
+        create(:domain_file, auto_kind: "stt_auto", auto_owner_type: "Project", auto_owner_id: project.id,
+               project: project, creator: user, name: "STT 오인식(자동) · P", content: content)
+      end
+
+      it "자동 파일은 파일 블록(## 헤더)에 넣지 않고 교정 쌍만 쓴다" do
+        auto = create_project_auto("- **후판** [STT] (오인식: 우판): ")
+        DomainFileLink.create!(owner: project, domain_file: auto)
+
+        result = described_class.build(meeting)
+
+        expect(result).not_to include("## STT 오인식(자동)")
+        expect(result).to eq("#{DomainReferenceBuilder::CORRECTION_HEADER}우판→후판")
+      end
+
+      it "실효 세트가 전역 자동 파일뿐이어도 nil 이 아니라 교정 블록을 반환한다" do
+        create(:domain_file, auto_kind: "stt_auto", auto_owner_type: nil, auto_owner_id: nil,
+               project: nil, creator: user, name: "STT 오인식(자동) · 전역", content: "- **후판** (오인식: 우판): ")
+
+        expect(described_class.build(meeting)).to eq("#{DomainReferenceBuilder::CORRECTION_HEADER}우판→후판")
+      end
+
+      it "폴더·프로젝트가 없는 회의도 크래시 없이 빌드한다" do
+        bare = build(:meeting, project: nil, folder: nil, creator: user) # project_id DB NOT NULL — 메모리상 nil 가드 검증
+        create(:domain_file, auto_kind: "stt_auto", auto_owner_type: nil, auto_owner_id: nil,
+               project: nil, creator: user, name: "STT 오인식(자동) · 전역", content: "- **후판** (오인식: 우판): ")
+
+        expect(described_class.build(bare)).to eq("#{DomainReferenceBuilder::CORRECTION_HEADER}우판→후판")
+      end
+
+      it "사람 파일이 8000자를 채워도 교정 블록이 살아남는다(선예약), 전체 ≤ 8000" do
+        big = create(:domain_file, creator: user, name: "A", content: "가" * 8000)
+        auto = create_project_auto("- **후판** (오인식: 우판): ")
+        DomainFileLink.create!(owner: meeting, domain_file: big)
+        DomainFileLink.create!(owner: project, domain_file: auto)
+
+        result = described_class.build(meeting)
+
+        expect(result).to include("…(이하 생략)")
+        expect(result).to end_with("우판→후판")
+        expect(result.length).to be <= 8000
+      end
+
+      it "교정 블록이 1500자를 넘으면 예약분(≤1500)만큼은 보장되고 전체 ≤ 8000" do
+        variants = (1..300).map { |i| "변형#{i}" }
+        auto = create_project_auto("- **후판** (오인식: #{variants.join(', ')}): ")
+        big = create(:domain_file, creator: user, name: "A", content: "가" * 8000)
+        DomainFileLink.create!(owner: meeting, domain_file: big)
+        DomainFileLink.create!(owner: project, domain_file: auto)
+
+        pre = described_class.build_correction_block([ auto ], DomainReferenceBuilder::CORRECTION_RESERVE)
+        result = described_class.build(meeting)
+
+        expect(pre.length).to be <= DomainReferenceBuilder::CORRECTION_RESERVE
+        expect(result).to end_with(pre)
+        expect(result.length).to be <= 8000
+      end
+
+      it "파일이 작으면 교정 블록은 1500자를 넘어서도 남은 자리를 다 쓴다(기존 동작 보존)" do
+        variants = (1..300).map { |i| "변형#{i}" }
+        auto = create_project_auto("- **후판** (오인식: #{variants.join(', ')}): ")
+        small = create(:domain_file, creator: user, name: "작은 파일", content: "- **PLC**: 프로그램 제어기")
+        DomainFileLink.create!(owner: meeting, domain_file: small)
+        DomainFileLink.create!(owner: project, domain_file: auto)
+
+        result = described_class.build(meeting)
+        correction = result.split("\n\n").last
+
+        expect(correction.length).to be > DomainReferenceBuilder::CORRECTION_RESERVE
+        expect(correction).to end_with("변형300→후판")
+        expect(result.length).to be <= 8000
       end
     end
   end

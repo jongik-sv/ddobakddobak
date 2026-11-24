@@ -8,26 +8,60 @@
 # 플래그와 다르게 캐시하지 않음 — 도메인 파일 선택은 회의 중 언제든 바뀔 수 있어서).
 #
 # 오인식 교정 블록: 실효 파일들의 용어 중 (오인식: ...)이 있는 것들을 모아 "변형→용어" 목록으로
-# 파일 블록들 뒤에 덧붙인다(같은 8000자 캡 공유). 변형이 여러 파일에서 겹치면 구체 레벨(파일
+# 파일 블록들 뒤에 덧붙인다(같은 8000자 캡 공유, 최대 CORRECTION_RESERVE 자는 선예약). 변형이 여러 파일에서 겹치면 구체 레벨(파일
 # 순서상 앞) 우선으로 하나만 채택한다. 캡이 부족하면 앞(구체 레벨)부터 채우고 뒤(project 등
 # 먼 레벨)의 변형을 통째로 드롭한다(문자 단위 절삭 없음 — 쌍 단위로만 자른다).
 class DomainReferenceBuilder
   MAX_TOTAL_CHARS = 8000
   TRUNCATE_MARKER = "\n…(이하 생략)".freeze
   CORRECTION_HEADER = "다음은 STT 오인식 가능 표기다. 요약 시 올바른 용어로 교정하라: ".freeze
+  # 사람 파일이 캡을 채워도 교정 블록이 살아남도록 파일 블록 캡에서 먼저 떼어 두는 최대 자수.
+  CORRECTION_RESERVE = 1500
 
   # @param meeting [Meeting]
   # @return [String, nil] 실효 파일이 0개거나 전부 content blank면 nil
+  #
+  # STT 자동 학습 파일(stt_auto?)은 파일 블록(## 헤더)에 넣지 않고 교정 쌍 원천으로만 쓴다.
+  # 교정 블록 선예약: 사람 파일이 캡을 다 채워도 교정 블록이 살아남도록, 먼저 교정 블록을
+  # CORRECTION_RESERVE 자 이내로 만들어 그 실제 길이만큼 파일 블록 캡에서 뺀다. 파일 블록이
+  # 남긴 자리로 교정 블록을 다시 만들므로(greedy 접두사라 예약분 ⊆ 결과) 파일이 작으면 교정
+  # 블록은 1500자를 넘어서도 남은 자리를 다 쓴다.
   def self.build(meeting)
-    files = meeting.effective_domain_files.map { |entry| entry[:file] }
-    files = files.reject { |f| f.content.blank? }
-    return nil if files.empty?
+    all_files = meeting.effective_domain_files.map { |entry| entry[:file] }
+    all_files = all_files.reject { |f| f.content.blank? }
+    return nil if all_files.empty?
 
+    block_files = all_files.reject(&:stt_auto?)
+
+    # 1패스: 예약할 교정 블록 길이. +4 = 파일 블록 루프가 마지막 블록 뒤에 더하는 join 2자 +
+    # 아래 remaining_for_correction 에서 빼는 join 2자. 파일 블록이 잘려 캡을 꽉 채우면
+    # used = (MAX - reserved) + 2 이고 remaining_for_correction = MAX - used - 2 = reserved - 4
+    # = pre.length 가 되어 pre 가 정확히 들어간다(+2 였다면 pre.length - 2 라 쌍이 떨어지거나 nil).
+    pre = build_correction_block(all_files, CORRECTION_RESERVE)
+    reserved = pre ? pre.length + 4 : 0
+
+    blocks, used = build_file_blocks(block_files, MAX_TOTAL_CHARS - reserved)
+
+    # 2패스: 파일 블록이 남긴 자리 전부로 다시 만든다.
+    remaining_for_correction = MAX_TOTAL_CHARS - used - 2 # blocks.join("\n\n")의 "\n\n" 2자
+    if remaining_for_correction > 0
+      correction_block = build_correction_block(all_files, remaining_for_correction)
+      blocks << correction_block if correction_block
+    end
+
+    return nil if blocks.empty?
+    blocks.join("\n\n")
+  end
+
+  # 파일 블록("## 파일명\n" + content)들을 cap 안에서 쌓는다. 넘치는 파일은 남은 자수까지 자르고
+  # TRUNCATE_MARKER 를 붙인 뒤 이후 파일은 스킵한다.
+  # @return [Array(Array<String>, Integer)] [blocks, used] — used 는 블록마다 join 분 2자를 더한 누적
+  def self.build_file_blocks(files, cap)
     blocks = []
     used = 0
 
     files.each do |file|
-      remaining = MAX_TOTAL_CHARS - used
+      remaining = cap - used
       break if remaining <= 0
 
       header = "## #{file.name}\n"
@@ -47,15 +81,9 @@ class DomainReferenceBuilder
       used += block.length + 2 # 다음 블록과의 "\n\n" join 분까지 캡에 포함
     end
 
-    remaining_for_correction = MAX_TOTAL_CHARS - used - 2 # blocks.join("\n\n")의 "\n\n" 2자
-    if remaining_for_correction > 0
-      correction_block = build_correction_block(files, remaining_for_correction)
-      blocks << correction_block if correction_block
-    end
-
-    return nil if blocks.empty?
-    blocks.join("\n\n")
+    [ blocks, used ]
   end
+  private_class_method :build_file_blocks
 
   # files(구체 레벨 우선 순서)에서 오인식 변형을 모아 "변형→용어" 교정 블록을 만든다.
   # @return [String, nil] 교정 대상이 없거나 헤더조차 들어갈 자리가 없으면 nil
