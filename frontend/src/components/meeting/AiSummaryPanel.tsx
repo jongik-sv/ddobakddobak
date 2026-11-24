@@ -330,9 +330,10 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
           <span className="font-semibold"> 회의록 재생성</span> 버튼으로 회의록을 만들 수 있습니다.
         </div>
       )}
+      {/* BlockNote 표 핸들/확장버튼이 position:absolute 로 포털 없이 렌더되므로 이 스크롤 컨테이너를 containing block 으로 삼아야 overflow 로 잘린다(없으면 표 높이만큼 창 밖으로 넘쳐 창 스크롤바가 생기고 레이아웃 폭이 바뀜). */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto select-text"
+        className="relative flex-1 overflow-y-auto select-text"
         style={{ '--bn-body-font-size': `${summaryFontSize}px` } as React.CSSProperties}
       >
         {editable ? (
