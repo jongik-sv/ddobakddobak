@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { getSettings, updateSettings, type SttLearningSettings } from '../../../api/sttTermLearning'
 import { apiErrorMessage } from './apiError'
+import { useCanWriteGlobal } from './permissions'
 
 export default function LearningSettingsView() {
   const [form, setForm] = useState<SttLearningSettings | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [saving, setSaving] = useState(false)
+  const canEdit = useCanWriteGlobal() // 학습 설정은 시스템 관리자만 변경
 
   useEffect(() => {
     getSettings().then(setForm).catch(() => setLoadError(true))
@@ -35,11 +37,17 @@ export default function LearningSettingsView() {
 
   return (
     <div className="max-w-xl space-y-4">
+      {!canEdit && (
+        <p role="note" className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          시스템 관리자만 변경할 수 있습니다. 현재 설정값만 확인할 수 있습니다.
+        </p>
+      )}
       <label className="flex items-start gap-2">
         <input
           type="checkbox"
           aria-label="자동 추출·등록 사용"
           checked={form.enabled}
+          disabled={!canEdit}
           onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
           className="mt-1"
         />
@@ -57,6 +65,7 @@ export default function LearningSettingsView() {
           min={5}
           max={1440}
           value={Number.isNaN(form.idle_minutes) ? '' : form.idle_minutes}
+          disabled={!canEdit}
           onChange={(e) => setForm({ ...form, idle_minutes: e.target.value === '' ? NaN : Number(e.target.value) })}
           className="mt-1 w-28 rounded border px-2 py-1 text-sm"
         />
@@ -72,6 +81,7 @@ export default function LearningSettingsView() {
           max={1}
           step={0.05}
           value={Number.isNaN(form.min_confidence) ? '' : form.min_confidence}
+          disabled={!canEdit}
           onChange={(e) => setForm({ ...form, min_confidence: e.target.value === '' ? NaN : Number(e.target.value) })}
           className="mt-1 w-28 rounded border px-2 py-1 text-sm"
         />
@@ -90,7 +100,7 @@ export default function LearningSettingsView() {
         <div><span className="font-medium text-foreground">추출 LLM</span> 회의 생성자의 요약 LLM 설정을 따릅니다. 회의 1건당 1회 호출</div>
       </div>
 
-      <div className="flex items-center gap-3">
+      {canEdit && <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={save}
@@ -100,7 +110,7 @@ export default function LearningSettingsView() {
           저장
         </button>
         {msg && <span role="status" className={`text-sm ${msg.ok ? 'text-green-700' : 'text-red-600'}`}>{msg.text}</span>}
-      </div>
+      </div>}
     </div>
   )
 }

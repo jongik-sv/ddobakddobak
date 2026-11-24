@@ -4,10 +4,12 @@ import {
   getMisrecognitions,
   getTree,
   updateMisrecognition,
+  type LevelInfo,
   type Misrecognition,
 } from '../../../api/sttTermLearning'
 import { apiErrorMessage } from './apiError'
 import { confirmDialog } from '../../../lib/confirmDialog'
+import { useCanWriteGlobal } from './permissions'
 import { buildLevelTree, moveUpConfirmMessage, parentOf, type LevelNode } from './levelTree'
 
 const FILTERS = [
@@ -28,6 +30,12 @@ export default function MisrecognitionsView({ projectId }: { projectId?: number 
   const [counts, setCounts] = useState({ total: 0, undecided: 0 })
   const [root, setRoot] = useState<LevelNode | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const canWriteGlobal = useCanWriteGlobal()
+  // 프로젝트 관리자는 전역 레벨을 바꿀 수 없다 — 전역에 등록된 쌍·전역으로 올리기는 막는다.
+  const upBlocked = (level: LevelInfo) => {
+    const parent = root ? parentOf(root, level) : null
+    return !parent || (!canWriteGlobal && (parent.ref.type === 'global' || level.type === 'global'))
+  }
 
   const load = useCallback(async () => {
     const mine = ++ticket.current
@@ -68,7 +76,7 @@ export default function MisrecognitionsView({ projectId }: { projectId?: number 
   const moveUp = async (m: Misrecognition) => {
     if (!m.registered || !root) return
     const parent = parentOf(root, m.registered.level)
-    if (!parent) return
+    if (!parent || upBlocked(m.registered.level)) return
     const ask = moveUpConfirmMessage(m.correct || m.registered.term_key, parent, m.registered.auto === false)
     if (ask && !(await confirmDialog(ask, { title: '상위 레벨로', kind: 'warning' }))) return
     try {
@@ -149,7 +157,7 @@ export default function MisrecognitionsView({ projectId }: { projectId?: number 
                         type="button"
                         aria-label={`${m.wrong} 상위 레벨로`}
                         title="상위 레벨로"
-                        disabled={!root || !parentOf(root, m.registered.level)}
+                        disabled={upBlocked(m.registered.level)}
                         onClick={() => moveUp(m)}
                         className="rounded border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-40"
                       >

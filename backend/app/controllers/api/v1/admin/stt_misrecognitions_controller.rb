@@ -9,7 +9,7 @@ module Api
         MAX_MEETING_IDS = 20
 
         before_action :authenticate_user!
-        before_action :require_admin!
+        before_action :require_stt_learning_manager!
         before_action :set_misrecognition, only: %i[update]
 
         # GET /api/v1/admin/stt_term_learning/misrecognitions?status=&q=&project_id=
@@ -53,6 +53,7 @@ module Api
             end
             if status == "confirmed"
               r = ::SttTermLearning::ManualRegistration.register_pair!(@record, actor: current_user)
+              forbid_global_write! if r[:level]&.global? # 전역 줄에 합쳐졌다면(비 시스템 admin) 전체 롤백 후 403
               registered = registered_from_result(r, @record)
             else
               @record.update!(status: status)
@@ -141,8 +142,9 @@ module Api
         # 단 자동 파일 줄이고 변형이 이것 하나뿐이면(이 쌍 때문에 생긴 새 줄) 줄 전체를 지운다.
         def exclude_registered_variant!(record)
           @latest_items = latest_items([ record.id ])
-          file, _level = registered_entry(record)
+          file, level = registered_entry(record)
           return unless file
+          forbid_global_write! if level&.global?
 
           variants = file.find_term(record.correct_key)[:mispronunciations].map { |m| ::DomainFile.normalize_key(m) }.uniq
           if file.stt_auto? && variants == [ record.wrong_key ]

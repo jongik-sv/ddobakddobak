@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { applyMoves, getImpact, getTerms, getTree, type LevelRef, type TermRow } from '../../../api/sttTermLearning'
+import { useCanWriteGlobal } from './permissions'
 import { buildLevelTree, levelKey, relationTo, type LevelNode } from './levelTree'
 import { stageChange, toMoveRequests, type StagedChange } from './stagedChanges'
 
@@ -62,6 +63,7 @@ export default function AllTermsView({ projectId }: { projectId?: number | null 
   const [openRow, setOpenRow] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const canWriteGlobal = useCanWriteGlobal() // 프로젝트 관리자는 전역 레벨을 읽기만 한다
 
   const load = useCallback(async () => {
     try {
@@ -233,8 +235,10 @@ export default function AllTermsView({ projectId }: { projectId?: number | null 
                       <button
                         type="button"
                         aria-label={`${r.term} 레벨 변경`}
+                        disabled={!canWriteGlobal && r.level.type === 'global'}
+                        title={!canWriteGlobal && r.level.type === 'global' ? '전역 용어는 시스템 관리자만 변경할 수 있습니다' : undefined}
                         onClick={() => setOpenRow(openRow === r.row_id ? null : r.row_id)}
-                        className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted"
+                        className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-60"
                       >
                         {ch ? (
                           <>
@@ -280,7 +284,7 @@ export default function AllTermsView({ projectId }: { projectId?: number | null 
                                 key={levelKey(node.ref)}
                                 type="button"
                                 role="menuitem"
-                                disabled={rel === 'current' && !ch}
+                                disabled={(rel === 'current' && !ch) || (!canWriteGlobal && node.ref.type === 'global')}
                                 onClick={() => pick(r, node.ref)}
                                 style={{ paddingLeft: 12 + depth * 16 }}
                                 className="flex w-full items-center gap-2 py-1.5 pr-3 text-left text-sm hover:bg-muted disabled:opacity-60"

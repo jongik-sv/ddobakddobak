@@ -7,6 +7,7 @@ import VoiceSettingsTab from './VoiceSettingsTab'
 import MeetingSettingsTab from './MeetingSettingsTab'
 import UserSttSettings from './UserSttSettings'
 import { DflowSettingsPanel } from './DflowSettingsPanel'
+import { useManagesAnyProject } from './sttTermLearning/permissions'
 import SttTermLearningTab from './sttTermLearning/SttTermLearningTab'
 
 interface Props {
@@ -23,6 +24,9 @@ export default function SettingsContent({ offline = false }: Props = {}) {
   const isLocalMode = getMode() === 'local'
   const isAdmin = user?.role === 'admin'
   const showAdminSettings = isAdmin || isLocalMode
+  // 프로젝트 관리자(시스템 admin 아님)에게는 개인설정 + STT 용어 학습 탭만 보인다.
+  const managesProject = useManagesAnyProject()
+  const showSttLearning = showAdminSettings || managesProject
   // 로컬모드/로컬계정(desktop@local)은 자동 로그인이라 비밀번호 변경 불필요
   const showPasswordSection = getMode() !== 'local' && user?.email !== 'desktop@local'
 
@@ -45,7 +49,7 @@ export default function SettingsContent({ offline = false }: Props = {}) {
   }
 
   // 일반 사용자는 관리자 탭이 없으므로 탭바 없이 개인 설정만 노출
-  if (!showAdminSettings) {
+  if (!showSttLearning) {
     return (
       <div data-help="settings/personal">
         <PersonalSettingsTab showPasswordSection={showPasswordSection} />
@@ -53,7 +57,7 @@ export default function SettingsContent({ offline = false }: Props = {}) {
     )
   }
 
-  const TABS = [
+  const ALL_TABS = [
     { id: 'personal', label: '개인설정' },
     { id: 'llm', label: 'LLM' },
     { id: 'voice', label: '음성·인식' },
@@ -61,6 +65,7 @@ export default function SettingsContent({ offline = false }: Props = {}) {
     { id: 'dflow', label: '연동' },
     { id: 'sttLearning', label: 'STT 용어 학습' },
   ] as const
+  const TABS = showAdminSettings ? ALL_TABS : ALL_TABS.filter((t) => t.id === 'personal' || t.id === 'sttLearning')
 
   const helpSlug =
     tab === 'dflow' ? 'settings/integrations' : tab === 'sttLearning' ? 'settings/stt-learning' : `settings/${tab}`

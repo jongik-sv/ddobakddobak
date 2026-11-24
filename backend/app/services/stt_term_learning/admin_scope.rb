@@ -3,10 +3,31 @@ module SttTermLearning
   module AdminScope
     module_function
 
-    # 남의 personal 프로젝트는 뺀다. Project#blocks_admin_override?(user) 의 SQL 등가물이다
-    # (personal && created_by_id != user.id 를 제외) — 한쪽을 바꾸면 spec 이 어긋나게 해 둔다.
+    def server_mode?
+      ENV["SERVER_MODE"] == "true"
+    end
+
+    # 서버 모드: 시스템 admin 이든 아니든 "내가 프로젝트 admin(ProjectMembership role=admin)인 살아 있는 팀 프로젝트"만.
+    # 개인(personal) 프로젝트는 가입 때 본인이 admin 멤버로 자동 생성되므로 제외한다(넣으면 모든 사용자가 자격을 얻는다).
+    # 로컬(데스크톱) 모드: 기존 그대로 — 남의 personal 프로젝트만 뺀다. Project#blocks_admin_override?(user) 의
+    # SQL 등가물이다(personal && created_by_id != user.id 를 제외) — 한쪽을 바꾸면 spec 이 어긋나게 해 둔다.
     def projects(user)
-      ::Project.kept.where(personal: false).or(::Project.kept.where(created_by_id: user&.id))
+      if server_mode?
+        ::Project.kept.where(personal: false)
+                .where(id: ::ProjectMembership.where(user_id: user&.id, role: "admin").select(:project_id))
+      else
+        ::Project.kept.where(personal: false).or(::Project.kept.where(created_by_id: user&.id))
+      end
+    end
+
+    # 전역 레벨 쓰기 권한: 서버 모드에서는 시스템 admin 만, 로컬 모드는 항상.
+    def global_writer?(user)
+      !server_mode? || !!user&.admin?
+    end
+
+    # 용어 학습 화면 사용 자격: 시스템 admin 이거나 관리 프로젝트가 1개 이상. 로컬 모드는 항상.
+    def manager?(user)
+      !server_mode? || !!user&.admin? || projects(user).exists?
     end
 
     # project_id 를 주면 그 프로젝트(+폴더)와 전역 노드만 담는다. 가시성 검사는 호출자 몫이다
@@ -79,9 +100,17 @@ module SttTermLearning
 
       # meeting_ids(배열·relation) 중 보이지 않는 프로젝트(남의 personal 등)에 속한 회의 id 집합.
       # TermIndex(meeting_ids·source)와 TreeBuilder(new_count)가 같은 숨김 기준을 쓴다.
+      # 서버 모드에서는 프로젝트 없는 회의도 숨긴다(관리 프로젝트 소속임을 보증할 수 없다). 로컬 모드는 보인다.
       def hidden_meeting_ids(meeting_ids)
-        ::Meeting.where(id: meeting_ids).where.not(project_id: nil).where.not(project_id: visible_project_ids)
-                 .pluck(:id).to_set
+        rel = ::Meeting.where(id: meeting_ids)
+        hidden = rel.where.not(id: rel.where(project_id: visible_project_ids).select(:id))
+        hidden = hidden.where.not(project_id: nil) unless AdminScope.server_mode?
+        hidden.pluck(:id).to_set
+      end
+
+      # 전역 레벨에 링크된 파일 id(전역 쓰기 가드용).
+      def global_file_ids
+        nodes.first.files.map(&:id)
       end
 
       def node_for(level)

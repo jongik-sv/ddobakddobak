@@ -3,8 +3,37 @@ module SttTermLearningJson
   extend ActiveSupport::Concern
 
   LEARNING_DISABLED_MESSAGE = "학습 꺼짐: 설정에서 켜 주세요".freeze
+  GLOBAL_WRITE_MESSAGE = "전역 레벨은 시스템 관리자만 변경할 수 있습니다".freeze
+
+  # 프로젝트 관리자(비 시스템 admin)가 전역 레벨을 바꾸려 할 때 — 403 으로 렌더한다.
+  class GlobalWriteForbidden < StandardError; end
+
+  included do
+    rescue_from GlobalWriteForbidden do
+      render json: { error: GLOBAL_WRITE_MESSAGE }, status: :forbidden
+    end
+  end
 
   private
+
+  # 시스템 admin 또는 관리 프로젝트가 1개 이상인 사용자만(로컬 모드는 통과).
+  def require_stt_learning_manager!
+    return true unless server_mode?
+    return true if ::SttTermLearning::AdminScope.manager?(current_user)
+    render json: { error: "Forbidden" }, status: :forbidden
+  end
+
+  def global_writer?
+    ::SttTermLearning::AdminScope.global_writer?(current_user)
+  end
+
+  def forbid_global_write!
+    raise GlobalWriteForbidden unless global_writer?
+  end
+
+  def global_file_ids
+    @global_file_ids ||= ::SttTermLearning::AdminScope.snapshot(current_user).global_file_ids
+  end
 
   def learning_enabled?
     AppSettings.stt_term_learning["enabled"] == true
@@ -14,7 +43,7 @@ module SttTermLearningJson
     render json: { error: LEARNING_DISABLED_MESSAGE }, status: :unprocessable_entity
   end
 
-  # 관리자 화면에 보이는 프로젝트 id(남의 personal·휴지통 제외). project 없는 회의는 보인다(TermIndex 와 같은 기준).
+  # 관리자 화면에 보이는 프로젝트 id(서버 모드: 내가 프로젝트 admin 인 프로젝트. 로컬: 남의 personal·휴지통 제외).
   def visible_project_ids
     @visible_project_ids ||= ::SttTermLearning::AdminScope.projects(current_user).pluck(:id)
   end
@@ -34,11 +63,13 @@ module SttTermLearningJson
   end
 
   def visible_project?(project_id)
-    project_id.nil? || visible_project_ids.include?(project_id)
+    (project_id.nil? && !server_mode?) || visible_project_ids.include?(project_id)
   end
 
+  # 서버 모드: 관리 프로젝트의 회의만. 로컬 모드: project 없는 회의도 보인다(TermIndex 와 같은 기준).
   def visible_meetings_scope(scope = ::Meeting.all)
-    scope.where(project_id: nil).or(scope.where(project_id: visible_project_ids))
+    in_projects = scope.where(project_id: visible_project_ids)
+    server_mode? ? in_projects : scope.where(project_id: nil).or(in_projects)
   end
 
   # 관리자 화면에 보이는 도메인 파일 id(AdminScope 스냅샷 노드의 링크 파일 — TermIndex 가 보여 주는 집합).

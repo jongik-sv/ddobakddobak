@@ -8,7 +8,8 @@ module Api
         SETTINGS_KEYS = %w[enabled idle_minutes min_confidence].freeze
 
         before_action :authenticate_user!
-        before_action :require_admin!
+        before_action :require_stt_learning_manager!
+        before_action :require_admin!, only: :update_settings # 학습 설정 변경은 시스템 관리자만
 
         # GET /api/v1/admin/stt_term_learning/projects — 프로젝트 선택기 옵션(관리자에게 보이는 프로젝트 전부)
         def projects
@@ -47,6 +48,8 @@ module Api
             ensure_visible_file!(m[:domain_file_id])
             target = level_from_ref(m[:target] || {})
             raise ::SttTermLearning::TermMover::Error, "이동할 수 없는 레벨입니다" if hidden_level?(target)
+            # 전역 파일에서 꺼내거나 전역으로 넣는 이동(복사·하위 병합 포함)은 시스템 관리자만.
+            forbid_global_write! if target.global? || global_file_ids.include?(m[:domain_file_id].to_i)
             { domain_file_id: m[:domain_file_id], term_keys: m[:term_keys].nil? ? nil : Array(m[:term_keys]).map(&:to_s),
               target: target, copy: m[:copy], merge_descendants: m[:merge_descendants] }
           end
@@ -60,6 +63,7 @@ module Api
         def delete_terms
           items = Array(params[:items]).map { |i| { domain_file_id: i[:domain_file_id], term_key: i[:term_key].to_s } }
           items.each { |i| ensure_visible_file!(i[:domain_file_id]) }
+          forbid_global_write! if items.any? { |i| global_file_ids.include?(i[:domain_file_id].to_i) }
           deleted = ::SttTermLearning::TermMover.new(actor: current_user).delete!(items)
           render json: { deleted: deleted }
         rescue ::SttTermLearning::TermMover::Error, ActiveRecord::RecordNotFound => e

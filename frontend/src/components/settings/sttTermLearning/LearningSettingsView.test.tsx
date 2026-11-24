@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import LearningSettingsView from './LearningSettingsView'
 import { httpError } from './testHelpers'
+import { useAuthStore } from '../../../stores/authStore'
 import * as api from '../../../api/sttTermLearning'
 
 vi.mock('../../../api/sttTermLearning')
 const m = vi.mocked(api)
 
 beforeEach(() => {
+  useAuthStore.setState({ user: { id: 1, email: 'a@x.com', name: 'A', role: 'admin' } })
   vi.clearAllMocks()
   m.getSettings.mockResolvedValue({ enabled: true, idle_minutes: 30, min_confidence: 0.6 })
   m.updateSettings.mockImplementation(async (s) => s)
@@ -48,5 +50,18 @@ describe('LearningSettingsView', () => {
     await screen.findByLabelText('대기 분')
     fireEvent.click(screen.getByRole('button', { name: '저장' }))
     expect(await screen.findByText('범위 오류')).toBeInTheDocument()
+  })
+})
+
+describe('LearningSettingsView 권한', () => {
+  it('시스템 관리자가 아니면 읽기 전용: 입력 비활성·저장 버튼 없음·안내 문구', async () => {
+    useAuthStore.setState({ user: { id: 2, email: 'p@x.com', name: 'P', role: 'member' } })
+    render(<LearningSettingsView />)
+    const enabled = await screen.findByRole('checkbox', { name: '자동 추출·등록 사용' })
+    expect(enabled).toBeDisabled()
+    expect(screen.getByLabelText('대기 분')).toBeDisabled()
+    expect(screen.getByLabelText('최소 confidence')).toBeDisabled()
+    expect(screen.queryByRole('button', { name: '저장' })).toBeNull()
+    expect(screen.getByText(/시스템 관리자만 변경할 수 있습니다/)).toBeInTheDocument()
   })
 })

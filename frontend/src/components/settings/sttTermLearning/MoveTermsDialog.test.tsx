@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import MoveTermsDialog from './MoveTermsDialog'
 import { buildLevelTree } from './levelTree'
 import { treeFixture, row } from './fixtures'
+import { useAuthStore } from '../../../stores/authStore'
 import * as api from '../../../api/sttTermLearning'
 
 vi.mock('../../../api/sttTermLearning')
@@ -11,6 +12,7 @@ const tree = buildLevelTree(treeFixture)
 
 beforeEach(() => {
   vi.clearAllMocks()
+  useAuthStore.setState({ user: { id: 1, email: 'a@x.com', name: 'A', role: 'admin' } })
   m.getImpact.mockResolvedValue([3, 46])
   m.applyMoves.mockResolvedValue({ moved: 2, merged: 0 })
 })
@@ -65,5 +67,14 @@ describe('MoveTermsDialog', () => {
   it('하위(down) 대상이면 합치기 체크박스 숨김', () => {
     setup({ initialTarget: { type: 'Folder', id: 11 } })
     expect(screen.queryByLabelText(/하위 폴더에 있는 같은 용어도/)).toBeNull()
+  })
+})
+
+describe('MoveTermsDialog 전역 대상(프로젝트 관리자)', () => {
+  it('시스템 관리자가 아니면 전역 레벨은 이동 대상으로 고를 수 없다', async () => {
+    useAuthStore.setState({ user: { id: 2, email: 'p@x.com', name: 'P', role: 'member' } })
+    render(<MoveTermsDialog rows={[row({ n: 1 })]} tree={buildLevelTree(treeFixture)} onClose={() => {}} onApplied={() => {}} />)
+    const items = await screen.findAllByRole('treeitem')
+    expect(items[0]).toBeDisabled() // 전역
   })
 })

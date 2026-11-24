@@ -120,8 +120,13 @@ export default function SttTermLearningTab() {
       </div>
       {sub === 'settings' && <LearningSettingsView />}
       {sub === 'flow' && <FlowGuideView />}
-      {/* 프로젝트 목록 확정 전에는 데이터 뷰를 띄우지 않는다(전체→선택 이중 호출 방지). 선택 가능한 프로젝트가 없으면 전체 보기. */}
-      {!globalTab && projects && (
+      {/* 프로젝트 목록 확정 전에는 데이터 뷰를 띄우지 않는다(전체→선택 이중 호출 방지). 목록 조회가 실패했을 때만 전체(비한정) 보기, 관리 프로젝트가 없으면 안내 문구. */}
+      {!globalTab && projects && projects.length === 0 && !loadError && (
+        <p className="rounded-md border bg-muted/40 px-3 py-6 text-center text-sm text-muted-foreground">
+          관리자로 지정된 프로젝트가 없습니다.
+        </p>
+      )}
+      {!globalTab && projects && (projects.length > 0 || loadError) && (
         <div key={scoped ? projectId : 'all'}>
           {sub === 'tree' && <LevelTreeView projectId={projectId} />}
           {sub === 'runs' && <RunHistoryView projectId={projectId} />}

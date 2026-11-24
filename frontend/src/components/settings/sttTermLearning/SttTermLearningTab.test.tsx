@@ -79,3 +79,12 @@ describe('SttTermLearningTab 프로젝트 선택기', () => {
     expect(select()).toBeDisabled()
   })
 })
+
+describe('SttTermLearningTab 관리 프로젝트 없음', () => {
+  it('프로젝트 목록이 비면 안내 문구만 보이고 데이터를 조회하지 않는다', async () => {
+    m.getScopeProjects.mockResolvedValue([])
+    render(<SttTermLearningTab />)
+    expect(await screen.findByText('관리자로 지정된 프로젝트가 없습니다.')).toBeInTheDocument()
+    expect(m.getTree).not.toHaveBeenCalled()
+  })
+})

@@ -11,7 +11,7 @@ module Api
         NO_AI_ORIGINAL_MESSAGE = "AI 원본이 없는 회의입니다".freeze
 
         before_action :authenticate_user!
-        before_action :require_admin!
+        before_action :require_stt_learning_manager!
         before_action :set_run, only: %i[show revert rerun register_item]
 
         # GET /api/v1/admin/stt_term_learning/runs?status=&project_id=
@@ -39,6 +39,7 @@ module Api
 
         # POST /api/v1/admin/stt_term_learning/runs/:id/revert
         def revert
+          forbid_global_write! if touches_global?(@run)
           result = ::SttTermLearning::Reverter.new(@run).call
           render json: { run: run_summary_json(@run.reload), reverted: result[:reverted],
                          skipped_item_ids: result[:skipped_item_ids] }
@@ -82,13 +83,23 @@ module Api
         # POST /api/v1/admin/stt_term_learning/runs/:run_id/items/:id/register
         def register_item
           item = @run.items.find(params[:id])
-          ::SttTermLearning::ManualRegistration.call(item)
+          # 등록 체인이 전역까지 올라가 전역 줄을 건드리면(비 시스템 admin) 전체 롤백 후 403.
+          ::ActiveRecord::Base.transaction do
+            ::SttTermLearning::ManualRegistration.call(item)
+            forbid_global_write! if item.reload.level_owner_type == "global"
+          end
           render json: { item: run_item_json(item.reload) }
         rescue ::SttTermLearning::ManualRegistration::Error => e
           render json: { error: e.message }, status: :unprocessable_entity
         end
 
         private
+
+        # 이 run 의 item 이 전역 레벨(파일)에 쓴 적이 있으면 되돌리기가 전역을 건드린다.
+        def touches_global?(run)
+          run.items.where(level_owner_type: "global").exists? ||
+            (global_file_ids.any? && run.items.where(domain_file_id: global_file_ids).exists?)
+        end
 
         def set_run
           @run = ::SttTermLearningRun.where(meeting_id: visible_meetings_scope.select(:id))

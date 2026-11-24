@@ -9,6 +9,7 @@ import {
 } from '../../../api/sttTermLearning'
 import { confirmDialog } from '../../../lib/confirmDialog'
 import MoveTermsDialog from './MoveTermsDialog'
+import { useCanWriteGlobal } from './permissions'
 import { buildLevelTree, findPath, levelKey, moveUpConfirmMessage, parentOf, type LevelNode } from './levelTree'
 
 const SOURCE_LABEL: Record<TermRow['source'], string> = {
@@ -56,6 +57,14 @@ export default function LevelTreeView({ projectId }: { projectId?: number | null
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [moveRows, setMoveRows] = useState<TermRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const canWriteGlobal = useCanWriteGlobal()
+  // 프로젝트 관리자는 전역 레벨을 읽기만 한다 — 전역 줄·전역으로 올리기는 막는다(서버도 403).
+  const locked = (r: TermRow) => !canWriteGlobal && r.level.type === 'global'
+  const upBlocked = (ref: LevelRef) => {
+    if (!root) return true
+    const parent = parentOf(root, ref)
+    return !parent || (!canWriteGlobal && parent.ref.type === 'global')
+  }
 
   const loadTree = useCallback(async () => {
     try {
@@ -103,7 +112,7 @@ export default function LevelTreeView({ projectId }: { projectId?: number | null
   const moveUp = async (row: TermRow) => {
     if (!root) return
     const parent = parentOf(root, row.level)
-    if (!parent) return
+    if (!parent || upBlocked(row.level) || locked(row)) return
     const ask = moveUpConfirmMessage(row.term, parent, row.source === 'human' || row.source === 'human_merged')
     if (ask && !(await confirmDialog(ask, { title: '상위 레벨로', kind: 'warning' }))) return
     setError(null)
@@ -181,6 +190,9 @@ export default function LevelTreeView({ projectId }: { projectId?: number | null
           </button>
         </div>
 
+        {!canWriteGlobal && (
+          <p className="text-xs text-muted-foreground">전역(공용) 용어는 읽기 전용입니다. 시스템 관리자만 변경할 수 있습니다.</p>
+        )}
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
         <div className="overflow-x-auto rounded-md border border-border">
@@ -205,6 +217,7 @@ export default function LevelTreeView({ projectId }: { projectId?: number | null
                       type="checkbox"
                       aria-label={`${t.term} 선택`}
                       checked={checked.has(t.row_id)}
+                      disabled={locked(t)}
                       onChange={() => toggle(t.row_id)}
                     />
                   </td>
@@ -233,7 +246,7 @@ export default function LevelTreeView({ projectId }: { projectId?: number | null
                       type="button"
                       aria-label={`${t.term} 상위 레벨로`}
                       title="상위 레벨로"
-                      disabled={!root || !parentOf(root, t.level)}
+                      disabled={upBlocked(t.level) || locked(t)}
                       onClick={() => moveUp(t)}
                       className="rounded border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-40"
                     >
@@ -243,8 +256,9 @@ export default function LevelTreeView({ projectId }: { projectId?: number | null
                       type="button"
                       aria-label={`${t.term} 이동…`}
                       title="다른 레벨로"
+                      disabled={locked(t)}
                       onClick={() => setMoveRows([t])}
-                      className="ml-1 rounded border px-2 py-0.5 text-xs hover:bg-muted"
+                      className="ml-1 rounded border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-40"
                     >
                       ⬇ ▾
                     </button>
