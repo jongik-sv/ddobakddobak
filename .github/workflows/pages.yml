@@ -10,6 +10,8 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  # deploy-pages 가 같은 run 의 github-pages 아티팩트 메타데이터를 Actions API 로 조회한다(없으면 "Fetching artifact metadata failed").
+  actions: read
 
 concurrency:
   group: pages
