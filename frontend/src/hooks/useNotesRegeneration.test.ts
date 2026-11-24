@@ -14,6 +14,9 @@ vi.mock('../api/meetings', () => ({
   regenerateNotes: vi.fn(async () => {}),
 }))
 
+const getAiOriginalMock = vi.hoisted(() => vi.fn())
+vi.mock('../api/sttTermLearning', () => ({ getAiOriginal: getAiOriginalMock }))
+
 vi.mock('../lib/actionCableAuth', () => ({
   createAuthenticatedConsumer: () => ({
     subscriptions: {
@@ -121,5 +124,59 @@ describe('useNotesRegeneration — final 요약 실패 시 재생성 스피너 �
 
     expect(result.current.isRegeneratingNotes).toBe(false)
     expect(options.refetch).toHaveBeenCalled()
+  })
+})
+
+describe('useNotesRegeneration — 재생성 확인창 안내(사람 편집 여부)', () => {
+  const options = { pauseAudio: vi.fn(), refetch: vi.fn() }
+  beforeEach(() => { getAiOriginalMock.mockReset() })
+
+  it('사람이 고친 회의록이면 용어 유지 안내 문구로 확인창을 연다', async () => {
+    getAiOriginalMock.mockResolvedValue({ available: true, human_edited_at: '2026-11-24T00:00:00Z', diff: [], stt_learning_enabled: true })
+    const { result } = renderHook(() => useNotesRegeneration(1, options))
+    await act(async () => { await result.current.requestNotesConfirm() })
+    expect(result.current.showNotesConfirm).toBe(true)
+    expect(result.current.notesConfirmMessage).toBe(
+      '직접 고친 문장은 새로 작성됩니다. 학습된 용어는 새 회의록에도 반영됩니다. 다시 작성할까요?'
+    )
+  })
+
+  it('편집 안 된 회의록이면 기존 문구', async () => {
+    getAiOriginalMock.mockResolvedValue({ available: true, human_edited_at: null, diff: [] })
+    const { result } = renderHook(() => useNotesRegeneration(1, options))
+    await act(async () => { await result.current.requestNotesConfirm() })
+    expect(result.current.showNotesConfirm).toBe(true)
+    expect(result.current.notesConfirmMessage).toContain('처음부터 다시 생성합니다')
+  })
+
+  it('조회 실패여도 기존 문구로 확인창을 연다', async () => {
+    getAiOriginalMock.mockRejectedValue(new Error('x'))
+    const { result } = renderHook(() => useNotesRegeneration(1, options))
+    await act(async () => { await result.current.requestNotesConfirm() })
+    expect(result.current.showNotesConfirm).toBe(true)
+    expect(result.current.notesConfirmMessage).toContain('처음부터 다시 생성합니다')
+  })
+
+  it('고쳤지만 학습이 꺼져 있으면 용어 유지 문구 없이 안내', async () => {
+    getAiOriginalMock.mockResolvedValue({ available: true, human_edited_at: '2026-11-24T00:00:00Z', diff: [], stt_learning_enabled: false })
+    const { result } = renderHook(() => useNotesRegeneration(1, options))
+    await act(async () => { await result.current.requestNotesConfirm() })
+    expect(result.current.notesConfirmMessage).toBe('직접 고친 내용은 새로 작성됩니다. 다시 작성할까요?')
+  })
+
+  it('조회 중 재호출은 무시하고 조회 중 상태를 노출한다', async () => {
+    let resolve!: (v: unknown) => void
+    getAiOriginalMock.mockReturnValue(new Promise((r) => { resolve = r }))
+    const { result } = renderHook(() => useNotesRegeneration(1, options))
+    let p1!: Promise<void>
+    act(() => {
+      p1 = result.current.requestNotesConfirm()
+      void result.current.requestNotesConfirm()
+    })
+    expect(result.current.isCheckingNotesConfirm).toBe(true)
+    expect(getAiOriginalMock).toHaveBeenCalledTimes(1)
+    await act(async () => { resolve({ available: false, human_edited_at: null, diff: [] }); await p1 })
+    expect(result.current.isCheckingNotesConfirm).toBe(false)
+    expect(result.current.showNotesConfirm).toBe(true)
   })
 })

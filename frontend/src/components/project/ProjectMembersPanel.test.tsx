@@ -123,3 +123,58 @@ describe('ProjectMembersPanel — 멤버 추가 시 역할 선택', () => {
     )
   })
 })
+
+describe('ProjectMembersPanel — 표 정렬·필터', () => {
+  const members = [
+    makeMember({ user_id: 2, name: '하나', email: 'hana@x.com', role: 'member' }),
+    makeMember({ user_id: 3, name: '가나', email: 'gana@x.com', role: 'admin' }),
+    makeMember({ user_id: 4, name: 'Alice', email: 'alice@y.com', role: 'member' }),
+  ]
+  const emails = () =>
+    screen.getAllByRole('row').slice(2).map((r) => r.querySelectorAll('td')[1]?.textContent)
+
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+    vi.mocked(getProjectInvites).mockResolvedValue([])
+    vi.mocked(getProjectMembers).mockResolvedValue(members)
+    setUser('admin')
+  })
+
+  it('기본 이름 오름차순, 헤더 클릭 순환, aria-sort', async () => {
+    render(<ProjectMembersPanel project={makeProject()} onClose={() => {}} />)
+    await screen.findByText('하나')
+    expect(emails()).toEqual(['gana@x.com', 'hana@x.com', 'alice@y.com'])
+    const btn = screen.getByRole('button', { name: '이메일' })
+    fireEvent.click(btn)
+    expect(emails()).toEqual(['alice@y.com', 'gana@x.com', 'hana@x.com'])
+    expect(btn.closest('th')).toHaveAttribute('aria-sort', 'ascending')
+    fireEvent.click(btn)
+    expect(emails()).toEqual(['hana@x.com', 'gana@x.com', 'alice@y.com'])
+    fireEvent.click(btn)
+    expect(emails()[0]).toBe('gana@x.com')
+  })
+
+  it('필터·건수·초기화·빈 결과', async () => {
+    render(<ProjectMembersPanel project={makeProject()} onClose={() => {}} />)
+    await screen.findByText('하나')
+    expect(screen.getByText('3명 / 전체 3명')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('역할 필터'), { target: { value: 'member' } })
+    expect(emails()).toEqual(['hana@x.com', 'alice@y.com'])
+    fireEvent.change(screen.getByLabelText('이름 필터'), { target: { value: 'zzz' } })
+    expect(screen.getByText('조건에 맞는 사용자가 없습니다.')).toBeInTheDocument()
+    expect(screen.getByText('0명 / 전체 3명')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '필터 초기화' }))
+    expect(screen.getByText('3명 / 전체 3명')).toBeInTheDocument()
+  })
+
+  it('역할 변경 후 필터된 표가 갱신되고 행이 유지된다', async () => {
+    vi.mocked(updateProjectMember).mockResolvedValueOnce({ ...members[0], role: 'admin' })
+    render(<ProjectMembersPanel project={makeProject()} onClose={() => {}} />)
+    await screen.findByText('하나')
+    fireEvent.change(screen.getByLabelText('이름 필터'), { target: { value: '하나' } })
+    fireEvent.click(screen.getByText('관리자로 위임'))
+    await screen.findByText('멤버로 변경')
+    expect(emails()).toEqual(['hana@x.com'])
+  })
+})

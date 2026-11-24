@@ -50,7 +50,10 @@ class GlossaryApplication
 
   def self.apply(text, entries)
     return text if text.blank? || entries.blank?
-    entries.reduce(text) { |acc, e| apply_one(acc, e) }
+    # 연속된 boundary 엔트리는 한 번의 패스로 치환한다(앞 쌍의 to 를 뒤 쌍이 다시 바꾸지 않게).
+    entries.chunk_while { |a, b| a[:match_type] == "boundary" && b[:match_type] == "boundary" }.reduce(text) do |acc, group|
+      group.first[:match_type] == "boundary" ? apply_boundary_batch(acc, group) : apply_one(acc, group.first)
+    end
   end
 
   # 인용 마커를 자리표시자로 바꿔 보호한 뒤 오타 교정(#apply)을 적용하고, 끝나면 자리표시자를
@@ -102,8 +105,70 @@ class GlossaryApplication
   end
   private_class_method :encode_nibbles
 
+  # match_type "boundary" — 학습된 쌍처럼 부분 문자열 오치환(블로그/카탈로그의 "로그", saturday 의 "sat")을
+  # 피해야 하는 경우의 경계 인식 literal 치환. 기존 "literal"/"regex" 호출자에는 영향 없음.
+  #  - 앞/뒤 끝 글자가 ASCII 영숫자·_ 이면 그쪽에 ASCII 단어 경계(한글 조사는 허용).
+  #  - 한글로 시작하는 2자 이하 from 은 앞 글자가 한글/영숫자가 아니고, 뒤가 끝/비한글/조사+끝·비한글일 때만(로그인·디비전 보호).
+  #  - 3자 이상 한글은 부분 문자열 그대로.
+  ASCII_WORD = "A-Za-z0-9_"
+
+  # 짧은 한글 from 의 오른쪽 경계: 끝 / 한글이 아닌 글자 / (조사·어미 + (끝|한글 아닌 글자)).
+  # 디비전·로그인 처럼 다른 단어의 앞부분인 경우를 거른다. 긴 것부터(alternation 은 앞 항목 우선).
+  PARTICLES = %w[에서는 에서도 으로는 으로도 에게서 에게는 이라는 라는 이라고 라고 까지는 부터는 에는 에도 와는 과는 로는 로도
+                 에서 으로 에게 이랑 하고 부터 까지 처럼 보다 이나 라도 이다 입니다 이에요 예요
+                 은 는 이 가 을 를 에 의 도 로 와 과 만 께 랑 나 야].sort_by { |x| -x.length }.freeze
+  HANGUL_RIGHT = "(?=\\z|[^\\p{Hangul}]|(?:#{PARTICLES.join('|')})(?:\\z|[^\\p{Hangul}]))".freeze
+
+  def self.boundary_source(from)
+    from = from.to_s
+    first = from[0]
+    last = from[-1]
+    short_hangul = from.length <= 2 && first =~ /\p{Hangul}/
+    pre = if first =~ /[A-Za-z0-9_]/
+      "(?<![#{ASCII_WORD}])"
+    elsif short_hangul
+      "(?<![\\p{Hangul}#{ASCII_WORD}])"
+    else
+      ""
+    end
+    post = if last =~ /[A-Za-z0-9_]/
+      "(?![#{ASCII_WORD}])"
+    elsif short_hangul && last =~ /\p{Hangul}/
+      HANGUL_RIGHT
+    else
+      ""
+    end
+    "#{pre}#{Regexp.escape(from)}#{post}"
+  end
+  private_class_method :boundary_source
+
+  def self.boundary_regex(from)
+    Regexp.new(boundary_source(from), timeout: REGEX_TIMEOUT)
+  end
+  private_class_method :boundary_regex
+
+  # boundary 엔트리 묶음을 단일 패스로: 긴 from 우선 alternation, 항목별 캡처 그룹으로 어떤 쌍인지 식별.
+  # 경계 규칙은 엔트리마다 그대로 유지된다(lookaround 가 각 항목 안에 들어 있다).
+  def self.apply_boundary_batch(text, entries)
+    sorted = entries.each_with_index.sort_by { |e, i| [ -e[:from].to_s.length, i ] }.map(&:first)
+    sorted = sorted.reject { |e| e[:from].to_s.empty? }
+    return text if sorted.empty?
+    re = Regexp.new(sorted.map { |e| "(#{boundary_source(e[:from])})" }.join("|"), timeout: REGEX_TIMEOUT)
+    text.gsub(re) do
+      m = Regexp.last_match
+      idx = (1..sorted.length).find { |i| m[i] }
+      sorted[idx - 1][:to].to_s
+    end
+  rescue Regexp::TimeoutError, RegexpError => err
+    # 묶음 하나가 시간 초과여도 학습 치환 전체를 버리지 않는다 — 항목별로 다시 적용(항목별 실패는 apply_one 이 건너뜀).
+    Rails.logger.warn("[glossary] boundary batch fallback to per-entry err=#{err.class}")
+    sorted.reduce(text) { |t, e| apply_one(t, e.merge(match_type: "boundary")) }
+  end
+
   def self.apply_one(text, entry)
-    if entry[:match_type] == "regex"
+    if entry[:match_type] == "boundary"
+      text.gsub(boundary_regex(entry[:from])) { entry[:to].to_s }
+    elsif entry[:match_type] == "regex"
       re = Regexp.new(entry[:from].to_s, timeout: REGEX_TIMEOUT)
       text.gsub(re, entry[:to].to_s)
     else

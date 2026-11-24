@@ -134,14 +134,29 @@ export interface AiOriginal {
   ai_generated_at: string | null
   human_edited_at: string | null
   diff: DiffOp[]
+  stt_learning_enabled?: boolean
 }
 
-export function getTree(): Promise<TreeResponse> {
-  return apiClient.get(`${BASE}/tree`).json()
+export interface ScopeProject {
+  id: number
+  name: string
+  personal: boolean
+}
+
+/** 관리자 화면에 보이는 프로젝트(프로젝트 선택기 옵션). */
+export async function getScopeProjects(): Promise<ScopeProject[]> {
+  const res = await apiClient.get(`${BASE}/projects`).json<{ projects: ScopeProject[] }>()
+  return res.projects
+}
+
+/** projectId 를 주면 그 프로젝트(+전역)만. 생략하면 보이는 전체. */
+export function getTree(projectId?: number | null): Promise<TreeResponse> {
+  if (projectId == null) return apiClient.get(`${BASE}/tree`).json()
+  return apiClient.get(`${BASE}/tree`, { searchParams: { project_id: String(projectId) } }).json()
 }
 
 export async function getTerms(
-  params: { level?: LevelRef; includeDescendants?: boolean } = {},
+  params: { level?: LevelRef; includeDescendants?: boolean; projectId?: number | null } = {},
 ): Promise<{ terms: TermRow[] }> {
   const searchParams: Record<string, string> = {}
   if (params.level) {
@@ -149,6 +164,7 @@ export async function getTerms(
     if (params.level.id != null) searchParams.level_id = String(params.level.id)
   }
   if (params.includeDescendants) searchParams.include_descendants = '1'
+  if (params.projectId != null) searchParams.project_id = String(params.projectId)
   return apiClient.get(`${BASE}/terms`, { searchParams }).json()
 }
 
@@ -173,9 +189,13 @@ export function updateSettings(s: SttLearningSettings): Promise<SttLearningSetti
   return apiClient.put(`${BASE}/settings`, { json: s }).json()
 }
 
-export function getRuns(status?: string): Promise<{ runs: RunSummary[]; pending: PendingRun[] }> {
+export function getRuns(
+  status?: string,
+  projectId?: number | null,
+): Promise<{ runs: RunSummary[]; pending: PendingRun[] }> {
   const searchParams: Record<string, string> = {}
   if (status) searchParams.status = status
+  if (projectId != null) searchParams.project_id = String(projectId)
   return apiClient.get(`${BASE}/runs`, { searchParams }).json()
 }
 
@@ -204,11 +224,12 @@ export async function registerItem(runId: number, itemId: number): Promise<RunIt
 }
 
 export function getMisrecognitions(
-  params: { status?: string; q?: string } = {},
+  params: { status?: string; q?: string; projectId?: number | null } = {},
 ): Promise<{ misrecognitions: Misrecognition[]; counts: { total: number; undecided: number } }> {
   const searchParams: Record<string, string> = {}
   if (params.status) searchParams.status = params.status
   if (params.q) searchParams.q = params.q
+  if (params.projectId != null) searchParams.project_id = String(params.projectId)
   return apiClient.get(`${BASE}/misrecognitions`, { searchParams }).json()
 }
 

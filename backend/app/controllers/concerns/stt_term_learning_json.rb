@@ -3,8 +3,69 @@ module SttTermLearningJson
   extend ActiveSupport::Concern
 
   LEARNING_DISABLED_MESSAGE = "학습 꺼짐: 설정에서 켜 주세요".freeze
+  GLOBAL_WRITE_MESSAGE = "전역 레벨은 시스템 관리자만 변경할 수 있습니다".freeze
+
+  # 프로젝트 관리자(비 시스템 admin)가 전역 레벨을 바꾸려 할 때 — 403 으로 렌더한다.
+  class GlobalWriteForbidden < StandardError; end
+
+  FILE_WRITE_MESSAGE = "이 도메인 파일은 변경할 권한이 없습니다".freeze
+
+  # 프로젝트 관리자가 관리 범위 밖·편집 권한 없는 도메인 파일을 바꾸려 할 때 — 403.
+  class FileWriteForbidden < StandardError
+    def initialize(message = FILE_WRITE_MESSAGE)
+      super
+    end
+  end
+
+  EXISTING_TERM_MESSAGE = "이 용어는 수정 권한이 없는 도메인 파일에 이미 있습니다".freeze
+
+  included do
+    rescue_from GlobalWriteForbidden do
+      render json: { error: GLOBAL_WRITE_MESSAGE }, status: :forbidden
+    end
+    rescue_from FileWriteForbidden do |e|
+      render json: { error: e.message }, status: :forbidden
+    end
+  end
 
   private
+
+  # 시스템 admin 또는 관리 프로젝트가 1개 이상인 사용자만(로컬 모드는 통과).
+  def require_stt_learning_manager!
+    return true unless server_mode?
+    return true if ::SttTermLearning::AdminScope.manager?(current_user)
+    render json: { error: "Forbidden" }, status: :forbidden
+  end
+
+  def global_writer?
+    ::SttTermLearning::AdminScope.global_writer?(current_user)
+  end
+
+  def forbid_global_write!
+    raise GlobalWriteForbidden unless global_writer?
+  end
+
+  def managed_project_ids
+    @managed_project_ids ||= ::SttTermLearning::AdminScope.projects(current_user).pluck(:id)
+  end
+
+  def writable_file?(file)
+    ::SttTermLearning::AdminScope.writable_file?(current_user, file, managed_ids: managed_project_ids)
+  end
+
+  # 쓰기 전에(또는 같은 트랜잭션 안에서) 호출. 전역 자동 파일이면 전역 메시지, 아니면 파일 메시지로 403.
+  def forbid_file_write!(file_or_id, existing_term: false)
+    return true if global_writer?
+    file = file_or_id.is_a?(::DomainFile) ? file_or_id : ::DomainFile.find_by(id: file_or_id)
+    return true if file.nil? # 이미 없는 파일은 쓸 것이 없다(후속 단계가 not found 처리)
+    return true if writable_file?(file)
+    raise GlobalWriteForbidden if file.stt_auto? && file.auto_owner_type.nil?
+    raise FileWriteForbidden, (existing_term ? EXISTING_TERM_MESSAGE : FILE_WRITE_MESSAGE)
+  end
+
+  def global_file_ids
+    @global_file_ids ||= ::SttTermLearning::AdminScope.snapshot(current_user).global_file_ids
+  end
 
   def learning_enabled?
     AppSettings.stt_term_learning["enabled"] == true
@@ -14,17 +75,33 @@ module SttTermLearningJson
     render json: { error: LEARNING_DISABLED_MESSAGE }, status: :unprocessable_entity
   end
 
-  # 관리자 화면에 보이는 프로젝트 id(남의 personal·휴지통 제외). project 없는 회의는 보인다(TermIndex 와 같은 기준).
+  # 관리자 화면에 보이는 프로젝트 id(서버 모드: 내가 프로젝트 admin 인 프로젝트. 로컬: 남의 personal·휴지통 제외).
   def visible_project_ids
     @visible_project_ids ||= ::SttTermLearning::AdminScope.projects(current_user).pluck(:id)
   end
 
-  def visible_project?(project_id)
-    project_id.nil? || visible_project_ids.include?(project_id)
+  # 선택적 ?project_id= 필터. 없으면 nil(전체). 보이는 프로젝트가 아니면(남의 personal·휴지통·없는 id) 404.
+  def scoped_project_id
+    return @scoped_project_id if defined?(@scoped_project_id)
+    raw = params[:project_id]
+    @scoped_project_id =
+      if raw.blank?
+        nil
+      else
+        id = Integer(raw.to_s, 10, exception: false)
+        raise ActiveRecord::RecordNotFound, "프로젝트가 없습니다" unless id && visible_project_ids.include?(id)
+        id
+      end
   end
 
+  def visible_project?(project_id)
+    (project_id.nil? && !server_mode?) || visible_project_ids.include?(project_id)
+  end
+
+  # 서버 모드: 관리 프로젝트의 회의만. 로컬 모드: project 없는 회의도 보인다(TermIndex 와 같은 기준).
   def visible_meetings_scope(scope = ::Meeting.all)
-    scope.where(project_id: nil).or(scope.where(project_id: visible_project_ids))
+    in_projects = scope.where(project_id: visible_project_ids)
+    server_mode? ? in_projects : scope.where(project_id: nil).or(in_projects)
   end
 
   # 관리자 화면에 보이는 도메인 파일 id(AdminScope 스냅샷 노드의 링크 파일 — TermIndex 가 보여 주는 집합).

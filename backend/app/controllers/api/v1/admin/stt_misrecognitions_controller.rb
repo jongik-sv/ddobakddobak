@@ -9,12 +9,12 @@ module Api
         MAX_MEETING_IDS = 20
 
         before_action :authenticate_user!
-        before_action :require_admin!
+        before_action :require_stt_learning_manager!
         before_action :set_misrecognition, only: %i[update]
 
-        # GET /api/v1/admin/stt_term_learning/misrecognitions?status=&q=
+        # GET /api/v1/admin/stt_term_learning/misrecognitions?status=&q=&project_id=
         def index
-          base = ::SttMisrecognition.where(project_id: visible_project_ids)
+          base = ::SttMisrecognition.where(project_id: scoped_project_id || visible_project_ids)
           scope = base
           scope = scope.where(status: params[:status]) if params[:status].present?
           if params[:q].present?
@@ -53,6 +53,12 @@ module Api
             end
             if status == "confirmed"
               r = ::SttTermLearning::ManualRegistration.register_pair!(@record, actor: current_user)
+              # already_known 은 아무것도 쓰지 않았다 — 권한을 따지지 않는다.
+              if r[:verdict] != "already_known"
+                forbid_global_write! if r[:level]&.global? # 전역 줄에 합쳐졌다면(비 시스템 admin) 전체 롤백 후 403
+                # 쓰기 권한 없는 파일이면 전체 롤백 후 403(이미 있는 용어에 합치려던 경우는 그 사유를 알린다)
+                forbid_file_write!(r[:domain_file], existing_term: r[:verdict] == "merged_existing") if r[:domain_file]
+              end
               registered = registered_from_result(r, @record)
             else
               @record.update!(status: status)
@@ -141,8 +147,10 @@ module Api
         # 단 자동 파일 줄이고 변형이 이것 하나뿐이면(이 쌍 때문에 생긴 새 줄) 줄 전체를 지운다.
         def exclude_registered_variant!(record)
           @latest_items = latest_items([ record.id ])
-          file, _level = registered_entry(record)
+          file, level = registered_entry(record)
           return unless file
+          forbid_global_write! if level&.global?
+          forbid_file_write!(file, existing_term: true)
 
           variants = file.find_term(record.correct_key)[:mispronunciations].map { |m| ::DomainFile.normalize_key(m) }.uniq
           if file.stt_auto? && variants == [ record.wrong_key ]

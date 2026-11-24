@@ -93,3 +93,188 @@ RSpec.describe FileTranscriptionJob, "STT 용어 학습 pre_overwrite 스냅샷"
     expect(edited.reload).to have_attributes(notes_markdown: "## 새 AI", ai_notes_markdown: "## 새 AI")
   end
 end
+
+RSpec.describe MeetingSummarizationJob, "STT 학습 순서 보장·확정 치환" do
+  include ActiveJob::TestHelper
+
+  around do |example|
+    prev = ENV["LLM_PROVIDER"]
+    ENV["LLM_PROVIDER"] = "anthropic"
+    example.run
+  ensure
+    prev.nil? ? ENV.delete("LLM_PROVIDER") : ENV["LLM_PROVIDER"] = prev
+  end
+
+  let(:user)    { create(:user) }
+  let(:project) { create(:project, creator: user) }
+  let(:meeting) { create(:meeting, project: project, creator: user, status: "completed") }
+
+  def make_run(status:, created_at: Time.current, trigger: "pre_overwrite")
+    meeting.stt_term_learning_runs.create!(trigger: trigger, status: status, ai_text: "a", human_text: "b",
+                                           transcript_text: "", input_digest: SecureRandom.hex, created_at: created_at)
+  end
+
+  before do
+    allow(AppSettings).to receive(:refresh_env_if_changed!)
+    create(:transcript, meeting: meeting, sequence_number: 1, content: "첫 발화", applied_to_minutes: false)
+    allow_any_instance_of(LlmService).to receive(:refine_notes)
+      .and_return({ "notes_markdown" => "## 우판 회의록 ⟦t:1056250/s:1⟧", "ok" => true })
+  end
+
+  describe "A. 대기" do
+    it "대기 중인 pre_overwrite run 이 있으면 5초 뒤로 재enqueue 하고 요약·broadcast 는 하지 않는다" do
+      make_run(status: "queued")
+      expect(ActionCable.server).not_to receive(:broadcast)
+      expect {
+        described_class.perform_now(meeting.id, type: "final", attempt: 2)
+      }.to have_enqueued_job(described_class).with(meeting.id, type: "final", attempt: 2, requested_at: a_kind_of(String), redaction_mark: "").at(a_value_within(2.seconds).of(5.seconds.from_now))
+      expect(meeting.summaries.where(summary_type: "final")).to be_empty
+    end
+
+    it "재enqueue 는 원래 요청 시각·절단 워터마크를 그대로 실어 보낸다" do
+      make_run(status: "queued")
+      original = 2.minutes.ago.iso8601(6)
+      mark = 1.hour.ago.iso8601(6)
+      meeting.update_columns(transcripts_redacted_at: Time.iso8601(mark))
+      expect {
+        described_class.perform_now(meeting.id, type: "final", requested_at: original, redaction_mark: mark)
+      }.to have_enqueued_job(described_class).with(meeting.id, type: "final", attempt: 0, requested_at: original, redaction_mark: mark)
+    end
+
+    it "대기 중 사용자가 메모를 고쳤으면(원래 요청 시각 이후) 재생성하지 않고 요약 중을 푼다" do
+      meeting.record_summary_start!
+      original = 2.minutes.ago
+      meeting.update_columns(last_user_edit_at: 1.minute.ago)
+      allow_any_instance_of(LlmService).to receive(:refine_notes).and_raise("호출되면 안 됨")
+      described_class.perform_now(meeting.id, type: "final", requested_at: original.iso8601(6), redaction_mark: "")
+      expect(meeting.summaries.where(summary_type: "final")).to be_empty
+      expect(meeting.reload.summarizing?).to be(false)
+    end
+
+    it "대기 중 절단(redact)이 일어났으면 재생성·재큐잉 없이 멈추고 요약 중을 푼다" do
+      meeting.record_summary_start!
+      original = 2.minutes.ago
+      meeting.update_columns(transcripts_redacted_at: 1.minute.ago, last_user_edit_at: 1.minute.ago)
+      allow_any_instance_of(LlmService).to receive(:refine_notes).and_raise("호출되면 안 됨")
+      expect {
+        described_class.perform_now(meeting.id, type: "final", requested_at: original.iso8601(6), redaction_mark: "")
+      }.not_to have_enqueued_job(described_class)
+      expect(meeting.summaries.where(summary_type: "final")).to be_empty
+      expect(meeting.reload.summarizing?).to be(false)
+    end
+
+    it "running 도 대기" do
+      make_run(status: "running")
+      expect { described_class.perform_now(meeting.id, type: "final") }.to have_enqueued_job(described_class)
+    end
+
+    it "창(3분)이 지난 run 은 무시하고 진행" do
+      make_run(status: "queued", created_at: 4.minutes.ago)
+      expect { described_class.perform_now(meeting.id, type: "final") }.not_to have_enqueued_job(described_class)
+      expect(meeting.summaries.find_by(summary_type: "final")).to be_present
+    end
+
+    it "done run 이면 진행" do
+      make_run(status: "done")
+      described_class.perform_now(meeting.id, type: "final")
+      expect(meeting.summaries.find_by(summary_type: "final")).to be_present
+    end
+
+    it "idle/manual run 도 진행 중이면 기다린다(트리거 무관)" do
+      make_run(status: "running", trigger: "idle")
+      expect { described_class.perform_now(meeting.id, type: "final") }.to have_enqueued_job(described_class)
+      make_run(status: "queued", trigger: "manual")
+      expect { described_class.perform_now(meeting.id, type: "final") }.to have_enqueued_job(described_class)
+    end
+
+    it "대기 중에도 요약 중 상태를 영속해 새로고침·409 가드가 유지된다" do
+      make_run(status: "queued")
+      described_class.perform_now(meeting.id, type: "final")
+      expect(meeting.reload.summarizing?).to be(true)
+    end
+
+    it "대기 해제 후 진행하면 finished 로 요약 중이 해제된다" do
+      make_run(status: "done")
+      meeting.record_summary_start!
+      described_class.perform_now(meeting.id, type: "final")
+      expect(meeting.reload.summarizing?).to be(false)
+    end
+
+    it "대기 후 조기 반환(전사 없음)에서도 요약 중이 해제된다" do
+      meeting.record_summary_start!
+      meeting.transcripts.destroy_all
+      described_class.perform_now(meeting.id, type: "final")
+      expect(meeting.reload.summarizing?).to be(false)
+    end
+
+    it "학습 비활성이면 기다리지 않는다" do
+      make_run(status: "queued")
+      allow(AppSettings).to receive(:stt_term_learning).and_return({ "enabled" => false })
+      described_class.perform_now(meeting.id, type: "final")
+      expect(meeting.summaries.find_by(summary_type: "final")).to be_present
+    end
+  end
+
+  describe "B. 확정 치환" do
+    def learn(wrong, correct)
+      run = make_run(status: "done")
+      file = create(:domain_file, creator: user, content: "- **#{correct}**: 설명")
+      SttTermLearningItem.create!(run: run, source: "llm_diff", verdict: "registered", wrong: wrong, correct: correct,
+                                  domain_file: file, wrong_key: DomainFile.normalize_key(wrong), correct_key: DomainFile.normalize_key(correct))
+    end
+
+    it "재작성 후에도 학습된 용어가 유지되고 ai_notes 도 치환본, 마커는 보존" do
+      learn("우판", "후판")
+      described_class.perform_now(meeting.id, type: "final")
+      s = meeting.summaries.find_by(summary_type: "final")
+      expect(s.notes_markdown).to eq("## 후판 회의록 ⟦t:1056250/s:1⟧")
+      expect(s.ai_notes_markdown).to eq(s.notes_markdown)
+      expect(meeting.reload.brief_summary.to_s).not_to include("우판")
+    end
+
+    it "학습 비활성이면 치환하지 않는다" do
+      learn("우판", "후판")
+      allow(AppSettings).to receive(:stt_term_learning).and_return({ "enabled" => false })
+      described_class.perform_now(meeting.id, type: "final")
+      expect(meeting.summaries.find_by(summary_type: "final").notes_markdown).to include("우판")
+    end
+
+    it "치환 로드 실패는 요약 저장을 막지 않는다" do
+      allow_any_instance_of(SttTermLearning::LearnedPairApplier).to receive(:entries).and_raise("boom")
+      described_class.perform_now(meeting.id, type: "final")
+      expect(meeting.summaries.find_by(summary_type: "final").notes_markdown).to include("우판")
+    end
+  end
+end
+
+RSpec.describe FileTranscriptionJob, "학습된 쌍 확정 치환" do
+  let(:user)    { create(:user) }
+  let(:project) { create(:project, creator: user) }
+  let(:meeting) { create(:meeting, project: project, creator: user, status: "transcribing") }
+  let(:llm)     { instance_double(LlmService) }
+
+  before do
+    allow(AppSettings).to receive(:refresh_env_if_changed!)
+    allow(LlmService).to receive(:new).and_return(llm)
+    allow(llm).to receive(:refine_notes).and_return({ "notes_markdown" => "## 우판 회의록 ⟦t:1056250/s:1⟧", "ok" => true })
+    create(:transcript, meeting: meeting, sequence_number: 1, content: "발화", applied_to_minutes: false)
+    run = meeting.stt_term_learning_runs.create!(trigger: "pre_overwrite", status: "done", ai_text: "a", human_text: "b",
+                                                 transcript_text: "", input_digest: SecureRandom.hex)
+    file = create(:domain_file, creator: user, content: "- **후판**: 설명")
+    SttTermLearningItem.create!(run: run, source: "llm_diff", verdict: "registered", wrong: "우판", correct: "후판",
+                                wrong_key: "우판", correct_key: "후판", domain_file: file)
+  end
+
+  it "STT 재생성 경로의 final 에도 학습 쌍을 치환(마커 보존)하고 ai_notes 도 치환본" do
+    described_class.new.send(:generate_summary, meeting)
+    s = meeting.summaries.find_by(summary_type: "final")
+    expect(s.notes_markdown).to eq("## 후판 회의록 ⟦t:1056250/s:1⟧")
+    expect(s.ai_notes_markdown).to eq(s.notes_markdown)
+  end
+
+  it "치환 로드 실패는 저장을 막지 않는다" do
+    allow_any_instance_of(SttTermLearning::LearnedPairApplier).to receive(:entries).and_raise("boom")
+    described_class.new.send(:generate_summary, meeting)
+    expect(meeting.summaries.find_by(summary_type: "final").notes_markdown).to include("우판")
+  end
+end

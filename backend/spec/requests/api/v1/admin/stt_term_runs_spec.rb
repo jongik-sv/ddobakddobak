@@ -290,5 +290,28 @@ RSpec.describe "Api::V1::Admin::SttTermRuns", type: :request do
         expect(json["error"]).to include("registered")
       end
     end
+
+    describe "GET runs project_id 필터" do
+      it "그 프로젝트 회의의 run·대기만, 다른 프로젝트·숨김은 404/제외" do
+        project2 = create(:project, creator: admin)
+        other_meeting = create(:meeting, project: project2, creator: admin)
+        mine = run_for(meeting)
+        theirs = run_for(other_meeting)
+        final_summary(meeting, edited: Time.current)
+        final_summary(other_meeting, edited: Time.current)
+
+        get "/api/v1/admin/stt_term_learning/runs", params: { project_id: project.id }
+        expect(response).to have_http_status(:ok)
+        expect(json["runs"].map { |r| r["id"] }).to eq([ mine.id ])
+        expect(json["pending"].map { |p| p["meeting"]["id"] }).to all(eq(meeting.id))
+
+        get "/api/v1/admin/stt_term_learning/runs"
+        expect(json["runs"].map { |r| r["id"] }).to include(mine.id, theirs.id)
+
+        hidden_pid = create(:project, creator: create(:user), personal: true).id
+        get "/api/v1/admin/stt_term_learning/runs", params: { project_id: hidden_pid }
+        expect(response).to have_http_status(:not_found)
+      end
+    end
   end
 end

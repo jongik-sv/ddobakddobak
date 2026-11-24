@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Dialog } from '../../ui/Dialog'
 import { applyMoves, getImpact, type LevelRef, type MoveRequest, type TermRow } from '../../../api/sttTermLearning'
+import { useCanWriteGlobal } from './permissions'
 import { levelKey, relationTo, type LevelNode, type LevelRelation } from './levelTree'
 
 interface Props {
@@ -47,6 +48,7 @@ export default function MoveTermsDialog({ rows, tree, initialTarget, onClose, on
   const [impact, setImpact] = useState<{ before: number; after: number } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const canWriteGlobal = useCanWriteGlobal()
 
   const nodes = useMemo(() => flatten(tree), [tree])
   const targetNode = target ? nodes.find((n) => levelKey(n.node.ref) === levelKey(target))?.node : undefined
@@ -116,7 +118,8 @@ export default function MoveTermsDialog({ rows, tree, initialTarget, onClose, on
               type="button"
               role="treeitem"
               aria-selected={!!selected}
-              disabled={rel === 'current'}
+              disabled={rel === 'current' || (!canWriteGlobal && node.ref.type === 'global')}
+              title={!canWriteGlobal && node.ref.type === 'global' ? '시스템 관리자만 전역으로 옮길 수 있습니다' : undefined}
               onClick={() => setTarget(node.ref)}
               style={{ paddingLeft: 8 + depth * 16 }}
               className={`flex w-full items-center gap-2 py-1.5 pr-3 text-left text-sm disabled:opacity-60 ${

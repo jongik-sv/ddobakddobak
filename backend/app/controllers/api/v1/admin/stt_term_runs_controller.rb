@@ -11,16 +11,18 @@ module Api
         NO_AI_ORIGINAL_MESSAGE = "AI 원본이 없는 회의입니다".freeze
 
         before_action :authenticate_user!
-        before_action :require_admin!
+        before_action :require_stt_learning_manager!
         before_action :set_run, only: %i[show revert rerun register_item]
 
-        # GET /api/v1/admin/stt_term_learning/runs?status=
+        # GET /api/v1/admin/stt_term_learning/runs?status=&project_id=
         def index
-          scope = ::SttTermLearningRun.where(meeting_id: visible_meetings_scope.select(:id))
+          meetings = visible_meetings_scope
+          meetings = meetings.where(project_id: scoped_project_id) if scoped_project_id
+          scope = ::SttTermLearningRun.where(meeting_id: meetings.select(:id))
           scope = scope.where(status: params[:status]) if params[:status].present?
           runs = scope.includes(meeting: [ :project, :folder ]).order(id: :desc).limit(RUNS_LIMIT).to_a
           stats = item_stats(runs.map(&:id))
-          render json: { runs: runs.map { |r| run_summary_json(r, stats) }, pending: pending_json }
+          render json: { runs: runs.map { |r| run_summary_json(r, stats) }, pending: pending_json(scoped_project_id) }
         end
 
         # GET /api/v1/admin/stt_term_learning/runs/:id
@@ -37,6 +39,7 @@ module Api
 
         # POST /api/v1/admin/stt_term_learning/runs/:id/revert
         def revert
+          forbid_unmanaged_files!(@run)
           result = ::SttTermLearning::Reverter.new(@run).call
           render json: { run: run_summary_json(@run.reload), reverted: result[:reverted],
                          skipped_item_ids: result[:skipped_item_ids] }
@@ -80,13 +83,32 @@ module Api
         # POST /api/v1/admin/stt_term_learning/runs/:run_id/items/:id/register
         def register_item
           item = @run.items.find(params[:id])
-          ::SttTermLearning::ManualRegistration.call(item)
+          # 등록 체인이 전역까지 올라가 전역 줄을 건드리면(비 시스템 admin) 전체 롤백 후 403.
+          ::ActiveRecord::Base.transaction do
+            ::SttTermLearning::ManualRegistration.call(item)
+            item.reload
+            # already_known 은 아무것도 쓰지 않았으니 권한을 따지지 않는다.
+            unless item.verdict == "already_known"
+              forbid_global_write! if item.level_owner_type == "global"
+              forbid_file_write!(item.domain_file_id, existing_term: item.verdict == "merged_existing") if item.domain_file_id
+            end
+          end
           render json: { item: run_item_json(item.reload) }
         rescue ::SttTermLearning::ManualRegistration::Error => e
           render json: { error: e.message }, status: :unprocessable_entity
         end
 
         private
+
+        # 이 run 의 item 이 전역 레벨이나 쓰기 권한 없는 파일(공유·타 프로젝트·남의 파일)에 쓴 적이 있으면
+        # 되돌리기가 그 파일을 건드린다 — Reverter 호출 전에 403.
+        def forbid_unmanaged_files!(run)
+          return if global_writer?
+          # Reverter 가 실제로 바꾸는 항목(change 의 kind 가 있는 것)만 본다 — already_known·skipped_* 는 파일을 안 건드린다.
+          touched = run.items.select { |i| i.change_data["kind"].present? }
+          forbid_global_write! if touched.any? { |i| i.level_owner_type == "global" }
+          touched.map { |i| i.change_data["domain_file_id"] }.compact.uniq.each { |id| forbid_file_write!(id) }
+        end
 
         def set_run
           @run = ::SttTermLearningRun.where(meeting_id: visible_meetings_scope.select(:id))
@@ -95,13 +117,15 @@ module Api
 
         # 사람 편집 후 아직 run 이 없는 learnable final — 디바운스 대기 중인 학습. eta = 편집 시각 + idle_minutes.
         # eta 가 PENDING_GRACE 넘게 지난 행은 뺀다(잡이 스킵·중복 방지로 run 을 안 만든 편집이 영영 남지 않게).
-        def pending_json
+        def pending_json(project_id = nil)
           idle = AppSettings.stt_term_learning["idle_minutes"].to_i.minutes
           cutoff = Time.current - idle - PENDING_GRACE
           later_run = ::SttTermLearningRun.where("stt_term_learning_runs.meeting_id = summaries.meeting_id")
                                           .where("stt_term_learning_runs.created_at >= summaries.human_edited_at")
+          meetings = visible_meetings_scope(::Meeting.kept)
+          meetings = meetings.where(project_id: project_id) if project_id
           summaries = ::Summary.joins(:meeting)
-                               .merge(visible_meetings_scope(::Meeting.kept))
+                               .merge(meetings)
                                .where(summary_type: "final")
                                .where.not(human_edited_at: nil)
                                .where("summaries.human_edited_at >= ?", cutoff)

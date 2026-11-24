@@ -1,7 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { regenerateStt, reDiarize, regenerateNotes } from '../api/meetings'
+import { getAiOriginal } from '../api/sttTermLearning'
 import { createAuthenticatedConsumer } from '../lib/actionCableAuth'
 import { useTranscriptStore } from '../stores/transcriptStore'
+
+const NOTES_CONFIRM_BASE =
+  '기존 회의록을 삭제하고 전체 트랜스크립트를 바탕으로 처음부터 다시 생성합니다. 계속하시겠습니까?'
+const NOTES_CONFIRM_EDITED =
+  '직접 고친 문장은 새로 작성됩니다. 학습된 용어는 새 회의록에도 반영됩니다. 다시 작성할까요?'
+// 사람이 고쳤지만 STT 용어 학습이 꺼져 있으면 "용어 유지"를 약속하지 않는다.
+const NOTES_CONFIRM_EDITED_NO_LEARNING = '직접 고친 내용은 새로 작성됩니다. 다시 작성할까요?'
 
 interface UseNotesRegenerationOptions {
   pauseAudio: () => void
@@ -20,6 +28,10 @@ export function useNotesRegeneration(meetingId: number, { pauseAudio, refetch }:
   const [showSttConfirm, setShowSttConfirm] = useState(false)
   const [showReDiarizeConfirm, setShowReDiarizeConfirm] = useState(false)
   const [showNotesConfirm, setShowNotesConfirm] = useState(false)
+  const [notesHumanEdited, setNotesHumanEdited] = useState(false)
+  const [notesLearningEnabled, setNotesLearningEnabled] = useState(false)
+  const [isCheckingNotesConfirm, setIsCheckingNotesConfirm] = useState(false)
+  const checkingRef = useRef(false) // 더블클릭 중복 조회 방지(상태 반영 전 재진입 차단)
 
   // 회의록 재생성 완료 감지용 ActionCable 구독
   useEffect(() => {
@@ -96,6 +108,29 @@ export function useNotesRegeneration(meetingId: number, { pauseAudio, refetch }:
     }
   }
 
+  // 재생성 확인창 열기 — 사람이 고친 회의록이면 안내 문구를 바꿔 보여준다(서버에서 최신 편집 여부 조회).
+  // 조회 실패는 기존(무편집) 확인창으로 폴백한다.
+  async function requestNotesConfirm() {
+    if (checkingRef.current) return
+    checkingRef.current = true
+    setIsCheckingNotesConfirm(true)
+    let edited = false
+    let learning = false
+    try {
+      const r = await getAiOriginal(meetingId)
+      edited = r.available && !!r.human_edited_at
+      learning = r.stt_learning_enabled === true
+    } catch {
+      edited = false
+    } finally {
+      checkingRef.current = false
+      setIsCheckingNotesConfirm(false)
+    }
+    setNotesHumanEdited(edited)
+    setNotesLearningEnabled(learning)
+    setShowNotesConfirm(true)
+  }
+
   async function handleRegenerateNotes() {
     setShowNotesConfirm(false)
     setIsRegeneratingNotes(true)
@@ -119,6 +154,14 @@ export function useNotesRegeneration(meetingId: number, { pauseAudio, refetch }:
     setShowReDiarizeConfirm,
     showNotesConfirm,
     setShowNotesConfirm,
+    notesHumanEdited,
+    isCheckingNotesConfirm,
+    notesConfirmMessage: !notesHumanEdited
+      ? NOTES_CONFIRM_BASE
+      : notesLearningEnabled
+        ? NOTES_CONFIRM_EDITED
+        : NOTES_CONFIRM_EDITED_NO_LEARNING,
+    requestNotesConfirm,
     handleRegenerateStt,
     handleReDiarize,
     handleRegenerateNotes,

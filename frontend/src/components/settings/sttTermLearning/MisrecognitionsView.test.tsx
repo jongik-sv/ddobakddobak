@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import MisrecognitionsView from './MisrecognitionsView'
 import { treeFixture } from './fixtures'
 import { mis, lvl } from './testHelpers'
+import { useAuthStore } from '../../../stores/authStore'
 import * as api from '../../../api/sttTermLearning'
 
 vi.mock('../../../api/sttTermLearning')
@@ -11,6 +12,7 @@ vi.mock('../../../lib/confirmDialog', () => ({ confirmDialog: (...a: unknown[]) 
 const m = vi.mocked(api)
 
 beforeEach(() => {
+  useAuthStore.setState({ user: { id: 1, email: 'a@x.com', name: 'A', role: 'admin' } })
   vi.clearAllMocks()
   confirmMock.mockReset()
   m.getTree.mockResolvedValue(treeFixture)

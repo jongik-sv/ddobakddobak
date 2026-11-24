@@ -576,12 +576,15 @@ module Api
       # GET /api/v1/meetings/:id/ai_original — AI 원본 ↔ 사람 최종본 줄 diff(인용 마커 제거). 활성 요약이 learnable 일 때만.
       def ai_original
         summary = @meeting.summaries.find_by(summary_type: "final")
+        learning_enabled = ::SttTermLearning::LearnedPairApplier.enabled?
         unless summary&.learnable?
-          return render json: { available: false, ai_generated_at: nil, human_edited_at: nil, diff: [] }
+          return render json: { available: false, ai_generated_at: nil, human_edited_at: nil, diff: [],
+                                stt_learning_enabled: learning_enabled }
         end
 
         render json: {
           available: true,
+          stt_learning_enabled: learning_enabled,
           ai_generated_at: summary.ai_generated_at,
           human_edited_at: summary.human_edited_at,
           diff: ::SttTermLearning::LineDiff.ops(summary.ai_notes_markdown, summary.notes_markdown)

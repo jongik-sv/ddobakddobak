@@ -3,14 +3,55 @@ module SttTermLearning
   module AdminScope
     module_function
 
-    # 남의 personal 프로젝트는 뺀다. Project#blocks_admin_override?(user) 의 SQL 등가물이다
-    # (personal && created_by_id != user.id 를 제외) — 한쪽을 바꾸면 spec 이 어긋나게 해 둔다.
-    def projects(user)
-      ::Project.kept.where(personal: false).or(::Project.kept.where(created_by_id: user&.id))
+    def server_mode?
+      ENV["SERVER_MODE"] == "true"
     end
 
-    def snapshot(user)
-      Snapshot.new(user)
+    # 서버 모드: 시스템 admin 이든 아니든 "내가 프로젝트 admin(ProjectMembership role=admin)인 살아 있는 팀 프로젝트"만.
+    # 개인(personal) 프로젝트는 가입 때 본인이 admin 멤버로 자동 생성되므로 제외한다(넣으면 모든 사용자가 자격을 얻는다).
+    # 로컬(데스크톱) 모드: 기존 그대로 — 남의 personal 프로젝트만 뺀다. Project#blocks_admin_override?(user) 의
+    # SQL 등가물이다(personal && created_by_id != user.id 를 제외) — 한쪽을 바꾸면 spec 이 어긋나게 해 둔다.
+    def projects(user)
+      if server_mode?
+        ::Project.kept.where(personal: false)
+                .where(id: ::ProjectMembership.where(user_id: user&.id, role: "admin").select(:project_id))
+      else
+        ::Project.kept.where(personal: false).or(::Project.kept.where(created_by_id: user&.id))
+      end
+    end
+
+    # 전역 레벨 쓰기 권한: 서버 모드에서는 시스템 admin 만, 로컬 모드는 항상.
+    def global_writer?(user)
+      !server_mode? || !!user&.admin?
+    end
+
+    # 도메인 파일 쓰기 권한(전역 쓰기 권한이 없는 사용자용 규칙; 전역 쓰기 권한자는 항상 true).
+    #   (a) stt_auto 파일이고 그 소유 레벨(Project/Folder)이 내가 관리하는 프로젝트 안, 또는
+    #   (b) file.project_id 가 관리 프로젝트이고 DomainFile#editable_by?(user)(= 시스템 admin 또는 생성자).
+    # 공유 파일(project_id nil)·다른 프로젝트 파일·전역 자동 파일은 쓰지 못한다.
+    def writable_file?(user, file, managed_ids: nil)
+      return true if global_writer?(user)
+      return false if file.nil?
+      managed_ids ||= projects(user).pluck(:id)
+      if file.stt_auto?
+        pid = case file.auto_owner_type
+              when "Project" then file.auto_owner_id
+              when "Folder" then ::Folder.find_by(id: file.auto_owner_id)&.project_id
+              end
+        return !pid.nil? && managed_ids.include?(pid)
+      end
+      !file.project_id.nil? && managed_ids.include?(file.project_id) && file.editable_by?(user)
+    end
+
+    # 용어 학습 화면 사용 자격: 시스템 admin 이거나 관리 프로젝트가 1개 이상. 로컬 모드는 항상.
+    def manager?(user)
+      !server_mode? || !!user&.admin? || projects(user).exists?
+    end
+
+    # project_id 를 주면 그 프로젝트(+폴더)와 전역 노드만 담는다. 가시성 검사는 호출자 몫이다
+    # (컨트롤러가 AdminScope.projects 밖의 id 는 404 로 거른다) — 여기서는 보이는 범위와 교집합만 잡는다.
+    def snapshot(user, project_id: nil)
+      Snapshot.new(user, project_id: project_id)
     end
 
     Node = Struct.new(:level, :key, :name, :path, :parent_key, :project_id, :folder_id, :files, :children_keys, keyword_init: true) do
@@ -25,9 +66,14 @@ module SttTermLearning
     class Snapshot
       attr_reader :nodes
 
-      def initialize(user)
+      def initialize(user, project_id: nil)
         @terms = {}
-        projects = AdminScope.projects(user).order(:id).to_a
+        all_ids = AdminScope.projects(user).pluck(:id)
+        # 숨김 회의 판정은 필터와 무관하게 "관리자에게 보이는 전체 프로젝트" 기준이다.
+        @visible_project_ids = all_ids
+        scope = AdminScope.projects(user)
+        scope = scope.where(id: project_id) unless project_id.nil?
+        projects = scope.order(:id).to_a
         pids = projects.map(&:id)
         folders = ::Folder.kept.where(project_id: pids).order(:id).to_a
         base = ::DomainFileLink.not_excluded.includes(:domain_file).order(:id)
@@ -65,16 +111,24 @@ module SttTermLearning
         @nodes.first.children_keys.concat(@nodes.select { |n| n.parent_key == "global" }.map(&:key))
       end
 
-      # 보이는 프로젝트 id(전역 노드 제외).
+      # 관리자에게 보이는 프로젝트 id 전체(project_id 필터와 무관, 전역 노드 제외).
       def visible_project_ids
-        @visible_project_ids ||= @nodes.filter_map(&:project_id).uniq
+        @visible_project_ids
       end
 
       # meeting_ids(배열·relation) 중 보이지 않는 프로젝트(남의 personal 등)에 속한 회의 id 집합.
       # TermIndex(meeting_ids·source)와 TreeBuilder(new_count)가 같은 숨김 기준을 쓴다.
+      # 서버 모드에서는 프로젝트 없는 회의도 숨긴다(관리 프로젝트 소속임을 보증할 수 없다). 로컬 모드는 보인다.
       def hidden_meeting_ids(meeting_ids)
-        ::Meeting.where(id: meeting_ids).where.not(project_id: nil).where.not(project_id: visible_project_ids)
-                 .pluck(:id).to_set
+        rel = ::Meeting.where(id: meeting_ids)
+        hidden = rel.where.not(id: rel.where(project_id: visible_project_ids).select(:id))
+        hidden = hidden.where.not(project_id: nil) unless AdminScope.server_mode?
+        hidden.pluck(:id).to_set
+      end
+
+      # 전역 레벨에 링크된 파일 id(전역 쓰기 가드용).
+      def global_file_ids
+        nodes.first.files.map(&:id)
       end
 
       def node_for(level)

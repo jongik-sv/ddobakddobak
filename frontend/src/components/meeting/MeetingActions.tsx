@@ -10,6 +10,8 @@ interface MeetingActionsProps {
   isDesktop: boolean
   transcriptsCount: number
   isRegeneratingNotes: boolean
+  /** 재생성 확인창을 열기 전 편집 여부 조회 중 — 버튼 비활성(더블클릭 방지). */
+  isCheckingNotes?: boolean
   onShowSttConfirm: () => void
   onShowReDiarizeConfirm: () => void
   onShowNotesConfirm: () => void
@@ -34,6 +36,7 @@ export function MeetingActions({
   isDesktop,
   transcriptsCount,
   isRegeneratingNotes,
+  isCheckingNotes = false,
   onShowSttConfirm,
   onShowReDiarizeConfirm,
   onShowNotesConfirm,
@@ -86,7 +89,8 @@ export function MeetingActions({
             <Tooltip text={locked ? lockTitle : 'AI 회의록 재생성'}>
               <button
                 onClick={onShowNotesConfirm}
-                disabled={isRegeneratingNotes || locked}
+                disabled={isRegeneratingNotes || isCheckingNotes || locked}
+                aria-busy={isCheckingNotes}
                 aria-label="회의록 재생성"
                 className={ACTION_NEUTRAL}
               >

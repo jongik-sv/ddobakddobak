@@ -425,6 +425,21 @@ RSpec.describe MeetingSummarizationJob do
       end
     end
 
+    it "forwards the original requested time on the first lock-busy deferral" do
+      t = Time.utc(2026, 1, 2, 3, 4, 5, 123456)
+      mutex = described_class::MEETING_LOCKS.compute_if_absent(meeting.id) { Mutex.new }
+      mutex.lock
+      begin
+        job = described_class.new(meeting.id, type: "final")
+        job.enqueued_at = t.iso8601(6)
+        expect { job.perform_now }.to have_enqueued_job(described_class)
+          .with(meeting.id, type: "final", attempt: 0, requested_at: t.iso8601(6))
+      ensure
+        mutex.unlock
+        described_class::MEETING_LOCKS.delete(meeting.id)
+      end
+    end
+
     it "still drops realtime quietly on lock contention (cron retries next minute)" do
       mutex = described_class::MEETING_LOCKS.compute_if_absent(meeting.id) { Mutex.new }
       mutex.lock

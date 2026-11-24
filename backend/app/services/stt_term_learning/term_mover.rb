@@ -98,7 +98,17 @@ module SttTermLearning
       { moved: moved, merged: merged, removed: removed }
     end
 
-    # 대상 하위 레벨에 링크된 자동(stt_auto) 파일만, 한 번 모아 id 로 중복 제거. 남의 개인 프로젝트 레벨은 제외.
+    public
+
+    # merge_descendants 가 건드릴 파일 목록 — 컨트롤러가 쓰기 권한을 미리 검사한다.
+    def merge_descendant_files(target, exclude_ids = [])
+      descendant_auto_files(target, exclude_ids)
+    end
+
+    private
+
+    # 대상 하위 레벨이 "소유한" 자동(stt_auto) 파일만(링크만 된 전역·타 프로젝트 자동 파일은 제외),
+    # 한 번 모아 id 로 중복 제거. 남의 개인 프로젝트 레벨은 제외.
     def descendant_auto_files(target, exclude_ids)
       files = {}
       target.descendant_levels.each do |lv|
@@ -106,6 +116,7 @@ module SttTermLearning
         next if project&.blocks_admin_override?(@actor)
         lv.linked_files.each do |f|
           next unless f.stt_auto?
+          next unless f.auto_owner_type == lv.type && f.auto_owner_id == lv.owner&.id
           next if exclude_ids.include?(f.id)
           files[f.id] ||= f
         end

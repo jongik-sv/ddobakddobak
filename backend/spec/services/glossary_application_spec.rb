@@ -136,3 +136,61 @@ RSpec.describe GlossaryApplication do
     end
   end
 end
+
+RSpec.describe GlossaryApplication, "boundary match_type" do
+  def apply(text, from, to)
+    described_class.apply_protecting_markers(text, [ { from: from, to: to, match_type: "boundary" } ])
+  end
+
+  it "짧은 한글 wrong 은 앞이 한글/영숫자면 건드리지 않고, 조사 앞 단어·괄호는 치환" do
+    expect(apply("블로그 카탈로그", "로그", "로드")).to eq("블로그 카탈로그")
+    expect(apply("로그 파일 (로그) 로그를", "로그", "로드")).to eq("로드 파일 (로드) 로드를")
+  end
+
+  it "짧은 한글 wrong 은 오른쪽도 경계(로그인·디비전 보호, 조사·문장끝은 치환)" do
+    expect(apply("로그인 화면", "로그", "Log")).to eq("로그인 화면")
+    expect(apply("디비전 회의", "디비", "DB")).to eq("디비전 회의")
+    expect(apply("로그를 본다", "로그", "Log")).to eq("Log를 본다")
+    expect(apply("디비에서 읽는다", "디비", "DB")).to eq("DB에서 읽는다")
+    expect(apply("로그. 끝", "로그", "Log")).to eq("Log. 끝")
+    expect(apply("확인할 로그", "로그", "Log")).to eq("확인할 Log")
+    expect(apply("이건 로그입니다", "로그", "Log")).to eq("이건 Log입니다")
+    expect(apply("디비전 디비 ⟦t:1/s:디비⟧", "디비", "DB")).to eq("디비전 DB ⟦t:1/s:디비⟧")
+  end
+
+  it "boundary 엔트리는 단일 패스(앞 쌍의 to 를 뒤 쌍이 다시 바꾸지 않음)" do
+    entries = [ { from: "에이", to: "비이", match_type: "boundary" }, { from: "비이", to: "씨이", match_type: "boundary" } ]
+    expect(described_class.apply("에이 비이", entries)).to eq("비이 씨이")
+  end
+
+  it "복합 조사(에서는 등) 앞도 경계로 본다" do
+    expect(apply("디비에서는 느림", "디비", "DB")).to eq("DB에서는 느림")
+    expect(apply("디비라는 말", "디비", "DB")).to eq("DB라는 말")
+  end
+
+  it "묶음 정규식이 시간 초과여도 항목별로 적용한다" do
+    entries = [ { from: "에이", to: "비이", match_type: "boundary" }, { from: "디비", to: "DB", match_type: "boundary" } ]
+    allow(Regexp).to receive(:new).and_wrap_original do |orig, *args, **kw|
+      args.first.to_s.include?(")|(") ? raise(Regexp::TimeoutError) : orig.call(*args, **kw)
+    end
+    expect(described_class.apply("에이 디비", entries)).to eq("비이 DB")
+  end
+
+  it "ASCII wrong 은 단어 경계" do
+    expect(apply("saturday", "sat", "SAP")).to eq("saturday")
+    expect(apply("sat 연동 sat를 presat", "sat", "SAP")).to eq("SAP 연동 SAP를 presat")
+  end
+
+  it "3자 이상 한글은 부분 문자열" do
+    expect(apply("우판재료", "우판재", "후판재")).to eq("후판재료")
+  end
+
+  it "인용 마커는 보호" do
+    expect(apply("sat ⟦t:1056250/s:sat⟧ 250", "250", "이오공")).to eq("sat ⟦t:1056250/s:sat⟧ 이오공")
+    expect(apply("로그 ⟦t:1/s:로그⟧", "로그", "로드")).to eq("로드 ⟦t:1/s:로그⟧")
+  end
+
+  it "기존 literal 은 부분 문자열 그대로" do
+    expect(described_class.apply("블로그", [ { from: "로그", to: "로드", match_type: "literal" } ])).to eq("블로드")
+  end
+end

@@ -7,8 +7,10 @@ import {
   type LevelRef,
   type TermRow,
 } from '../../../api/sttTermLearning'
+import { apiErrorMessage } from './apiError'
 import { confirmDialog } from '../../../lib/confirmDialog'
 import MoveTermsDialog from './MoveTermsDialog'
+import { useCanWriteGlobal } from './permissions'
 import { buildLevelTree, findPath, levelKey, moveUpConfirmMessage, parentOf, type LevelNode } from './levelTree'
 
 const SOURCE_LABEL: Record<TermRow['source'], string> = {
@@ -48,7 +50,7 @@ function TreeNodes({ node, depth, selected, onSelect }: {
   )
 }
 
-export default function LevelTreeView() {
+export default function LevelTreeView({ projectId, globalOnly = false }: { projectId?: number | null; globalOnly?: boolean } = {}) {
   const [root, setRoot] = useState<LevelNode | null>(null)
   const [level, setLevel] = useState<LevelRef>(GLOBAL)
   const [includeDescendants, setIncludeDescendants] = useState(false)
@@ -56,29 +58,39 @@ export default function LevelTreeView() {
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [moveRows, setMoveRows] = useState<TermRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const canWriteGlobal = useCanWriteGlobal()
+  // 프로젝트 관리자는 전역 레벨을 읽기만 한다 — 전역 줄·전역으로 올리기는 막는다(서버도 403).
+  const locked = (r: TermRow) => !canWriteGlobal && r.level.type === 'global'
+  const upBlocked = (ref: LevelRef) => {
+    if (!root) return true
+    const parent = parentOf(root, ref)
+    return !parent || (!canWriteGlobal && parent.ref.type === 'global')
+  }
 
   const loadTree = useCallback(async () => {
     try {
-      setRoot(buildLevelTree(await getTree()))
+      const tree = await getTree(projectId)
+      // 전역 보기: 서버는 관리 프로젝트도 함께 주므로 전역 노드만 남긴다.
+      setRoot(buildLevelTree(globalOnly ? { ...tree, projects: [] } : tree))
     } catch {
       setError('레벨 트리를 불러오지 못했습니다.')
     }
-  }, [])
+  }, [projectId, globalOnly])
 
   const termsReq = useRef(0)
   const loadTerms = useCallback(async () => {
     const req = ++termsReq.current
     try {
-      const res = await getTerms({ level, includeDescendants })
+      const res = await getTerms({ level, includeDescendants, projectId })
       if (req !== termsReq.current) return
-      setTerms(res.terms)
+      setTerms(globalOnly ? res.terms.filter((t) => t.level.type === 'global') : res.terms)
       setChecked(new Set())
       setError(null)
     } catch {
       if (req !== termsReq.current) return
       setError('용어를 불러오지 못했습니다.')
     }
-  }, [level, includeDescendants])
+  }, [level, includeDescendants, projectId, globalOnly])
 
   useEffect(() => { void loadTree() }, [loadTree])
   useEffect(() => { void loadTerms() }, [loadTerms])
@@ -103,15 +115,15 @@ export default function LevelTreeView() {
   const moveUp = async (row: TermRow) => {
     if (!root) return
     const parent = parentOf(root, row.level)
-    if (!parent) return
+    if (!parent || upBlocked(row.level) || locked(row)) return
     const ask = moveUpConfirmMessage(row.term, parent, row.source === 'human' || row.source === 'human_merged')
     if (ask && !(await confirmDialog(ask, { title: '상위 레벨로', kind: 'warning' }))) return
     setError(null)
     try {
       await applyMoves([{ domain_file_id: row.domain_file.id, term_keys: [row.key], target: parent.ref }])
       await refresh()
-    } catch {
-      setError('상위 레벨로 올리지 못했습니다.')
+    } catch (err) {
+      setError(await apiErrorMessage(err, '상위 레벨로 올리지 못했습니다.'))
     }
   }
 
@@ -123,8 +135,8 @@ export default function LevelTreeView() {
     try {
       await deleteTerms(selectedRows.map((r) => ({ domain_file_id: r.domain_file.id, term_key: r.key })))
       await refresh()
-    } catch {
-      setError('삭제하지 못했습니다.')
+    } catch (err) {
+      setError(await apiErrorMessage(err, '삭제하지 못했습니다.'))
     }
   }
 
@@ -157,10 +169,12 @@ export default function LevelTreeView() {
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1 text-sm">
-            <input type="checkbox" checked={includeDescendants} onChange={(e) => setIncludeDescendants(e.target.checked)} />
-            하위 포함
-          </label>
+          {!globalOnly && (
+            <label className="flex items-center gap-1 text-sm">
+              <input type="checkbox" checked={includeDescendants} onChange={(e) => setIncludeDescendants(e.target.checked)} />
+              하위 포함
+            </label>
+          )}
           <span className="flex-1" />
           <span className="text-xs text-muted-foreground">{selectedRows.length}건 선택</span>
           <button
@@ -181,6 +195,9 @@ export default function LevelTreeView() {
           </button>
         </div>
 
+        {!canWriteGlobal && (
+          <p className="text-xs text-muted-foreground">전역(공용) 용어는 읽기 전용입니다. 시스템 관리자만 변경할 수 있습니다.</p>
+        )}
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
         <div className="overflow-x-auto rounded-md border border-border">
@@ -205,6 +222,7 @@ export default function LevelTreeView() {
                       type="checkbox"
                       aria-label={`${t.term} 선택`}
                       checked={checked.has(t.row_id)}
+                      disabled={locked(t)}
                       onChange={() => toggle(t.row_id)}
                     />
                   </td>
@@ -233,7 +251,7 @@ export default function LevelTreeView() {
                       type="button"
                       aria-label={`${t.term} 상위 레벨로`}
                       title="상위 레벨로"
-                      disabled={!root || !parentOf(root, t.level)}
+                      disabled={upBlocked(t.level) || locked(t)}
                       onClick={() => moveUp(t)}
                       className="rounded border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-40"
                     >
@@ -243,8 +261,9 @@ export default function LevelTreeView() {
                       type="button"
                       aria-label={`${t.term} 이동…`}
                       title="다른 레벨로"
+                      disabled={locked(t)}
                       onClick={() => setMoveRows([t])}
-                      className="ml-1 rounded border px-2 py-0.5 text-xs hover:bg-muted"
+                      className="ml-1 rounded border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-40"
                     >
                       ⬇ ▾
                     </button>

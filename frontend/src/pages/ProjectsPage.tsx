@@ -254,7 +254,7 @@ export default function ProjectsPage() {
       )}
 
       {membersProject && (
-        <ProjectMembersPanel project={membersProject} onClose={() => { setMembersProject(null); void fetchProjects() }} />
+        <ProjectMembersPanel key={membersProject.id} project={membersProject} onClose={() => { setMembersProject(null); void fetchProjects() }} />
       )}
 
       {exportTarget && (

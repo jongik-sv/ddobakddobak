@@ -3,13 +3,14 @@ module SttTermLearning
   class TermIndex
     MAX_MEETING_IDS = 20
 
-    def initialize(user)
+    def initialize(user, project_id: nil)
       @user = user
+      @project_id = project_id
     end
 
     # level: Level|nil (nil = 전 레벨). 보이지 않는 레벨(남의 personal 등)이면 [].
     def rows(level: nil, include_descendants: false)
-      snap = AdminScope.snapshot(@user)
+      snap = AdminScope.snapshot(@user, project_id: @project_id)
       selected =
         if level.nil?
           snap.nodes

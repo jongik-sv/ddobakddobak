@@ -13,6 +13,14 @@ import { DeleteConfirmDialog } from './DeleteConfirmDialog'
 import { ResetPasswordDialog } from './ResetPasswordDialog'
 import { EditUserDialog } from './EditUserDialog'
 import { formatDate as formatDateShared } from '../../lib/meetingFormat'
+import { compareText } from '../../lib/dataTable'
+import type { ColumnDef, SortState } from '../../lib/dataTable'
+import {
+  FilterCell,
+  SortableTh,
+  TableSummary,
+  useTableView,
+} from '../common/DataTableParts'
 
 // admin → manager → member → admin 순환
 const NEXT_ROLE: Record<AdminUser['role'], AdminUser['role']> = {
@@ -30,6 +38,26 @@ const ROLE_BADGE_CLASS: Record<AdminUser['role'], string> = {
   manager: 'bg-blue-100 text-blue-700 hover:bg-blue-200',
   member: 'bg-muted text-foreground hover:bg-accent',
 }
+
+const ROLE_ORDER: AdminUser['role'][] = ['admin', 'manager', 'member']
+
+const USER_COLUMNS: ColumnDef<AdminUser>[] = [
+  { key: 'name', label: '이름', type: 'text', accessor: (u) => u.name },
+  { key: 'email', label: '이메일', type: 'text', accessor: (u) => u.email },
+  {
+    key: 'role',
+    label: '역할',
+    type: 'select',
+    accessor: (u) => u.role,
+    sortValue: (u) => ROLE_ORDER.indexOf(u.role),
+    options: ROLE_ORDER.map((r) => ({ value: r, label: ROLE_LABEL[r] })),
+  },
+  { key: 'created_at', label: '생성일', type: 'date', accessor: (u) => u.created_at },
+]
+const DEFAULT_SORT: SortState = { key: 'name', dir: 'asc' }
+const userTieBreak = (a: AdminUser, b: AdminUser) =>
+  compareText(a.email, b.email) || a.id - b.id
+const VIEW_STORAGE_KEY = 'ddobak.userMgmt.view'
 
 function formatDate(iso: string): string {
   return formatDateShared(iso, {
@@ -50,6 +78,14 @@ export default function UserManagementPanel() {
   const [updatingId, setUpdatingId] = useState<number | null>(null)
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null)
   const [editTarget, setEditTarget] = useState<AdminUser | null>(null)
+
+  const { sort, filters, view, toggleSort, setFilter, reset, filtered } = useTableView({
+    rows: users,
+    columns: USER_COLUMNS,
+    defaultSort: DEFAULT_SORT,
+    tieBreak: userTieBreak,
+    storageKey: VIEW_STORAGE_KEY,
+  })
 
   const loadUsers = async () => {
     setLoading(true)
@@ -99,7 +135,7 @@ export default function UserManagementPanel() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="space-y-6">
       <div className="rounded-lg border bg-card p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -128,32 +164,48 @@ export default function UserManagementPanel() {
         )}
 
         {!loading && users.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="pb-2 font-medium">이름</th>
-                  <th className="pb-2 font-medium">이메일</th>
-                  <th className="pb-2 font-medium">역할</th>
-                  <th className="pb-2 font-medium">생성일</th>
-                  <th className="pb-2 font-medium w-16"></th>
+          <>
+          <TableSummary shown={view.length} total={users.length} filtered={filtered} onReset={reset} />
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="bg-muted/40">
+                <tr className="text-left text-muted-foreground">
+                  {USER_COLUMNS.map((c) => (
+                    <SortableTh key={c.key} label={c.label} sortKey={c.key} sort={sort} onSort={toggleSort} />
+                  ))}
+                  <th className="w-28 px-3"><span className="sr-only">작업</span></th>
+                </tr>
+                <tr className="border-b">
+                  {USER_COLUMNS.map((c) => (
+                    <td key={c.key} className="px-3 pb-2 align-top">
+                      <FilterCell column={c} filters={filters} onChange={setFilter} />
+                    </td>
+                  ))}
+                  <td />
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {users.map((user) => {
+                {view.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                      조건에 맞는 사용자가 없습니다.
+                    </td>
+                  </tr>
+                )}
+                {view.map((user) => {
                   const isSelf = currentUser?.id === user.id
                   // 로컬 관리자 계정(desktop@local): 역할 admin 고정 + 수정/삭제 불가
                   const isLocalAdmin = user.email.endsWith('@local')
                   return (
                     <tr key={user.id} className="group">
-                      <td className="py-3 font-medium">
+                      <td className="px-3 py-3 font-medium">
                         {user.name}
                         {isSelf && (
                           <span className="ml-1.5 text-xs text-blue-600 font-normal">(나)</span>
                         )}
                       </td>
-                      <td className="py-3 text-muted-foreground">{user.email}</td>
-                      <td className="py-3">
+                      <td className="px-3 py-3 text-muted-foreground">{user.email}</td>
+                      <td className="px-3 py-3">
                         {(() => {
                           const roleLocked = isSelf || isLocalAdmin
                           return (
@@ -178,8 +230,8 @@ export default function UserManagementPanel() {
                           )
                         })()}
                       </td>
-                      <td className="py-3 text-muted-foreground">{formatDate(user.created_at)}</td>
-                      <td className="py-3">
+                      <td className="px-3 py-3 text-muted-foreground">{formatDate(user.created_at)}</td>
+                      <td className="px-3 py-3">
                         <div className="flex items-center gap-1">
                           {!user.email.endsWith('@local') && (
                             <button
@@ -216,6 +268,7 @@ export default function UserManagementPanel() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import AllTermsView from './AllTermsView'
 import { treeFixture, row } from './fixtures'
+import { useAuthStore } from '../../../stores/authStore'
 import * as api from '../../../api/sttTermLearning'
 
 vi.mock('../../../api/sttTermLearning')
@@ -20,6 +21,7 @@ const rows = () => [
 
 beforeEach(() => {
   vi.clearAllMocks()
+  useAuthStore.setState({ user: { id: 1, email: 'a@x.com', name: 'A', role: 'admin' } })
   m.getTree.mockResolvedValue(treeFixture)
   m.getTerms.mockResolvedValue({ terms: rows() })
   m.getImpact.mockResolvedValue([3, 5])

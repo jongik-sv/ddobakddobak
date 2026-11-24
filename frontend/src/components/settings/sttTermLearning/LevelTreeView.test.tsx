@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import LevelTreeView from './LevelTreeView'
 import { treeFixture, row } from './fixtures'
+import { useAuthStore } from '../../../stores/authStore'
 import * as api from '../../../api/sttTermLearning'
 
 vi.mock('../../../api/sttTermLearning')
@@ -11,6 +12,7 @@ vi.mock('../../../lib/confirmDialog', () => ({ confirmDialog: (...a: unknown[]) 
 const m = vi.mocked(api)
 
 beforeEach(() => {
+  useAuthStore.setState({ user: { id: 1, email: 'a@x.com', name: 'A', role: 'admin' } })
   vi.clearAllMocks()
   confirmMock.mockReset()
   m.getTree.mockResolvedValue(treeFixture)
@@ -128,5 +130,34 @@ describe('LevelTreeView', () => {
     confirmMock.mockResolvedValueOnce(true)
     fireEvent.click(screen.getByRole('button', { name: '삭제' }))
     await waitFor(() => expect(m.deleteTerms).toHaveBeenCalledWith([{ domain_file_id: 101, term_key: 'k1' }]))
+  })
+})
+
+describe('LevelTreeView 전역 읽기 전용(프로젝트 관리자)', () => {
+  const globalRow = row({ n: 7, level: { type: 'global', id: null, name: '전역', path: [] } })
+
+  beforeEach(() => {
+    useAuthStore.setState({ user: { id: 2, email: 'p@x.com', name: 'P', role: 'member' } })
+    m.getTerms.mockResolvedValue({ terms: [globalRow, row({ n: 1 })] })
+  })
+
+  it('전역 줄은 선택·이동·상위 이동이 막히고 안내가 보인다, 프로젝트 줄은 가능', async () => {
+    render(<LevelTreeView />)
+    await screen.findByText('용어7')
+    expect(screen.getByText(/전역\(공용\) 용어는 읽기 전용/)).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: '용어7 선택' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '용어7 이동…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '용어7 상위 레벨로' })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: '용어1 선택' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: '용어1 이동…' })).not.toBeDisabled()
+    // 프로젝트 직속이 아닌 폴더 줄이라도 전역으로 올리기는 막는다(부모가 전역인 레벨)
+  })
+
+  it('시스템 관리자는 전역 줄도 선택할 수 있다', async () => {
+    useAuthStore.setState({ user: { id: 1, email: 'a@x.com', name: 'A', role: 'admin' } })
+    render(<LevelTreeView />)
+    await screen.findByText('용어7')
+    expect(screen.getByRole('checkbox', { name: '용어7 선택' })).not.toBeDisabled()
+    expect(screen.queryByText(/전역\(공용\) 용어는 읽기 전용/)).toBeNull()
   })
 })

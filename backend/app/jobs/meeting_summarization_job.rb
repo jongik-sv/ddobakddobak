@@ -16,9 +16,20 @@ class MeetingSummarizationJob < ApplicationJob
   # final 재시도 포기 시 사용자 레포트 문구 — 영속 기록·ok:false broadcast 가 같은 문구를 공유.
   FINAL_GIVE_UP_ERROR = "최종 요약 재시도 한도(#{FINAL_REENQUEUE_CAP}회)를 초과해 생성을 포기했습니다. 회의록 재생성으로 다시 시도해 주세요.".freeze
 
-  def perform(meeting_id, type: "realtime", attempt: 0)
+  # 재작성(final) 직전에 같은 회의의 학습 run(pre_overwrite·idle·manual 무관)이 아직 처리 중이면, 학습된 용어가
+  # 도메인 파일에 들어간 뒤에 새 요약을 만들도록 잠깐 미룬다. 창이 지나면 그냥 진행한다
+  # (학습 실패·정체가 요약 생성을 막으면 안 된다).
+  LEARNING_WAIT_WINDOW = 3.minutes
+  LEARNING_WAIT_INTERVAL = 5.seconds
+
+  # requested_at / redaction_mark: 재enqueue(학습 대기·락 대기)를 거쳐도 "원래 요청 시각"과 "원래 절단 워터마크"를
+  # 보존하기 위한 캐리 값(ISO8601 문자열). 없으면 이번 잡의 enqueued_at 이 기준이다.
+  def perform(meeting_id, type: "realtime", attempt: 0, requested_at: nil, redaction_mark: nil)
     meeting = Meeting.find_by(id: meeting_id)
     return unless meeting
+
+    @requested_at = parse_time(requested_at)
+    @redaction_mark = redaction_mark
 
     mutex = MEETING_LOCKS.compute_if_absent(meeting_id) { Mutex.new }
     unless mutex.try_lock
@@ -27,7 +38,10 @@ class MeetingSummarizationJob < ApplicationJob
         # 실전 재현: stop 직후 realtime 틱(LLM 수십 초)이 락 점유 → final try_lock 실패 → 무음 드랍.
         # 락 해제 후 재시도하도록 재enqueue (realtime은 매분 cron이 다시 오므로 드랍 OK).
         Rails.logger.info "[MeetingSummarizationJob] final re-enqueued (lock busy) meeting=#{meeting_id}"
-        self.class.set(wait: 30.seconds).perform_later(meeting_id, type: "final", attempt: attempt)
+        self.class.set(wait: 30.seconds).perform_later(
+          meeting_id, type: "final", attempt: attempt,
+          **{ requested_at: (@requested_at || enqueued_at_time)&.iso8601(6), redaction_mark: redaction_mark }.compact
+        )
       else
         Rails.logger.info "[MeetingSummarizationJob] skipped (in-process lock busy) meeting=#{meeting_id} type=#{type}"
       end
@@ -37,7 +51,13 @@ class MeetingSummarizationJob < ApplicationJob
     begin
       case type
       when "final"
-        generate_minutes_final(meeting, attempt: attempt)
+        begin
+          generate_minutes_final(meeting, attempt: attempt)
+        rescue StandardError
+          # 대기 중 세운 "요약 중" 영속 상태가 시작 broadcast 전의 예외로 고착되지 않게 푼다(멱등).
+          release_learning_deferral!(meeting) rescue nil
+          raise
+        end
       else
         generate_minutes_realtime(meeting)
       end
@@ -80,7 +100,8 @@ class MeetingSummarizationJob < ApplicationJob
   # - 사용자가 회의록을 직접 수정한 경우, 우리가 LLM으로 덮어쓰면 안 됨.
   # - 회의가 reset_content로 :pending이 되었으면 잔여 잡은 무시.
   def stale_relative_to_user_action?(meeting)
-    enqueued = enqueued_at_time
+    # 학습 대기로 재enqueue 돼도 사용자가 처음 요청한 시각을 기준으로 삼는다 — 대기 중 입력한 메모를 덮어쓰지 않게.
+    enqueued = @requested_at || enqueued_at_time
     return false unless enqueued
 
     if meeting.last_user_edit_at && meeting.last_user_edit_at > enqueued
@@ -119,6 +140,13 @@ class MeetingSummarizationJob < ApplicationJob
   # "절단 후" 절 — 자동 재요약은 안 걸지만 수동 재생성은 허용).
   def redacted_since?(meeting, watermark)
     meeting.transcripts_redacted_at != watermark
+  end
+
+  def parse_time(value)
+    return nil if value.blank?
+    Time.iso8601(value.to_s)
+  rescue ArgumentError
+    nil
   end
 
   def enqueued_at_time
@@ -357,8 +385,18 @@ class MeetingSummarizationJob < ApplicationJob
 
   def generate_minutes_final(meeting, attempt: 0)
     meeting.reload
-    return if meeting.pending?
+    if meeting.pending?
+      release_learning_deferral!(meeting)
+      return
+    end
+    # 학습 대기 중 절단(redact)이 일어났으면 재생성하지 않는다(절단은 재큐잉 대상이 아니다 — final_post_llm_disposition 과 동일).
+    if redaction_during_deferral?(meeting)
+      Rails.logger.info "[MeetingSummarizationJob] final skipped (redacted during deferral) meeting=#{meeting.id}"
+      release_learning_deferral!(meeting)
+      return
+    end
     if stale_relative_to_user_action?(meeting)
+      release_learning_deferral!(meeting)
       outcome = reenqueue_final_if_minutes_missing(meeting, attempt)
       # 이 경로는 시작 broadcast 없이 끝난다 — 포기만은 라이브로도 실패를 알린다(영속 기록은 헬퍼가 수행).
       broadcast_finished(meeting, "final", ok: false, error: FINAL_GIVE_UP_ERROR) if outcome == :gave_up
@@ -366,7 +404,29 @@ class MeetingSummarizationJob < ApplicationJob
     end
 
     transcripts = meeting.transcripts.order(:sequence_number)
-    return if transcripts.empty?
+    if transcripts.empty?
+      release_learning_deferral!(meeting)
+      return
+    end
+
+    # 학습 run 대기 — "요약 중" 영속 상태만 세워 새로고침·ext /summarize 409 가드가 유지되게 한다
+    # (broadcast 는 안 보냄). 해제는 진행 시 broadcast_finished(ensure) 또는 위 조기 반환의
+    # release_learning_deferral!. 재enqueue 실패 시에도 즉시 해제한다.
+    if stt_learning_pending?(meeting)
+      Rails.logger.info "[MeetingSummarizationJob] final deferred (stt learning pending) meeting=#{meeting.id}"
+      meeting.record_summary_start!
+      begin
+        self.class.set(wait: LEARNING_WAIT_INTERVAL).perform_later(
+          meeting.id, type: "final", attempt: attempt,
+          requested_at: (@requested_at || enqueued_at_time || Time.current).iso8601(6),
+          redaction_mark: @redaction_mark || meeting.transcripts_redacted_at&.iso8601(6).to_s
+        )
+      rescue StandardError
+        meeting.record_summary_finished!
+        raise
+      end
+      return
+    end
 
     # ⭐ 절단 표식 워터마크 — realtime 과 동일 근거(위 redacted_since? 주석). 이 잡이 전사를
     # 읽는 시점 값을 잡아, LLM 호출 뒤 쓰기 직전 재확인으로 절단 전 전사 기반 결과를 버린다.
@@ -466,12 +526,17 @@ class MeetingSummarizationJob < ApplicationJob
 
     # 마크다운 취소선(~~) 오인 방지 — 저장 직전 범위 표기 ~를 -로 강제(프롬프트 지시의 방어선).
     body_result = normalize_range_tildes(body_result)
+    # 학습된 (오인식→정정) 쌍 확정 치환 — LLM 이 교정 힌트를 무시해도 정정 용어가 유지되게 한다.
+    # ai_notes_markdown 도 치환본이 저장되므로 다음 사람편집 대비 diff 가 같은 쌍을 재학습하지 않는다.
+    learned_applier = stt_learning_pair_applier(meeting)
+    body_result = learned_applier.apply_text(body_result) if learned_applier
     # 저장 직전 재조립: pinned_top + 절취선 + body_result.
     notes_markdown = PreviousMeetingNotes.join(pinned_top, body_result)
 
     stt_learning_snapshot_before_overwrite(meeting)
     summary = meeting.summaries.find_or_initialize_by(summary_type: "final")
     summary.write_ai_final!(notes_markdown)
+    stt_learning_apply_other_columns(learned_applier, summary)
 
     meeting.clear_summary_error!
     meeting.refresh_brief_summary!(body_result)
@@ -599,6 +664,36 @@ class MeetingSummarizationJob < ApplicationJob
 
   # STT 용어 학습(스펙 §5.1): AI final 이 기존 final 행(사람 편집본)을 덮어쓰기 직전 pre_overwrite 스냅샷.
   # 학습 쪽 실패는 AI 저장을 막지 않는다 — 로그만 남긴다.
+  def stt_learning_pending?(meeting)
+    return false unless SttTermLearning::LearnedPairApplier.enabled?
+    meeting.stt_term_learning_runs
+           .where(status: %w[queued running], created_at: LEARNING_WAIT_WINDOW.ago..)
+           .exists?
+  rescue => e
+    Rails.logger.error "[MeetingSummarizationJob] STT 학습 대기 판정 실패 meeting=#{meeting&.id}: #{e.class}: #{e.message}"
+    false
+  end
+
+  def redaction_during_deferral?(meeting)
+    return false if @redaction_mark.nil?
+    meeting.transcripts_redacted_at&.iso8601(6).to_s != @redaction_mark
+  end
+
+  # 이전 패스가 대기(deferral)로 세운 "요약 중" 영속 상태를, 진행 없이 끝나는 조기 반환에서 해제한다.
+  # 같은 회의의 요약 잡은 동시성 제한(락)으로 직렬이라 다른 잡의 상태를 지울 일은 없다.
+  def release_learning_deferral!(meeting)
+    meeting.record_summary_finished! if meeting.summarizing?
+  end
+
+  # 치환 준비 실패는 요약 저장을 막지 않는다(nil 반환 → 치환 생략).
+  def stt_learning_pair_applier(meeting)
+    SttTermLearning::LearnedPairApplier.build_for(meeting)
+  end
+
+  def stt_learning_apply_other_columns(applier, summary)
+    applier&.apply_other_columns_safely!(summary)
+  end
+
   def stt_learning_snapshot_before_overwrite(meeting)
     SttTermLearning::Snapshot.before_overwrite!(meeting)
   rescue => e

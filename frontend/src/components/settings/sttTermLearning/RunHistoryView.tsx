@@ -67,7 +67,7 @@ function minutesUntil(eta: string): number {
   return Math.max(1, Math.ceil((new Date(eta).getTime() - Date.now()) / 60000))
 }
 
-export default function RunHistoryView() {
+export default function RunHistoryView({ projectId }: { projectId?: number | null } = {}) {
   const [runs, setRuns] = useState<RunSummary[]>([])
   const [pending, setPending] = useState<PendingRun[]>([])
   const [detail, setDetail] = useState<RunDetail | null>(null)
@@ -78,13 +78,13 @@ export default function RunHistoryView() {
 
   const load = useCallback(async () => {
     try {
-      const res = await getRuns()
+      const res = await getRuns(undefined, projectId)
       setRuns(res.runs)
       setPending(res.pending)
     } catch {
       setError('처리 내역을 불러오지 못했습니다.')
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     void load()

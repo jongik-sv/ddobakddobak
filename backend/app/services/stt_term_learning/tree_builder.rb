@@ -3,12 +3,13 @@ module SttTermLearning
   class TreeBuilder
     NEW_WINDOW = 7.days
 
-    def initialize(user)
+    def initialize(user, project_id: nil)
       @user = user
+      @project_id = project_id
     end
 
     def call
-      snap = AdminScope.snapshot(@user)
+      snap = AdminScope.snapshot(@user, project_id: @project_id)
       new_by_file = new_counts_by_file(snap)
       cand = promote_candidates(snap)
       stat = lambda do |n|

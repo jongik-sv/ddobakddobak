@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { applyMoves, getImpact, getTerms, getTree, type LevelRef, type TermRow } from '../../../api/sttTermLearning'
+import { useCanWriteGlobal } from './permissions'
 import { buildLevelTree, levelKey, relationTo, type LevelNode } from './levelTree'
 import { stageChange, toMoveRequests, type StagedChange } from './stagedChanges'
 
@@ -47,7 +48,7 @@ function Toggle({ on, label, ariaLabel, onClick }: { on: boolean; label: string;
   )
 }
 
-export default function AllTermsView() {
+export default function AllTermsView({ projectId, globalOnly = false }: { projectId?: number | null; globalOnly?: boolean } = {}) {
   const [terms, setTerms] = useState<TermRow[]>([])
   const [tree, setTree] = useState<LevelNode | null>(null)
   const [loading, setLoading] = useState(true)
@@ -62,19 +63,21 @@ export default function AllTermsView() {
   const [openRow, setOpenRow] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const canWriteGlobal = useCanWriteGlobal() // 프로젝트 관리자는 전역 레벨을 읽기만 한다
 
   const load = useCallback(async () => {
     try {
-      const [t, r] = await Promise.all([getTree(), getTerms()])
-      setTree(buildLevelTree(t))
-      setTerms(r.terms)
+      const [t, r] = await Promise.all([getTree(projectId), getTerms({ projectId })])
+      // 전역 보기: 서버는 관리 프로젝트도 함께 주므로 전역 노드·전역 용어만 남긴다.
+      setTree(buildLevelTree(globalOnly ? { ...t, projects: [] } : t))
+      setTerms(globalOnly ? r.terms.filter((x) => x.level.type === 'global') : r.terms)
       setLoadError(null)
     } catch {
       setLoadError('전체 용어를 불러오지 못했습니다.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [projectId, globalOnly])
 
   useEffect(() => {
     load()
@@ -185,12 +188,14 @@ export default function AllTermsView() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex overflow-hidden rounded-md border border-border" role="group" aria-label="프로젝트 필터">
-          <Toggle on={project === null} label="전체" ariaLabel="프로젝트 전체" onClick={() => setProject(null)} />
-          {tree.children.map((p) => (
-            <Toggle key={p.name} on={project === p.name} label={p.name} onClick={() => setProject(p.name)} />
-          ))}
-        </div>
+        {projectId == null && !globalOnly && (
+          <div className="flex overflow-hidden rounded-md border border-border" role="group" aria-label="프로젝트 필터">
+            <Toggle on={project === null} label="전체" ariaLabel="프로젝트 전체" onClick={() => setProject(null)} />
+            {tree.children.map((p) => (
+              <Toggle key={p.name} on={project === p.name} label={p.name} onClick={() => setProject(p.name)} />
+            ))}
+          </div>
+        )}
         <div className="flex overflow-hidden rounded-md border border-border" role="group" aria-label="출처 필터">
           <Toggle on={source === 'all'} label="전체" ariaLabel="출처 전체" onClick={() => setSource('all')} />
           <Toggle on={source === 'auto'} label="자동" onClick={() => setSource('auto')} />
@@ -231,8 +236,10 @@ export default function AllTermsView() {
                       <button
                         type="button"
                         aria-label={`${r.term} 레벨 변경`}
+                        disabled={!canWriteGlobal && r.level.type === 'global'}
+                        title={!canWriteGlobal && r.level.type === 'global' ? '전역 용어는 시스템 관리자만 변경할 수 있습니다' : undefined}
                         onClick={() => setOpenRow(openRow === r.row_id ? null : r.row_id)}
-                        className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted"
+                        className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-60"
                       >
                         {ch ? (
                           <>
@@ -278,7 +285,7 @@ export default function AllTermsView() {
                                 key={levelKey(node.ref)}
                                 type="button"
                                 role="menuitem"
-                                disabled={rel === 'current' && !ch}
+                                disabled={(rel === 'current' && !ch) || (!canWriteGlobal && node.ref.type === 'global')}
                                 onClick={() => pick(r, node.ref)}
                                 style={{ paddingLeft: 12 + depth * 16 }}
                                 className="flex w-full items-center gap-2 py-1.5 pr-3 text-left text-sm hover:bg-muted disabled:opacity-60"

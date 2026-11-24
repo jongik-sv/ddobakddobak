@@ -205,6 +205,7 @@ Rails.application.routes.draw do
 
         # STT 용어 자동 학습 관리(컨트롤러 이름에 Admin::SttTermLearning 모듈을 만들지 않는다 — 서비스 상수 충돌 방지)
         scope "stt_term_learning" do
+          get  "projects", to: "stt_term_learning#projects"
           get  "tree", to: "stt_term_learning#tree"
           get  "terms", to: "stt_term_learning#terms"
           post "terms/delete", to: "stt_term_learning#delete_terms"
