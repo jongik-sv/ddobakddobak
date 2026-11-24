@@ -16,6 +16,12 @@ class MeetingSummarizationJob < ApplicationJob
   # final 재시도 포기 시 사용자 레포트 문구 — 영속 기록·ok:false broadcast 가 같은 문구를 공유.
   FINAL_GIVE_UP_ERROR = "최종 요약 재시도 한도(#{FINAL_REENQUEUE_CAP}회)를 초과해 생성을 포기했습니다. 회의록 재생성으로 다시 시도해 주세요.".freeze
 
+  # 재작성(final) 직전에 같은 회의의 pre_overwrite 학습 run 이 아직 처리 중이면, 학습된 용어가
+  # 도메인 파일에 들어간 뒤에 새 요약을 만들도록 잠깐 미룬다. 창이 지나면 그냥 진행한다
+  # (학습 실패·정체가 요약 생성을 막으면 안 된다).
+  LEARNING_WAIT_WINDOW = 3.minutes
+  LEARNING_WAIT_INTERVAL = 5.seconds
+
   def perform(meeting_id, type: "realtime", attempt: 0)
     meeting = Meeting.find_by(id: meeting_id)
     return unless meeting
@@ -368,6 +374,13 @@ class MeetingSummarizationJob < ApplicationJob
     transcripts = meeting.transcripts.order(:sequence_number)
     return if transcripts.empty?
 
+    # 학습 run 대기 — broadcast_started 이전이라 "요약 중" 상태·finished broadcast 는 건드리지 않는다.
+    if stt_learning_pending?(meeting)
+      Rails.logger.info "[MeetingSummarizationJob] final deferred (stt learning pending) meeting=#{meeting.id}"
+      self.class.set(wait: LEARNING_WAIT_INTERVAL).perform_later(meeting.id, type: "final", attempt: attempt)
+      return
+    end
+
     # ⭐ 절단 표식 워터마크 — realtime 과 동일 근거(위 redacted_since? 주석). 이 잡이 전사를
     # 읽는 시점 값을 잡아, LLM 호출 뒤 쓰기 직전 재확인으로 절단 전 전사 기반 결과를 버린다.
     redacted_watermark = meeting.transcripts_redacted_at
@@ -466,12 +479,17 @@ class MeetingSummarizationJob < ApplicationJob
 
     # 마크다운 취소선(~~) 오인 방지 — 저장 직전 범위 표기 ~를 -로 강제(프롬프트 지시의 방어선).
     body_result = normalize_range_tildes(body_result)
+    # 학습된 (오인식→정정) 쌍 확정 치환 — LLM 이 교정 힌트를 무시해도 정정 용어가 유지되게 한다.
+    # ai_notes_markdown 도 치환본이 저장되므로 다음 사람편집 대비 diff 가 같은 쌍을 재학습하지 않는다.
+    learned_applier = stt_learning_pair_applier(meeting)
+    body_result = learned_applier.apply_text(body_result) if learned_applier
     # 저장 직전 재조립: pinned_top + 절취선 + body_result.
     notes_markdown = PreviousMeetingNotes.join(pinned_top, body_result)
 
     stt_learning_snapshot_before_overwrite(meeting)
     summary = meeting.summaries.find_or_initialize_by(summary_type: "final")
     summary.write_ai_final!(notes_markdown)
+    stt_learning_apply_other_columns(learned_applier, summary)
 
     meeting.clear_summary_error!
     meeting.refresh_brief_summary!(body_result)
@@ -599,6 +617,34 @@ class MeetingSummarizationJob < ApplicationJob
 
   # STT 용어 학습(스펙 §5.1): AI final 이 기존 final 행(사람 편집본)을 덮어쓰기 직전 pre_overwrite 스냅샷.
   # 학습 쪽 실패는 AI 저장을 막지 않는다 — 로그만 남긴다.
+  def stt_learning_pending?(meeting)
+    return false unless SttTermLearning::LearnedPairApplier.enabled?
+    meeting.stt_term_learning_runs
+           .where(trigger: "pre_overwrite", status: %w[queued running],
+                  created_at: LEARNING_WAIT_WINDOW.ago..)
+           .exists?
+  rescue => e
+    Rails.logger.error "[MeetingSummarizationJob] STT 학습 대기 판정 실패 meeting=#{meeting&.id}: #{e.class}: #{e.message}"
+    false
+  end
+
+  # 치환 준비 실패는 요약 저장을 막지 않는다(nil 반환 → 치환 생략).
+  def stt_learning_pair_applier(meeting)
+    return nil unless SttTermLearning::LearnedPairApplier.enabled?
+    applier = SttTermLearning::LearnedPairApplier.new(meeting)
+    applier.entries # 조기 평가 — 실패를 여기서 잡는다
+    applier
+  rescue => e
+    Rails.logger.error "[MeetingSummarizationJob] STT 학습 쌍 로드 실패 meeting=#{meeting&.id}: #{e.class}: #{e.message}"
+    nil
+  end
+
+  def stt_learning_apply_other_columns(applier, summary)
+    applier&.apply_other_columns!(summary)
+  rescue => e
+    Rails.logger.error "[MeetingSummarizationJob] STT 학습 쌍 치환(기타 컬럼) 실패 summary=#{summary&.id}: #{e.class}: #{e.message}"
+  end
+
   def stt_learning_snapshot_before_overwrite(meeting)
     SttTermLearning::Snapshot.before_overwrite!(meeting)
   rescue => e

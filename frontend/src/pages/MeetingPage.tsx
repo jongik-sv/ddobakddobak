@@ -402,6 +402,8 @@ export default function MeetingPage() {
     setShowReDiarizeConfirm,
     showNotesConfirm,
     setShowNotesConfirm,
+    notesConfirmMessage,
+    requestNotesConfirm,
     handleRegenerateStt,
     handleReDiarize,
     handleRegenerateNotes,
@@ -738,7 +740,7 @@ export default function MeetingPage() {
       isRegeneratingNotes={isRegeneratingNotes}
       onShowSttConfirm={() => setShowSttConfirm(true)}
       onShowReDiarizeConfirm={() => setShowReDiarizeConfirm(true)}
-      onShowNotesConfirm={() => setShowNotesConfirm(true)}
+      onShowNotesConfirm={() => { void requestNotesConfirm() }}
       onReopen={async () => {
         await reopenMeeting(meetingId)
         navigate(`/meetings/${meetingId}/live`)
@@ -999,7 +1001,7 @@ export default function MeetingPage() {
       {showNotesConfirm && (
         <ConfirmDialog
           title="회의록 재생성"
-          message="기존 회의록을 삭제하고 전체 트랜스크립트를 바탕으로 처음부터 다시 생성합니다. 계속하시겠습니까?"
+          message={notesConfirmMessage}
           confirmLabel="재생성"
           onConfirm={handleRegenerateNotes}
           onCancel={() => setShowNotesConfirm(false)}

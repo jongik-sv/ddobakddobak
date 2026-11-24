@@ -14,6 +14,9 @@ vi.mock('../api/meetings', () => ({
   regenerateNotes: vi.fn(async () => {}),
 }))
 
+const getAiOriginalMock = vi.hoisted(() => vi.fn())
+vi.mock('../api/sttTermLearning', () => ({ getAiOriginal: getAiOriginalMock }))
+
 vi.mock('../lib/actionCableAuth', () => ({
   createAuthenticatedConsumer: () => ({
     subscriptions: {
@@ -121,5 +124,36 @@ describe('useNotesRegeneration — final 요약 실패 시 재생성 스피너 �
 
     expect(result.current.isRegeneratingNotes).toBe(false)
     expect(options.refetch).toHaveBeenCalled()
+  })
+})
+
+describe('useNotesRegeneration — 재생성 확인창 안내(사람 편집 여부)', () => {
+  const options = { pauseAudio: vi.fn(), refetch: vi.fn() }
+  beforeEach(() => { getAiOriginalMock.mockReset() })
+
+  it('사람이 고친 회의록이면 용어 유지 안내 문구로 확인창을 연다', async () => {
+    getAiOriginalMock.mockResolvedValue({ available: true, human_edited_at: '2026-11-24T00:00:00Z', diff: [] })
+    const { result } = renderHook(() => useNotesRegeneration(1, options))
+    await act(async () => { await result.current.requestNotesConfirm() })
+    expect(result.current.showNotesConfirm).toBe(true)
+    expect(result.current.notesConfirmMessage).toBe(
+      '직접 고친 문장은 새로 작성됩니다. 고친 용어는 그대로 유지됩니다. 다시 작성할까요?'
+    )
+  })
+
+  it('편집 안 된 회의록이면 기존 문구', async () => {
+    getAiOriginalMock.mockResolvedValue({ available: true, human_edited_at: null, diff: [] })
+    const { result } = renderHook(() => useNotesRegeneration(1, options))
+    await act(async () => { await result.current.requestNotesConfirm() })
+    expect(result.current.showNotesConfirm).toBe(true)
+    expect(result.current.notesConfirmMessage).toContain('처음부터 다시 생성합니다')
+  })
+
+  it('조회 실패여도 기존 문구로 확인창을 연다', async () => {
+    getAiOriginalMock.mockRejectedValue(new Error('x'))
+    const { result } = renderHook(() => useNotesRegeneration(1, options))
+    await act(async () => { await result.current.requestNotesConfirm() })
+    expect(result.current.showNotesConfirm).toBe(true)
+    expect(result.current.notesConfirmMessage).toContain('처음부터 다시 생성합니다')
   })
 })
