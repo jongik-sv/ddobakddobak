@@ -1,0 +1,305 @@
+---
+import { Image } from 'astro:assets';
+import dashboard from '../assets/screens/03-dashboard.png';
+import meetingsList from '../assets/screens/04-meetings-list.png';
+import meetingDetail from '../assets/screens/05-meeting-detail.png';
+import aiChat from '../assets/screens/06-ai-chat.png';
+import recordingLive from '../assets/screens/08-meeting-live.png';
+import settingsTop from '../assets/screens/09-settings-top.png';
+import { GITHUB_URL, LANDING_URL, page } from '../lib/links';
+
+const steps = [
+  { links: [{ href: 'start/overview/', label: '또박또박 소개' }], text: '핵심 흐름과 용어를 먼저 훑어봅니다.' },
+  { links: [{ href: 'start/install/', label: '설치' }], text: '데스크톱(macOS, Windows)과 Android 설치 방법입니다.' },
+  { links: [{ href: 'start/first-run/', label: '첫 실행' }, { href: 'start/login/', label: '로그인' }], text: '모드를 고르고 로그인합니다.' },
+  { links: [{ href: 'recording/live/', label: '첫 녹음' }], text: '회의를 만들고 녹음하면 회의록이 만들어집니다.' },
+];
+
+const screens = [
+  { href: 'meetings/dashboard/', label: '대시보드', image: dashboard },
+  { href: 'meetings/list/', label: '회의 목록', image: meetingsList },
+  { href: 'recording/live/', label: '라이브 녹음', image: recordingLive },
+  { href: 'minutes/meeting-detail/', label: '회의 상세', image: meetingDetail },
+  { href: 'ai/chat/', label: 'AI 챗', image: aiChat },
+  { href: 'settings/personal/', label: '설정', image: settingsTop },
+];
+
+const frequent = [
+  { href: 'recording/upload/', label: '오디오 파일을 올려 회의록 만들기' },
+  { href: 'minutes/ai-summary/', label: 'AI 회의록 고치고 다시 만들기' },
+  { href: 'minutes/speakers/', label: '화자 이름 바꾸기' },
+  { href: 'minutes/transcript/', label: '전사 오타 고치기' },
+  { href: 'share/export/', label: '회의록 내보내기' },
+  { href: 'share/live-share/', label: '다른 기기에서 실시간으로 보기' },
+  { href: 'settings/llm/', label: 'LLM 설정 바꾸기' },
+  { href: 'help/shortcuts/', label: '키보드 단축키(F1)' },
+  { href: 'help/troubleshooting/', label: '문제 해결' },
+];
+
+// 전체 목차는 사이드바와 같은 자료를 쓴다. 쪽을 더하거나 순서를 바꾸면 여기도 함께 바뀐다.
+const chapters = Astro.locals.starlightRoute.sidebar.flatMap((entry) =>
+  entry.type === 'group'
+    ? [{ label: entry.label, links: entry.entries.flatMap((item) => (item.type === 'link' ? [item] : [])) }]
+    : []
+);
+---
+
+<div class="not-content manual-home">
+  <section class="band first">
+    <div class="wrap">
+      <h2>처음 쓰신다면 이 순서로 읽으세요</h2>
+      <ol class="steps">
+        {
+          steps.map((step, i) => (
+            <li>
+              <span class="number" aria-hidden="true">{i + 1}</span>
+              <div>
+                <div class="step-links">
+                  {step.links.map((l) => <a class="step-link" href={page(l.href)}>{l.label}</a>)}
+                </div>
+                <p>{step.text}</p>
+              </div>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="wrap">
+      <h2>기억나는 화면에서 찾기</h2>
+      <div class="screens">
+        {
+          screens.map((screen) => (
+            <a class="screen" href={page(screen.href)}>
+              <Image
+                src={screen.image}
+                widths={[640, screen.image.width]}
+                sizes="(max-width: 640px) 100vw, 640px"
+                alt=""
+              />
+              <span>{screen.label}</span>
+            </a>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="band tint">
+    <div class="wrap">
+      <h2>자주 찾는 내용</h2>
+      <ul class="frequent">
+        {frequent.map((item) => <li><a href={page(item.href)}>{item.label}</a></li>)}
+      </ul>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="wrap">
+      <h2>전체 목차</h2>
+      <div class="chapters">
+        {
+          chapters.map((chapter) => (
+            <nav aria-label={chapter.label}>
+              <h3>{chapter.label}</h3>
+              <div class="chapter-links">
+                {chapter.links.map((link) => <a href={link.href}>{link.label}</a>)}
+              </div>
+            </nav>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <div class="closing wrap">
+    <a href={LANDING_URL}>또박또박 소개</a>
+    <a href={GITHUB_URL}>GitHub</a>
+  </div>
+</div>
+
+<style>
+  .manual-home {
+    --line: var(--sl-color-hairline);
+    --muted: var(--sl-color-gray-2);
+    --tint: #f3f3fb;
+    --number: #5c52ee;
+    font-family: var(--ddobak-font);
+    line-height: 1.6;
+    color: var(--sl-color-white);
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+
+  :global(:root[data-theme='dark']) .manual-home {
+    --tint: #1d1c2e;
+    --number: #a9a3ff;
+  }
+
+  .manual-home a {
+    color: var(--sl-color-text-accent);
+  }
+
+  .manual-home a:hover {
+    color: var(--sl-color-white);
+  }
+
+  .manual-home :is(.screen, .frequent a, .chapter-links a) {
+    text-decoration: none;
+  }
+
+  .manual-home :is(.screen, .frequent a, .chapter-links a):hover {
+    text-decoration: underline;
+  }
+
+  .manual-home a:focus-visible {
+    outline: 3px solid currentColor;
+    outline-offset: 3px;
+  }
+
+  .wrap {
+    width: 100%;
+    max-width: 82.5rem;
+    margin-inline: auto;
+    padding-inline: clamp(1rem, 4vw, 2.5rem);
+    box-sizing: border-box;
+  }
+
+  .band {
+    padding-block: clamp(2.5rem, 5vw, 4rem);
+  }
+
+  .band.first {
+    padding-bottom: 0;
+  }
+
+  .tint {
+    background: var(--tint);
+  }
+
+  h2 {
+    margin: 0 0 1.5rem;
+    color: var(--sl-color-white);
+    font-size: clamp(1.625rem, 2.6vw, 2.25rem);
+    font-weight: 800;
+    line-height: 1.25;
+  }
+
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(15.5rem, 100%), 1fr));
+    gap: 1.75rem 2.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .steps li {
+    display: flex;
+    gap: 0.875rem;
+  }
+
+  .number {
+    font-size: 2.75rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--number);
+  }
+
+  .step-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 0.875rem;
+  }
+
+  .step-link {
+    font-size: 1.125rem;
+    font-weight: 700;
+  }
+
+  .steps p {
+    margin: 0.25rem 0 0;
+    color: var(--muted);
+  }
+
+  .screens {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(16.25rem, 100%), 1fr));
+    gap: 1.75rem 1.5rem;
+  }
+
+  .screen {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    font-size: 1.0625rem;
+    font-weight: 700;
+  }
+
+  .screen img {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 8 / 5;
+    object-fit: cover;
+    object-position: left top;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-sizing: border-box;
+  }
+
+  .frequent {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(21.25rem, 100%), 1fr));
+    gap: 0.25rem 2.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .frequent a {
+    display: flex;
+    align-items: center;
+    min-height: 2.75rem;
+    font-size: 1.0625rem;
+  }
+
+  .chapters {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(15.5rem, 100%), 1fr));
+    gap: 2rem 2.5rem;
+  }
+
+  h3 {
+    margin: 0 0 0.375rem;
+    color: var(--sl-color-white);
+    font-size: 1.125rem;
+  }
+
+  .chapter-links {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chapter-links a {
+    display: flex;
+    align-items: center;
+    min-height: 2.25rem;
+  }
+
+  .closing {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.25rem;
+    padding-block: 1rem 2.5rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .closing a {
+    display: flex;
+    align-items: center;
+    min-height: 2.75rem;
+  }
+</style>

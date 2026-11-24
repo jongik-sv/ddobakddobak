@@ -1,0 +1,35 @@
+/* 매뉴얼 강조색을 또박또박 주색으로 맞춘다. */
+:root {
+  --sl-color-accent-low: #2a2570;
+  --sl-color-accent: #5c52ee;
+  --sl-color-accent-high: #c9c5ff;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-high: #3f37b8;
+  --sl-color-accent: #5c52ee;
+  --sl-color-accent-low: #dedbff;
+}
+
+/* 첫 화면 전용: 주색 띠가 창 끝까지 닿도록 본문 틀의 여백을 없앤다. */
+html:has(.manual-hero) {
+  --sl-main-pad: 0;
+}
+
+html:has(.manual-hero) .content-panel {
+  padding: 0;
+}
+
+html:has(.manual-hero) .content-panel .sl-container {
+  max-width: none;
+  margin: 0;
+}
+
+html:has(.manual-hero) .content-panel .sl-container > * + * {
+  margin-top: 0;
+}
+
+/* 첫 화면에는 큰 검색창이 있으므로 머리글의 검색 단추를 숨긴다. 검색 창과 단축키는 그대로 동작한다. */
+html:has(.manual-hero) header site-search > button[data-open-modal] {
+  display: none;
+}

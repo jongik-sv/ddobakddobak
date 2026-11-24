@@ -10,6 +10,7 @@ import { ArrowLeft } from 'lucide-react'
 
 import { LocalMeetingsSection } from '../components/meeting/LocalMeetingsSection'
 import ModelManager from '../components/stt/ModelManager'
+import { HelpIconButton } from '../lib/help/HelpButton'
 
 export default function LocalMeetingsHome() {
   const navigate = useNavigate()
@@ -24,6 +25,7 @@ export default function LocalMeetingsHome() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-lg font-bold">오프라인 회의</h1>
+        <HelpIconButton className="ml-auto" />
       </div>
       <p className="text-sm text-muted-foreground mb-4">
         서버 연결 없이 폰에서 녹음·전사하는 회의입니다. 기록은 기기에 저장되며, 나중에

@@ -1,0 +1,8 @@
+/* 또박또박 브랜드 값. 주색은 랜딩 페이지와 같다. */
+:root {
+  --ddobak-primary: #5c52ee;
+  --ddobak-primary-dark: #3f37b8;
+  --ddobak-ink: #1b1840;
+  --ddobak-font: 'Pretendard', 'Pretendard Variable', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  --sl-font: var(--ddobak-font);
+}

@@ -10,6 +10,7 @@ import ProjectIcon from '../components/project/ProjectIcon'
 import ProjectDialog from '../components/project/ProjectDialog'
 import { useAuthStore, canCreateProject } from '../stores/authStore'
 import { getMode } from '../config'
+import { HelpIconButton } from '../lib/help/HelpButton'
 
 const CURRENT_KEY = 'current_project_id'
 
@@ -85,7 +86,8 @@ export default function ProjectSelectLanding() {
         )}
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-8">
+      <main className="relative flex-1 overflow-y-auto p-8">
+        <HelpIconButton className="absolute right-4 top-4" />
         <div>
           <h1 className="mb-1 text-2xl font-bold text-foreground">프로젝트 선택</h1>
           <p className="mb-6 text-sm text-muted-foreground">작업할 프로젝트를 선택하세요.</p>

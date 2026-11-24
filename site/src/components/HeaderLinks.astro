@@ -1,0 +1,23 @@
+---
+import SocialIcons from '@astrojs/starlight/components/SocialIcons.astro';
+import { LANDING_URL } from '../lib/links';
+---
+
+<a class="intro" href={LANDING_URL}>또박또박 소개</a>
+<SocialIcons />
+
+<style>
+  .intro {
+    align-self: center;
+    margin-inline-end: 0.5rem;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-text-accent);
+    white-space: nowrap;
+    text-decoration: none;
+  }
+
+  .intro:hover {
+    color: var(--sl-color-white);
+    text-decoration: underline;
+  }
+</style>
