@@ -137,7 +137,7 @@ describe('useNotesRegeneration — 재생성 확인창 안내(사람 편집 여�
     await act(async () => { await result.current.requestNotesConfirm() })
     expect(result.current.showNotesConfirm).toBe(true)
     expect(result.current.notesConfirmMessage).toBe(
-      '직접 고친 문장은 새로 작성됩니다. 고친 용어는 그대로 유지됩니다. 다시 작성할까요?'
+      '직접 고친 문장은 새로 작성됩니다. 학습된 용어는 새 회의록에도 반영됩니다. 다시 작성할까요?'
     )
   })
 

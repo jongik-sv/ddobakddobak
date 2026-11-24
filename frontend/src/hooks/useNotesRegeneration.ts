@@ -7,7 +7,7 @@ import { useTranscriptStore } from '../stores/transcriptStore'
 const NOTES_CONFIRM_BASE =
   '기존 회의록을 삭제하고 전체 트랜스크립트를 바탕으로 처음부터 다시 생성합니다. 계속하시겠습니까?'
 const NOTES_CONFIRM_EDITED =
-  '직접 고친 문장은 새로 작성됩니다. 고친 용어는 그대로 유지됩니다. 다시 작성할까요?'
+  '직접 고친 문장은 새로 작성됩니다. 학습된 용어는 새 회의록에도 반영됩니다. 다시 작성할까요?'
 // 사람이 고쳤지만 STT 용어 학습이 꺼져 있으면 "용어 유지"를 약속하지 않는다.
 const NOTES_CONFIRM_EDITED_NO_LEARNING = '직접 고친 내용은 새로 작성됩니다. 다시 작성할까요?'
 

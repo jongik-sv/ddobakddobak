@@ -48,7 +48,7 @@ function Toggle({ on, label, ariaLabel, onClick }: { on: boolean; label: string;
   )
 }
 
-export default function AllTermsView({ projectId }: { projectId?: number | null } = {}) {
+export default function AllTermsView({ projectId, globalOnly = false }: { projectId?: number | null; globalOnly?: boolean } = {}) {
   const [terms, setTerms] = useState<TermRow[]>([])
   const [tree, setTree] = useState<LevelNode | null>(null)
   const [loading, setLoading] = useState(true)
@@ -68,15 +68,16 @@ export default function AllTermsView({ projectId }: { projectId?: number | null 
   const load = useCallback(async () => {
     try {
       const [t, r] = await Promise.all([getTree(projectId), getTerms({ projectId })])
-      setTree(buildLevelTree(t))
-      setTerms(r.terms)
+      // 전역 보기: 서버는 관리 프로젝트도 함께 주므로 전역 노드·전역 용어만 남긴다.
+      setTree(buildLevelTree(globalOnly ? { ...t, projects: [] } : t))
+      setTerms(globalOnly ? r.terms.filter((x) => x.level.type === 'global') : r.terms)
       setLoadError(null)
     } catch {
       setLoadError('전체 용어를 불러오지 못했습니다.')
     } finally {
       setLoading(false)
     }
-  }, [projectId])
+  }, [projectId, globalOnly])
 
   useEffect(() => {
     load()
@@ -187,7 +188,7 @@ export default function AllTermsView({ projectId }: { projectId?: number | null 
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        {projectId == null && (
+        {projectId == null && !globalOnly && (
           <div className="flex overflow-hidden rounded-md border border-border" role="group" aria-label="프로젝트 필터">
             <Toggle on={project === null} label="전체" ariaLabel="프로젝트 전체" onClick={() => setProject(null)} />
             {tree.children.map((p) => (

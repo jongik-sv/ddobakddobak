@@ -73,7 +73,7 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
     columns: MEMBER_COLUMNS,
     defaultSort: MEMBER_DEFAULT_SORT,
     tieBreak: memberTieBreak,
-    storageKey: 'ddobak.projectMembers.view',
+    storageKey: `ddobak.projectMembers.view.${project.id}`,
   })
 
   const reload = useCallback(async () => {

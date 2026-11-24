@@ -109,7 +109,10 @@ export function loadView<T>(
       if (p.filters && typeof p.filters === 'object') {
         for (const [k, v] of Object.entries(p.filters)) {
           if (typeof v !== 'string') continue
-          const col = columns.find((c) => c.key === k)
+          // date 필터는 `key.from` / `key.to` — 기준 컬럼 key 로 찾는다. 없어진 컬럼의 필터는 버린다.
+          const baseKey = k.replace(/\.(from|to)$/, '')
+          const col = columns.find((c) => c.key === k || (c.type === 'date' && c.key === baseKey))
+          if (!col) continue
           // 저장된 select 값이 더 이상 없는 선택지면 버린다(빈 결과 방지)
           if (col?.type === 'select' && !col.options?.some((o) => o.value === v)) continue
           filters[k] = v

@@ -8,7 +8,8 @@ export function useCanWriteGlobal(): boolean {
   return role === 'admin' || getMode() === 'local'
 }
 
-/** 프로젝트 관리자(role=admin 멤버십)인 프로젝트가 1개 이상인가 — 프로젝트 목록(role 포함)에서 파생. */
+/** 관리자인 팀 프로젝트가 1개 이상인가 — 프로젝트 목록(role 포함)에서 파생.
+ *  개인(personal) 프로젝트는 가입 시 본인이 admin 으로 자동 생성되므로 제외한다(서버 AdminScope 도 제외). */
 export function useManagesAnyProject(): boolean {
-  return useProjectStore((s) => s.projects.some((p) => p.role === 'admin'))
+  return useProjectStore((s) => s.projects.some((p) => p.role === 'admin' && !p.personal))
 }

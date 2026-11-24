@@ -86,7 +86,7 @@ describe('SettingsContent tabs', () => {
   })
 
   it('프로젝트 관리자(비 시스템 admin): 개인설정·STT 용어 학습 탭만 노출', () => {
-    useProjectStore.setState({ projects: [{ id: 1, role: 'admin' } as Project] })
+    useProjectStore.setState({ projects: [{ id: 1, role: 'admin', personal: false } as Project] })
     render(<SettingsContent />)
     expect(screen.getByRole('tab', { name: /개인설정/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /STT 용어 학습/ })).toBeInTheDocument()
@@ -94,6 +94,20 @@ describe('SettingsContent tabs', () => {
     expect(screen.queryByRole('tab', { name: /연동/ })).toBeNull()
     fireEvent.click(screen.getByRole('tab', { name: /STT 용어 학습/ }))
     expect(screen.getByTestId('stt-learning-tab')).toBeInTheDocument()
+  })
+
+  it('개인 프로젝트의 admin 은 팀 관리자가 아니므로 STT 용어 학습 탭 없음', () => {
+    useProjectStore.setState({ projects: [{ id: 1, role: 'admin', personal: true } as Project] })
+    render(<SettingsContent />)
+    expect(screen.queryByRole('tab', { name: /STT 용어 학습/ })).toBeNull()
+  })
+
+  it('팀 프로젝트 admin 이 개인 프로젝트와 함께 있어도 탭 노출', () => {
+    useProjectStore.setState({
+      projects: [{ id: 1, role: 'admin', personal: true } as Project, { id: 2, role: 'admin', personal: false } as Project],
+    })
+    render(<SettingsContent />)
+    expect(screen.getByRole('tab', { name: /STT 용어 학습/ })).toBeInTheDocument()
   })
 
   it('일반 멤버(프로젝트 admin 아님)는 STT 용어 학습 탭 없음', () => {

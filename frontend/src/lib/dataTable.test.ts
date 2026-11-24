@@ -86,4 +86,8 @@ describe('view persistence', () => {
     localStorage.setItem('k', JSON.stringify({ sort: { key: 'nope', dir: 'asc' } }))
     expect(loadView('k', cols, DEF).sort).toEqual(DEF)
   })
+  it('없어진 컬럼의 필터는 버리고, 날짜 필터(key.from/to)는 컬럼이 있으면 유지', () => {
+    saveView('k', { sort: DEF, filters: { gone: 'x', name: 'n', 'at.from': '2026-01-01', 'zz.to': '2026-02-01' } })
+    expect(loadView('k', cols, DEF).filters).toEqual({ name: 'n', 'at.from': '2026-01-01' })
+  })
 })

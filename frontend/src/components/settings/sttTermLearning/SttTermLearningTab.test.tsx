@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import SttTermLearningTab, { PROJECT_STORAGE_KEY } from './SttTermLearningTab'
+import { useAuthStore } from '../../../stores/authStore'
 import { useProjectStore } from '../../../stores/projectStore'
 import { treeFixture } from './fixtures'
 import * as api from '../../../api/sttTermLearning'
@@ -12,6 +13,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   useProjectStore.setState({ currentProjectId: 2 })
+  useAuthStore.setState({ user: { id: 9, role: 'member' } as never })
   m.getScopeProjects.mockResolvedValue([
     { id: 1, name: 'TF', personal: false },
     { id: 2, name: '제강', personal: false },
@@ -86,5 +88,49 @@ describe('SttTermLearningTab 관리 프로젝트 없음', () => {
     render(<SttTermLearningTab />)
     expect(await screen.findByText('관리자로 지정된 프로젝트가 없습니다.')).toBeInTheDocument()
     expect(m.getTree).not.toHaveBeenCalled()
+  })
+})
+
+describe('SttTermLearningTab 전역 용어 보기 (시스템 관리자)', () => {
+  const asAdmin = () => useAuthStore.setState({ user: { id: 1, role: 'admin' } as never })
+
+  it('일반 사용자에게는 전역 옵션이 없다', async () => {
+    render(<SttTermLearningTab />)
+    await waitFor(() => expect(select().value).toBe('2'))
+    expect(screen.queryByRole('option', { name: /전역 용어/ })).toBeNull()
+  })
+
+  it('시스템 관리자는 전역 옵션이 항상 있고, 관리 프로젝트가 없으면 기본값이다', async () => {
+    asAdmin()
+    m.getScopeProjects.mockResolvedValue([])
+    render(<SttTermLearningTab />)
+    await waitFor(() => expect(select().value).toBe('global'))
+    expect(screen.getByRole('option', { name: '전역 용어 (모든 프로젝트 공통)' })).toBeInTheDocument()
+    expect(screen.queryByText('관리자로 지정된 프로젝트가 없습니다.')).toBeNull()
+    await waitFor(() => expect(m.getTree).toHaveBeenCalledWith(null))
+  })
+
+  it('전역 모드에서 레벨별 용어는 전역만 보이고, 처리 내역·오인식 기록은 안내만 보이며 조회하지 않는다', async () => {
+    asAdmin()
+    localStorage.setItem(PROJECT_STORAGE_KEY, 'global')
+    render(<SttTermLearningTab />)
+    await waitFor(() => expect(select().value).toBe('global'))
+    await waitFor(() => expect(m.getTree).toHaveBeenCalled())
+    const nav = await screen.findByRole('navigation', { name: '레벨 트리' })
+    expect(nav.textContent).not.toContain('TF') // 프로젝트 노드 제외
+    fireEvent.click(screen.getByRole('tab', { name: '처리 내역' }))
+    expect(screen.getByText('프로젝트를 선택하면 볼 수 있습니다.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: '오인식 기록' }))
+    expect(screen.getByText('프로젝트를 선택하면 볼 수 있습니다.')).toBeInTheDocument()
+    expect(m.getRuns).not.toHaveBeenCalled()
+    expect(m.getMisrecognitions).not.toHaveBeenCalled()
+  })
+
+  it('시스템 관리자라도 프로젝트를 고르면 프로젝트 범위로 조회한다', async () => {
+    asAdmin()
+    render(<SttTermLearningTab />)
+    await waitFor(() => expect(select().value).toBe('2'))
+    fireEvent.change(select(), { target: { value: 'global' } })
+    expect(localStorage.getItem(PROJECT_STORAGE_KEY)).toBe('global')
   })
 })

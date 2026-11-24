@@ -7,6 +7,7 @@ import {
   type LevelRef,
   type TermRow,
 } from '../../../api/sttTermLearning'
+import { apiErrorMessage } from './apiError'
 import { confirmDialog } from '../../../lib/confirmDialog'
 import MoveTermsDialog from './MoveTermsDialog'
 import { useCanWriteGlobal } from './permissions'
@@ -49,7 +50,7 @@ function TreeNodes({ node, depth, selected, onSelect }: {
   )
 }
 
-export default function LevelTreeView({ projectId }: { projectId?: number | null } = {}) {
+export default function LevelTreeView({ projectId, globalOnly = false }: { projectId?: number | null; globalOnly?: boolean } = {}) {
   const [root, setRoot] = useState<LevelNode | null>(null)
   const [level, setLevel] = useState<LevelRef>(GLOBAL)
   const [includeDescendants, setIncludeDescendants] = useState(false)
@@ -68,11 +69,13 @@ export default function LevelTreeView({ projectId }: { projectId?: number | null
 
   const loadTree = useCallback(async () => {
     try {
-      setRoot(buildLevelTree(await getTree(projectId)))
+      const tree = await getTree(projectId)
+      // 전역 보기: 서버는 관리 프로젝트도 함께 주므로 전역 노드만 남긴다.
+      setRoot(buildLevelTree(globalOnly ? { ...tree, projects: [] } : tree))
     } catch {
       setError('레벨 트리를 불러오지 못했습니다.')
     }
-  }, [projectId])
+  }, [projectId, globalOnly])
 
   const termsReq = useRef(0)
   const loadTerms = useCallback(async () => {
@@ -80,14 +83,14 @@ export default function LevelTreeView({ projectId }: { projectId?: number | null
     try {
       const res = await getTerms({ level, includeDescendants, projectId })
       if (req !== termsReq.current) return
-      setTerms(res.terms)
+      setTerms(globalOnly ? res.terms.filter((t) => t.level.type === 'global') : res.terms)
       setChecked(new Set())
       setError(null)
     } catch {
       if (req !== termsReq.current) return
       setError('용어를 불러오지 못했습니다.')
     }
-  }, [level, includeDescendants, projectId])
+  }, [level, includeDescendants, projectId, globalOnly])
 
   useEffect(() => { void loadTree() }, [loadTree])
   useEffect(() => { void loadTerms() }, [loadTerms])
@@ -119,8 +122,8 @@ export default function LevelTreeView({ projectId }: { projectId?: number | null
     try {
       await applyMoves([{ domain_file_id: row.domain_file.id, term_keys: [row.key], target: parent.ref }])
       await refresh()
-    } catch {
-      setError('상위 레벨로 올리지 못했습니다.')
+    } catch (err) {
+      setError(await apiErrorMessage(err, '상위 레벨로 올리지 못했습니다.'))
     }
   }
 
@@ -132,8 +135,8 @@ export default function LevelTreeView({ projectId }: { projectId?: number | null
     try {
       await deleteTerms(selectedRows.map((r) => ({ domain_file_id: r.domain_file.id, term_key: r.key })))
       await refresh()
-    } catch {
-      setError('삭제하지 못했습니다.')
+    } catch (err) {
+      setError(await apiErrorMessage(err, '삭제하지 못했습니다.'))
     }
   }
 
@@ -166,10 +169,12 @@ export default function LevelTreeView({ projectId }: { projectId?: number | null
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1 text-sm">
-            <input type="checkbox" checked={includeDescendants} onChange={(e) => setIncludeDescendants(e.target.checked)} />
-            하위 포함
-          </label>
+          {!globalOnly && (
+            <label className="flex items-center gap-1 text-sm">
+              <input type="checkbox" checked={includeDescendants} onChange={(e) => setIncludeDescendants(e.target.checked)} />
+              하위 포함
+            </label>
+          )}
           <span className="flex-1" />
           <span className="text-xs text-muted-foreground">{selectedRows.length}건 선택</span>
           <button
