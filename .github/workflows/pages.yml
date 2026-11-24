@@ -10,7 +10,6 @@ permissions:
   contents: read
   pages: write
   id-token: write
-  # deploy-pages 가 같은 run 의 github-pages 아티팩트 메타데이터를 Actions API 로 조회한다(없으면 "Fetching artifact metadata failed").
   actions: read
 
 concurrency:
@@ -18,11 +17,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  # 업로드와 배포를 같은 job 에서 하면 deploy-pages 가 방금 올린 아티팩트를 "Found 0 artifact(s)" 로 못 찾는다(2026-11 실측).
+  # → GitHub 권장 구성대로 build(업로드) / deploy(needs: build) 두 job 으로 나눈다.
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       # docs/ 안 심볼릭 링크(PRD.md 등)가 upload-pages-artifact의 tar를 깨뜨림
@@ -47,5 +45,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5
