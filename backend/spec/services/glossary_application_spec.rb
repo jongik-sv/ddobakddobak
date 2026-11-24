@@ -147,6 +147,22 @@ RSpec.describe GlossaryApplication, "boundary match_type" do
     expect(apply("로그 파일 (로그) 로그를", "로그", "로드")).to eq("로드 파일 (로드) 로드를")
   end
 
+  it "짧은 한글 wrong 은 오른쪽도 경계(로그인·디비전 보호, 조사·문장끝은 치환)" do
+    expect(apply("로그인 화면", "로그", "Log")).to eq("로그인 화면")
+    expect(apply("디비전 회의", "디비", "DB")).to eq("디비전 회의")
+    expect(apply("로그를 본다", "로그", "Log")).to eq("Log를 본다")
+    expect(apply("디비에서 읽는다", "디비", "DB")).to eq("DB에서 읽는다")
+    expect(apply("로그. 끝", "로그", "Log")).to eq("Log. 끝")
+    expect(apply("확인할 로그", "로그", "Log")).to eq("확인할 Log")
+    expect(apply("이건 로그입니다", "로그", "Log")).to eq("이건 Log입니다")
+    expect(apply("디비전 디비 ⟦t:1/s:디비⟧", "디비", "DB")).to eq("디비전 DB ⟦t:1/s:디비⟧")
+  end
+
+  it "boundary 엔트리는 단일 패스(앞 쌍의 to 를 뒤 쌍이 다시 바꾸지 않음)" do
+    entries = [ { from: "에이", to: "비이", match_type: "boundary" }, { from: "비이", to: "씨이", match_type: "boundary" } ]
+    expect(described_class.apply("에이 비이", entries)).to eq("비이 씨이")
+  end
+
   it "ASCII wrong 은 단어 경계" do
     expect(apply("saturday", "sat", "SAP")).to eq("saturday")
     expect(apply("sat 연동 sat를 presat", "sat", "SAP")).to eq("SAP 연동 SAP를 presat")

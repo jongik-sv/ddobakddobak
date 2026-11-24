@@ -25,6 +25,24 @@ module SttTermLearning
       !server_mode? || !!user&.admin?
     end
 
+    # 도메인 파일 쓰기 권한(전역 쓰기 권한이 없는 사용자용 규칙; 전역 쓰기 권한자는 항상 true).
+    #   (a) stt_auto 파일이고 그 소유 레벨(Project/Folder)이 내가 관리하는 프로젝트 안, 또는
+    #   (b) file.project_id 가 관리 프로젝트이고 DomainFile#editable_by?(user)(= 시스템 admin 또는 생성자).
+    # 공유 파일(project_id nil)·다른 프로젝트 파일·전역 자동 파일은 쓰지 못한다.
+    def writable_file?(user, file, managed_ids: nil)
+      return true if global_writer?(user)
+      return false if file.nil?
+      managed_ids ||= projects(user).pluck(:id)
+      if file.stt_auto?
+        pid = case file.auto_owner_type
+              when "Project" then file.auto_owner_id
+              when "Folder" then ::Folder.find_by(id: file.auto_owner_id)&.project_id
+              end
+        return !pid.nil? && managed_ids.include?(pid)
+      end
+      !file.project_id.nil? && managed_ids.include?(file.project_id) && file.editable_by?(user)
+    end
+
     # 용어 학습 화면 사용 자격: 시스템 admin 이거나 관리 프로젝트가 1개 이상. 로컬 모드는 항상.
     def manager?(user)
       !server_mode? || !!user&.admin? || projects(user).exists?

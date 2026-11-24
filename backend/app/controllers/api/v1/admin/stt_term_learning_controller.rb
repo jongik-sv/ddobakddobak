@@ -37,7 +37,9 @@ module Api
           counts = Array(params[:targets]).map do |t|
             level = level_from_ref(t[:level] || {})
             raise ActiveRecord::RecordNotFound, "레벨이 없습니다" if hidden_level?(level) # 숨김 레벨은 없는 것으로(404)
-            ::SttTermLearning::ImpactCounter.count(level, domain_file_id: t[:domain_file_id].presence)
+            # 전역 쓰기 권한이 없으면 관리 프로젝트의 회의만 센다(타 프로젝트 회의 수 노출 방지).
+            ::SttTermLearning::ImpactCounter.count(level, domain_file_id: t[:domain_file_id].presence,
+                                                   project_ids: global_writer? ? nil : managed_project_ids)
           end
           render json: { counts: counts }
         end
@@ -50,6 +52,8 @@ module Api
             raise ::SttTermLearning::TermMover::Error, "이동할 수 없는 레벨입니다" if hidden_level?(target)
             # 전역 파일에서 꺼내거나 전역으로 넣는 이동(복사·하위 병합 포함)은 시스템 관리자만.
             forbid_global_write! if target.global? || global_file_ids.include?(m[:domain_file_id].to_i)
+            # 원본을 지우는 이동은 원본 파일 쓰기 권한이 필요하다(복사는 읽기만). 대상은 항상 관리 프로젝트의 자동 파일.
+            forbid_file_write!(m[:domain_file_id]) unless ActiveModel::Type::Boolean.new.cast(m[:copy])
             { domain_file_id: m[:domain_file_id], term_keys: m[:term_keys].nil? ? nil : Array(m[:term_keys]).map(&:to_s),
               target: target, copy: m[:copy], merge_descendants: m[:merge_descendants] }
           end
@@ -64,6 +68,7 @@ module Api
           items = Array(params[:items]).map { |i| { domain_file_id: i[:domain_file_id], term_key: i[:term_key].to_s } }
           items.each { |i| ensure_visible_file!(i[:domain_file_id]) }
           forbid_global_write! if items.any? { |i| global_file_ids.include?(i[:domain_file_id].to_i) }
+          items.each { |i| forbid_file_write!(i[:domain_file_id]) }
           deleted = ::SttTermLearning::TermMover.new(actor: current_user).delete!(items)
           render json: { deleted: deleted }
         rescue ::SttTermLearning::TermMover::Error, ActiveRecord::RecordNotFound => e

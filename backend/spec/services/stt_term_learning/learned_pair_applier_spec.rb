@@ -42,6 +42,12 @@ RSpec.describe SttTermLearning::LearnedPairApplier do
     expect(applier.apply_text(once)).to eq(once)
   end
 
+  it "단일 패스: A→B, B→C 쌍이 있어도 A 는 B 가 된다" do
+    item("우판", "후판")
+    item("후판", "후반")
+    expect(applier.apply_text("우판 후판")).to eq("후판 후반")
+  end
+
   it "긴 wrong 을 먼저 적용한다" do
     item("우판재", "후판재")
     item("우판", "후판")

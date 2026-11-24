@@ -127,8 +127,40 @@ RSpec.describe MeetingSummarizationJob, "STT 학습 순서 보장·확정 치환
       expect(ActionCable.server).not_to receive(:broadcast)
       expect {
         described_class.perform_now(meeting.id, type: "final", attempt: 2)
-      }.to have_enqueued_job(described_class).with(meeting.id, type: "final", attempt: 2).at(a_value_within(2.seconds).of(5.seconds.from_now))
+      }.to have_enqueued_job(described_class).with(meeting.id, type: "final", attempt: 2, requested_at: a_kind_of(String), redaction_mark: "").at(a_value_within(2.seconds).of(5.seconds.from_now))
       expect(meeting.summaries.where(summary_type: "final")).to be_empty
+    end
+
+    it "재enqueue 는 원래 요청 시각·절단 워터마크를 그대로 실어 보낸다" do
+      make_run(status: "queued")
+      original = 2.minutes.ago.iso8601(6)
+      mark = 1.hour.ago.iso8601(6)
+      meeting.update_columns(transcripts_redacted_at: Time.iso8601(mark))
+      expect {
+        described_class.perform_now(meeting.id, type: "final", requested_at: original, redaction_mark: mark)
+      }.to have_enqueued_job(described_class).with(meeting.id, type: "final", attempt: 0, requested_at: original, redaction_mark: mark)
+    end
+
+    it "대기 중 사용자가 메모를 고쳤으면(원래 요청 시각 이후) 재생성하지 않고 요약 중을 푼다" do
+      meeting.record_summary_start!
+      original = 2.minutes.ago
+      meeting.update_columns(last_user_edit_at: 1.minute.ago)
+      allow_any_instance_of(LlmService).to receive(:refine_notes).and_raise("호출되면 안 됨")
+      described_class.perform_now(meeting.id, type: "final", requested_at: original.iso8601(6), redaction_mark: "")
+      expect(meeting.summaries.where(summary_type: "final")).to be_empty
+      expect(meeting.reload.summarizing?).to be(false)
+    end
+
+    it "대기 중 절단(redact)이 일어났으면 재생성·재큐잉 없이 멈추고 요약 중을 푼다" do
+      meeting.record_summary_start!
+      original = 2.minutes.ago
+      meeting.update_columns(transcripts_redacted_at: 1.minute.ago, last_user_edit_at: 1.minute.ago)
+      allow_any_instance_of(LlmService).to receive(:refine_notes).and_raise("호출되면 안 됨")
+      expect {
+        described_class.perform_now(meeting.id, type: "final", requested_at: original.iso8601(6), redaction_mark: "")
+      }.not_to have_enqueued_job(described_class)
+      expect(meeting.summaries.where(summary_type: "final")).to be_empty
+      expect(meeting.reload.summarizing?).to be(false)
     end
 
     it "running 도 대기" do

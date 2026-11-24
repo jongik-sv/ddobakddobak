@@ -3,8 +3,9 @@ module SttTermLearning
   module ImpactCounter
     module_function
 
-    def count(level, domain_file_id: nil)
+    def count(level, domain_file_id: nil, project_ids: nil)
       scope = ::Meeting.kept
+      scope = scope.where(project_id: project_ids) unless project_ids.nil?
       case level.type
       when "Project" then scope = scope.where(project_id: level.owner.id)
       when "Folder" then scope = scope.where(folder_id: ::Folder.kept.where(id: level.owner.subtree_ids).select(:id))

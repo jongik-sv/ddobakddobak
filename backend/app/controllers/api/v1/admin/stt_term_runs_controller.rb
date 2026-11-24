@@ -39,7 +39,7 @@ module Api
 
         # POST /api/v1/admin/stt_term_learning/runs/:id/revert
         def revert
-          forbid_global_write! if touches_global?(@run)
+          forbid_unmanaged_files!(@run)
           result = ::SttTermLearning::Reverter.new(@run).call
           render json: { run: run_summary_json(@run.reload), reverted: result[:reverted],
                          skipped_item_ids: result[:skipped_item_ids] }
@@ -86,7 +86,9 @@ module Api
           # 등록 체인이 전역까지 올라가 전역 줄을 건드리면(비 시스템 admin) 전체 롤백 후 403.
           ::ActiveRecord::Base.transaction do
             ::SttTermLearning::ManualRegistration.call(item)
-            forbid_global_write! if item.reload.level_owner_type == "global"
+            item.reload
+            forbid_global_write! if item.level_owner_type == "global"
+            forbid_file_write!(item.domain_file_id) if item.domain_file_id
           end
           render json: { item: run_item_json(item.reload) }
         rescue ::SttTermLearning::ManualRegistration::Error => e
@@ -95,10 +97,13 @@ module Api
 
         private
 
-        # 이 run 의 item 이 전역 레벨(파일)에 쓴 적이 있으면 되돌리기가 전역을 건드린다.
-        def touches_global?(run)
-          run.items.where(level_owner_type: "global").exists? ||
-            (global_file_ids.any? && run.items.where(domain_file_id: global_file_ids).exists?)
+        # 이 run 의 item 이 전역 레벨이나 쓰기 권한 없는 파일(공유·타 프로젝트·남의 파일)에 쓴 적이 있으면
+        # 되돌리기가 그 파일을 건드린다 — Reverter 호출 전에 403.
+        def forbid_unmanaged_files!(run)
+          return if global_writer?
+          forbid_global_write! if run.items.where(level_owner_type: "global").exists?
+          ids = run.items.flat_map { |i| [ i.domain_file_id, i.change_data["domain_file_id"] ] }.compact.uniq
+          ids.each { |id| forbid_file_write!(id) }
         end
 
         def set_run

@@ -54,6 +54,7 @@ module Api
             if status == "confirmed"
               r = ::SttTermLearning::ManualRegistration.register_pair!(@record, actor: current_user)
               forbid_global_write! if r[:level]&.global? # 전역 줄에 합쳐졌다면(비 시스템 admin) 전체 롤백 후 403
+              forbid_file_write!(r[:domain_file]) if r[:domain_file] # 쓰기 권한 없는 파일이면 전체 롤백 후 403
               registered = registered_from_result(r, @record)
             else
               @record.update!(status: status)
@@ -145,6 +146,7 @@ module Api
           file, level = registered_entry(record)
           return unless file
           forbid_global_write! if level&.global?
+          forbid_file_write!(file)
 
           variants = file.find_term(record.correct_key)[:mispronunciations].map { |m| ::DomainFile.normalize_key(m) }.uniq
           if file.stt_auto? && variants == [ record.wrong_key ]
