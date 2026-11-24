@@ -87,8 +87,11 @@ module Api
           ::ActiveRecord::Base.transaction do
             ::SttTermLearning::ManualRegistration.call(item)
             item.reload
-            forbid_global_write! if item.level_owner_type == "global"
-            forbid_file_write!(item.domain_file_id) if item.domain_file_id
+            # already_known 은 아무것도 쓰지 않았으니 권한을 따지지 않는다.
+            unless item.verdict == "already_known"
+              forbid_global_write! if item.level_owner_type == "global"
+              forbid_file_write!(item.domain_file_id, existing_term: item.verdict == "merged_existing") if item.domain_file_id
+            end
           end
           render json: { item: run_item_json(item.reload) }
         rescue ::SttTermLearning::ManualRegistration::Error => e
@@ -101,9 +104,10 @@ module Api
         # 되돌리기가 그 파일을 건드린다 — Reverter 호출 전에 403.
         def forbid_unmanaged_files!(run)
           return if global_writer?
-          forbid_global_write! if run.items.where(level_owner_type: "global").exists?
-          ids = run.items.flat_map { |i| [ i.domain_file_id, i.change_data["domain_file_id"] ] }.compact.uniq
-          ids.each { |id| forbid_file_write!(id) }
+          # Reverter 가 실제로 바꾸는 항목(change 의 kind 가 있는 것)만 본다 — already_known·skipped_* 는 파일을 안 건드린다.
+          touched = run.items.select { |i| i.change_data["kind"].present? }
+          forbid_global_write! if touched.any? { |i| i.level_owner_type == "global" }
+          touched.map { |i| i.change_data["domain_file_id"] }.compact.uniq.each { |id| forbid_file_write!(id) }
         end
 
         def set_run

@@ -114,7 +114,8 @@ class GlossaryApplication
 
   # 짧은 한글 from 의 오른쪽 경계: 끝 / 한글이 아닌 글자 / (조사·어미 + (끝|한글 아닌 글자)).
   # 디비전·로그인 처럼 다른 단어의 앞부분인 경우를 거른다. 긴 것부터(alternation 은 앞 항목 우선).
-  PARTICLES = %w[에서 으로 에게 이랑 하고 부터 까지 처럼 보다 이나 라도 이다 입니다 이에요 예요
+  PARTICLES = %w[에서는 에서도 으로는 으로도 에게서 에게는 이라는 라는 이라고 라고 까지는 부터는 에는 에도 와는 과는 로는 로도
+                 에서 으로 에게 이랑 하고 부터 까지 처럼 보다 이나 라도 이다 입니다 이에요 예요
                  은 는 이 가 을 를 에 의 도 로 와 과 만 께 랑 나 야].sort_by { |x| -x.length }.freeze
   HANGUL_RIGHT = "(?=\\z|[^\\p{Hangul}]|(?:#{PARTICLES.join('|')})(?:\\z|[^\\p{Hangul}]))".freeze
 
@@ -159,8 +160,9 @@ class GlossaryApplication
       sorted[idx - 1][:to].to_s
     end
   rescue Regexp::TimeoutError, RegexpError => err
-    Rails.logger.warn("[glossary] boundary batch skip err=#{err.class}")
-    text
+    # 묶음 하나가 시간 초과여도 학습 치환 전체를 버리지 않는다 — 항목별로 다시 적용(항목별 실패는 apply_one 이 건너뜀).
+    Rails.logger.warn("[glossary] boundary batch fallback to per-entry err=#{err.class}")
+    sorted.reduce(text) { |t, e| apply_one(t, e.merge(match_type: "boundary")) }
   end
 
   def self.apply_one(text, entry)

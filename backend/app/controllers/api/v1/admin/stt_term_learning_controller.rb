@@ -46,6 +46,7 @@ module Api
 
         # POST /api/v1/admin/stt_term_learning/moves { moves: [...] } → { moved, merged } / 422 { error }(전부 롤백)
         def moves
+          mover = ::SttTermLearning::TermMover.new(actor: current_user)
           moves = Array(params[:moves]).map do |m|
             ensure_visible_file!(m[:domain_file_id])
             target = level_from_ref(m[:target] || {})
@@ -54,10 +55,11 @@ module Api
             forbid_global_write! if target.global? || global_file_ids.include?(m[:domain_file_id].to_i)
             # 원본을 지우는 이동은 원본 파일 쓰기 권한이 필요하다(복사는 읽기만). 대상은 항상 관리 프로젝트의 자동 파일.
             forbid_file_write!(m[:domain_file_id]) unless ActiveModel::Type::Boolean.new.cast(m[:copy])
+            forbid_descendant_writes!(m, target) unless global_writer?
             { domain_file_id: m[:domain_file_id], term_keys: m[:term_keys].nil? ? nil : Array(m[:term_keys]).map(&:to_s),
               target: target, copy: m[:copy], merge_descendants: m[:merge_descendants] }
           end
-          result = ::SttTermLearning::TermMover.new(actor: current_user).apply!(moves)
+          result = mover.apply!(moves)
           render json: { moved: result[:moved], merged: result[:merged] }
         rescue ::SttTermLearning::TermMover::Error, ActiveRecord::RecordNotFound => e
           render json: { error: e.message }, status: :unprocessable_entity
@@ -95,6 +97,16 @@ module Api
         end
 
         private
+
+        # 하위 병합이 줄을 지울 자동 파일 전부에 쓰기 권한이 있어야 한다(복사여도 지운다).
+        def forbid_descendant_writes!(m, target)
+          return unless ::ActiveModel::Type::Boolean.new.cast(m[:merge_descendants])
+          source_id = m[:domain_file_id].to_i
+          target_id = ::SttTermLearning::AutoDomainFile.find_for(target)&.id
+          ::SttTermLearning::TermMover.new(actor: current_user)
+                                      .merge_descendant_files(target, [ target_id, source_id ].compact)
+                                      .each { |f| forbid_file_write!(f) }
+        end
 
         # 관리자 화면 범위 밖(남의 personal 프로젝트 등)의 파일은 원본으로 쓰지 못한다 — TermMover 호출 전에 거른다.
         def ensure_visible_file!(domain_file_id)

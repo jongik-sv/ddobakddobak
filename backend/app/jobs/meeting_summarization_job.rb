@@ -39,7 +39,8 @@ class MeetingSummarizationJob < ApplicationJob
         # 락 해제 후 재시도하도록 재enqueue (realtime은 매분 cron이 다시 오므로 드랍 OK).
         Rails.logger.info "[MeetingSummarizationJob] final re-enqueued (lock busy) meeting=#{meeting_id}"
         self.class.set(wait: 30.seconds).perform_later(
-          meeting_id, type: "final", attempt: attempt, **{ requested_at: requested_at, redaction_mark: redaction_mark }.compact
+          meeting_id, type: "final", attempt: attempt,
+          **{ requested_at: (@requested_at || enqueued_at_time)&.iso8601(6), redaction_mark: redaction_mark }.compact
         )
       else
         Rails.logger.info "[MeetingSummarizationJob] skipped (in-process lock busy) meeting=#{meeting_id} type=#{type}"

@@ -11,14 +11,20 @@ module SttTermLearningJson
   FILE_WRITE_MESSAGE = "이 도메인 파일은 변경할 권한이 없습니다".freeze
 
   # 프로젝트 관리자가 관리 범위 밖·편집 권한 없는 도메인 파일을 바꾸려 할 때 — 403.
-  class FileWriteForbidden < StandardError; end
+  class FileWriteForbidden < StandardError
+    def initialize(message = FILE_WRITE_MESSAGE)
+      super
+    end
+  end
+
+  EXISTING_TERM_MESSAGE = "이 용어는 수정 권한이 없는 도메인 파일에 이미 있습니다".freeze
 
   included do
     rescue_from GlobalWriteForbidden do
       render json: { error: GLOBAL_WRITE_MESSAGE }, status: :forbidden
     end
-    rescue_from FileWriteForbidden do
-      render json: { error: FILE_WRITE_MESSAGE }, status: :forbidden
+    rescue_from FileWriteForbidden do |e|
+      render json: { error: e.message }, status: :forbidden
     end
   end
 
@@ -48,13 +54,13 @@ module SttTermLearningJson
   end
 
   # 쓰기 전에(또는 같은 트랜잭션 안에서) 호출. 전역 자동 파일이면 전역 메시지, 아니면 파일 메시지로 403.
-  def forbid_file_write!(file_or_id)
+  def forbid_file_write!(file_or_id, existing_term: false)
     return true if global_writer?
     file = file_or_id.is_a?(::DomainFile) ? file_or_id : ::DomainFile.find_by(id: file_or_id)
     return true if file.nil? # 이미 없는 파일은 쓸 것이 없다(후속 단계가 not found 처리)
     return true if writable_file?(file)
     raise GlobalWriteForbidden if file.stt_auto? && file.auto_owner_type.nil?
-    raise FileWriteForbidden
+    raise FileWriteForbidden, (existing_term ? EXISTING_TERM_MESSAGE : FILE_WRITE_MESSAGE)
   end
 
   def global_file_ids

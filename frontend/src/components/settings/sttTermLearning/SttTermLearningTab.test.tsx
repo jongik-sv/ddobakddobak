@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import SttTermLearningTab, { PROJECT_STORAGE_KEY } from './SttTermLearningTab'
 import { useAuthStore } from '../../../stores/authStore'
 import { useProjectStore } from '../../../stores/projectStore'
@@ -49,6 +49,15 @@ describe('SttTermLearningTab 프로젝트 선택기', () => {
     useProjectStore.setState({ currentProjectId: 77 })
     render(<SttTermLearningTab />)
     await waitFor(() => expect(select().value).toBe('1'))
+  })
+
+  it('사용자 정보가 늦게 와도(관리 프로젝트 없는 시스템 관리자) 전역이 기본 선택된다', async () => {
+    useAuthStore.setState({ user: null as never })
+    m.getScopeProjects.mockResolvedValue([])
+    render(<SttTermLearningTab />)
+    await waitFor(() => expect(m.getScopeProjects).toHaveBeenCalled())
+    act(() => { useAuthStore.setState({ user: { id: 1, role: 'admin' } as never }) })
+    await waitFor(() => expect(select().value).toBe('global'))
   })
 
   it('변경하면 저장하고 다시 불러온다', async () => {

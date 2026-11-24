@@ -84,14 +84,69 @@ RSpec.describe "STT 용어 학습 도메인 파일 쓰기 권한", type: :reques
     end
   end
 
+  describe "moves merge_descendants" do
+    let!(:child) { create(:folder, project: proj_a) }
+    let(:global_auto) do
+      SttTermLearning::AutoDomainFile.find_or_create_for!(SttTermLearning::Level.global, fallback_creator: sys_admin)
+        .tap { |f| f.update!(content: "- **강판** [STT] (오인식: 강환): g") }
+    end
+    let(:other_auto) do
+      SttTermLearning::AutoDomainFile.find_or_create_for!(SttTermLearning::Level.for(proj_b), fallback_creator: sys_admin)
+        .tap { |f| f.update!(content: "- **강판** [STT] (오인식: 강팍): o") }
+    end
+    let(:child_auto) do
+      SttTermLearning::AutoDomainFile.find_or_create_for!(SttTermLearning::Level.for(child), fallback_creator: sys_admin)
+        .tap { |f| f.update!(content: "- **강판** [STT] (오인식: 강핀): c") }
+    end
+
+    def merge_move(copy:)
+      post "#{base}/moves", params: { moves: [ { domain_file_id: own_file.id, term_keys: [ "강판" ], copy: copy,
+                                                 merge_descendants: true,
+                                                 target: { type: "Project", id: proj_a.id } } ] }, as: :json
+    end
+
+    [ false, true ].each do |copy|
+      it "링크만 된 전역·타 프로젝트 자동 파일은 건드리지 않고 하위가 소유한 자동 파일만 병합(copy=#{copy})" do
+        [ global_auto, other_auto ].each { |f| DomainFileLink.create!(domain_file: f, owner: child) }
+        child_auto
+        login_as(padmin)
+        merge_move(copy: copy)
+        expect(response).to have_http_status(:ok)
+        expect(global_auto.reload.content).to include("강판")
+        expect(other_auto.reload.content).to include("강판")
+        expect(child_auto.reload.content).not_to include("강판")
+        target = SttTermLearning::AutoDomainFile.find_for(SttTermLearning::Level.for(proj_a))
+        expect(target.content).to include("강핀")
+      end
+    end
+
+    it "시스템 admin 도 링크만 된 전역 자동 파일은 건드리지 않는다" do
+      DomainFileLink.create!(domain_file: global_auto, owner: child)
+      create(:project_membership, project: proj_a, user: sys_admin, role: "admin")
+      login_as(sys_admin)
+      merge_move(copy: true)
+      expect(response).to have_http_status(:ok)
+      expect(global_auto.reload.content).to include("강판")
+    end
+  end
+
   describe "오인식 confirmed" do
     it "공유 파일의 용어에 합쳐지게 되면 403 이고 전체 롤백" do
       rec = create(:stt_misrecognition, project: proj_a, wrong: "후판이", correct: "후판", status: "undecided")
       login_as(padmin)
       patch "#{base}/misrecognitions/#{rec.id}", params: { status: "confirmed" }, as: :json
       expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body["error"]).to eq(SttTermLearningJson::EXISTING_TERM_MESSAGE)
       expect(shared_file.reload.content).not_to include("후판이")
       expect(rec.reload.status).to eq("undecided")
+    end
+
+    it "이미 그 변형이 있으면(already_known) 아무것도 쓰지 않으므로 403 아님" do
+      rec = create(:stt_misrecognition, project: proj_a, wrong: "우판", correct: "후판", status: "undecided")
+      login_as(padmin)
+      patch "#{base}/misrecognitions/#{rec.id}", params: { status: "confirmed" }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(rec.reload.status).to eq("confirmed")
     end
   end
 
@@ -110,11 +165,36 @@ RSpec.describe "STT 용어 학습 도메인 파일 쓰기 권한", type: :reques
     end
 
     it "revert: 공유 파일에 쓴 run 은 403, 되돌려지지 않음" do
-      create(:stt_term_learning_item, run: run, domain_file: shared_file, level_owner_type: "Project", level_owner_id: proj_a.id)
+      create(:stt_term_learning_item, run: run, domain_file: shared_file, level_owner_type: "Project", level_owner_id: proj_a.id,
+                                      verdict: "registered",
+                                      change: { kind: "add_line", domain_file_id: shared_file.id, term_key: "후판", line: "x" }.to_json)
       login_as(padmin)
       post "#{base}/runs/#{run.id}/revert"
       expect(response).to have_http_status(:forbidden)
       expect(run.reload.status).to eq("done")
+    end
+
+    it "revert: 파일을 건드리지 않는 항목(already_known 등)은 공유 파일이어도 막지 않는다" do
+      auto = SttTermLearning::AutoDomainFile.find_or_create_for!(SttTermLearning::Level.for(proj_a), fallback_creator: sys_admin)
+      create(:stt_term_learning_item, run: run, domain_file: shared_file, level_owner_type: "global", level_owner_id: nil,
+                                      verdict: "already_known")
+      create(:stt_term_learning_item, run: run, domain_file: auto, level_owner_type: "Project", level_owner_id: proj_a.id,
+                                      verdict: "registered",
+                                      change: { kind: "add_line", domain_file_id: auto.id, term_key: "압연", line: "x" }.to_json)
+      login_as(padmin)
+      post "#{base}/runs/#{run.id}/revert"
+      expect(response).to have_http_status(:ok)
+      expect(run.reload.status).to eq("reverted")
+    end
+
+    it "register: 이미 알려진 쌍(already_known)은 공유 파일이어도 403 아님" do
+      shared_file.update!(content: "- **후판** [STT] (오인식: 후판이): s")
+      item = create(:stt_term_learning_item, run: run, wrong: "후판이", correct: "후판", wrong_key: "후판이",
+                                             correct_key: "후판", verdict: "skipped_excluded")
+      login_as(padmin)
+      post "#{base}/runs/#{run.id}/items/#{item.id}/register"
+      expect(response).to have_http_status(:ok)
+      expect(shared_file.reload.content).to eq("- **후판** [STT] (오인식: 후판이): s")
     end
 
     it "revert: 관리 프로젝트 자동 파일만 쓴 run 은 허용" do

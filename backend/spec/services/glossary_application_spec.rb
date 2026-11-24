@@ -163,6 +163,19 @@ RSpec.describe GlossaryApplication, "boundary match_type" do
     expect(described_class.apply("에이 비이", entries)).to eq("비이 씨이")
   end
 
+  it "복합 조사(에서는 등) 앞도 경계로 본다" do
+    expect(apply("디비에서는 느림", "디비", "DB")).to eq("DB에서는 느림")
+    expect(apply("디비라는 말", "디비", "DB")).to eq("DB라는 말")
+  end
+
+  it "묶음 정규식이 시간 초과여도 항목별로 적용한다" do
+    entries = [ { from: "에이", to: "비이", match_type: "boundary" }, { from: "디비", to: "DB", match_type: "boundary" } ]
+    allow(Regexp).to receive(:new).and_wrap_original do |orig, *args, **kw|
+      args.first.to_s.include?(")|(") ? raise(Regexp::TimeoutError) : orig.call(*args, **kw)
+    end
+    expect(described_class.apply("에이 디비", entries)).to eq("비이 DB")
+  end
+
   it "ASCII wrong 은 단어 경계" do
     expect(apply("saturday", "sat", "SAP")).to eq("saturday")
     expect(apply("sat 연동 sat를 presat", "sat", "SAP")).to eq("SAP 연동 SAP를 presat")

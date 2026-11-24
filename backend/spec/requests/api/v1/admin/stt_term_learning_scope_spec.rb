@@ -167,7 +167,9 @@ RSpec.describe "STT 용어 학습 프로젝트 관리자 범위", type: :request
     it "되돌리기: 전역에 쓴 run 은 프로젝트 admin 에게 403" do
       meeting = create(:meeting, project: proj_a, creator: sys_admin)
       run = create(:stt_term_learning_run, meeting: meeting, status: "done", finished_at: Time.current)
-      create(:stt_term_learning_item, run: run, domain_file: gfile, level_owner_type: "global")
+      create(:stt_term_learning_item, run: run, domain_file: gfile, level_owner_type: "global",
+                                      verdict: "registered",
+                                      change: { kind: "add_line", domain_file_id: gfile.id, term_key: "x", line: "x" }.to_json)
       login_as(padmin)
       post "#{base}/runs/#{run.id}/revert"
       expect(response).to have_http_status(:forbidden)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getScopeProjects, type ScopeProject } from '../../../api/sttTermLearning'
 import { useProjectStore } from '../../../stores/projectStore'
 import { useCanWriteGlobal } from './permissions'
@@ -56,22 +56,16 @@ export default function SttTermLearningTab() {
   const [loadError, setLoadError] = useState(false)
   const currentProjectId = useProjectStore((s) => s.currentProjectId)
 
-  // 선택기 옵션 = 서버 AdminScope.projects 와 같은 가시 범위. 기본값: 저장값 → 현재 프로젝트 → 첫 프로젝트.
+  const explicitRef = useRef(false) // 사용자가 직접 고른 뒤에는 기본값 재계산이 선택을 덮지 않는다.
+  const currentProjectIdRef = useRef(currentProjectId)
+  currentProjectIdRef.current = currentProjectId
+
+  // 선택기 옵션 = 서버 AdminScope.projects 와 같은 가시 범위.
   useEffect(() => {
     let alive = true
     getScopeProjects()
       .then((list) => {
-        if (!alive) return
-        const has = (id: number | null) => id != null && list.some((p) => p.id === id)
-        const stored = readStored()
-        const storedOk = stored === GLOBAL_OPTION ? canWriteGlobal : has(stored)
-        const pick: Selection = storedOk
-          ? stored
-          : has(currentProjectId)
-            ? currentProjectId
-            : (list[0]?.id ?? (canWriteGlobal ? GLOBAL_OPTION : null))
-        setProjects(list)
-        setSelection(pick)
+        if (alive) setProjects(list)
       })
       .catch(() => {
         if (!alive) return
@@ -82,12 +76,27 @@ export default function SttTermLearningTab() {
     return () => {
       alive = false
     }
-    // 최초 1회만 기본값을 정한다(이후 currentProjectId 변화에 선택을 뺏기지 않게).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 기본값: 저장값 → 현재 프로젝트 → 첫 프로젝트 → (전역 쓰기 권한이면) 전역.
+  // 사용자 정보가 늦게 도착해 canWriteGlobal 이 바뀌어도 명시 선택 전이면 다시 계산한다.
+  useEffect(() => {
+    if (!projects || loadError || explicitRef.current) return
+    const has = (id: number | null) => id != null && projects.some((p) => p.id === id)
+    const stored = readStored()
+    const storedOk = stored === GLOBAL_OPTION ? canWriteGlobal : has(stored)
+    const cur = currentProjectIdRef.current
+    const pick: Selection = storedOk
+      ? stored
+      : has(cur)
+        ? cur
+        : (projects[0]?.id ?? (canWriteGlobal ? GLOBAL_OPTION : null))
+    setSelection(pick)
+  }, [projects, canWriteGlobal, loadError])
 
   const choose = (value: string) => {
     const next: Selection = value === GLOBAL_OPTION ? GLOBAL_OPTION : Number(value)
+    explicitRef.current = true
     setSelection(next)
     writeStored(next)
   }
