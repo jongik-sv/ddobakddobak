@@ -48,7 +48,7 @@ function TreeNodes({ node, depth, selected, onSelect }: {
   )
 }
 
-export default function LevelTreeView() {
+export default function LevelTreeView({ projectId }: { projectId?: number | null } = {}) {
   const [root, setRoot] = useState<LevelNode | null>(null)
   const [level, setLevel] = useState<LevelRef>(GLOBAL)
   const [includeDescendants, setIncludeDescendants] = useState(false)
@@ -59,17 +59,17 @@ export default function LevelTreeView() {
 
   const loadTree = useCallback(async () => {
     try {
-      setRoot(buildLevelTree(await getTree()))
+      setRoot(buildLevelTree(await getTree(projectId)))
     } catch {
       setError('레벨 트리를 불러오지 못했습니다.')
     }
-  }, [])
+  }, [projectId])
 
   const termsReq = useRef(0)
   const loadTerms = useCallback(async () => {
     const req = ++termsReq.current
     try {
-      const res = await getTerms({ level, includeDescendants })
+      const res = await getTerms({ level, includeDescendants, projectId })
       if (req !== termsReq.current) return
       setTerms(res.terms)
       setChecked(new Set())
@@ -78,7 +78,7 @@ export default function LevelTreeView() {
       if (req !== termsReq.current) return
       setError('용어를 불러오지 못했습니다.')
     }
-  }, [level, includeDescendants])
+  }, [level, includeDescendants, projectId])
 
   useEffect(() => { void loadTree() }, [loadTree])
   useEffect(() => { void loadTerms() }, [loadTerms])

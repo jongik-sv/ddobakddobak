@@ -14,13 +14,15 @@ module Api
         before_action :require_admin!
         before_action :set_run, only: %i[show revert rerun register_item]
 
-        # GET /api/v1/admin/stt_term_learning/runs?status=
+        # GET /api/v1/admin/stt_term_learning/runs?status=&project_id=
         def index
-          scope = ::SttTermLearningRun.where(meeting_id: visible_meetings_scope.select(:id))
+          meetings = visible_meetings_scope
+          meetings = meetings.where(project_id: scoped_project_id) if scoped_project_id
+          scope = ::SttTermLearningRun.where(meeting_id: meetings.select(:id))
           scope = scope.where(status: params[:status]) if params[:status].present?
           runs = scope.includes(meeting: [ :project, :folder ]).order(id: :desc).limit(RUNS_LIMIT).to_a
           stats = item_stats(runs.map(&:id))
-          render json: { runs: runs.map { |r| run_summary_json(r, stats) }, pending: pending_json }
+          render json: { runs: runs.map { |r| run_summary_json(r, stats) }, pending: pending_json(scoped_project_id) }
         end
 
         # GET /api/v1/admin/stt_term_learning/runs/:id
@@ -95,13 +97,15 @@ module Api
 
         # 사람 편집 후 아직 run 이 없는 learnable final — 디바운스 대기 중인 학습. eta = 편집 시각 + idle_minutes.
         # eta 가 PENDING_GRACE 넘게 지난 행은 뺀다(잡이 스킵·중복 방지로 run 을 안 만든 편집이 영영 남지 않게).
-        def pending_json
+        def pending_json(project_id = nil)
           idle = AppSettings.stt_term_learning["idle_minutes"].to_i.minutes
           cutoff = Time.current - idle - PENDING_GRACE
           later_run = ::SttTermLearningRun.where("stt_term_learning_runs.meeting_id = summaries.meeting_id")
                                           .where("stt_term_learning_runs.created_at >= summaries.human_edited_at")
+          meetings = visible_meetings_scope(::Meeting.kept)
+          meetings = meetings.where(project_id: project_id) if project_id
           summaries = ::Summary.joins(:meeting)
-                               .merge(visible_meetings_scope(::Meeting.kept))
+                               .merge(meetings)
                                .where(summary_type: "final")
                                .where.not(human_edited_at: nil)
                                .where("summaries.human_edited_at >= ?", cutoff)

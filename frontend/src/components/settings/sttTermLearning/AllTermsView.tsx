@@ -47,7 +47,7 @@ function Toggle({ on, label, ariaLabel, onClick }: { on: boolean; label: string;
   )
 }
 
-export default function AllTermsView() {
+export default function AllTermsView({ projectId }: { projectId?: number | null } = {}) {
   const [terms, setTerms] = useState<TermRow[]>([])
   const [tree, setTree] = useState<LevelNode | null>(null)
   const [loading, setLoading] = useState(true)
@@ -65,7 +65,7 @@ export default function AllTermsView() {
 
   const load = useCallback(async () => {
     try {
-      const [t, r] = await Promise.all([getTree(), getTerms()])
+      const [t, r] = await Promise.all([getTree(projectId), getTerms({ projectId })])
       setTree(buildLevelTree(t))
       setTerms(r.terms)
       setLoadError(null)
@@ -74,7 +74,7 @@ export default function AllTermsView() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     load()
@@ -185,12 +185,14 @@ export default function AllTermsView() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex overflow-hidden rounded-md border border-border" role="group" aria-label="프로젝트 필터">
-          <Toggle on={project === null} label="전체" ariaLabel="프로젝트 전체" onClick={() => setProject(null)} />
-          {tree.children.map((p) => (
-            <Toggle key={p.name} on={project === p.name} label={p.name} onClick={() => setProject(p.name)} />
-          ))}
-        </div>
+        {projectId == null && (
+          <div className="flex overflow-hidden rounded-md border border-border" role="group" aria-label="프로젝트 필터">
+            <Toggle on={project === null} label="전체" ariaLabel="프로젝트 전체" onClick={() => setProject(null)} />
+            {tree.children.map((p) => (
+              <Toggle key={p.name} on={project === p.name} label={p.name} onClick={() => setProject(p.name)} />
+            ))}
+          </div>
+        )}
         <div className="flex overflow-hidden rounded-md border border-border" role="group" aria-label="출처 필터">
           <Toggle on={source === 'all'} label="전체" ariaLabel="출처 전체" onClick={() => setSource('all')} />
           <Toggle on={source === 'auto'} label="자동" onClick={() => setSource('auto')} />

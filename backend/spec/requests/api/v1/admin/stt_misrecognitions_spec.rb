@@ -226,5 +226,25 @@ RSpec.describe "Api::V1::Admin::SttMisrecognitions", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
+
+    describe "GET misrecognitions project_id 필터" do
+      it "그 프로젝트 기록·counts 만, 숨김 프로젝트는 404, 무파라미터는 전체" do
+        project2 = create(:project, creator: admin)
+        mine = mis("우판", "후판")
+        theirs = create(:stt_misrecognition, project: project2, wrong: "냉현", correct: "냉연")
+
+        get "/api/v1/admin/stt_term_learning/misrecognitions", params: { project_id: project.id }
+        expect(response).to have_http_status(:ok)
+        expect(json["misrecognitions"].map { |m| m["id"] }).to eq([ mine.id ])
+        expect(json["counts"]["total"]).to eq(1)
+
+        get "/api/v1/admin/stt_term_learning/misrecognitions"
+        expect(json["misrecognitions"].map { |m| m["id"] }).to include(mine.id, theirs.id)
+
+        hidden = create(:project, creator: create(:user), personal: true)
+        get "/api/v1/admin/stt_term_learning/misrecognitions", params: { project_id: hidden.id }
+        expect(response).to have_http_status(:not_found)
+      end
+    end
   end
 end

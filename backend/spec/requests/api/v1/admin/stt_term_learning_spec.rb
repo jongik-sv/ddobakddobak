@@ -241,5 +241,61 @@ RSpec.describe "Api::V1::Admin::SttTermLearning", type: :request do
         expect(json["enabled"]).to eq(false)
       end
     end
+
+    describe "project_id 필터" do
+      let(:project2) { create(:project, creator: admin) }
+      let(:hidden_project) { create(:project, creator: create(:user), personal: true) }
+
+      before do
+        auto_file(level.global, "- **전역용어** [STT] (오인식: 전역틀림): g")
+        auto_file(level.for(project), "- **후판** [STT] (오인식: 우판): 강판")
+        auto_file(level.for(child), "- **냉연** [STT] (오인식: 냉현): 강판")
+        auto_file(level.for(project2), "- **열연** [STT] (오인식: 열현): 강판")
+      end
+
+      it "projects: 관리자에게 보이는 프로젝트만(남의 personal 제외)" do
+        project2
+        hidden_project
+        get "/api/v1/admin/stt_term_learning/projects"
+        expect(response).to have_http_status(:ok)
+        ids = json["projects"].map { |p| p["id"] }
+        expect(ids).to include(project.id, project2.id)
+        expect(ids).not_to include(hidden_project.id)
+      end
+
+      it "tree: 그 프로젝트와 폴더만, 전역 노드는 항상 포함" do
+        get "/api/v1/admin/stt_term_learning/tree", params: { project_id: project.id }
+        expect(response).to have_http_status(:ok)
+        expect(json["projects"].map { |p| p["id"] }).to eq([ project.id ])
+        expect(json["projects"].first["folders"].map { |f| f["id"] }).to include(parent.id, child.id)
+        expect(json["global"]["term_count"]).to eq(1)
+      end
+
+      it "terms: 그 프로젝트 + 전역 행만" do
+        get "/api/v1/admin/stt_term_learning/terms", params: { project_id: project.id }
+        expect(response).to have_http_status(:ok)
+        terms = json["terms"].map { |t| t["term"] }
+        expect(terms).to contain_exactly("전역용어", "후판", "냉연")
+        expect(json["terms"].map { |t| t["level"]["type"] }.uniq).to include("global")
+      end
+
+      it "project_id 없으면 기존처럼 전체" do
+        get "/api/v1/admin/stt_term_learning/terms"
+        expect(json["terms"].map { |t| t["term"] }).to include("전역용어", "후판", "냉연", "열연")
+        get "/api/v1/admin/stt_term_learning/tree"
+        expect(json["projects"].map { |p| p["id"] }).to include(project.id, project2.id)
+      end
+
+      it "보이지 않는(남의 personal)·없는 project_id 는 404" do
+        [ hidden_project.id, 0, 99_999_999 ].each do |pid|
+          get "/api/v1/admin/stt_term_learning/tree", params: { project_id: pid }
+          expect(response).to have_http_status(:not_found)
+          get "/api/v1/admin/stt_term_learning/terms", params: { project_id: pid }
+          expect(response).to have_http_status(:not_found)
+        end
+        get "/api/v1/admin/stt_term_learning/tree", params: { project_id: "abc" }
+        expect(response).to have_http_status(:not_found)
+      end
+    end
   end
 end

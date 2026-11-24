@@ -19,6 +19,20 @@ module SttTermLearningJson
     @visible_project_ids ||= ::SttTermLearning::AdminScope.projects(current_user).pluck(:id)
   end
 
+  # 선택적 ?project_id= 필터. 없으면 nil(전체). 보이는 프로젝트가 아니면(남의 personal·휴지통·없는 id) 404.
+  def scoped_project_id
+    return @scoped_project_id if defined?(@scoped_project_id)
+    raw = params[:project_id]
+    @scoped_project_id =
+      if raw.blank?
+        nil
+      else
+        id = Integer(raw.to_s, exception: false)
+        raise ActiveRecord::RecordNotFound, "프로젝트가 없습니다" unless id && visible_project_ids.include?(id)
+        id
+      end
+  end
+
   def visible_project?(project_id)
     project_id.nil? || visible_project_ids.include?(project_id)
   end

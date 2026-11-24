@@ -10,16 +10,24 @@ module Api
         before_action :authenticate_user!
         before_action :require_admin!
 
-        # GET /api/v1/admin/stt_term_learning/tree
+        # GET /api/v1/admin/stt_term_learning/projects — 프로젝트 선택기 옵션(관리자에게 보이는 프로젝트 전부)
+        def projects
+          list = ::SttTermLearning::AdminScope.projects(current_user).order(:id).map do |p|
+            { id: p.id, name: p.name, personal: p.personal }
+          end
+          render json: { projects: list }
+        end
+
+        # GET /api/v1/admin/stt_term_learning/tree?project_id=
         def tree
-          render json: ::SttTermLearning::TreeBuilder.new(current_user).call
+          render json: ::SttTermLearning::TreeBuilder.new(current_user, project_id: scoped_project_id).call
         end
 
         # GET /api/v1/admin/stt_term_learning/terms?level_type=&level_id=&include_descendants=1
         def terms
           level = params[:level_type].present? ? level_from_ref(type: params[:level_type], id: params[:level_id]) : nil
           include_descendants = ::ActiveModel::Type::Boolean.new.cast(params[:include_descendants]) || false
-          rows = ::SttTermLearning::TermIndex.new(current_user).rows(level: level, include_descendants: include_descendants)
+          rows = ::SttTermLearning::TermIndex.new(current_user, project_id: scoped_project_id).rows(level: level, include_descendants: include_descendants)
           render json: { terms: rows }
         end
 

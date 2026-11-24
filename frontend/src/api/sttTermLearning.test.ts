@@ -92,3 +92,19 @@ describe('sttTermLearning api', () => {
     expect(patch).toHaveBeenLastCalledWith('admin/stt_term_learning/misrecognitions/3', { json: { status: 'confirmed', correct: '후판' } })
   })
 })
+
+describe('sttTermLearning api project_id', () => {
+  it('tree·terms·runs·misrecognitions 가 project_id 를 실어 보내고, 없으면 싣지 않는다', async () => {
+    get.mockReturnValue(ok({}))
+    await getTree(5)
+    expect(get).toHaveBeenLastCalledWith('admin/stt_term_learning/tree', { searchParams: { project_id: '5' } })
+    await getTree()
+    expect(get).toHaveBeenLastCalledWith('admin/stt_term_learning/tree')
+    await getTerms({ projectId: 5 })
+    expect(get).toHaveBeenLastCalledWith('admin/stt_term_learning/terms', { searchParams: { project_id: '5' } })
+    await getRuns('done', 5)
+    expect(get).toHaveBeenLastCalledWith('admin/stt_term_learning/runs', { searchParams: { status: 'done', project_id: '5' } })
+    await getMisrecognitions({ projectId: 5 })
+    expect(get).toHaveBeenLastCalledWith('admin/stt_term_learning/misrecognitions', { searchParams: { project_id: '5' } })
+  })
+})

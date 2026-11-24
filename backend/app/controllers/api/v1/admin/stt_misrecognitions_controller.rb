@@ -12,9 +12,9 @@ module Api
         before_action :require_admin!
         before_action :set_misrecognition, only: %i[update]
 
-        # GET /api/v1/admin/stt_term_learning/misrecognitions?status=&q=
+        # GET /api/v1/admin/stt_term_learning/misrecognitions?status=&q=&project_id=
         def index
-          base = ::SttMisrecognition.where(project_id: visible_project_ids)
+          base = ::SttMisrecognition.where(project_id: scoped_project_id || visible_project_ids)
           scope = base
           scope = scope.where(status: params[:status]) if params[:status].present?
           if params[:q].present?

@@ -9,8 +9,10 @@ module SttTermLearning
       ::Project.kept.where(personal: false).or(::Project.kept.where(created_by_id: user&.id))
     end
 
-    def snapshot(user)
-      Snapshot.new(user)
+    # project_id 를 주면 그 프로젝트(+폴더)와 전역 노드만 담는다. 가시성 검사는 호출자 몫이다
+    # (컨트롤러가 AdminScope.projects 밖의 id 는 404 로 거른다) — 여기서는 보이는 범위와 교집합만 잡는다.
+    def snapshot(user, project_id: nil)
+      Snapshot.new(user, project_id: project_id)
     end
 
     Node = Struct.new(:level, :key, :name, :path, :parent_key, :project_id, :folder_id, :files, :children_keys, keyword_init: true) do
@@ -25,9 +27,14 @@ module SttTermLearning
     class Snapshot
       attr_reader :nodes
 
-      def initialize(user)
+      def initialize(user, project_id: nil)
         @terms = {}
-        projects = AdminScope.projects(user).order(:id).to_a
+        all_ids = AdminScope.projects(user).pluck(:id)
+        # 숨김 회의 판정은 필터와 무관하게 "관리자에게 보이는 전체 프로젝트" 기준이다.
+        @visible_project_ids = all_ids
+        scope = AdminScope.projects(user)
+        scope = scope.where(id: project_id) unless project_id.nil?
+        projects = scope.order(:id).to_a
         pids = projects.map(&:id)
         folders = ::Folder.kept.where(project_id: pids).order(:id).to_a
         base = ::DomainFileLink.not_excluded.includes(:domain_file).order(:id)
@@ -65,9 +72,9 @@ module SttTermLearning
         @nodes.first.children_keys.concat(@nodes.select { |n| n.parent_key == "global" }.map(&:key))
       end
 
-      # 보이는 프로젝트 id(전역 노드 제외).
+      # 관리자에게 보이는 프로젝트 id 전체(project_id 필터와 무관, 전역 노드 제외).
       def visible_project_ids
-        @visible_project_ids ||= @nodes.filter_map(&:project_id).uniq
+        @visible_project_ids
       end
 
       # meeting_ids(배열·relation) 중 보이지 않는 프로젝트(남의 personal 등)에 속한 회의 id 집합.
