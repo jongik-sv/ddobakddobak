@@ -1,0 +1,127 @@
+---
+import DefaultHero from '@astrojs/starlight/components/Hero.astro';
+
+// Starlight 는 404 쪽에도 Hero 를 쓴다. 매뉴얼 첫 화면(index.mdx)에서만 바꾼다.
+const { entry } = Astro.locals.starlightRoute;
+const isManualHome = entry.id === 'index' || entry.id === '';
+const { title = entry.data.title, tagline } = entry.data.hero ?? {};
+---
+
+{
+  isManualHome ? (
+    <section class="manual-hero">
+      <div class="inner">
+        <div class="copy">
+          <div class="heading">
+            <h1 id="_top" data-page-title set:html={title} />
+            {tagline && <p class="tagline" set:html={tagline} />}
+          </div>
+          <div class="search">
+            <span class="search-label" id="manual-search-label">매뉴얼 검색</span>
+            <button type="button" class="search-field" data-manual-search aria-labelledby="manual-search-label">
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+              <span>녹음, 회의록 내보내기, 화자 이름</span>
+            </button>
+            <p class="search-hint">앱에서 F1 키를 누르면 지금 보고 있는 화면의 설명이 바로 열립니다. 검색 단축키는 Ctrl+K(Mac은 Cmd+K)입니다.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  ) : (
+    <DefaultHero />
+  )
+}
+
+<script>
+  // 큰 검색창은 머리글의 Starlight 검색과 같은 검색 창을 연다.
+  // Starlight 검색 창은 window 의 click 을 바깥 클릭으로 보고 닫으므로, 이 클릭이 window 까지 가지 않게 막는다.
+  document.querySelector('[data-manual-search]')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    document.querySelector<HTMLButtonElement>('site-search button[data-open-modal]')?.click();
+  });
+</script>
+
+<style>
+  .manual-hero {
+    background: var(--ddobak-primary);
+    color: #fff;
+    font-family: var(--ddobak-font);
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+
+  .inner {
+    max-width: 82.5rem;
+    margin-inline: auto;
+    padding: clamp(2rem, 5vw, 4rem) clamp(1rem, 4vw, 2.5rem);
+    box-sizing: border-box;
+  }
+
+  .copy {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    min-width: 0;
+  }
+
+  .heading {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  h1 {
+    margin: 0;
+    color: #fff;
+    font-size: clamp(2.25rem, 5vw, 4rem);
+    font-weight: 800;
+    line-height: 1.15;
+  }
+
+  .tagline {
+    margin: 0;
+    font-size: clamp(1.0625rem, 1.5vw, 1.25rem);
+  }
+
+  .search {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    max-width: 45rem;
+  }
+
+  .search-label {
+    font-weight: 700;
+  }
+
+  .search-field {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    min-height: 3.5rem;
+    padding-inline: 1.125rem;
+    box-sizing: border-box;
+    font: inherit;
+    font-size: 1.125rem;
+    text-align: start;
+    color: #55587a;
+    background: #fff;
+    border: 2px solid var(--ddobak-ink);
+    border-radius: 8px;
+    cursor: text;
+  }
+
+  .search-field:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 2px;
+  }
+
+  .search-hint {
+    margin: 0;
+    font-size: 0.9375rem;
+  }
+</style>

@@ -127,7 +127,7 @@ export default function SetupPage({ onReady }: { onReady: () => void }) {
   }, [checkEnvironment])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-muted to-background flex items-center justify-center p-6">
+    <div data-help-page="start/first-run" className="min-h-screen bg-gradient-to-br from-muted to-background flex items-center justify-center p-6">
       <div className="w-full max-w-lg bg-card rounded-2xl shadow-lg p-8">
         {/* 헤더 */}
         <div className="text-center mb-8">

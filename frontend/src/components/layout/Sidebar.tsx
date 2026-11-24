@@ -1,12 +1,13 @@
 import { useCallback } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Mic, Search, Settings, Users, PanelLeftClose, LogOut, WifiOff, Trash2, HelpCircle } from 'lucide-react'
+import { LayoutDashboard, Mic, Search, Settings, Users, PanelLeftClose, LogOut, WifiOff, Trash2, HelpCircle, CircleHelp } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
 import { useAuth } from '../../hooks/useAuth'
 import { getMode, IS_MOBILE, IS_TAURI, LANDING_URL } from '../../config'
 import FolderTree from '../folder/FolderTree'
 import ProjectSwitcher from '../project/ProjectSwitcher'
 import ThemeToggle from './ThemeToggle'
+import { openHelp } from '../../lib/help'
 import { folderPath } from '../../lib/folderNav'
 import { openExternal } from '../../lib/openExternal'
 
@@ -129,6 +130,15 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps = {}) 
         >
           <HelpCircle className="w-4 h-4" />
           또박또박 소개
+        </button>
+        <button
+          onClick={() => { void openHelp(); closeIfMobile() }}
+          title="매뉴얼 (F1)"
+          aria-label="매뉴얼 (F1)"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
+        >
+          <CircleHelp className="w-4 h-4" />
+          매뉴얼
         </button>
         <button
           onClick={() => { openSettings(); closeIfMobile() }}

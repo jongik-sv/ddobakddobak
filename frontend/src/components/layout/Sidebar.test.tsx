@@ -5,6 +5,7 @@ import Sidebar from './Sidebar'
 import { useUiStore } from '../../stores/uiStore'
 import { openExternal } from '../../lib/openExternal'
 import { LANDING_URL } from '../../config'
+import { openHelp } from '../../lib/help'
 
 // Mock FolderTree to avoid its dependencies
 vi.mock('../folder/FolderTree', () => ({
@@ -12,6 +13,7 @@ vi.mock('../folder/FolderTree', () => ({
 }))
 
 vi.mock('../../lib/openExternal', () => ({ openExternal: vi.fn() }))
+vi.mock('../../lib/help', () => ({ openHelp: vi.fn() }))
 
 // 오프라인 회의 진입은 Android(Tauri 모바일)에서만 노출 — 테스트는 모바일 환경으로 강제.
 vi.mock('../../config', async (importOriginal) => ({
@@ -101,5 +103,17 @@ describe('Sidebar', () => {
       </MemoryRouter>
     )
     expect(container.innerHTML).toBe('')
+  })
+
+  it('매뉴얼 버튼: title/aria-label 이 「매뉴얼 (F1)」이고 클릭 시 열기 호출', () => {
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>
+    )
+    const btn = screen.getByRole('button', { name: '매뉴얼 (F1)' })
+    expect(btn).toHaveAttribute('title', '매뉴얼 (F1)')
+    fireEvent.click(btn)
+    expect(openHelp).toHaveBeenCalled()
   })
 })

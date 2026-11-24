@@ -108,3 +108,8 @@ certs/lan-key.pem
 # Claude 메모리 비밀 내보내기 (수동 이동 전용, 커밋 금지)
 docs/claude-memory-secrets-*.md
 .caddy.log
+
+# 사용자 매뉴얼 사이트(Astro) 빌드 산출물
+site/node_modules
+site/dist
+site/.astro

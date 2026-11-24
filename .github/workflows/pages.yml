@@ -3,7 +3,7 @@ name: Deploy Pages
 on:
   push:
     branches: [main]
-    paths: ["docs/**", ".github/workflows/pages.yml"]
+    paths: ["docs/**", "site/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -26,6 +26,22 @@ jobs:
       # docs/ 안 심볼릭 링크(PRD.md 등)가 upload-pages-artifact의 tar를 깨뜨림
       # → 링크를 실파일로 해소한 사본을 업로드
       - run: cp -RL docs _site
+      # 사용자 매뉴얼(Astro Starlight) 빌드 → _site/manual/ 로 복사.
+      # docs/manual/ddobak-api-guide.html 은 위 cp 로 이미 _site/manual/ 에 있으므로 덮어쓰지 않고 합친다.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+        working-directory: site
+      - run: npm run build
+        working-directory: site
+        env:
+          ASTRO_TELEMETRY_DISABLED: "1"
+      - run: |
+          mkdir -p _site/manual
+          cp -R site/dist/. _site/manual/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

@@ -15,6 +15,7 @@ import { ScheduledMeetingWatcher } from './components/ScheduledMeetingWatcher'
 import { ClosePrompt } from './components/ClosePrompt'
 import { RecordingLayer } from './components/recording/RecordingLayer'
 import { GlobalAudioDropHandler } from './components/GlobalAudioDropHandler'
+import { useHelpShortcut } from './lib/help'
 import { WhiteboardToast } from './components/meeting/WhiteboardToast'
 
 // 무거운/비랜딩 페이지는 지연 로드해 초기 App 청크에서 분리한다(@blocknote·lamejs 등).
@@ -84,6 +85,9 @@ function OfflineShell({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  // F1 → 매뉴얼. GatedApp 밖(App 루트)에서 1회 등록 → 로그인·셋업·오프라인 화면에서도 동작.
+  useHelpShortcut()
+
   useEffect(() => {
     loadAppSettings()
     usePromptTemplateStore.getState().fetch()

@@ -276,7 +276,7 @@ export function ServerSetup({ onComplete, onCancel }: ServerSetupProps) {
   const savedOnly = savedServers.filter((s) => !foundNormalized.has(s.url))
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-muted to-background flex items-center justify-center p-4">
+    <div data-help-page="start/first-run" className="min-h-screen bg-gradient-to-br from-muted to-background flex items-center justify-center p-4">
       <div className="w-full max-w-lg bg-card rounded-2xl shadow-lg p-8">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-foreground mb-2">또박또박</h1>

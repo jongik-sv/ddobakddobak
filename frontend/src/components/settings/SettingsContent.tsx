@@ -32,7 +32,7 @@ export default function SettingsContent({ offline = false }: Props = {}) {
   // UserSttSettings 안에 ModelManager(모델 다운로드·관리)가 포함되어 있다.
   if (offline) {
     return (
-      <div className="max-w-2xl space-y-6">
+      <div className="max-w-2xl space-y-6" data-help="settings/voice">
         <div>
           <h2 className="text-lg font-semibold text-foreground">오프라인 설정</h2>
           <p className="text-sm text-muted-foreground">
@@ -46,7 +46,11 @@ export default function SettingsContent({ offline = false }: Props = {}) {
 
   // 일반 사용자는 관리자 탭이 없으므로 탭바 없이 개인 설정만 노출
   if (!showAdminSettings) {
-    return <PersonalSettingsTab showPasswordSection={showPasswordSection} />
+    return (
+      <div data-help="settings/personal">
+        <PersonalSettingsTab showPasswordSection={showPasswordSection} />
+      </div>
+    )
   }
 
   const TABS = [
@@ -58,8 +62,11 @@ export default function SettingsContent({ offline = false }: Props = {}) {
     { id: 'sttLearning', label: 'STT 용어 학습' },
   ] as const
 
+  const helpSlug =
+    tab === 'dflow' ? 'settings/integrations' : tab === 'sttLearning' ? 'settings/stt-learning' : `settings/${tab}`
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-help={helpSlug}>
       <div role="tablist" className="flex gap-1 border-b overflow-x-auto">
         {TABS.map((t) => (
           <button
