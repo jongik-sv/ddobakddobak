@@ -296,6 +296,15 @@ RSpec.describe "Api::V1::Admin::SttTermLearning", type: :request do
         get "/api/v1/admin/stt_term_learning/tree", params: { project_id: "abc" }
         expect(response).to have_http_status(:not_found)
       end
+
+      it "8진/16진 표기 project_id 는 10진으로만 해석(404)" do
+        [ "0x#{project.id.to_s(16)}", "0#{project.id}0", "0b1" ].each do |raw|
+          get "/api/v1/admin/stt_term_learning/tree", params: { project_id: raw }
+          expect(response).to have_http_status(:not_found)
+        end
+        get "/api/v1/admin/stt_term_learning/tree", params: { project_id: "0#{project.id}" }
+        expect(response).to have_http_status(:ok)
+      end
     end
   end
 end

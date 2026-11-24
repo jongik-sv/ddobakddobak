@@ -23,7 +23,7 @@ export default function SettingsModal({ offline }: Props = {}) {
   const settingsOpen = useUiStore((s) => s.settingsOpen)
   const closeSettings = useUiStore((s) => s.closeSettings)
   const isDesktop = useMediaQuery(BREAKPOINTS.lg)
-  const { size, dragging, cornerProps, rightProps, bottomProps } = useResizableModal()
+  const { size, dragging, cornerProps, rightProps, bottomProps } = useResizableModal(settingsOpen && isDesktop)
 
   useEffect(() => {
     if (!settingsOpen) return
@@ -50,7 +50,7 @@ export default function SettingsModal({ offline }: Props = {}) {
       onClick={(e) => e.stopPropagation()}
     >
       <div
-        className={isDesktop ? CONTAINER_DESKTOP : CONTAINER_MOBILE}
+        className={`${isDesktop ? CONTAINER_DESKTOP : CONTAINER_MOBILE}${dragging ? ' select-none' : ''}`}
         style={isDesktop ? { width: size.w, height: size.h, maxWidth: 'none' } : undefined}
       >
         {/* 헤더: 모바일=좌측 X, 데스크톱=우측 X */}
@@ -61,7 +61,7 @@ export default function SettingsModal({ offline }: Props = {}) {
         </div>
 
         {/* 스크롤 가능 본문 */}
-        <div className="flex-1 min-h-0 overflow-auto p-6">
+        <div className={`flex-1 min-h-0 overflow-auto p-6 ${isDesktop ? 'mr-1.5 mb-1.5' : ''}`}>
           <SettingsContent offline={offline} />
         </div>
 

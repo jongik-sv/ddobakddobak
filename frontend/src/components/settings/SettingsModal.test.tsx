@@ -179,7 +179,7 @@ describe('SettingsModal responsive behavior', () => {
       render(<SettingsModal />)
       const handle = screen.getByTestId('resize-handle')
       fireEvent.pointerDown(handle, { clientX: 100, clientY: 100, pointerId: 1, button: 0 })
-      fireEvent.pointerMove(handle, { clientX: 70, clientY: 80, pointerId: 1 })
+      fireEvent.pointerMove(handle, { clientX: 70, clientY: 80, pointerId: 1, buttons: 1 })
       expect(dims()).toEqual(['900px', '720px'])
       fireEvent.pointerUp(handle, { clientX: 70, clientY: 80, pointerId: 1 })
       expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({ w: 900, h: 720 })
@@ -190,7 +190,7 @@ describe('SettingsModal responsive behavior', () => {
       render(<SettingsModal />)
       const handle = screen.getByTestId('resize-handle')
       fireEvent.pointerDown(handle, { clientX: 500, clientY: 500, pointerId: 1, button: 0 })
-      fireEvent.pointerMove(handle, { clientX: 0, clientY: 0, pointerId: 1 })
+      fireEvent.pointerMove(handle, { clientX: 0, clientY: 0, pointerId: 1, buttons: 1 })
       expect(dims()).toEqual(['560px', '420px'])
     })
 
@@ -198,9 +198,37 @@ describe('SettingsModal responsive behavior', () => {
       render(<SettingsModal />)
       const r = screen.getByTestId('resize-right')
       fireEvent.pointerDown(r, { clientX: 0, clientY: 0, pointerId: 1, button: 0 })
-      fireEvent.pointerMove(r, { clientX: -50, clientY: 99, pointerId: 1 })
+      fireEvent.pointerMove(r, { clientX: -50, clientY: 99, pointerId: 1, buttons: 1 })
       fireEvent.pointerUp(r, { pointerId: 1 })
       expect(dims()).toEqual(['860px', '760px'])
+    })
+
+    it('plain click without movement does not persist size', () => {
+      render(<SettingsModal />)
+      const handle = screen.getByTestId('resize-handle')
+      fireEvent.pointerDown(handle, { clientX: 100, clientY: 100, pointerId: 1, button: 0 })
+      fireEvent.pointerUp(handle, { clientX: 100, clientY: 100, pointerId: 1 })
+      expect(localStorage.getItem(KEY)).toBeNull()
+    })
+
+    it('ends drag when move arrives with no buttons pressed', () => {
+      render(<SettingsModal />)
+      const handle = screen.getByTestId('resize-handle')
+      fireEvent.pointerDown(handle, { clientX: 100, clientY: 100, pointerId: 1, button: 0 })
+      fireEvent.pointerMove(handle, { clientX: 70, clientY: 80, pointerId: 1, buttons: 1 })
+      expect(dims()).toEqual(['900px', '720px'])
+      fireEvent.pointerMove(handle, { clientX: 0, clientY: 0, pointerId: 1, buttons: 0 })
+      expect(dims()).toEqual(['900px', '720px'])
+      expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({ w: 900, h: 720 })
+    })
+
+    it('adds select-none while dragging', () => {
+      render(<SettingsModal />)
+      const handle = screen.getByTestId('resize-handle')
+      fireEvent.pointerDown(handle, { clientX: 100, clientY: 100, pointerId: 1, button: 0 })
+      expect(handle.parentElement!.className).toContain('select-none')
+      fireEvent.pointerUp(handle, { pointerId: 1 })
+      expect(handle.parentElement!.className).not.toContain('select-none')
     })
 
     it('double-click on handle resets to default', () => {

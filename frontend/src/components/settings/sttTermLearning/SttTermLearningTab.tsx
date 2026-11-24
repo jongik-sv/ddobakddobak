@@ -61,7 +61,12 @@ export default function SttTermLearningTab() {
         setProjects(list)
         setProjectId(pick)
       })
-      .catch(() => alive && setLoadError(true))
+      .catch(() => {
+        if (!alive) return
+        // 목록 실패(500·구버전 서버 404) 시에도 전체(비한정) 보기로 폴백해 데이터 탭이 비지 않게 한다.
+        setProjects([])
+        setLoadError(true)
+      })
     return () => {
       alive = false
     }

@@ -62,18 +62,27 @@ function writeStored(s: ModalSize | null) {
  * 설정 모달 크기 상태 + 드래그 리사이즈.
  * 모달은 화면 중앙 고정이므로 드래그 변화량의 2배를 반영해 포인터가 모서리를 따라가게 한다(대칭 확장).
  */
-export function useResizableModal() {
+export function useResizableModal(active = true) {
   const [vp, setVp] = useState<ModalSize>(viewport)
   const [stored, setStored] = useState<ModalSize | null>(readStored)
   const [dragging, setDragging] = useState(false)
   const drag = useRef<{ x: number; y: number; start: ModalSize; axis: Axis } | null>(null)
   const latest = useRef<ModalSize>(defaultSize(vp))
+  // 드래그 중 실제로 움직여 계산된 마지막 크기. null 이면 움직이지 않은 것(단순 클릭) → 저장하지 않는다.
+  const moved = useRef<ModalSize | null>(null)
 
   useEffect(() => {
     const onResize = () => setVp(viewport())
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
+
+  // 모달이 닫히거나 데스크톱 레이아웃을 벗어나면(pointerup 이 오지 않는 경로) 드래그 해제.
+  useEffect(() => {
+    drag.current = null
+    moved.current = null
+    setDragging(false)
+  }, [active])
 
   const size = clampSize(stored ?? defaultSize(vp), vp)
   latest.current = size
@@ -89,35 +98,61 @@ export function useResizableModal() {
         /* 무시 */
       }
       drag.current = { x: e.clientX, y: e.clientY, start: latest.current, axis }
+      moved.current = null
       setDragging(true)
     },
     [],
   )
 
-  const onPointerMove = useCallback((e: ReactPointerEvent<HTMLElement>) => {
-    const d = drag.current
-    if (!d) return
-    const next = {
-      w: d.axis === 'y' ? d.start.w : d.start.w + 2 * (e.clientX - d.x),
-      h: d.axis === 'x' ? d.start.h : d.start.h + 2 * (e.clientY - d.y),
-    }
-    setStored(clampSize(next, viewport()))
-  }, [])
-
-  const endDrag = useCallback((e: ReactPointerEvent<HTMLElement>) => {
+  const finish = useCallback((persist: boolean) => {
     if (!drag.current) return
     drag.current = null
     setDragging(false)
-    try {
-      e.currentTarget.releasePointerCapture?.(e.pointerId)
-    } catch {
-      /* 무시 */
-    }
-    writeStored(latest.current)
+    const m = moved.current
+    moved.current = null
+    if (persist && m) writeStored(m)
   }, [])
+
+  const endDrag = useCallback(
+    (e: ReactPointerEvent<HTMLElement>) => {
+      if (!drag.current) return
+      try {
+        e.currentTarget.releasePointerCapture?.(e.pointerId)
+      } catch {
+        /* 무시 */
+      }
+      finish(true)
+    },
+    [finish],
+  )
+
+  const onPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLElement>) => {
+      const d = drag.current
+      if (!d) return
+      // 버튼이 이미 떼어졌는데 pointerup 을 못 받은 경우(모달 닫힘 등) — 드래그 종료.
+      if (e.buttons === 0) {
+        finish(true)
+        return
+      }
+      const next = clampSize(
+        {
+          w: d.axis === 'y' ? d.start.w : d.start.w + 2 * (e.clientX - d.x),
+          h: d.axis === 'x' ? d.start.h : d.start.h + 2 * (e.clientY - d.y),
+        },
+        viewport(),
+      )
+      moved.current = next
+      setStored(next)
+    },
+    [finish],
+  )
+
+  const lostCapture = useCallback(() => finish(true), [finish])
 
   const reset = useCallback(() => {
     drag.current = null
+    moved.current = null
     setStored(null)
     writeStored(null)
   }, [])
@@ -127,6 +162,7 @@ export function useResizableModal() {
     onPointerMove,
     onPointerUp: endDrag,
     onPointerCancel: endDrag,
+    onLostPointerCapture: lostCapture,
     onClick: (e: React.MouseEvent) => e.stopPropagation(),
     onDoubleClick: reset,
   })

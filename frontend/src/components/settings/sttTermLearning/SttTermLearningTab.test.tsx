@@ -69,4 +69,13 @@ describe('SttTermLearningTab 프로젝트 선택기', () => {
     fireEvent.click(screen.getByRole('tab', { name: '등록 흐름' }))
     expect(select()).toBeDisabled()
   })
+
+  it('프로젝트 목록 조회가 실패해도 전체(비한정) 보기로 폴백하고 오류를 알린다', async () => {
+    m.getScopeProjects.mockRejectedValue(new Error('500'))
+    render(<SttTermLearningTab />)
+    await screen.findByText('프로젝트 목록을 불러오지 못했습니다.')
+    await waitFor(() => expect(m.getTree).toHaveBeenCalled())
+    expect(m.getTree).toHaveBeenCalledWith(null)
+    expect(select()).toBeDisabled()
+  })
 })

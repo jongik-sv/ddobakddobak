@@ -27,7 +27,7 @@ module SttTermLearningJson
       if raw.blank?
         nil
       else
-        id = Integer(raw.to_s, exception: false)
+        id = Integer(raw.to_s, 10, exception: false)
         raise ActiveRecord::RecordNotFound, "프로젝트가 없습니다" unless id && visible_project_ids.include?(id)
         id
       end
