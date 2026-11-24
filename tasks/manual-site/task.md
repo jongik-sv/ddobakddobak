@@ -1,6 +1,6 @@
 ---
 task: manual-site
-status: in_progress
+status: done
 target_repo: /Users/jji/project/ddobakddobak-manual (worktree, branch feature/manual-site)
 workers_approved: [Agent 서브에이전트(sonnet) — 사용자 "진행" 지시로 자율 실행]
 write_scope: "site/**, frontend/src/**, .github/workflows/pages.yml, .gitignore, tasks/manual-site/**"
