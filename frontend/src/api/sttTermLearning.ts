@@ -134,6 +134,7 @@ export interface AiOriginal {
   ai_generated_at: string | null
   human_edited_at: string | null
   diff: DiffOp[]
+  stt_learning_enabled?: boolean
 }
 
 export interface ScopeProject {

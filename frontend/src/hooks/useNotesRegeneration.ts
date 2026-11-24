@@ -117,9 +117,7 @@ export function useNotesRegeneration(meetingId: number, { pauseAudio, refetch }:
     let edited = false
     let learning = false
     try {
-      const r = (await getAiOriginal(meetingId)) as Awaited<ReturnType<typeof getAiOriginal>> & {
-        stt_learning_enabled?: boolean
-      }
+      const r = await getAiOriginal(meetingId)
       edited = r.available && !!r.human_edited_at
       learning = r.stt_learning_enabled === true
     } catch {
