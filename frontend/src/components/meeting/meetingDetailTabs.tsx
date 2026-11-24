@@ -136,7 +136,7 @@ export function buildMeetingDetailTabs({
       content: (
         <div data-search-region="summary" className="h-full bg-muted overflow-hidden flex flex-col min-h-0">
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-            <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={!locked && canEdit} onNotesChange={onNotesChange} headerExtra={summaryOptions} onSeek={onSeek} />
+            <AiSummaryPanel meetingId={meetingId} isRecording={false} editable={!locked && canEdit} onNotesChange={onNotesChange} headerExtra={summaryOptions} onSeek={onSeek} canCompareAiOriginal={canEdit} />
           </div>
           {belowSummary}
         </div>

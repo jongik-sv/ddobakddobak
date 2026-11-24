@@ -177,6 +177,9 @@ class TranscriptRedactionService
         summaries_destroyed = @meeting.summaries.destroy_all.length.positive?
         # Summary 도 FtsIndexable(summaries_fts) 라 같은 best-effort 문제를 안는다.
         verify_fts_purged!("summaries_fts", summary_ids)
+        # STT 용어 학습 run 은 절단 전 원문(전사·회의록)을 복사해 두므로 같은 트랜잭션에서 지운다.
+        # 절단은 학습 스냅샷 지점이 아니다(스냅샷을 만들지 않는다).
+        SttTermLearning::RedactionCleanup.call(@meeting)
 
         # 세컨드 브레인 외부 API(ext_api)가 남긴 노트(Block source: Block::EXT_API_SOURCE)도 같은
         # 단계에서 지운다 — 위 Summary와 동일하게, 회의록에 없더라도 에이전트 노트에 기밀 발췌가

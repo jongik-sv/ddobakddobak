@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react'
-import { Maximize2 } from 'lucide-react'
+import { Maximize2, MoreHorizontal } from 'lucide-react'
 import '@blocknote/mantine/style.css'
 import './blocknoteOverrides.css'
 import { BlockNoteView } from '@blocknote/mantine'
@@ -16,6 +16,7 @@ import { shouldShowDiarizationHint } from './diarizationHint'
 import { AiSummaryFullViewModal } from './AiSummaryFullViewModal'
 import { SummaryFontSizeControl } from './SummaryFontSizeControl'
 import { useDebouncedCallback } from '../../hooks/useDebouncedCallback'
+import AiOriginalDiffModal from './AiOriginalDiffModal'
 
 /**
  * Defense 2 (데이터 손실 가드): 자동저장이 파괴적인 빈 저장인지 판정한다.
@@ -41,9 +42,11 @@ interface AiSummaryPanelProps {
   hideTitle?: boolean
   /** 헤더 우측 컨트롤 그룹 맨 끝에 끼울 추가 요소(닫기 버튼 주입 등). */
   headerTrailing?: React.ReactNode
+  /** ⋯ 메뉴에 "AI 원본과 비교"를 노출한다(편집 권한자). 기본 false. */
+  canCompareAiOriginal?: boolean
 }
 
-export function AiSummaryPanel({ meetingId, isRecording = false, editable = true, onNotesChange, headerExtra, hideExpand = false, onSeek, hideTitle = false, headerTrailing }: AiSummaryPanelProps) {
+export function AiSummaryPanel({ meetingId, isRecording = false, editable = true, onNotesChange, headerExtra, hideExpand = false, onSeek, hideTitle = false, headerTrailing, canCompareAiOriginal = false }: AiSummaryPanelProps) {
   const meetingNotes = useTranscriptStore((s) => s.meetingNotes)
   const setMeetingNotes = useTranscriptStore((s) => s.setMeetingNotes)
   const isSummarizing = useTranscriptStore((s) => s.isSummarizing)
@@ -67,6 +70,8 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [showFullView, setShowFullView] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [showCompare, setShowCompare] = useState(false)
 
   const editor = useCreateBlockNote({ schema: editorSchema })
 
@@ -275,6 +280,28 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
               <Maximize2 className="w-4 h-4" />
             </button>
           )}
+          {canCompareAiOriginal && !hideExpand && (
+            <div className="relative">
+              <button
+                onClick={() => setMoreOpen((v) => !v)}
+                aria-label="더보기"
+                title="더보기"
+                className="p-1.5 min-h-[28px] flex items-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+              {moreOpen && (
+                <div className="absolute right-0 top-full z-20 mt-1 min-w-[140px] rounded-md border border-border bg-card py-1 shadow-lg">
+                  <button
+                    onClick={() => { setMoreOpen(false); setShowCompare(true) }}
+                    className="w-full px-3 py-1.5 text-left text-xs text-foreground hover:bg-muted"
+                  >
+                    AI 원본과 비교
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         {editable && (
           isRecording ? (
             <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-green-100 text-green-600">
@@ -303,9 +330,10 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
           <span className="font-semibold"> 회의록 재생성</span> 버튼으로 회의록을 만들 수 있습니다.
         </div>
       )}
+      {/* BlockNote 표 핸들/확장버튼이 position:absolute 로 포털 없이 렌더되므로 이 스크롤 컨테이너를 containing block 으로 삼아야 overflow 로 잘린다(없으면 표 높이만큼 창 밖으로 넘쳐 창 스크롤바가 생기고 레이아웃 폭이 바뀜). */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto select-text"
+        className="relative flex-1 overflow-y-auto select-text"
         style={{ '--bn-body-font-size': `${summaryFontSize}px` } as React.CSSProperties}
       >
         {editable ? (
@@ -349,6 +377,9 @@ export function AiSummaryPanel({ meetingId, isRecording = false, editable = true
           />
         )}
       </div>
+      {showCompare && (
+        <AiOriginalDiffModal meetingId={meetingId} onClose={() => setShowCompare(false)} />
+      )}
       {showFullView && (
         <AiSummaryFullViewModal
           meetingId={meetingId}

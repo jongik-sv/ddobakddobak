@@ -11,8 +11,8 @@ module Api
 
       before_action :authenticate_user!
       before_action :require_create_project!, only: %i[create upload_audio]
-      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary reapply_glossary apply_glossary_entry lock unlock dismiss_schedule domain_files update_domain_files extract_terms update_owner collaborators add_collaborator remove_collaborator]
-      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary apply_glossary_entry dismiss_schedule update_domain_files extract_terms]
+      before_action :set_meeting, only: %i[show update destroy start stop reopen pause resume reset_content summarize summary transcripts export export_prompt feedback update_notes regenerate_stt regenerate_notes re_diarize glossary ai_original reapply_glossary apply_glossary_entry lock unlock dismiss_schedule domain_files update_domain_files extract_terms update_owner collaborators add_collaborator remove_collaborator]
+      before_action :authorize_meeting_control!, only: %i[update start stop reopen pause resume reset_content summarize update_notes regenerate_stt regenerate_notes re_diarize feedback reapply_glossary apply_glossary_entry dismiss_schedule update_domain_files extract_terms ai_original]
       # 협업자 추가/제거 권한: 소유자 + admin만(authorize_meeting_control!보다 좁음 — 협업자 자신은 협업자를 못 늘림).
       before_action :authorize_meeting_collaborator_admin!, only: %i[add_collaborator remove_collaborator]
       before_action :authorize_lock!, only: %i[lock unlock]
@@ -424,6 +424,7 @@ module Api
       end
 
       def reset_content
+        stt_learning_snapshot_before_overwrite
         @meeting.purge_transcription_content!(include_attachments: true)
 
         FileUtils.rm_f(@meeting.audio_file_path) if @meeting.audio_file_path.present?
@@ -483,6 +484,7 @@ module Api
           return render json: { error: "오디오 파일이 없습니다" }, status: :unprocessable_entity
         end
 
+        stt_learning_snapshot_before_overwrite
         @meeting.purge_transcription_content!
 
         @meeting.update!(status: :transcribing, transcription_progress: 0, last_refined_seq: 0)
@@ -515,6 +517,7 @@ module Api
           return render json: { error: "트랜스크립트가 없습니다" }, status: :unprocessable_entity
         end
 
+        stt_learning_snapshot_before_overwrite
         @meeting.summaries.destroy_all
 
         MeetingSummarizationJob.perform_later(@meeting.id, type: "final")
@@ -540,7 +543,13 @@ module Api
         return render json: { error: "No valid corrections provided" }, status: :unprocessable_entity if corrections.empty?
 
         entries = corrections.map { |c| { from: c[:from], to: c[:to], match_type: "literal" } }
+        notes_before = @meeting.active_summary&.notes_markdown.to_s
         corrected_notes, corrected_count = apply_glossary_entries!(entries)
+        # 실제로 고친 게 있을 때만(본문 또는 전사) 편집 시각을 찍는다 — 아무것도 안 고친 feedback 이 대기 목록에 남지 않게.
+        edited = @meeting.reload.active_summary
+        if edited && (corrected_count.to_i.positive? || edited.notes_markdown.to_s != notes_before)
+          stt_learning_schedule_idle(edited)
+        end
 
         # D2=A: 적용한 교정을 회의 사전에 자동 영속(upsert). best-effort.
         persist_corrections_to_meeting_glossary(corrections)
@@ -561,6 +570,21 @@ module Api
               entries: f.glossary_entries.order(:id).map { |e| glossary_entry_json(e) } }
           end,
           resolved: GlossaryResolver.for(@meeting)
+        }
+      end
+
+      # GET /api/v1/meetings/:id/ai_original — AI 원본 ↔ 사람 최종본 줄 diff(인용 마커 제거). 활성 요약이 learnable 일 때만.
+      def ai_original
+        summary = @meeting.summaries.find_by(summary_type: "final")
+        unless summary&.learnable?
+          return render json: { available: false, ai_generated_at: nil, human_edited_at: nil, diff: [] }
+        end
+
+        render json: {
+          available: true,
+          ai_generated_at: summary.ai_generated_at,
+          human_edited_at: summary.human_edited_at,
+          diff: ::SttTermLearning::LineDiff.ops(summary.ai_notes_markdown, summary.notes_markdown)
         }
       end
 
@@ -676,7 +700,9 @@ module Api
         client_id = params[:client_id].presence
 
         summary = find_or_create_active_summary
+        notes_before = summary.notes_markdown
         summary.update!(notes_markdown: notes_markdown, generated_at: Time.current)
+        stt_learning_schedule_idle(summary) if summary.notes_markdown != notes_before
         @meeting.update!(last_user_edit_at: Time.current)
         @meeting.refresh_brief_summary!(notes_markdown)
 
@@ -1007,6 +1033,27 @@ module Api
         @meeting.completed? ? "final" : "realtime"
       end
 
+      # STT 용어 학습(스펙 §5.1): 요약 행 삭제·덮어쓰기 직전 pre_overwrite 스냅샷.
+      # 학습 쪽 실패는 원래 동작(재요약·초기화·STT 재생성)을 막지 않는다 — 로그만 남긴다.
+      def stt_learning_snapshot_before_overwrite
+        ::SttTermLearning::Snapshot.before_overwrite!(@meeting)
+      rescue => e
+        Rails.logger.error "[MeetingsController] STT 학습 스냅샷 실패 meeting=#{@meeting.id}: #{e.class}: #{e.message}"
+        nil
+      end
+
+      # STT 용어 학습(스펙 §5.2): 사람 편집 시각을 찍고 무편집 대기(idle) 잡을 예약한다.
+      # 노트 저장 뒤에 호출되므로 여기서 나는 어떤 예외도 응답을 깨지 않게 삼킨다.
+      # 학습이 꺼졌거나 learnable 이 아니면 시각도 찍지 않는다(잡이 없으니 대기 목록에 영영 남는다).
+      def stt_learning_schedule_idle(summary)
+        return unless ::SttTermLearning::Scheduler.schedulable?(summary)
+        edited_at = summary.mark_human_edited!
+        ::SttTermLearning::Scheduler.schedule_idle!(summary, edited_at)
+      rescue => e
+        Rails.logger.error "[MeetingsController] STT 학습 예약 실패 summary=#{summary&.id}: #{e.class}: #{e.message}"
+        nil
+      end
+
       def find_or_create_active_summary
         @meeting.active_summary ||
           @meeting.summaries.build(summary_type: latest_summary_type)
@@ -1031,7 +1078,7 @@ module Api
           next if entry[:source] == "meeting"
           entry[:file].summary_json(current_user).merge(
             source: entry[:source],
-            owner_name: entry[:owner]&.name
+            owner_name: entry[:source] == "global" ? "전역(공용)" : entry[:owner]&.name
           )
         end
       end
@@ -1042,7 +1089,7 @@ module Api
       end
 
       # UX 증분 C: 폴더 조상체인 + 프로젝트에 링크된(= exclude 여부와 무관하게 "상속 대상"인)
-      # 파일 id 전체. update_domain_files 에서 domain_file_ids 중 이미 상속(비제외)된 것을
+      # 파일 id 전체 + 전역 STT 자동 파일 id. update_domain_files 에서 domain_file_ids 중 이미 상속(비제외)된 것을
       # 조용히 걸러내는 데 사용한다.
       def inherited_owner_domain_file_ids(meeting)
         ids = []
@@ -1050,6 +1097,9 @@ module Api
           ([ meeting.folder ] + meeting.folder.ancestor_records).each { |fld| ids.concat(fld.domain_files.pluck(:id)) }
         end
         ids.concat(meeting.project.domain_files.pluck(:id)) if meeting.project
+        # 전역 STT 자동 파일은 링크 없이 모든 회의에 상속되므로 직접 선택(중복 링크)은 조용히 drop.
+        global_id = ::DomainFile.stt_auto.where(auto_owner_type: nil, project_id: nil).pick(:id)
+        ids << global_id if global_id
         ids.uniq
       end
 

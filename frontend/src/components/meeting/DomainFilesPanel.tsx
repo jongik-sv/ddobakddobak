@@ -156,7 +156,7 @@ export default function DomainFilesPanel({ ownerType, ownerId, projectId, canEdi
                   {f.name}
                 </button>
                 <span className="text-[10px] opacity-80">
-                  {f.source === 'project' ? `프로젝트: ${f.owner_name}` : `폴더: ${f.owner_name}`}
+                  {f.source === 'global' ? '전역(공용)' : f.source === 'project' ? `프로젝트: ${f.owner_name}` : `폴더: ${f.owner_name}`}
                 </span>
                 {canEdit && (
                   <button

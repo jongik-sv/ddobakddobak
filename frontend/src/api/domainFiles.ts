@@ -35,7 +35,7 @@ export interface DomainFileSummary {
 
 /** 회의 실효 적용분 중 회의 자체 링크가 아닌, 폴더/프로젝트에서 상속된 항목 */
 export interface InheritedDomainFile extends DomainFileSummary {
-  source: 'folder' | 'project'
+  source: 'folder' | 'project' | 'global'
   owner_name: string
 }
 

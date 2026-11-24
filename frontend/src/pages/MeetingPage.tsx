@@ -918,6 +918,7 @@ export default function MeetingPage() {
                   onNotesChange={handleNotesChange}
                   headerExtra={summaryOptionsControl}
                   onSeek={handleSeek}
+                  canCompareAiOriginal={canEdit}
                 />
               </div>
               {typoSections}

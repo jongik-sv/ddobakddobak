@@ -68,6 +68,18 @@ describe('DomainFilesPanel — meeting', () => {
     expect(screen.getByText('프로젝트: 반도체 프로젝트')).toBeInTheDocument()
   })
 
+  it('source global 상속 파일은 "전역(공용)" 라벨', async () => {
+    const api = await import('../../api/domainFiles')
+    vi.mocked(api.getMeetingDomainFiles).mockResolvedValueOnce({
+      selected: [],
+      inherited: [{ id: 20, name: 'STT 오인식(자동)', project_id: null, updated_at: '', editable: false, source: 'global', owner_name: '' }],
+      excluded: [],
+    })
+    render(<DomainFilesPanel ownerType="meeting" ownerId={1} projectId={null} canEdit={true} />)
+    await waitFor(() => expect(screen.getByText('STT 오인식(자동)')).toBeInTheDocument())
+    expect(screen.getByText('전역(공용)')).toBeInTheDocument()
+  })
+
   it('canEdit=false면 편집 액션 버튼이 없다', async () => {
     render(<DomainFilesPanel ownerType="meeting" ownerId={1} projectId={null} canEdit={false} />)
     await waitFor(() => expect(screen.getByText('공정 용어집')).toBeInTheDocument())

@@ -18,6 +18,7 @@ class Meeting < ApplicationRecord
   has_many :glossary_entries, as: :owner, dependent: :destroy
   has_many :transcripts, dependent: :destroy
   has_many :summaries, dependent: :destroy
+  has_many :stt_term_learning_runs, dependent: :delete_all
   has_one :meeting_whiteboard, dependent: :destroy
   has_many :blocks, dependent: :destroy
   has_many :meeting_attachments, dependent: :destroy
@@ -123,7 +124,7 @@ class Meeting < ApplicationRecord
   # 우선순위(중복 시 구체 레벨 승, 배열 순서에도 반영): meeting > 가까운 folder > 먼 folder > project.
   # DomainReferenceBuilder는 이 순서를 그대로 소비해 캡 초과 시 project → 먼 folder → 가까운 folder →
   # meeting 순으로 잘라내(구체 레벨이 끝까지 살아남게) 처리한다.
-  # @return [Array<Hash>] [{ file:, source: "meeting"|"folder"|"project", owner: (Folder|Project, source가 meeting이면 nil) }]
+  # @return [Array<Hash>] [{ file:, source: "meeting"|"folder"|"project"|"global", owner: (Folder|Project, source가 meeting/global이면 nil) }]
   #
   # UX 증분 B(회의별 상속 제외): 이 회의가 exclude=true 로 마크한 파일 id는 폴더/프로젝트
   # 상속분에서 제거한다. 회의 자체 selected(domain_files, exclude=false 스코프)에는 영향 없음.
@@ -162,6 +163,15 @@ class Meeting < ApplicationRecord
         seen[file.id] = true
         result << { file: file, source: "project", owner: project }
       end
+    end
+
+    # STT 자동 학습 전역 파일: 링크 없이 모든 회의에 맨 끝(project 뒤)으로 붙는다. 이미 다른 레벨에서
+    # 링크돼 seen 이거나 이 회의가 exclude 한 파일이면 붙지 않는다. 프로젝트 삭제로 project_id 가
+    # nullify 된 프로젝트 자동 파일(auto_owner_type="Project")은 global_auto 가 아니라 제외된다.
+    global = DomainFile.stt_auto.find_by(auto_owner_type: nil, project_id: nil) # 부분 unique 인덱스로 최대 1개
+    if global && !seen[global.id] && !excluded_ids.include?(global.id)
+      seen[global.id] = true
+      result << { file: global, source: "global", owner: nil }
     end
 
     result
