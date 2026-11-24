@@ -6,7 +6,7 @@ import { BREAKPOINTS } from '../../config'
 import UserManagementPanel from './UserManagementPanel'
 
 const CONTAINER_DESKTOP =
-  'relative w-full max-w-3xl max-h-[90vh] rounded-xl bg-card shadow-2xl border border-border flex flex-col mx-4'
+  'relative w-full max-w-5xl h-[85vh] max-h-[90vh] rounded-xl bg-card shadow-2xl border border-border flex flex-col mx-4'
 const CONTAINER_MOBILE = 'fixed inset-0 w-full h-dvh bg-card flex flex-col'
 
 const CLOSE_BTN =

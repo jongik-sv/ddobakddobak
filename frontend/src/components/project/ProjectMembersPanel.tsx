@@ -16,6 +16,28 @@ import type { Project, ProjectMember, ProjectInvite, MemberCandidate } from '../
 import { useAuthStore } from '../../stores/authStore'
 import { getMode } from '../../config'
 import { confirmDialog } from '../../lib/confirmDialog'
+import { compareText } from '../../lib/dataTable'
+import type { ColumnDef, SortState } from '../../lib/dataTable'
+import { FilterCell, SortableTh, TableSummary, useTableView } from '../common/DataTableParts'
+
+const MEMBER_COLUMNS: ColumnDef<ProjectMember>[] = [
+  { key: 'name', label: '이름', type: 'text', accessor: (m) => m.name },
+  { key: 'email', label: '이메일', type: 'text', accessor: (m) => m.email },
+  {
+    key: 'role',
+    label: '역할',
+    type: 'select',
+    accessor: (m) => m.role,
+    sortValue: (m) => (m.role === 'admin' ? 0 : 1),
+    options: [
+      { value: 'admin', label: '관리자' },
+      { value: 'member', label: '멤버' },
+    ],
+  },
+]
+const MEMBER_DEFAULT_SORT: SortState = { key: 'name', dir: 'asc' }
+const memberTieBreak = (a: ProjectMember, b: ProjectMember) =>
+  compareText(a.email, b.email) || a.user_id - b.user_id
 
 interface ProjectMembersPanelProps {
   project: Project
@@ -45,6 +67,14 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
   const [adding, setAdding] = useState(false)
   const [candidates, setCandidates] = useState<MemberCandidate[]>([])
   const [changingRoleId, setChangingRoleId] = useState<number | null>(null)
+
+  const { sort, filters, view, toggleSort, setFilter, reset, filtered } = useTableView({
+    rows: members,
+    columns: MEMBER_COLUMNS,
+    defaultSort: MEMBER_DEFAULT_SORT,
+    tieBreak: memberTieBreak,
+    storageKey: 'ddobak.projectMembers.view',
+  })
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -190,7 +220,7 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
     <Dialog
       onClose={onClose}
       backdropClassName="bg-black/20 backdrop-blur-sm"
-      className="w-full max-w-lg rounded-xl bg-card p-6 shadow-2xl border border-border max-h-[90vh] overflow-y-auto"
+      className="w-full max-w-4xl rounded-xl bg-card p-6 shadow-2xl border border-border max-h-[90vh] overflow-y-auto"
     >
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">{project.name} · 멤버 관리</h2>
@@ -211,41 +241,73 @@ export default function ProjectMembersPanel({ project, onClose }: ProjectMembers
         <>
           <section className="mb-6">
             <h3 className="mb-2 text-sm font-medium text-foreground">멤버 ({members.length})</h3>
-            <ul className="space-y-1">
-              {members.map((m) => (
-                <li key={m.user_id} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-foreground">{m.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{m.email}</p>
-                  </div>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs ${
-                      m.role === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-zinc-100 text-zinc-600'
-                    }`}
-                  >
-                    {m.role === 'admin' ? '관리자' : '멤버'}
-                  </span>
-                  {canManage && (
-                    <button
-                      onClick={() => handleRoleChange(m, m.role === 'admin' ? 'member' : 'admin')}
-                      disabled={changingRoleId === m.user_id}
-                      className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
-                    >
-                      {changingRoleId === m.user_id ? '...' : m.role === 'admin' ? '멤버로 변경' : '관리자로 위임'}
-                    </button>
+            <TableSummary shown={view.length} total={members.length} filtered={filtered} onReset={reset} />
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead className="bg-muted/40">
+                  <tr className="text-left text-muted-foreground">
+                    {MEMBER_COLUMNS.map((c) => (
+                      <SortableTh key={c.key} label={c.label} sortKey={c.key} sort={sort} onSort={toggleSort} />
+                    ))}
+                    <th className="px-3"><span className="sr-only">작업</span></th>
+                  </tr>
+                  <tr className="border-b">
+                    {MEMBER_COLUMNS.map((c) => (
+                      <td key={c.key} className="px-3 pb-2 align-top">
+                        <FilterCell column={c} filters={filters} onChange={setFilter} />
+                      </td>
+                    ))}
+                    <td />
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {view.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-6 text-center text-sm text-muted-foreground">
+                        조건에 맞는 사용자가 없습니다.
+                      </td>
+                    </tr>
                   )}
-                  {canManage && m.role !== 'admin' && (
-                    <button
-                      onClick={() => handleRemove(m.user_id)}
-                      className="rounded-md p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600"
-                      aria-label="멤버 제거"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
+                  {view.map((m) => (
+                    <tr key={m.user_id} className="hover:bg-accent/50">
+                      <td className="px-3 py-2 font-medium text-foreground">{m.name}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{m.email}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs ${
+                            m.role === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-zinc-100 text-zinc-600'
+                          }`}
+                        >
+                          {m.role === 'admin' ? '관리자' : '멤버'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-end gap-2">
+                          {canManage && (
+                            <button
+                              onClick={() => handleRoleChange(m, m.role === 'admin' ? 'member' : 'admin')}
+                              disabled={changingRoleId === m.user_id}
+                              className="whitespace-nowrap rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
+                            >
+                              {changingRoleId === m.user_id ? '...' : m.role === 'admin' ? '멤버로 변경' : '관리자로 위임'}
+                            </button>
+                          )}
+                          {canManage && m.role !== 'admin' && (
+                            <button
+                              onClick={() => handleRemove(m.user_id)}
+                              className="rounded-md p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                              aria-label="멤버 제거"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
 
           {canManage && (
