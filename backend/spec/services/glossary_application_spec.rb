@@ -136,3 +136,32 @@ RSpec.describe GlossaryApplication do
     end
   end
 end
+
+RSpec.describe GlossaryApplication, "boundary match_type" do
+  def apply(text, from, to)
+    described_class.apply_protecting_markers(text, [ { from: from, to: to, match_type: "boundary" } ])
+  end
+
+  it "짧은 한글 wrong 은 앞이 한글/영숫자면 건드리지 않고, 조사 앞 단어·괄호는 치환" do
+    expect(apply("블로그 카탈로그", "로그", "로드")).to eq("블로그 카탈로그")
+    expect(apply("로그 파일 (로그) 로그를", "로그", "로드")).to eq("로드 파일 (로드) 로드를")
+  end
+
+  it "ASCII wrong 은 단어 경계" do
+    expect(apply("saturday", "sat", "SAP")).to eq("saturday")
+    expect(apply("sat 연동 sat를 presat", "sat", "SAP")).to eq("SAP 연동 SAP를 presat")
+  end
+
+  it "3자 이상 한글은 부분 문자열" do
+    expect(apply("우판재료", "우판재", "후판재")).to eq("후판재료")
+  end
+
+  it "인용 마커는 보호" do
+    expect(apply("sat ⟦t:1056250/s:sat⟧ 250", "250", "이오공")).to eq("sat ⟦t:1056250/s:sat⟧ 이오공")
+    expect(apply("로그 ⟦t:1/s:로그⟧", "로그", "로드")).to eq("로드 ⟦t:1/s:로그⟧")
+  end
+
+  it "기존 literal 은 부분 문자열 그대로" do
+    expect(described_class.apply("블로그", [ { from: "로그", to: "로드", match_type: "literal" } ])).to eq("블로드")
+  end
+end

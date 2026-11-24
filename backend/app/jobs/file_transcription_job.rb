@@ -210,9 +210,15 @@ class FileTranscriptionJob < ApplicationJob
     notes_markdown = result["notes_markdown"]
 
     if result["ok"] && notes_markdown.present?
+      # 학습된 쌍 확정 치환(MeetingSummarizationJob final 과 동일 헬퍼). 여기선 학습 run 대기를 하지 않는다 —
+      # STT 재생성은 전사를 새로 만들어 요약을 다시 쓰는 경로라, 대기하려면 전사 단계 전체를 미뤄야 하고
+      # 이미 도메인 파일에 반영된 학습분은 치환·교정 힌트로 적용된다(진행 중 run 분은 후속 학습에서 반영).
+      learned_applier = SttTermLearning::LearnedPairApplier.build_for(meeting)
+      notes_markdown = learned_applier.apply_text(notes_markdown) if learned_applier
       stt_learning_snapshot_before_overwrite(meeting)
       summary = meeting.summaries.find_or_initialize_by(summary_type: "final")
       summary.write_ai_final!(notes_markdown)
+      learned_applier&.apply_other_columns_safely!(summary)
       # 성공 저장 — 재전사 이전의 실패 기록이 남아 오탐 배지가 되지 않게 클리어
       # (MeetingSummarizationJob final 과 동일한 summary_error 라이프사이클).
       meeting.clear_summary_error!

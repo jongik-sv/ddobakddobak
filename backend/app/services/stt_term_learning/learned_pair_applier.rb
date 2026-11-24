@@ -10,11 +10,31 @@ module SttTermLearning
       AppSettings.stt_term_learning["enabled"] == true
     end
 
+    # 요약 저장 경로(MeetingSummarizationJob·FileTranscriptionJob) 공용 진입점.
+    # 비활성이거나 준비 실패면 nil — 호출부는 치환을 생략하고 저장을 계속한다(요약 저장을 막지 않는다).
+    def self.build_for(meeting)
+      return nil unless enabled?
+      applier = new(meeting)
+      applier.entries # 조기 평가 — 실패를 여기서 잡는다
+      applier
+    rescue => e
+      Rails.logger.error "[LearnedPairApplier] 학습 쌍 로드 실패 meeting=#{meeting&.id}: #{e.class}: #{e.message}"
+      nil
+    end
+
     def initialize(meeting)
       @meeting = meeting
     end
 
-    # [{from:, to:, match_type: "literal"}, ...] — 긴 wrong 우선.
+    # apply_other_columns! 의 실패 격리판 — 실패해도 로그만 남기고 0 을 반환한다.
+    def apply_other_columns_safely!(summary)
+      apply_other_columns!(summary)
+    rescue => e
+      Rails.logger.error "[LearnedPairApplier] 기타 컬럼 치환 실패 summary=#{summary&.id}: #{e.class}: #{e.message}"
+      0
+    end
+
+    # [{from:, to:, match_type: "boundary"}, ...] — 긴 wrong 우선.
     def entries
       @entries ||= build_entries
     end
@@ -43,9 +63,10 @@ module SttTermLearning
 
     def build_entries
       excluded = excluded_keys
+      excluded_file_ids = @meeting.domain_file_links.excluded.pluck(:domain_file_id).to_set
       pairs = SttTermLearningItem.applied_live
                                  .where(stt_term_learning_runs: { meeting_id: @meeting.id })
-                                 .includes(:misrecognition)
+                                 .includes(:misrecognition, :domain_file)
                                  .order(:id)
       seen = {}
       pairs.each do |item|
@@ -55,10 +76,22 @@ module SttTermLearning
         next if wrong == correct || correct.include?(wrong) # 멱등성 — "API"→"API 서버" 가 겹치지 않게
         next if item.misrecognition&.status == "excluded"
         next if excluded.include?([ item.wrong_key, item.correct_key ])
+        next unless term_still_registered?(item, excluded_file_ids)
         seen[wrong] ||= correct
       end
       seen.sort_by { |wrong, _| -wrong.length }
-          .map { |wrong, correct| { from: wrong, to: correct, match_type: "literal" } }
+          .map { |wrong, correct| { from: wrong, to: correct, match_type: "boundary" } }
+    end
+
+    # 관리자가 도메인 파일에서 용어를 지웠거나 파일을 지웠으면(또는 이 회의에서 파일을 제외했으면)
+    # 학습 결과가 더 이상 유효하지 않다 — 강제 치환하지 않는다. 읽기 전용 파싱(parse_terms)만 쓴다.
+    def term_still_registered?(item, excluded_file_ids)
+      file = item.domain_file
+      return false if file.nil? || excluded_file_ids.include?(file.id)
+      @term_keys ||= {}
+      keys = (@term_keys[file.id] ||= ::DomainFile.parse_terms(file.content)
+                                                  .map { |t| ::DomainFile.normalize_key(t[:term]) }.to_set)
+      keys.include?(item.correct_key)
     end
 
     def excluded_keys

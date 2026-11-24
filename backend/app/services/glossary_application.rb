@@ -102,8 +102,33 @@ class GlossaryApplication
   end
   private_class_method :encode_nibbles
 
+  # match_type "boundary" — 학습된 쌍처럼 부분 문자열 오치환(블로그/카탈로그의 "로그", saturday 의 "sat")을
+  # 피해야 하는 경우의 경계 인식 literal 치환. 기존 "literal"/"regex" 호출자에는 영향 없음.
+  #  - 앞/뒤 끝 글자가 ASCII 영숫자·_ 이면 그쪽에 ASCII 단어 경계(한글 조사는 허용).
+  #  - 한글로 시작하는 2자 이하 from 은 앞 글자가 한글/영숫자가 아닐 때만(뒤는 조사 허용 → 검사 없음).
+  #  - 3자 이상 한글은 부분 문자열 그대로.
+  ASCII_WORD = "A-Za-z0-9_"
+
+  def self.boundary_regex(from)
+    from = from.to_s
+    first = from[0]
+    last = from[-1]
+    pre = if first =~ /[A-Za-z0-9_]/
+      "(?<![#{ASCII_WORD}])"
+    elsif from.length <= 2 && first =~ /\p{Hangul}/
+      "(?<![\\p{Hangul}#{ASCII_WORD}])"
+    else
+      ""
+    end
+    post = last =~ /[A-Za-z0-9_]/ ? "(?![#{ASCII_WORD}])" : ""
+    Regexp.new("#{pre}#{Regexp.escape(from)}#{post}", timeout: REGEX_TIMEOUT)
+  end
+  private_class_method :boundary_regex
+
   def self.apply_one(text, entry)
-    if entry[:match_type] == "regex"
+    if entry[:match_type] == "boundary"
+      text.gsub(boundary_regex(entry[:from])) { entry[:to].to_s }
+    elsif entry[:match_type] == "regex"
       re = Regexp.new(entry[:from].to_s, timeout: REGEX_TIMEOUT)
       text.gsub(re, entry[:to].to_s)
     else

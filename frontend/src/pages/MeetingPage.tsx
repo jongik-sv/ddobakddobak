@@ -403,6 +403,7 @@ export default function MeetingPage() {
     showNotesConfirm,
     setShowNotesConfirm,
     notesConfirmMessage,
+    isCheckingNotesConfirm,
     requestNotesConfirm,
     handleRegenerateStt,
     handleReDiarize,
@@ -738,6 +739,7 @@ export default function MeetingPage() {
       isDesktop={isDesktop}
       transcriptsCount={transcripts.length}
       isRegeneratingNotes={isRegeneratingNotes}
+      isCheckingNotes={isCheckingNotesConfirm}
       onShowSttConfirm={() => setShowSttConfirm(true)}
       onShowReDiarizeConfirm={() => setShowReDiarizeConfirm(true)}
       onShowNotesConfirm={() => { void requestNotesConfirm() }}

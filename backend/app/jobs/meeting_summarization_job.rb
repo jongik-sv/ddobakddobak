@@ -16,7 +16,7 @@ class MeetingSummarizationJob < ApplicationJob
   # final 재시도 포기 시 사용자 레포트 문구 — 영속 기록·ok:false broadcast 가 같은 문구를 공유.
   FINAL_GIVE_UP_ERROR = "최종 요약 재시도 한도(#{FINAL_REENQUEUE_CAP}회)를 초과해 생성을 포기했습니다. 회의록 재생성으로 다시 시도해 주세요.".freeze
 
-  # 재작성(final) 직전에 같은 회의의 pre_overwrite 학습 run 이 아직 처리 중이면, 학습된 용어가
+  # 재작성(final) 직전에 같은 회의의 학습 run(pre_overwrite·idle·manual 무관)이 아직 처리 중이면, 학습된 용어가
   # 도메인 파일에 들어간 뒤에 새 요약을 만들도록 잠깐 미룬다. 창이 지나면 그냥 진행한다
   # (학습 실패·정체가 요약 생성을 막으면 안 된다).
   LEARNING_WAIT_WINDOW = 3.minutes
@@ -363,8 +363,12 @@ class MeetingSummarizationJob < ApplicationJob
 
   def generate_minutes_final(meeting, attempt: 0)
     meeting.reload
-    return if meeting.pending?
+    if meeting.pending?
+      release_learning_deferral!(meeting)
+      return
+    end
     if stale_relative_to_user_action?(meeting)
+      release_learning_deferral!(meeting)
       outcome = reenqueue_final_if_minutes_missing(meeting, attempt)
       # 이 경로는 시작 broadcast 없이 끝난다 — 포기만은 라이브로도 실패를 알린다(영속 기록은 헬퍼가 수행).
       broadcast_finished(meeting, "final", ok: false, error: FINAL_GIVE_UP_ERROR) if outcome == :gave_up
@@ -372,12 +376,23 @@ class MeetingSummarizationJob < ApplicationJob
     end
 
     transcripts = meeting.transcripts.order(:sequence_number)
-    return if transcripts.empty?
+    if transcripts.empty?
+      release_learning_deferral!(meeting)
+      return
+    end
 
-    # 학습 run 대기 — broadcast_started 이전이라 "요약 중" 상태·finished broadcast 는 건드리지 않는다.
+    # 학습 run 대기 — "요약 중" 영속 상태만 세워 새로고침·ext /summarize 409 가드가 유지되게 한다
+    # (broadcast 는 안 보냄). 해제는 진행 시 broadcast_finished(ensure) 또는 위 조기 반환의
+    # release_learning_deferral!. 재enqueue 실패 시에도 즉시 해제한다.
     if stt_learning_pending?(meeting)
       Rails.logger.info "[MeetingSummarizationJob] final deferred (stt learning pending) meeting=#{meeting.id}"
-      self.class.set(wait: LEARNING_WAIT_INTERVAL).perform_later(meeting.id, type: "final", attempt: attempt)
+      meeting.record_summary_start!
+      begin
+        self.class.set(wait: LEARNING_WAIT_INTERVAL).perform_later(meeting.id, type: "final", attempt: attempt)
+      rescue StandardError
+        meeting.record_summary_finished!
+        raise
+      end
       return
     end
 
@@ -620,29 +635,26 @@ class MeetingSummarizationJob < ApplicationJob
   def stt_learning_pending?(meeting)
     return false unless SttTermLearning::LearnedPairApplier.enabled?
     meeting.stt_term_learning_runs
-           .where(trigger: "pre_overwrite", status: %w[queued running],
-                  created_at: LEARNING_WAIT_WINDOW.ago..)
+           .where(status: %w[queued running], created_at: LEARNING_WAIT_WINDOW.ago..)
            .exists?
   rescue => e
     Rails.logger.error "[MeetingSummarizationJob] STT 학습 대기 판정 실패 meeting=#{meeting&.id}: #{e.class}: #{e.message}"
     false
   end
 
+  # 이전 패스가 대기(deferral)로 세운 "요약 중" 영속 상태를, 진행 없이 끝나는 조기 반환에서 해제한다.
+  # 같은 회의의 요약 잡은 동시성 제한(락)으로 직렬이라 다른 잡의 상태를 지울 일은 없다.
+  def release_learning_deferral!(meeting)
+    meeting.record_summary_finished! if meeting.summarizing?
+  end
+
   # 치환 준비 실패는 요약 저장을 막지 않는다(nil 반환 → 치환 생략).
   def stt_learning_pair_applier(meeting)
-    return nil unless SttTermLearning::LearnedPairApplier.enabled?
-    applier = SttTermLearning::LearnedPairApplier.new(meeting)
-    applier.entries # 조기 평가 — 실패를 여기서 잡는다
-    applier
-  rescue => e
-    Rails.logger.error "[MeetingSummarizationJob] STT 학습 쌍 로드 실패 meeting=#{meeting&.id}: #{e.class}: #{e.message}"
-    nil
+    SttTermLearning::LearnedPairApplier.build_for(meeting)
   end
 
   def stt_learning_apply_other_columns(applier, summary)
-    applier&.apply_other_columns!(summary)
-  rescue => e
-    Rails.logger.error "[MeetingSummarizationJob] STT 학습 쌍 치환(기타 컬럼) 실패 summary=#{summary&.id}: #{e.class}: #{e.message}"
+    applier&.apply_other_columns_safely!(summary)
   end
 
   def stt_learning_snapshot_before_overwrite(meeting)

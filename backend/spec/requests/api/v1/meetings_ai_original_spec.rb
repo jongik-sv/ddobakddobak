@@ -12,12 +12,26 @@ RSpec.describe "GET /api/v1/meetings/:id/ai_original", type: :request do
            ai_generated_at: 2.hours.ago, human_edited_at: 1.hour.ago)
   end
 
+  describe "stt_learning_enabled" do
+    before { login_as(owner) }
+
+    it "학습 설정에 따라 true/false (요약 없을 때도 포함)" do
+      allow(AppSettings).to receive(:stt_term_learning).and_return({ "enabled" => true })
+      get "/api/v1/meetings/#{meeting.id}/ai_original"
+      expect(json["stt_learning_enabled"]).to eq(true)
+      allow(AppSettings).to receive(:stt_term_learning).and_return({ "enabled" => false })
+      final_summary(ai: "a", human: "b")
+      get "/api/v1/meetings/#{meeting.id}/ai_original"
+      expect(json["stt_learning_enabled"]).to eq(false)
+    end
+  end
+
   describe "권한" do
     before { final_summary(ai: "제목\n우판 공정 ⟦t:1234/s:abc⟧", human: "제목\n후판 공정") }
 
     def expect_diff
       expect(response).to have_http_status(:ok)
-      expect(json.keys).to contain_exactly("available", "ai_generated_at", "human_edited_at", "diff")
+      expect(json.keys).to contain_exactly("available", "ai_generated_at", "human_edited_at", "diff", "stt_learning_enabled")
       expect(json["available"]).to eq(true)
       expect(json["ai_generated_at"]).to be_present
       expect(json["human_edited_at"]).to be_present
@@ -60,12 +74,12 @@ RSpec.describe "GET /api/v1/meetings/:id/ai_original", type: :request do
     login_as(owner)
     get "/api/v1/meetings/#{meeting.id}/ai_original"
     expect(response).to have_http_status(:ok)
-    expect(json).to eq("available" => false, "ai_generated_at" => nil, "human_edited_at" => nil, "diff" => [])
+    expect(json).to eq("available" => false, "ai_generated_at" => nil, "human_edited_at" => nil, "diff" => [], "stt_learning_enabled" => true)
   end
 
   it "요약이 없는 회의도 available false" do
     login_as(owner)
     get "/api/v1/meetings/#{meeting.id}/ai_original"
-    expect(json).to eq("available" => false, "ai_generated_at" => nil, "human_edited_at" => nil, "diff" => [])
+    expect(json).to eq("available" => false, "ai_generated_at" => nil, "human_edited_at" => nil, "diff" => [], "stt_learning_enabled" => true)
   end
 end
