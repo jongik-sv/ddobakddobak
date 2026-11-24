@@ -18,7 +18,7 @@ const SPEC_SLUGS = [
   'share/live-share', 'share/collaborators', 'share/export', 'share/archive', 'share/dflow',
   'schedule/schedule', 'schedule/background',
   'settings/personal', 'settings/llm', 'settings/voice', 'settings/meeting', 'settings/integrations',
-  'settings/users', 'settings/meeting-api',
+  'settings/stt-learning', 'settings/users', 'settings/meeting-api',
   'trash/trash', 'help/shortcuts', 'help/troubleshooting', 'help/faq',
 ]
 

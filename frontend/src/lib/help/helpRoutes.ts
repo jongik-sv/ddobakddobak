@@ -23,6 +23,7 @@ export const HELP_ATTR_SLUGS: readonly string[] = [
   'settings/voice',
   'settings/meeting',
   'settings/integrations',
+  'settings/stt-learning',
   'settings/users',
   'start/first-run',
   'start/login',

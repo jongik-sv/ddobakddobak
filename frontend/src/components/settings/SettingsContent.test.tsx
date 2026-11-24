@@ -71,6 +71,17 @@ describe('SettingsContent tabs', () => {
     expect(screen.getByTestId('stt-learning-tab')).toBeInTheDocument()
   })
 
+  it('F1 도움말: 탭별 data-help slug (연동→integrations, STT 용어 학습→stt-learning)', () => {
+    mockUser = { role: 'admin', email: 'a@x.com' }
+    const { container } = render(<SettingsContent />)
+    const root = () => container.querySelector('[data-help]')?.getAttribute('data-help')
+    expect(root()).toBe('settings/personal')
+    fireEvent.click(screen.getByRole('tab', { name: /연동/ }))
+    expect(root()).toBe('settings/integrations')
+    fireEvent.click(screen.getByRole('tab', { name: /STT 용어 학습/ }))
+    expect(root()).toBe('settings/stt-learning')
+  })
+
   it('member: STT 용어 학습 탭 없음', () => {
     render(<SettingsContent />)
     expect(screen.queryByRole('tab', { name: /STT 용어 학습/ })).toBeNull()

@@ -62,7 +62,8 @@ export default function SettingsContent({ offline = false }: Props = {}) {
     { id: 'sttLearning', label: 'STT 용어 학습' },
   ] as const
 
-  const helpSlug = tab === 'dflow' ? 'settings/integrations' : `settings/${tab}`
+  const helpSlug =
+    tab === 'dflow' ? 'settings/integrations' : tab === 'sttLearning' ? 'settings/stt-learning' : `settings/${tab}`
 
   return (
     <div className="space-y-6" data-help={helpSlug}>

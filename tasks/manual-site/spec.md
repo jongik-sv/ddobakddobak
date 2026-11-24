@@ -49,6 +49,7 @@ worktree: `/Users/jji/project/ddobakddobak-manual` (branch `feature/manual-site`
 | | settings/voice | 「음성·인식」 탭 |
 | | settings/meeting | 「회의록 설정」 탭 |
 | | settings/integrations | 「연동」 탭 (D'Flow, API 토큰 등 실제 탭 내용 기준) |
+| | settings/stt-learning | (관리자) 「STT 용어 학습」 탭 — 오인식 용어 자동 학습·관리 |
 | | settings/users | (관리자) 사용자 관리 |
 | | settings/meeting-api | 회의 API·API 토큰·LLM 스킬 연동 (API 가이드 `../ddobak-api-guide.html` 링크) |
 | 휴지통 | trash/trash | 휴지통·복구·영구 삭제 |
@@ -67,7 +68,7 @@ worktree: `/Users/jji/project/ddobakddobak-manual` (branch `feature/manual-site`
 - 매뉴얼 기본 URL 상수: `https://jongik-sv.github.io/ddobakddobak/manual/`.
 - 주제 해석 우선순위: ① 열린 `[role="dialog"]` 안(또는 자신)의 `data-help` 속성(마지막 것) ② 화면에 있는 `[data-help-page]` 속성(로그인·셋업처럼 라우트로 구분 안 되는 화면) ③ 현재 라우트 → slug 표 ④ 첫 화면.
 - 라우트 표: `/`→start/project-select, `/dashboard`→meetings/dashboard, `/search`→ai/search, `/projects`→projects/projects, `/meetings`→meetings/list, `/meetings/:id/live`→recording/live, `/meetings/:id/viewer`→share/live-share, `/meetings/:id`→minutes/meeting-detail, `/trash`→trash/trash, `/local-meetings*`→recording/offline, `/invite/:code`→projects/projects.
-- `data-help` 부착: SettingsContent 루트 `settings/{personal|llm|voice|meeting|integrations}`(현재 탭), UserManagementModal `settings/users`. 셋업 화면 `start/first-run`, 로그인 화면 `start/login`.
+- `data-help` 부착: SettingsContent 루트 `settings/{personal|llm|voice|meeting|integrations|stt-learning}`(현재 탭), UserManagementModal `settings/users`. 셋업 화면 `start/first-run`, 로그인 화면 `start/login`.
 - 단축키: F1 (`preventDefault` 필수 — 브라우저 도움말 차단), App 루트(GatedApp 밖)에서 1회 등록 → 로그인·셋업·오프라인 화면에서도 동작.
 - 버튼: 데스크톱 사이드바와 모바일 내비게이션에 「매뉴얼」(lucide `CircleHelp`) — title 에 「매뉴얼 (F1)」.
 - 열기: Tauri = `@tauri-apps/plugin-shell` `open(url)`(`src/hooks/useAuth.ts:81` 방식), 실패 시 `window.open`. 웹 = `window.open(url, '_blank', 'noopener')`.
